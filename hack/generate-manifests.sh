@@ -7,7 +7,7 @@ SRCROOT="$( CDPATH='' cd -- "$(dirname "$0")/.." && pwd -P )"
 KUSTOMIZE="kustomize"
 TEMPFILE=$(mktemp /tmp/aic-manifests.XXXXXX)
 
-IMAGE_NAMESPACE="${IMAGE_NAMESPACE:-argoproj-labs}"
+IMAGE_NAMESPACE="${IMAGE_NAMESPACE:-argoprojlabs}"
 IMAGE_TAG="${IMAGE_TAG:-}"
 
 # if the tag has not been declared, and we are on a release branch, use the VERSION file.

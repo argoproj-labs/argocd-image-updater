@@ -4,7 +4,7 @@ kind: Kustomization
 
 images:
 - name: argoproj-labs/argocd-image-updater
-  newName: argoproj-labs/argocd-image-updater
+  newName: argoprojlabs/argocd-image-updater
   newTag: latest
 
 resources:

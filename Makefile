@@ -1,6 +1,6 @@
 LDFLAGS=-extldflags "-static"
 
-IMAGE_NAMESPACE?=argoproj-labs
+IMAGE_NAMESPACE?=argoprojlabs
 IMAGE_TAG?=latest
 IMAGE_NAME=argocd-image-updater
 ifdef IMAGE_NAMESPACE
@@ -48,7 +48,7 @@ image: clean-image mod-vendor
 
 .PHONY: manifests
 manifests:
-	./hack/generate-manifests.sh
+	IMAGE_NAMESPACE=${IMAGE_NAMESPACE} IMAGE_TAG=${IMAGE_TAG} ./hack/generate-manifests.sh
 
 .PHONY: run-test
 run-test:
