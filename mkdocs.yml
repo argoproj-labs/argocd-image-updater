@@ -1,0 +1,28 @@
+
+site_name: Argo CD Image Updater
+repo_url: https://github.com/argoproj-labs/argocd-image-updater
+strict: true
+theme:
+  name: material
+  palette:
+    primary: teal
+  font:
+    text: 'Work Sans'
+  logo: 'assets/logo.png'
+extra_css:
+  - 'assets/extra.css'
+markdown_extensions:
+- codehilite
+- admonition
+- toc:
+    permalink: true
+nav:
+  - Overview: index.md
+  - Install:
+    - Getting Started: install/start.md
+  - Configuration: 
+    - Applications: configuration/applications.md
+    - Images: configuration/images.md
+    - Container Registries: configuration/registries.md
+  - Releases ⧉: https://github.com/argoproj-labs/argocd-image-updater/releases
+  - Roadmap ⧉: https://github.com/argoproj-labs/argocd-image-updater/milestones

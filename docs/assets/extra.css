@@ -1,0 +1,10 @@
+.codehilite {
+    background-color: hsla(0,0%,92.5%,.5);
+    overflow: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+.codehilite pre {
+    background-color: transparent;
+    padding: .525rem .6rem;
+}
