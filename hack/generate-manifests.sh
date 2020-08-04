@@ -23,7 +23,7 @@ if [ "$IMAGE_TAG" = "" ]; then
   IMAGE_TAG=latest
 fi
 
-cd ${SRCROOT}/manifests/base && kustomize edit set image argoproj-labs/argocd-image-updater=${IMAGE_NAMESPACE}/argocd-image-updater:${IMAGE_TAG}
+cd ${SRCROOT}/manifests/base && kustomize edit set image argoprojlabs/argocd-image-updater=${IMAGE_NAMESPACE}/argocd-image-updater:${IMAGE_TAG}
 cd ${SRCROOT}/manifests/base && ${KUSTOMIZE} build . > ${TEMPFILE}
 
 mv ${TEMPFILE} ${SRCROOT}/manifests/install.yaml
