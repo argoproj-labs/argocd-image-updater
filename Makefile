@@ -46,6 +46,9 @@ image: clean-image mod-vendor
 	docker build -t ${IMAGE_PREFIX}${IMAGE_NAME}:${IMAGE_TAG} .
 	rm -rf vendor/
 
+image-push:
+	docker push ${IMAGE_PREFIX}${IMAGE_NAME}:${IMAGE_TAG}
+
 .PHONY: manifests
 manifests:
 	IMAGE_NAMESPACE=${IMAGE_NAMESPACE} IMAGE_TAG=${IMAGE_TAG} ./hack/generate-manifests.sh
