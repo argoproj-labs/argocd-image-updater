@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/argoproj-labs/argocd-image-updater/test/fixture"
+
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

@@ -158,6 +158,7 @@ func (src *CredentialSource) parsePullSecretDefinition(definition string) error 
 }
 
 // Parse an environment definition
+// nolint:unparam
 func (src *CredentialSource) parseEnvDefinition(definition string) error {
 	src.EnvName = definition
 	return nil
