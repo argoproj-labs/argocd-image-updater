@@ -1,0 +1,21 @@
+run:
+  timeout: 2m
+  skip-files:
+    - ".*\\.pb\\.go"
+  skip-dirs:
+    - vendor/
+linters:
+  enable:
+    - vet
+    - deadcode
+    - goimports
+    - varcheck
+    - structcheck
+    - ineffassign
+    - unconvert
+    - unparam
+linters-settings:
+  goimports:
+    local-prefixes: github.com/argoproj-labs/argocd-image-updater
+service:
+  golangci-lint-version: 1.26.0
