@@ -1,0 +1,2 @@
+mkdocs-material
+pygments==2.4
