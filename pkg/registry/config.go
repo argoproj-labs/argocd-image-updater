@@ -9,6 +9,8 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
+// RegistryConfiguration represents a single repository configuration for being
+// unmarshaled from YAML.
 type RegistryConfiguration struct {
 	Name        string `yaml:"name"`
 	ApiURL      string `yaml:"api_url"`
@@ -17,10 +19,13 @@ type RegistryConfiguration struct {
 	Prefix      string `yaml:"prefix,omitempty"`
 }
 
+// RegistryList contains multiple RegistryConfiguration items
 type RegistryList struct {
 	Items []RegistryConfiguration `yaml:"registries"`
 }
 
+// LoadRegistryConfiguration loads a YAML-formatted registry configuration from
+// a given file at path.
 func LoadRegistryConfiguration(path string) error {
 	registryBytes, err := ioutil.ReadFile(path)
 	if err != nil {
