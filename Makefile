@@ -9,6 +9,7 @@ else
 IMAGE_PREFIX=
 endif
 
+.PHONY: all
 all: prereq controller
 
 .PHONY: clean
@@ -20,12 +21,15 @@ clean-image:
 	rm -rf dist/
 	rm -f coverage.out
 
+.PHONY: mod-tidy
 mod-tidy:
 	go mod tidy
 
+.PHONY: mod-download
 mod-download:
 	go mod download
 
+.PHONY: mod-vendor
 mod-vendor:
 	go mod vendor
 
@@ -46,12 +50,20 @@ image: clean-image mod-vendor
 	docker build -t ${IMAGE_PREFIX}${IMAGE_NAME}:${IMAGE_TAG} .
 	rm -rf vendor/
 
-image-push:
+.PHONY: image-push
+image-push: image
 	docker push ${IMAGE_PREFIX}${IMAGE_NAME}:${IMAGE_TAG}
+
+.PHONY: lint
+lint:
+	golangci-lint run
 
 .PHONY: manifests
 manifests:
 	IMAGE_NAMESPACE=${IMAGE_NAMESPACE} IMAGE_TAG=${IMAGE_TAG} ./hack/generate-manifests.sh
+
+.PHONY: codegen
+codegen: manifests
 
 .PHONY: run-test
 run-test:
