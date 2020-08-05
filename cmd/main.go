@@ -19,7 +19,8 @@ import (
 
 var lastRun time.Time
 
-const DefaultArgoCDServerAddr = "argocd-server.argo-cd"
+// Default ArgoCD server address when running in same cluster as ArgoCD
+const defaultArgoCDServerAddr = "argocd-server.argocd"
 
 // ImageUpdaterConfig contains global configuration and required runtime data
 type ImageUpdaterConfig struct {
@@ -191,7 +192,7 @@ func getServerAddrFromEnv() string {
 	if val := os.Getenv("ARGOCD_SERVER"); val != "" {
 		return val
 	}
-	return DefaultArgoCDServerAddr
+	return defaultArgoCDServerAddr
 }
 
 func getPrintableInterval(interval time.Duration) string {
