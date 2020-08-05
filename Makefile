@@ -1,8 +1,8 @@
 LDFLAGS=-extldflags "-static"
 
 IMAGE_NAMESPACE?=argoprojlabs
-IMAGE_TAG?=latest
 IMAGE_NAME=argocd-image-updater
+IMAGE_TAG?=latest
 ifdef IMAGE_NAMESPACE
 IMAGE_PREFIX=${IMAGE_NAMESPACE}/
 else
@@ -60,7 +60,7 @@ lint:
 
 .PHONY: manifests
 manifests:
-	IMAGE_NAMESPACE=${IMAGE_NAMESPACE} IMAGE_TAG=${IMAGE_TAG} ./hack/generate-manifests.sh
+	IMAGE_NAMESPACE=${IMAGE_NAMESPACE} ./hack/generate-manifests.sh
 
 .PHONY: codegen
 codegen: manifests
