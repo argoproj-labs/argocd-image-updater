@@ -26,6 +26,17 @@ jobs:
         run: |
           go mod tidy
           git diff --exit-code -- .
+  lint:
+    name: Ensure code is correctly linted
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v1
+        with:
+          version: v1.26
+          args: --timeout 5m
   test:
     name: Ensure unit tests are passing
     runs-on: ubuntu-latest
