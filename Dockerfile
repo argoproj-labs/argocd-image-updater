@@ -9,7 +9,9 @@ RUN mkdir -p dist && \
 
 FROM alpine:latest
 
-RUN mkdir -p /usr/local/bi n
+RUN mkdir -p /usr/local/bin
+RUN mkdir -p /app/config
+
 COPY --from=builder /src/argocd-image-controller/dist/argocd-image-controller /usr/local/bin/
 
 USER 1000
