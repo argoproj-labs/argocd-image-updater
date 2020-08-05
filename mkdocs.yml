@@ -24,5 +24,8 @@ nav:
     - Applications: configuration/applications.md
     - Images: configuration/images.md
     - Container Registries: configuration/registries.md
+  - Contributing:
+    - Overview: contributing/start.md
+    - Developing: contributing/development.md
   - Releases ⧉: https://github.com/argoproj-labs/argocd-image-updater/releases
   - Roadmap ⧉: https://github.com/argoproj-labs/argocd-image-updater/milestones
