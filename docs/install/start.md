@@ -94,6 +94,35 @@ kubectl apply -n argocd-image-updater -f manifests/install.yaml
     instance. Just leave the number of replicas at 1, otherwise weird side
     effects could occur.
 
+### Configure ArgoCD endpoint
+
+If you run ArgoCD Image Updater in another cluster than ArgoCD, or if your
+ArgoCD installation is not in namespace `argocd` or if you use a default or
+otherwise self-signed TLS certificate for ArgoCD API endpoint, you probably
+need to divert from the default connection values.
+
+Edit the `argocd-image-updater-config` ConfigMap and add the following keys
+(the values are dependent upon your environment)
+
+```yaml
+data:
+  # The address of ArgoCD API endpoint - defaults to argocd-server.argocd
+  argocd.server_addr: <FQDN or IP of your ArgoCD server>
+  # Whether to use GRPC-web protocol instead of GRPC over HTTP/2
+  argocd.grpc_web: true
+  # Whether to ignore invalid TLS cert from ArgoCD API endpoint
+  argocd.insecure: false
+  # Whether to use plain text connection (http) instead of TLS (https)
+  argocd.plaintext: false
+```
+
+After changing values in the ConfigMap, ArgoCD Image Updater needs to be
+restarted for the changes to take effect, i.e.
+
+```shell
+kubectl -n argocd-image-updater rollout restart deployment argocd-image-updater
+```
+
 ### Configure API access token secret
 
 When installed from the manifests into a Kubernetes cluster, the ArgoCD Image
@@ -114,7 +143,7 @@ kubectl create secret generic argocd-image-updater-secret \
 You must restart the `argocd-image-updater` pod after such a change, i.e run
 
 ```shell
-kubectl rollout restart deployment argocd-image-updater
+kubectl -n argocd-image-updater rollout restart deployment argocd-image-updater
 ```
 
 Or alternatively, simply delete the running pod to have it recreated by
