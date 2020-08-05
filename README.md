@@ -1,5 +1,7 @@
 # ArgoCD Image Updater
 
+[![Documentation Status](https://readthedocs.org/projects/argocd-image-updater/badge/?version=latest)](https://argocd-image-updater.readthedocs.io/en/latest/?badge=latest)
+
 ## Introduction
 
 ArgoCD Image Updater is a tool to automatically update the container
