@@ -1,0 +1,45 @@
+name: Integration tests
+on:
+  push:
+    branches:
+    - 'master'
+    - 'release-*'
+  pull_request:
+    branches:
+    - 'master'
+
+jobs:
+  check-go:
+    name: Ensure Go modules synchronicity
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+      - name: Setup Golang
+        uses: actions/setup-go@v1
+        with:
+          go-version: '1.14.4'
+      - name: Download all Go modules
+        run: |
+          go mod download
+      - name: Check for tidyness of go.mod and go.sum
+        run: |
+          go mod tidy
+          git diff --exit-code -- .
+  test:
+    name: Ensure unit tests are passing
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+      - name: Setup Golang
+        uses: actions/setup-go@v1
+        with:
+          go-version: '1.14.4'
+      - name: Run tests
+        run: |
+          make test
+      - name: Upload code coverage information to codecov.io
+        uses: codecov/codecov-action@v1
+        with:
+          file: coverage.out
