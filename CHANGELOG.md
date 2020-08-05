@@ -4,7 +4,7 @@ This is the change log for `argocd-image-controller`. Please read thoroughly
 when you upgrade versions, as there might be non-obvious changes that need
 handling on your side.
 
-## Release v0.1.0 - 2020-08-01
+## Release v0.1.0 - 2020-08-05
 
 Initial release.
 
