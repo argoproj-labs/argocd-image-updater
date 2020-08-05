@@ -1,6 +1,7 @@
 # ArgoCD Image Updater
 
 [![Documentation Status](https://readthedocs.org/projects/argocd-image-updater/badge/?version=latest)](https://argocd-image-updater.readthedocs.io/en/latest/?badge=latest)
+[![codecov](https://codecov.io/gh/argoproj-labs/argocd-image-updater/branch/master/graph/badge.svg)](https://codecov.io/gh/argoproj-labs/argocd-image-updater)
 
 ## Introduction
 
