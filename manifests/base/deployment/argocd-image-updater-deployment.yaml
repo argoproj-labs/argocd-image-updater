@@ -52,4 +52,14 @@ spec:
             port: 8080
           initialDelaySeconds: 3
           periodSeconds: 30
+        volumeMounts:
+        - name: registries-conf
+          mountPath: /app/config
       serviceAccountName: argocd-image-updater
+      volumes:
+      - name: registries-conf
+        configMap:
+          name: argocd-image-updater-config
+          items:
+          - key: registries.conf
+            path: registries.conf
