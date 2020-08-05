@@ -54,6 +54,18 @@ spec:
               key: argocd.server_addr
               name: argocd-image-updater-config
               optional: true
+        - name: ARGOCD_INSECURE
+          valueFrom:
+            configMapKeyRef:
+              key: argocd.insecure
+              name: argocd-image-updater-config
+              optional: true
+        - name: ARGOCD_PLAINTEXT
+          valueFrom:
+            configMapKeyRef:
+              key: argocd.plaintext
+              name: argocd-image-updater-config
+              optional: true
         - name: ARGOCD_TOKEN
           valueFrom:
             secretKeyRef:
