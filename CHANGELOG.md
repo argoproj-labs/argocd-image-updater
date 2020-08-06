@@ -10,6 +10,16 @@ handling on your side.
 
 ### Bug fixes
 
+### New features
+
+### Other changes
+
+## 2020-08-06 - Release v0.2.0
+
+### Upgrade notes (no really, you MUST read this)
+
+### Bug fixes
+
 * fix: Correctly get Helm target parameter names from annotations
 * fix: Enforce sane concurrency limit
 
