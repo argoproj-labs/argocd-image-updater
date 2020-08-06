@@ -287,24 +287,15 @@ func (client *ArgoCD) SetKustomizeImage(app *v1alpha1.Application, newImage *ima
 }
 
 // GetImagesFromApplication returns the list of known images for the given application
-func (client *ArgoCD) GetImagesFromApplication(appName string) (image.ContainerImageList, error) {
+func GetImagesFromApplication(app *v1alpha1.Application) image.ContainerImageList {
 	images := make(image.ContainerImageList, 0)
-	conn, appClient, err := client.Client.NewApplicationClient()
-	if err != nil {
-		return nil, err
-	}
-	defer conn.Close()
-	app, err := appClient.Get(context.TODO(), &application.ApplicationQuery{Name: &appName})
-	if err != nil {
-		return nil, err
-	}
 
 	for _, imageStr := range app.Status.Summary.Images {
 		image := image.NewFromIdentifier(imageStr)
 		images = append(images, image)
 	}
 
-	return images, nil
+	return images
 }
 
 // GetApplicationTypeByName first retrieves application with given appName and
@@ -324,7 +315,7 @@ func (client *ArgoCD) GetApplicationTypeByName(appName string) (ApplicationType,
 }
 
 // GetApplicationType returns the type of the ArgoCD application
-func (client *ArgoCD) GetApplicationType(app *v1alpha1.Application) ApplicationType {
+func GetApplicationType(app *v1alpha1.Application) ApplicationType {
 	return getApplicationType(app)
 }
 
