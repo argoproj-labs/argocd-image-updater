@@ -265,6 +265,11 @@ func newCommand() error {
 				cfg.HealthPort = 0
 			}
 
+			// Enforce sane --max-concurrency values
+			if cfg.MaxConcurrency < 1 {
+				return fmt.Errorf("--max-concurrency must be greater than 1")
+			}
+
 			log.Infof("%s %s starting [loglevel:%s, interval:%s, healthport:%s]",
 				version.BinaryName(),
 				version.Version(),
