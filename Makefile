@@ -43,7 +43,7 @@ prereq:
 
 .PHONY: controller
 controller: 
-	CGO_ENABLED=0 go build -o dist/argocd-image-controller cmd/main.go
+	CGO_ENABLED=0 go build -o dist/argocd-image-updater cmd/main.go
 
 .PHONY: image
 image: clean-image mod-vendor
@@ -69,7 +69,7 @@ codegen: manifests
 run-test:
 	docker run -v $(HOME)/.kube:/kube --rm -it \
 		-e ARGOCD_TOKEN \
-		argocd-image-controller \
+		${IMAGE_PREFIX}${IMAGE_NAME}:${IMAGE_TAG} \
 		--kubeconfig /kube/config \
 		--argocd-server-addr $(ARGOCD_SERVER) \
 		--grpc-web

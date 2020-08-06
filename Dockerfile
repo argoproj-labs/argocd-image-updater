@@ -1,7 +1,7 @@
 FROM golang:1.14.4 AS builder
 
-RUN mkdir -p /src/argocd-image-controller
-WORKDIR /src/argocd-image-controller
+RUN mkdir -p /src/argocd-image-updater
+WORKDIR /src/argocd-image-updater
 COPY . .
 
 RUN mkdir -p dist && \
@@ -12,8 +12,8 @@ FROM alpine:latest
 RUN mkdir -p /usr/local/bin
 RUN mkdir -p /app/config
 
-COPY --from=builder /src/argocd-image-controller/dist/argocd-image-controller /usr/local/bin/
+COPY --from=builder /src/argocd-image-updater/dist/argocd-image-updater /usr/local/bin/
 
 USER 1000
 
-ENTRYPOINT ["/usr/local/bin/argocd-image-controller"]
+ENTRYPOINT ["/usr/local/bin/argocd-image-updater"]
