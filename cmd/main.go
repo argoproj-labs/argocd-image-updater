@@ -49,7 +49,7 @@ type ImageUpdaterResult struct {
 }
 
 // Update all images of a single application. Will run in a goroutine.
-func updateApplication(argoClient *argocd.ArgoCD, kubeClient *client.KubernetesClient, curApplication *argocd.ApplicationImages) ImageUpdaterResult {
+func updateApplication(argoClient *argocd.ArgoCD, kubeClient *client.KubernetesClient, curApplication *argocd.ApplicationImages, dryRun bool) ImageUpdaterResult {
 	result := ImageUpdaterResult{}
 	app := curApplication.Application.GetName()
 
@@ -120,12 +120,17 @@ func updateApplication(argoClient *argocd.ArgoCD, kubeClient *client.KubernetesC
 		// If the latest tag does not match image's current tag, it means we have
 		// an update candidate.
 		if applicationImage.ImageTag != latest {
+			if dryRun {
+				imgCtx.Infof("Would upgrade image to %s, but this is a dry run. Skipping.", applicationImage.WithTag(latest).String())
+				continue
+			}
+
 			imgCtx.Infof("Upgrading image to %s", applicationImage.WithTag(latest).String())
 
 			if appType := argocd.GetApplicationType(&curApplication.Application); appType == argocd.ApplicationTypeKustomize {
-				err = argoClient.SetKustomizeImage(&curApplication.Application, applicationImage.WithTag(latest))
+				err = argoClient.SetKustomizeImage(&curApplication.Application, updateableImage.WithTag(latest))
 			} else if appType == argocd.ApplicationTypeHelm {
-				err = argoClient.SetHelmImage(&curApplication.Application, applicationImage.WithTag(latest))
+				err = argoClient.SetHelmImage(&curApplication.Application, updateableImage.WithTag(latest))
 			} else {
 				result.NumErrors += 1
 				err = fmt.Errorf("Could not update application %s - neither Helm nor Kustomize application", app)
@@ -195,7 +200,7 @@ func runImageUpdater(cfg *ImageUpdaterConfig) (ImageUpdaterResult, error) {
 		go func(app string, curApplication argocd.ApplicationImages) {
 			defer sem.Release(1)
 			log.Debugf("Processing application %s", app)
-			res := updateApplication(cfg.ArgoClient, cfg.KubeClient, &curApplication)
+			res := updateApplication(cfg.ArgoClient, cfg.KubeClient, &curApplication, cfg.DryRun)
 			result.NumApplicationsProcessed += 1
 			result.NumErrors += res.NumErrors
 			result.NumImagesConsidered += res.NumImagesConsidered
@@ -263,6 +268,11 @@ func newCommand() error {
 			if once {
 				cfg.CheckInterval = 0
 				cfg.HealthPort = 0
+			}
+
+			// Enforce sane --max-concurrency values
+			if cfg.MaxConcurrency < 1 {
+				return fmt.Errorf("--max-concurrency must be greater than 1")
 			}
 
 			log.Infof("%s %s starting [loglevel:%s, interval:%s, healthport:%s]",
