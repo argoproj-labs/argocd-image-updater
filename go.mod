@@ -11,6 +11,7 @@ require (
 	github.com/sirupsen/logrus v1.6.0
 	github.com/spf13/cobra v1.0.0
 	github.com/stretchr/testify v1.6.1
+	golang.org/x/sync v0.0.0-20190911185100-cd5d95a43a6e
 	gopkg.in/yaml.v2 v2.2.8
 	k8s.io/api v1.17.8
 	k8s.io/apiextensions-apiserver v1.17.8 // indirect
