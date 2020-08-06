@@ -1,4 +1,4 @@
-# Changelog for argocd-image-uodater
+# Changelog for argocd-image-updater
 
 This is the change log for `argocd-image-updater`. Please read thoroughly
 when you upgrade versions, as there might be non-obvious changes that need
