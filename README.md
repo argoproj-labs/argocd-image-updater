@@ -75,6 +75,9 @@ The following things are on the roadmap until the `v1.0` release.
 
 * Support for image tags with i.e. Git commit SHAs
 
+For more details, check out the
+[v1.0.0 milestone](https://github.com/argoproj-labs/argocd-image-updater/milestone/1)
+
 ## Frequently asked questions
 
 **Does it write back the changes to Git?**
