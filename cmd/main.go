@@ -75,7 +75,7 @@ func runImageUpdater(cfg *ImageUpdaterConfig) (ImageUpdaterResult, error) {
 
 	log.Debugf("Considering %d applications with annotations for update", len(appList))
 
-	for app, allowedImages := range appList {
+	for app, curApplication := range appList {
 
 		// Get all images that are deployed with the current application
 		applicationImages, err := argoClient.GetImagesFromApplication(app)
@@ -92,7 +92,7 @@ func runImageUpdater(cfg *ImageUpdaterConfig) (ImageUpdaterResult, error) {
 		// constraints which are part of the application's annotation values.
 		//
 		for _, applicationImage := range applicationImages {
-			updateableImage := allowedImages.Images.ContainsImage(applicationImage, false)
+			updateableImage := curApplication.Images.ContainsImage(applicationImage, false)
 			if updateableImage == nil {
 				log.WithContext().AddField("application", app).Debugf("Image %s not in list of allowed images, skipping", applicationImage.ImageName)
 				result.NumSkipped += 1
@@ -149,10 +149,10 @@ func runImageUpdater(cfg *ImageUpdaterConfig) (ImageUpdaterResult, error) {
 			if applicationImage.ImageTag != latest {
 				imgCtx.Infof("Upgrading image to %s", applicationImage.WithTag(latest).String())
 
-				if appType := argoClient.GetApplicationType(&allowedImages.Application); appType == argocd.ApplicationTypeKustomize {
-					err = argoClient.SetKustomizeImage(app, applicationImage.WithTag(latest))
+				if appType := argoClient.GetApplicationType(&curApplication.Application); appType == argocd.ApplicationTypeKustomize {
+					err = argoClient.SetKustomizeImage(&curApplication.Application, applicationImage.WithTag(latest))
 				} else if appType == argocd.ApplicationTypeHelm {
-					err = argoClient.SetHelmImage(app, applicationImage.WithTag(latest))
+					err = argoClient.SetHelmImage(&curApplication.Application, applicationImage.WithTag(latest))
 				} else {
 					result.NumErrors += 1
 					err = fmt.Errorf("Could not update application %s - neither Helm nor Kustomize application", app)
