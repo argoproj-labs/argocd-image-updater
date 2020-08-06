@@ -49,7 +49,7 @@ type ImageUpdaterResult struct {
 }
 
 // Update all images of a single application. Will run in a goroutine.
-func updateApplication(argoClient *argocd.ArgoCD, kubeClient *client.KubernetesClient, curApplication *argocd.ApplicationImages) ImageUpdaterResult {
+func updateApplication(argoClient *argocd.ArgoCD, kubeClient *client.KubernetesClient, curApplication *argocd.ApplicationImages, dryRun bool) ImageUpdaterResult {
 	result := ImageUpdaterResult{}
 	app := curApplication.Application.GetName()
 
@@ -120,6 +120,11 @@ func updateApplication(argoClient *argocd.ArgoCD, kubeClient *client.KubernetesC
 		// If the latest tag does not match image's current tag, it means we have
 		// an update candidate.
 		if applicationImage.ImageTag != latest {
+			if dryRun {
+				imgCtx.Infof("Would upgrade image to %s, but this is a dry run. Skipping.", applicationImage.WithTag(latest).String())
+				continue
+			}
+
 			imgCtx.Infof("Upgrading image to %s", applicationImage.WithTag(latest).String())
 
 			if appType := argocd.GetApplicationType(&curApplication.Application); appType == argocd.ApplicationTypeKustomize {
@@ -195,7 +200,7 @@ func runImageUpdater(cfg *ImageUpdaterConfig) (ImageUpdaterResult, error) {
 		go func(app string, curApplication argocd.ApplicationImages) {
 			defer sem.Release(1)
 			log.Debugf("Processing application %s", app)
-			res := updateApplication(cfg.ArgoClient, cfg.KubeClient, &curApplication)
+			res := updateApplication(cfg.ArgoClient, cfg.KubeClient, &curApplication, cfg.DryRun)
 			result.NumApplicationsProcessed += 1
 			result.NumErrors += res.NumErrors
 			result.NumImagesConsidered += res.NumImagesConsidered
