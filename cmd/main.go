@@ -128,9 +128,9 @@ func updateApplication(argoClient *argocd.ArgoCD, kubeClient *client.KubernetesC
 			imgCtx.Infof("Upgrading image to %s", applicationImage.WithTag(latest).String())
 
 			if appType := argocd.GetApplicationType(&curApplication.Application); appType == argocd.ApplicationTypeKustomize {
-				err = argoClient.SetKustomizeImage(&curApplication.Application, applicationImage.WithTag(latest))
+				err = argoClient.SetKustomizeImage(&curApplication.Application, updateableImage.WithTag(latest))
 			} else if appType == argocd.ApplicationTypeHelm {
-				err = argoClient.SetHelmImage(&curApplication.Application, applicationImage.WithTag(latest))
+				err = argoClient.SetHelmImage(&curApplication.Application, updateableImage.WithTag(latest))
 			} else {
 				result.NumErrors += 1
 				err = fmt.Errorf("Could not update application %s - neither Helm nor Kustomize application", app)
