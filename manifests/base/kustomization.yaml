@@ -8,7 +8,7 @@ images:
   newTag: latest
 - name: argoprojlabs/argocd-image-updater
   newName: argoprojlabs/argocd-image-updater
-  newTag: v0.1.0
+  newTag: v0.1.1
 
 resources:
 - ./config
