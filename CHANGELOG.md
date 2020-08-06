@@ -10,11 +10,13 @@ handling on your side.
 
 ### Bug fixes
 
-N/A
+* fix: Correctly get Helm target parameter names from annotations
+* fix: Enforce sane concurrency limit
 
 ### New features
 
-N/A
+* feat: Introduce dry run mode
+* feat: Allow for concurrent update of multiple applications
 
 ### Other changes
 
