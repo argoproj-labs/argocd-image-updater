@@ -206,17 +206,14 @@ func mergeHelmParams(src []v1alpha1.HelmParameter, merge []v1alpha1.HelmParamete
 }
 
 // Set image parameters for a Helm application
-func (client *ArgoCD) SetHelmImage(appName string, newImage *image.ContainerImage) error {
+func (client *ArgoCD) SetHelmImage(app *v1alpha1.Application, newImage *image.ContainerImage) error {
 	conn, appClient, err := client.Client.NewApplicationClient()
 	if err != nil {
 		return err
 	}
 	defer conn.Close()
 
-	app, err := appClient.Get(context.TODO(), &application.ApplicationQuery{Name: &appName})
-	if err != nil {
-		return err
-	}
+	appName := app.GetName()
 
 	helmParamImageName, helmParamImageTag := getHelmParamNamesFromAnnotation(app.GetAnnotations(), newImage.SymbolicName)
 	log.WithContext().
@@ -262,17 +259,14 @@ func (client *ArgoCD) SetHelmImage(appName string, newImage *image.ContainerImag
 }
 
 // Set a Kustomize image
-func (client *ArgoCD) SetKustomizeImage(appName string, newImage *image.ContainerImage) error {
+func (client *ArgoCD) SetKustomizeImage(app *v1alpha1.Application, newImage *image.ContainerImage) error {
 	conn, appClient, err := client.Client.NewApplicationClient()
 	if err != nil {
 		return err
 	}
 	defer conn.Close()
 
-	app, err := appClient.Get(context.TODO(), &application.ApplicationQuery{Name: &appName})
-	if err != nil {
-		return err
-	}
+	appName := app.GetName()
 
 	if appType := getApplicationType(app); appType != ApplicationTypeKustomize {
 		return fmt.Errorf("cannot set Kustomize image on non-Kustomize application")
