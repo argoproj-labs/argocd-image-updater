@@ -5,7 +5,7 @@ import "fmt"
 const (
 	majorVersion     = "0"
 	minorVersion     = "1"
-	patchVersion     = "0"
+	patchVersion     = "1"
 	preReleaseString = ""
 )
 
