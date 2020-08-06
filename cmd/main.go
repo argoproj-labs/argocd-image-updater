@@ -78,10 +78,7 @@ func runImageUpdater(cfg *ImageUpdaterConfig) (ImageUpdaterResult, error) {
 	for app, curApplication := range appList {
 
 		// Get all images that are deployed with the current application
-		applicationImages, err := argoClient.GetImagesFromApplication(app)
-		if err != nil {
-			return result, err
-		}
+		applicationImages := argocd.GetImagesFromApplication(&curApplication.Application)
 
 		result.NumApplicationsProcessed += 1
 
@@ -149,7 +146,7 @@ func runImageUpdater(cfg *ImageUpdaterConfig) (ImageUpdaterResult, error) {
 			if applicationImage.ImageTag != latest {
 				imgCtx.Infof("Upgrading image to %s", applicationImage.WithTag(latest).String())
 
-				if appType := argoClient.GetApplicationType(&curApplication.Application); appType == argocd.ApplicationTypeKustomize {
+				if appType := argocd.GetApplicationType(&curApplication.Application); appType == argocd.ApplicationTypeKustomize {
 					err = argoClient.SetKustomizeImage(&curApplication.Application, applicationImage.WithTag(latest))
 				} else if appType == argocd.ApplicationTypeHelm {
 					err = argoClient.SetHelmImage(&curApplication.Application, applicationImage.WithTag(latest))
