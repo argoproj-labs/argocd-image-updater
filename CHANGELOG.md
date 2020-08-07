@@ -8,11 +8,16 @@ handling on your side.
 
 ### Upgrade notes (no really, you MUST read this)
 
+* Syntax change for running: `argocd-image-updater run [flags]` instead of `argocd-image-updater [flags]` has now to be used
+
 ### Bug fixes
 
 ### New features
 
 ### Other changes
+
+* refactor: Change run behaviour by providing `run` and `version` commands
+* enhancement: Provide a `version` command to print out version information
 
 ## 2020-08-06 - Release v0.2.0
 

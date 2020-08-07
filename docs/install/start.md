@@ -160,7 +160,7 @@ Grab the binary (it does not have any external dependencies) and run:
 
 ```bash
 export ARGOCD_TOKEN=<yourtoken>
-./argocd-image-updater \
+./argocd-image-updater run \
   --kubeconfig ~/.kube/config
   --argocd-server-addr argo-cd.example.com
   --once
