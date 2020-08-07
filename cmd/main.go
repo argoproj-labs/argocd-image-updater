@@ -252,14 +252,41 @@ func getPrintableHealthPort(port int) string {
 	}
 }
 
-func newCommand() error {
+// newRootCommand implements the root command of argocd-image-updater
+func newRootCommand() error {
+	var rootCmd = &cobra.Command{
+		Use:   "argocd-image-updater",
+		Short: "Automatically update container images with ArgoCD",
+	}
+	rootCmd.AddCommand(newRunCommand())
+	rootCmd.AddCommand(newVersionCommand())
+	err := rootCmd.Execute()
+	return err
+}
+
+// newVersionCommand implements "version" command
+func newVersionCommand() *cobra.Command {
+	var versionCmd = &cobra.Command{
+		Use:   "version",
+		Short: "Display version information",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			fmt.Printf("%s\n", version.Useragent())
+			return nil
+		},
+	}
+
+	return versionCmd
+}
+
+// newRunCommand implements "run" command
+func newRunCommand() *cobra.Command {
 	var cfg *ImageUpdaterConfig = &ImageUpdaterConfig{}
 	var once bool
 	var kubeConfig string
 	var disableKubernetes bool
-	var rootCmd = &cobra.Command{
-		Use:   "argocd-image-updater",
-		Short: "Automatically update container images with ArgoCD",
+	var runCmd = &cobra.Command{
+		Use:   "run",
+		Short: "Runs the argocd-image-updater with a set of options",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := log.SetLogLevel(cfg.LogLevel); err != nil {
 				return err
@@ -391,29 +418,27 @@ func newCommand() error {
 		},
 	}
 
-	rootCmd.Flags().StringVar(&cfg.ClientOpts.ServerAddr, "argocd-server-addr", getServerAddrFromEnv(), "address of ArgoCD API server")
-	rootCmd.Flags().BoolVar(&cfg.ClientOpts.GRPCWeb, "argocd-grpc-web", getBoolValFromEnv("ARGOCD_GRPC_WEB", false), "use grpc-web for connection to ArgoCD")
-	rootCmd.Flags().BoolVar(&cfg.ClientOpts.Insecure, "argocd-insecure", getBoolValFromEnv("ARGOCD_INSECURE", false), "(INSECURE) ignore invalid TLS certs for ArgoCD server")
-	rootCmd.Flags().BoolVar(&cfg.ClientOpts.Plaintext, "argocd-plaintext", getBoolValFromEnv("ARGOCD_PLAINTEXT", false), "(INSECURE) connect without TLS to ArgoCD server")
-	rootCmd.Flags().StringVar(&cfg.ClientOpts.AuthToken, "argocd-auth-token", "", "use token for authenticating to ArgoCD (unsafe - consider setting ARGOCD_TOKEN env var instead)")
-	rootCmd.Flags().BoolVar(&cfg.DryRun, "dry-run", false, "run in dry-run mode. If set to true, do not perform any changes")
-	rootCmd.Flags().DurationVar(&cfg.CheckInterval, "interval", 2*time.Minute, "interval for how often to check for updates")
-	rootCmd.Flags().StringVar(&cfg.LogLevel, "loglevel", "info", "set the loglevel to one of trace|debug|info|warn|error")
-	rootCmd.Flags().StringVar(&kubeConfig, "kubeconfig", "", "full path to kubernetes client configuration, i.e. ~/.kube/config")
-	rootCmd.Flags().IntVar(&cfg.HealthPort, "health-port", 8080, "port to start the health server on, 0 to disable")
-	rootCmd.Flags().BoolVar(&once, "once", false, "run only once, same as specifying --interval=0 and --healt-port=0")
-	rootCmd.Flags().StringVar(&cfg.RegistriesConf, "registries-conf-path", "", "path to registries configuration file")
-	rootCmd.Flags().BoolVar(&disableKubernetes, "disable-kubernetes", false, "do not create and use a Kubernetes client")
+	runCmd.Flags().StringVar(&cfg.ClientOpts.ServerAddr, "argocd-server-addr", getServerAddrFromEnv(), "address of ArgoCD API server")
+	runCmd.Flags().BoolVar(&cfg.ClientOpts.GRPCWeb, "argocd-grpc-web", getBoolValFromEnv("ARGOCD_GRPC_WEB", false), "use grpc-web for connection to ArgoCD")
+	runCmd.Flags().BoolVar(&cfg.ClientOpts.Insecure, "argocd-insecure", getBoolValFromEnv("ARGOCD_INSECURE", false), "(INSECURE) ignore invalid TLS certs for ArgoCD server")
+	runCmd.Flags().BoolVar(&cfg.ClientOpts.Plaintext, "argocd-plaintext", getBoolValFromEnv("ARGOCD_PLAINTEXT", false), "(INSECURE) connect without TLS to ArgoCD server")
+	runCmd.Flags().StringVar(&cfg.ClientOpts.AuthToken, "argocd-auth-token", "", "use token for authenticating to ArgoCD (unsafe - consider setting ARGOCD_TOKEN env var instead)")
+	runCmd.Flags().BoolVar(&cfg.DryRun, "dry-run", false, "run in dry-run mode. If set to true, do not perform any changes")
+	runCmd.Flags().DurationVar(&cfg.CheckInterval, "interval", 2*time.Minute, "interval for how often to check for updates")
+	runCmd.Flags().StringVar(&cfg.LogLevel, "loglevel", "info", "set the loglevel to one of trace|debug|info|warn|error")
+	runCmd.Flags().StringVar(&kubeConfig, "kubeconfig", "", "full path to kubernetes client configuration, i.e. ~/.kube/config")
+	runCmd.Flags().IntVar(&cfg.HealthPort, "health-port", 8080, "port to start the health server on, 0 to disable")
+	runCmd.Flags().BoolVar(&once, "once", false, "run only once, same as specifying --interval=0 and --healt-port=0")
+	runCmd.Flags().StringVar(&cfg.RegistriesConf, "registries-conf-path", "", "path to registries configuration file")
+	runCmd.Flags().BoolVar(&disableKubernetes, "disable-kubernetes", false, "do not create and use a Kubernetes client")
+	runCmd.Flags().IntVar(&cfg.MaxConcurrency, "max-concurrency", 10, "maximum number of update threads to run concurrently")
+	runCmd.Flags().StringVar(&cfg.ArgocdNamespace, "argocd-namespace", "argocd", "namespace where ArgoCD runs in")
 
-	rootCmd.Flags().IntVar(&cfg.MaxConcurrency, "max-concurrency", 10, "maximum number of update threads to run concurrently")
-	rootCmd.Flags().StringVar(&cfg.ArgocdNamespace, "argocd-namespace", "argocd", "namespace where ArgoCD runs in")
-
-	err := rootCmd.Execute()
-	return err
+	return runCmd
 }
 
 func main() {
-	err := newCommand()
+	err := newRootCommand()
 	if err != nil {
 		os.Exit(1)
 	}
