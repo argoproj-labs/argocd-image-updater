@@ -41,7 +41,10 @@ spec:
         app.kubernetes.io/name: argocd-image-updater
     spec:
       containers:
-      - env:
+      - command:
+        - /usr/local/bin/argocd-image-updater
+        - run
+        env:
         - name: ARGOCD_GRPC_WEB
           valueFrom:
             configMapKeyRef:
