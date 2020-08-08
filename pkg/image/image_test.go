@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/argoproj-labs/argocd-image-updater/pkg/tag"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
