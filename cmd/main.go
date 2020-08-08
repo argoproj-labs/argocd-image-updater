@@ -195,15 +195,16 @@ func runImageUpdater(cfg *ImageUpdaterConfig) (ImageUpdaterResult, error) {
 	sem := semaphore.NewWeighted(int64(cfg.MaxConcurrency))
 
 	var wg sync.WaitGroup
+	wg.Add(len(appList))
 
 	for app, curApplication := range appList {
 		lockErr := sem.Acquire(context.TODO(), 1)
 		if lockErr != nil {
 			log.Errorf("could not acquire semaphore for application %s: %v", app, lockErr)
+			// Release entry in wait group on error, too - we're never gonna execute
+			wg.Done()
 			continue
 		}
-
-		wg.Add(1)
 
 		go func(app string, curApplication argocd.ApplicationImages) {
 			defer sem.Release(1)
