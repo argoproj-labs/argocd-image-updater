@@ -12,6 +12,8 @@ handling on your side.
 
 ### Bug fixes
 
+* fix: Possible race while waiting for app updating goroutines
+
 ### New features
 
 ### Other changes
