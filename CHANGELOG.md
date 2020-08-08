@@ -20,6 +20,7 @@ handling on your side.
 
 * refactor: Change run behaviour by providing `run` and `version` commands
 * enhancement: Provide a `version` command to print out version information
+* enhancment: Allow storing metadata for image tags
 
 ## 2020-08-06 - Release v0.2.0
 

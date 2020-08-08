@@ -13,7 +13,8 @@ func Test_LatestVersion(t *testing.T) {
 		img := NewFromIdentifier("jannfis/test:1.0")
 		newTag, err := img.GetNewestVersionFromTags("", tagList)
 		require.NoError(t, err)
-		assert.Equal(t, "2.0.3", newTag)
+		require.NotNil(t, newTag)
+		assert.Equal(t, "2.0.3", newTag.TagName)
 	})
 
 	t.Run("Find the latest version with a semver constraint on major", func(t *testing.T) {
@@ -21,7 +22,8 @@ func Test_LatestVersion(t *testing.T) {
 		img := NewFromIdentifier("jannfis/test:1.0")
 		newTag, err := img.GetNewestVersionFromTags("^1.0", tagList)
 		require.NoError(t, err)
-		assert.Equal(t, "1.1.2", newTag)
+		require.NotNil(t, newTag)
+		assert.Equal(t, "1.1.2", newTag.TagName)
 	})
 
 	t.Run("Find the latest version with a semver constraint on patch", func(t *testing.T) {
@@ -29,7 +31,8 @@ func Test_LatestVersion(t *testing.T) {
 		img := NewFromIdentifier("jannfis/test:1.0")
 		newTag, err := img.GetNewestVersionFromTags("~1.0", tagList)
 		require.NoError(t, err)
-		assert.Equal(t, "1.0.1", newTag)
+		require.NotNil(t, newTag)
+		assert.Equal(t, "1.0.1", newTag.TagName)
 	})
 
 	t.Run("Find the latest version with a semver constraint that has no match", func(t *testing.T) {
@@ -37,7 +40,8 @@ func Test_LatestVersion(t *testing.T) {
 		img := NewFromIdentifier("jannfis/test:1.0")
 		newTag, err := img.GetNewestVersionFromTags("~1.0", tagList)
 		require.NoError(t, err)
-		assert.Equal(t, "1.0", newTag)
+		require.NotNil(t, newTag)
+		assert.Equal(t, "1.0", newTag.TagName)
 	})
 
 	t.Run("Find the latest version with a semver constraint that is invalid", func(t *testing.T) {
@@ -45,7 +49,7 @@ func Test_LatestVersion(t *testing.T) {
 		img := NewFromIdentifier("jannfis/test:1.0")
 		newTag, err := img.GetNewestVersionFromTags("latest", tagList)
 		assert.Error(t, err)
-		assert.Equal(t, "", newTag)
+		assert.Nil(t, newTag)
 	})
 
 	t.Run("Find the latest version with no tags", func(t *testing.T) {
@@ -53,7 +57,8 @@ func Test_LatestVersion(t *testing.T) {
 		img := NewFromIdentifier("jannfis/test:1.0")
 		newTag, err := img.GetNewestVersionFromTags("~1.0", tagList)
 		require.NoError(t, err)
-		assert.Equal(t, "1.0", newTag)
+		require.NotNil(t, newTag)
+		assert.Equal(t, "1.0", newTag.TagName)
 	})
 
 }

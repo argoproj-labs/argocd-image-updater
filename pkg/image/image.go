@@ -2,12 +2,15 @@ package image
 
 import (
 	"strings"
+	"time"
+
+	"github.com/argoproj-labs/argocd-image-updater/pkg/tag"
 )
 
 type ContainerImage struct {
 	RegistryURL           string
 	ImageName             string
-	ImageTag              string
+	ImageTag              *tag.ImageTag
 	SymbolicName          string
 	HelmParamImageName    string
 	HelmParamImageVersion string
@@ -36,9 +39,9 @@ func (img *ContainerImage) String() string {
 		str += img.RegistryURL + "/"
 	}
 	str += img.ImageName
-	if img.ImageTag != "" {
+	if img.ImageTag != nil {
 		str += ":"
-		str += img.ImageTag
+		str += img.ImageTag.TagName
 	}
 	return str
 }
@@ -58,9 +61,9 @@ func (img *ContainerImage) GetFullNameWithTag() string {
 		str += img.RegistryURL + "/"
 	}
 	str += img.ImageName
-	if img.ImageTag != "" {
+	if img.ImageTag != nil {
 		str += ":"
-		str += img.ImageTag
+		str += img.ImageTag.TagName
 	}
 	return str
 }
@@ -77,7 +80,7 @@ func (img *ContainerImage) IsUpdatable(newTag, tagSpec string) bool {
 }
 
 // WithTag returns a copy of img with new tag information set
-func (img *ContainerImage) WithTag(newTag string) *ContainerImage {
+func (img *ContainerImage) WithTag(newTag *tag.ImageTag) *ContainerImage {
 	nimg := &ContainerImage{}
 	nimg.RegistryURL = img.RegistryURL
 	nimg.ImageName = img.ImageName
@@ -92,7 +95,7 @@ func (img *ContainerImage) WithTag(newTag string) *ContainerImage {
 func (list *ContainerImageList) ContainsImage(img *ContainerImage, checkVersion bool) *ContainerImage {
 	for _, image := range *list {
 		if img.ImageName == image.ImageName && image.RegistryURL == img.RegistryURL {
-			if !checkVersion || image.ImageTag == img.ImageTag {
+			if !checkVersion || image.ImageTag.TagName == img.ImageTag.TagName {
 				return image
 			}
 		}
@@ -127,7 +130,7 @@ func getRegistryFromIdentifier(identifier string) string {
 }
 
 // Gets the image name and tag from an image identifier
-func getImageTagFromIdentifier(identifier string) (string, string, string) {
+func getImageTagFromIdentifier(identifier string) (string, string, *tag.ImageTag) {
 	var imageString string
 	var sourceName string
 
@@ -148,8 +151,8 @@ func getImageTagFromIdentifier(identifier string) (string, string, string) {
 
 	comp = strings.Split(imageString, ":")
 	if len(comp) != 2 {
-		return sourceName, imageString, ""
+		return sourceName, imageString, nil
 	} else {
-		return sourceName, comp[0], comp[1]
+		return sourceName, comp[0], tag.NewImageTag(comp[1], time.Unix(0, 0))
 	}
 }
