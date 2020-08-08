@@ -2,8 +2,11 @@ package image
 
 import (
 	"testing"
+	"time"
 
+	"github.com/argoproj-labs/argocd-image-updater/pkg/tag"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func Test_ParseImageTags(t *testing.T) {
@@ -12,7 +15,8 @@ func Test_ParseImageTags(t *testing.T) {
 		assert.Empty(t, image.RegistryURL)
 		assert.Empty(t, image.SymbolicName)
 		assert.Equal(t, "jannfis/test-image", image.ImageName)
-		assert.Equal(t, "0.1", image.ImageTag)
+		require.NotNil(t, image.ImageTag)
+		assert.Equal(t, "0.1", image.ImageTag.TagName)
 	})
 
 	t.Run("Parse valid image name with registry info", func(t *testing.T) {
@@ -20,7 +24,8 @@ func Test_ParseImageTags(t *testing.T) {
 		assert.Equal(t, "gcr.io", image.RegistryURL)
 		assert.Empty(t, image.SymbolicName)
 		assert.Equal(t, "jannfis/test-image", image.ImageName)
-		assert.Equal(t, "0.1", image.ImageTag)
+		require.NotNil(t, image.ImageTag)
+		assert.Equal(t, "0.1", image.ImageTag.TagName)
 	})
 
 	t.Run("Parse valid image name with source name and registry info", func(t *testing.T) {
@@ -28,7 +33,8 @@ func Test_ParseImageTags(t *testing.T) {
 		assert.Equal(t, "gcr.io", image.RegistryURL)
 		assert.Equal(t, "jannfis/orig-image", image.SymbolicName)
 		assert.Equal(t, "jannfis/test-image", image.ImageName)
-		assert.Equal(t, "0.1", image.ImageTag)
+		require.NotNil(t, image.ImageTag)
+		assert.Equal(t, "0.1", image.ImageTag.TagName)
 	})
 
 	t.Run("Parse image without version source name and registry info", func(t *testing.T) {
@@ -36,7 +42,7 @@ func Test_ParseImageTags(t *testing.T) {
 		assert.Equal(t, "gcr.io", image.RegistryURL)
 		assert.Equal(t, "jannfis/orig-image", image.SymbolicName)
 		assert.Equal(t, "jannfis/test-image", image.ImageName)
-		assert.Empty(t, image.ImageTag)
+		assert.Nil(t, image.ImageTag)
 	})
 }
 
@@ -68,7 +74,7 @@ func Test_WithTag(t *testing.T) {
 		imageName := "jannfis/argocd=jannfis/orig-image:0.1"
 		nimageName := "jannfis/argocd=jannfis/orig-image:0.2"
 		oImg := NewFromIdentifier(imageName)
-		nImg := oImg.WithTag("0.2")
+		nImg := oImg.WithTag(tag.NewImageTag("0.2", time.Unix(0, 0)))
 		assert.Equal(t, nimageName, nImg.String())
 	})
 }

@@ -237,7 +237,7 @@ func (client *ArgoCD) SetHelmImage(app *v1alpha1.Application, newImage *image.Co
 	}
 
 	if helmParamImageTag != "" {
-		mergeParams = append(mergeParams, v1alpha1.HelmParameter{Name: helmParamImageTag, Value: newImage.ImageTag})
+		mergeParams = append(mergeParams, v1alpha1.HelmParameter{Name: helmParamImageTag, Value: newImage.ImageTag.TagName})
 	}
 
 	if app.Spec.Source.Helm == nil {

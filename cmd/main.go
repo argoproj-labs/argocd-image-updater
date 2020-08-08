@@ -99,9 +99,17 @@ func updateApplication(argoClient *argocd.ArgoCD, kubeClient *client.KubernetesC
 
 		imgCtx.Tracef("List of available tags found: %v", tags)
 
+		var versConstraint string
+		if updateableImage.ImageTag != nil {
+			imgCtx.Debugf("Using constraint %s when looking for a new tag", versConstraint)
+			versConstraint = updateableImage.ImageTag.TagName
+		} else {
+			imgCtx.Debugf("Using no version constraint when looking for a new tag")
+		}
+
 		// Get the latest available tag matching any constraint that might be set
 		// for allowed updates.
-		latest, err := applicationImage.GetNewestVersionFromTags(updateableImage.ImageTag, tags)
+		latest, err := applicationImage.GetNewestVersionFromTags(versConstraint, tags)
 		if err != nil {
 			imgCtx.Errorf("Unable to find newest version from available tags: %v", err)
 			result.NumErrors += 1
@@ -111,7 +119,7 @@ func updateApplication(argoClient *argocd.ArgoCD, kubeClient *client.KubernetesC
 		// If we have no latest tag information, it means there was no tag which
 		// has met our version constraint (or there was no semantic versioned tag
 		// at all in the repository)
-		if latest == "" {
+		if latest == nil {
 			imgCtx.Debugf("No suitable image tag for upgrade found in list of available tags.")
 			result.NumSkipped += 1
 			continue

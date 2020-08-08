@@ -2,8 +2,10 @@ package image
 
 import (
 	"sort"
+	"time"
 
 	"github.com/argoproj-labs/argocd-image-updater/pkg/log"
+	"github.com/argoproj-labs/argocd-image-updater/pkg/tag"
 
 	"github.com/Masterminds/semver"
 )
@@ -11,7 +13,7 @@ import (
 // GetNewestVersionFromTags returns the latest available version from a list of
 // tags while optionally taking a semver constraint into account. Returns the
 // original version if no new version could be found from the list of tags.
-func (img *ContainerImage) GetNewestVersionFromTags(constraint string, availableTags []string) (string, error) {
+func (img *ContainerImage) GetNewestVersionFromTags(constraint string, availableTags []string) (*tag.ImageTag, error) {
 	logCtx := log.NewContext()
 	logCtx.AddField("image", img.String())
 
@@ -20,9 +22,9 @@ func (img *ContainerImage) GetNewestVersionFromTags(constraint string, available
 		return img.ImageTag, nil
 	}
 
-	_, err := semver.NewVersion(img.ImageTag)
+	_, err := semver.NewVersion(img.ImageTag.TagName)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	// The given constraint MUST match a semver constraint
@@ -31,7 +33,7 @@ func (img *ContainerImage) GetNewestVersionFromTags(constraint string, available
 		semverConstraint, err = semver.NewConstraint(constraint)
 		if err != nil {
 			logCtx.Errorf("invalid constraint '%s' given: '%v'", constraint, err)
-			return "", err
+			return nil, err
 		}
 	}
 
@@ -64,7 +66,7 @@ func (img *ContainerImage) GetNewestVersionFromTags(constraint string, available
 	// form, so we can later fetch it from the registry.
 	if len(tagVersions) > 0 {
 		sort.Sort(semver.Collection(tagVersions))
-		return tagVersions[len(tagVersions)-1].Original(), nil
+		return tag.NewImageTag(tagVersions[len(tagVersions)-1].Original(), time.Unix(0, 0)), nil
 	} else {
 		return img.ImageTag, nil
 	}
