@@ -98,7 +98,7 @@ func (clientInfo *RegistryEndpoint) GetTags(img *image.ContainerImage, kubeClien
 
 		// Creation date is stored as RFC3339 timestamp with nanoseconds, i.e. like
 		// this: 2017-12-01T23:06:12.607835588Z
-		log.Tracef("Found origin creation date for %s: %s", img.GetFullNameWithTag(), crStr)
+		log.Tracef("Found origin creation date for %s: %s", tagStr, crStr)
 		crDate, err := time.Parse(time.RFC3339Nano, crStr)
 		if err != nil {
 			log.Warnf("Could not parse creation timestamp for %s (%s): %v", img.GetFullNameWithTag(), crStr, err)
