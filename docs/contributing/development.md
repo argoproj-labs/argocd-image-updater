@@ -2,7 +2,7 @@
 
 ## Requirements
 
-Getting started to develop ArgoCD Image Updater shouldn't be too hard. All that
+Getting started to develop Argo CD Image Updater shouldn't be too hard. All that
 is required is a simple build toolchain, consisting of:
 
 * Golang v1.14

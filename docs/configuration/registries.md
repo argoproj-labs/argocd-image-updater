@@ -1,6 +1,6 @@
 # Configuring Container Registries
 
-ArgoCD Image Updater comes with support for the following registries out of the
+Argo CD Image Updater comes with support for the following registries out of the
 box:
 
 * Docker Hub Registry
@@ -8,9 +8,9 @@ box:
 * RedHat Quay Registry
 
 Adding additional (and custom) container registries is supported by means of a
-configuration file. If you run ArgoCD Image Updater within Kubernetes, you can
+configuration file. If you run Argo CD Image Updater within Kubernetes, you can
 edit the registries in a ConfigMap resource, which will get mounted to the pod
-running ArgoCD Image Updater.
+running Argo CD Image Updater.
 
 ## Configuring a custom container registry
 
@@ -72,7 +72,7 @@ data:
 ```
 
 !!!note
-    ArgoCD Image Updater pod must be restarted for changes to the registries
+    Argo CD Image Updater pod must be restarted for changes to the registries
     configuration to take effect. There are plans to change this behaviour so
     that changes will be reload automatically in a future release.
 

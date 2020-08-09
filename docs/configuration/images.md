@@ -77,8 +77,8 @@ specification as follows:
 `<image_path>:<image_path>` will be the value used when rendering the
 manifests.
 
-Let's take ArgoCD's Kustomize base as an example: The original image used by
-ArgoCD is `argoproj/argocd`, pulled from the Docker Hub container registry. If
+Let's take Argo CD's Kustomize base as an example: The original image used by
+Argo CD is `argoproj/argocd`, pulled from the Docker Hub container registry. If
 you are about to follow the latest builds, as published on the GitHub registry,
 you could override the image specification in Kustomize as follows:
 
@@ -104,7 +104,7 @@ that should get set if an image gets updated.
 For example, if you have an image `quay.io/dexidp/dex` that is configured in
 your helm chart using the `dex.image.name` and `dex.image.tag` Helm parameters,
 you can set the following annotations on your `Application` resource so that
-ArgoCD Image Updater will know which Helm parameters to set:
+Argo CD Image Updater will know which Helm parameters to set:
 
 ```yaml
 argocd-image-updater.argoproj.io/image-list: dex=quay.io/dexidp/dex
