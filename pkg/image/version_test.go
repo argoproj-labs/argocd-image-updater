@@ -22,7 +22,8 @@ func Test_LatestVersion(t *testing.T) {
 	t.Run("Find the latest version without any constraint", func(t *testing.T) {
 		tagList := newImageTagList([]string{"0.1", "0.5.1", "0.9", "1.0", "1.0.1", "1.1.2", "2.0.3"})
 		img := NewFromIdentifier("jannfis/test:1.0")
-		newTag, err := img.GetNewestVersionFromTags("", tagList)
+		vc := VersionConstraint{}
+		newTag, err := img.GetNewestVersionFromTags(&vc, tagList)
 		require.NoError(t, err)
 		require.NotNil(t, newTag)
 		assert.Equal(t, "2.0.3", newTag.TagName)
@@ -31,7 +32,8 @@ func Test_LatestVersion(t *testing.T) {
 	t.Run("Find the latest version with a semver constraint on major", func(t *testing.T) {
 		tagList := newImageTagList([]string{"0.1", "0.5.1", "0.9", "1.0", "1.0.1", "1.1.2", "2.0.3"})
 		img := NewFromIdentifier("jannfis/test:1.0")
-		newTag, err := img.GetNewestVersionFromTags("^1.0", tagList)
+		vc := VersionConstraint{Constraint: "^1.0"}
+		newTag, err := img.GetNewestVersionFromTags(&vc, tagList)
 		require.NoError(t, err)
 		require.NotNil(t, newTag)
 		assert.Equal(t, "1.1.2", newTag.TagName)
@@ -40,7 +42,8 @@ func Test_LatestVersion(t *testing.T) {
 	t.Run("Find the latest version with a semver constraint on patch", func(t *testing.T) {
 		tagList := newImageTagList([]string{"0.1", "0.5.1", "0.9", "1.0", "1.0.1", "1.1.2", "2.0.3"})
 		img := NewFromIdentifier("jannfis/test:1.0")
-		newTag, err := img.GetNewestVersionFromTags("~1.0", tagList)
+		vc := VersionConstraint{Constraint: "~1.0"}
+		newTag, err := img.GetNewestVersionFromTags(&vc, tagList)
 		require.NoError(t, err)
 		require.NotNil(t, newTag)
 		assert.Equal(t, "1.0.1", newTag.TagName)
@@ -49,7 +52,8 @@ func Test_LatestVersion(t *testing.T) {
 	t.Run("Find the latest version with a semver constraint that has no match", func(t *testing.T) {
 		tagList := newImageTagList([]string{"0.1", "0.5.1", "0.9", "2.0.3"})
 		img := NewFromIdentifier("jannfis/test:1.0")
-		newTag, err := img.GetNewestVersionFromTags("~1.0", tagList)
+		vc := VersionConstraint{Constraint: "~1.0"}
+		newTag, err := img.GetNewestVersionFromTags(&vc, tagList)
 		require.NoError(t, err)
 		require.NotNil(t, newTag)
 		assert.Equal(t, "1.0", newTag.TagName)
@@ -58,7 +62,8 @@ func Test_LatestVersion(t *testing.T) {
 	t.Run("Find the latest version with a semver constraint that is invalid", func(t *testing.T) {
 		tagList := newImageTagList([]string{"0.1", "0.5.1", "0.9", "2.0.3"})
 		img := NewFromIdentifier("jannfis/test:1.0")
-		newTag, err := img.GetNewestVersionFromTags("latest", tagList)
+		vc := VersionConstraint{Constraint: "latest"}
+		newTag, err := img.GetNewestVersionFromTags(&vc, tagList)
 		assert.Error(t, err)
 		assert.Nil(t, newTag)
 	})
@@ -66,7 +71,8 @@ func Test_LatestVersion(t *testing.T) {
 	t.Run("Find the latest version with no tags", func(t *testing.T) {
 		tagList := newImageTagList([]string{})
 		img := NewFromIdentifier("jannfis/test:1.0")
-		newTag, err := img.GetNewestVersionFromTags("~1.0", tagList)
+		vc := VersionConstraint{Constraint: "~1.0"}
+		newTag, err := img.GetNewestVersionFromTags(&vc, tagList)
 		require.NoError(t, err)
 		require.NotNil(t, newTag)
 		assert.Equal(t, "1.0", newTag.TagName)
