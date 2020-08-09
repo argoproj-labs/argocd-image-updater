@@ -97,12 +97,12 @@ func updateApplication(argoClient *argocd.ArgoCD, kubeClient *client.KubernetesC
 			continue
 		}
 
-		imgCtx.Tracef("List of available tags found: %v", tags)
+		imgCtx.Tracef("List of available tags found: %v", tags.Tags())
 
 		var versConstraint string
 		if updateableImage.ImageTag != nil {
-			imgCtx.Debugf("Using constraint %s when looking for a new tag", versConstraint)
 			versConstraint = updateableImage.ImageTag.TagName
+			imgCtx.Debugf("Using version constraint '%s' when looking for a new tag", versConstraint)
 		} else {
 			imgCtx.Debugf("Using no version constraint when looking for a new tag")
 		}
@@ -127,7 +127,7 @@ func updateApplication(argoClient *argocd.ArgoCD, kubeClient *client.KubernetesC
 
 		// If the latest tag does not match image's current tag, it means we have
 		// an update candidate.
-		if applicationImage.ImageTag != latest {
+		if applicationImage.ImageTag.TagName != latest.TagName {
 			if dryRun {
 				imgCtx.Infof("Would upgrade image to %s, but this is a dry run. Skipping.", applicationImage.WithTag(latest).String())
 				continue
