@@ -1,9 +1,6 @@
 package image
 
 import (
-	"sort"
-	"time"
-
 	"github.com/argoproj-labs/argocd-image-updater/pkg/log"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/tag"
 
@@ -14,12 +11,12 @@ import (
 type VersionSort int
 
 const (
-	// VersionSortSemVer sorts tags using semver sorting
-	VersionSortSemVer = 1
+	// VersionSortSemVer sorts tags using semver sorting (the default)
+	VersionSortSemVer = 0
 	// VersionSortLatest sorts tags after their creation date
-	VersionSortLatest = 2
+	VersionSortLatest = 1
 	// VersionSortName sorts tags alphabetically by name
-	VersionSortName = 3
+	VersionSortName = 2
 )
 
 // VersionConstraint defines a constraint for comparing versions
@@ -41,7 +38,17 @@ func (img *ContainerImage) GetNewestVersionFromTags(vc *VersionConstraint, tagLi
 	logCtx := log.NewContext()
 	logCtx.AddField("image", img.String())
 
-	availableTags := tagList.Tags()
+	var availableTags tag.SortableImageTagList
+	switch vc.SortMode {
+	case VersionSortSemVer:
+		availableTags = tagList.SortBySemVer()
+	case VersionSortName:
+		availableTags = tagList.SortByName()
+	case VersionSortLatest:
+		availableTags = tagList.SortByDate()
+	}
+
+	considerTags := tag.SortableImageTagList{}
 
 	// It makes no sense to proceed if we have no available tags
 	if len(availableTags) == 0 {
@@ -63,13 +70,11 @@ func (img *ContainerImage) GetNewestVersionFromTags(vc *VersionConstraint, tagLi
 		}
 	}
 
-	tagVersions := make([]*semver.Version, 0)
-
 	// Loop through all tags to check whether it's an update candidate.
 	for _, tag := range availableTags {
 
 		// Non-parseable tag does not mean error - just skip it
-		ver, err := semver.NewVersion(tag)
+		ver, err := semver.NewVersion(tag.TagName)
 		if err != nil {
 			continue
 		}
@@ -83,16 +88,15 @@ func (img *ContainerImage) GetNewestVersionFromTags(vc *VersionConstraint, tagLi
 		}
 
 		// Append tag as update candidate
-		tagVersions = append(tagVersions, ver)
+		considerTags = append(considerTags, tag)
 	}
 
-	logCtx.Debugf("found %d from %d tags eligible for consideration", len(tagVersions), len(availableTags))
+	logCtx.Debugf("found %d from %d tags eligible for consideration", len(considerTags), len(availableTags))
 
 	// Sort update candidates and return the most recent version in its original
 	// form, so we can later fetch it from the registry.
-	if len(tagVersions) > 0 {
-		sort.Sort(semver.Collection(tagVersions))
-		return tag.NewImageTag(tagVersions[len(tagVersions)-1].Original(), time.Unix(0, 0)), nil
+	if len(considerTags) > 0 {
+		return considerTags[len(considerTags)-1], nil
 	} else {
 		return img.ImageTag, nil
 	}
