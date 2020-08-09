@@ -4,6 +4,10 @@ import (
 	"sort"
 	"sync"
 	"time"
+
+	"github.com/argoproj-labs/argocd-image-updater/pkg/log"
+
+	"github.com/Masterminds/semver"
 )
 
 // ImageTag is a representation of an image tag with metadata
@@ -60,6 +64,15 @@ func (il *ImageTagList) Tags() []string {
 	return tagList
 }
 
+// Tags returns a list of verbatim tag names as string slice
+func (sil *SortableImageTagList) Tags() []string {
+	tagList := []string{}
+	for _, t := range *sil {
+		tagList = append(tagList, t.TagName)
+	}
+	return tagList
+}
+
 // String returns the tag name of the ImageTag
 func (tag *ImageTag) String() string {
 	return tag.TagName
@@ -89,6 +102,40 @@ func (il ImageTagList) SortByName() SortableImageTagList {
 	sort.Slice(sil, func(i, j int) bool {
 		return sil[i].TagName < sil[j].TagName
 	})
+	return sil
+}
+
+// SortByDate returns a SortableImageTagList, sorted by the tag's date
+func (il ImageTagList) SortByDate() SortableImageTagList {
+	sil := SortableImageTagList{}
+	for _, v := range il.items {
+		sil = append(sil, v)
+	}
+	sort.Slice(sil, func(i, j int) bool {
+		return sil[i].TagDate.Before(*sil[j].TagDate)
+	})
+	return sil
+}
+
+func (il ImageTagList) SortBySemVer() SortableImageTagList {
+	// We need a read lock, because we access the items hash after sorting
+	il.lock.RLock()
+	defer il.lock.RUnlock()
+
+	sil := SortableImageTagList{}
+	svl := make([]*semver.Version, 0)
+	for _, v := range il.items {
+		svi, err := semver.NewVersion(v.TagName)
+		if err != nil {
+			log.Debugf("could not parse input tag %s as semver: %v", v.TagName, err)
+			continue
+		}
+		svl = append(svl, svi)
+	}
+	sort.Sort(semver.Collection(svl))
+	for _, svi := range svl {
+		sil = append(sil, NewImageTag(svi.Original(), *il.items[svi.Original()].TagDate))
+	}
 	return sil
 }
 

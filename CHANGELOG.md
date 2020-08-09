@@ -24,6 +24,7 @@ handling on your side.
 * enhancement: Fetch tag metadata along with tags and store creation timestamp
 * enhancement: Introduce simple cache for immutable metadata
 * refactor: Make version constraints parametrizable
+* enhancement: Allow sorting of tags by semver, date or name
 
 ## 2020-08-06 - Release v0.2.0
 

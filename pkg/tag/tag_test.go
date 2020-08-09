@@ -65,6 +65,39 @@ func Test_SortableImageTagList(t *testing.T) {
 		assert.Equal(t, "wohoo", sil[3].TagName)
 		assert.Equal(t, "zebra", sil[4].TagName)
 	})
+
+	t.Run("Sort by semver", func(t *testing.T) {
+		names := []string{"v2.0.2", "v1.0", "v1.0.1", "v2.0.3", "v2.0"}
+		il := NewImageTagList()
+		for _, name := range names {
+			tag := NewImageTag(name, time.Now())
+			il.Add(tag)
+		}
+		sil := il.SortBySemVer()
+		require.Len(t, sil, len(names))
+		assert.Equal(t, "v1.0", sil[0].TagName)
+		assert.Equal(t, "v1.0.1", sil[1].TagName)
+		assert.Equal(t, "v2.0", sil[2].TagName)
+		assert.Equal(t, "v2.0.2", sil[3].TagName)
+		assert.Equal(t, "v2.0.3", sil[4].TagName)
+	})
+
+	t.Run("Sort by date", func(t *testing.T) {
+		names := []string{"v2.0.2", "v1.0", "v1.0.1", "v2.0.3", "v2.0"}
+		dates := []int64{4, 1, 0, 3, 2}
+		il := NewImageTagList()
+		for i, name := range names {
+			tag := NewImageTag(name, time.Unix(dates[i], 0))
+			il.Add(tag)
+		}
+		sil := il.SortByDate()
+		require.Len(t, sil, len(names))
+		assert.Equal(t, "v1.0.1", sil[0].TagName)
+		assert.Equal(t, "v1.0", sil[1].TagName)
+		assert.Equal(t, "v2.0", sil[2].TagName)
+		assert.Equal(t, "v2.0.3", sil[3].TagName)
+		assert.Equal(t, "v2.0.2", sil[4].TagName)
+	})
 }
 
 func Test_TagsFromTagList(t *testing.T) {
@@ -76,6 +109,18 @@ func Test_TagsFromTagList(t *testing.T) {
 			il.Add(tag)
 		}
 		tl := il.Tags()
+		assert.NotEmpty(t, tl)
+		assert.Len(t, tl, len(names))
+	})
+
+	t.Run("Get list of tags from SortableImageTagList", func(t *testing.T) {
+		names := []string{"wohoo", "bazar", "alpha", "jesus", "zebra"}
+		sil := SortableImageTagList{}
+		for _, name := range names {
+			tag := NewImageTag(name, time.Now())
+			sil = append(sil, tag)
+		}
+		tl := sil.Tags()
 		assert.NotEmpty(t, tl)
 		assert.Len(t, tl, len(names))
 	})
