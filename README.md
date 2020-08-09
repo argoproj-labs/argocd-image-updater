@@ -1,4 +1,4 @@
-# ArgoCD Image Updater
+# Argo CD Image Updater
 
 ![Integration tests](https://github.com/argoproj-labs/argocd-image-updater/workflows/Integration%20tests/badge.svg?branch=master&event=push)
 [![Documentation Status](https://readthedocs.org/projects/argocd-image-updater/badge/?version=latest)](https://argocd-image-updater.readthedocs.io/en/latest/?badge=latest)
@@ -7,8 +7,8 @@
 
 ## Introduction
 
-ArgoCD Image Updater is a tool to automatically update the container
-images of Kubernetes workloads which are managed by ArgoCD.
+Argo CD Image Updater is a tool to automatically update the container
+images of Kubernetes workloads which are managed by Argo CD.
 
 Currently it will only work with applications that are built using *Kustomize*
 or *Helm* tooling. Applications built from plain YAML or custom tools are not
@@ -18,7 +18,7 @@ supported yet (and maybe never will).
 
 Read
 [the documentation](https://argocd-image-updater.readthedocs.io)
-for more information on how to setup and run ArgoCD Image Updater and to get
+for more information on how to setup and run Argo CD Image Updater and to get
 known to it's features and limitations.
 
 ## Current status
@@ -26,7 +26,7 @@ known to it's features and limitations.
 **Disclaimer: This is pre-release code. It might have bugs that will
 break things in unexpected way.**
 
-ArgoCD Image Updater was born just recently, and is not suitable for
+Argo CD Image Updater was born just recently, and is not suitable for
 production workloads yet. You are welcome to test it in your non-critical
 environments, and to contribute by filing bugs, enhancement requests or even
 better, sending in pull requests.
@@ -64,7 +64,7 @@ Also, if you want to contribute code, please make sure that your code
 
 The following things are on the roadmap until the `v1.0` release.
 
-* Extend ArgoCD functionality to be able to update images for other types of
+* Extend Argo CD functionality to be able to update images for other types of
   applications.
 
 * Provide web hook support to trigger update check for a given image
@@ -90,17 +90,17 @@ manifests are rendered through a tool.
 
 **How does it persist the changes then?**
 
-The ArgoCD Image Updater leverages the ArgoCD API to set application paramaters,
-and ArgoCD will then persist the change in the application's manifest. This is
-something ArgoCD will not overwrite upon the next manual (or automatic) sync,
+The Argo CD Image Updater leverages the Argo CD API to set application paramaters,
+and Argo CD will then persist the change in the application's manifest. This is
+something Argo CD will not overwrite upon the next manual (or automatic) sync,
 except when the overrides are explicitly set in the manifest.
 
 **Are there plans to extend functionality beyond Kustomize or Helm?**
 
-Not yet, since we are dependent upon what functionality ArgoCD provides for
+Not yet, since we are dependent upon what functionality Argo CD provides for
 these types of applications.
 
-**Will it ever be fully integrated with ArgoCD?**
+**Will it ever be fully integrated with Argo CD?**
 
 In the current form, probably not. If there is community demand for it, let's
 see how we can make this happen.
