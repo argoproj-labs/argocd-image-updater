@@ -66,3 +66,17 @@ func Test_SortableImageTagList(t *testing.T) {
 		assert.Equal(t, "zebra", sil[4].TagName)
 	})
 }
+
+func Test_TagsFromTagList(t *testing.T) {
+	t.Run("Get list of tags from ImageTagList", func(t *testing.T) {
+		names := []string{"wohoo", "bazar", "alpha", "jesus", "zebra"}
+		il := NewImageTagList()
+		for _, name := range names {
+			tag := NewImageTag(name, time.Now())
+			il.Add(tag)
+		}
+		tl := il.Tags()
+		assert.NotEmpty(t, tl)
+		assert.Len(t, tl, len(names))
+	})
+}
