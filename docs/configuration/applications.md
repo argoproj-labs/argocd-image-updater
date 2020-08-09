@@ -1,22 +1,22 @@
 # Application configuration
 
-In order for ArgoCD Image Updater to know which applications it should inspect
+In order for Argo CD Image Updater to know which applications it should inspect
 for updating the workloads' container images, the corresponding Kubernetes
-resource needs to be correctly annotated. ArgoCD Image Updater will inspect
-only resources of kind `application.argoproj.io`, that is, your ArgoCD
+resource needs to be correctly annotated. Argo CD Image Updater will inspect
+only resources of kind `application.argoproj.io`, that is, your Argo CD
 `Application` resources. Annotations on other kinds of resources will have no
 effect and will not be considered.
 
-For its annotations, ArgoCD Image Updater uses the following prefix:
+For its annotations, Argo CD Image Updater uses the following prefix:
 
 ```yaml
 argocd-image-updater.argoproj.io
 ```
 
-As explained earlier, your ArgoCD applications must be of either `Kustomize`
+As explained earlier, your Argo CD applications must be of either `Kustomize`
 or `Helm` type. Other types of applications will be ignored.
 
-So, in order for ArgoCD Image Updater to consider your application for the
+So, in order for Argo CD Image Updater to consider your application for the
 update of its images, at least the following criteria must be met:
 
 * Your `Application` resource is annotated with the mandatory annotation of

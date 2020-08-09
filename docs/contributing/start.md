@@ -1,10 +1,10 @@
-# Contributing to ArgoCD Image Updater
+# Contributing to Argo CD Image Updater
 
-Contributing to ArgoCD Image Updater is easy! You can contribute in a number of
+Contributing to Argo CD Image Updater is easy! You can contribute in a number of
 ways, e.g.
 
 * raise bug reports in the issue tracker,
-* send your ideas for enhancing ArgoCD Image Update,
+* send your ideas for enhancing Argo CD Image Update,
 * participate with your knowledge in existing issues,
 * vote for existing feature requests,
 * send Pull Requests for the docs, for the code, for the build toolchain, etc
