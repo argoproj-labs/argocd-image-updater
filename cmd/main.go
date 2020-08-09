@@ -12,6 +12,7 @@ import (
 	"github.com/argoproj-labs/argocd-image-updater/pkg/argocd"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/client"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/health"
+	"github.com/argoproj-labs/argocd-image-updater/pkg/image"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/log"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/registry"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/version"
@@ -99,17 +100,17 @@ func updateApplication(argoClient *argocd.ArgoCD, kubeClient *client.KubernetesC
 
 		imgCtx.Tracef("List of available tags found: %v", tags.Tags())
 
-		var versConstraint string
+		var vc image.VersionConstraint
 		if updateableImage.ImageTag != nil {
-			versConstraint = updateableImage.ImageTag.TagName
-			imgCtx.Debugf("Using version constraint '%s' when looking for a new tag", versConstraint)
+			vc.Constraint = updateableImage.ImageTag.TagName
+			imgCtx.Debugf("Using version constraint '%s' when looking for a new tag", vc.Constraint)
 		} else {
 			imgCtx.Debugf("Using no version constraint when looking for a new tag")
 		}
 
 		// Get the latest available tag matching any constraint that might be set
 		// for allowed updates.
-		latest, err := applicationImage.GetNewestVersionFromTags(versConstraint, tags)
+		latest, err := applicationImage.GetNewestVersionFromTags(&vc, tags)
 		if err != nil {
 			imgCtx.Errorf("Unable to find newest version from available tags: %v", err)
 			result.NumErrors += 1
