@@ -3,6 +3,8 @@ package registry
 import (
 	"fmt"
 	"sync"
+
+	"github.com/argoproj-labs/argocd-image-updater/pkg/cache"
 )
 
 // RegistryEndpoint holds information on how to access any specific registry API
@@ -15,6 +17,7 @@ type RegistryEndpoint struct {
 	Password       string
 	Ping           bool
 	Credentials    string
+	Cache          cache.ImageTagCache
 
 	lock sync.RWMutex
 }
@@ -26,18 +29,21 @@ var registries map[string]*RegistryEndpoint = map[string]*RegistryEndpoint{
 		RegistryPrefix: "",
 		RegistryAPI:    "https://registry-1.docker.io",
 		Ping:           true,
+		Cache:          cache.NewMemCache(),
 	},
 	"gcr.io": {
 		RegistryName:   "Google Container Registry",
 		RegistryPrefix: "gcr.io",
 		RegistryAPI:    "https://gcr.io",
 		Ping:           false,
+		Cache:          cache.NewMemCache(),
 	},
 	"quay.io": {
 		RegistryName:   "RedHat Quay",
 		RegistryPrefix: "quay.io",
 		RegistryAPI:    "https://quay.io",
 		Ping:           false,
+		Cache:          cache.NewMemCache(),
 	},
 }
 
@@ -55,6 +61,7 @@ func AddRegistryEndpoint(prefix, name, apiUrl, username, password, credentials s
 		Username:       username,
 		Password:       password,
 		Credentials:    credentials,
+		Cache:          cache.NewMemCache(),
 	}
 	return nil
 }

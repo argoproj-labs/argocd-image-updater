@@ -13,9 +13,11 @@ import (
 // GetNewestVersionFromTags returns the latest available version from a list of
 // tags while optionally taking a semver constraint into account. Returns the
 // original version if no new version could be found from the list of tags.
-func (img *ContainerImage) GetNewestVersionFromTags(constraint string, availableTags []string) (*tag.ImageTag, error) {
+func (img *ContainerImage) GetNewestVersionFromTags(constraint string, tagList *tag.ImageTagList) (*tag.ImageTag, error) {
 	logCtx := log.NewContext()
 	logCtx.AddField("image", img.String())
+
+	availableTags := tagList.Tags()
 
 	// It makes no sense to proceed if we have no available tags
 	if len(availableTags) == 0 {

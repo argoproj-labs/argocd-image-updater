@@ -49,6 +49,17 @@ func NewImageTagList() *ImageTagList {
 	return &itl
 }
 
+// Tags returns a list of verbatim tag names as string slice
+func (il *ImageTagList) Tags() []string {
+	il.lock.RLock()
+	defer il.lock.RUnlock()
+	tagList := []string{}
+	for k := range il.items {
+		tagList = append(tagList, k)
+	}
+	return tagList
+}
+
 // String returns the tag name of the ImageTag
 func (tag *ImageTag) String() string {
 	return tag.TagName

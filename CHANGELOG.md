@@ -20,7 +20,9 @@ handling on your side.
 
 * refactor: Change run behaviour by providing `run` and `version` commands
 * enhancement: Provide a `version` command to print out version information
-* enhancment: Allow storing metadata for image tags
+* enhancement: Allow storing metadata for image tags
+* enhancement: Fetch tag metadata along with tags and store creation timestamp
+* enhancement: Introduce simple cache for immutable metadata
 
 ## 2020-08-06 - Release v0.2.0
 
