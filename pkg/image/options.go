@@ -54,8 +54,8 @@ func (img *ContainerImage) GetParameterKustomizeImageName(annotations map[string
 
 // GetParameterSort gets and validates the value for the sort option for the
 // image from a set of annotations
-func (img *ContainerImage) GetParameterSort(annotations map[string]string) VersionSortMode {
-	key := fmt.Sprintf(common.SortOptionAnnotation, img.normalizedSymbolicName())
+func (img *ContainerImage) GetParameterUpdateStrategy(annotations map[string]string) VersionSortMode {
+	key := fmt.Sprintf(common.UpdateStrategyAnnotation, img.normalizedSymbolicName())
 	val, ok := annotations[key]
 	if !ok {
 		// Default is sort by version
@@ -66,7 +66,7 @@ func (img *ContainerImage) GetParameterSort(annotations map[string]string) Versi
 	case "semver":
 		log.Tracef("Sort option semver in %s", key)
 		return VersionSortSemVer
-	case "date":
+	case "latest":
 		log.Tracef("Sort option date in %s", key)
 		return VersionSortLatest
 	case "name":
