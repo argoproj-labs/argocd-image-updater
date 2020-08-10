@@ -4,7 +4,7 @@ import "fmt"
 
 const (
 	majorVersion     = "0"
-	minorVersion     = "2"
+	minorVersion     = "4"
 	patchVersion     = "0"
 	preReleaseString = "master"
 )
