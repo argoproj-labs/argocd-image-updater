@@ -169,6 +169,40 @@ If the `<image_alias>.helm.image-spec` annotation is set, the two other
 annotations `<image_alias>.helm.image-name` and `<image_alias>.helm.image-tag`
 will be ignored.
 
+## Examples
+
+### Following an image's patch branch
+
+*Scenario:* You have deployed image `nginx:1.19.1` and want to make sure it's
+always up-to-date to the latest patch level within the `1.19` branch.
+
+*Solution:* Use standard `semver` update strategy with a constraint on the
+patch level (`~`), i.e.
+
+```yaml
+argocd-image-updater.argoproj.io/image-list: nginx:~1.19
+```
+
+### Always deploy the latest build
+
+*Scenario:* Your CI regulary pushes images built from the latest source, using
+some identifier (i.e. the hash of the Git commit) in the tag.
+
+*Solution:*
+
+1. Make sure that the image tags follow semantic versioning and use the Git
+   commit hash as pre-release identifier, i.e. `v1.0.0-<githash>`
+
+2. Define an alias for your image when configuring it for update, and match
+   against pre-release in the version constraint by prepending `-0`.
+
+3. Use `latest` as update strategy
+
+```yaml
+argocd-image-updater.argoproj.io/image-list: yourtool=yourorg/yourimage:v1.0.0-0
+argocd-image-updater.argoproj.io/yourtool.update-strategy: latest
+```
+
 ## Appendix
 
 ### Available annotations
