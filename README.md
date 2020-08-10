@@ -17,9 +17,14 @@ supported yet (and maybe never will).
 ## Documentation
 
 Read
-[the documentation](https://argocd-image-updater.readthedocs.io)
+[the documentation](https://argocd-image-updater.readthedocs.io/en/stable/)
 for more information on how to setup and run Argo CD Image Updater and to get
 known to it's features and limitations.
+
+Above URL points to the documentation for the current release. If you are
+interested in documentation of upcoming features, check out the
+[the latest documentation](https://argocd-image-updater.readthedocs.io/en/latest/)
+which is up-to-date with the master branch.
 
 ## Current status
 
