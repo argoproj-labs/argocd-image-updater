@@ -59,6 +59,18 @@ func Test_GetHelmOptions(t *testing.T) {
 	})
 }
 
+func Test_GetKustomizeOptions(t *testing.T) {
+	t.Run("Get Helm parameter for configured application", func(t *testing.T) {
+		annotations := map[string]string{
+			fmt.Sprintf(common.KustomizeApplicationNameAnnotation, "dummy"): "argoproj/argo-cd",
+		}
+
+		img := NewFromIdentifier("dummy=foo/bar:1.12")
+		paramName := img.GetParameterKustomizeImageName(annotations)
+		assert.Equal(t, "argoproj/argo-cd", paramName)
+	})
+}
+
 func Test_GetSortOption(t *testing.T) {
 
 	t.Run("Get sort option semver for configured application", func(t *testing.T) {
