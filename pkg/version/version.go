@@ -4,9 +4,9 @@ import "fmt"
 
 const (
 	majorVersion     = "0"
-	minorVersion     = "2"
+	minorVersion     = "3"
 	patchVersion     = "0"
-	preReleaseString = "master"
+	preReleaseString = ""
 )
 
 const binaryName = "argocd-image-updater"
