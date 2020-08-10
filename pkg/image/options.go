@@ -41,6 +41,17 @@ func (img *ContainerImage) GetParameterHelmImageSpec(annotations map[string]stri
 	return val
 }
 
+// GetParameterKustomizeImageName gets the value for image-spec option for the
+// image from a set of annotations
+func (img *ContainerImage) GetParameterKustomizeImageName(annotations map[string]string) string {
+	key := fmt.Sprintf(common.KustomizeApplicationNameAnnotation, img.normalizedSymbolicName())
+	val, ok := annotations[key]
+	if !ok {
+		return ""
+	}
+	return val
+}
+
 // GetParameterSort gets and validates the value for the sort option for the
 // image from a set of annotations
 func (img *ContainerImage) GetParameterSort(annotations map[string]string) VersionSortMode {
@@ -68,5 +79,5 @@ func (img *ContainerImage) GetParameterSort(annotations map[string]string) Versi
 }
 
 func (img *ContainerImage) normalizedSymbolicName() string {
-	return strings.ReplaceAll(img.SymbolicName, "/", "_")
+	return strings.ReplaceAll(img.ImageAlias, "/", "_")
 }

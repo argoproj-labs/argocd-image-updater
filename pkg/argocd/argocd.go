@@ -205,7 +205,7 @@ func mergeHelmParams(src []v1alpha1.HelmParameter, merge []v1alpha1.HelmParamete
 	return retParams
 }
 
-// Set image parameters for a Helm application
+// SetHelmImage sets image parameters for a Helm application
 func (client *ArgoCD) SetHelmImage(app *v1alpha1.Application, newImage *image.ContainerImage) error {
 	conn, appClient, err := client.Client.NewApplicationClient()
 	if err != nil {
@@ -213,31 +213,40 @@ func (client *ArgoCD) SetHelmImage(app *v1alpha1.Application, newImage *image.Co
 	}
 	defer conn.Close()
 
-	appName := app.GetName()
-
-	helmParamImageName, helmParamImageTag := getHelmParamNamesFromAnnotation(app.GetAnnotations(), newImage.SymbolicName)
-	log.WithContext().
-		AddField("application", appName).
-		AddField("image", newImage.GetFullNameWithoutTag()).
-		Debugf("target parameters: image.name=%s, image.tag=%s", helmParamImageName, helmParamImageTag)
-
 	if appType := getApplicationType(app); appType != ApplicationTypeHelm {
 		return fmt.Errorf("cannot set Helm params on non-Helm application")
 	}
 
-	mergeParams := make([]v1alpha1.HelmParameter, 0)
-	if helmParamImageName != "" {
-		var p v1alpha1.HelmParameter
-		if helmParamImageTag == "" {
-			p = v1alpha1.HelmParameter{Name: helmParamImageName, Value: fmt.Sprintf("%s:%s", newImage.GetFullNameWithTag(), newImage.ImageTag)}
-		} else {
-			p = v1alpha1.HelmParameter{Name: helmParamImageName, Value: newImage.GetFullNameWithoutTag()}
-		}
-		mergeParams = append(mergeParams, p)
-	}
+	appName := app.GetName()
 
-	if helmParamImageTag != "" {
-		mergeParams = append(mergeParams, v1alpha1.HelmParameter{Name: helmParamImageTag, Value: newImage.ImageTag.TagName})
+	var hpImageName, hpImageTag, hpImageSpec string
+
+	hpImageSpec = newImage.GetParameterHelmImageSpec(app.Annotations)
+	hpImageName = newImage.GetParameterHelmImageName(app.Annotations)
+	hpImageTag = newImage.GetParameterHelmImageTag(app.Annotations)
+
+	log.WithContext().
+		AddField("application", appName).
+		AddField("image", newImage.GetFullNameWithoutTag()).
+		Debugf("target parameters: image-spec=%s image-name=%s, image-tag=%s", hpImageSpec, hpImageName, hpImageTag)
+
+	mergeParams := make([]v1alpha1.HelmParameter, 0)
+
+	// The logic behind this is that image-spec is an override - if this is set,
+	// we simply ignore any image-name and image-tag parameters that might be
+	// there.
+	if hpImageSpec != "" {
+		p := v1alpha1.HelmParameter{Name: hpImageSpec, Value: newImage.GetFullNameWithTag(), ForceString: true}
+		mergeParams = append(mergeParams, p)
+	} else {
+		if hpImageName != "" {
+			p := v1alpha1.HelmParameter{Name: hpImageName, Value: newImage.GetFullNameWithoutTag(), ForceString: true}
+			mergeParams = append(mergeParams, p)
+		}
+		if hpImageTag != "" {
+			p := v1alpha1.HelmParameter{Name: hpImageTag, Value: newImage.ImageTag.TagName, ForceString: true}
+			mergeParams = append(mergeParams, p)
+		}
 	}
 
 	if app.Spec.Source.Helm == nil {
@@ -258,7 +267,7 @@ func (client *ArgoCD) SetHelmImage(app *v1alpha1.Application, newImage *image.Co
 	return nil
 }
 
-// Set a Kustomize image
+// SetKustomizeImage sets a Kustomize image for given application
 func (client *ArgoCD) SetKustomizeImage(app *v1alpha1.Application, newImage *image.ContainerImage) error {
 	conn, appClient, err := client.Client.NewApplicationClient()
 	if err != nil {
@@ -267,16 +276,25 @@ func (client *ArgoCD) SetKustomizeImage(app *v1alpha1.Application, newImage *ima
 	defer conn.Close()
 
 	appName := app.GetName()
-
 	if appType := getApplicationType(app); appType != ApplicationTypeKustomize {
 		return fmt.Errorf("cannot set Kustomize image on non-Kustomize application")
 	}
+
+	var ksImageParm string
+	ksImageName := newImage.GetParameterKustomizeImageName(app.Annotations)
+	if ksImageName != "" {
+		ksImageParm = fmt.Sprintf("%s=%s", ksImageName, newImage.GetFullNameWithTag())
+	} else {
+		ksImageParm = newImage.GetFullNameWithTag()
+	}
+
+	log.Tracef("Setting Kustomize parameter %s", ksImageParm)
 
 	if app.Spec.Source.Kustomize == nil {
 		app.Spec.Source.Kustomize = &v1alpha1.ApplicationSourceKustomize{}
 	}
 
-	app.Spec.Source.Kustomize.MergeImage(v1alpha1.KustomizeImage(newImage.String()))
+	app.Spec.Source.Kustomize.MergeImage(v1alpha1.KustomizeImage(ksImageParm))
 
 	_, err = appClient.UpdateSpec(context.TODO(), &application.ApplicationUpdateSpecRequest{Name: &appName, Spec: app.Spec})
 	if err != nil {

@@ -9,6 +9,8 @@ handling on your side.
 ### Upgrade notes (no really, you MUST read this)
 
 * Syntax change for running: `argocd-image-updater run [flags]` instead of `argocd-image-updater [flags]` has now to be used
+* **Attention:** Helm annotation names have changed from `<image_alias>.image-{name,tag,spec}` to `<image_alias>.helm.image-{name,tag,spec}`
+* Specifying target image name for Kustomize applications now require their own annotation, the image alias is not re-used for this anymore
 
 ### Bug fixes
 
@@ -27,6 +29,8 @@ handling on your side.
 * enhancement: Introduce simple cache for immutable metadata
 * refactor: Make version constraints parametrizable
 * enhancement: Allow sorting of tags by semver, date or name
+* refactor: Give annotation names their own namespace-like living room
+* enhancement: Kustomize target image name got its own annotation
 
 ## 2020-08-06 - Release v0.2.0
 
