@@ -7,23 +7,35 @@ import (
 	"github.com/Masterminds/semver"
 )
 
-// VersionSort defines the method to sort a list of tags
-type VersionSort int
+// VersionSortMode defines the method to sort a list of tags
+type VersionSortMode int
 
 const (
 	// VersionSortSemVer sorts tags using semver sorting (the default)
-	VersionSortSemVer = 0
+	VersionSortSemVer VersionSortMode = 0
 	// VersionSortLatest sorts tags after their creation date
-	VersionSortLatest = 1
+	VersionSortLatest VersionSortMode = 1
 	// VersionSortName sorts tags alphabetically by name
-	VersionSortName = 2
+	VersionSortName VersionSortMode = 2
+)
+
+// ConstraintMatchMode defines how the constraint should be matched
+type ConstraintMatchMode int
+
+const (
+	// ConstraintMatchSemVer uses semver to match a constraint
+	ConstraintMatchSemver ConstraintMatchMode = 0
+	// ConstraintMatchRegExp uses regexp to match a constraint
+	ConstraintMatchRegExp ConstraintMatchMode = 1
+	// ConstraintMatchNone does not enforce a constraint
+	ConstraintMatchNone ConstraintMatchMode = 2
 )
 
 // VersionConstraint defines a constraint for comparing versions
 type VersionConstraint struct {
-	Constraint    string
-	EnforceSemVer bool
-	SortMode      VersionSort
+	Constraint string
+	MatchMode  ConstraintMatchMode
+	SortMode   VersionSortMode
 }
 
 // String returns the string representation of VersionConstraint
@@ -72,10 +84,12 @@ func (img *ContainerImage) GetNewestVersionFromTags(vc *VersionConstraint, tagLi
 
 	// Loop through all tags to check whether it's an update candidate.
 	for _, tag := range availableTags {
+		logCtx.Tracef("Finding out whether to consider %s for being updateable", tag.TagName)
 
 		// Non-parseable tag does not mean error - just skip it
 		ver, err := semver.NewVersion(tag.TagName)
 		if err != nil {
+			logCtx.Tracef("Not a valid version: %s", tag.TagName)
 			continue
 		}
 
@@ -83,6 +97,7 @@ func (img *ContainerImage) GetNewestVersionFromTags(vc *VersionConstraint, tagLi
 		// constraint is not satisfied, skip tag.
 		if semverConstraint != nil {
 			if !semverConstraint.Check(ver) {
+				logCtx.Tracef("%s did not match constraint %s", ver.Original(), vc.Constraint)
 				continue
 			}
 		}

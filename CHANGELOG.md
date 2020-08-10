@@ -16,6 +16,8 @@ handling on your side.
 
 ### New features
 
+* feat: Allow setting the sort mode for tags per image via annotation
+
 ### Other changes
 
 * refactor: Change run behaviour by providing `run` and `version` commands
