@@ -108,6 +108,8 @@ func updateApplication(argoClient *argocd.ArgoCD, kubeClient *client.KubernetesC
 			imgCtx.Debugf("Using no version constraint when looking for a new tag")
 		}
 
+		vc.SortMode = updateableImage.GetParameterSort(curApplication.Application.Annotations)
+
 		// Get the latest available tag matching any constraint that might be set
 		// for allowed updates.
 		latest, err := applicationImage.GetNewestVersionFromTags(&vc, tags)

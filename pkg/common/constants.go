@@ -10,5 +10,8 @@ const HelmParamImageNameAnnotation = "argocd-image-updater.argoproj.io/%s.image-
 const HelmParamImageTagAnnotation = "argocd-image-updater.argoproj.io/%s.image-tag"
 const HelmParamImageSpecAnnotation = "argocd-image-updater.argoproj.io/%s.image-spec"
 
+const MatchOptionAnnotation = "argocd-image-updater.argoproj.io/%s.match"
+const SortOptionAnnotation = "argocd-image-updater.argoproj.io/%s.sort"
+
 // gcr.io=secret:argocd/mysecret,docker.io=env:FOOBAR
 const SecretListAnnotation = "argocd-image-updater.argoproj.io/pullsecrets"
