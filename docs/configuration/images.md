@@ -198,9 +198,38 @@ some identifier (i.e. the hash of the Git commit) in the tag.
 
 3. Use `latest` as update strategy
 
+Annotations might look like follows:
+
 ```yaml
 argocd-image-updater.argoproj.io/image-list: yourtool=yourorg/yourimage:v1.0.0-0
 argocd-image-updater.argoproj.io/yourtool.update-strategy: latest
+```
+
+### Multiple images in the same Helm chart
+
+*Scenario:* You want to update multiple images within the same Helm chart to
+their latest available version according to semver. 
+
+The Helm parameters to set the image version
+are `foo.image` and `foo.tag` for the first image, and `bar.image` and
+`bar.tag` for the second image. The image names are `foo/bar` and `bar/foo`
+for simplicity.
+
+*Solution:*
+
+1. Define an alias for both images, i.e. `fooalias` and `baralias`
+
+2. Set `helm.image-name` and `helm.image-tag` for both aliases to their
+   appropriate values
+
+Annotations might look like follows:
+
+```yaml
+argocd-image-updater.argoproj.io/image-list: fooalias=foo/bar, baralias=bar/foo
+argocd-image-updater.argoproj.io/fooalias.helm.image-name: foo.image
+argocd-image-updater.argoproj.io/fooalias.helm.image-tag: foo.tag
+argocd-image-updater.argoproj.io/baralias.helm.image-name: bar.image
+argocd-image-updater.argoproj.io/baralias.helm.image-tag: bar.tag
 ```
 
 ## Appendix
