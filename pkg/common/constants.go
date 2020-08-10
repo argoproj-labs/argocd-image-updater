@@ -2,16 +2,31 @@ package common
 
 // This file contains a list of constants required by other packages
 
+const ImageUpdaterAnnotationPrefix = "argocd-image-updater.argoproj.io"
+
 // The annotation on the application resources to indicate the list of images
 // allowed for updates.
-const ImageUpdaterAnnotation = "argocd-image-updater.argoproj.io/image-list"
+const ImageUpdaterAnnotation = ImageUpdaterAnnotationPrefix + "/image-list"
 
-const HelmParamImageNameAnnotation = "argocd-image-updater.argoproj.io/%s.image-name"
-const HelmParamImageTagAnnotation = "argocd-image-updater.argoproj.io/%s.image-tag"
-const HelmParamImageSpecAnnotation = "argocd-image-updater.argoproj.io/%s.image-spec"
+// Helm related annotations
+const (
+	HelmParamImageNameAnnotation = ImageUpdaterAnnotationPrefix + "/%s.helm.image-name"
+	HelmParamImageTagAnnotation  = ImageUpdaterAnnotationPrefix + "/%s.helm.image-tag"
+	HelmParamImageSpecAnnotation = ImageUpdaterAnnotationPrefix + "/%s.helm.image-spec"
+)
 
-const MatchOptionAnnotation = "argocd-image-updater.argoproj.io/%s.match"
-const SortOptionAnnotation = "argocd-image-updater.argoproj.io/%s.sort"
+// Kustomize related annotations
+const (
+	KustomizeApplicationNameAnnotation = ImageUpdaterAnnotationPrefix + "/%s.kustomize.image-name"
+)
 
-// gcr.io=secret:argocd/mysecret,docker.io=env:FOOBAR
-const SecretListAnnotation = "argocd-image-updater.argoproj.io/pullsecrets"
+// Upgrade strategy related annotations
+const (
+	MatchOptionAnnotation    = ImageUpdaterAnnotationPrefix + "/%s.tag-match"
+	UpdateStrategyAnnotation = ImageUpdaterAnnotationPrefix + "/%s.update-strategy"
+)
+
+// Image pull secret related annotations
+const (
+	SecretListAnnotation = ImageUpdaterAnnotationPrefix + "/%s.pull-secret"
+)

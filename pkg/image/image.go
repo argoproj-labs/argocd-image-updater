@@ -11,7 +11,7 @@ type ContainerImage struct {
 	RegistryURL           string
 	ImageName             string
 	ImageTag              *tag.ImageTag
-	SymbolicName          string
+	ImageAlias            string
 	HelmParamImageName    string
 	HelmParamImageVersion string
 	original              string
@@ -23,7 +23,7 @@ type ContainerImageList []*ContainerImage
 func NewFromIdentifier(identifier string) *ContainerImage {
 	img := ContainerImage{}
 	img.RegistryURL = getRegistryFromIdentifier(identifier)
-	img.SymbolicName, img.ImageName, img.ImageTag = getImageTagFromIdentifier(identifier)
+	img.ImageAlias, img.ImageName, img.ImageTag = getImageTagFromIdentifier(identifier)
 	img.original = identifier
 	return &img
 }
@@ -31,8 +31,8 @@ func NewFromIdentifier(identifier string) *ContainerImage {
 // String returns the string representation of given ContainerImage
 func (img *ContainerImage) String() string {
 	str := ""
-	if img.SymbolicName != "" {
-		str += img.SymbolicName
+	if img.ImageAlias != "" {
+		str += img.ImageAlias
 		str += "="
 	}
 	if img.RegistryURL != "" {
@@ -85,7 +85,7 @@ func (img *ContainerImage) WithTag(newTag *tag.ImageTag) *ContainerImage {
 	nimg.RegistryURL = img.RegistryURL
 	nimg.ImageName = img.ImageName
 	nimg.ImageTag = newTag
-	nimg.SymbolicName = img.SymbolicName
+	nimg.ImageAlias = img.ImageAlias
 	nimg.HelmParamImageName = img.HelmParamImageName
 	nimg.HelmParamImageVersion = img.HelmParamImageVersion
 	return nimg

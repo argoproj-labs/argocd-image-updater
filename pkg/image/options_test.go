@@ -59,48 +59,60 @@ func Test_GetHelmOptions(t *testing.T) {
 	})
 }
 
+func Test_GetKustomizeOptions(t *testing.T) {
+	t.Run("Get Helm parameter for configured application", func(t *testing.T) {
+		annotations := map[string]string{
+			fmt.Sprintf(common.KustomizeApplicationNameAnnotation, "dummy"): "argoproj/argo-cd",
+		}
+
+		img := NewFromIdentifier("dummy=foo/bar:1.12")
+		paramName := img.GetParameterKustomizeImageName(annotations)
+		assert.Equal(t, "argoproj/argo-cd", paramName)
+	})
+}
+
 func Test_GetSortOption(t *testing.T) {
 
-	t.Run("Get sort option semver for configured application", func(t *testing.T) {
+	t.Run("Get update strategy semver for configured application", func(t *testing.T) {
 		annotations := map[string]string{
-			fmt.Sprintf(common.SortOptionAnnotation, "dummy"): "semver",
+			fmt.Sprintf(common.UpdateStrategyAnnotation, "dummy"): "semver",
 		}
 		img := NewFromIdentifier("dummy=foo/bar:1.12")
-		sortMode := img.GetParameterSort(annotations)
+		sortMode := img.GetParameterUpdateStrategy(annotations)
 		assert.Equal(t, VersionSortSemVer, sortMode)
 	})
 
-	t.Run("Get sort option date for configured application", func(t *testing.T) {
+	t.Run("Get update strategy date for configured application", func(t *testing.T) {
 		annotations := map[string]string{
-			fmt.Sprintf(common.SortOptionAnnotation, "dummy"): "date",
+			fmt.Sprintf(common.UpdateStrategyAnnotation, "dummy"): "latest",
 		}
 		img := NewFromIdentifier("dummy=foo/bar:1.12")
-		sortMode := img.GetParameterSort(annotations)
+		sortMode := img.GetParameterUpdateStrategy(annotations)
 		assert.Equal(t, VersionSortLatest, sortMode)
 	})
 
-	t.Run("Get sort option name for configured application", func(t *testing.T) {
+	t.Run("Get update strategy name for configured application", func(t *testing.T) {
 		annotations := map[string]string{
-			fmt.Sprintf(common.SortOptionAnnotation, "dummy"): "name",
+			fmt.Sprintf(common.UpdateStrategyAnnotation, "dummy"): "name",
 		}
 		img := NewFromIdentifier("dummy=foo/bar:1.12")
-		sortMode := img.GetParameterSort(annotations)
+		sortMode := img.GetParameterUpdateStrategy(annotations)
 		assert.Equal(t, VersionSortName, sortMode)
 	})
 
-	t.Run("Get default sort option configured application because of invalid option", func(t *testing.T) {
+	t.Run("Get update strategy option configured application because of invalid option", func(t *testing.T) {
 		annotations := map[string]string{
-			fmt.Sprintf(common.SortOptionAnnotation, "dummy"): "invalid",
+			fmt.Sprintf(common.UpdateStrategyAnnotation, "dummy"): "invalid",
 		}
 		img := NewFromIdentifier("dummy=foo/bar:1.12")
-		sortMode := img.GetParameterSort(annotations)
+		sortMode := img.GetParameterUpdateStrategy(annotations)
 		assert.Equal(t, VersionSortSemVer, sortMode)
 	})
 
-	t.Run("Get default sort option configured application because of option not set", func(t *testing.T) {
+	t.Run("Get update strategy option configured application because of option not set", func(t *testing.T) {
 		annotations := map[string]string{}
 		img := NewFromIdentifier("dummy=foo/bar:1.12")
-		sortMode := img.GetParameterSort(annotations)
+		sortMode := img.GetParameterUpdateStrategy(annotations)
 		assert.Equal(t, VersionSortSemVer, sortMode)
 	})
 }

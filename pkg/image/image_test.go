@@ -14,25 +14,29 @@ func Test_ParseImageTags(t *testing.T) {
 	t.Run("Parse valid image name without registry info", func(t *testing.T) {
 		image := NewFromIdentifier("jannfis/test-image:0.1")
 		assert.Empty(t, image.RegistryURL)
-		assert.Empty(t, image.SymbolicName)
+		assert.Empty(t, image.ImageAlias)
 		assert.Equal(t, "jannfis/test-image", image.ImageName)
 		require.NotNil(t, image.ImageTag)
 		assert.Equal(t, "0.1", image.ImageTag.TagName)
+		assert.Equal(t, "jannfis/test-image:0.1", image.GetFullNameWithTag())
+		assert.Equal(t, "jannfis/test-image", image.GetFullNameWithoutTag())
 	})
 
 	t.Run("Parse valid image name with registry info", func(t *testing.T) {
 		image := NewFromIdentifier("gcr.io/jannfis/test-image:0.1")
 		assert.Equal(t, "gcr.io", image.RegistryURL)
-		assert.Empty(t, image.SymbolicName)
+		assert.Empty(t, image.ImageAlias)
 		assert.Equal(t, "jannfis/test-image", image.ImageName)
 		require.NotNil(t, image.ImageTag)
 		assert.Equal(t, "0.1", image.ImageTag.TagName)
+		assert.Equal(t, "gcr.io/jannfis/test-image:0.1", image.GetFullNameWithTag())
+		assert.Equal(t, "gcr.io/jannfis/test-image", image.GetFullNameWithoutTag())
 	})
 
 	t.Run("Parse valid image name with source name and registry info", func(t *testing.T) {
 		image := NewFromIdentifier("jannfis/orig-image=gcr.io/jannfis/test-image:0.1")
 		assert.Equal(t, "gcr.io", image.RegistryURL)
-		assert.Equal(t, "jannfis/orig-image", image.SymbolicName)
+		assert.Equal(t, "jannfis/orig-image", image.ImageAlias)
 		assert.Equal(t, "jannfis/test-image", image.ImageName)
 		require.NotNil(t, image.ImageTag)
 		assert.Equal(t, "0.1", image.ImageTag.TagName)
@@ -41,7 +45,7 @@ func Test_ParseImageTags(t *testing.T) {
 	t.Run("Parse image without version source name and registry info", func(t *testing.T) {
 		image := NewFromIdentifier("jannfis/orig-image=gcr.io/jannfis/test-image")
 		assert.Equal(t, "gcr.io", image.RegistryURL)
-		assert.Equal(t, "jannfis/orig-image", image.SymbolicName)
+		assert.Equal(t, "jannfis/orig-image", image.ImageAlias)
 		assert.Equal(t, "jannfis/test-image", image.ImageName)
 		assert.Nil(t, image.ImageTag)
 	})
