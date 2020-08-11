@@ -10,6 +10,8 @@ handling on your side.
 
 ### Bug fixes
 
+* fix: Only fetch metadata when require by update strategy
+
 ### New features
 
 ### Other changes
