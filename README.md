@@ -8,7 +8,10 @@
 ## Introduction
 
 Argo CD Image Updater is a tool to automatically update the container
-images of Kubernetes workloads which are managed by Argo CD.
+images of Kubernetes workloads which are managed by Argo CD. In a nutshell,
+it will track image versions specified by annotations on the Argo CD
+Application resources and update them by setting parameter overrides using
+the Argo CD API.
 
 Currently it will only work with applications that are built using *Kustomize*
 or *Helm* tooling. Applications built from plain YAML or custom tools are not
@@ -67,10 +70,12 @@ Also, if you want to contribute code, please make sure that your code
 
 ## Things that are planned (roadmap)
 
-The following things are on the roadmap until the `v1.0` release.
+The following things are on the roadmap until the `v1.0` release
 
 * Extend Argo CD functionality to be able to update images for other types of
   applications.
+
+* Extend Argo CD functionality to write back to Git
 
 * Provide web hook support to trigger update check for a given image
 
@@ -91,7 +96,8 @@ No, and this feature is also not planned for any of the next releases. We think
 it's close to impossible to get such a feature 100% correctly working, because
 there are so many edge-cases to consider (i.e. possible merge conflicts) and
 there's no easy way to find out where a certain resource lives in Git when
-manifests are rendered through a tool.
+manifests are rendered through a tool. We are thinking about how to implement
+this feature in the meanwhile, but don't expect it before the v1.0 release.
 
 **How does it persist the changes then?**
 
