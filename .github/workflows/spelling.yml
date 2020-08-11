@@ -1,5 +1,6 @@
 name: Spell checking
 on:
+  push:
   pull_requests:
     branches:
     - master
