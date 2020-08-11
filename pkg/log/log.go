@@ -4,7 +4,7 @@ package log
 // different output streams for error and non-error messages.
 //
 // Does not wrap every method of logrus package. If you need direct access,
-// use log.Log() to get the actuall logrus logger object.
+// use log.Log() to get the actual logrus logger object.
 //
 // It might seem redundant, but we really want the different output streams.
 

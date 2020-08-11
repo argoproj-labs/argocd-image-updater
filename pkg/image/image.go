@@ -103,7 +103,7 @@ func (list *ContainerImageList) ContainsImage(img *ContainerImage, checkVersion 
 	return nil
 }
 
-// String Returns the name of all images as a string, seperated using comma
+// String Returns the name of all images as a string, separated using comma
 func (list *ContainerImageList) String() string {
 	imgNameList := make([]string, 0)
 	for _, image := range *list {
@@ -134,7 +134,7 @@ func getImageTagFromIdentifier(identifier string) (string, string, *tag.ImageTag
 	var imageString string
 	var sourceName string
 
-	// The original name is prepended to the image name, seperated by =
+	// The original name is prepended to the image name, separated by =
 	comp := strings.Split(identifier, "=")
 	if len(comp) == 2 {
 		sourceName = comp[0]
