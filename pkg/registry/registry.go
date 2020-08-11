@@ -15,38 +15,23 @@ import (
 	"github.com/argoproj-labs/argocd-image-updater/pkg/image"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/log"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/tag"
-
-	"github.com/nokia/docker-registry-client/registry"
 )
 
 // GetTags returns a list of available tags for the given image
-func (clientInfo *RegistryEndpoint) GetTags(img *image.ContainerImage, kubeClient *client.KubernetesClient, vc *image.VersionConstraint) (*tag.ImageTagList, error) {
+func (endpoint *RegistryEndpoint) GetTags(img *image.ContainerImage, regClient RegistryClient, vc *image.VersionConstraint) (*tag.ImageTagList, error) {
 	var tagList *tag.ImageTagList = tag.NewImageTagList()
 	var imgTag *tag.ImageTag
 	var err error
 
-	err = clientInfo.setEndpointCredentials(kubeClient)
-	if err != nil {
-		return nil, err
-	}
-	client, err := registry.NewCustom(clientInfo.RegistryAPI, registry.Options{
-		DoInitialPing: clientInfo.Ping,
-		Logf:          registry.Quiet,
-		Username:      clientInfo.Username,
-		Password:      clientInfo.Password,
-	})
-	if err != nil {
-		return nil, err
-	}
-
 	// DockerHub has a special namespace 'library', that is hidden from the user
+	// FIXME: How do other registries handle this?
 	var nameInRegistry string
 	if len := len(strings.Split(img.ImageName, "/")); len == 1 {
 		nameInRegistry = "library/" + img.ImageName
 	} else {
 		nameInRegistry = img.ImageName
 	}
-	tags, err := client.Tags(nameInRegistry)
+	tags, err := regClient.Tags(nameInRegistry)
 	if err != nil {
 		return nil, err
 	}
@@ -68,7 +53,7 @@ func (clientInfo *RegistryEndpoint) GetTags(img *image.ContainerImage, kubeClien
 		// Look into the cache first and re-use any found item. If GetTag() returns
 		// an error, we treat it as a cache miss and just go ahead to invalidate
 		// the entry.
-		imgTag, err = clientInfo.Cache.GetTag(nameInRegistry, tagStr)
+		imgTag, err = endpoint.Cache.GetTag(nameInRegistry, tagStr)
 		if err != nil {
 			log.Warnf("invalid entry for %s:%s in cache, invalidating.", nameInRegistry, imgTag.TagName)
 		} else if imgTag != nil {
@@ -77,7 +62,7 @@ func (clientInfo *RegistryEndpoint) GetTags(img *image.ContainerImage, kubeClien
 			continue
 		}
 
-		ml, err := client.ManifestV1(nameInRegistry, tagStr)
+		ml, err := regClient.ManifestV1(nameInRegistry, tagStr)
 		if err != nil {
 			return nil, err
 		}
@@ -116,14 +101,14 @@ func (clientInfo *RegistryEndpoint) GetTags(img *image.ContainerImage, kubeClien
 		}
 		imgTag = tag.NewImageTag(tagStr, crDate)
 		tagList.Add(imgTag)
-		clientInfo.Cache.SetTag(nameInRegistry, imgTag)
+		endpoint.Cache.SetTag(nameInRegistry, imgTag)
 	}
 
 	return tagList, err
 }
 
 // Sets endpoint credentials for this registry from a reference to a K8s secret
-func (clientInfo *RegistryEndpoint) setEndpointCredentials(kubeClient *client.KubernetesClient) error {
+func (clientInfo *RegistryEndpoint) SetEndpointCredentials(kubeClient *client.KubernetesClient) error {
 	if clientInfo.Username == "" && clientInfo.Password == "" && clientInfo.Credentials != "" {
 		credSrc, err := image.ParseCredentialSource(clientInfo.Credentials, false)
 		if err != nil {
