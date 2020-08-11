@@ -280,21 +280,21 @@ func (client *ArgoCD) SetKustomizeImage(app *v1alpha1.Application, newImage *ima
 		return fmt.Errorf("cannot set Kustomize image on non-Kustomize application")
 	}
 
-	var ksImageParm string
+	var ksImageParam string
 	ksImageName := newImage.GetParameterKustomizeImageName(app.Annotations)
 	if ksImageName != "" {
-		ksImageParm = fmt.Sprintf("%s=%s", ksImageName, newImage.GetFullNameWithTag())
+		ksImageParam = fmt.Sprintf("%s=%s", ksImageName, newImage.GetFullNameWithTag())
 	} else {
-		ksImageParm = newImage.GetFullNameWithTag()
+		ksImageParam = newImage.GetFullNameWithTag()
 	}
 
-	log.Tracef("Setting Kustomize parameter %s", ksImageParm)
+	log.Tracef("Setting Kustomize parameter %s", ksImageParam)
 
 	if app.Spec.Source.Kustomize == nil {
 		app.Spec.Source.Kustomize = &v1alpha1.ApplicationSourceKustomize{}
 	}
 
-	app.Spec.Source.Kustomize.MergeImage(v1alpha1.KustomizeImage(ksImageParm))
+	app.Spec.Source.Kustomize.MergeImage(v1alpha1.KustomizeImage(ksImageParam))
 
 	_, err = appClient.UpdateSpec(context.TODO(), &application.ApplicationUpdateSpecRequest{Name: &appName, Spec: app.Spec})
 	if err != nil {
