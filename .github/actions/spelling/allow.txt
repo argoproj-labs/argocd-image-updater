@@ -121,6 +121,7 @@ omitempty
 otherimg
 otherparam
 othervalue
+parametrizable
 parseable
 patrickmn
 pb
