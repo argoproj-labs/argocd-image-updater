@@ -90,16 +90,6 @@ func updateApplication(argoClient *argocd.ArgoCD, kubeClient *client.KubernetesC
 			continue
 		}
 
-		// Get list of available image tags from the repository
-		tags, err := rep.GetTags(applicationImage, kubeClient)
-		if err != nil {
-			imgCtx.Errorf("Could not get tags from registry: %v", err)
-			result.NumErrors += 1
-			continue
-		}
-
-		imgCtx.Tracef("List of available tags found: %v", tags.Tags())
-
 		var vc image.VersionConstraint
 		if updateableImage.ImageTag != nil {
 			vc.Constraint = updateableImage.ImageTag.TagName
@@ -109,6 +99,16 @@ func updateApplication(argoClient *argocd.ArgoCD, kubeClient *client.KubernetesC
 		}
 
 		vc.SortMode = updateableImage.GetParameterUpdateStrategy(curApplication.Application.Annotations)
+
+		// Get list of available image tags from the repository
+		tags, err := rep.GetTags(applicationImage, kubeClient, &vc)
+		if err != nil {
+			imgCtx.Errorf("Could not get tags from registry: %v", err)
+			result.NumErrors += 1
+			continue
+		}
+
+		imgCtx.Tracef("List of available tags found: %v", tags.Tags())
 
 		// Get the latest available tag matching any constraint that might be set
 		// for allowed updates.

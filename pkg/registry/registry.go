@@ -20,7 +20,7 @@ import (
 )
 
 // GetTags returns a list of available tags for the given image
-func (clientInfo *RegistryEndpoint) GetTags(img *image.ContainerImage, kubeClient *client.KubernetesClient) (*tag.ImageTagList, error) {
+func (clientInfo *RegistryEndpoint) GetTags(img *image.ContainerImage, kubeClient *client.KubernetesClient, vc *image.VersionConstraint) (*tag.ImageTagList, error) {
 	var tagList *tag.ImageTagList = tag.NewImageTagList()
 	var imgTag *tag.ImageTag
 	var err error
@@ -49,6 +49,16 @@ func (clientInfo *RegistryEndpoint) GetTags(img *image.ContainerImage, kubeClien
 	tags, err := client.Tags(nameInRegistry)
 	if err != nil {
 		return nil, err
+	}
+
+	// If we don't want to fetch meta data, just build the taglist and return it
+	// with dummy meta data.
+	if vc.SortMode != image.VersionSortLatest {
+		for _, tagStr := range tags {
+			imgTag = tag.NewImageTag(tagStr, time.Unix(0, 0))
+			tagList.Add(imgTag)
+		}
+		return tagList, nil
 	}
 
 	// Fetch the manifest for the tag -- we need v1, because it contains history
