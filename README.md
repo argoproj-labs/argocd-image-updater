@@ -63,6 +63,9 @@ Also, if you want to contribute code, please make sure that your code
 * is well commented,
 * and last but not least is compatible with our license and CLA
 
+Please note that in the current early phase of development, the code base is
+a fast moving target and lots of refactoring will happen constantly.
+
 ## License
 
 `argocd-image-updater` is open source software, released under the
