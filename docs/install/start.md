@@ -80,7 +80,7 @@ will not start messing with your workloads yet.
 ### Create a dedicated namespace for Argo CD Image Updater
 
 ```shell
-kubectl create ns argocd-image-updater`
+kubectl create ns argocd-image-updater
 ```
 
 ### Apply the installation manifests
