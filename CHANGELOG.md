@@ -10,6 +10,16 @@ handling on your side.
 
 ### Bug fixes
 
+### New features
+
+### Other changes
+
+## 2020-08-11 - Release v0.3.1
+
+### Upgrade notes (no really, you MUST read this)
+
+### Bug fixes
+
 * fix: Only fetch metadata when require by update strategy
 
 ### New features
