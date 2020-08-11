@@ -8,7 +8,10 @@
 ## Introduction
 
 Argo CD Image Updater is a tool to automatically update the container
-images of Kubernetes workloads which are managed by Argo CD.
+images of Kubernetes workloads which are managed by Argo CD. In a nutshell,
+it will track image versions specified by annotations on the Argo CD
+Application resources and update them by setting parameter overrides using
+the Argo CD API.
 
 Currently it will only work with applications that are built using *Kustomize*
 or *Helm* tooling. Applications built from plain YAML or custom tools are not
