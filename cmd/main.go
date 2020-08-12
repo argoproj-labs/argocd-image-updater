@@ -109,7 +109,7 @@ func updateApplication(argoClient *argocd.ArgoCD, kubeClient *client.KubernetesC
 
 		err = ep.SetEndpointCredentials(kubeClient)
 		if err != nil {
-			imgCtx.Errorf("Could not set registry endpoint credentiasl: %v", err)
+			imgCtx.Errorf("Could not set registry endpoint credentials: %v", err)
 			continue
 		}
 
