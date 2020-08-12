@@ -64,7 +64,7 @@ annotation, for example the following would assign the alias `myalias` to the
 image `some/image`:
 
 ```yaml
-argocd-image-updater.argproj.io/image-list: myalias=some/image
+argocd-image-updater.argoproj.io/image-list: myalias=some/image
 ```
 
 Assigning an alias name to an image is necessary in these scenarios:
