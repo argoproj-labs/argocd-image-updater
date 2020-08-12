@@ -1,6 +1,9 @@
 name: Spell checking
 on:
   push:
+    branches:
+    - master
+    - 'release-*'
   pull_requests:
     branches:
     - master
