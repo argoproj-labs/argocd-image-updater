@@ -113,6 +113,7 @@ func FilterApplicationsForUpdate(apps []v1alpha1.Application) (map[string]Applic
 	return appsForUpdate, nil
 }
 
+// GetApplication gets the application named appName from Argo CD API
 func (client *argoCD) GetApplication(ctx context.Context, appName string) (*v1alpha1.Application, error) {
 	conn, appClient, err := client.Client.NewApplicationClient()
 	if err != nil {
@@ -145,6 +146,7 @@ func (client *argoCD) ListApplications() ([]v1alpha1.Application, error) {
 	return apps.Items, nil
 }
 
+// UpdateSpec updates the spec for given application
 func (client *argoCD) UpdateSpec(ctx context.Context, in *application.ApplicationUpdateSpecRequest) (*v1alpha1.ApplicationSpec, error) {
 	conn, appClient, err := client.Client.NewApplicationClient()
 	if err != nil {
