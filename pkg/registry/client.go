@@ -1,6 +1,8 @@
 package registry
 
 import (
+	"github.com/argoproj-labs/argocd-image-updater/pkg/registry/mocks"
+
 	"github.com/docker/distribution/manifest/schema1"
 	"github.com/nokia/docker-registry-client/registry"
 )
@@ -11,9 +13,16 @@ type RegistryClient interface {
 	ManifestV1(repository string, reference string) (*schema1.SignedManifest, error)
 }
 
+type NewRegistryClient func(*RegistryEndpoint) (RegistryClient, error)
+
 // Helper type for registry clients
 type registryClient struct {
 	regClient *registry.Registry
+}
+
+// NewMockClient returns a new mocked RegistryClient
+func NewMockClient(endpoint *RegistryEndpoint) (RegistryClient, error) {
+	return &mocks.RegistryClient{}, nil
 }
 
 // NewClient returns a new RegistryClient for the given endpoint information

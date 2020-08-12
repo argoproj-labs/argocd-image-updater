@@ -6,9 +6,9 @@ apimachinery
 apps
 argocd
 argocdclient
+argomock
 argoproj
 argoprojlabs
-argproj
 args
 auths
 babayaga
@@ -141,6 +141,7 @@ readthedocs
 refactor
 refactoring
 regexp
+regmock
 RLock
 roadmap
 RUnlock
