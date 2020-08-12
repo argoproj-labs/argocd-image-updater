@@ -11,6 +11,7 @@ import (
 
 	"github.com/argoproj-labs/argocd-image-updater/pkg/argocd"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/client"
+	"github.com/argoproj-labs/argocd-image-updater/pkg/env"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/health"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/image"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/log"
@@ -246,26 +247,6 @@ func runImageUpdater(cfg *ImageUpdaterConfig) (ImageUpdaterResult, error) {
 	return result, nil
 }
 
-// Get boolean value from environment variable. Returns default value if env
-// is not set.
-func getBoolValFromEnv(env string, defaultValue bool) bool {
-	if val := os.Getenv(env); val != "" {
-		if strings.ToLower(val) == "true" {
-			return true
-		} else if strings.ToLower(val) == "false" {
-			return false
-		}
-	}
-	return defaultValue
-}
-
-func getServerAddrFromEnv() string {
-	if val := os.Getenv("ARGOCD_SERVER"); val != "" {
-		return val
-	}
-	return defaultArgoCDServerAddr
-}
-
 func getPrintableInterval(interval time.Duration) string {
 	if interval == 0 {
 		return "once"
@@ -448,10 +429,10 @@ func newRunCommand() *cobra.Command {
 		},
 	}
 
-	runCmd.Flags().StringVar(&cfg.ClientOpts.ServerAddr, "argocd-server-addr", getServerAddrFromEnv(), "address of ArgoCD API server")
-	runCmd.Flags().BoolVar(&cfg.ClientOpts.GRPCWeb, "argocd-grpc-web", getBoolValFromEnv("ARGOCD_GRPC_WEB", false), "use grpc-web for connection to ArgoCD")
-	runCmd.Flags().BoolVar(&cfg.ClientOpts.Insecure, "argocd-insecure", getBoolValFromEnv("ARGOCD_INSECURE", false), "(INSECURE) ignore invalid TLS certs for ArgoCD server")
-	runCmd.Flags().BoolVar(&cfg.ClientOpts.Plaintext, "argocd-plaintext", getBoolValFromEnv("ARGOCD_PLAINTEXT", false), "(INSECURE) connect without TLS to ArgoCD server")
+	runCmd.Flags().StringVar(&cfg.ClientOpts.ServerAddr, "argocd-server-addr", env.GetStringVal("ARGOCD_SERVER", defaultArgoCDServerAddr), "address of ArgoCD API server")
+	runCmd.Flags().BoolVar(&cfg.ClientOpts.GRPCWeb, "argocd-grpc-web", env.GetBoolVal("ARGOCD_GRPC_WEB", false), "use grpc-web for connection to ArgoCD")
+	runCmd.Flags().BoolVar(&cfg.ClientOpts.Insecure, "argocd-insecure", env.GetBoolVal("ARGOCD_INSECURE", false), "(INSECURE) ignore invalid TLS certs for ArgoCD server")
+	runCmd.Flags().BoolVar(&cfg.ClientOpts.Plaintext, "argocd-plaintext", env.GetBoolVal("ARGOCD_PLAINTEXT", false), "(INSECURE) connect without TLS to ArgoCD server")
 	runCmd.Flags().StringVar(&cfg.ClientOpts.AuthToken, "argocd-auth-token", "", "use token for authenticating to ArgoCD (unsafe - consider setting ARGOCD_TOKEN env var instead)")
 	runCmd.Flags().BoolVar(&cfg.DryRun, "dry-run", false, "run in dry-run mode. If set to true, do not perform any changes")
 	runCmd.Flags().DurationVar(&cfg.CheckInterval, "interval", 2*time.Minute, "interval for how often to check for updates")
