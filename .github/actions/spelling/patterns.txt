@@ -1,0 +1,8 @@
+#
+certificate-authority-data: [0-9a-zA-Z=]+
+#
+"(?:auth|namespace)": "[0-9a-zA-Z=]+"
+# <word>v1
+v1(?:\b|(?=[a-z]))
+# ignore long runs of a single character:
+(?:\b|(?<=\W))([A-Za-z])\1{3,}(?:\b|(?!\w))

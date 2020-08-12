@@ -60,7 +60,7 @@ func updateApplication(argoClient *argocd.ArgoCD, kubeClient *client.KubernetesC
 	result.NumApplicationsProcessed += 1
 
 	// Loop through all images of current application, and check whether one of
-	// its images is egilible for updating.
+	// its images is eligible for updating.
 	//
 	// Whether an image qualifies for update is dependent on semantic version
 	// constraints which are part of the application's annotation values.
@@ -458,7 +458,7 @@ func newRunCommand() *cobra.Command {
 	runCmd.Flags().StringVar(&cfg.LogLevel, "loglevel", "info", "set the loglevel to one of trace|debug|info|warn|error")
 	runCmd.Flags().StringVar(&kubeConfig, "kubeconfig", "", "full path to kubernetes client configuration, i.e. ~/.kube/config")
 	runCmd.Flags().IntVar(&cfg.HealthPort, "health-port", 8080, "port to start the health server on, 0 to disable")
-	runCmd.Flags().BoolVar(&once, "once", false, "run only once, same as specifying --interval=0 and --healt-port=0")
+	runCmd.Flags().BoolVar(&once, "once", false, "run only once, same as specifying --interval=0 and --health-port=0")
 	runCmd.Flags().StringVar(&cfg.RegistriesConf, "registries-conf-path", "", "path to registries configuration file")
 	runCmd.Flags().BoolVar(&disableKubernetes, "disable-kubernetes", false, "do not create and use a Kubernetes client")
 	runCmd.Flags().IntVar(&cfg.MaxConcurrency, "max-concurrency", 10, "maximum number of update threads to run concurrently")

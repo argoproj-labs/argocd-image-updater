@@ -34,7 +34,7 @@ argocd-image-updater.argoproj.io/image-list: nginx
 
 The above example would specify to update the image `nginx` to it's most recent
 version found in the container registry, without taking any version constraints
-into cosideration.
+into consideration.
 
 This is most likely not what you want, because you could pull in some breaking
 changes when `nginx` releases a new major version and the image gets updated.
@@ -185,7 +185,7 @@ argocd-image-updater.argoproj.io/image-list: nginx:~1.19
 
 ### Always deploy the latest build
 
-*Scenario:* Your CI regulary pushes images built from the latest source, using
+*Scenario:* Your CI regularly pushes images built from the latest source, using
 some identifier (i.e. the hash of the Git commit) in the tag.
 
 *Solution:*

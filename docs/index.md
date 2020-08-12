@@ -29,7 +29,7 @@ manner.
 Usage is simple: You annotate your Argo CD `Application` resources with a list
 of images to be considered for update, along with a version constraint to
 restrict the maximum allowed new version for each image. Argo CD Image Updater
-then regulary polls the configured applications from Argo CD and queries the
+then regularly polls the configured applications from Argo CD and queries the
 corresponding container registry for possible new versions. If a new version of
 the image is found in the registry, and the version constraint is met, Argo CD
 Image Updater instructs Argo CD to update the application with the new image.
@@ -63,5 +63,5 @@ requests or bug reports related to the following:
 Otherwise, current known limitations are:
 
 * Image pull secrets must exist in the same Kubernetes cluster where Argo CD
-  Image Updater is running in (or has accesst to). It is currently not possible
+  Image Updater is running in (or has access to). It is currently not possible
   to fetch those secrets from other clusters.

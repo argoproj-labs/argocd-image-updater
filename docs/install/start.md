@@ -89,7 +89,7 @@ kubectl create ns argocd-image-updater
 kubectl apply -n argocd-image-updater -f manifests/install.yaml
 ```
 
-!!!note "A word on high availabilty"
+!!!note "A word on high availability"
     It is not advised to run multiple replicas of the same Argo CD Image Updater
     instance. Just leave the number of replicas at 1, otherwise weird side
     effects could occur.
@@ -167,7 +167,7 @@ export ARGOCD_TOKEN=<yourtoken>
 ```
 
 Note: The `--once` flag disables the health server and the check interval, so
-the tool will not regulary check for updates but exit after the first run.
+the tool will not regularly check for updates but exit after the first run.
 
 Check `argocd-image-updater --help` for a list of valid command line flags, or
 consult the appropriate section of the documentation.

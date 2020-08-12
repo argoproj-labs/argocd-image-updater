@@ -50,7 +50,7 @@ to indicate all breaking changes (and how to un-break them) in the
 ## Contributing
 
 You are welcome to contribute to this project by means of raising issues for
-bugs, sending & discussing enhancment ideas or by contributing code via pull
+bugs, sending & discussing enhancement ideas or by contributing code via pull
 requests.
 
 In any case, please be sure that you have read & understood the currently known
@@ -104,7 +104,7 @@ this feature in the meanwhile, but don't expect it before the v1.0 release.
 
 **How does it persist the changes then?**
 
-The Argo CD Image Updater leverages the Argo CD API to set application paramaters,
+The Argo CD Image Updater leverages the Argo CD API to set application parameters,
 and Argo CD will then persist the change in the application's manifest. This is
 something Argo CD will not overwrite upon the next manual (or automatic) sync,
 except when the overrides are explicitly set in the manifest.

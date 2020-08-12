@@ -1,0 +1,4 @@
+^\.github/
+^go\.(?:sum|mod)$
+ignore$
+\.png$
