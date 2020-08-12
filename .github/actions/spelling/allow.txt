@@ -34,6 +34,7 @@ coverprofile
 cred
 creds
 css
+ctx
 Ctx
 deadcode
 Debugf
@@ -164,6 +165,7 @@ svl
 taglist
 TEMPFILE
 testdata
+testns
 tl
 TLS
 tmp
