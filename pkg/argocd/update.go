@@ -78,6 +78,7 @@ func UpdateApplication(newRegFn registry.NewRegistryClient, argoClient ArgoCD, k
 		regClient, err := newRegFn(rep)
 		if err != nil {
 			imgCtx.Errorf("Could not create registry client: %v", err)
+			result.NumErrors += 1
 			continue
 		}
 
