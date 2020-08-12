@@ -51,6 +51,7 @@ Errorf
 extldflags
 Fatalf
 filepath
+FIXME
 fooalias
 Fprintf
 func
@@ -117,6 +118,7 @@ nimage
 nimg
 nokia
 nolint
+notastring
 omitempty
 otherimg
 otherparam
