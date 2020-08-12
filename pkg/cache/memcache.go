@@ -47,6 +47,13 @@ func (mc *MemCache) GetTag(imageName string, tagName string) (*tag.ImageTag, err
 	return &imgTag, nil
 }
 
+// Clears the cache
+func (mc *MemCache) ClearCache() {
+	for k := range mc.cache.Items() {
+		mc.cache.Delete(k)
+	}
+}
+
 func cacheKey(imageName, imageTag string) string {
 	return fmt.Sprintf("%s:%s", imageName, imageTag)
 }
