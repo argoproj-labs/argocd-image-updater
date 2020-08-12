@@ -15,16 +15,16 @@ import (
 	"github.com/argoproj/argo-cd/pkg/apis/application/v1alpha1"
 )
 
-type ArgoCD struct {
+// Native
+type argoCD struct {
 	Client argocdclient.Client
 }
 
-// Interface that we need mocks for
-type ArgoCDClient interface {
+// ArgoCD is the interface for accessing Argo CD functions we need
+type ArgoCD interface {
+	GetApplication(ctx context.Context, appName string) (*v1alpha1.Application, error)
 	ListApplications() ([]v1alpha1.Application, error)
-	SetHelmImage(appName string, newImage *image.ContainerImage) error
-	GetImagesFromApplication(appName string) (image.ContainerImageList, error)
-	GetApplicationTypeByName(appName string) (ApplicationType, error)
+	UpdateSpec(ctx context.Context, spec *application.ApplicationUpdateSpecRequest) (*v1alpha1.ApplicationSpec, error)
 }
 
 // Type of the application
@@ -49,7 +49,7 @@ type ClientOptions struct {
 
 // NewClient creates a new API client for ArgoCD and connects to the ArgoCD
 // API server.
-func NewClient(opts *ClientOptions) (*ArgoCD, error) {
+func NewClient(opts *ClientOptions) (ArgoCD, error) {
 
 	envAuthToken := os.Getenv("ARGOCD_TOKEN")
 	if envAuthToken != "" && opts.AuthToken == "" {
@@ -69,7 +69,7 @@ func NewClient(opts *ClientOptions) (*ArgoCD, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &ArgoCD{Client: client}, nil
+	return &argoCD{Client: client}, nil
 }
 
 type ApplicationImages struct {
@@ -113,9 +113,24 @@ func FilterApplicationsForUpdate(apps []v1alpha1.Application) (map[string]Applic
 	return appsForUpdate, nil
 }
 
+func (client *argoCD) GetApplication(ctx context.Context, appName string) (*v1alpha1.Application, error) {
+	conn, appClient, err := client.Client.NewApplicationClient()
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Close()
+
+	app, err := appClient.Get(ctx, &application.ApplicationQuery{Name: &appName})
+	if err != nil {
+		return nil, err
+	}
+
+	return app, nil
+}
+
 // ListApplications returns a list of all application names that the API user
 // has access to.
-func (client *ArgoCD) ListApplications() ([]v1alpha1.Application, error) {
+func (client *argoCD) ListApplications() ([]v1alpha1.Application, error) {
 	conn, appClient, err := client.Client.NewApplicationClient()
 	if err != nil {
 		return nil, err
@@ -128,6 +143,21 @@ func (client *ArgoCD) ListApplications() ([]v1alpha1.Application, error) {
 	}
 
 	return apps.Items, nil
+}
+
+func (client *argoCD) UpdateSpec(ctx context.Context, in *application.ApplicationUpdateSpecRequest) (*v1alpha1.ApplicationSpec, error) {
+	conn, appClient, err := client.Client.NewApplicationClient()
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Close()
+
+	spec, err := appClient.UpdateSpec(ctx, in)
+	if err != nil {
+		return nil, err
+	}
+
+	return spec, nil
 }
 
 // getHelmParamNamesFromAnnotation inspects the given annotations for whether
@@ -206,13 +236,7 @@ func mergeHelmParams(src []v1alpha1.HelmParameter, merge []v1alpha1.HelmParamete
 }
 
 // SetHelmImage sets image parameters for a Helm application
-func (client *ArgoCD) SetHelmImage(app *v1alpha1.Application, newImage *image.ContainerImage) error {
-	conn, appClient, err := client.Client.NewApplicationClient()
-	if err != nil {
-		return err
-	}
-	defer conn.Close()
-
+func SetHelmImage(client ArgoCD, app *v1alpha1.Application, newImage *image.ContainerImage) error {
 	if appType := getApplicationType(app); appType != ApplicationTypeHelm {
 		return fmt.Errorf("cannot set Helm params on non-Helm application")
 	}
@@ -259,7 +283,7 @@ func (client *ArgoCD) SetHelmImage(app *v1alpha1.Application, newImage *image.Co
 
 	app.Spec.Source.Helm.Parameters = mergeHelmParams(app.Spec.Source.Helm.Parameters, mergeParams)
 
-	_, err = appClient.UpdateSpec(context.TODO(), &application.ApplicationUpdateSpecRequest{Name: &appName, Spec: app.Spec})
+	_, err := client.UpdateSpec(context.TODO(), &application.ApplicationUpdateSpecRequest{Name: &appName, Spec: app.Spec})
 	if err != nil {
 		return err
 	}
@@ -268,13 +292,7 @@ func (client *ArgoCD) SetHelmImage(app *v1alpha1.Application, newImage *image.Co
 }
 
 // SetKustomizeImage sets a Kustomize image for given application
-func (client *ArgoCD) SetKustomizeImage(app *v1alpha1.Application, newImage *image.ContainerImage) error {
-	conn, appClient, err := client.Client.NewApplicationClient()
-	if err != nil {
-		return err
-	}
-	defer conn.Close()
-
+func SetKustomizeImage(client ArgoCD, app *v1alpha1.Application, newImage *image.ContainerImage) error {
 	appName := app.GetName()
 	if appType := getApplicationType(app); appType != ApplicationTypeKustomize {
 		return fmt.Errorf("cannot set Kustomize image on non-Kustomize application")
@@ -296,7 +314,7 @@ func (client *ArgoCD) SetKustomizeImage(app *v1alpha1.Application, newImage *ima
 
 	app.Spec.Source.Kustomize.MergeImage(v1alpha1.KustomizeImage(ksImageParam))
 
-	_, err = appClient.UpdateSpec(context.TODO(), &application.ApplicationUpdateSpecRequest{Name: &appName, Spec: app.Spec})
+	_, err := client.UpdateSpec(context.TODO(), &application.ApplicationUpdateSpecRequest{Name: &appName, Spec: app.Spec})
 	if err != nil {
 		return err
 	}
@@ -318,14 +336,8 @@ func GetImagesFromApplication(app *v1alpha1.Application) image.ContainerImageLis
 
 // GetApplicationTypeByName first retrieves application with given appName and
 // returns its application type
-func (client *ArgoCD) GetApplicationTypeByName(appName string) (ApplicationType, error) {
-	conn, appClient, err := client.Client.NewApplicationClient()
-	if err != nil {
-		return ApplicationTypeUnsupported, err
-	}
-	defer conn.Close()
-
-	app, err := appClient.Get(context.TODO(), &application.ApplicationQuery{Name: &appName})
+func GetApplicationTypeByName(client ArgoCD, appName string) (ApplicationType, error) {
+	app, err := client.GetApplication(context.TODO(), appName)
 	if err != nil {
 		return ApplicationTypeUnsupported, err
 	}

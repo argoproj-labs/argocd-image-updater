@@ -4,10 +4,13 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/argoproj-labs/argocd-image-updater/pkg/argocd/mocks"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
+	"github.com/argoproj-labs/argocd-image-updater/pkg/image"
 
 	"github.com/argoproj/argo-cd/pkg/apis/application/v1alpha1"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -292,4 +295,291 @@ func Test_MergeHelmParams(t *testing.T) {
 		require.NotNil(t, param)
 		assert.Equal(t, "1.2.4", param.Value)
 	})
+}
+
+func Test_SetKustomizeImage(t *testing.T) {
+	t.Run("Test set Kustomize image parameters on Kustomize app with param already set", func(t *testing.T) {
+		argocd := mocks.ArgoCD{}
+		argocd.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+		app := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "test-app",
+				Namespace: "testns",
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: v1alpha1.ApplicationSource{
+					Kustomize: &v1alpha1.ApplicationSourceKustomize{
+						Images: v1alpha1.KustomizeImages{
+							"jannfis/foobar:1.0.0",
+						},
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypeKustomize,
+				Summary: v1alpha1.ApplicationSummary{
+					Images: []string{
+						"jannfis/foobar:1.0.0",
+					},
+				},
+			},
+		}
+		img := image.NewFromIdentifier("jannfis/foobar:1.0.1")
+		err := SetKustomizeImage(&argocd, app, img)
+		require.NoError(t, err)
+		require.NotNil(t, app.Spec.Source.Kustomize)
+		assert.Len(t, app.Spec.Source.Kustomize.Images, 1)
+		assert.Equal(t, v1alpha1.KustomizeImage("jannfis/foobar:1.0.1"), app.Spec.Source.Kustomize.Images[0])
+	})
+
+	t.Run("Test set Kustomize image parameters on Kustomize app with no params set", func(t *testing.T) {
+		argocd := mocks.ArgoCD{}
+		argocd.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+		app := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "test-app",
+				Namespace: "testns",
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: v1alpha1.ApplicationSource{},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypeKustomize,
+				Summary: v1alpha1.ApplicationSummary{
+					Images: []string{
+						"jannfis/foobar:1.0.0",
+					},
+				},
+			},
+		}
+		img := image.NewFromIdentifier("jannfis/foobar:1.0.1")
+		err := SetKustomizeImage(&argocd, app, img)
+		require.NoError(t, err)
+		require.NotNil(t, app.Spec.Source.Kustomize)
+		assert.Len(t, app.Spec.Source.Kustomize.Images, 1)
+		assert.Equal(t, v1alpha1.KustomizeImage("jannfis/foobar:1.0.1"), app.Spec.Source.Kustomize.Images[0])
+	})
+
+	t.Run("Test set Kustomize image parameters on non-Kustomize app", func(t *testing.T) {
+		argocd := mocks.ArgoCD{}
+		argocd.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+		app := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "test-app",
+				Namespace: "testns",
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: v1alpha1.ApplicationSource{
+					Kustomize: &v1alpha1.ApplicationSourceKustomize{
+						Images: v1alpha1.KustomizeImages{
+							"jannfis/foobar:1.0.0",
+						},
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypeDirectory,
+				Summary: v1alpha1.ApplicationSummary{
+					Images: []string{
+						"jannfis/foobar:1.0.0",
+					},
+				},
+			},
+		}
+		img := image.NewFromIdentifier("jannfis/foobar:1.0.1")
+		err := SetKustomizeImage(&argocd, app, img)
+		require.Error(t, err)
+	})
+
+}
+
+func Test_SetHelmImage(t *testing.T) {
+	t.Run("Test set Helm image parameters on Helm app with existing parameters", func(t *testing.T) {
+		argocd := mocks.ArgoCD{}
+		argocd.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+		app := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "test-app",
+				Namespace: "testns",
+				Annotations: map[string]string{
+					fmt.Sprintf(common.HelmParamImageNameAnnotation, "foobar"): "image.name",
+					fmt.Sprintf(common.HelmParamImageTagAnnotation, "foobar"):  "image.tag",
+				},
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: v1alpha1.ApplicationSource{
+					Helm: &v1alpha1.ApplicationSourceHelm{
+						Parameters: []v1alpha1.HelmParameter{
+							{
+								Name:  "image.tag",
+								Value: "1.0.0",
+							},
+							{
+								Name:  "image.name",
+								Value: "jannfis/foobar",
+							},
+						},
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypeHelm,
+				Summary: v1alpha1.ApplicationSummary{
+					Images: []string{
+						"jannfis/foobar:1.0.0",
+					},
+				},
+			},
+		}
+
+		img := image.NewFromIdentifier("foobar=jannfis/foobar:1.0.1")
+
+		err := SetHelmImage(&argocd, app, img)
+		require.NoError(t, err)
+		require.NotNil(t, app.Spec.Source.Helm)
+		assert.Len(t, app.Spec.Source.Helm.Parameters, 2)
+
+		// Find correct parameter
+		var tagParam v1alpha1.HelmParameter
+		for _, p := range app.Spec.Source.Helm.Parameters {
+			if p.Name == "image.tag" {
+				tagParam = p
+				break
+			}
+		}
+		assert.Equal(t, "1.0.1", tagParam.Value)
+	})
+
+	t.Run("Test set Helm image parameters on Helm app without existing parameters", func(t *testing.T) {
+		argocd := mocks.ArgoCD{}
+		argocd.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+		app := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "test-app",
+				Namespace: "testns",
+				Annotations: map[string]string{
+					fmt.Sprintf(common.HelmParamImageNameAnnotation, "foobar"): "image.name",
+					fmt.Sprintf(common.HelmParamImageTagAnnotation, "foobar"):  "image.tag",
+				},
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: v1alpha1.ApplicationSource{
+					Helm: &v1alpha1.ApplicationSourceHelm{},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypeHelm,
+				Summary: v1alpha1.ApplicationSummary{
+					Images: []string{
+						"jannfis/foobar:1.0.0",
+					},
+				},
+			},
+		}
+
+		img := image.NewFromIdentifier("foobar=jannfis/foobar:1.0.1")
+
+		err := SetHelmImage(&argocd, app, img)
+		require.NoError(t, err)
+		require.NotNil(t, app.Spec.Source.Helm)
+		assert.Len(t, app.Spec.Source.Helm.Parameters, 2)
+
+		// Find correct parameter
+		var tagParam v1alpha1.HelmParameter
+		for _, p := range app.Spec.Source.Helm.Parameters {
+			if p.Name == "image.tag" {
+				tagParam = p
+				break
+			}
+		}
+		assert.Equal(t, "1.0.1", tagParam.Value)
+	})
+
+	t.Run("Test set Helm image parameters on Helm app with different parameters", func(t *testing.T) {
+		argocd := mocks.ArgoCD{}
+		argocd.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+		app := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "test-app",
+				Namespace: "testns",
+				Annotations: map[string]string{
+					fmt.Sprintf(common.HelmParamImageNameAnnotation, "foobar"): "foobar.image.name",
+					fmt.Sprintf(common.HelmParamImageTagAnnotation, "foobar"):  "foobar.image.tag",
+				},
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: v1alpha1.ApplicationSource{
+					Helm: &v1alpha1.ApplicationSourceHelm{
+						Parameters: []v1alpha1.HelmParameter{
+							{
+								Name:  "image.tag",
+								Value: "1.0.0",
+							},
+							{
+								Name:  "image.name",
+								Value: "jannfis/dummy",
+							},
+						},
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypeHelm,
+				Summary: v1alpha1.ApplicationSummary{
+					Images: []string{
+						"jannfis/foobar:1.0.0",
+					},
+				},
+			},
+		}
+
+		img := image.NewFromIdentifier("foobar=jannfis/foobar:1.0.1")
+
+		err := SetHelmImage(&argocd, app, img)
+		require.NoError(t, err)
+		require.NotNil(t, app.Spec.Source.Helm)
+		assert.Len(t, app.Spec.Source.Helm.Parameters, 4)
+
+		// Find correct parameter
+		var tagParam v1alpha1.HelmParameter
+		for _, p := range app.Spec.Source.Helm.Parameters {
+			if p.Name == "foobar.image.tag" {
+				tagParam = p
+				break
+			}
+		}
+		assert.Equal(t, "1.0.1", tagParam.Value)
+	})
+
+	t.Run("Test set Helm image parameters on non Helm app", func(t *testing.T) {
+		argocd := mocks.ArgoCD{}
+		argocd.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+		app := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "test-app",
+				Namespace: "testns",
+				Annotations: map[string]string{
+					fmt.Sprintf(common.HelmParamImageNameAnnotation, "foobar"): "foobar.image.name",
+					fmt.Sprintf(common.HelmParamImageTagAnnotation, "foobar"):  "foobar.image.tag",
+				},
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: v1alpha1.ApplicationSource{},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypeKsonnet,
+				Summary: v1alpha1.ApplicationSummary{
+					Images: []string{
+						"jannfis/foobar:1.0.0",
+					},
+				},
+			},
+		}
+
+		img := image.NewFromIdentifier("foobar=jannfis/foobar:1.0.1")
+
+		err := SetHelmImage(&argocd, app, img)
+		require.Error(t, err)
+	})
+
 }
