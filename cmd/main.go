@@ -100,8 +100,26 @@ func updateApplication(argoClient *argocd.ArgoCD, kubeClient *client.KubernetesC
 
 		vc.SortMode = updateableImage.GetParameterUpdateStrategy(curApplication.Application.Annotations)
 
+		ep, err := registry.GetRegistryEndpoint(updateableImage.RegistryURL)
+		if err != nil {
+			imgCtx.Errorf("Could not get registry endpoint: %v", err)
+			continue
+		}
+
+		err = ep.SetEndpointCredentials(kubeClient)
+		if err != nil {
+			imgCtx.Errorf("Could not set registry endpoint credentiasl: %v", err)
+			continue
+		}
+
+		regClient, err := registry.NewClient(ep)
+		if err != nil {
+			imgCtx.Errorf("Could not create registry client: %v", err)
+			continue
+		}
+
 		// Get list of available image tags from the repository
-		tags, err := rep.GetTags(applicationImage, kubeClient, &vc)
+		tags, err := rep.GetTags(applicationImage, regClient, &vc)
 		if err != nil {
 			imgCtx.Errorf("Could not get tags from registry: %v", err)
 			result.NumErrors += 1
