@@ -17,3 +17,18 @@ func Test_ParseRegistryConfFromYaml(t *testing.T) {
 		assert.Len(t, regList.Items, 3)
 	})
 }
+
+func Test_LoadRegistryConfiguration(t *testing.T) {
+	t.Run("Load from valid location", func(t *testing.T) {
+		err := LoadRegistryConfiguration("../../config/example-config.yaml")
+		require.NoError(t, err)
+		assert.Len(t, registries, 3)
+		reg, err := GetRegistryEndpoint("gcr.io")
+		require.NoError(t, err)
+		assert.Equal(t, "pullsecret:foo/bar", reg.Credentials)
+		RestoreDefaultRegistryConfiguration()
+		reg, err = GetRegistryEndpoint("gcr.io")
+		require.NoError(t, err)
+		assert.Equal(t, "", reg.Credentials)
+	})
+}
