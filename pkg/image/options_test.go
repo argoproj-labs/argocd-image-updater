@@ -2,11 +2,13 @@ package image
 
 import (
 	"fmt"
+	"regexp"
 	"testing"
 
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func Test_GetHelmOptions(t *testing.T) {
@@ -115,4 +117,40 @@ func Test_GetSortOption(t *testing.T) {
 		sortMode := img.GetParameterUpdateStrategy(annotations)
 		assert.Equal(t, VersionSortSemVer, sortMode)
 	})
+}
+
+func Test_GetMatchOption(t *testing.T) {
+
+	t.Run("Get regexp match option for configured application", func(t *testing.T) {
+		annotations := map[string]string{
+			fmt.Sprintf(common.MatchOptionAnnotation, "dummy"): "regexp:a-z",
+		}
+		img := NewFromIdentifier("dummy=foo/bar:1.12")
+		matchFunc, matchArgs := img.GetParameterMatch(annotations)
+		require.NotNil(t, matchFunc)
+		require.NotNil(t, matchArgs)
+		assert.IsType(t, &regexp.Regexp{}, matchArgs)
+	})
+
+	t.Run("Get regexp match option for configured application with invalid expression", func(t *testing.T) {
+		annotations := map[string]string{
+			fmt.Sprintf(common.MatchOptionAnnotation, "dummy"): `regexp:/foo\`,
+		}
+		img := NewFromIdentifier("dummy=foo/bar:1.12")
+		matchFunc, matchArgs := img.GetParameterMatch(annotations)
+		require.NotNil(t, matchFunc)
+		require.Nil(t, matchArgs)
+	})
+
+	t.Run("Get invalid match option for configured application", func(t *testing.T) {
+		annotations := map[string]string{
+			fmt.Sprintf(common.MatchOptionAnnotation, "dummy"): "invalid",
+		}
+		img := NewFromIdentifier("dummy=foo/bar:1.12")
+		matchFunc, matchArgs := img.GetParameterMatch(annotations)
+		require.NotNil(t, matchFunc)
+		require.Equal(t, false, matchFunc("", nil))
+		assert.Nil(t, matchArgs)
+	})
+
 }

@@ -36,6 +36,18 @@ func (endpoint *RegistryEndpoint) GetTags(img *image.ContainerImage, regClient R
 		return nil, err
 	}
 
+	// Loop through tags, removing those we do not want
+	if vc.MatchFunc != nil {
+		for i, t := range tags {
+			if !vc.MatchFunc(t, vc.MatchArgs) {
+				log.Tracef("Removing tag %s because of tag match options", t)
+				tags[i] = tags[len(tags)-1]
+				tags[len(tags)-1] = ""
+				tags = tags[:len(tags)-1]
+			}
+		}
+	}
+
 	// If we don't want to fetch meta data, just build the taglist and return it
 	// with dummy meta data.
 	if vc.SortMode != image.VersionSortLatest {
