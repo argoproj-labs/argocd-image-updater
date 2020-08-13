@@ -32,6 +32,24 @@ func Test_GetTags(t *testing.T) {
 		assert.Nil(t, tag)
 	})
 
+	t.Run("Check for correctly returned tags with filter function applied", func(t *testing.T) {
+		regClient := mocks.RegistryClient{}
+		regClient.On("Tags", mock.Anything).Return([]string{"1.2.0", "1.2.1", "1.2.2"}, nil)
+
+		ep, err := GetRegistryEndpoint("")
+		require.NoError(t, err)
+
+		img := image.NewFromIdentifier("foo/bar:1.2.0")
+
+		tl, err := ep.GetTags(img, &regClient, &image.VersionConstraint{SortMode: image.VersionSortSemVer, MatchFunc: image.MatchFuncNone})
+		require.NoError(t, err)
+		assert.Empty(t, tl.Tags())
+
+		tag, err := ep.Cache.GetTag("foo/bar", "1.2.1")
+		require.NoError(t, err)
+		assert.Nil(t, tag)
+	})
+
 	t.Run("Check for correctly returned tags with name sort", func(t *testing.T) {
 
 		regClient := mocks.RegistryClient{}
