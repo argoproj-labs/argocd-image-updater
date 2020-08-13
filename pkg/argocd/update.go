@@ -70,13 +70,26 @@ func UpdateApplication(newRegFn registry.NewRegistryClient, argoClient ArgoCD, k
 		vc.SortMode = updateableImage.GetParameterUpdateStrategy(curApplication.Application.Annotations)
 		vc.MatchFunc, vc.MatchArgs = updateableImage.GetParameterMatch(curApplication.Application.Annotations)
 
+		// The endpoint can provide default credentials for pulling images
 		err = rep.SetEndpointCredentials(kubeClient)
 		if err != nil {
 			imgCtx.Errorf("Could not set registry endpoint credentials: %v", err)
+			result.NumErrors += 1
 			continue
 		}
 
-		regClient, err := newRegFn(rep)
+		imgCredSrc := updateableImage.GetParameterPullSecret(curApplication.Application.Annotations)
+		var creds *image.Credential = &image.Credential{}
+		if imgCredSrc != nil {
+			creds, err = imgCredSrc.FetchCredentials(rep.RegistryAPI, kubeClient)
+			if err != nil {
+				imgCtx.Warnf("Could not fetch credentials: %v", err)
+				result.NumErrors += 1
+				continue
+			}
+		}
+
+		regClient, err := newRegFn(rep, creds.Username, creds.Password)
 		if err != nil {
 			imgCtx.Errorf("Could not create registry client: %v", err)
 			result.NumErrors += 1

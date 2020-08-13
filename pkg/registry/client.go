@@ -13,7 +13,7 @@ type RegistryClient interface {
 	ManifestV1(repository string, reference string) (*schema1.SignedManifest, error)
 }
 
-type NewRegistryClient func(*RegistryEndpoint) (RegistryClient, error)
+type NewRegistryClient func(*RegistryEndpoint, string, string) (RegistryClient, error)
 
 // Helper type for registry clients
 type registryClient struct {
@@ -21,17 +21,25 @@ type registryClient struct {
 }
 
 // NewMockClient returns a new mocked RegistryClient
-func NewMockClient(endpoint *RegistryEndpoint) (RegistryClient, error) {
+func NewMockClient(endpoint *RegistryEndpoint, username, password string) (RegistryClient, error) {
 	return &mocks.RegistryClient{}, nil
 }
 
 // NewClient returns a new RegistryClient for the given endpoint information
-func NewClient(endpoint *RegistryEndpoint) (RegistryClient, error) {
+func NewClient(endpoint *RegistryEndpoint, username, password string) (RegistryClient, error) {
+
+	if username == "" && endpoint.Username != "" {
+		username = endpoint.Username
+	}
+	if password == "" && endpoint.Password != "" {
+		password = endpoint.Password
+	}
+
 	client, err := registry.NewCustom(endpoint.RegistryAPI, registry.Options{
 		DoInitialPing: endpoint.Ping,
 		Logf:          registry.Quiet,
-		Username:      endpoint.Username,
-		Password:      endpoint.Password,
+		Username:      username,
+		Password:      password,
 	})
 	if err != nil {
 		return nil, err

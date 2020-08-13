@@ -114,6 +114,21 @@ func (img *ContainerImage) GetParameterMatch(annotations map[string]string) (Mat
 	}
 }
 
+func (img *ContainerImage) GetParameterPullSecret(annotations map[string]string) *CredentialSource {
+	key := fmt.Sprintf(common.SecretListAnnotation, img.normalizedSymbolicName())
+	val, ok := annotations[key]
+	if !ok {
+		log.Tracef("No secret annotation %s found", key)
+		return nil
+	}
+	credSrc, err := ParseCredentialSource(val, false)
+	if err != nil {
+		log.Warnf("Invalid credential reference specified: %s", val)
+		return nil
+	}
+	return credSrc
+}
+
 func (img *ContainerImage) normalizedSymbolicName() string {
 	return strings.ReplaceAll(img.ImageAlias, "/", "_")
 }

@@ -123,9 +123,9 @@ func (endpoint *RegistryEndpoint) GetTags(img *image.ContainerImage, regClient R
 }
 
 // Sets endpoint credentials for this registry from a reference to a K8s secret
-func (clientInfo *RegistryEndpoint) SetEndpointCredentials(kubeClient *client.KubernetesClient) error {
-	if clientInfo.Username == "" && clientInfo.Password == "" && clientInfo.Credentials != "" {
-		credSrc, err := image.ParseCredentialSource(clientInfo.Credentials, false)
+func (ep *RegistryEndpoint) SetEndpointCredentials(kubeClient *client.KubernetesClient) error {
+	if ep.Username == "" && ep.Password == "" && ep.Credentials != "" {
+		credSrc, err := image.ParseCredentialSource(ep.Credentials, false)
 		if err != nil {
 			return err
 		}
@@ -133,18 +133,18 @@ func (clientInfo *RegistryEndpoint) SetEndpointCredentials(kubeClient *client.Ku
 		// For fetching credentials, we must have working Kubernetes client.
 		if (credSrc.Type == image.CredentialSourcePullSecret || credSrc.Type == image.CredentialSourceSecret) && kubeClient == nil {
 			log.WithContext().
-				AddField("registry", clientInfo.RegistryAPI).
+				AddField("registry", ep.RegistryAPI).
 				Warnf("cannot user K8s credentials without Kubernetes client")
 			return fmt.Errorf("could not fetch image tags")
 		}
 
-		creds, err := credSrc.FetchCredentials(clientInfo.RegistryAPI, kubeClient)
+		creds, err := credSrc.FetchCredentials(ep.RegistryAPI, kubeClient)
 		if err != nil {
 			return err
 		}
 
-		clientInfo.Username = creds.Username
-		clientInfo.Password = creds.Password
+		ep.Username = creds.Username
+		ep.Password = creds.Password
 	}
 
 	return nil
