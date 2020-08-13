@@ -67,3 +67,12 @@ func ParseRegistryConfiguration(yamlSource string) (RegistryList, error) {
 
 	return regList, nil
 }
+
+// RestRestoreDefaultRegistryConfiguration restores the registry configuration
+// to the default values.
+func RestoreDefaultRegistryConfiguration() {
+	registries = make(map[string]*RegistryEndpoint)
+	for k, v := range defaultRegistries {
+		registries[k] = v.DeepCopy()
+	}
+}

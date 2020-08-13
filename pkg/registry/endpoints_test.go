@@ -96,3 +96,18 @@ func Test_EndpointConcurrentAccess(t *testing.T) {
 		}
 	})
 }
+
+func Test_DeepCopy(t *testing.T) {
+	t.Run("DeepCopy endpoint object", func(t *testing.T) {
+		ep, err := GetRegistryEndpoint("gcr.io")
+		require.NoError(t, err)
+		require.NotNil(t, ep)
+		newEp := ep.DeepCopy()
+		assert.Equal(t, ep.RegistryAPI, newEp.RegistryAPI)
+		assert.Equal(t, ep.RegistryName, newEp.RegistryName)
+		assert.Equal(t, ep.RegistryPrefix, newEp.RegistryPrefix)
+		assert.Equal(t, ep.Credentials, newEp.Credentials)
+		assert.Equal(t, ep.Username, newEp.Username)
+		assert.Equal(t, ep.Ping, newEp.Ping)
+	})
+}

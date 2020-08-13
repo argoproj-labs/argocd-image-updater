@@ -23,7 +23,7 @@ type RegistryEndpoint struct {
 }
 
 // Map of configured registries, pre-filled with some well-known registries
-var registries map[string]*RegistryEndpoint = map[string]*RegistryEndpoint{
+var defaultRegistries map[string]*RegistryEndpoint = map[string]*RegistryEndpoint{
 	"": {
 		RegistryName:   "Docker Hub",
 		RegistryPrefix: "",
@@ -46,6 +46,8 @@ var registries map[string]*RegistryEndpoint = map[string]*RegistryEndpoint{
 		Cache:          cache.NewMemCache(),
 	},
 }
+
+var registries map[string]*RegistryEndpoint = make(map[string]*RegistryEndpoint)
 
 // Simple RW mutex for concurrent access to registries map
 var registryLock sync.RWMutex
@@ -89,4 +91,24 @@ func SetRegistryEndpointCredentials(prefix, username, password string) error {
 	registry.Password = password
 	registry.lock.Unlock()
 	return nil
+}
+
+// DeepCopy copies the endpoint to a new object, but creating a new Cache
+func (ep *RegistryEndpoint) DeepCopy() *RegistryEndpoint {
+	newEp := &RegistryEndpoint{}
+	newEp.RegistryAPI = ep.RegistryAPI
+	newEp.RegistryName = ep.RegistryName
+	newEp.RegistryPrefix = ep.RegistryPrefix
+	newEp.Username = ep.Username
+	newEp.Password = ep.Password
+	newEp.Credentials = ep.Credentials
+	newEp.Ping = ep.Ping
+	newEp.Cache = cache.NewMemCache()
+	return newEp
+}
+
+func init() {
+	for k, v := range defaultRegistries {
+		registries[k] = v.DeepCopy()
+	}
 }
