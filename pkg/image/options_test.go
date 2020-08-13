@@ -154,3 +154,27 @@ func Test_GetMatchOption(t *testing.T) {
 	})
 
 }
+
+func Test_GetSecretOption(t *testing.T) {
+	t.Run("Get cred source from annotation", func(t *testing.T) {
+		annotations := map[string]string{
+			fmt.Sprintf(common.SecretListAnnotation, "dummy"): "pullsecret:foo/bar",
+		}
+		img := NewFromIdentifier("dummy=foo/bar:1.12")
+		credSrc := img.GetParameterPullSecret(annotations)
+		require.NotNil(t, credSrc)
+		assert.Equal(t, CredentialSourcePullSecret, credSrc.Type)
+		assert.Equal(t, "foo", credSrc.SecretNamespace)
+		assert.Equal(t, "bar", credSrc.SecretName)
+		assert.Equal(t, ".dockerconfigjson", credSrc.SecretField)
+	})
+
+	t.Run("Invalid reference in annotation", func(t *testing.T) {
+		annotations := map[string]string{
+			fmt.Sprintf(common.SecretListAnnotation, "dummy"): "foo/bar",
+		}
+		img := NewFromIdentifier("dummy=foo/bar:1.12")
+		credSrc := img.GetParameterPullSecret(annotations)
+		require.Nil(t, credSrc)
+	})
+}
