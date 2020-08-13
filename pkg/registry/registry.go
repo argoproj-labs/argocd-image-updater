@@ -47,6 +47,8 @@ func (endpoint *RegistryEndpoint) GetTags(img *image.ContainerImage, regClient R
 				tags = append(tags, t)
 			}
 		}
+	} else {
+		tags = tTags
 	}
 
 	// If we don't want to fetch meta data, just build the taglist and return it
