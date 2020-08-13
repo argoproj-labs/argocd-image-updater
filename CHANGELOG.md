@@ -12,7 +12,11 @@ handling on your side.
 
 ### New features
 
+* feat: Allow filtering of tags using built-in filter functions
+
 ### Other changes
+
+* refactor: Lots of refactoring "under the hood"
 
 ## 2020-08-11 - Release v0.3.1
 

@@ -107,6 +107,34 @@ argocd-image-updater.argoproj.io/<image_name>.update-strategy: <strategy>
 If no update strategy is given, or an invalid value was used, the default
 strategy `semver` will be used.
 
+## Filtering tags
+
+You can specify an expression that is matched against each tag returned from
+the registry. On a positive match, the tag will be included in the list of tags
+that will be considered to update the image to. If the expression does not
+match the tag, the tag will not be included in the list. This allows you to
+only consider tags that you are generally interested in.
+
+You can define a tag filter by using the following annotation:
+
+```yaml
+argocd-image-updater.argoproj.io/<image_name>.tag-match: <match_func>
+```
+
+The following match functions are currently available:
+
+|Function|Description|
+|--------|-----------|
+|`regexp:<expression>`|Matches the tag name against the regular expression `<expression>`|
+|`any`|Will match any tag|
+
+If you specify an invalid match function, or the match function is misconfigured
+(i.e. an invalid regular expression is supplied), no tag will be matched at all
+to prevent considering (and possibly update to) the wrong tags by accident.
+
+If the annotation is not specified, a match function `any` will be used to match
+the tag names, effectively performing no filtering at all.
+
 ## Custom images with Kustomize
 
 In Kustomize, if you want to use an image from another registry or a completely
