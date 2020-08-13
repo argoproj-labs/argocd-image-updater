@@ -16,7 +16,7 @@ func MatchFuncNone(tagName string, args interface{}) bool {
 	return false
 }
 
-// MatchFuncRegexp matches the tagName agains regexp pattern and returns the result
+// MatchFuncRegexp matches the tagName against regexp pattern and returns the result
 func MatchFuncRegexp(tagName string, args interface{}) bool {
 	pattern, ok := args.(*regexp.Regexp)
 	if !ok {
