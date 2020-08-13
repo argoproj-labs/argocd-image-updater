@@ -2,6 +2,7 @@ package image
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
@@ -75,6 +76,41 @@ func (img *ContainerImage) GetParameterUpdateStrategy(annotations map[string]str
 	default:
 		log.Warnf("Unknown sort option in %s: %s -- using semver", key, val)
 		return VersionSortSemVer
+	}
+}
+
+// GetParameterMatch returns the match function and pattern to use for matching
+// tag names. If an invalid option is found, it returns MatchFuncNone as the
+// default, to prevent accidental matches.
+func (img *ContainerImage) GetParameterMatch(annotations map[string]string) (MatchFuncFn, interface{}) {
+	key := fmt.Sprintf(common.MatchOptionAnnotation, img.normalizedSymbolicName())
+	val, ok := annotations[key]
+	if !ok {
+		log.Tracef("No match annotation %s found", key)
+		return MatchFuncAny, ""
+	}
+
+	// The special value "any" doesn't take any parameter
+	if strings.ToLower(val) == "any" {
+		return MatchFuncAny, nil
+	}
+
+	opt := strings.SplitN(val, ":", 2)
+	if len(opt) != 2 {
+		log.Warnf("Invalid match option syntax '%s', ignoring", val)
+		return MatchFuncNone, nil
+	}
+	switch strings.ToLower(opt[0]) {
+	case "regexp":
+		re, err := regexp.Compile(opt[1])
+		if err != nil {
+			log.Warnf("Could not compile regexp '%s'", opt[1])
+			return MatchFuncNone, nil
+		}
+		return MatchFuncRegexp, re
+	default:
+		log.Warnf("Unknown match function: %s", opt[0])
+		return MatchFuncNone, nil
 	}
 }
 

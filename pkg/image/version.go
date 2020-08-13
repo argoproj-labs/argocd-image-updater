@@ -34,9 +34,12 @@ const (
 // VersionConstraint defines a constraint for comparing versions
 type VersionConstraint struct {
 	Constraint string
-	MatchMode  ConstraintMatchMode
+	MatchFunc  MatchFuncFn
+	MatchArgs  interface{}
 	SortMode   VersionSortMode
 }
+
+type MatchFuncFn func(tagName string, pattern interface{}) bool
 
 // String returns the string representation of VersionConstraint
 func (vc *VersionConstraint) String() string {

@@ -1,5 +1,6 @@
 ignore:
 - "**/*_test.go"
+- "**/mocks/*.go"
 - "test/**/*"
 - "vendor/**/*"
 coverage:

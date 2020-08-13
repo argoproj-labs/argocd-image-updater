@@ -68,6 +68,7 @@ func UpdateApplication(newRegFn registry.NewRegistryClient, argoClient ArgoCD, k
 		}
 
 		vc.SortMode = updateableImage.GetParameterUpdateStrategy(curApplication.Application.Annotations)
+		vc.MatchFunc, vc.MatchArgs = updateableImage.GetParameterMatch(curApplication.Application.Annotations)
 
 		err = rep.SetEndpointCredentials(kubeClient)
 		if err != nil {
