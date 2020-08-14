@@ -13,6 +13,7 @@ handling on your side.
 ### New features
 
 * feat: Allow filtering of tags using built-in filter functions
+* feat: Allow specifying per-image pull secrets
 
 ### Other changes
 
