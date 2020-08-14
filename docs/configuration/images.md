@@ -135,6 +135,41 @@ to prevent considering (and possibly update to) the wrong tags by accident.
 If the annotation is not specified, a match function `any` will be used to match
 the tag names, effectively performing no filtering at all.
 
+## Specifying pull secrets
+
+There are generally two ways on how to specify pull secrets for Argo CD Image
+Updater to use. Either you configure a secret reference globally for the
+container registry (as described [here](../registries/)), or you can specify
+the pull secret to use for a given image using the annotation
+
+```yaml
+argocd-image-updater.argoproj.io/<image_name>.pull-secret: <secret_ref>
+```
+
+A configuration for an image will override what is configured for the registry,
+for that certain image.
+
+The `secret_ref` can either be a reference to a secret or a reference to an
+environment variable. If a secret is referenced, the secret must exist in the
+cluster where Argo CD Image Updater is running in (or has access to).
+
+Valid values for `secret_ref` are:
+
+* `secret:<namespace>/<secret_name>#<field>` - Use credentials stored in the
+  field `field` from secret `secret_name` in namespace `namespace`.
+
+* `pullsecret:<namespace>/<secret_name>` - Use credentials stored in the secret
+  `secret_name` in namespace `namespace`. The secret is treated as Docker pull
+  secret, that is, it must have a valid Docker config in JSON format in the
+  field `.dockerconfigjson`.
+
+* `env:<variable_name>` - Use credentials supplied by the environment variable
+  named `variable_name`. This can be a variable that is i.e. bound from a
+  secret within your pod spec.
+
+In case of `secret` or `env`references, the data stored in the reference must
+be in format `<username>:<password>`
+
 ## Custom images with Kustomize
 
 In Kustomize, if you want to use an image from another registry or a completely
@@ -272,6 +307,8 @@ must be prefixed with `argocd-image-updater.argoproj.io`.
 |---------------|-------|-----------|
 |`image-list`|*none*|Comma separated list of images to consider for update|
 |`<image_alias>.update-strategy`|`semver`|The update strategy to be used for the image|
+|`<image_alias>.tag-match`|*any*|A function to match tag names from registry against to be considered for update|
+|`<image_alias>.pull-secret`|*none*|A reference to a secret to be used as registry credentials for this image|
 |`<image_alias>.helm.image-spec`|*none*|Name of the Helm parameter to specify the canonical name of the image, i.e. holds `image/name:1.0`. If this is set, other Helm parameter related options will be ignored.|
 |`<image_alias>.helm.image-name`|`image.name`|Name of the Helm parameter used for specifying the image name, i.e. holds `image/name`|
 |`<image_alias>.helm.image-tag`|`image.tag`|Name of the Helm parameter used for specifying the image tag, i.e. holds `1.0`|
