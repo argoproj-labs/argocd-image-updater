@@ -7,6 +7,20 @@ import (
 	"github.com/argoproj-labs/argocd-image-updater/pkg/cache"
 )
 
+// TagListSort defines how the registry returns the list of tags
+type TagListSort int
+
+const (
+	SortUnsorted    TagListSort = 0
+	SortLatestFirst TagListSort = 1
+	SortLatestLast  TagListSort = 2
+)
+
+// IsTimeSorted returns whether a tag list is time sorted
+func (tls TagListSort) IsTimeSorted() bool {
+	return tls == SortLatestFirst || tls == SortLatestLast
+}
+
 // RegistryEndpoint holds information on how to access any specific registry API
 // endpoint.
 type RegistryEndpoint struct {
@@ -17,6 +31,7 @@ type RegistryEndpoint struct {
 	Password       string
 	Ping           bool
 	Credentials    string
+	TagListSort    TagListSort
 	Cache          cache.ImageTagCache
 
 	lock sync.RWMutex
@@ -43,6 +58,14 @@ var defaultRegistries map[string]*RegistryEndpoint = map[string]*RegistryEndpoin
 		RegistryPrefix: "quay.io",
 		RegistryAPI:    "https://quay.io",
 		Ping:           false,
+		Cache:          cache.NewMemCache(),
+	},
+	"docker.pkg.github.com": {
+		RegistryName:   "GitHub registry",
+		RegistryPrefix: "docker.pkg.github.com",
+		RegistryAPI:    "https://docker.pkg.github.com",
+		Ping:           false,
+		TagListSort:    SortLatestFirst,
 		Cache:          cache.NewMemCache(),
 	},
 }
@@ -103,6 +126,7 @@ func (ep *RegistryEndpoint) DeepCopy() *RegistryEndpoint {
 	newEp.Password = ep.Password
 	newEp.Credentials = ep.Credentials
 	newEp.Ping = ep.Ping
+	newEp.TagListSort = ep.TagListSort
 	newEp.Cache = cache.NewMemCache()
 	return newEp
 }

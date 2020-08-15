@@ -165,10 +165,12 @@ svg
 svi
 svl
 taglist
+tagsortmode
 TEMPFILE
 testdata
 testns
 tl
+tls
 TLS
 tmp
 toc

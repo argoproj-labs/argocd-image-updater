@@ -16,6 +16,7 @@ type RegistryConfiguration struct {
 	ApiURL      string `yaml:"api_url"`
 	Ping        bool   `yaml:"ping,omitempty"`
 	Credentials string `yaml:"credentials,omitempty"`
+	TagSortMode string `yaml:"tagsortmode,omitempty"`
 	Prefix      string `yaml:"prefix,omitempty"`
 }
 
