@@ -51,11 +51,23 @@ func (endpoint *RegistryEndpoint) GetTags(img *image.ContainerImage, regClient R
 		tags = tTags
 	}
 
-	// If we don't want to fetch meta data, just build the taglist and return it
-	// with dummy meta data.
-	if vc.SortMode != image.VersionSortLatest {
-		for _, tagStr := range tags {
-			imgTag = tag.NewImageTag(tagStr, time.Unix(0, 0))
+	// In some cases, we don't need to fetch the metadata to get the creation time
+	// stamp of from the image's meta data:
+	//
+	// - We do not have sort mode == latest
+	// - The registry doesn't provide meta data and has tags sorted already
+	//
+	// We just create a dummy time stamp according to the registry's sort mode, if
+	// set.
+	if vc.SortMode != image.VersionSortLatest || endpoint.TagListSort.IsTimeSorted() {
+		for i, tagStr := range tags {
+			var ts int
+			if endpoint.TagListSort == SortLatestFirst {
+				ts = len(tags) - i
+			} else if endpoint.TagListSort == SortLatestLast {
+				ts = i
+			}
+			imgTag = tag.NewImageTag(tagStr, time.Unix(int64(ts), 0))
 			tagList.Add(imgTag)
 		}
 		return tagList, nil
