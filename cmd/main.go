@@ -186,7 +186,7 @@ func newRunCommand() *cobra.Command {
 				if err != nil || st.IsDir() {
 					log.Warnf("Registry configuration at %s could not be read: %v -- using a default configuration", cfg.RegistriesConf, err)
 				} else {
-					err = registry.LoadRegistryConfiguration(cfg.RegistriesConf)
+					err = registry.LoadRegistryConfiguration(cfg.RegistriesConf, false)
 					if err != nil {
 						log.Errorf("Could not load registry configuration from %s: %v", cfg.RegistriesConf, err)
 						return nil

@@ -16,11 +16,66 @@ func Test_ParseRegistryConfFromYaml(t *testing.T) {
 		require.NoError(t, err)
 		assert.Len(t, regList.Items, 3)
 	})
+
+	t.Run("Parse from invalid YAML: no name found", func(t *testing.T) {
+		registries := `
+registries:
+- api_url: https://foo.io
+  ping: false
+`
+		regList, err := ParseRegistryConfiguration(registries)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "name is missing")
+		assert.Len(t, regList.Items, 0)
+	})
+
+	t.Run("Parse from invalid YAML: no API URL found", func(t *testing.T) {
+		registries := `
+registries:
+- name: Foobar Registry
+  ping: false
+`
+		regList, err := ParseRegistryConfiguration(registries)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "API URL must be")
+		assert.Len(t, regList.Items, 0)
+	})
+
+	t.Run("Parse from invalid YAML: multiple registries without prefix", func(t *testing.T) {
+		registries := `
+registries:
+- name: Foobar Registry
+  api_url: https://foobar.io
+  ping: false
+- name: Barbar Registry
+  api_url: https://barbar.io
+  ping: false
+`
+		regList, err := ParseRegistryConfiguration(registries)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "already is Foobar Registry")
+		assert.Len(t, regList.Items, 0)
+	})
+
+	t.Run("Parse from invalid YAML: invalid tag sort mode", func(t *testing.T) {
+		registries := `
+registries:
+- name: Foobar Registry
+  api_url: https://foobar.io
+  ping: false
+  tagsortmode: invalid
+`
+		regList, err := ParseRegistryConfiguration(registries)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "unknown tag sort mode")
+		assert.Len(t, regList.Items, 0)
+	})
+
 }
 
 func Test_LoadRegistryConfiguration(t *testing.T) {
 	t.Run("Load from valid location", func(t *testing.T) {
-		err := LoadRegistryConfiguration("../../config/example-config.yaml")
+		err := LoadRegistryConfiguration("../../config/example-config.yaml", false)
 		require.NoError(t, err)
 		assert.Len(t, registries, 4)
 		reg, err := GetRegistryEndpoint("gcr.io")
