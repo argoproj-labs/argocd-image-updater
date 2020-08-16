@@ -10,6 +10,8 @@ handling on your side.
 
 ### Bug fixes
 
+* fix: Properly load registry configuration
+
 ### New features
 
 * feat: Allow filtering of tags using built-in filter functions

@@ -6,6 +6,7 @@ box:
 * Docker Hub Registry
 * Google Container Registry
 * RedHat Quay Registry
+* GitHub Docker Registry
 
 Adding additional (and custom) container registries is supported by means of a
 configuration file. If you run Argo CD Image Updater within Kubernetes, you can
@@ -33,19 +34,38 @@ registries:
   ping: no
   prefix: quay.io
   credentials: env:REGISTRY_SECRET
+- name: GitHub Container Registry
+  api_url: https://docker.pkg.github.com
+  ping: no
+  tagsortmode: latest_first
 ```
 
 The above example defines access to three registries. The properties have the
 following semantics:
 
 * `name` is just a symbolic name for the registry. Must be unique.
+
 * `api_url` is the base URL (without `/v2` suffix) to the API of the registry
+
 * `ping` specifies whether to send a ping request to `/v2` endpoint first.
   Some registries don't support this.
+
 * `prefix` is the prefix used in the image specification. This prefix will
-  be consulted when determining the configuration for given image(s).
-* `credentials` is a reference to the credentials to use for accessing the
-   registry API (see below)
+  be consulted when determining the configuration for given image(s). If no
+  prefix is specified, will be used as the default registry. The prefix is
+  mandatory, except for one of the registries in the configuration.
+
+* `credentials` (optional) is a reference to the credentials to use for
+  accessing the registry API (see below)
+
+* `tagsortmode` (optional) defines whether and how the list of tags is sorted
+  chronologically by the registry. Valid values are `latest_first` (the last
+  pushed image will appear first in list), `latest_last` (the last pushed image
+  will appear last in list) or `none` (the default, list is not chronological
+  sorted). If `tagsortmode` is set to one of `latest_first` or `latest_last`,
+  Argo CD Image Updater will not request additional meta data from the registry
+  if the `<image_alias>.sort-mode` is `latest` but will instead use the sorting
+  from the tag list.
 
 If you want to take above example to the `argocd-image-updater-cm` ConfigMap,
 you need to define the key `registries.conf` in the data of the ConfigMap as
@@ -79,16 +99,22 @@ data:
 ## Specifying credentials for accessing container registries
 
 You can optionally specify a reference to a secret or an environment variable
-which contain credentials for accessing the container registry with each image.
+which contain credentials for accessing the container registry. If credentials
+are configured for a registry, they will be used as a default when accessing
+the registry and no dedicated credential is specified for the image that is
+being processed.
 
 Credentials can be referenced as follows:
 
 * A typical pull secret, i.e. a secret containing a `.dockerconfigjson` field
   which holds a Docker client configuration with auth information in JSON
-  format.
+  format. This kind of secret is specified using the notation
+  `pullsecret:<namespace>/<secret_name>`
 
 * A custom secret, which has the credentials stored in a configurable field in
-  the format `<username>:<password>`
+  the format `<username>:<password>`. This kind of secret is specified using
+  the notation `secret:<namespace>/<secret_name>#<field_in_secret>`
 
 * An environment variable which holds the credentials in the format
-  `<username>:<password>`
+  `<username>:<password>`. This kind of secret is specified using the notation
+  `env:<env_var_name>`.
