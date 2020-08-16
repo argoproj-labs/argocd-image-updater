@@ -6,6 +6,7 @@ box:
 * Docker Hub Registry
 * Google Container Registry
 * RedHat Quay Registry
+* GitHub Docker Registry
 
 Adding additional (and custom) container registries is supported by means of a
 configuration file. If you run Argo CD Image Updater within Kubernetes, you can
