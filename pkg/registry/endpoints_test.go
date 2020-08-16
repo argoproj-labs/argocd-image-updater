@@ -31,7 +31,7 @@ func Test_GetEndpoints(t *testing.T) {
 
 func Test_AddEndpoint(t *testing.T) {
 	t.Run("Add new endpoint", func(t *testing.T) {
-		err := AddRegistryEndpoint("example.com", "Example", "https://example.com", "", "", "")
+		err := AddRegistryEndpoint("example.com", "Example", "https://example.com", "")
 		require.NoError(t, err)
 	})
 	t.Run("Get example.com endpoint", func(t *testing.T) {
@@ -43,30 +43,28 @@ func Test_AddEndpoint(t *testing.T) {
 		assert.Equal(t, ep.RegistryAPI, "https://example.com")
 	})
 	t.Run("Change existing endpoint", func(t *testing.T) {
-		err := AddRegistryEndpoint("example.com", "Example", "https://example.com", "", "", "")
+		err := AddRegistryEndpoint("example.com", "Example", "https://example.com", "")
 		require.NoError(t, err)
 	})
 }
 
 func Test_SetEndpointCredentials(t *testing.T) {
 	t.Run("Set credentials on default registry", func(t *testing.T) {
-		err := SetRegistryEndpointCredentials("", "username", "password")
+		err := SetRegistryEndpointCredentials("", "env:FOOBAR")
 		require.NoError(t, err)
 		ep, err := GetRegistryEndpoint("")
 		require.NoError(t, err)
 		require.NotNil(t, ep)
-		assert.Equal(t, ep.Username, "username")
-		assert.Equal(t, ep.Password, "password")
+		assert.Equal(t, ep.Credentials, "env:FOOBAR")
 	})
 
 	t.Run("Unset credentials on default registry", func(t *testing.T) {
-		err := SetRegistryEndpointCredentials("", "", "")
+		err := SetRegistryEndpointCredentials("", "")
 		require.NoError(t, err)
 		ep, err := GetRegistryEndpoint("")
 		require.NoError(t, err)
 		require.NotNil(t, ep)
-		assert.Equal(t, ep.Username, "")
-		assert.Equal(t, ep.Password, "")
+		assert.Equal(t, ep.Credentials, "")
 	})
 }
 
@@ -85,9 +83,8 @@ func Test_EndpointConcurrentAccess(t *testing.T) {
 	t.Run("Concurrent write access", func(t *testing.T) {
 		for i := 0; i < 50; i++ {
 			go func(i int) {
-				username := fmt.Sprintf("Username-%d", i)
-				password := fmt.Sprintf("Password-%d", i)
-				err := SetRegistryEndpointCredentials("", username, password)
+				creds := fmt.Sprintf("secret:foo/secret-%d", i)
+				err := SetRegistryEndpointCredentials("", creds)
 				require.NoError(t, err)
 				ep, err := GetRegistryEndpoint("")
 				require.NoError(t, err)
@@ -110,5 +107,28 @@ func Test_DeepCopy(t *testing.T) {
 		assert.Equal(t, ep.TagListSort, newEp.TagListSort)
 		assert.Equal(t, ep.Username, newEp.Username)
 		assert.Equal(t, ep.Ping, newEp.Ping)
+	})
+}
+
+func Test_GetTagListSortFromString(t *testing.T) {
+	t.Run("Get latest-first sorting", func(t *testing.T) {
+		tls := TagListSortFromString("latest-first")
+		assert.Equal(t, SortLatestFirst, tls)
+	})
+	t.Run("Get latest-last sorting", func(t *testing.T) {
+		tls := TagListSortFromString("latest-last")
+		assert.Equal(t, SortLatestLast, tls)
+	})
+	t.Run("Get none sorting explicit", func(t *testing.T) {
+		tls := TagListSortFromString("none")
+		assert.Equal(t, SortUnsorted, tls)
+	})
+	t.Run("Get none sorting implicit", func(t *testing.T) {
+		tls := TagListSortFromString("")
+		assert.Equal(t, SortUnsorted, tls)
+	})
+	t.Run("Get none sorting from unknown", func(t *testing.T) {
+		tls := TagListSortFromString("unknown")
+		assert.Equal(t, SortUnsorted, tls)
 	})
 }

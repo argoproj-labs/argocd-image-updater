@@ -2,9 +2,11 @@ package registry
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/argoproj-labs/argocd-image-updater/pkg/cache"
+	"github.com/argoproj-labs/argocd-image-updater/pkg/log"
 )
 
 // TagListSort defines how the registry returns the list of tags
@@ -19,6 +21,21 @@ const (
 // IsTimeSorted returns whether a tag list is time sorted
 func (tls TagListSort) IsTimeSorted() bool {
 	return tls == SortLatestFirst || tls == SortLatestLast
+}
+
+// TagListSortFromString gets the TagListSort value from a given string
+func TagListSortFromString(tls string) TagListSort {
+	switch strings.ToLower(tls) {
+	case "latest-first":
+		return SortLatestFirst
+	case "latest-last":
+		return SortLatestLast
+	case "none", "":
+		return SortUnsorted
+	default:
+		log.Warnf("unknown tag list sort mode: %s", tls)
+		return SortUnsorted
+	}
 }
 
 // RegistryEndpoint holds information on how to access any specific registry API
@@ -76,15 +93,13 @@ var registries map[string]*RegistryEndpoint = make(map[string]*RegistryEndpoint)
 var registryLock sync.RWMutex
 
 // AddRegistryEndpoint adds registry endpoint information with the given details
-func AddRegistryEndpoint(prefix, name, apiUrl, username, password, credentials string) error {
+func AddRegistryEndpoint(prefix, name, apiUrl, credentials string) error {
 	registryLock.Lock()
 	defer registryLock.Unlock()
 	registries[prefix] = &RegistryEndpoint{
 		RegistryName:   name,
 		RegistryPrefix: prefix,
 		RegistryAPI:    apiUrl,
-		Username:       username,
-		Password:       password,
 		Credentials:    credentials,
 		Cache:          cache.NewMemCache(),
 	}
@@ -104,14 +119,13 @@ func GetRegistryEndpoint(prefix string) (*RegistryEndpoint, error) {
 
 // SetRegistryEndpointCredentials allows to change the credentials used for
 // endpoint access for existing RegistryEndpoint configuration
-func SetRegistryEndpointCredentials(prefix, username, password string) error {
+func SetRegistryEndpointCredentials(prefix, credentials string) error {
 	registry, err := GetRegistryEndpoint(prefix)
 	if err != nil {
 		return err
 	}
 	registry.lock.Lock()
-	registry.Username = username
-	registry.Password = password
+	registry.Credentials = credentials
 	registry.lock.Unlock()
 	return nil
 }
@@ -122,8 +136,6 @@ func (ep *RegistryEndpoint) DeepCopy() *RegistryEndpoint {
 	newEp.RegistryAPI = ep.RegistryAPI
 	newEp.RegistryName = ep.RegistryName
 	newEp.RegistryPrefix = ep.RegistryPrefix
-	newEp.Username = ep.Username
-	newEp.Password = ep.Password
 	newEp.Credentials = ep.Credentials
 	newEp.Ping = ep.Ping
 	newEp.TagListSort = ep.TagListSort

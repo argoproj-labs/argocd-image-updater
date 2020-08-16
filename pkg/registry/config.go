@@ -27,7 +27,7 @@ type RegistryList struct {
 
 // LoadRegistryConfiguration loads a YAML-formatted registry configuration from
 // a given file at path.
-func LoadRegistryConfiguration(path string) error {
+func LoadRegistryConfiguration(path string, clear bool) error {
 	registryBytes, err := ioutil.ReadFile(path)
 	if err != nil {
 		return err
@@ -36,12 +36,20 @@ func LoadRegistryConfiguration(path string) error {
 	if err != nil {
 		return err
 	}
+
+	if clear {
+		registryLock.Lock()
+		registries = make(map[string]*RegistryEndpoint)
+		registryLock.Unlock()
+	}
+
 	for _, reg := range registryList.Items {
-		err = AddRegistryEndpoint(reg.Prefix, reg.Name, reg.ApiURL, "", "", reg.Credentials)
+		err = AddRegistryEndpoint(reg.Prefix, reg.Name, reg.ApiURL, reg.Credentials)
 		if err != nil {
 			return err
 		}
 	}
+
 	log.Infof("Loaded %d registry configurations from %s", len(registryList.Items), path)
 	return nil
 }
@@ -50,6 +58,7 @@ func LoadRegistryConfiguration(path string) error {
 // of registries.
 func ParseRegistryConfiguration(yamlSource string) (RegistryList, error) {
 	var regList RegistryList
+	var defaultPrefixFound = ""
 	err := yaml.UnmarshalStrict([]byte(yamlSource), &regList)
 	if err != nil {
 		return RegistryList{}, err
@@ -59,6 +68,22 @@ func ParseRegistryConfiguration(yamlSource string) (RegistryList, error) {
 	for _, registry := range regList.Items {
 		if registry.Name == "" {
 			err = fmt.Errorf("registry name is missing for entry %v", registry)
+		} else if registry.ApiURL == "" {
+			err = fmt.Errorf("API URL must be specified for registry %s", registry.Name)
+		} else if registry.Prefix == "" {
+			if defaultPrefixFound != "" {
+				err = fmt.Errorf("there must be only one default registry (already is %s), %s needs a prefix", defaultPrefixFound, registry.Name)
+			} else {
+				defaultPrefixFound = registry.Name
+			}
+		}
+
+		if err == nil {
+			switch registry.TagSortMode {
+			case "latest-first", "latest-last", "none", "":
+			default:
+				err = fmt.Errorf("unknown tag sort mode for registry %s: %s", registry.Name, registry.TagSortMode)
+			}
 		}
 	}
 
@@ -72,6 +97,8 @@ func ParseRegistryConfiguration(yamlSource string) (RegistryList, error) {
 // RestRestoreDefaultRegistryConfiguration restores the registry configuration
 // to the default values.
 func RestoreDefaultRegistryConfiguration() {
+	registryLock.Lock()
+	defer registryLock.Unlock()
 	registries = make(map[string]*RegistryEndpoint)
 	for k, v := range defaultRegistries {
 		registries[k] = v.DeepCopy()
