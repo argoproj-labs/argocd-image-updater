@@ -4,7 +4,9 @@ set -eo pipefail
 set -x
 
 SRCROOT="$( CDPATH='' cd -- "$(dirname "$0")/.." && pwd -P )"
-KUSTOMIZE="kustomize"
+# Make sure that KUSTOMIZE points to a v2 - we need that to support the kubectl
+# integration.
+KUSTOMIZE=${KUSTOMIZE:-kustomize2}
 TEMPFILE=$(mktemp /tmp/aic-manifests.XXXXXX)
 
 IMAGE_NAMESPACE="${IMAGE_NAMESPACE:-argoprojlabs}"
@@ -23,7 +25,7 @@ if [ "$IMAGE_TAG" = "" ]; then
   IMAGE_TAG=latest
 fi
 
-cd ${SRCROOT}/manifests/base && kustomize edit set image argoprojlabs/argocd-image-updater=${IMAGE_NAMESPACE}/argocd-image-updater:${IMAGE_TAG}
+cd ${SRCROOT}/manifests/base && ${KUSTOMIZE} edit set image ${IMAGE_NAMESPACE}/argocd-image-updater:${IMAGE_TAG}
 cd ${SRCROOT}/manifests/base && ${KUSTOMIZE} build . > ${TEMPFILE}
 
 mv ${TEMPFILE} ${SRCROOT}/manifests/install.yaml
