@@ -12,20 +12,9 @@ N/A
 
 ### Bug fixes
 
-* fix: Properly load registry configuration
-* fix: Use a default path for registries.conf
-* fix: Make installation base compatible with Kustomize v2
-
 ### New features
 
-* feat: Allow filtering of tags using built-in filter functions
-* feat: Allow specifying per-image pull secrets
-* feat: Support GitHub Docker registry
-
 ### Other changes
-
-* refactor: Lots of refactoring "under the hood"
-
 
 ## 2020-08-18 - Release v0.4.0
 
