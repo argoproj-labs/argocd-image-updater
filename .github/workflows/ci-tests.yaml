@@ -26,6 +26,28 @@ jobs:
         run: |
           go mod tidy
           git diff --exit-code -- .
+  codegen:
+    name: Run codegen
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+      - name: Install Kustomize v2
+        run: |
+          set -xo pipefail
+          KUSTOMIZE_VERSION=2.0.2
+          URL="https://github.com/kubernetes-sigs/kustomize/releases/download/v${KUSTOMIZE_VERSION}/kustomize_${KUSTOMIZE_VERSION}_linux_amd64"
+          BINNAME=kustomize2
+          curl -sLf --retry 3 -o /tmp/kustomize2 "$URL"
+          sudo mv /tmp/kustomize2 /usr/local/bin/kustomize2
+          chmod +x /usr/local/bin/kustomize2
+      - name: Run make manifests
+        run: |
+          make manifests
+      - name: Check nothing has changed
+        run: |
+          set -xo pipefail
+          git diff --exit-code -- . ':!go.sum' ':!go.mod' ':!assets/swagger.json' | tee codegen.patch
   lint:
     name: Ensure code is correctly linted
     runs-on: ubuntu-latest
