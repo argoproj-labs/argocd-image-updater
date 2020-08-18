@@ -38,7 +38,8 @@ jobs:
           KUSTOMIZE_VERSION=2.0.2
           URL="https://github.com/kubernetes-sigs/kustomize/releases/download/v${KUSTOMIZE_VERSION}/kustomize_${KUSTOMIZE_VERSION}_linux_amd64"
           BINNAME=kustomize2
-          curl -sLf --retry 3 -o /usr/local/bin/kustomize2 "$URL"
+          curl -sLf --retry 3 -o /tmp/kustomize2 "$URL"
+          sudo mv /tmp/kustomize2 /usr/local/bin/kustomize2
           chmod +x /usr/local/bin/kustomize2
       - name: Run make manifests
         run: |
