@@ -26,6 +26,9 @@ var lastRun time.Time
 // Default ArgoCD server address when running in same cluster as ArgoCD
 const defaultArgoCDServerAddr = "argocd-server.argocd"
 
+// Default path to registry configuration
+const defaultRegistriesConfPath = "/app/config/registries.conf"
+
 // ImageUpdaterConfig contains global configuration and required runtime data
 type ImageUpdaterConfig struct {
 	ClientOpts      argocd.ClientOptions
@@ -184,7 +187,7 @@ func newRunCommand() *cobra.Command {
 			if cfg.RegistriesConf != "" {
 				st, err := os.Stat(cfg.RegistriesConf)
 				if err != nil || st.IsDir() {
-					log.Warnf("Registry configuration at %s could not be read: %v -- using a default configuration", cfg.RegistriesConf, err)
+					log.Warnf("Registry configuration at %s could not be read: %v -- using default configuration", cfg.RegistriesConf, err)
 				} else {
 					err = registry.LoadRegistryConfiguration(cfg.RegistriesConf, false)
 					if err != nil {
@@ -298,7 +301,7 @@ func newRunCommand() *cobra.Command {
 	runCmd.Flags().StringVar(&kubeConfig, "kubeconfig", "", "full path to kubernetes client configuration, i.e. ~/.kube/config")
 	runCmd.Flags().IntVar(&cfg.HealthPort, "health-port", 8080, "port to start the health server on, 0 to disable")
 	runCmd.Flags().BoolVar(&once, "once", false, "run only once, same as specifying --interval=0 and --health-port=0")
-	runCmd.Flags().StringVar(&cfg.RegistriesConf, "registries-conf-path", "", "path to registries configuration file")
+	runCmd.Flags().StringVar(&cfg.RegistriesConf, "registries-conf-path", defaultRegistriesConfPath, "path to registries configuration file")
 	runCmd.Flags().BoolVar(&disableKubernetes, "disable-kubernetes", false, "do not create and use a Kubernetes client")
 	runCmd.Flags().IntVar(&cfg.MaxConcurrency, "max-concurrency", 10, "maximum number of update threads to run concurrently")
 	runCmd.Flags().StringVar(&cfg.ArgocdNamespace, "argocd-namespace", "argocd", "namespace where ArgoCD runs in")
