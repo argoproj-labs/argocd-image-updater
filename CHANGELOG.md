@@ -11,11 +11,14 @@ handling on your side.
 ### Bug fixes
 
 * fix: Properly load registry configuration
+* fix: Use a default path for registries.conf
+* fix: Make installation base compatible with Kustomize v2
 
 ### New features
 
 * feat: Allow filtering of tags using built-in filter functions
 * feat: Allow specifying per-image pull secrets
+* feat: Support GitHub Docker registry
 
 ### Other changes
 
