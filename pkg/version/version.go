@@ -6,7 +6,7 @@ const (
 	majorVersion     = "0"
 	minorVersion     = "4"
 	patchVersion     = "0"
-	preReleaseString = "master"
+	preReleaseString = ""
 )
 
 const binaryName = "argocd-image-updater"

@@ -75,7 +75,7 @@ spec:
               key: argocd.token
               name: argocd-image-updater-secret
               optional: true
-        image: argoprojlabs/argocd-image-updater:latest
+        image: argoprojlabs/argocd-image-updater:v0.4.0
         imagePullPolicy: Always
         livenessProbe:
           httpGet:
