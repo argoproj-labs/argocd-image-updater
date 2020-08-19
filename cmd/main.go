@@ -41,6 +41,7 @@ type ImageUpdaterConfig struct {
 	MaxConcurrency  int
 	HealthPort      int
 	RegistriesConf  string
+	AppNamePatterns []string
 }
 
 // Main loop for argocd-image-controller
@@ -66,7 +67,7 @@ func runImageUpdater(cfg *ImageUpdaterConfig) (argocd.ImageUpdaterResult, error)
 
 	// Get the list of applications that are allowed for updates, that is, those
 	// applications which have correct annotation.
-	appList, err := argocd.FilterApplicationsForUpdate(apps)
+	appList, err := argocd.FilterApplicationsForUpdate(apps, cfg.AppNamePatterns)
 	if err != nil {
 		return result, err
 	}
@@ -305,6 +306,7 @@ func newRunCommand() *cobra.Command {
 	runCmd.Flags().BoolVar(&disableKubernetes, "disable-kubernetes", false, "do not create and use a Kubernetes client")
 	runCmd.Flags().IntVar(&cfg.MaxConcurrency, "max-concurrency", 10, "maximum number of update threads to run concurrently")
 	runCmd.Flags().StringVar(&cfg.ArgocdNamespace, "argocd-namespace", "argocd", "namespace where ArgoCD runs in")
+	runCmd.Flags().StringSliceVar(&cfg.AppNamePatterns, "match-application-name", nil, "patterns to match application name against")
 
 	return runCmd
 }

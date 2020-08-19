@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
@@ -81,17 +82,43 @@ type ApplicationImages struct {
 // update.
 type ImageList map[string]ApplicationImages
 
+// Match a name against a list of patterns
+func nameMatchesPattern(name string, patterns []string) bool {
+	if len(patterns) == 0 {
+		return true
+	}
+	for _, p := range patterns {
+		log.Tracef("Matching application name %s against pattern %s", name, p)
+		if m, err := filepath.Match(p, name); err != nil {
+			log.Warnf("Invalid application name pattern '%s': %v", p, err)
+		} else if m {
+			return true
+		}
+	}
+	return false
+}
+
 // Retrieve a list of applications from ArgoCD that qualify for image updates
 // Application needs either to be of type Kustomize or Helm and must have the
 // correct annotation in order to be considered.
-func FilterApplicationsForUpdate(apps []v1alpha1.Application) (map[string]ApplicationImages, error) {
+func FilterApplicationsForUpdate(apps []v1alpha1.Application, patterns []string) (map[string]ApplicationImages, error) {
 	var appsForUpdate = make(map[string]ApplicationImages)
 
 	for _, app := range apps {
+
+		// Check for valid application type
 		if !IsValidApplicationType(&app) {
 			log.Tracef("skipping app '%s' of type '%s' because it's not of supported source type", app.GetName(), app.Status.SourceType)
 			continue
 		}
+
+		// Check if application name matches requested patterns
+		if !nameMatchesPattern(app.GetName(), patterns) {
+			log.Tracef("Skipping app '%s' because it does not match requested patterns", app.GetName())
+			continue
+		}
+
+		// Check whether application has our annotation set
 		annotations := app.GetAnnotations()
 		if updateImage, ok := annotations[common.ImageUpdaterAnnotation]; !ok {
 			log.Tracef("skipping app '%s' of type '%s' because required annotation is missing", app.GetName(), app.Status.SourceType)
