@@ -1,3 +1,4 @@
 wohoo
 myuser
 mypass
+otherapp
