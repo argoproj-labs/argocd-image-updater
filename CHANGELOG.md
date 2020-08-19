@@ -14,6 +14,8 @@ N/A
 
 ### New features
 
+* feat: Allow filtering applications by name patterns
+
 ### Other changes
 
 ## 2020-08-18 - Release v0.4.0
