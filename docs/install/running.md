@@ -60,8 +60,8 @@ Can also be set using the *ARGOCD_PLAINTEXT* environment variable.
 **--argocd-server-addr *server address* **
 
 Connect to the Argo CD API server at *server address*. *server address* must
-be a valid IP address or DNS hostname, optionally with a port specification
-delimeted using a colon, i.e. *10.23.42.5* or *argocd-server.argocd:8080*.
+be a valid IP address or DNS host name, optionally with a port specification
+delimited using a colon, i.e. *10.23.42.5* or *argocd-server.argocd:8080*.
 If no port given, the protocol default will be used: Port 80 for plaintext
 connections, and port 443 for TLS connections.
 
@@ -90,7 +90,7 @@ Use value *0* for *port* to disable launching the health server.
 Sets the interval for checking whether there are new images available to
 *duration*. *duration* must be given as a valid duration identifier with
 a unit suffix, i.e. `2m` for 2 minutes or `30s` for 30 seconds. If no unit
-is given, miliseconds will be assumed. If set to `0`, ArgoCD Image Updater
+is given, milliseconds will be assumed. If set to `0`, ArgoCD Image Updater
 will exit after the first run, effectively disabling the interval. Default
 value is `2m0s`.
 

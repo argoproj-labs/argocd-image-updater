@@ -2,3 +2,4 @@ wohoo
 myuser
 mypass
 otherapp
+wildcard

@@ -85,6 +85,7 @@ ioutil
 itl
 jannfis
 json
+JWT
 ks
 Ksonnet
 kube
