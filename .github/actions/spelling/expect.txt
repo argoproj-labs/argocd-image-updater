@@ -3,3 +3,4 @@ myuser
 mypass
 otherapp
 wildcard
+wildcards
