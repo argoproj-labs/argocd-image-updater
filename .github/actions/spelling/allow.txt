@@ -146,6 +146,8 @@ regexp
 regmock
 RLock
 roadmap
+rolebinding
+rolebindings
 RUnlock
 semver
 serviceaccount
