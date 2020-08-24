@@ -72,7 +72,7 @@ func runImageUpdater(cfg *ImageUpdaterConfig) (argocd.ImageUpdaterResult, error)
 		return result, err
 	}
 
-	log.Debugf("Considering %d applications with annotations for update", len(appList))
+	log.Infof("Starting image update cycle, considering %d annotated application(s) for update", len(appList))
 
 	// Allow a maximum of MaxConcurrency number of goroutines to exist at the
 	// same time.
@@ -84,7 +84,7 @@ func runImageUpdater(cfg *ImageUpdaterConfig) (argocd.ImageUpdaterResult, error)
 	for app, curApplication := range appList {
 		lockErr := sem.Acquire(context.TODO(), 1)
 		if lockErr != nil {
-			log.Errorf("could not acquire semaphore for application %s: %v", app, lockErr)
+			log.Errorf("Could not acquire semaphore for application %s: %v", app, lockErr)
 			// Release entry in wait group on error, too - we're never gonna execute
 			wg.Done()
 			continue
@@ -199,7 +199,7 @@ func newRunCommand() *cobra.Command {
 			}
 
 			if cfg.CheckInterval > 0 && cfg.CheckInterval < 60*time.Second {
-				log.Warnf("check interval is very low - it is not recommended to run below 1m0s")
+				log.Warnf("Check interval is very low - it is not recommended to run below 1m0s")
 			}
 
 			var fullKubeConfigPath string
@@ -260,18 +260,11 @@ func newRunCommand() *cobra.Command {
 					}
 				default:
 					if lastRun.IsZero() || time.Since(lastRun) > cfg.CheckInterval {
-						log.Debugf("Starting image update process")
 						result, err := runImageUpdater(cfg)
 						if err != nil {
 							log.Errorf("Error: %v", err)
-						} else if result.NumImagesUpdated > 0 || result.NumErrors > 0 {
-							log.Infof("Processing results: applications=%d images_considered=%d images_updated=%d errors=%d",
-								result.NumApplicationsProcessed,
-								result.NumImagesConsidered,
-								result.NumImagesUpdated,
-								result.NumErrors)
 						} else {
-							log.Debugf("Processing results: applications=%d images_considered=%d images_skipped=%d images_updated=%d errors=%d",
+							log.Infof("Processing results: applications=%d images_considered=%d images_skipped=%d images_updated=%d errors=%d",
 								result.NumApplicationsProcessed,
 								result.NumImagesConsidered,
 								result.NumSkipped,
