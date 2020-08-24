@@ -101,11 +101,11 @@ func (src *CredentialSource) FetchCredentials(registryURL string, kubeclient *cl
 	case CredentialSourceSecret:
 		data, err := kubeclient.GetSecretField(src.SecretNamespace, src.SecretName, src.SecretField)
 		if err != nil {
-			return nil, fmt.Errorf("could not fetch secret '%s' from namespace '%s' (field: '%s'): %v", src.SecretNamespace, src.SecretName, src.SecretField, err)
+			return nil, fmt.Errorf("could not fetch secret '%s' from namespace '%s' (field: '%s'): %v", src.SecretName, src.SecretNamespace, src.SecretField, err)
 		}
 		tokens := strings.SplitN(data, ":", 2)
 		if len(tokens) != 2 {
-			return nil, fmt.Errorf("invalid credentials in secret %s/%s, field %s", src.SecretNamespace, src.SecretName, src.SecretField)
+			return nil, fmt.Errorf("invalid credentials in secret '%s' from namespace '%s' (field '%s')", src.SecretName, src.SecretNamespace, src.SecretField)
 		}
 		creds.Username = tokens[0]
 		creds.Password = tokens[1]
@@ -114,7 +114,7 @@ func (src *CredentialSource) FetchCredentials(registryURL string, kubeclient *cl
 		src.SecretField = pullSecretField
 		data, err := kubeclient.GetSecretField(src.SecretNamespace, src.SecretName, src.SecretField)
 		if err != nil {
-			return nil, fmt.Errorf("could not fetch secret '%s' from namespace '%s' (field: '%s'): %v", src.SecretNamespace, src.SecretName, src.SecretField, err)
+			return nil, fmt.Errorf("could not fetch secret '%s' from namespace '%s' (field: '%s'): %v", src.SecretName, src.SecretNamespace, src.SecretField, err)
 		}
 		creds.Username, creds.Password, err = parseDockerConfigJson(registryURL, data)
 		if err != nil {
