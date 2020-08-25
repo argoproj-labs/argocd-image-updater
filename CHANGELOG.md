@@ -12,11 +12,16 @@ N/A
 
 ### Bug fixes
 
+* fix: Do not check for semver if update strategy is latest
+
 ### New features
 
 * feat: Allow filtering applications by name patterns
 
 ### Other changes
+
+* enhancement: Slightly increase verbosity in default log level
+* enhancement: Provide default RBAC rules for serviceaccount
 
 ## 2020-08-18 - Release v0.4.0
 
