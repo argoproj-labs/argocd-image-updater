@@ -18,6 +18,14 @@ func newImageTagList(tagNames []string) *tag.ImageTagList {
 	return tagList
 }
 
+func newImageTagListWithDate(tagNames []string) *tag.ImageTagList {
+	tagList := tag.NewImageTagList()
+	for i, t := range tagNames {
+		tagList.Add(tag.NewImageTag(t, time.Unix(int64(i*5), 0)))
+	}
+	return tagList
+}
+
 func Test_LatestVersion(t *testing.T) {
 	t.Run("Find the latest version without any constraint", func(t *testing.T) {
 		tagList := newImageTagList([]string{"0.1", "0.5.1", "0.9", "1.0", "1.0.1", "1.1.2", "2.0.3"})
@@ -76,6 +84,26 @@ func Test_LatestVersion(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, newTag)
 		assert.Equal(t, "1.0", newTag.TagName)
+	})
+
+	t.Run("Find the latest version using latest sortmode", func(t *testing.T) {
+		tagList := newImageTagListWithDate([]string{"zz", "bb", "yy", "cc", "yy", "aa", "ll"})
+		img := NewFromIdentifier("jannfis/test:bb")
+		vc := VersionConstraint{SortMode: VersionSortLatest}
+		newTag, err := img.GetNewestVersionFromTags(&vc, tagList)
+		require.NoError(t, err)
+		require.NotNil(t, newTag)
+		assert.Equal(t, "ll", newTag.TagName)
+	})
+
+	t.Run("Find the latest version using latest sortmode, invalid tags", func(t *testing.T) {
+		tagList := newImageTagListWithDate([]string{"zz", "bb", "yy", "cc", "yy", "aa", "ll"})
+		img := NewFromIdentifier("jannfis/test:bb")
+		vc := VersionConstraint{SortMode: VersionSortSemVer}
+		newTag, err := img.GetNewestVersionFromTags(&vc, tagList)
+		require.NoError(t, err)
+		require.NotNil(t, newTag)
+		assert.Equal(t, "bb", newTag.TagName)
 	})
 
 }
