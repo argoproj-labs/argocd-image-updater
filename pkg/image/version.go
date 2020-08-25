@@ -70,18 +70,20 @@ func (img *ContainerImage) GetNewestVersionFromTags(vc *VersionConstraint, tagLi
 		return img.ImageTag, nil
 	}
 
-	_, err := semver.NewVersion(img.ImageTag.TagName)
-	if err != nil {
-		return nil, err
-	}
-
 	// The given constraint MUST match a semver constraint
 	var semverConstraint *semver.Constraints
-	if vc.Constraint != "" {
-		semverConstraint, err = semver.NewConstraint(vc.Constraint)
+	if vc.SortMode == VersionSortSemVer {
+		_, err := semver.NewVersion(img.ImageTag.TagName)
 		if err != nil {
-			logCtx.Errorf("invalid constraint '%s' given: '%v'", vc, err)
 			return nil, err
+		}
+
+		if vc.Constraint != "" {
+			semverConstraint, err = semver.NewConstraint(vc.Constraint)
+			if err != nil {
+				logCtx.Errorf("invalid constraint '%s' given: '%v'", vc, err)
+				return nil, err
+			}
 		}
 	}
 
@@ -89,19 +91,21 @@ func (img *ContainerImage) GetNewestVersionFromTags(vc *VersionConstraint, tagLi
 	for _, tag := range availableTags {
 		logCtx.Tracef("Finding out whether to consider %s for being updateable", tag.TagName)
 
-		// Non-parseable tag does not mean error - just skip it
-		ver, err := semver.NewVersion(tag.TagName)
-		if err != nil {
-			logCtx.Tracef("Not a valid version: %s", tag.TagName)
-			continue
-		}
-
-		// If we have a version constraint, check image tag against it. If the
-		// constraint is not satisfied, skip tag.
-		if semverConstraint != nil {
-			if !semverConstraint.Check(ver) {
-				logCtx.Tracef("%s did not match constraint %s", ver.Original(), vc.Constraint)
+		if vc.SortMode == VersionSortSemVer {
+			// Non-parseable tag does not mean error - just skip it
+			ver, err := semver.NewVersion(tag.TagName)
+			if err != nil {
+				logCtx.Tracef("Not a valid version: %s", tag.TagName)
 				continue
+			}
+
+			// If we have a version constraint, check image tag against it. If the
+			// constraint is not satisfied, skip tag.
+			if semverConstraint != nil {
+				if !semverConstraint.Check(ver) {
+					logCtx.Tracef("%s did not match constraint %s", ver.Original(), vc.Constraint)
+					continue
+				}
 			}
 		}
 
