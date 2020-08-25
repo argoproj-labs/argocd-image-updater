@@ -156,6 +156,7 @@ SHAs
 sirupsen
 someparam
 somevalue
+sortmode
 spf
 Sprintf
 src
@@ -201,3 +202,5 @@ yourimage
 yourorg
 yourtoken
 yourtool
+yy
+zz
