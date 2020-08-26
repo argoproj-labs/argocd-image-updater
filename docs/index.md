@@ -55,7 +55,7 @@ RBAC authorization on Application resources etc. are fully supported.
     * Red Hat Quay (quay.io)
     * GitHub Container Registry (docker.pkg.github.com)
 * Support for private container registries via configuration
-* Ability to filter list of tags returned by a registry using matcher funcs
+* Ability to filter list of tags returned by a registry using matcher functions
 * Support for custom, per-image pull secrets (using generic K8s secrets, K8s
   pull secrets or environment variables)
 * Runs in a Kubernetes cluster or can be used stand-alone from the command
