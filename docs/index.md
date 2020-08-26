@@ -40,9 +40,31 @@ Sync, and you can trigger the image update manually by syncing the Application.
 Due to the tight integration with Argo CD, advanced features like Sync Windows,
 RBAC authorization on Application resources etc. are fully supported.
 
+## Features
+
+* Updates images of apps that are managed by Argo CD and are either generated
+  from *Helm* or *Kustomize* tooling
+* Update app images according to different update strategies
+    * `semver`: update to highest allowed version according to given image
+    constraint,
+    * `latest`: update to the most recently created image tag,
+    * `name`: update to the last tag in an alphabetically sorted list
+* Default support for widely used container registries:
+    * Docker Hub (docker.io)
+    * Google Container Registry (gcr.io)
+    * Red Hat Quay (quay.io)
+    * GitHub Container Registry (docker.pkg.github.com)
+* Support for private container registries via configuration
+* Ability to filter list of tags returned by a registry using matcher functions
+* Support for custom, per-image pull secrets (using generic K8s secrets, K8s
+  pull secrets or environment variables)
+* Runs in a Kubernetes cluster or can be used stand-alone from the command
+  line
+* Ability to perform parallel update of applications
+
 ## Limitations
 
-The three most important limitations first. These will most likely not change
+The two most important limitations first. These will most likely not change
 anywhere in the near future, because they are limitations by design.
 
 Please make sure to understand these limitations, and do not send enhancement
@@ -55,10 +77,6 @@ requests or bug reports related to the following:
   manifests are rendered using either *Kustomize* or *Helm* and - especially
   in the case of Helm - the templates need to support specifying the image's
   tag (and possibly name) using a parameter (i.e. `image.tag`).
-
-* Your images' tags need to follow the semantic versioning scheme. Argo CD
-  Image Updater will not be able to update images that are just made from
-  arbitrary strings, or consist solely of Git SHA strings.
 
 Otherwise, current known limitations are:
 
