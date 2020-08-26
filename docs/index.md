@@ -64,7 +64,7 @@ RBAC authorization on Application resources etc. are fully supported.
 
 ## Limitations
 
-The three most important limitations first. These will most likely not change
+The two most important limitations first. These will most likely not change
 anywhere in the near future, because they are limitations by design.
 
 Please make sure to understand these limitations, and do not send enhancement
