@@ -75,18 +75,18 @@ a fast moving target and lots of refactoring will happen constantly.
 
 The following things are on the roadmap until the `v1.0` release
 
-* Extend Argo CD functionality to be able to update images for other types of
-  applications.
+* [ ] Extend Argo CD functionality to be able to update images for other types
+  of applications.
 
-* Extend Argo CD functionality to write back to Git
+* [ ] Extend Argo CD functionality to write back to Git
 
-* Provide web hook support to trigger update check for a given image
+* [ ] Provide web hook support to trigger update check for a given image
 
-* Use concurrency for updating multiple applications at once
+* [x] Use concurrency for updating multiple applications at once
 
-* Improve error handling
+* [x] Improve error handling
 
-* Support for image tags with i.e. Git commit SHAs
+* [x] Support for image tags with i.e. Git commit SHAs
 
 For more details, check out the
 [v1.0.0 milestone](https://github.com/argoproj-labs/argocd-image-updater/milestone/1)
