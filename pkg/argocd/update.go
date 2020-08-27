@@ -34,10 +34,10 @@ func UpdateApplication(newRegFn registry.NewRegistryClient, argoClient ArgoCD, k
 	// Whether an image qualifies for update is dependent on semantic version
 	// constraints which are part of the application's annotation values.
 	//
-	for _, applicationImage := range applicationImages {
-		updateableImage := curApplication.Images.ContainsImage(applicationImage, false)
+	for _, applicationImage := range curApplication.Images {
+		updateableImage := applicationImages.ContainsImage(applicationImage, false)
 		if updateableImage == nil {
-			log.WithContext().AddField("application", app).Debugf("Image %s not in list of allowed images, skipping", applicationImage.ImageName)
+			log.WithContext().AddField("application", app).Debugf("Image '%s' seems not to be live in this application, skipping", applicationImage.ImageName)
 			result.NumSkipped += 1
 			continue
 		}
@@ -46,13 +46,14 @@ func UpdateApplication(newRegFn registry.NewRegistryClient, argoClient ArgoCD, k
 
 		imgCtx := log.WithContext().
 			AddField("application", app).
-			AddField("registry", applicationImage.RegistryURL).
-			AddField("image_name", applicationImage.ImageName).
-			AddField("image_tag", applicationImage.ImageTag)
+			AddField("registry", updateableImage.RegistryURL).
+			AddField("image_name", updateableImage.ImageName).
+			AddField("image_tag", updateableImage.ImageTag).
+			AddField("alias", applicationImage.ImageAlias)
 
 		imgCtx.Debugf("Considering this image for update")
 
-		rep, err := registry.GetRegistryEndpoint(applicationImage.RegistryURL)
+		rep, err := registry.GetRegistryEndpoint(updateableImage.RegistryURL)
 		if err != nil {
 			imgCtx.Errorf("Could not get registry endpoint from configuration: %v", err)
 			result.NumErrors += 1
@@ -60,15 +61,15 @@ func UpdateApplication(newRegFn registry.NewRegistryClient, argoClient ArgoCD, k
 		}
 
 		var vc image.VersionConstraint
-		if updateableImage.ImageTag != nil {
-			vc.Constraint = updateableImage.ImageTag.TagName
+		if applicationImage.ImageTag != nil {
+			vc.Constraint = applicationImage.ImageTag.TagName
 			imgCtx.Debugf("Using version constraint '%s' when looking for a new tag", vc.Constraint)
 		} else {
 			imgCtx.Debugf("Using no version constraint when looking for a new tag")
 		}
 
-		vc.SortMode = updateableImage.GetParameterUpdateStrategy(curApplication.Application.Annotations)
-		vc.MatchFunc, vc.MatchArgs = updateableImage.GetParameterMatch(curApplication.Application.Annotations)
+		vc.SortMode = applicationImage.GetParameterUpdateStrategy(curApplication.Application.Annotations)
+		vc.MatchFunc, vc.MatchArgs = applicationImage.GetParameterMatch(curApplication.Application.Annotations)
 
 		// The endpoint can provide default credentials for pulling images
 		err = rep.SetEndpointCredentials(kubeClient)
@@ -78,7 +79,7 @@ func UpdateApplication(newRegFn registry.NewRegistryClient, argoClient ArgoCD, k
 			continue
 		}
 
-		imgCredSrc := updateableImage.GetParameterPullSecret(curApplication.Application.Annotations)
+		imgCredSrc := applicationImage.GetParameterPullSecret(curApplication.Application.Annotations)
 		var creds *image.Credential = &image.Credential{}
 		if imgCredSrc != nil {
 			creds, err = imgCredSrc.FetchCredentials(rep.RegistryAPI, kubeClient)
@@ -108,7 +109,7 @@ func UpdateApplication(newRegFn registry.NewRegistryClient, argoClient ArgoCD, k
 
 		// Get the latest available tag matching any constraint that might be set
 		// for allowed updates.
-		latest, err := applicationImage.GetNewestVersionFromTags(&vc, tags)
+		latest, err := updateableImage.GetNewestVersionFromTags(&vc, tags)
 		if err != nil {
 			imgCtx.Errorf("Unable to find newest version from available tags: %v", err)
 			result.NumErrors += 1
@@ -126,18 +127,18 @@ func UpdateApplication(newRegFn registry.NewRegistryClient, argoClient ArgoCD, k
 
 		// If the latest tag does not match image's current tag, it means we have
 		// an update candidate.
-		if applicationImage.ImageTag.TagName != latest.TagName {
+		if updateableImage.ImageTag.TagName != latest.TagName {
 			if dryRun {
-				imgCtx.Infof("Would upgrade image to %s, but this is a dry run. Skipping.", applicationImage.WithTag(latest).String())
+				imgCtx.Infof("Would upgrade image to %s, but this is a dry run. Skipping.", updateableImage.WithTag(latest).String())
 				continue
 			}
 
-			imgCtx.Infof("Upgrading image to %s", applicationImage.WithTag(latest).String())
+			imgCtx.Infof("Upgrading image to %s", updateableImage.WithTag(latest).String())
 
 			if appType := GetApplicationType(&curApplication.Application); appType == ApplicationTypeKustomize {
-				err = SetKustomizeImage(argoClient, &curApplication.Application, updateableImage.WithTag(latest))
+				err = SetKustomizeImage(argoClient, &curApplication.Application, applicationImage.WithTag(latest))
 			} else if appType == ApplicationTypeHelm {
-				err = SetHelmImage(argoClient, &curApplication.Application, updateableImage.WithTag(latest))
+				err = SetHelmImage(argoClient, &curApplication.Application, applicationImage.WithTag(latest))
 			} else {
 				result.NumErrors += 1
 				err = fmt.Errorf("Could not update application %s - neither Helm nor Kustomize application", app)
@@ -148,11 +149,11 @@ func UpdateApplication(newRegFn registry.NewRegistryClient, argoClient ArgoCD, k
 				result.NumErrors += 1
 				continue
 			} else {
-				imgCtx.Infof("Successfully updated image '%s' to '%s'", applicationImage.GetFullNameWithTag(), applicationImage.WithTag(latest).GetFullNameWithTag())
+				imgCtx.Infof("Successfully updated image '%s' to '%s'", updateableImage.GetFullNameWithTag(), updateableImage.WithTag(latest).GetFullNameWithTag())
 				result.NumImagesUpdated += 1
 			}
 		} else {
-			imgCtx.Debugf("Image '%s' already on latest allowed version", applicationImage.GetFullNameWithTag())
+			imgCtx.Debugf("Image '%s' already on latest allowed version", updateableImage.GetFullNameWithTag())
 		}
 	}
 
