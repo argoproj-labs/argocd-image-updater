@@ -59,7 +59,7 @@ func Test_UpdateApplication(t *testing.T) {
 				},
 			},
 			Images: image.ContainerImageList{
-				image.NewFromIdentifier("jannfis/foobar:1.0.1"),
+				image.NewFromIdentifier("jannfis/foobar:~1.0.0"),
 			},
 		}
 		res := UpdateApplication(mockClientFn, &argoClient, &kubeClient, appImages, false)
