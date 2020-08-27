@@ -44,7 +44,7 @@ type ImageUpdaterConfig struct {
 	AppNamePatterns []string
 }
 
-// waumupImageCache performs a cache warm-up, which is basically one cycle of
+// warmupImageCache performs a cache warm-up, which is basically one cycle of
 // the image update process with dryRun set to true and a maximum concurrency
 // of 1, i.e. sequential processing.
 func warmupImageCache(cfg *ImageUpdaterConfig) error {
