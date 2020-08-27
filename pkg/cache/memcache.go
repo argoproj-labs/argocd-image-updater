@@ -30,7 +30,7 @@ func (mc *MemCache) HasTag(imageName string, tagName string) bool {
 	}
 }
 
-// SetTag sets a tag entry into the cche
+// SetTag sets a tag entry into the cache
 func (mc *MemCache) SetTag(imageName string, imgTag *tag.ImageTag) {
 	mc.cache.Set(tagCacheKey(imageName, imgTag.TagName), *imgTag, -1)
 }
