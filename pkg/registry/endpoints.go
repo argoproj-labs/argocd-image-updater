@@ -130,6 +130,17 @@ func SetRegistryEndpointCredentials(prefix, credentials string) error {
 	return nil
 }
 
+// ConfiguredEndpoints returns a list of prefixes that are configured
+func ConfiguredEndpoints() []string {
+	r := []string{}
+	registryLock.RLock()
+	defer registryLock.RUnlock()
+	for _, v := range registries {
+		r = append(r, v.RegistryPrefix)
+	}
+	return r
+}
+
 // DeepCopy copies the endpoint to a new object, but creating a new Cache
 func (ep *RegistryEndpoint) DeepCopy() *RegistryEndpoint {
 	newEp := &RegistryEndpoint{}
