@@ -30,13 +30,15 @@ func (mc *MemCache) HasTag(imageName string, tagName string) bool {
 	}
 }
 
+// SetTag sets a tag entry into the cche
 func (mc *MemCache) SetTag(imageName string, imgTag *tag.ImageTag) {
-	mc.cache.Set(cacheKey(imageName, imgTag.TagName), *imgTag, -1)
+	mc.cache.Set(tagCacheKey(imageName, imgTag.TagName), *imgTag, -1)
 }
 
+// GetTag gets a tag entry from the cache
 func (mc *MemCache) GetTag(imageName string, tagName string) (*tag.ImageTag, error) {
 	var imgTag tag.ImageTag
-	e, ok := mc.cache.Get(cacheKey(imageName, tagName))
+	e, ok := mc.cache.Get(tagCacheKey(imageName, tagName))
 	if !ok {
 		return nil, nil
 	}
@@ -47,13 +49,26 @@ func (mc *MemCache) GetTag(imageName string, tagName string) (*tag.ImageTag, err
 	return &imgTag, nil
 }
 
-// Clears the cache
+func (mc *MemCache) SetImage(imageName, application string) {
+	mc.cache.Set(imageCacheKey(imageName), application, -1)
+}
+
+// ClearCache clears the cache
 func (mc *MemCache) ClearCache() {
 	for k := range mc.cache.Items() {
 		mc.cache.Delete(k)
 	}
 }
 
-func cacheKey(imageName, imageTag string) string {
-	return fmt.Sprintf("%s:%s", imageName, imageTag)
+// NumEntries returns the number of entries in the cache
+func (mc *MemCache) NumEntries() int {
+	return mc.cache.ItemCount()
+}
+
+func tagCacheKey(imageName, imageTag string) string {
+	return fmt.Sprintf("tags:%s:%s", imageName, imageTag)
+}
+
+func imageCacheKey(imageName string) string {
+	return fmt.Sprintf("image:%s", imageName)
 }

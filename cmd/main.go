@@ -44,8 +44,29 @@ type ImageUpdaterConfig struct {
 	AppNamePatterns []string
 }
 
+// warumupImageCache performs a cache warm-up, which is basically one cycle of
+// the image update process with dryRun set to true and a maximum concurrency
+// of 1, i.e. sequential processing.
+func warmupImageCache(cfg *ImageUpdaterConfig) error {
+	log.Infof("Warming up image cache")
+	_, err := runImageUpdater(cfg, true)
+	if err != nil {
+		return nil
+	}
+	entries := 0
+	eps := registry.ConfiguredEndpoints()
+	for _, ep := range eps {
+		r, err := registry.GetRegistryEndpoint(ep)
+		if err == nil {
+			entries += r.Cache.NumEntries()
+		}
+	}
+	log.Infof("Finished cache warm-up, pre-loaded %d meta data entries from %d registries", entries, len(eps))
+	return nil
+}
+
 // Main loop for argocd-image-controller
-func runImageUpdater(cfg *ImageUpdaterConfig) (argocd.ImageUpdaterResult, error) {
+func runImageUpdater(cfg *ImageUpdaterConfig, warmUp bool) (argocd.ImageUpdaterResult, error) {
 	result := argocd.ImageUpdaterResult{}
 	argoClient, err := argocd.NewClient(&cfg.ClientOpts)
 	if err != nil {
@@ -72,11 +93,21 @@ func runImageUpdater(cfg *ImageUpdaterConfig) (argocd.ImageUpdaterResult, error)
 		return result, err
 	}
 
-	log.Infof("Starting image update cycle, considering %d annotated application(s) for update", len(appList))
+	if !warmUp {
+		log.Infof("Starting image update cycle, considering %d annotated application(s) for update", len(appList))
+	}
 
 	// Allow a maximum of MaxConcurrency number of goroutines to exist at the
-	// same time.
-	sem := semaphore.NewWeighted(int64(cfg.MaxConcurrency))
+	// same time. If in warm-up mode, set to 1 explicitly.
+	var concurrency int = cfg.MaxConcurrency
+	if warmUp {
+		concurrency = 1
+	}
+	var dryRun bool = cfg.DryRun
+	if warmUp {
+		dryRun = true
+	}
+	sem := semaphore.NewWeighted(int64(concurrency))
 
 	var wg sync.WaitGroup
 	wg.Add(len(appList))
@@ -93,7 +124,7 @@ func runImageUpdater(cfg *ImageUpdaterConfig) (argocd.ImageUpdaterResult, error)
 		go func(app string, curApplication argocd.ApplicationImages) {
 			defer sem.Release(1)
 			log.Debugf("Processing application %s", app)
-			res := argocd.UpdateApplication(registry.NewClient, cfg.ArgoClient, cfg.KubeClient, &curApplication, cfg.DryRun)
+			res := argocd.UpdateApplication(registry.NewClient, cfg.ArgoClient, cfg.KubeClient, &curApplication, dryRun)
 			result.NumApplicationsProcessed += 1
 			result.NumErrors += res.NumErrors
 			result.NumImagesConsidered += res.NumImagesConsidered
@@ -157,6 +188,7 @@ func newRunCommand() *cobra.Command {
 	var once bool
 	var kubeConfig string
 	var disableKubernetes bool
+	var warmUpCache bool = true
 	var runCmd = &cobra.Command{
 		Use:   "run",
 		Short: "Runs the argocd-image-updater with a set of options",
@@ -247,6 +279,14 @@ func newRunCommand() *cobra.Command {
 				hsErrCh = health.StartHealthServer(cfg.HealthPort)
 			}
 
+			if warmUpCache {
+				err := warmupImageCache(cfg)
+				if err != nil {
+					log.Errorf("Error warming up cache: %v", err)
+					return err
+				}
+			}
+
 			// This is our main loop. We leave it only when our health probe server
 			// returns an error.
 			for {
@@ -260,7 +300,7 @@ func newRunCommand() *cobra.Command {
 					}
 				default:
 					if lastRun.IsZero() || time.Since(lastRun) > cfg.CheckInterval {
-						result, err := runImageUpdater(cfg)
+						result, err := runImageUpdater(cfg, false)
 						if err != nil {
 							log.Errorf("Error: %v", err)
 						} else {
@@ -300,6 +340,7 @@ func newRunCommand() *cobra.Command {
 	runCmd.Flags().IntVar(&cfg.MaxConcurrency, "max-concurrency", 10, "maximum number of update threads to run concurrently")
 	runCmd.Flags().StringVar(&cfg.ArgocdNamespace, "argocd-namespace", "argocd", "namespace where ArgoCD runs in")
 	runCmd.Flags().StringSliceVar(&cfg.AppNamePatterns, "match-application-name", nil, "patterns to match application name against")
+	runCmd.Flags().BoolVar(&warmUpCache, "warmup-cache", true, "whether to perform a cache warm-up on startup")
 
 	return runCmd
 }
