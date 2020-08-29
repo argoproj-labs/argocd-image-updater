@@ -29,7 +29,7 @@ important targets are:
 
 ### Windows Developer Tips
 
-If you are running the cmd.exe and are running into issues running `make all`, consider using Git bash.
+If you are running the cmd shell and are running into issues running `make all`, consider using Git bash.
 
 ## Sending Pull Requests
 
