@@ -12,7 +12,20 @@ N/A
 
 ### Bug fixes
 
-* fix: Do not check for semver if update strategy is latest
+### New features
+
+### Other changes
+
+## 2020-08-29 - Release v0.5.0
+
+### Upgrade notes (no really, you MUST read this)
+
+N/A
+
+### Bug fixes
+
+* fix: Do not constraint tags to semver if update strategy is latest
+* fix: Multiple same images in the same application not possible
 
 ### New features
 
@@ -22,6 +35,7 @@ N/A
 
 * enhancement: Slightly increase verbosity in default log level
 * enhancement: Provide default RBAC rules for serviceaccount
+* enhancement: Warm-up cache before starting image cycle
 
 ## 2020-08-18 - Release v0.4.0
 
