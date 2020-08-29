@@ -27,6 +27,10 @@ important targets are:
 * `manifests` - this will build the installation manifests for Kubernetes from
   the Kustomize sources
 
+### Windows Developer Tips
+
+If you are running the cmd.exe and are running into issues running `make all`, consider using Git bash.
+
 ## Sending Pull Requests
 
 To send a pull request, simply fork the
