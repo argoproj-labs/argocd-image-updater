@@ -52,6 +52,15 @@ in the
 [documentation](https://github.com/Masterminds/semver#checking-version-constraints)
 of the [Semver library](https://github.com/Masterminds/semver) we're using.
 
+!!!note
+    If you use an
+    [update strategy](#update-strategies)
+    other than `semver`, the `version_constraint` will not be have any effect
+    and all tags returned from the registry will be considered for update. If
+    you need to further restrict the list of tags to consider, see
+    [filtering tags](#filtering-tags)
+    below.
+
 ## Assigning aliases to images
 
 It's possible (and sometimes necessary) to assign an alias name to any given
@@ -253,19 +262,20 @@ some identifier (i.e. the hash of the Git commit) in the tag.
 
 *Solution:*
 
-1. Make sure that the image tags follow semantic versioning and use the Git
-   commit hash as pre-release identifier, i.e. `v1.0.0-<githash>`
+1. Give your image a proper alias, i.e. `yourtool` and do not define a version
+   constraint.
 
-2. Define an alias for your image when configuring it for update, and match
-   against pre-release in the version constraint by prepending `-0`.
+2. Use `latest` as update strategy
 
-3. Use `latest` as update strategy
+3. If you just want to consider a given set of tags, i.e. `v1.0.0-<hash>`, use a
+  `tag-match` annotation.
 
 Annotations might look like follows:
 
 ```yaml
-argocd-image-updater.argoproj.io/image-list: yourtool=yourorg/yourimage:v1.0.0-0
+argocd-image-updater.argoproj.io/image-list: yourtool=yourorg/yourimage
 argocd-image-updater.argoproj.io/yourtool.update-strategy: latest
+argocd-image-updater.argoproj.io/yourtool.tag-match: regexp:^v1.0.0-[0-0a-zA-Z]+$
 ```
 
 ### Multiple images in the same Helm chart
