@@ -278,6 +278,15 @@ func SetHelmImage(client ArgoCD, app *v1alpha1.Application, newImage *image.Cont
 	hpImageName = newImage.GetParameterHelmImageName(app.Annotations)
 	hpImageTag = newImage.GetParameterHelmImageTag(app.Annotations)
 
+	if hpImageSpec == "" {
+		if hpImageName == "" {
+			hpImageName = common.DefaultHelmImageName
+		}
+		if hpImageTag == "" {
+			hpImageTag = common.DefaultHelmImageTag
+		}
+	}
+
 	log.WithContext().
 		AddField("application", appName).
 		AddField("image", newImage.GetFullNameWithoutTag()).
