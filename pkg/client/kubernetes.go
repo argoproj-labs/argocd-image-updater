@@ -3,6 +3,7 @@ package client
 // Kubernetes client related code
 
 import (
+	"context"
 	"fmt"
 
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -44,7 +45,7 @@ func NewKubernetesClient(kubeconfig string) (*KubernetesClient, error) {
 
 // GetSecretData returns the raw data from named K8s secret in given namespace
 func (client *KubernetesClient) GetSecretData(namespace string, secretName string) (map[string][]byte, error) {
-	secret, err := client.Clientset.CoreV1().Secrets(namespace).Get(secretName, v1.GetOptions{})
+	secret, err := client.Clientset.CoreV1().Secrets(namespace).Get(context.TODO(), secretName, v1.GetOptions{})
 	if err != nil {
 		return nil, err
 	}
