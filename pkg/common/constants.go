@@ -8,6 +8,12 @@ const ImageUpdaterAnnotationPrefix = "argocd-image-updater.argoproj.io"
 // allowed for updates.
 const ImageUpdaterAnnotation = ImageUpdaterAnnotationPrefix + "/image-list"
 
+// Defaults for Helm parameter names
+const (
+	DefaultHelmImageName = "image.name"
+	DefaultHelmImageTag  = "image.tag"
+)
+
 // Helm related annotations
 const (
 	HelmParamImageNameAnnotation = ImageUpdaterAnnotationPrefix + "/%s.helm.image-name"
