@@ -20,7 +20,10 @@ N/A
 
 ### Upgrade notes (no really, you MUST read this)
 
-N/A
+If you use the `latest` or `name` update strategy and relied on the semantic
+version constraint to limit the list of tags to consider, you will need to
+use an additional `tag-match` annotation to limit the tags. The constraint
+will only be used for update strategy `semver` from v0.5.0 onwards.
 
 ### Bug fixes
 
