@@ -135,7 +135,7 @@ func getImageTagFromIdentifier(identifier string) (string, string, *tag.ImageTag
 	var sourceName string
 
 	// The original name is prepended to the image name, separated by =
-	comp := strings.Split(identifier, "=")
+	comp := strings.SplitN(identifier, "=", 2)
 	if len(comp) == 2 {
 		sourceName = comp[0]
 		imageString = comp[1]
@@ -149,7 +149,7 @@ func getImageTagFromIdentifier(identifier string) (string, string, *tag.ImageTag
 		imageString = strings.Join(comp[1:], "/")
 	}
 
-	comp = strings.Split(imageString, ":")
+	comp = strings.SplitN(imageString, ":", 2)
 	if len(comp) != 2 {
 		return sourceName, imageString, nil
 	} else {
