@@ -16,6 +16,41 @@ N/A
 
 ### Other changes
 
+## 2020-09-30 - Release v0.6.0
+
+### Upgrade notes (no really, you MUST read this)
+N/A
+
+### Bug fixes
+
+* fix: Use default Helm parameter names if none given in annotations 
+* fix: Correctly parse version constraints containing equal signs
+* fix: Application spec updates should be atomic
+
+### New features
+
+* feat: Allow insecure TLS connections to registries
+
+### Other changes
+
+* chore: Update Argo CD client to 1.7.4
+* chore: Update K8s client to v1.18.8
+
+## 2020-08-29 - Release v0.5.1
+
+### Upgrade notes (no really, you MUST read this)
+N/A
+
+### Bug fixes
+
+* fix: Correctly parse version constraints containing equal signs
+
+### New features
+N/A
+
+### Other changes
+N/A
+
 ## 2020-08-29 - Release v0.5.0
 
 ### Upgrade notes (no really, you MUST read this)
