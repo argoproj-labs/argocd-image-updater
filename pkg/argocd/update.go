@@ -1,12 +1,15 @@
 package argocd
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/argoproj-labs/argocd-image-updater/pkg/client"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/image"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/log"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/registry"
+
+	"github.com/argoproj/argo-cd/pkg/apiclient/application"
 )
 
 // Stores some statistics about the results of a run
@@ -20,6 +23,8 @@ type ImageUpdaterResult struct {
 
 // UpdateApplication update all images of a single application. Will run in a goroutine.
 func UpdateApplication(newRegFn registry.NewRegistryClient, argoClient ArgoCD, kubeClient *client.KubernetesClient, curApplication *ApplicationImages, dryRun bool) ImageUpdaterResult {
+	var needUpdate bool = false
+
 	result := ImageUpdaterResult{}
 	app := curApplication.Application.GetName()
 
@@ -128,17 +133,14 @@ func UpdateApplication(newRegFn registry.NewRegistryClient, argoClient ArgoCD, k
 		// If the latest tag does not match image's current tag, it means we have
 		// an update candidate.
 		if updateableImage.ImageTag.TagName != latest.TagName {
-			if dryRun {
-				imgCtx.Infof("Would upgrade image to %s, but this is a dry run. Skipping.", updateableImage.WithTag(latest).String())
-				continue
-			}
 
-			imgCtx.Infof("Upgrading image to %s", updateableImage.WithTag(latest).String())
+			imgCtx.Infof("Setting new image to %s", updateableImage.WithTag(latest).String())
+			needUpdate = true
 
 			if appType := GetApplicationType(&curApplication.Application); appType == ApplicationTypeKustomize {
-				err = SetKustomizeImage(argoClient, &curApplication.Application, applicationImage.WithTag(latest))
+				err = SetKustomizeImage(&curApplication.Application, applicationImage.WithTag(latest))
 			} else if appType == ApplicationTypeHelm {
-				err = SetHelmImage(argoClient, &curApplication.Application, applicationImage.WithTag(latest))
+				err = SetHelmImage(&curApplication.Application, applicationImage.WithTag(latest))
 			} else {
 				result.NumErrors += 1
 				err = fmt.Errorf("Could not update application %s - neither Helm nor Kustomize application", app)
@@ -149,11 +151,31 @@ func UpdateApplication(newRegFn registry.NewRegistryClient, argoClient ArgoCD, k
 				result.NumErrors += 1
 				continue
 			} else {
-				imgCtx.Infof("Successfully updated image '%s' to '%s'", updateableImage.GetFullNameWithTag(), updateableImage.WithTag(latest).GetFullNameWithTag())
+				imgCtx.Infof("Successfully updated image '%s' to '%s', but pending spec update (dry run=%v)", updateableImage.GetFullNameWithTag(), updateableImage.WithTag(latest).GetFullNameWithTag(), dryRun)
 				result.NumImagesUpdated += 1
 			}
 		} else {
 			imgCtx.Debugf("Image '%s' already on latest allowed version", updateableImage.GetFullNameWithTag())
+		}
+	}
+
+	if needUpdate {
+		logCtx := log.WithContext().AddField("application", app)
+		if !dryRun {
+			logCtx.Infof("Commiting %d update(s) to live application spec", result.NumImagesUpdated)
+			_, err := argoClient.UpdateSpec(context.TODO(), &application.ApplicationUpdateSpecRequest{
+				Name: &curApplication.Application.Name,
+				Spec: curApplication.Application.Spec,
+			})
+			if err != nil {
+				logCtx.Errorf("Could not update application spec: %v", err)
+				result.NumErrors += 1
+				result.NumImagesUpdated = 0
+			} else {
+				logCtx.Infof("Successfully updated the live application spec")
+			}
+		} else {
+			logCtx.Infof("Dry run - not performing spec update")
 		}
 	}
 
