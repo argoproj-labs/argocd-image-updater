@@ -40,6 +40,7 @@ func NewClient(endpoint *RegistryEndpoint, username, password string) (RegistryC
 		Logf:          registry.Quiet,
 		Username:      username,
 		Password:      password,
+		Insecure:      endpoint.Insecure,
 	})
 	if err != nil {
 		return nil, err
