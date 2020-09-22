@@ -4,13 +4,11 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/argoproj-labs/argocd-image-updater/pkg/argocd/mocks"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/image"
 
 	"github.com/argoproj/argo-cd/pkg/apis/application/v1alpha1"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -353,8 +351,6 @@ func Test_MergeHelmParams(t *testing.T) {
 
 func Test_SetKustomizeImage(t *testing.T) {
 	t.Run("Test set Kustomize image parameters on Kustomize app with param already set", func(t *testing.T) {
-		argocd := mocks.ArgoCD{}
-		argocd.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
 		app := &v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
 				Name:      "test-app",
@@ -379,7 +375,7 @@ func Test_SetKustomizeImage(t *testing.T) {
 			},
 		}
 		img := image.NewFromIdentifier("jannfis/foobar:1.0.1")
-		err := SetKustomizeImage(&argocd, app, img)
+		err := SetKustomizeImage(app, img)
 		require.NoError(t, err)
 		require.NotNil(t, app.Spec.Source.Kustomize)
 		assert.Len(t, app.Spec.Source.Kustomize.Images, 1)
@@ -387,8 +383,6 @@ func Test_SetKustomizeImage(t *testing.T) {
 	})
 
 	t.Run("Test set Kustomize image parameters on Kustomize app with no params set", func(t *testing.T) {
-		argocd := mocks.ArgoCD{}
-		argocd.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
 		app := &v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
 				Name:      "test-app",
@@ -407,7 +401,7 @@ func Test_SetKustomizeImage(t *testing.T) {
 			},
 		}
 		img := image.NewFromIdentifier("jannfis/foobar:1.0.1")
-		err := SetKustomizeImage(&argocd, app, img)
+		err := SetKustomizeImage(app, img)
 		require.NoError(t, err)
 		require.NotNil(t, app.Spec.Source.Kustomize)
 		assert.Len(t, app.Spec.Source.Kustomize.Images, 1)
@@ -415,8 +409,6 @@ func Test_SetKustomizeImage(t *testing.T) {
 	})
 
 	t.Run("Test set Kustomize image parameters on non-Kustomize app", func(t *testing.T) {
-		argocd := mocks.ArgoCD{}
-		argocd.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
 		app := &v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
 				Name:      "test-app",
@@ -441,7 +433,7 @@ func Test_SetKustomizeImage(t *testing.T) {
 			},
 		}
 		img := image.NewFromIdentifier("jannfis/foobar:1.0.1")
-		err := SetKustomizeImage(&argocd, app, img)
+		err := SetKustomizeImage(app, img)
 		require.Error(t, err)
 	})
 
@@ -449,8 +441,6 @@ func Test_SetKustomizeImage(t *testing.T) {
 
 func Test_SetHelmImage(t *testing.T) {
 	t.Run("Test set Helm image parameters on Helm app with existing parameters", func(t *testing.T) {
-		argocd := mocks.ArgoCD{}
-		argocd.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
 		app := &v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
 				Name:      "test-app",
@@ -488,7 +478,7 @@ func Test_SetHelmImage(t *testing.T) {
 
 		img := image.NewFromIdentifier("foobar=jannfis/foobar:1.0.1")
 
-		err := SetHelmImage(&argocd, app, img)
+		err := SetHelmImage(app, img)
 		require.NoError(t, err)
 		require.NotNil(t, app.Spec.Source.Helm)
 		assert.Len(t, app.Spec.Source.Helm.Parameters, 2)
@@ -505,8 +495,6 @@ func Test_SetHelmImage(t *testing.T) {
 	})
 
 	t.Run("Test set Helm image parameters on Helm app without existing parameters", func(t *testing.T) {
-		argocd := mocks.ArgoCD{}
-		argocd.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
 		app := &v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
 				Name:      "test-app",
@@ -533,7 +521,7 @@ func Test_SetHelmImage(t *testing.T) {
 
 		img := image.NewFromIdentifier("foobar=jannfis/foobar:1.0.1")
 
-		err := SetHelmImage(&argocd, app, img)
+		err := SetHelmImage(app, img)
 		require.NoError(t, err)
 		require.NotNil(t, app.Spec.Source.Helm)
 		assert.Len(t, app.Spec.Source.Helm.Parameters, 2)
@@ -550,8 +538,6 @@ func Test_SetHelmImage(t *testing.T) {
 	})
 
 	t.Run("Test set Helm image parameters on Helm app with different parameters", func(t *testing.T) {
-		argocd := mocks.ArgoCD{}
-		argocd.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
 		app := &v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
 				Name:      "test-app",
@@ -589,7 +575,7 @@ func Test_SetHelmImage(t *testing.T) {
 
 		img := image.NewFromIdentifier("foobar=jannfis/foobar:1.0.1")
 
-		err := SetHelmImage(&argocd, app, img)
+		err := SetHelmImage(app, img)
 		require.NoError(t, err)
 		require.NotNil(t, app.Spec.Source.Helm)
 		assert.Len(t, app.Spec.Source.Helm.Parameters, 4)
@@ -606,8 +592,6 @@ func Test_SetHelmImage(t *testing.T) {
 	})
 
 	t.Run("Test set Helm image parameters on non Helm app", func(t *testing.T) {
-		argocd := mocks.ArgoCD{}
-		argocd.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
 		app := &v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
 				Name:      "test-app",
@@ -632,7 +616,7 @@ func Test_SetHelmImage(t *testing.T) {
 
 		img := image.NewFromIdentifier("foobar=jannfis/foobar:1.0.1")
 
-		err := SetHelmImage(&argocd, app, img)
+		err := SetHelmImage(app, img)
 		require.Error(t, err)
 	})
 
