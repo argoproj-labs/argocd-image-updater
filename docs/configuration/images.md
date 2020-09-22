@@ -275,7 +275,7 @@ Annotations might look like follows:
 ```yaml
 argocd-image-updater.argoproj.io/image-list: yourtool=yourorg/yourimage
 argocd-image-updater.argoproj.io/yourtool.update-strategy: latest
-argocd-image-updater.argoproj.io/yourtool.tag-match: regexp:^v1.0.0-[0-0a-zA-Z]+$
+argocd-image-updater.argoproj.io/yourtool.tag-match: regexp:^v1.0.0-[0-9a-zA-Z]+$
 ```
 
 ### Multiple images in the same Helm chart
