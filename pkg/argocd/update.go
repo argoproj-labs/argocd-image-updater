@@ -162,7 +162,7 @@ func UpdateApplication(newRegFn registry.NewRegistryClient, argoClient ArgoCD, k
 	if needUpdate {
 		logCtx := log.WithContext().AddField("application", app)
 		if !dryRun {
-			logCtx.Infof("Commiting %d update(s) to live application spec", result.NumImagesUpdated)
+			logCtx.Infof("Committing %d update(s) to live application spec", result.NumImagesUpdated)
 			_, err := argoClient.UpdateSpec(context.TODO(), &application.ApplicationUpdateSpecRequest{
 				Name: &curApplication.Application.Name,
 				Spec: curApplication.Application.Spec,
