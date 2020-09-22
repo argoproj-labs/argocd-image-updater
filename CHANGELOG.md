@@ -24,7 +24,6 @@ N/A
 ### Bug fixes
 
 * fix: Use default Helm parameter names if none given in annotations 
-* fix: Correctly parse version constraints containing equal signs
 * fix: Application spec updates should be atomic
 
 ### New features
@@ -36,7 +35,7 @@ N/A
 * chore: Update Argo CD client to 1.7.4
 * chore: Update K8s client to v1.18.8
 
-## 2020-08-29 - Release v0.5.1
+## 2020-09-10 - Release v0.5.1
 
 ### Upgrade notes (no really, you MUST read this)
 N/A
