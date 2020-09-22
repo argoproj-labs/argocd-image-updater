@@ -33,6 +33,7 @@ registries:
   api_url: https://quay.io
   ping: no
   prefix: quay.io
+  insecure: yes
   credentials: env:REGISTRY_SECRET
 - name: GitHub Container Registry
   api_url: https://docker.pkg.github.com
@@ -56,7 +57,11 @@ following semantics:
   mandatory, except for one of the registries in the configuration.
 
 * `credentials` (optional) is a reference to the credentials to use for
-  accessing the registry API (see below)
+  accessing the registry API (see below). Credentials can also be specified
+  [per image](../images/#specifying-pull-secrets)
+
+* `insecure` (optional) if set to true, does not validate the TLS certificate
+  for the connection to the registry. Use with care.
 
 * `tagsortmode` (optional) defines whether and how the list of tags is sorted
   chronologically by the registry. Valid values are `latest_first` (the last
