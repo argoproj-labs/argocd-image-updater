@@ -23,11 +23,12 @@ func (endpoint *RegistryEndpoint) GetTags(img *image.ContainerImage, regClient R
 	var imgTag *tag.ImageTag
 	var err error
 
-	// DockerHub has a special namespace 'library', that is hidden from the user
-	// FIXME: How do other registries handle this?
+	// Some registries have a default namespace that is used when the image name
+	// doesn't specify one. For example at Docker Hub, this is 'library'.
 	var nameInRegistry string
-	if len := len(strings.Split(img.ImageName, "/")); len == 1 {
-		nameInRegistry = "library/" + img.ImageName
+	if len := len(strings.Split(img.ImageName, "/")); len == 1 && endpoint.DefaultNS != "" {
+		nameInRegistry = endpoint.DefaultNS + "/" + img.ImageName
+		log.Debugf("Using canonical image name '%s' for image '%s'", nameInRegistry, img.ImageName)
 	} else {
 		nameInRegistry = img.ImageName
 	}

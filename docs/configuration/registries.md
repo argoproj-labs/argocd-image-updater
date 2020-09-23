@@ -24,6 +24,7 @@ registries:
   api_url: https://registry-1.docker.io
   ping: yes
   credentials: secret:foo/bar#creds
+  defaultns: library
 - name: Google Container Registry
   api_url: https://gcr.io
   prefix: gcr.io
@@ -63,6 +64,11 @@ following semantics:
 * `insecure` (optional) if set to true, does not validate the TLS certificate
   for the connection to the registry. Use with care.
 
+* `defaultns` (optional) defines a default namespace for images that do not
+  specify one. For example, Docker Hub uses the default namespace `library`
+  which turns an image specification of `nginx:latest` into the canonical name
+  `library/nginx:latest`.
+
 * `tagsortmode` (optional) defines whether and how the list of tags is sorted
   chronologically by the registry. Valid values are `latest_first` (the last
   pushed image will appear first in list), `latest_last` (the last pushed image
@@ -84,6 +90,7 @@ data:
       api_url: https://registry-1.docker.io
       ping: yes
       credentials: secret:foo/bar#creds
+      defaultns: library
     - name: Google Container Registry
       api_url: https://gcr.io
       prefix: gcr.io
