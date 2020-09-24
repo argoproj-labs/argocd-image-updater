@@ -31,7 +31,7 @@ func Test_GetEndpoints(t *testing.T) {
 
 func Test_AddEndpoint(t *testing.T) {
 	t.Run("Add new endpoint", func(t *testing.T) {
-		err := AddRegistryEndpoint("example.com", "Example", "https://example.com", "", false)
+		err := AddRegistryEndpoint("example.com", "Example", "https://example.com", "", "", false)
 		require.NoError(t, err)
 	})
 	t.Run("Get example.com endpoint", func(t *testing.T) {
@@ -42,14 +42,16 @@ func Test_AddEndpoint(t *testing.T) {
 		assert.Equal(t, ep.RegistryName, "Example")
 		assert.Equal(t, ep.RegistryAPI, "https://example.com")
 		assert.Equal(t, ep.Insecure, false)
+		assert.Equal(t, ep.DefaultNS, "")
 	})
 	t.Run("Change existing endpoint", func(t *testing.T) {
-		err := AddRegistryEndpoint("example.com", "Example", "https://example.com", "", true)
+		err := AddRegistryEndpoint("example.com", "Example", "https://example.com", "", "library", true)
 		require.NoError(t, err)
 		ep, err := GetRegistryEndpoint("example.com")
 		require.NoError(t, err)
 		require.NotNil(t, ep)
 		assert.Equal(t, ep.Insecure, true)
+		assert.Equal(t, ep.DefaultNS, "library")
 	})
 }
 

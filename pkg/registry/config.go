@@ -19,6 +19,7 @@ type RegistryConfiguration struct {
 	TagSortMode string `yaml:"tagsortmode,omitempty"`
 	Prefix      string `yaml:"prefix,omitempty"`
 	Insecure    bool   `yaml:"insecure,omitempty"`
+	DefaultNS   string `yaml:"defaultns,omitempty"`
 }
 
 // RegistryList contains multiple RegistryConfiguration items
@@ -45,7 +46,7 @@ func LoadRegistryConfiguration(path string, clear bool) error {
 	}
 
 	for _, reg := range registryList.Items {
-		err = AddRegistryEndpoint(reg.Prefix, reg.Name, reg.ApiURL, reg.Credentials, reg.Insecure)
+		err = AddRegistryEndpoint(reg.Prefix, reg.Name, reg.ApiURL, reg.Credentials, reg.DefaultNS, reg.Insecure)
 		if err != nil {
 			return err
 		}
