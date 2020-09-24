@@ -38,6 +38,7 @@ ctx
 Ctx
 deadcode
 Debugf
+defaultns
 dest
 dexidp
 dirname

@@ -49,6 +49,7 @@ type RegistryEndpoint struct {
 	Ping           bool
 	Credentials    string
 	Insecure       bool
+	DefaultNS      string
 	TagListSort    TagListSort
 	Cache          cache.ImageTagCache
 
@@ -63,6 +64,7 @@ var defaultRegistries map[string]*RegistryEndpoint = map[string]*RegistryEndpoin
 		RegistryAPI:    "https://registry-1.docker.io",
 		Ping:           true,
 		Insecure:       false,
+		DefaultNS:      "library",
 		Cache:          cache.NewMemCache(),
 	},
 	"gcr.io": {
@@ -98,7 +100,7 @@ var registries map[string]*RegistryEndpoint = make(map[string]*RegistryEndpoint)
 var registryLock sync.RWMutex
 
 // AddRegistryEndpoint adds registry endpoint information with the given details
-func AddRegistryEndpoint(prefix, name, apiUrl, credentials string, insecure bool) error {
+func AddRegistryEndpoint(prefix, name, apiUrl, credentials, defaultNS string, insecure bool) error {
 	registryLock.Lock()
 	defer registryLock.Unlock()
 	registries[prefix] = &RegistryEndpoint{
@@ -108,6 +110,7 @@ func AddRegistryEndpoint(prefix, name, apiUrl, credentials string, insecure bool
 		Credentials:    credentials,
 		Cache:          cache.NewMemCache(),
 		Insecure:       insecure,
+		DefaultNS:      defaultNS,
 	}
 	return nil
 }
@@ -158,6 +161,7 @@ func (ep *RegistryEndpoint) DeepCopy() *RegistryEndpoint {
 	newEp.TagListSort = ep.TagListSort
 	newEp.Cache = cache.NewMemCache()
 	newEp.Insecure = ep.Insecure
+	newEp.DefaultNS = ep.DefaultNS
 	return newEp
 }
 
