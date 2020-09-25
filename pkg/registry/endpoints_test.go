@@ -31,7 +31,7 @@ func Test_GetEndpoints(t *testing.T) {
 
 func Test_AddEndpoint(t *testing.T) {
 	t.Run("Add new endpoint", func(t *testing.T) {
-		err := AddRegistryEndpoint("example.com", "Example", "https://example.com", "", "", false)
+		err := AddRegistryEndpoint("example.com", "Example", "https://example.com", "", "", false, SortUnsorted)
 		require.NoError(t, err)
 	})
 	t.Run("Get example.com endpoint", func(t *testing.T) {
@@ -43,15 +43,17 @@ func Test_AddEndpoint(t *testing.T) {
 		assert.Equal(t, ep.RegistryAPI, "https://example.com")
 		assert.Equal(t, ep.Insecure, false)
 		assert.Equal(t, ep.DefaultNS, "")
+		assert.Equal(t, ep.TagListSort, SortUnsorted)
 	})
 	t.Run("Change existing endpoint", func(t *testing.T) {
-		err := AddRegistryEndpoint("example.com", "Example", "https://example.com", "", "library", true)
+		err := AddRegistryEndpoint("example.com", "Example", "https://example.com", "", "library", true, SortLatestFirst)
 		require.NoError(t, err)
 		ep, err := GetRegistryEndpoint("example.com")
 		require.NoError(t, err)
 		require.NotNil(t, ep)
 		assert.Equal(t, ep.Insecure, true)
 		assert.Equal(t, ep.DefaultNS, "library")
+		assert.Equal(t, ep.TagListSort, SortLatestFirst)
 	})
 }
 
