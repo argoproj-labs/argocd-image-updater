@@ -100,7 +100,7 @@ var registries map[string]*RegistryEndpoint = make(map[string]*RegistryEndpoint)
 var registryLock sync.RWMutex
 
 // AddRegistryEndpoint adds registry endpoint information with the given details
-func AddRegistryEndpoint(prefix, name, apiUrl, credentials, defaultNS string, insecure bool) error {
+func AddRegistryEndpoint(prefix, name, apiUrl, credentials, defaultNS string, insecure bool, tagListSort TagListSort) error {
 	registryLock.Lock()
 	defer registryLock.Unlock()
 	registries[prefix] = &RegistryEndpoint{
@@ -111,6 +111,7 @@ func AddRegistryEndpoint(prefix, name, apiUrl, credentials, defaultNS string, in
 		Cache:          cache.NewMemCache(),
 		Insecure:       insecure,
 		DefaultNS:      defaultNS,
+		TagListSort:    tagListSort,
 	}
 	return nil
 }

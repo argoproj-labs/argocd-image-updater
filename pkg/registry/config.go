@@ -46,7 +46,8 @@ func LoadRegistryConfiguration(path string, clear bool) error {
 	}
 
 	for _, reg := range registryList.Items {
-		err = AddRegistryEndpoint(reg.Prefix, reg.Name, reg.ApiURL, reg.Credentials, reg.DefaultNS, reg.Insecure)
+		tagSortMode := TagListSortFromString(reg.TagSortMode)
+		err = AddRegistryEndpoint(reg.Prefix, reg.Name, reg.ApiURL, reg.Credentials, reg.DefaultNS, reg.Insecure, tagSortMode)
 		if err != nil {
 			return err
 		}
