@@ -84,12 +84,21 @@ var defaultRegistries map[string]*RegistryEndpoint = map[string]*RegistryEndpoin
 		Cache:          cache.NewMemCache(),
 	},
 	"docker.pkg.github.com": {
-		RegistryName:   "GitHub registry",
+		RegistryName:   "GitHub packages",
 		RegistryPrefix: "docker.pkg.github.com",
 		RegistryAPI:    "https://docker.pkg.github.com",
 		Ping:           false,
 		Insecure:       false,
 		TagListSort:    SortLatestFirst,
+		Cache:          cache.NewMemCache(),
+	},
+	"ghcr.io": {
+		RegistryName:   "GitHub Container Registry",
+		RegistryPrefix: "ghcr.io",
+		RegistryAPI:    "https://ghcr.io",
+		Ping:           false,
+		Insecure:       false,
+		TagListSort:    SortLatestLast,
 		Cache:          cache.NewMemCache(),
 	},
 }

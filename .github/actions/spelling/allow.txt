@@ -60,6 +60,7 @@ func
 gcr
 Getenv
 gh
+ghcr
 githash
 github
 goimports

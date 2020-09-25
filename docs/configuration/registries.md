@@ -4,9 +4,10 @@ Argo CD Image Updater comes with support for the following registries out of the
 box:
 
 * Docker Hub Registry
-* Google Container Registry
-* RedHat Quay Registry
-* GitHub Docker Registry
+* Google Container Registry (*gcr.io*)
+* RedHat Quay Registry (*quay.io*)
+* GitHub Docker Packages (*docker.pkg.github.com*)
+* GitHub Container Registry (*ghcr.io*)
 
 Adding additional (and custom) container registries is supported by means of a
 configuration file. If you run Argo CD Image Updater within Kubernetes, you can
@@ -36,10 +37,16 @@ registries:
   prefix: quay.io
   insecure: yes
   credentials: env:REGISTRY_SECRET
-- name: GitHub Container Registry
+- name: GitHub Docker Packages
+  prefix: docker.pkg.github.com
   api_url: https://docker.pkg.github.com
   ping: no
-  tagsortmode: latest_first
+  tagsortmode: latest-first
+- name: GitHub Container Registry
+  prefix: ghcr.io
+  api_url: https://docker.pkg.github.com
+  ping: no
+  tagsortmode: latest-last
 ```
 
 The above example defines access to three registries. The properties have the
@@ -70,10 +77,10 @@ following semantics:
   `library/nginx:latest`.
 
 * `tagsortmode` (optional) defines whether and how the list of tags is sorted
-  chronologically by the registry. Valid values are `latest_first` (the last
-  pushed image will appear first in list), `latest_last` (the last pushed image
+  chronologically by the registry. Valid values are `latest-first` (the last
+  pushed image will appear first in list), `latest-last` (the last pushed image
   will appear last in list) or `none` (the default, list is not chronological
-  sorted). If `tagsortmode` is set to one of `latest_first` or `latest_last`,
+  sorted). If `tagsortmode` is set to one of `latest-first` or `latest-last`,
   Argo CD Image Updater will not request additional meta data from the registry
   if the `<image_alias>.sort-mode` is `latest` but will instead use the sorting
   from the tag list.
