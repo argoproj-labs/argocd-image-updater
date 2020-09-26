@@ -52,6 +52,12 @@ spec:
               name: argocd-image-updater-secret
               key: argocd.token
               optional: true
+        - name: IMAGE_UPDATER_LOGLEVEL
+          valueFrom:
+            configMapKeyRef:
+              name: argocd-image-updater-config
+              key: log.level
+              optional: true
         livenessProbe:
           httpGet:
             path: /healthz
