@@ -1,6 +1,8 @@
 package image
 
 import (
+	"path/filepath"
+
 	"github.com/argoproj-labs/argocd-image-updater/pkg/log"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/tag"
 
@@ -36,6 +38,7 @@ type VersionConstraint struct {
 	Constraint string
 	MatchFunc  MatchFuncFn
 	MatchArgs  interface{}
+	IgnoreList []string
 	SortMode   VersionSortMode
 }
 
@@ -122,4 +125,14 @@ func (img *ContainerImage) GetNewestVersionFromTags(vc *VersionConstraint, tagLi
 	} else {
 		return img.ImageTag, nil
 	}
+}
+
+// IsTagIgnored matches tag against the patterns in IgnoreList and returns true if one of them matches
+func (vc *VersionConstraint) IsTagIgnored(tag string) bool {
+	for _, t := range vc.IgnoreList {
+		if match, err := filepath.Match(t, tag); err != nil && match {
+			return true
+		}
+	}
+	return false
 }

@@ -28,8 +28,9 @@ const (
 
 // Upgrade strategy related annotations
 const (
-	MatchOptionAnnotation    = ImageUpdaterAnnotationPrefix + "/%s.tag-match"
-	UpdateStrategyAnnotation = ImageUpdaterAnnotationPrefix + "/%s.update-strategy"
+	MatchOptionAnnotation      = ImageUpdaterAnnotationPrefix + "/%s.tag-match"
+	IngoreTagsOptionAnnotation = ImageUpdaterAnnotationPrefix + "/%s.ignore-tags"
+	UpdateStrategyAnnotation   = ImageUpdaterAnnotationPrefix + "/%s.update-strategy"
 )
 
 // Image pull secret related annotations

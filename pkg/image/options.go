@@ -114,6 +114,7 @@ func (img *ContainerImage) GetParameterMatch(annotations map[string]string) (Mat
 	}
 }
 
+// GetParameterPullSecret retrieves an image's pull secret credentials
 func (img *ContainerImage) GetParameterPullSecret(annotations map[string]string) *CredentialSource {
 	key := fmt.Sprintf(common.SecretListAnnotation, img.normalizedSymbolicName())
 	val, ok := annotations[key]
@@ -127,6 +128,26 @@ func (img *ContainerImage) GetParameterPullSecret(annotations map[string]string)
 		return nil
 	}
 	return credSrc
+}
+
+// GetParameterIgnoreTags retrieves a list of tags to ignore from a comma-separated string
+func (img *ContainerImage) GetParameterIgnoreTags(annotations map[string]string) []string {
+	key := fmt.Sprintf(common.IngoreTagsOptionAnnotation, img.normalizedSymbolicName())
+	val, ok := annotations[key]
+	if !ok {
+		log.Tracef("No ignore-tags annotation %s found", key)
+		return nil
+	}
+	ignoreList := make([]string, 0)
+	tags := strings.Split(strings.TrimSpace(val), ",")
+	for _, tag := range tags {
+		// We ignore empty tags
+		ttag := strings.TrimSpace(tag)
+		if ttag != "" {
+			ignoreList = append(ignoreList, strings.TrimSpace(ttag))
+		}
+	}
+	return ignoreList
 }
 
 func (img *ContainerImage) normalizedSymbolicName() string {
