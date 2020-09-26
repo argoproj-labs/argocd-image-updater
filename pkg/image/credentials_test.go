@@ -132,6 +132,25 @@ func Test_FetchCredentialsFromPullSecret(t *testing.T) {
 		assert.Equal(t, "foo", creds.Username)
 		assert.Equal(t, "bar", creds.Password)
 	})
+
+	t.Run("Fetch credentials from pull secret with protocol stripped", func(t *testing.T) {
+		dockerJson := fixture.MustReadFile("../../test/testdata/docker/valid-config-noproto.json")
+		secretData := make(map[string][]byte)
+		secretData[pullSecretField] = []byte(dockerJson)
+		pullSecret := fixture.NewSecret("test", "test", secretData)
+		clientset := fake.NewFakeClientsetWithResources(pullSecret)
+		credSrc := &CredentialSource{
+			Type:            CredentialSourcePullSecret,
+			Registry:        "https://registry-1.docker.io/v2",
+			SecretNamespace: "test",
+			SecretName:      "test",
+		}
+		creds, err := credSrc.FetchCredentials("https://registry-1.docker.io", &client.KubernetesClient{Clientset: clientset})
+		require.NoError(t, err)
+		require.NotNil(t, creds)
+		assert.Equal(t, "foo", creds.Username)
+		assert.Equal(t, "bar", creds.Password)
+	})
 }
 
 func Test_FetchCredentialsFromEnv(t *testing.T) {
@@ -182,6 +201,14 @@ func Test_FetchCredentialsFromEnv(t *testing.T) {
 func Test_ParseDockerConfig(t *testing.T) {
 	t.Run("Parse valid Docker configuration with matching registry", func(t *testing.T) {
 		config := fixture.MustReadFile("../../test/testdata/docker/valid-config.json")
+		username, password, err := parseDockerConfigJson("https://registry-1.docker.io", config)
+		require.NoError(t, err)
+		assert.Equal(t, "foo", username)
+		assert.Equal(t, "bar", password)
+	})
+
+	t.Run("Parse valid Docker configuration with matching registry as prefix", func(t *testing.T) {
+		config := fixture.MustReadFile("../../test/testdata/docker/valid-config-noproto.json")
 		username, password, err := parseDockerConfigJson("https://registry-1.docker.io", config)
 		require.NoError(t, err)
 		assert.Equal(t, "foo", username)
