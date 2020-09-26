@@ -142,9 +142,9 @@ func (img *ContainerImage) GetParameterIgnoreTags(annotations map[string]string)
 	tags := strings.Split(strings.TrimSpace(val), ",")
 	for _, tag := range tags {
 		// We ignore empty tags
-		ttag := strings.TrimSpace(tag)
-		if ttag != "" {
-			ignoreList = append(ignoreList, strings.TrimSpace(ttag))
+		trimmed := strings.TrimSpace(tag)
+		if trimmed != "" {
+			ignoreList = append(ignoreList, strings.TrimSpace(trimmed))
 		}
 	}
 	return ignoreList
