@@ -177,8 +177,17 @@ func parseDockerConfigJson(registryURL string, jsonSource string) (string, strin
 		return "", "", fmt.Errorf("no credentials in image pull secret")
 	}
 
+	var regPrefix string
+	if strings.HasPrefix(registryURL, "http://") {
+		regPrefix = strings.TrimPrefix(registryURL, "http://")
+	} else if strings.HasPrefix(registryURL, "https://") {
+		regPrefix = strings.TrimPrefix(registryURL, "https://")
+	} else {
+		regPrefix = registryURL
+	}
+
 	for registry, authConf := range auths {
-		if !strings.HasPrefix(registry, registryURL) {
+		if !strings.HasPrefix(registry, registryURL) && !strings.HasPrefix(registry, regPrefix) {
 			log.Tracef("found registry %s in image pull secret, but we want %s - skipping", registry, registryURL)
 			continue
 		}
