@@ -144,6 +144,30 @@ to prevent considering (and possibly update to) the wrong tags by accident.
 If the annotation is not specified, a match function `any` will be used to match
 the tag names, effectively performing no filtering at all.
 
+## Ignoring certain tags
+
+If you want to ignore certain tags from the registry for any given image, you
+can define a comma separated list of glob-like patterns using the following
+annotation:
+
+```yaml
+argocd-image-updater.argoproj.io/<image_name>.ignore-tags: <pattern1>[, <pattern2>, ...]
+```
+
+You can use glob patterns as described in this
+[documentation](https://golang.org/pkg/path/filepath/#Match)
+
+If you want to disable updating an image temporarily, without removing all of
+the configuration, you can do so by just ignoring all tags, effectively
+preventing the image updater to consider any of the tags returned from the
+registry:
+
+```yaml
+argocd-image-updater.argoproj.io/<image_name>.ignore-tags: "*"
+```
+
+Please note that regular expressions are not supported to be used for patterns.
+
 ## Specifying pull secrets
 
 There are generally two ways on how to specify pull secrets for Argo CD Image
