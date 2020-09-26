@@ -94,6 +94,42 @@ kubectl apply -n argocd-image-updater -f manifests/install.yaml
     instance. Just leave the number of replicas at 1, otherwise weird side
     effects could occur.
 
+### Minimum mandatory configuration
+
+Even if you don't plan to use private registries, you will need to configure at
+least an empty `registries.conf`, because the `argocd-image-updater` pod will
+volume mount this entry from the config map.
+
+Edit the `argocd-image-updater-config` ConfigMap and add the following entry:
+
+```yaml
+data:
+  registries.conf: ""
+```
+
+Without this entry, the `argocd-image-updater` pod will not be able to start.
+
+If you are going to use private container registries, this is also a good time
+to
+[configure them](../../configuration/registries/#configuring-a-custom-container-registry)
+
+### Configure the desired log level
+
+While this step is optional, we recommend to set the log level explicitly.
+During your first steps with the Argo CD Image Updater, a more verbose logging
+can help greatly in troubleshooting things.
+
+Edit the `argocd-image-updater-config` ConfigMap and add the following keys
+(the values are dependent upon your environment)
+
+```yaml
+data:
+  # log.level can be one of trace, debug, info, warn or error
+  log.level: debug
+```
+
+If you omit the `log.level` setting, the default `info` level will be used.
+
 ### Configure Argo CD endpoint
 
 If you run Argo CD Image Updater in another cluster than Argo CD, or if your

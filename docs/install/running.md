@@ -106,6 +106,8 @@ to the Kubernetes cluster.
 Set the log level to *level*, where *level* can be one of `trace`, `debug`,
 `info`, `warn` or `error`.
 
+Can also be set using the *IMAGE_UPDATER_LOGLEVEL* environment variable.
+
 **--match-application-name *pattern* **
 
 Only process applications that have a valid annotation and matches the given
