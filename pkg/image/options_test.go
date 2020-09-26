@@ -182,7 +182,7 @@ func Test_GetSecretOption(t *testing.T) {
 func Test_GetIgnoreTags(t *testing.T) {
 	t.Run("Get list of tags to ignore from annotation", func(t *testing.T) {
 		annotations := map[string]string{
-			fmt.Sprintf(common.IngoreTagsOptionAnnotation, "dummy"): "tag1, ,tag2,  tag3  , tag4",
+			fmt.Sprintf(common.IgnoreTagsOptionAnnotation, "dummy"): "tag1, ,tag2,  tag3  , tag4",
 		}
 		img := NewFromIdentifier("dummy=foo/bar:1.12")
 		tags := img.GetParameterIgnoreTags(annotations)

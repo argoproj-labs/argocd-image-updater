@@ -132,7 +132,7 @@ func (img *ContainerImage) GetParameterPullSecret(annotations map[string]string)
 
 // GetParameterIgnoreTags retrieves a list of tags to ignore from a comma-separated string
 func (img *ContainerImage) GetParameterIgnoreTags(annotations map[string]string) []string {
-	key := fmt.Sprintf(common.IngoreTagsOptionAnnotation, img.normalizedSymbolicName())
+	key := fmt.Sprintf(common.IgnoreTagsOptionAnnotation, img.normalizedSymbolicName())
 	val, ok := annotations[key]
 	if !ok {
 		log.Tracef("No ignore-tags annotation %s found", key)
