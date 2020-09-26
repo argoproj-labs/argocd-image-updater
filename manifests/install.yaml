@@ -109,6 +109,12 @@ spec:
               key: argocd.token
               name: argocd-image-updater-secret
               optional: true
+        - name: IMAGE_UPDATER_LOGLEVEL
+          valueFrom:
+            configMapKeyRef:
+              key: log.level
+              name: argocd-image-updater-config
+              optional: true
         image: argoprojlabs/argocd-image-updater:latest
         imagePullPolicy: Always
         livenessProbe:
