@@ -130,7 +130,8 @@ func (img *ContainerImage) GetNewestVersionFromTags(vc *VersionConstraint, tagLi
 // IsTagIgnored matches tag against the patterns in IgnoreList and returns true if one of them matches
 func (vc *VersionConstraint) IsTagIgnored(tag string) bool {
 	for _, t := range vc.IgnoreList {
-		if match, err := filepath.Match(t, tag); err != nil && match {
+		if match, err := filepath.Match(t, tag); err == nil && match {
+			log.Tracef("tag %s is ignored by pattern %s", tag, t)
 			return true
 		}
 	}
