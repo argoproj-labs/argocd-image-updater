@@ -123,6 +123,7 @@ nimage
 nimg
 nokia
 nolint
+noproto
 notastring
 omitempty
 otherimg
