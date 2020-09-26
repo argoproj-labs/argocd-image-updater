@@ -342,6 +342,7 @@ must be prefixed with `argocd-image-updater.argoproj.io`.
 |`image-list`|*none*|Comma separated list of images to consider for update|
 |`<image_alias>.update-strategy`|`semver`|The update strategy to be used for the image|
 |`<image_alias>.tag-match`|*any*|A function to match tag names from registry against to be considered for update|
+|`<image_alias>.ignore-tags`|*none*|A comma-separated list of glob patterns that when match ignore a certain tag from the registry|
 |`<image_alias>.pull-secret`|*none*|A reference to a secret to be used as registry credentials for this image|
 |`<image_alias>.helm.image-spec`|*none*|Name of the Helm parameter to specify the canonical name of the image, i.e. holds `image/name:1.0`. If this is set, other Helm parameter related options will be ignored.|
 |`<image_alias>.helm.image-name`|`image.name`|Name of the Helm parameter used for specifying the image name, i.e. holds `image/name`|
