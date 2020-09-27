@@ -240,7 +240,7 @@ func Test_UpdateApplication(t *testing.T) {
 		called := 0
 		mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
 			regMock := regmock.RegistryClient{}
-			regMock.On("Tags", mock.Anything).Return([]string{"abcdef", "ghijkl", "mnopqr", "stuvwx"}, nil)
+			regMock.On("Tags", mock.Anything).Return([]string{"one", "two", "three", "four"}, nil)
 			regMock.On("ManifestV1", mock.Anything, mock.Anything).Return(meta[called], nil)
 			called += 1
 			return &regMock, nil
@@ -309,7 +309,7 @@ func Test_UpdateApplication(t *testing.T) {
 		called := 0
 		mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
 			regMock := regmock.RegistryClient{}
-			regMock.On("Tags", mock.Anything).Return([]string{"abcdef", "ghijkl", "mnopqr", "stuvwx"}, nil)
+			regMock.On("Tags", mock.Anything).Return([]string{"one", "two", "three", "four"}, nil)
 			regMock.On("ManifestV1", mock.Anything, mock.Anything).Return(meta[called], nil)
 			called += 1
 			return &regMock, nil
