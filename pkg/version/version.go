@@ -9,7 +9,7 @@ var (
 )
 
 func Version() string {
-	version := fmt.Sprintf("v%s+%s", version, gitCommit)
+	version := fmt.Sprintf("v%s+%s", version, gitCommit[0:7])
 	return version
 }
 

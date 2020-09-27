@@ -9,7 +9,7 @@ endif
 
 CURRENT_DIR=$(shell pwd)
 VERSION=$(shell cat ${CURRENT_DIR}/VERSION)
-GIT_COMMIT=$(shell git rev-parse HEAD | cut -c1-7)
+GIT_COMMIT=$(shell git rev-parse HEAD)
 
 LDFLAGS=
 
