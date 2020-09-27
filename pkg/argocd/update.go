@@ -75,6 +75,7 @@ func UpdateApplication(newRegFn registry.NewRegistryClient, argoClient ArgoCD, k
 
 		vc.SortMode = applicationImage.GetParameterUpdateStrategy(curApplication.Application.Annotations)
 		vc.MatchFunc, vc.MatchArgs = applicationImage.GetParameterMatch(curApplication.Application.Annotations)
+		vc.IgnoreList = applicationImage.GetParameterIgnoreTags(curApplication.Application.Annotations)
 
 		// The endpoint can provide default credentials for pulling images
 		err = rep.SetEndpointCredentials(kubeClient)

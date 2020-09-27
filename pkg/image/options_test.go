@@ -178,3 +178,18 @@ func Test_GetSecretOption(t *testing.T) {
 		require.Nil(t, credSrc)
 	})
 }
+
+func Test_GetIgnoreTags(t *testing.T) {
+	t.Run("Get list of tags to ignore from annotation", func(t *testing.T) {
+		annotations := map[string]string{
+			fmt.Sprintf(common.IgnoreTagsOptionAnnotation, "dummy"): "tag1, ,tag2,  tag3  , tag4",
+		}
+		img := NewFromIdentifier("dummy=foo/bar:1.12")
+		tags := img.GetParameterIgnoreTags(annotations)
+		require.Len(t, tags, 4)
+		assert.Equal(t, "tag1", tags[0])
+		assert.Equal(t, "tag2", tags[1])
+		assert.Equal(t, "tag3", tags[2])
+		assert.Equal(t, "tag4", tags[3])
+	})
+}
