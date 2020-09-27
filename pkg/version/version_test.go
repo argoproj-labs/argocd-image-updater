@@ -16,5 +16,5 @@ func Test_Version(t *testing.T) {
 }
 
 func Test_Useragent(t *testing.T) {
-	assert.Regexp(t, `^[a-z\-]+\sv[0-9]+\.[0-9]+\.[0-9]+(-[a-z]+)*(\+[a-z0-9]+)*$`, Useragent())
+	assert.Regexp(t, `^[a-z\-]+:\sv[0-9]+\.[0-9]+\.[0-9]+(-[a-z]+)*(\+[a-z0-9]+)*$`, Useragent())
 }

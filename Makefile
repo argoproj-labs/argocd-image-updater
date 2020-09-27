@@ -10,6 +10,7 @@ endif
 CURRENT_DIR=$(shell pwd)
 VERSION=$(shell cat ${CURRENT_DIR}/VERSION)
 GIT_COMMIT=$(shell git rev-parse HEAD)
+BUILD_DATE=$(shell date -u +'%Y-%m-%dT%H:%M:%SZ')
 
 LDFLAGS=
 
@@ -18,7 +19,8 @@ VERSION_PACKAGE=github.com/argoproj-labs/argocd-image-updater/pkg/version
 override LDFLAGS += -extldflags "-static"
 override LDFLAGS += \
 	-X ${VERSION_PACKAGE}.version=${VERSION} \
-	-X ${VERSION_PACKAGE}.gitCommit=${GIT_COMMIT}
+	-X ${VERSION_PACKAGE}.gitCommit=${GIT_COMMIT} \
+	-X ${VERSION_PACKAGE}.buildDate=${BUILD_DATE}
 
 .PHONY: all
 all: prereq controller
