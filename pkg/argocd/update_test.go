@@ -266,7 +266,7 @@ func Test_UpdateApplication(t *testing.T) {
 					Source: v1alpha1.ApplicationSource{
 						Kustomize: &v1alpha1.ApplicationSourceKustomize{
 							Images: v1alpha1.KustomizeImages{
-								"jannfis/foobar:mnopqr",
+								"jannfis/foobar:one",
 							},
 						},
 					},
@@ -275,7 +275,7 @@ func Test_UpdateApplication(t *testing.T) {
 					SourceType: v1alpha1.ApplicationSourceTypeKustomize,
 					Summary: v1alpha1.ApplicationSummary{
 						Images: []string{
-							"jannfis/foobar:mnopqr",
+							"jannfis/foobar:one",
 						},
 					},
 				},
@@ -335,7 +335,7 @@ func Test_UpdateApplication(t *testing.T) {
 					Source: v1alpha1.ApplicationSource{
 						Kustomize: &v1alpha1.ApplicationSourceKustomize{
 							Images: v1alpha1.KustomizeImages{
-								"jannfis/foobar:mnopqr",
+								"jannfis/foobar:one",
 							},
 						},
 					},
@@ -344,7 +344,7 @@ func Test_UpdateApplication(t *testing.T) {
 					SourceType: v1alpha1.ApplicationSourceTypeKustomize,
 					Summary: v1alpha1.ApplicationSummary{
 						Images: []string{
-							"jannfis/foobar:mnopqr",
+							"jannfis/foobar:one",
 						},
 					},
 				},
