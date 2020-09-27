@@ -30,7 +30,7 @@ func GitCommit() string {
 	return gitCommit
 }
 
-func BuilDate() string {
+func BuildDate() string {
 	return buildDate
 }
 

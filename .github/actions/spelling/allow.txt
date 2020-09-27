@@ -63,6 +63,7 @@ gh
 ghcr
 githash
 github
+GOARCH
 goimports
 golang
 golangci
@@ -171,6 +172,7 @@ structcheck
 svg
 svi
 svl
+SZ
 taglist
 tagsortmode
 TEMPFILE

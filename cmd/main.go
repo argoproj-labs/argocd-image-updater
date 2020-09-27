@@ -177,7 +177,7 @@ func newVersionCommand() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if !short {
 				fmt.Printf("%s\n", version.Useragent())
-				fmt.Printf("  BuildDate: %s\n", version.BuilDate())
+				fmt.Printf("  BuildDate: %s\n", version.BuildDate())
 				fmt.Printf("  GitCommit: %s\n", version.GitCommit())
 				fmt.Printf("  GoVersion: %s\n", version.GoVersion())
 				fmt.Printf("  GoCompiler: %s\n", version.GoCompiler())
