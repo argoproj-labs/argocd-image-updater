@@ -15,6 +15,7 @@ import (
 	"github.com/argoproj-labs/argocd-image-updater/test/fixture"
 
 	"github.com/argoproj/argo-cd/pkg/apis/application/v1alpha1"
+	"github.com/docker/distribution/manifest/schema1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -212,6 +213,144 @@ func Test_UpdateApplication(t *testing.T) {
 			},
 			Images: image.ContainerImageList{
 				image.NewFromIdentifier("jannfis/foobar:1.0.1"),
+			},
+		}
+		res := UpdateApplication(mockClientFn, &argoClient, &kubeClient, appImages, false)
+		assert.Equal(t, 0, res.NumErrors)
+		assert.Equal(t, 0, res.NumSkipped)
+		assert.Equal(t, 1, res.NumApplicationsProcessed)
+		assert.Equal(t, 1, res.NumImagesConsidered)
+		assert.Equal(t, 0, res.NumImagesUpdated)
+	})
+
+	t.Run("Test skip because of match-tag pattern doesn't match", func(t *testing.T) {
+		meta := make([]*schema1.SignedManifest, 4)
+		for i := 0; i < 4; i++ {
+			ts := fmt.Sprintf("2006-01-02T15:%.02d:05.999999999Z", i)
+			meta[i] = &schema1.SignedManifest{
+				Manifest: schema1.Manifest{
+					History: []schema1.History{
+						{
+							V1Compatibility: `{"created":"` + ts + `"}`,
+						},
+					},
+				},
+			}
+		}
+		called := 0
+		mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
+			regMock := regmock.RegistryClient{}
+			regMock.On("Tags", mock.Anything).Return([]string{"abcdef", "ghijkl", "mnopqr", "stuvwx"}, nil)
+			regMock.On("ManifestV1", mock.Anything, mock.Anything).Return(meta[called], nil)
+			called += 1
+			return &regMock, nil
+		}
+
+		argoClient := argomock.ArgoCD{}
+		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+
+		kubeClient := client.KubernetesClient{
+			Clientset: fake.NewFakeKubeClient(),
+		}
+		appImages := &ApplicationImages{
+			Application: v1alpha1.Application{
+				ObjectMeta: v1.ObjectMeta{
+					Name:      "guestbook",
+					Namespace: "guestbook",
+					Annotations: map[string]string{
+						fmt.Sprintf(common.MatchOptionAnnotation, "dummy"):    "regexp:^foobar$",
+						fmt.Sprintf(common.UpdateStrategyAnnotation, "dummy"): "name",
+					},
+				},
+				Spec: v1alpha1.ApplicationSpec{
+					Source: v1alpha1.ApplicationSource{
+						Kustomize: &v1alpha1.ApplicationSourceKustomize{
+							Images: v1alpha1.KustomizeImages{
+								"jannfis/foobar:mnopqr",
+							},
+						},
+					},
+				},
+				Status: v1alpha1.ApplicationStatus{
+					SourceType: v1alpha1.ApplicationSourceTypeKustomize,
+					Summary: v1alpha1.ApplicationSummary{
+						Images: []string{
+							"jannfis/foobar:mnopqr",
+						},
+					},
+				},
+			},
+			Images: image.ContainerImageList{
+				image.NewFromIdentifier("dummy=jannfis/foobar"),
+			},
+		}
+		res := UpdateApplication(mockClientFn, &argoClient, &kubeClient, appImages, false)
+		assert.Equal(t, 0, res.NumErrors)
+		assert.Equal(t, 0, res.NumSkipped)
+		assert.Equal(t, 1, res.NumApplicationsProcessed)
+		assert.Equal(t, 1, res.NumImagesConsidered)
+		assert.Equal(t, 0, res.NumImagesUpdated)
+	})
+
+	t.Run("Test skip because of ignored", func(t *testing.T) {
+		meta := make([]*schema1.SignedManifest, 4)
+		for i := 0; i < 4; i++ {
+			ts := fmt.Sprintf("2006-01-02T15:%.02d:05.999999999Z", i)
+			meta[i] = &schema1.SignedManifest{
+				Manifest: schema1.Manifest{
+					History: []schema1.History{
+						{
+							V1Compatibility: `{"created":"` + ts + `"}`,
+						},
+					},
+				},
+			}
+		}
+		called := 0
+		mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
+			regMock := regmock.RegistryClient{}
+			regMock.On("Tags", mock.Anything).Return([]string{"abcdef", "ghijkl", "mnopqr", "stuvwx"}, nil)
+			regMock.On("ManifestV1", mock.Anything, mock.Anything).Return(meta[called], nil)
+			called += 1
+			return &regMock, nil
+		}
+
+		argoClient := argomock.ArgoCD{}
+		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+
+		kubeClient := client.KubernetesClient{
+			Clientset: fake.NewFakeKubeClient(),
+		}
+		appImages := &ApplicationImages{
+			Application: v1alpha1.Application{
+				ObjectMeta: v1.ObjectMeta{
+					Name:      "guestbook",
+					Namespace: "guestbook",
+					Annotations: map[string]string{
+						fmt.Sprintf(common.IgnoreTagsOptionAnnotation, "dummy"): "*",
+						fmt.Sprintf(common.UpdateStrategyAnnotation, "dummy"):   "name",
+					},
+				},
+				Spec: v1alpha1.ApplicationSpec{
+					Source: v1alpha1.ApplicationSource{
+						Kustomize: &v1alpha1.ApplicationSourceKustomize{
+							Images: v1alpha1.KustomizeImages{
+								"jannfis/foobar:mnopqr",
+							},
+						},
+					},
+				},
+				Status: v1alpha1.ApplicationStatus{
+					SourceType: v1alpha1.ApplicationSourceTypeKustomize,
+					Summary: v1alpha1.ApplicationSummary{
+						Images: []string{
+							"jannfis/foobar:mnopqr",
+						},
+					},
+				},
+			},
+			Images: image.ContainerImageList{
+				image.NewFromIdentifier("dummy=jannfis/foobar"),
 			},
 		}
 		res := UpdateApplication(mockClientFn, &argoClient, &kubeClient, appImages, false)
