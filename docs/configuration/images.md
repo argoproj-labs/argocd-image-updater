@@ -127,7 +127,7 @@ only consider tags that you are generally interested in.
 You can define a tag filter by using the following annotation:
 
 ```yaml
-argocd-image-updater.argoproj.io/<image_name>.tag-match: <match_func>
+argocd-image-updater.argoproj.io/<image_name>.allow-tags: <match_func>
 ```
 
 The following match functions are currently available:
@@ -292,14 +292,14 @@ some identifier (i.e. the hash of the Git commit) in the tag.
 2. Use `latest` as update strategy
 
 3. If you just want to consider a given set of tags, i.e. `v1.0.0-<hash>`, use a
-  `tag-match` annotation.
+  `allow-tags` annotation.
 
 Annotations might look like follows:
 
 ```yaml
 argocd-image-updater.argoproj.io/image-list: yourtool=yourorg/yourimage
 argocd-image-updater.argoproj.io/yourtool.update-strategy: latest
-argocd-image-updater.argoproj.io/yourtool.tag-match: regexp:^v1.0.0-[0-9a-zA-Z]+$
+argocd-image-updater.argoproj.io/yourtool.allow-tags: regexp:^v1.0.0-[0-9a-zA-Z]+$
 ```
 
 ### Multiple images in the same Helm chart
@@ -341,7 +341,7 @@ must be prefixed with `argocd-image-updater.argoproj.io`.
 |---------------|-------|-----------|
 |`image-list`|*none*|Comma separated list of images to consider for update|
 |`<image_alias>.update-strategy`|`semver`|The update strategy to be used for the image|
-|`<image_alias>.tag-match`|*any*|A function to match tag names from registry against to be considered for update|
+|`<image_alias>.allow-tags`|*any*|A function to match tag names from registry against to be considered for update|
 |`<image_alias>.ignore-tags`|*none*|A comma-separated list of glob patterns that when match ignore a certain tag from the registry|
 |`<image_alias>.pull-secret`|*none*|A reference to a secret to be used as registry credentials for this image|
 |`<image_alias>.helm.image-spec`|*none*|Name of the Helm parameter to specify the canonical name of the image, i.e. holds `image/name:1.0`. If this is set, other Helm parameter related options will be ignored.|

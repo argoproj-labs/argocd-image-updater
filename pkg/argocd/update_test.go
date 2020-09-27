@@ -258,8 +258,8 @@ func Test_UpdateApplication(t *testing.T) {
 					Name:      "guestbook",
 					Namespace: "guestbook",
 					Annotations: map[string]string{
-						fmt.Sprintf(common.MatchOptionAnnotation, "dummy"):    "regexp:^foobar$",
-						fmt.Sprintf(common.UpdateStrategyAnnotation, "dummy"): "name",
+						fmt.Sprintf(common.AllowTagsOptionAnnotation, "dummy"): "regexp:^foobar$",
+						fmt.Sprintf(common.UpdateStrategyAnnotation, "dummy"):  "name",
 					},
 				},
 				Spec: v1alpha1.ApplicationSpec{
