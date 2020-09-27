@@ -1,21 +1,20 @@
 package version
 
-import "fmt"
-
-const (
-	majorVersion     = "0"
-	minorVersion     = "7"
-	patchVersion     = "0"
-	preReleaseString = "master"
+import (
+	"fmt"
+	"runtime"
+	"time"
 )
 
-const binaryName = "argocd-image-updater"
+var (
+	version    = "9.9.99"
+	buildDate  = time.Now().UTC().Format(time.RFC3339)
+	gitCommit  = "unknown"
+	binaryName = "argocd-image-updater"
+)
 
 func Version() string {
-	version := fmt.Sprintf("v%s.%s.%s", majorVersion, minorVersion, patchVersion)
-	if preReleaseString != "" {
-		version += fmt.Sprintf("-%s", preReleaseString)
-	}
+	version := fmt.Sprintf("v%s+%s", version, gitCommit[0:7])
 	return version
 }
 
@@ -24,5 +23,25 @@ func BinaryName() string {
 }
 
 func Useragent() string {
-	return fmt.Sprintf("%s %s", BinaryName(), Version())
+	return fmt.Sprintf("%s: %s", BinaryName(), Version())
+}
+
+func GitCommit() string {
+	return gitCommit
+}
+
+func BuildDate() string {
+	return buildDate
+}
+
+func GoVersion() string {
+	return runtime.Version()
+}
+
+func GoPlatform() string {
+	return runtime.GOOS + "/" + runtime.GOARCH
+}
+
+func GoCompiler() string {
+	return runtime.Compiler
 }

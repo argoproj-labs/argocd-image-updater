@@ -1,5 +1,3 @@
-LDFLAGS=-extldflags "-static"
-
 IMAGE_NAMESPACE?=argoprojlabs
 IMAGE_NAME=argocd-image-updater
 IMAGE_TAG?=latest
@@ -8,6 +6,21 @@ IMAGE_PREFIX=${IMAGE_NAMESPACE}/
 else
 IMAGE_PREFIX=
 endif
+
+CURRENT_DIR=$(shell pwd)
+VERSION=$(shell cat ${CURRENT_DIR}/VERSION)
+GIT_COMMIT=$(shell git rev-parse HEAD)
+BUILD_DATE=$(shell date -u +'%Y-%m-%dT%H:%M:%SZ')
+
+LDFLAGS=
+
+VERSION_PACKAGE=github.com/argoproj-labs/argocd-image-updater/pkg/version
+
+override LDFLAGS += -extldflags "-static"
+override LDFLAGS += \
+	-X ${VERSION_PACKAGE}.version=${VERSION} \
+	-X ${VERSION_PACKAGE}.gitCommit=${GIT_COMMIT} \
+	-X ${VERSION_PACKAGE}.buildDate=${BUILD_DATE}
 
 .PHONY: all
 all: prereq controller
@@ -43,7 +56,7 @@ prereq:
 
 .PHONY: controller
 controller: 
-	CGO_ENABLED=0 go build -o dist/argocd-image-updater cmd/main.go
+	CGO_ENABLED=0 go build -ldflags '${LDFLAGS}' -o dist/argocd-image-updater cmd/main.go
 
 .PHONY: image
 image: clean-image mod-vendor

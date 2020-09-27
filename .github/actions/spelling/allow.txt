@@ -63,6 +63,7 @@ gh
 ghcr
 githash
 github
+GOARCH
 goimports
 golang
 golangci
@@ -98,6 +99,7 @@ kubefake
 kubernetes
 Kustomization
 kustomize
+ldflags
 LDFLAGS
 len
 linted
@@ -171,6 +173,7 @@ structcheck
 svg
 svi
 svl
+SZ
 taglist
 tagsortmode
 TEMPFILE

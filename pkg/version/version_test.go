@@ -12,9 +12,9 @@ func Test_BinaryName(t *testing.T) {
 }
 
 func Test_Version(t *testing.T) {
-	assert.Regexp(t, `^v[0-9]\.[0-9]\.[0-9](-[a-z]+)*$`, Version())
+	assert.Regexp(t, `^v[0-9]+\.[0-9]+\.[0-9]+(\-[a-z]+)*(\+[a-z0-9]+)*$`, Version())
 }
 
 func Test_Useragent(t *testing.T) {
-	assert.Regexp(t, `^[a-z\-]+\sv[0-9]\.[0-9]\.[0-9](-[a-z]+)*$`, Useragent())
+	assert.Regexp(t, `^[a-z\-]+:\sv[0-9]+\.[0-9]+\.[0-9]+(-[a-z]+)*(\+[a-z0-9]+)*$`, Useragent())
 }
