@@ -99,6 +99,7 @@ kubefake
 kubernetes
 Kustomization
 kustomize
+ldflags
 LDFLAGS
 len
 linted
