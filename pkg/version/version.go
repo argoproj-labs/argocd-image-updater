@@ -2,20 +2,14 @@ package version
 
 import "fmt"
 
-const (
-	majorVersion     = "0"
-	minorVersion     = "7"
-	patchVersion     = "0"
-	preReleaseString = "master"
+var (
+	version    = "9.9.99"
+	gitCommit  = "unknown"
+	binaryName = "argocd-image-updater"
 )
 
-const binaryName = "argocd-image-updater"
-
 func Version() string {
-	version := fmt.Sprintf("v%s.%s.%s", majorVersion, minorVersion, patchVersion)
-	if preReleaseString != "" {
-		version += fmt.Sprintf("-%s", preReleaseString)
-	}
+	version := fmt.Sprintf("v%s+%s", version, gitCommit)
 	return version
 }
 
