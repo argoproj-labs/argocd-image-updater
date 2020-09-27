@@ -30,6 +30,7 @@ codecov
 codegen
 codehilite
 config
+configmap
 coverprofile
 cred
 creds
