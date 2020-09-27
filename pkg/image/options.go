@@ -83,11 +83,20 @@ func (img *ContainerImage) GetParameterUpdateStrategy(annotations map[string]str
 // tag names. If an invalid option is found, it returns MatchFuncNone as the
 // default, to prevent accidental matches.
 func (img *ContainerImage) GetParameterMatch(annotations map[string]string) (MatchFuncFn, interface{}) {
-	key := fmt.Sprintf(common.MatchOptionAnnotation, img.normalizedSymbolicName())
+
+	key := fmt.Sprintf(common.AllowTagsOptionAnnotation, img.normalizedSymbolicName())
 	val, ok := annotations[key]
 	if !ok {
-		log.Tracef("No match annotation %s found", key)
-		return MatchFuncAny, ""
+		// The old match-tag annotation is deprecated and will be subject to removal
+		// in a future version.
+		key = fmt.Sprintf(common.OldMatchOptionAnnotation, img.normalizedSymbolicName())
+		val, ok = annotations[key]
+		if !ok {
+			log.Tracef("No match annotation %s found", key)
+			return MatchFuncAny, ""
+		} else {
+			log.Warnf("The 'tag-match' annotation is deprecated and subject to removal. Please use 'allow-tags' annotation instead.")
+		}
 	}
 
 	// The special value "any" doesn't take any parameter

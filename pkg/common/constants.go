@@ -28,7 +28,8 @@ const (
 
 // Upgrade strategy related annotations
 const (
-	MatchOptionAnnotation      = ImageUpdaterAnnotationPrefix + "/%s.tag-match"
+	OldMatchOptionAnnotation   = ImageUpdaterAnnotationPrefix + "/%s.tag-match" // Deprecated and will be removed
+	AllowTagsOptionAnnotation  = ImageUpdaterAnnotationPrefix + "/%s.allow-tags"
 	IgnoreTagsOptionAnnotation = ImageUpdaterAnnotationPrefix + "/%s.ignore-tags"
 	UpdateStrategyAnnotation   = ImageUpdaterAnnotationPrefix + "/%s.update-strategy"
 )
