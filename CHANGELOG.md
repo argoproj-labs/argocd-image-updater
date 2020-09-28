@@ -16,7 +16,56 @@ N/A
 
 ### Other changes
 
-## 2020-09-30 - Release v0.6.0
+## 2020-09-27 - Release v0.7.0
+
+### Upgrade notes (no really, you MUST read this)
+
+**Deprecation notice:** The annotation `argocd-image-updater.argoproj/<image>.tag-match` has been deprecated in favour of `argocd-image-updater.argoproj/<image>.allow-tags` to be consistent with the new `argocd-image-updater.argoproj/<image>.ignore-tags` annotation. The old annotation will still work, but a warning message will be issued in the log. Users are encouraged to rename their annotations asap, as the `tag-match` annotation is subject to removal in a future version of the image updater.
+
+### Bug fixes
+* fix: Correctly parse & use pull secret entries without protocol
+
+### New features
+
+* feat: Support for GitHub Container Registry (ghcr.io)
+* feat: Allow setting log level from configmap (and environment)
+* feat: Allow ignoring set of tags
+
+### Other changes
+
+* refactor: Introduce allow-tags and deprecate tag-match annotation
+* chore: Externalize version & build information
+
+
+## 2020-09-25 - Release v0.6.2
+
+### Upgrade notes (no really, you MUST read this)
+N/A
+
+### Bug fixes
+* fix: Tag sort mode for custom registries aren't honored
+
+### New features
+* feat: Allow configuration of default namespace for registries
+
+### Other changes
+N/A
+
+## 2020-09-22 - Release v0.6.1
+
+### Upgrade notes (no really, you MUST read this)
+N/A
+
+### Bug fixes
+* fix: Make insecure TLS connections to registries actually work
+
+### New features
+N/A
+
+### Other changes
+N/A
+
+## 2020-09-22 - Release v0.6.0
 
 ### Upgrade notes (no really, you MUST read this)
 N/A
