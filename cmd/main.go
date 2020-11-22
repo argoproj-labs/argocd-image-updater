@@ -206,6 +206,26 @@ func newTestCommand() *cobra.Command {
 	var runCmd = &cobra.Command{
 		Use:   "test IMAGE",
 		Short: "Test the behaviour of argocd-image-updater",
+		Long: `
+The test command lets you test the behaviour of argocd-image-updater before
+configuring annotations on your Argo CD Applications.
+
+Its main use case is to tell you to which tag a given image would be updated
+to using the given parametrization. Command line switches can be used as a
+way to supply the required parameters.
+`,
+		Example: `
+# In the most simple form, check for the latest available (semver) version of 
+# an image in the registry
+argocd-image-updater test nginx
+
+# Check to which version the nginx image within the 1.17 branch would be
+# updated to, using the default semver strategy
+argocd-image-updater test nginx --semver-constraint v1.17.x
+
+# Check for the latest built image for a tag that matches a pattern
+argocd-image-updater test nginx --allow-tags '^1.19.\d+(\-.*)*$' --update-strategy latest
+`,
 		Run: func(cmd *cobra.Command, args []string) {
 			if len(args) != 1 {
 				cmd.HelpFunc()(cmd, args)
