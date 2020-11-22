@@ -10,11 +10,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/docker/distribution"
+
 	"github.com/argoproj-labs/argocd-image-updater/pkg/client"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/image"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/log"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/tag"
-	"github.com/docker/distribution"
 )
 
 // GetTags returns a list of available tags for the given image
