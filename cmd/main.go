@@ -13,6 +13,7 @@ import (
 	"github.com/argoproj-labs/argocd-image-updater/pkg/client"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/env"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/health"
+	"github.com/argoproj-labs/argocd-image-updater/pkg/image"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/log"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/registry"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/version"
@@ -164,6 +165,7 @@ func newRootCommand() error {
 	}
 	rootCmd.AddCommand(newRunCommand())
 	rootCmd.AddCommand(newVersionCommand())
+	rootCmd.AddCommand(newTestCommand())
 	err := rootCmd.Execute()
 	return err
 }
@@ -190,6 +192,98 @@ func newVersionCommand() *cobra.Command {
 	}
 	versionCmd.Flags().BoolVar(&short, "short", false, "show only the version number")
 	return versionCmd
+}
+
+func newTestCommand() *cobra.Command {
+	var (
+		semverConstraint string
+		strategy         string
+		registriesConf   string
+		logLevel         string
+		allowTags        string
+	)
+	var runCmd = &cobra.Command{
+		Use:   "test IMAGE",
+		Short: "Test the behaviour of argocd-image-updater",
+		Run: func(cmd *cobra.Command, args []string) {
+			if len(args) != 1 {
+				cmd.HelpFunc()(cmd, args)
+				log.Fatalf("image needs to be specified")
+			}
+
+			if err := log.SetLogLevel(logLevel); err != nil {
+				log.Fatalf("could not set log level to %s: %v", logLevel, err)
+			}
+
+			vc := &image.VersionConstraint{
+				Constraint: semverConstraint,
+				SortMode:   image.VersionSortSemVer,
+			}
+
+			vc.SortMode = image.ParseUpdateStrategy(strategy)
+
+			if allowTags != "" {
+				vc.MatchFunc, vc.MatchArgs = image.ParseMatchfunc(allowTags)
+			}
+
+			img := image.NewFromIdentifier(args[0])
+			log.WithContext().
+				AddField("registry", img.RegistryURL).
+				AddField("image_name", img.ImageName).
+				Infof("getting image")
+
+			if registriesConf != "" {
+				if err := registry.LoadRegistryConfiguration(registriesConf, false); err != nil {
+					log.Fatalf("could not load registries configuration: %v", err)
+				}
+			}
+
+			ep, err := registry.GetRegistryEndpoint(img.RegistryURL)
+			if err != nil {
+				log.Fatalf("could not get registry endpoint: %v", err)
+			}
+
+			if err := ep.SetEndpointCredentials(nil); err != nil {
+				log.Fatalf("could not set registry credentials")
+			}
+
+			regClient, err := registry.NewClient(ep, "", "")
+			if err != nil {
+				log.Fatalf("could not create registry client: %v", err)
+			}
+
+			log.WithContext().
+				AddField("image_name", img.ImageName).
+				Infof("Fetching available tags and metadata from registry")
+
+			tags, err := ep.GetTags(img, regClient, vc)
+			if err != nil {
+				log.Fatalf("could not get tags: %v", err)
+			}
+
+			log.WithContext().
+				AddField("image_name", img.ImageName).
+				Infof("Found %d tags in registry", len(tags.Tags()))
+
+			upImg, err := img.GetNewestVersionFromTags(vc, tags)
+			if err != nil {
+				log.Fatalf("could not get updateable image from tags: %v", err)
+			}
+			if upImg == nil {
+				log.Infof("no newer version of image found")
+				return
+			}
+
+			log.Infof("latest image according to constraint is %s", img.WithTag(upImg))
+		},
+	}
+
+	runCmd.Flags().StringVar(&semverConstraint, "semver-constraint", "", "only consider tags matching semantic version constraint")
+	runCmd.Flags().StringVar(&allowTags, "allow-tags", "", "function to match tag names from registry")
+	runCmd.Flags().StringVar(&strategy, "strategy", "semver", "update strategy to use, one of: semver, latest)")
+	runCmd.Flags().StringVar(&registriesConf, "registries-conf", "", "path to registries configuration")
+	runCmd.Flags().StringVar(&logLevel, "loglevel", "debug", "log level to use (one of trace, debug, info, warn, error)")
+	return runCmd
 }
 
 // newRunCommand implements "run" command
