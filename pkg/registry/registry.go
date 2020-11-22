@@ -6,16 +6,23 @@ package registry
 // TODO: Refactor this package and provide mocks for better testing.
 
 import (
+	"context"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/docker/distribution"
+	"golang.org/x/sync/semaphore"
 
 	"github.com/argoproj-labs/argocd-image-updater/pkg/client"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/image"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/log"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/tag"
+)
+
+const (
+	MaxMetadataConcurrency = 20
 )
 
 // GetTags returns a list of available tags for the given image
@@ -33,7 +40,7 @@ func (endpoint *RegistryEndpoint) GetTags(img *image.ContainerImage, regClient R
 	} else {
 		nameInRegistry = img.ImageName
 	}
-	tTags, err := regClient.Tags(nameInRegistry)
+	tTags, err := regClient.Tags(nameInRegistry, endpoint.Limiter)
 	if err != nil {
 		return nil, err
 	}
@@ -75,6 +82,12 @@ func (endpoint *RegistryEndpoint) GetTags(img *image.ContainerImage, regClient R
 		return tagList, nil
 	}
 
+	sem := semaphore.NewWeighted(int64(MaxMetadataConcurrency))
+	tagListLock := &sync.RWMutex{}
+
+	var wg sync.WaitGroup
+	wg.Add(len(tags))
+
 	// Fetch the manifest for the tag -- we need v1, because it contains history
 	// information that we require.
 	i := 0
@@ -88,43 +101,66 @@ func (endpoint *RegistryEndpoint) GetTags(img *image.ContainerImage, regClient R
 			log.Warnf("invalid entry for %s:%s in cache, invalidating.", nameInRegistry, imgTag.TagName)
 		} else if imgTag != nil {
 			log.Debugf("Cache hit for %s:%s", nameInRegistry, imgTag.TagName)
+			tagListLock.Lock()
 			tagList.Add(imgTag)
+			tagListLock.Unlock()
+			wg.Done()
 			continue
 		}
 
 		log.Tracef("Getting manifest for image %s:%s (operation %d/%d)", nameInRegistry, tagStr, i, len(tags))
 
-		var ml distribution.Manifest
-		var err error
-
-		// We first try to fetch a V2 manifest, and if that's not available we fall
-		// back to fetching V1 manifest. If that fails also, we just skip this tag.
-		if ml, err = regClient.ManifestV2(nameInRegistry, tagStr); err != nil {
-			log.Debugf("No V2 manifest for %s:%s, fetching V1 (%v)", nameInRegistry, tagStr, err)
-			if ml, err = regClient.ManifestV1(nameInRegistry, tagStr); err != nil {
-				log.Errorf("Error fetching metadata for %s:%s - neither V1 or V2 manifest returned by registry: %v", nameInRegistry, tagStr, err)
-				continue
-			}
-		}
-
-		// Parse required meta data from the manifest. The metadata contains all
-		// information needed to decide whether to consider this tag or not.
-		ti, err := regClient.TagMetadata(nameInRegistry, ml)
-		if err != nil {
-			return nil, err
-		}
-		if ti == nil {
-			log.Debugf("No metadata found for %s:%s", nameInRegistry, tagStr)
+		lockErr := sem.Acquire(context.TODO(), 1)
+		if lockErr != nil {
+			log.Warnf("could not acquire semaphore: %v", lockErr)
+			wg.Done()
 			continue
 		}
+		log.Tracef("acquired metadata semaphore")
 
-		log.Tracef("Found date %s", ti.CreatedAt.String())
+		go func(tagStr string) {
+			defer func() {
+				sem.Release(1)
+				wg.Done()
+				log.Tracef("released semaphore and terminated waitgroup")
+			}()
 
-		imgTag = tag.NewImageTag(tagStr, ti.CreatedAt)
-		tagList.Add(imgTag)
-		endpoint.Cache.SetTag(nameInRegistry, imgTag)
+			var ml distribution.Manifest
+			var err error
+
+			// We first try to fetch a V2 manifest, and if that's not available we fall
+			// back to fetching V1 manifest. If that fails also, we just skip this tag.
+			if ml, err = regClient.ManifestV2(nameInRegistry, tagStr, endpoint.Limiter); err != nil {
+				log.Debugf("No V2 manifest for %s:%s, fetching V1 (%v)", nameInRegistry, tagStr, err)
+				if ml, err = regClient.ManifestV1(nameInRegistry, tagStr, endpoint.Limiter); err != nil {
+					log.Errorf("Error fetching metadata for %s:%s - neither V1 or V2 manifest returned by registry: %v", nameInRegistry, tagStr, err)
+					return
+				}
+			}
+
+			// Parse required meta data from the manifest. The metadata contains all
+			// information needed to decide whether to consider this tag or not.
+			ti, err := regClient.TagMetadata(nameInRegistry, ml, endpoint.Limiter)
+			if err != nil {
+				log.Errorf("error fetching metadata for %s:%s: %v", nameInRegistry, tagStr, err)
+				return
+			}
+			if ti == nil {
+				log.Debugf("No metadata found for %s:%s", nameInRegistry, tagStr)
+				return
+			}
+
+			log.Tracef("Found date %s", ti.CreatedAt.String())
+
+			imgTag = tag.NewImageTag(tagStr, ti.CreatedAt)
+			tagListLock.Lock()
+			tagList.Add(imgTag)
+			tagListLock.Unlock()
+			endpoint.Cache.SetTag(nameInRegistry, imgTag)
+		}(tagStr)
 	}
 
+	wg.Wait()
 	return tagList, err
 }
 
