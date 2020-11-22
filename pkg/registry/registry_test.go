@@ -1,12 +1,15 @@
 package registry
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/argoproj-labs/argocd-image-updater/pkg/image"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/registry/mocks"
+	"github.com/argoproj-labs/argocd-image-updater/pkg/tag"
 
 	"github.com/docker/distribution/manifest/schema1"
+	"github.com/docker/distribution/manifest/schema2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -71,7 +74,7 @@ func Test_GetTags(t *testing.T) {
 
 	t.Run("Check for correctly returned tags with latest sort", func(t *testing.T) {
 		ts := "2006-01-02T15:04:05.999999999Z"
-		meta := &schema1.SignedManifest{
+		meta1 := &schema1.SignedManifest{
 			Manifest: schema1.Manifest{
 				History: []schema1.History{
 					{
@@ -80,10 +83,15 @@ func Test_GetTags(t *testing.T) {
 				},
 			},
 		}
+		meta2 := &schema2.DeserializedManifest{
+			Manifest: schema2.Manifest{},
+		}
 
 		regClient := mocks.RegistryClient{}
 		regClient.On("Tags", mock.Anything).Return([]string{"1.2.0", "1.2.1", "1.2.2"}, nil)
-		regClient.On("ManifestV1", mock.Anything, mock.Anything).Return(meta, nil)
+		regClient.On("ManifestV1", mock.Anything, mock.Anything).Return(meta1, nil)
+		regClient.On("ManifestV2", mock.Anything, mock.Anything).Return(meta2, nil)
+		regClient.On("TagMetadata", mock.Anything, mock.Anything).Return(&tag.TagInfo{}, nil)
 
 		ep, err := GetRegistryEndpoint("")
 		require.NoError(t, err)
@@ -101,15 +109,20 @@ func Test_GetTags(t *testing.T) {
 	})
 
 	t.Run("Check for correct error handling when manifest contains no history", func(t *testing.T) {
-		meta := &schema1.SignedManifest{
+		meta1 := &schema1.SignedManifest{
 			Manifest: schema1.Manifest{
 				History: []schema1.History{},
 			},
 		}
+		meta2 := &schema2.DeserializedManifest{
+			Manifest: schema2.Manifest{},
+		}
 
 		regClient := mocks.RegistryClient{}
 		regClient.On("Tags", mock.Anything).Return([]string{"1.2.0", "1.2.1", "1.2.2"}, nil)
-		regClient.On("ManifestV1", mock.Anything, mock.Anything).Return(meta, nil)
+		regClient.On("ManifestV1", mock.Anything, mock.Anything).Return(meta1, nil)
+		regClient.On("ManifestV2", mock.Anything, mock.Anything).Return(meta2, fmt.Errorf("not implemented"))
+		regClient.On("TagMetadata", mock.Anything, mock.Anything).Return(nil, nil)
 
 		ep, err := GetRegistryEndpoint("")
 		require.NoError(t, err)
@@ -126,7 +139,7 @@ func Test_GetTags(t *testing.T) {
 	})
 
 	t.Run("Check for correct error handling when manifest contains invalid history", func(t *testing.T) {
-		meta := &schema1.SignedManifest{
+		meta1 := &schema1.SignedManifest{
 			Manifest: schema1.Manifest{
 				History: []schema1.History{
 					{
@@ -135,10 +148,15 @@ func Test_GetTags(t *testing.T) {
 				},
 			},
 		}
+		meta2 := &schema2.DeserializedManifest{
+			Manifest: schema2.Manifest{},
+		}
 
 		regClient := mocks.RegistryClient{}
 		regClient.On("Tags", mock.Anything).Return([]string{"1.2.0", "1.2.1", "1.2.2"}, nil)
-		regClient.On("ManifestV1", mock.Anything, mock.Anything).Return(meta, nil)
+		regClient.On("ManifestV1", mock.Anything, mock.Anything).Return(meta1, nil)
+		regClient.On("ManifestV2", mock.Anything, mock.Anything).Return(meta2, fmt.Errorf("not implemented"))
+		regClient.On("TagMetadata", mock.Anything, mock.Anything).Return(nil, nil)
 
 		ep, err := GetRegistryEndpoint("")
 		require.NoError(t, err)
@@ -155,7 +173,7 @@ func Test_GetTags(t *testing.T) {
 	})
 
 	t.Run("Check for correct error handling when manifest contains invalid history", func(t *testing.T) {
-		meta := &schema1.SignedManifest{
+		meta1 := &schema1.SignedManifest{
 			Manifest: schema1.Manifest{
 				History: []schema1.History{
 					{
@@ -164,10 +182,15 @@ func Test_GetTags(t *testing.T) {
 				},
 			},
 		}
+		meta2 := &schema2.DeserializedManifest{
+			Manifest: schema2.Manifest{},
+		}
 
 		regClient := mocks.RegistryClient{}
 		regClient.On("Tags", mock.Anything).Return([]string{"1.2.0", "1.2.1", "1.2.2"}, nil)
-		regClient.On("ManifestV1", mock.Anything, mock.Anything).Return(meta, nil)
+		regClient.On("ManifestV1", mock.Anything, mock.Anything).Return(meta1, nil)
+		regClient.On("ManifestV2", mock.Anything, mock.Anything).Return(meta2, fmt.Errorf("not implemented"))
+		regClient.On("TagMetadata", mock.Anything, mock.Anything).Return(nil, nil)
 
 		ep, err := GetRegistryEndpoint("")
 		require.NoError(t, err)
@@ -185,7 +208,7 @@ func Test_GetTags(t *testing.T) {
 
 	t.Run("Check for correct error handling when time stamp cannot be parsed", func(t *testing.T) {
 		ts := "invalid"
-		meta := &schema1.SignedManifest{
+		meta1 := &schema1.SignedManifest{
 			Manifest: schema1.Manifest{
 				History: []schema1.History{
 					{
@@ -194,10 +217,15 @@ func Test_GetTags(t *testing.T) {
 				},
 			},
 		}
+		meta2 := &schema2.DeserializedManifest{
+			Manifest: schema2.Manifest{},
+		}
 
 		regClient := mocks.RegistryClient{}
 		regClient.On("Tags", mock.Anything).Return([]string{"1.2.0", "1.2.1", "1.2.2"}, nil)
-		regClient.On("ManifestV1", mock.Anything, mock.Anything).Return(meta, nil)
+		regClient.On("ManifestV1", mock.Anything, mock.Anything).Return(meta1, nil)
+		regClient.On("ManifestV2", mock.Anything, mock.Anything).Return(meta2, fmt.Errorf("not implemented"))
+		regClient.On("TagMetadata", mock.Anything, mock.Anything).Return(nil, nil)
 
 		ep, err := GetRegistryEndpoint("")
 		require.NoError(t, err)

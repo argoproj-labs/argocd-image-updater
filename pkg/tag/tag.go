@@ -24,6 +24,11 @@ type ImageTagList struct {
 	lock  *sync.RWMutex
 }
 
+// TagInfo contains information for a tag
+type TagInfo struct {
+	CreatedAt time.Time
+}
+
 // SortableImageTagList is just that - a sortable list of ImageTag entries
 type SortableImageTagList []*ImageTag
 
