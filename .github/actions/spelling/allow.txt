@@ -51,6 +51,7 @@ dst
 egrep
 endif
 ENTRYPOINT
+eps
 Errorf
 extldflags
 Fatalf
@@ -135,6 +136,7 @@ otherimg
 otherparam
 othervalue
 parametrizable
+params
 parseable
 patrickmn
 pb
@@ -192,6 +194,7 @@ toolchain
 Torvalds
 Tracef
 unmarshal
+unmarshals
 unparam
 updateable
 url
@@ -199,6 +202,7 @@ Useragent
 username
 usr
 varcheck
+versioned
 versioning
 Warnf
 webkit
