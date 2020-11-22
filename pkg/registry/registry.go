@@ -41,9 +41,9 @@ func (endpoint *RegistryEndpoint) GetTags(img *image.ContainerImage, regClient R
 	tags := []string{}
 
 	// Loop through tags, removing those we do not want
-	if vc.MatchFunc != nil {
+	if vc.MatchFunc != nil || len(vc.IgnoreList) > 0 {
 		for _, t := range tTags {
-			if !vc.MatchFunc(t, vc.MatchArgs) || vc.IsTagIgnored(t) {
+			if (vc.MatchFunc != nil && !vc.MatchFunc(t, vc.MatchArgs)) || vc.IsTagIgnored(t) {
 				log.Tracef("Removing tag %s because it either didn't match defined pattern or is ignored", t)
 			} else {
 				tags = append(tags, t)
