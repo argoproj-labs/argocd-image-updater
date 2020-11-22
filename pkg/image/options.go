@@ -63,20 +63,23 @@ func (img *ContainerImage) GetParameterUpdateStrategy(annotations map[string]str
 		log.Tracef("No sort option %s found", key)
 		return VersionSortSemVer
 	}
+	log.Tracef("found update strategy %s in %s", val, key)
+	return ParseUpdateStrategy(val)
+}
+
+func ParseUpdateStrategy(val string) VersionSortMode {
 	switch strings.ToLower(val) {
 	case "semver":
-		log.Tracef("Sort option semver in %s", key)
 		return VersionSortSemVer
 	case "latest":
-		log.Tracef("Sort option date in %s", key)
 		return VersionSortLatest
 	case "name":
-		log.Tracef("Sort option name in %s", key)
 		return VersionSortName
 	default:
-		log.Warnf("Unknown sort option in %s: %s -- using semver", key, val)
+		log.Warnf("Unknown sort option %s -- using semver", val)
 		return VersionSortSemVer
 	}
+
 }
 
 // GetParameterMatch returns the match function and pattern to use for matching
@@ -99,6 +102,11 @@ func (img *ContainerImage) GetParameterMatch(annotations map[string]string) (Mat
 		}
 	}
 
+	return ParseMatchfunc(val)
+}
+
+// ParseMatchfunc returns a matcher function and its argument from given value
+func ParseMatchfunc(val string) (MatchFuncFn, interface{}) {
 	// The special value "any" doesn't take any parameter
 	if strings.ToLower(val) == "any" {
 		return MatchFuncAny, nil

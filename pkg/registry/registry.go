@@ -6,10 +6,11 @@ package registry
 // TODO: Refactor this package and provide mocks for better testing.
 
 import (
-	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/docker/distribution"
 
 	"github.com/argoproj-labs/argocd-image-updater/pkg/client"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/image"
@@ -76,8 +77,9 @@ func (endpoint *RegistryEndpoint) GetTags(img *image.ContainerImage, regClient R
 
 	// Fetch the manifest for the tag -- we need v1, because it contains history
 	// information that we require.
+	i := 0
 	for _, tagStr := range tags {
-
+		i += 1
 		// Look into the cache first and re-use any found item. If GetTag() returns
 		// an error, we treat it as a cache miss and just go ahead to invalidate
 		// the entry.
@@ -90,44 +92,35 @@ func (endpoint *RegistryEndpoint) GetTags(img *image.ContainerImage, regClient R
 			continue
 		}
 
-		ml, err := regClient.ManifestV1(nameInRegistry, tagStr)
+		log.Tracef("Getting manifest for image %s:%s (operation %d/%d)", nameInRegistry, tagStr, i, len(tags))
+
+		var ml distribution.Manifest
+		var err error
+
+		// We first try to fetch a V2 manifest, and if that's not available we fall
+		// back to fetching V1 manifest. If that fails also, we just skip this tag.
+		if ml, err = regClient.ManifestV2(nameInRegistry, tagStr); err != nil {
+			log.Debugf("No V2 manifest for %s:%s, fetching V1 (%v)", nameInRegistry, tagStr, err)
+			if ml, err = regClient.ManifestV1(nameInRegistry, tagStr); err != nil {
+				log.Errorf("Error fetching metadata for %s:%s - neither V1 or V2 manifest returned by registry: %v", nameInRegistry, tagStr, err)
+				continue
+			}
+		}
+
+		// Parse required meta data from the manifest. The metadata contains all
+		// information needed to decide whether to consider this tag or not.
+		ti, err := regClient.TagMetadata(nameInRegistry, ml)
 		if err != nil {
 			return nil, err
 		}
-
-		if len(ml.History) < 1 {
-			log.Warnf("Could not get creation date for %s: History information missing", img.GetFullNameWithTag())
+		if ti == nil {
+			log.Debugf("No metadata found for %s:%s", nameInRegistry, tagStr)
 			continue
 		}
 
-		var histInfo map[string]interface{}
-		err = json.Unmarshal([]byte(ml.History[0].V1Compatibility), &histInfo)
-		if err != nil {
-			log.Warnf("Could not unmarshal history info for %s: %v", img.GetFullNameWithTag(), err)
-			continue
-		}
+		log.Tracef("Found date %s", ti.CreatedAt.String())
 
-		crIf, ok := histInfo["created"]
-		if !ok {
-			log.Warnf("Incomplete history information for %s: no creation timestamp found", img.GetFullNameWithTag())
-			continue
-		}
-
-		crStr, ok := crIf.(string)
-		if !ok {
-			log.Warnf("Creation timestamp for %s has wrong type - need string, is %T", img.GetFullNameWithTag(), crIf)
-			continue
-		}
-
-		// Creation date is stored as RFC3339 timestamp with nanoseconds, i.e. like
-		// this: 2017-12-01T23:06:12.607835588Z
-		log.Tracef("Found origin creation date for %s: %s", tagStr, crStr)
-		crDate, err := time.Parse(time.RFC3339Nano, crStr)
-		if err != nil {
-			log.Warnf("Could not parse creation timestamp for %s (%s): %v", img.GetFullNameWithTag(), crStr, err)
-			continue
-		}
-		imgTag = tag.NewImageTag(tagStr, crDate)
+		imgTag = tag.NewImageTag(tagStr, ti.CreatedAt)
 		tagList.Add(imgTag)
 		endpoint.Cache.SetTag(nameInRegistry, imgTag)
 	}
