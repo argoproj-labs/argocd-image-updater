@@ -201,6 +201,7 @@ func newTestCommand() *cobra.Command {
 		registriesConf   string
 		logLevel         string
 		allowTags        string
+		ignoreTags       []string
 	)
 	var runCmd = &cobra.Command{
 		Use:   "test IMAGE",
@@ -225,6 +226,8 @@ func newTestCommand() *cobra.Command {
 			if allowTags != "" {
 				vc.MatchFunc, vc.MatchArgs = image.ParseMatchfunc(allowTags)
 			}
+
+			vc.IgnoreList = ignoreTags
 
 			img := image.NewFromIdentifier(args[0])
 			log.WithContext().
@@ -279,8 +282,9 @@ func newTestCommand() *cobra.Command {
 	}
 
 	runCmd.Flags().StringVar(&semverConstraint, "semver-constraint", "", "only consider tags matching semantic version constraint")
-	runCmd.Flags().StringVar(&allowTags, "allow-tags", "", "function to match tag names from registry")
-	runCmd.Flags().StringVar(&strategy, "strategy", "semver", "update strategy to use, one of: semver, latest)")
+	runCmd.Flags().StringVar(&allowTags, "allow-tags", "", "only consider tags in registry that satisfy the match function")
+	runCmd.Flags().StringArrayVar(&ignoreTags, "ignore-tags", nil, "ignore tags in registry that match given glob pattern")
+	runCmd.Flags().StringVar(&strategy, "update-strategy", "semver", "update strategy to use, one of: semver, latest)")
 	runCmd.Flags().StringVar(&registriesConf, "registries-conf", "", "path to registries configuration")
 	runCmd.Flags().StringVar(&logLevel, "loglevel", "debug", "log level to use (one of trace, debug, info, warn, error)")
 	return runCmd
