@@ -2,11 +2,14 @@ package registry
 
 import (
 	"fmt"
+	"math"
 	"strings"
 	"sync"
 
 	"github.com/argoproj-labs/argocd-image-updater/pkg/cache"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/log"
+
+	"go.uber.org/ratelimit"
 )
 
 // TagListSort defines how the registry returns the list of tags
@@ -52,8 +55,8 @@ type RegistryEndpoint struct {
 	DefaultNS      string
 	TagListSort    TagListSort
 	Cache          cache.ImageTagCache
-
-	lock sync.RWMutex
+	Limiter        ratelimit.Limiter
+	lock           sync.RWMutex
 }
 
 // Map of configured registries, pre-filled with some well-known registries
@@ -66,6 +69,7 @@ var defaultRegistries map[string]*RegistryEndpoint = map[string]*RegistryEndpoin
 		Insecure:       false,
 		DefaultNS:      "library",
 		Cache:          cache.NewMemCache(),
+		Limiter:        ratelimit.New(5),
 	},
 	"gcr.io": {
 		RegistryName:   "Google Container Registry",
@@ -74,6 +78,7 @@ var defaultRegistries map[string]*RegistryEndpoint = map[string]*RegistryEndpoin
 		Ping:           false,
 		Insecure:       false,
 		Cache:          cache.NewMemCache(),
+		Limiter:        ratelimit.New(5),
 	},
 	"quay.io": {
 		RegistryName:   "RedHat Quay",
@@ -82,6 +87,7 @@ var defaultRegistries map[string]*RegistryEndpoint = map[string]*RegistryEndpoin
 		Ping:           false,
 		Insecure:       false,
 		Cache:          cache.NewMemCache(),
+		Limiter:        ratelimit.New(5),
 	},
 	"docker.pkg.github.com": {
 		RegistryName:   "GitHub packages",
@@ -91,6 +97,7 @@ var defaultRegistries map[string]*RegistryEndpoint = map[string]*RegistryEndpoin
 		Insecure:       false,
 		TagListSort:    SortLatestFirst,
 		Cache:          cache.NewMemCache(),
+		Limiter:        ratelimit.New(5),
 	},
 	"ghcr.io": {
 		RegistryName:   "GitHub Container Registry",
@@ -100,6 +107,7 @@ var defaultRegistries map[string]*RegistryEndpoint = map[string]*RegistryEndpoin
 		Insecure:       false,
 		TagListSort:    SortLatestLast,
 		Cache:          cache.NewMemCache(),
+		Limiter:        ratelimit.New(5),
 	},
 }
 
@@ -109,9 +117,13 @@ var registries map[string]*RegistryEndpoint = make(map[string]*RegistryEndpoint)
 var registryLock sync.RWMutex
 
 // AddRegistryEndpoint adds registry endpoint information with the given details
-func AddRegistryEndpoint(prefix, name, apiUrl, credentials, defaultNS string, insecure bool, tagListSort TagListSort) error {
+func AddRegistryEndpoint(prefix, name, apiUrl, credentials, defaultNS string, insecure bool, tagListSort TagListSort, limit int) error {
 	registryLock.Lock()
 	defer registryLock.Unlock()
+	if limit == 0 {
+		limit = math.MaxInt32
+	}
+	log.Debugf("rate limit for %s is %d", apiUrl, limit)
 	registries[prefix] = &RegistryEndpoint{
 		RegistryName:   name,
 		RegistryPrefix: prefix,
@@ -121,6 +133,7 @@ func AddRegistryEndpoint(prefix, name, apiUrl, credentials, defaultNS string, in
 		Insecure:       insecure,
 		DefaultNS:      defaultNS,
 		TagListSort:    tagListSort,
+		Limiter:        ratelimit.New(limit),
 	}
 	return nil
 }
@@ -172,6 +185,7 @@ func (ep *RegistryEndpoint) DeepCopy() *RegistryEndpoint {
 	newEp.Cache = cache.NewMemCache()
 	newEp.Insecure = ep.Insecure
 	newEp.DefaultNS = ep.DefaultNS
+	newEp.Limiter = ep.Limiter
 	return newEp
 }
 

@@ -13,16 +13,17 @@ import (
 	"github.com/docker/distribution/manifest/schema1"
 	"github.com/docker/distribution/manifest/schema2"
 	"github.com/nokia/docker-registry-client/registry"
+	"go.uber.org/ratelimit"
 )
 
 // TODO: Check image's architecture and OS
 
 // RegistryClient defines the methods we need for querying container registries
 type RegistryClient interface {
-	Tags(nameInRepository string) ([]string, error)
-	ManifestV1(repository string, reference string) (*schema1.SignedManifest, error)
-	ManifestV2(repository string, reference string) (*schema2.DeserializedManifest, error)
-	TagMetadata(repository string, manifest distribution.Manifest) (*tag.TagInfo, error)
+	Tags(nameInRepository string, limiter ratelimit.Limiter) ([]string, error)
+	ManifestV1(repository string, reference string, limiter ratelimit.Limiter) (*schema1.SignedManifest, error)
+	ManifestV2(repository string, reference string, limiter ratelimit.Limiter) (*schema2.DeserializedManifest, error)
+	TagMetadata(repository string, manifest distribution.Manifest, limiter ratelimit.Limiter) (*tag.TagInfo, error)
 }
 
 type NewRegistryClient func(*RegistryEndpoint, string, string) (RegistryClient, error)
@@ -58,22 +59,25 @@ func NewClient(endpoint *RegistryEndpoint, username, password string) (RegistryC
 }
 
 // Tags returns a list of tags for given name in repository
-func (client *registryClient) Tags(nameInRepository string) ([]string, error) {
+func (client *registryClient) Tags(nameInRepository string, limiter ratelimit.Limiter) ([]string, error) {
+	limiter.Take()
 	return client.regClient.Tags(nameInRepository)
 }
 
 // ManifestV1 returns a signed V1 manifest for a given tag in given repository
-func (client *registryClient) ManifestV1(repository string, reference string) (*schema1.SignedManifest, error) {
+func (client *registryClient) ManifestV1(repository string, reference string, limiter ratelimit.Limiter) (*schema1.SignedManifest, error) {
+	limiter.Take()
 	return client.regClient.ManifestV1(repository, reference)
 }
 
 // ManifestV2 returns a deserialized V2 manifest for a given tag in given repository
-func (client *registryClient) ManifestV2(repository string, reference string) (*schema2.DeserializedManifest, error) {
+func (client *registryClient) ManifestV2(repository string, reference string, limiter ratelimit.Limiter) (*schema2.DeserializedManifest, error) {
+	limiter.Take()
 	return client.regClient.ManifestV2(repository, reference)
 }
 
 // GetTagInfo retrieves metadata for a given manifest of given repository
-func (client *registryClient) TagMetadata(repository string, manifest distribution.Manifest) (*tag.TagInfo, error) {
+func (client *registryClient) TagMetadata(repository string, manifest distribution.Manifest, limiter ratelimit.Limiter) (*tag.TagInfo, error) {
 	ti := &tag.TagInfo{}
 
 	var info struct {
@@ -106,11 +110,13 @@ func (client *registryClient) TagMetadata(repository string, manifest distributi
 
 		// The data we require from a V2 manifest is in a blob that we need to
 		// fetch from the registry.
+		limiter.Take()
 		_, err := client.regClient.BlobMetadata(repository, man.Config.Digest)
 		if err != nil {
 			return nil, fmt.Errorf("could not get metadata: %v", err)
 		}
 
+		limiter.Take()
 		blobReader, err := client.regClient.DownloadBlob(repository, man.Config.Digest)
 		if err != nil {
 			return nil, err

@@ -13,6 +13,7 @@ require (
 	github.com/sirupsen/logrus v1.6.0
 	github.com/spf13/cobra v1.0.0
 	github.com/stretchr/testify v1.6.1
+	go.uber.org/ratelimit v0.1.1-0.20201110185707-e86515f0dda9
 	golang.org/x/sync v0.0.0-20200625203802-6e8e738ad208
 	gopkg.in/yaml.v2 v2.3.0
 	k8s.io/api v1.18.8

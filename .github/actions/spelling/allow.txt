@@ -148,6 +148,7 @@ Printf
 pullsecret
 pwd
 pygments
+ratelimit
 rbac
 readthedocs
 refactor
@@ -193,6 +194,7 @@ TODO
 toolchain
 Torvalds
 Tracef
+uber
 unmarshal
 unmarshals
 unparam
@@ -204,6 +206,7 @@ usr
 varcheck
 versioned
 versioning
+waitgroup
 Warnf
 webkit
 webroot

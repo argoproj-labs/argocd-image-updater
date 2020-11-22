@@ -25,7 +25,7 @@ func Test_UpdateApplication(t *testing.T) {
 	t.Run("Test successful update", func(t *testing.T) {
 		mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
 			regMock := regmock.RegistryClient{}
-			regMock.On("Tags", mock.Anything).Return([]string{"1.0.1"}, nil)
+			regMock.On("Tags", mock.Anything, mock.Anything).Return([]string{"1.0.1"}, nil)
 			return &regMock, nil
 		}
 
@@ -76,7 +76,7 @@ func Test_UpdateApplication(t *testing.T) {
 			regMock := regmock.RegistryClient{}
 			assert.Equal(t, "myuser", username)
 			assert.Equal(t, "mypass", password)
-			regMock.On("Tags", mock.Anything).Return([]string{"1.0.1"}, nil)
+			regMock.On("Tags", mock.Anything, mock.Anything).Return([]string{"1.0.1"}, nil)
 			return &regMock, nil
 		}
 
@@ -128,7 +128,7 @@ func Test_UpdateApplication(t *testing.T) {
 	t.Run("Test skip because of image not in list", func(t *testing.T) {
 		mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
 			regMock := regmock.RegistryClient{}
-			regMock.On("Tags", mock.Anything).Return([]string{"1.0.1"}, nil)
+			regMock.On("Tags", mock.Anything, mock.Anything).Return([]string{"1.0.1"}, nil)
 			return &regMock, nil
 		}
 
@@ -177,7 +177,7 @@ func Test_UpdateApplication(t *testing.T) {
 	t.Run("Test skip because of image up-to-date", func(t *testing.T) {
 		mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
 			regMock := regmock.RegistryClient{}
-			regMock.On("Tags", mock.Anything).Return([]string{"1.0.1"}, nil)
+			regMock.On("Tags", mock.Anything, mock.Anything).Return([]string{"1.0.1"}, nil)
 			return &regMock, nil
 		}
 
@@ -240,7 +240,7 @@ func Test_UpdateApplication(t *testing.T) {
 		called := 0
 		mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
 			regMock := regmock.RegistryClient{}
-			regMock.On("Tags", mock.Anything).Return([]string{"one", "two", "three", "four"}, nil)
+			regMock.On("Tags", mock.Anything, mock.Anything).Return([]string{"one", "two", "three", "four"}, nil)
 			regMock.On("ManifestV1", mock.Anything, mock.Anything).Return(meta[called], nil)
 			called += 1
 			return &regMock, nil
@@ -309,7 +309,7 @@ func Test_UpdateApplication(t *testing.T) {
 		called := 0
 		mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
 			regMock := regmock.RegistryClient{}
-			regMock.On("Tags", mock.Anything).Return([]string{"one", "two", "three", "four"}, nil)
+			regMock.On("Tags", mock.Anything, mock.Anything).Return([]string{"one", "two", "three", "four"}, nil)
 			regMock.On("ManifestV1", mock.Anything, mock.Anything).Return(meta[called], nil)
 			called += 1
 			return &regMock, nil
@@ -364,7 +364,7 @@ func Test_UpdateApplication(t *testing.T) {
 	t.Run("Error - unknown registry", func(t *testing.T) {
 		mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
 			regMock := regmock.RegistryClient{}
-			regMock.On("Tags", mock.Anything).Return([]string{"1.0.1"}, nil)
+			regMock.On("Tags", mock.Anything, mock.Anything).Return([]string{"1.0.1"}, nil)
 			return &regMock, nil
 		}
 
@@ -460,7 +460,7 @@ func Test_UpdateApplication(t *testing.T) {
 	t.Run("Test error on failure to list tags", func(t *testing.T) {
 		mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
 			regMock := regmock.RegistryClient{}
-			regMock.On("Tags", mock.Anything).Return(nil, errors.New("some error"))
+			regMock.On("Tags", mock.Anything, mock.Anything).Return(nil, errors.New("some error"))
 			return &regMock, nil
 		}
 
@@ -509,7 +509,7 @@ func Test_UpdateApplication(t *testing.T) {
 	t.Run("Test error on improper semver in tag", func(t *testing.T) {
 		mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
 			regMock := regmock.RegistryClient{}
-			regMock.On("Tags", mock.Anything).Return([]string{"1.0.0", "1.0.1"}, nil)
+			regMock.On("Tags", mock.Anything, mock.Anything).Return([]string{"1.0.0", "1.0.1"}, nil)
 			return &regMock, nil
 		}
 
