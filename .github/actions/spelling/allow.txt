@@ -40,6 +40,7 @@ Ctx
 deadcode
 Debugf
 defaultns
+deserialized
 dest
 dexidp
 dirname
@@ -108,6 +109,7 @@ logctx
 Logf
 loglevel
 logrus
+Matchfunc
 memcache
 metadata
 misconfigured
