@@ -5,6 +5,7 @@ go 1.14
 require (
 	github.com/Masterminds/semver v1.5.0
 	github.com/argoproj/argo-cd v1.7.4
+	github.com/argoproj/pkg v0.0.0-20200624215116-23e74cb168fe
 	github.com/docker/distribution v2.7.1+incompatible
 	github.com/docker/libtrust v0.0.0-20160708172513-aabc10ec26b7 // indirect
 	github.com/gorilla/mux v1.7.4 // indirect

@@ -5,7 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"strings"
+	"time"
+
+	argoexec "github.com/argoproj/pkg/exec"
 
 	"github.com/argoproj-labs/argocd-image-updater/pkg/client"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/log"
@@ -18,6 +22,7 @@ const (
 	CredentialSourcePullSecret CredentialSourceType = 1
 	CredentialSourceSecret     CredentialSourceType = 2
 	CredentialSourceEnv        CredentialSourceType = 3
+	CredentialSourceExt        CredentialSourceType = 4
 )
 
 type CredentialSource struct {
@@ -27,6 +32,7 @@ type CredentialSource struct {
 	SecretName      string
 	SecretField     string
 	EnvName         string
+	ScriptPath      string
 }
 
 type Credential struct {
@@ -70,6 +76,9 @@ func ParseCredentialSource(credentialSource string, requirePrefix bool) (*Creden
 	case "env":
 		err = src.parseEnvDefinition(tokens[1])
 		src.Type = CredentialSourceEnv
+	case "ext":
+		err = src.parseExtDefinition(tokens[1])
+		src.Type = CredentialSourceExt
 	default:
 		err = fmt.Errorf("unknown credential source: %s", tokens[0])
 	}
@@ -121,6 +130,27 @@ func (src *CredentialSource) FetchCredentials(registryURL string, kubeclient *cl
 			return nil, err
 		}
 		return &creds, nil
+	case CredentialSourceExt:
+		if !strings.HasPrefix(src.ScriptPath, "/") {
+			return nil, fmt.Errorf("path to script must be absolute, but is '%s'", src.ScriptPath)
+		}
+		_, err := os.Stat(src.ScriptPath)
+		if err != nil {
+			return nil, fmt.Errorf("could not stat %s: %v", src.ScriptPath, err)
+		}
+		cmd := exec.Command(src.ScriptPath)
+		out, err := argoexec.RunCommandExt(cmd, argoexec.CmdOpts{Timeout: 10 * time.Second})
+		if err != nil {
+			return nil, fmt.Errorf("error executing %s: %v", src.ScriptPath, err)
+		}
+		tokens := strings.SplitN(out, ":", 2)
+		if len(tokens) != 2 {
+			return nil, fmt.Errorf("invalid script output, must be single line with syntax <username>:<password>")
+		}
+		creds.Username = tokens[0]
+		creds.Password = tokens[1]
+		return &creds, nil
+
 	default:
 		return nil, fmt.Errorf("unknown credential type")
 	}
@@ -161,6 +191,13 @@ func (src *CredentialSource) parsePullSecretDefinition(definition string) error 
 // nolint:unparam
 func (src *CredentialSource) parseEnvDefinition(definition string) error {
 	src.EnvName = definition
+	return nil
+}
+
+// Parse an external script definition
+// nolint:unparam
+func (src *CredentialSource) parseExtDefinition(definition string) error {
+	src.ScriptPath = definition
 	return nil
 }
 

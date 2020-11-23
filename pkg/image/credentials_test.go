@@ -2,6 +2,7 @@ package image
 
 import (
 	"os"
+	"path"
 	"testing"
 
 	"github.com/argoproj-labs/argocd-image-updater/pkg/client"
@@ -84,6 +85,21 @@ func Test_ParseCredentialAnnotation(t *testing.T) {
 		assert.Error(t, err)
 		assert.Nil(t, src)
 	})
+
+	t.Run("Parse valid credentials definition from environment", func(t *testing.T) {
+		src, err := ParseCredentialSource("env:DUMMY_SECRET", false)
+		require.NoError(t, err)
+		require.NotNil(t, src)
+		assert.Equal(t, "DUMMY_SECRET", src.EnvName)
+	})
+
+	t.Run("Parse valid credentials definition from environment", func(t *testing.T) {
+		src, err := ParseCredentialSource("env:DUMMY_SECRET", false)
+		require.NoError(t, err)
+		require.NotNil(t, src)
+		assert.Equal(t, "DUMMY_SECRET", src.EnvName)
+	})
+
 }
 
 func Test_ParseCredentialReference(t *testing.T) {
@@ -195,6 +211,57 @@ func Test_FetchCredentialsFromEnv(t *testing.T) {
 			require.Error(t, err)
 			require.Nil(t, creds)
 		}
+	})
+}
+
+func Test_FetchCredentialsFromExt(t *testing.T) {
+	t.Run("Fetch credentials from external script - valid output", func(t *testing.T) {
+		pwd, err := os.Getwd()
+		require.NoError(t, err)
+		credSrc := &CredentialSource{
+			Type:       CredentialSourceExt,
+			Registry:   "https://registry-1.docker.io/v2",
+			ScriptPath: path.Join(pwd, "..", "..", "test", "testdata", "scripts", "get-credentials-valid.sh"),
+		}
+		creds, err := credSrc.FetchCredentials("https://registry-1.docker.io", nil)
+		require.NoError(t, err)
+		require.NotNil(t, creds)
+		assert.Equal(t, "username", creds.Username)
+		assert.Equal(t, "password", creds.Password)
+	})
+	t.Run("Fetch credentials from external script - invalid script output", func(t *testing.T) {
+		pwd, err := os.Getwd()
+		require.NoError(t, err)
+		credSrc := &CredentialSource{
+			Type:       CredentialSourceExt,
+			Registry:   "https://registry-1.docker.io/v2",
+			ScriptPath: path.Join(pwd, "..", "..", "test", "testdata", "scripts", "get-credentials-invalid.sh"),
+		}
+		creds, err := credSrc.FetchCredentials("https://registry-1.docker.io", nil)
+		require.Errorf(t, err, "invalid script output")
+		require.Nil(t, creds)
+	})
+	t.Run("Fetch credentials from external script - script does not exist", func(t *testing.T) {
+		pwd, err := os.Getwd()
+		require.NoError(t, err)
+		credSrc := &CredentialSource{
+			Type:       CredentialSourceExt,
+			Registry:   "https://registry-1.docker.io/v2",
+			ScriptPath: path.Join(pwd, "..", "..", "test", "testdata", "scripts", "get-credentials-notexist.sh"),
+		}
+		creds, err := credSrc.FetchCredentials("https://registry-1.docker.io", nil)
+		require.Errorf(t, err, "no such file or directory")
+		require.Nil(t, creds)
+	})
+	t.Run("Fetch credentials from external script - relative path", func(t *testing.T) {
+		credSrc := &CredentialSource{
+			Type:       CredentialSourceExt,
+			Registry:   "https://registry-1.docker.io/v2",
+			ScriptPath: "get-credentials-notexist.sh",
+		}
+		creds, err := credSrc.FetchCredentials("https://registry-1.docker.io", nil)
+		require.Errorf(t, err, "path to script must be absolute")
+		require.Nil(t, creds)
 	})
 }
 
