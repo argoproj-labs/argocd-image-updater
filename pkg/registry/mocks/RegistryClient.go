@@ -6,8 +6,6 @@ import (
 	distribution "github.com/docker/distribution"
 	mock "github.com/stretchr/testify/mock"
 
-	ratelimit "go.uber.org/ratelimit"
-
 	schema1 "github.com/docker/distribution/manifest/schema1"
 
 	schema2 "github.com/docker/distribution/manifest/schema2"
@@ -20,13 +18,13 @@ type RegistryClient struct {
 	mock.Mock
 }
 
-// ManifestV1 provides a mock function with given fields: repository, reference, limiter
-func (_m *RegistryClient) ManifestV1(repository string, reference string, limiter ratelimit.Limiter) (*schema1.SignedManifest, error) {
-	ret := _m.Called(repository, reference, limiter)
+// ManifestV1 provides a mock function with given fields: repository, reference
+func (_m *RegistryClient) ManifestV1(repository string, reference string) (*schema1.SignedManifest, error) {
+	ret := _m.Called(repository, reference)
 
 	var r0 *schema1.SignedManifest
-	if rf, ok := ret.Get(0).(func(string, string, ratelimit.Limiter) *schema1.SignedManifest); ok {
-		r0 = rf(repository, reference, limiter)
+	if rf, ok := ret.Get(0).(func(string, string) *schema1.SignedManifest); ok {
+		r0 = rf(repository, reference)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*schema1.SignedManifest)
@@ -34,8 +32,8 @@ func (_m *RegistryClient) ManifestV1(repository string, reference string, limite
 	}
 
 	var r1 error
-	if rf, ok := ret.Get(1).(func(string, string, ratelimit.Limiter) error); ok {
-		r1 = rf(repository, reference, limiter)
+	if rf, ok := ret.Get(1).(func(string, string) error); ok {
+		r1 = rf(repository, reference)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -43,13 +41,13 @@ func (_m *RegistryClient) ManifestV1(repository string, reference string, limite
 	return r0, r1
 }
 
-// ManifestV2 provides a mock function with given fields: repository, reference, limiter
-func (_m *RegistryClient) ManifestV2(repository string, reference string, limiter ratelimit.Limiter) (*schema2.DeserializedManifest, error) {
-	ret := _m.Called(repository, reference, limiter)
+// ManifestV2 provides a mock function with given fields: repository, reference
+func (_m *RegistryClient) ManifestV2(repository string, reference string) (*schema2.DeserializedManifest, error) {
+	ret := _m.Called(repository, reference)
 
 	var r0 *schema2.DeserializedManifest
-	if rf, ok := ret.Get(0).(func(string, string, ratelimit.Limiter) *schema2.DeserializedManifest); ok {
-		r0 = rf(repository, reference, limiter)
+	if rf, ok := ret.Get(0).(func(string, string) *schema2.DeserializedManifest); ok {
+		r0 = rf(repository, reference)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*schema2.DeserializedManifest)
@@ -57,8 +55,8 @@ func (_m *RegistryClient) ManifestV2(repository string, reference string, limite
 	}
 
 	var r1 error
-	if rf, ok := ret.Get(1).(func(string, string, ratelimit.Limiter) error); ok {
-		r1 = rf(repository, reference, limiter)
+	if rf, ok := ret.Get(1).(func(string, string) error); ok {
+		r1 = rf(repository, reference)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -66,13 +64,13 @@ func (_m *RegistryClient) ManifestV2(repository string, reference string, limite
 	return r0, r1
 }
 
-// TagMetadata provides a mock function with given fields: repository, manifest, limiter
-func (_m *RegistryClient) TagMetadata(repository string, manifest distribution.Manifest, limiter ratelimit.Limiter) (*tag.TagInfo, error) {
-	ret := _m.Called(repository, manifest, limiter)
+// TagMetadata provides a mock function with given fields: repository, manifest
+func (_m *RegistryClient) TagMetadata(repository string, manifest distribution.Manifest) (*tag.TagInfo, error) {
+	ret := _m.Called(repository, manifest)
 
 	var r0 *tag.TagInfo
-	if rf, ok := ret.Get(0).(func(string, distribution.Manifest, ratelimit.Limiter) *tag.TagInfo); ok {
-		r0 = rf(repository, manifest, limiter)
+	if rf, ok := ret.Get(0).(func(string, distribution.Manifest) *tag.TagInfo); ok {
+		r0 = rf(repository, manifest)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*tag.TagInfo)
@@ -80,8 +78,8 @@ func (_m *RegistryClient) TagMetadata(repository string, manifest distribution.M
 	}
 
 	var r1 error
-	if rf, ok := ret.Get(1).(func(string, distribution.Manifest, ratelimit.Limiter) error); ok {
-		r1 = rf(repository, manifest, limiter)
+	if rf, ok := ret.Get(1).(func(string, distribution.Manifest) error); ok {
+		r1 = rf(repository, manifest)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -89,13 +87,13 @@ func (_m *RegistryClient) TagMetadata(repository string, manifest distribution.M
 	return r0, r1
 }
 
-// Tags provides a mock function with given fields: nameInRepository, limiter
-func (_m *RegistryClient) Tags(nameInRepository string, limiter ratelimit.Limiter) ([]string, error) {
-	ret := _m.Called(nameInRepository, limiter)
+// Tags provides a mock function with given fields: nameInRepository
+func (_m *RegistryClient) Tags(nameInRepository string) ([]string, error) {
+	ret := _m.Called(nameInRepository)
 
 	var r0 []string
-	if rf, ok := ret.Get(0).(func(string, ratelimit.Limiter) []string); ok {
-		r0 = rf(nameInRepository, limiter)
+	if rf, ok := ret.Get(0).(func(string) []string); ok {
+		r0 = rf(nameInRepository)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).([]string)
@@ -103,8 +101,8 @@ func (_m *RegistryClient) Tags(nameInRepository string, limiter ratelimit.Limite
 	}
 
 	var r1 error
-	if rf, ok := ret.Get(1).(func(string, ratelimit.Limiter) error); ok {
-		r1 = rf(nameInRepository, limiter)
+	if rf, ok := ret.Get(1).(func(string) error); ok {
+		r1 = rf(nameInRepository)
 	} else {
 		r1 = ret.Error(1)
 	}

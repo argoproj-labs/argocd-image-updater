@@ -474,8 +474,8 @@ github.com/naoina/go-stringutil v0.1.0/go.mod h1:XJ2SJL9jCtBh+P9q5btrd/Ylo8XwT/h
 github.com/naoina/toml v0.1.1/go.mod h1:NBIhNtsFMo3G2szEBne+bO4gS192HuIYRqfvOWb4i1E=
 github.com/nbutton23/zxcvbn-go v0.0.0-20160627004424-a22cb81b2ecd/go.mod h1:o96djdrsSGy3AWPyBgZMAGfxZNfgntdJG+11KU4QvbU=
 github.com/nbutton23/zxcvbn-go v0.0.0-20171102151520-eafdab6b0663/go.mod h1:o96djdrsSGy3AWPyBgZMAGfxZNfgntdJG+11KU4QvbU=
-github.com/nokia/docker-registry-client v0.0.0-20190305095957-e91f10057c5b h1:6d02Onq/KxC2qZlMzSwLx12KZU80xIS7hRQw05/nDJs=
-github.com/nokia/docker-registry-client v0.0.0-20190305095957-e91f10057c5b/go.mod h1:0DpUaZpSvIXrsvYc6Wb+fKwjhKz0Lu1NHwMziqTqqvA=
+github.com/nokia/docker-registry-client v0.0.0-20201015093031-af1a6d3b4fb1 h1:QNZos2cYVSeT7m1IEQupD3dWJG3ELuThKQMP3WRDZVE=
+github.com/nokia/docker-registry-client v0.0.0-20201015093031-af1a6d3b4fb1/go.mod h1:0DpUaZpSvIXrsvYc6Wb+fKwjhKz0Lu1NHwMziqTqqvA=
 github.com/oklog/ulid v1.3.1/go.mod h1:CirwcVhetQ6Lv90oh/F+FBtV6XMibvdAFo93nm5qn4U=
 github.com/olekukonko/tablewriter v0.0.0-20170122224234-a0225b3f23b5/go.mod h1:vsDQFd/mU46D+Z4whnwzcISnGGzXWMclvtLoiIKAKIo=
 github.com/onsi/ginkgo v0.0.0-20170829012221-11459a886d9c/go.mod h1:lLunBs/Ym6LB5Z9jYTR76FiuTmxDTDusOGeTQH+WWjE=
