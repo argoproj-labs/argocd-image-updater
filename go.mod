@@ -8,7 +8,8 @@ require (
 	github.com/docker/distribution v2.7.1+incompatible
 	github.com/docker/libtrust v0.0.0-20160708172513-aabc10ec26b7 // indirect
 	github.com/gorilla/mux v1.7.4 // indirect
-	github.com/nokia/docker-registry-client v0.0.0-20190305095957-e91f10057c5b
+	github.com/nokia/docker-registry-client v0.0.0-20201015093031-af1a6d3b4fb1
+	github.com/opencontainers/go-digest v1.0.0-rc1
 	github.com/patrickmn/go-cache v2.1.0+incompatible
 	github.com/sirupsen/logrus v1.6.0
 	github.com/spf13/cobra v1.0.0

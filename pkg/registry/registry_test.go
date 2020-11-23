@@ -19,7 +19,7 @@ func Test_GetTags(t *testing.T) {
 
 	t.Run("Check for correctly returned tags with semver sort", func(t *testing.T) {
 		regClient := mocks.RegistryClient{}
-		regClient.On("Tags", mock.Anything, mock.Anything).Return([]string{"1.2.0", "1.2.1", "1.2.2"}, nil)
+		regClient.On("Tags", mock.Anything).Return([]string{"1.2.0", "1.2.1", "1.2.2"}, nil)
 
 		ep, err := GetRegistryEndpoint("")
 		require.NoError(t, err)
@@ -37,7 +37,7 @@ func Test_GetTags(t *testing.T) {
 
 	t.Run("Check for correctly returned tags with filter function applied", func(t *testing.T) {
 		regClient := mocks.RegistryClient{}
-		regClient.On("Tags", mock.Anything, mock.Anything).Return([]string{"1.2.0", "1.2.1", "1.2.2"}, nil)
+		regClient.On("Tags", mock.Anything).Return([]string{"1.2.0", "1.2.1", "1.2.2"}, nil)
 
 		ep, err := GetRegistryEndpoint("")
 		require.NoError(t, err)
@@ -56,7 +56,7 @@ func Test_GetTags(t *testing.T) {
 	t.Run("Check for correctly returned tags with name sort", func(t *testing.T) {
 
 		regClient := mocks.RegistryClient{}
-		regClient.On("Tags", mock.Anything, mock.Anything).Return([]string{"1.2.0", "1.2.1", "1.2.2"}, nil)
+		regClient.On("Tags", mock.Anything).Return([]string{"1.2.0", "1.2.1", "1.2.2"}, nil)
 
 		ep, err := GetRegistryEndpoint("")
 		require.NoError(t, err)
@@ -88,10 +88,10 @@ func Test_GetTags(t *testing.T) {
 		}
 
 		regClient := mocks.RegistryClient{}
-		regClient.On("Tags", mock.Anything, mock.Anything).Return([]string{"1.2.0", "1.2.1", "1.2.2"}, nil)
-		regClient.On("ManifestV1", mock.Anything, mock.Anything, mock.Anything).Return(meta1, nil)
-		regClient.On("ManifestV2", mock.Anything, mock.Anything, mock.Anything).Return(meta2, nil)
-		regClient.On("TagMetadata", mock.Anything, mock.Anything, mock.Anything).Return(&tag.TagInfo{}, nil)
+		regClient.On("Tags", mock.Anything).Return([]string{"1.2.0", "1.2.1", "1.2.2"}, nil)
+		regClient.On("ManifestV1", mock.Anything, mock.Anything).Return(meta1, nil)
+		regClient.On("ManifestV2", mock.Anything, mock.Anything).Return(meta2, nil)
+		regClient.On("TagMetadata", mock.Anything, mock.Anything).Return(&tag.TagInfo{}, nil)
 
 		ep, err := GetRegistryEndpoint("")
 		require.NoError(t, err)
@@ -119,10 +119,10 @@ func Test_GetTags(t *testing.T) {
 		}
 
 		regClient := mocks.RegistryClient{}
-		regClient.On("Tags", mock.Anything, mock.Anything).Return([]string{"1.2.0", "1.2.1", "1.2.2"}, nil)
-		regClient.On("ManifestV1", mock.Anything, mock.Anything, mock.Anything).Return(meta1, nil)
-		regClient.On("ManifestV2", mock.Anything, mock.Anything, mock.Anything).Return(meta2, fmt.Errorf("not implemented"))
-		regClient.On("TagMetadata", mock.Anything, mock.Anything, mock.Anything).Return(nil, nil)
+		regClient.On("Tags", mock.Anything).Return([]string{"1.2.0", "1.2.1", "1.2.2"}, nil)
+		regClient.On("ManifestV1", mock.Anything, mock.Anything).Return(meta1, nil)
+		regClient.On("ManifestV2", mock.Anything, mock.Anything).Return(meta2, fmt.Errorf("not implemented"))
+		regClient.On("TagMetadata", mock.Anything, mock.Anything).Return(nil, nil)
 
 		ep, err := GetRegistryEndpoint("")
 		require.NoError(t, err)
@@ -153,10 +153,10 @@ func Test_GetTags(t *testing.T) {
 		}
 
 		regClient := mocks.RegistryClient{}
-		regClient.On("Tags", mock.Anything, mock.Anything).Return([]string{"1.2.0", "1.2.1", "1.2.2"}, nil)
-		regClient.On("ManifestV1", mock.Anything, mock.Anything, mock.Anything).Return(meta1, nil)
-		regClient.On("ManifestV2", mock.Anything, mock.Anything, mock.Anything).Return(meta2, fmt.Errorf("not implemented"))
-		regClient.On("TagMetadata", mock.Anything, mock.Anything, mock.Anything).Return(nil, nil)
+		regClient.On("Tags", mock.Anything).Return([]string{"1.2.0", "1.2.1", "1.2.2"}, nil)
+		regClient.On("ManifestV1", mock.Anything, mock.Anything).Return(meta1, nil)
+		regClient.On("ManifestV2", mock.Anything, mock.Anything).Return(meta2, fmt.Errorf("not implemented"))
+		regClient.On("TagMetadata", mock.Anything, mock.Anything).Return(nil, nil)
 
 		ep, err := GetRegistryEndpoint("")
 		require.NoError(t, err)
@@ -187,10 +187,10 @@ func Test_GetTags(t *testing.T) {
 		}
 
 		regClient := mocks.RegistryClient{}
-		regClient.On("Tags", mock.Anything, mock.Anything).Return([]string{"1.2.0", "1.2.1", "1.2.2"}, nil)
-		regClient.On("ManifestV1", mock.Anything, mock.Anything, mock.Anything).Return(meta1, nil)
-		regClient.On("ManifestV2", mock.Anything, mock.Anything, mock.Anything).Return(meta2, fmt.Errorf("not implemented"))
-		regClient.On("TagMetadata", mock.Anything, mock.Anything, mock.Anything).Return(nil, nil)
+		regClient.On("Tags", mock.Anything).Return([]string{"1.2.0", "1.2.1", "1.2.2"}, nil)
+		regClient.On("ManifestV1", mock.Anything, mock.Anything).Return(meta1, nil)
+		regClient.On("ManifestV2", mock.Anything, mock.Anything).Return(meta2, fmt.Errorf("not implemented"))
+		regClient.On("TagMetadata", mock.Anything, mock.Anything).Return(nil, nil)
 
 		ep, err := GetRegistryEndpoint("")
 		require.NoError(t, err)
@@ -222,10 +222,10 @@ func Test_GetTags(t *testing.T) {
 		}
 
 		regClient := mocks.RegistryClient{}
-		regClient.On("Tags", mock.Anything, mock.Anything).Return([]string{"1.2.0", "1.2.1", "1.2.2"}, nil)
-		regClient.On("ManifestV1", mock.Anything, mock.Anything, mock.Anything).Return(meta1, nil)
-		regClient.On("ManifestV2", mock.Anything, mock.Anything, mock.Anything).Return(meta2, fmt.Errorf("not implemented"))
-		regClient.On("TagMetadata", mock.Anything, mock.Anything, mock.Anything).Return(nil, nil)
+		regClient.On("Tags", mock.Anything).Return([]string{"1.2.0", "1.2.1", "1.2.2"}, nil)
+		regClient.On("ManifestV1", mock.Anything, mock.Anything).Return(meta1, nil)
+		regClient.On("ManifestV2", mock.Anything, mock.Anything).Return(meta2, fmt.Errorf("not implemented"))
+		regClient.On("TagMetadata", mock.Anything, mock.Anything).Return(nil, nil)
 
 		ep, err := GetRegistryEndpoint("")
 		require.NoError(t, err)
