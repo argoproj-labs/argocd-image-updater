@@ -123,7 +123,7 @@ var registryLock sync.RWMutex
 func AddRegistryEndpoint(prefix, name, apiUrl, credentials, defaultNS string, insecure bool, tagListSort TagListSort, limit int) error {
 	registryLock.Lock()
 	defer registryLock.Unlock()
-	if limit == 0 {
+	if limit <= 0 {
 		limit = RateLimitNone
 	}
 	log.Debugf("rate limit for %s is %d", apiUrl, limit)
