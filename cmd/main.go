@@ -267,7 +267,7 @@ argocd-image-updater test nginx --allow-tags '^1.19.\d+(\-.*)*$' --update-strate
 			}
 
 			if err := ep.SetEndpointCredentials(nil); err != nil {
-				log.Fatalf("could not set registry credentials")
+				log.Fatalf("could not set registry credentials: %v", err)
 			}
 
 			regClient, err := registry.NewClient(ep, "", "")

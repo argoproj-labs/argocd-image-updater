@@ -6,6 +6,7 @@ apimachinery
 apps
 argocd
 argocdclient
+argoexec
 argomock
 argoproj
 argoprojlabs
@@ -62,6 +63,7 @@ Fprintf
 func
 gcr
 Getenv
+Getwd
 gh
 ghcr
 githash
@@ -132,6 +134,7 @@ nokia
 nolint
 noproto
 notastring
+notexist
 omitempty
 otherimg
 otherparam
