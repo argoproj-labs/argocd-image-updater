@@ -46,6 +46,7 @@ type rateLimitTransport struct {
 // RoundTrip is a custom RoundTrip method with rate-limiter
 func (rlt *rateLimitTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 	rlt.limiter.Take()
+	log.Tracef("%s", r.URL)
 	return rlt.transport.RoundTrip(r)
 }
 
