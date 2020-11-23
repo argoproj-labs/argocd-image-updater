@@ -22,7 +22,8 @@ const (
 )
 
 const (
-	RateLimitNone = math.MaxInt32
+	RateLimitNone    = math.MaxInt32
+	RateLimitDefault = 10
 )
 
 // IsTimeSorted returns whether a tag list is time sorted
@@ -73,7 +74,7 @@ var defaultRegistries map[string]*RegistryEndpoint = map[string]*RegistryEndpoin
 		Insecure:       false,
 		DefaultNS:      "library",
 		Cache:          cache.NewMemCache(),
-		Limiter:        ratelimit.New(RateLimitNone),
+		Limiter:        ratelimit.New(RateLimitDefault),
 	},
 	"gcr.io": {
 		RegistryName:   "Google Container Registry",
@@ -82,7 +83,7 @@ var defaultRegistries map[string]*RegistryEndpoint = map[string]*RegistryEndpoin
 		Ping:           false,
 		Insecure:       false,
 		Cache:          cache.NewMemCache(),
-		Limiter:        ratelimit.New(RateLimitNone),
+		Limiter:        ratelimit.New(RateLimitDefault),
 	},
 	"quay.io": {
 		RegistryName:   "RedHat Quay",
@@ -91,7 +92,7 @@ var defaultRegistries map[string]*RegistryEndpoint = map[string]*RegistryEndpoin
 		Ping:           false,
 		Insecure:       false,
 		Cache:          cache.NewMemCache(),
-		Limiter:        ratelimit.New(RateLimitNone),
+		Limiter:        ratelimit.New(RateLimitDefault),
 	},
 	"docker.pkg.github.com": {
 		RegistryName:   "GitHub packages",
@@ -100,7 +101,7 @@ var defaultRegistries map[string]*RegistryEndpoint = map[string]*RegistryEndpoin
 		Ping:           false,
 		Insecure:       false,
 		Cache:          cache.NewMemCache(),
-		Limiter:        ratelimit.New(RateLimitNone),
+		Limiter:        ratelimit.New(RateLimitDefault),
 	},
 	"ghcr.io": {
 		RegistryName:   "GitHub Container Registry",
@@ -109,7 +110,7 @@ var defaultRegistries map[string]*RegistryEndpoint = map[string]*RegistryEndpoin
 		Ping:           false,
 		Insecure:       false,
 		Cache:          cache.NewMemCache(),
-		Limiter:        ratelimit.New(RateLimitNone),
+		Limiter:        ratelimit.New(RateLimitDefault),
 	},
 }
 
