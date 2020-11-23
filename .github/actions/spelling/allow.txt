@@ -107,6 +107,7 @@ LDFLAGS
 len
 linted
 logctx
+logf
 Logf
 loglevel
 logrus
@@ -156,6 +157,7 @@ refactoring
 regexp
 regmock
 RLock
+rlt
 roadmap
 rolebinding
 rolebindings
