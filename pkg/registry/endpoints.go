@@ -21,6 +21,11 @@ const (
 	SortLatestLast  TagListSort = 2
 )
 
+const (
+	RateLimitNone    = math.MaxInt32
+	RateLimitDefault = 10
+)
+
 // IsTimeSorted returns whether a tag list is time sorted
 func (tls TagListSort) IsTimeSorted() bool {
 	return tls == SortLatestFirst || tls == SortLatestLast
@@ -69,7 +74,7 @@ var defaultRegistries map[string]*RegistryEndpoint = map[string]*RegistryEndpoin
 		Insecure:       false,
 		DefaultNS:      "library",
 		Cache:          cache.NewMemCache(),
-		Limiter:        ratelimit.New(5),
+		Limiter:        ratelimit.New(RateLimitDefault),
 	},
 	"gcr.io": {
 		RegistryName:   "Google Container Registry",
@@ -78,7 +83,7 @@ var defaultRegistries map[string]*RegistryEndpoint = map[string]*RegistryEndpoin
 		Ping:           false,
 		Insecure:       false,
 		Cache:          cache.NewMemCache(),
-		Limiter:        ratelimit.New(5),
+		Limiter:        ratelimit.New(RateLimitDefault),
 	},
 	"quay.io": {
 		RegistryName:   "RedHat Quay",
@@ -87,7 +92,7 @@ var defaultRegistries map[string]*RegistryEndpoint = map[string]*RegistryEndpoin
 		Ping:           false,
 		Insecure:       false,
 		Cache:          cache.NewMemCache(),
-		Limiter:        ratelimit.New(5),
+		Limiter:        ratelimit.New(RateLimitDefault),
 	},
 	"docker.pkg.github.com": {
 		RegistryName:   "GitHub packages",
@@ -95,9 +100,8 @@ var defaultRegistries map[string]*RegistryEndpoint = map[string]*RegistryEndpoin
 		RegistryAPI:    "https://docker.pkg.github.com",
 		Ping:           false,
 		Insecure:       false,
-		TagListSort:    SortLatestFirst,
 		Cache:          cache.NewMemCache(),
-		Limiter:        ratelimit.New(5),
+		Limiter:        ratelimit.New(RateLimitDefault),
 	},
 	"ghcr.io": {
 		RegistryName:   "GitHub Container Registry",
@@ -105,9 +109,8 @@ var defaultRegistries map[string]*RegistryEndpoint = map[string]*RegistryEndpoin
 		RegistryAPI:    "https://ghcr.io",
 		Ping:           false,
 		Insecure:       false,
-		TagListSort:    SortLatestLast,
 		Cache:          cache.NewMemCache(),
-		Limiter:        ratelimit.New(5),
+		Limiter:        ratelimit.New(RateLimitDefault),
 	},
 }
 
@@ -120,8 +123,8 @@ var registryLock sync.RWMutex
 func AddRegistryEndpoint(prefix, name, apiUrl, credentials, defaultNS string, insecure bool, tagListSort TagListSort, limit int) error {
 	registryLock.Lock()
 	defer registryLock.Unlock()
-	if limit == 0 {
-		limit = math.MaxInt32
+	if limit <= 0 {
+		limit = RateLimitNone
 	}
 	log.Debugf("rate limit for %s is %d", apiUrl, limit)
 	registries[prefix] = &RegistryEndpoint{
@@ -175,6 +178,7 @@ func ConfiguredEndpoints() []string {
 
 // DeepCopy copies the endpoint to a new object, but creating a new Cache
 func (ep *RegistryEndpoint) DeepCopy() *RegistryEndpoint {
+	ep.lock.RLock()
 	newEp := &RegistryEndpoint{}
 	newEp.RegistryAPI = ep.RegistryAPI
 	newEp.RegistryName = ep.RegistryName
@@ -186,6 +190,7 @@ func (ep *RegistryEndpoint) DeepCopy() *RegistryEndpoint {
 	newEp.Insecure = ep.Insecure
 	newEp.DefaultNS = ep.DefaultNS
 	newEp.Limiter = ep.Limiter
+	ep.lock.RUnlock()
 	return newEp
 }
 
