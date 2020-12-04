@@ -15,6 +15,7 @@ import (
 // Stores some statistics about the results of a run
 type ImageUpdaterResult struct {
 	NumApplicationsProcessed int
+	NumImagesFound           int
 	NumImagesUpdated         int
 	NumImagesConsidered      int
 	NumSkipped               int

@@ -10,6 +10,7 @@ import (
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/image"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/log"
+	"github.com/argoproj-labs/argocd-image-updater/pkg/metrics"
 
 	argocdclient "github.com/argoproj/argo-cd/pkg/apiclient"
 	"github.com/argoproj/argo-cd/pkg/apiclient/application"
@@ -143,13 +144,17 @@ func FilterApplicationsForUpdate(apps []v1alpha1.Application, patterns []string)
 // GetApplication gets the application named appName from Argo CD API
 func (client *argoCD) GetApplication(ctx context.Context, appName string) (*v1alpha1.Application, error) {
 	conn, appClient, err := client.Client.NewApplicationClient()
+	metrics.Clients().IncreaseArgoCDClientRequest(client.Client.ClientOptions().ServerAddr, 1)
 	if err != nil {
+		metrics.Clients().IncreaseArgoCDClientError(client.Client.ClientOptions().ServerAddr, 1)
 		return nil, err
 	}
 	defer conn.Close()
 
+	metrics.Clients().IncreaseArgoCDClientRequest(client.Client.ClientOptions().ServerAddr, 1)
 	app, err := appClient.Get(ctx, &application.ApplicationQuery{Name: &appName})
 	if err != nil {
+		metrics.Clients().IncreaseArgoCDClientError(client.Client.ClientOptions().ServerAddr, 1)
 		return nil, err
 	}
 
@@ -160,13 +165,17 @@ func (client *argoCD) GetApplication(ctx context.Context, appName string) (*v1al
 // has access to.
 func (client *argoCD) ListApplications() ([]v1alpha1.Application, error) {
 	conn, appClient, err := client.Client.NewApplicationClient()
+	metrics.Clients().IncreaseArgoCDClientRequest(client.Client.ClientOptions().ServerAddr, 1)
 	if err != nil {
+		metrics.Clients().IncreaseArgoCDClientError(client.Client.ClientOptions().ServerAddr, 1)
 		return nil, err
 	}
 	defer conn.Close()
 
+	metrics.Clients().IncreaseArgoCDClientRequest(client.Client.ClientOptions().ServerAddr, 1)
 	apps, err := appClient.List(context.TODO(), &application.ApplicationQuery{})
 	if err != nil {
+		metrics.Clients().IncreaseArgoCDClientError(client.Client.ClientOptions().ServerAddr, 1)
 		return nil, err
 	}
 
@@ -176,13 +185,17 @@ func (client *argoCD) ListApplications() ([]v1alpha1.Application, error) {
 // UpdateSpec updates the spec for given application
 func (client *argoCD) UpdateSpec(ctx context.Context, in *application.ApplicationUpdateSpecRequest) (*v1alpha1.ApplicationSpec, error) {
 	conn, appClient, err := client.Client.NewApplicationClient()
+	metrics.Clients().IncreaseArgoCDClientRequest(client.Client.ClientOptions().ServerAddr, 1)
 	if err != nil {
+		metrics.Clients().IncreaseArgoCDClientError(client.Client.ClientOptions().ServerAddr, 1)
 		return nil, err
 	}
 	defer conn.Close()
 
+	metrics.Clients().IncreaseArgoCDClientRequest(client.Client.ClientOptions().ServerAddr, 1)
 	spec, err := appClient.UpdateSpec(ctx, in)
 	if err != nil {
+		metrics.Clients().IncreaseArgoCDClientError(client.Client.ClientOptions().ServerAddr, 1)
 		return nil, err
 	}
 

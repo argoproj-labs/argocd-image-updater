@@ -15,6 +15,7 @@ import (
 	"github.com/argoproj-labs/argocd-image-updater/pkg/health"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/image"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/log"
+	"github.com/argoproj-labs/argocd-image-updater/pkg/metrics"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/registry"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/version"
 
@@ -41,6 +42,7 @@ type ImageUpdaterConfig struct {
 	KubeClient      *client.KubernetesClient
 	MaxConcurrency  int
 	HealthPort      int
+	MetricsPort     int
 	RegistriesConf  string
 	AppNamePatterns []string
 }
@@ -94,6 +96,8 @@ func runImageUpdater(cfg *ImageUpdaterConfig, warmUp bool) (argocd.ImageUpdaterR
 		return result, err
 	}
 
+	metrics.Applications().SetNumberOfApplications(len(appList))
+
 	if !warmUp {
 		log.Infof("Starting image update cycle, considering %d annotated application(s) for update", len(appList))
 	}
@@ -131,6 +135,11 @@ func runImageUpdater(cfg *ImageUpdaterConfig, warmUp bool) (argocd.ImageUpdaterR
 			result.NumImagesConsidered += res.NumImagesConsidered
 			result.NumImagesUpdated += res.NumImagesUpdated
 			result.NumSkipped += res.NumSkipped
+			if !warmUp && !cfg.DryRun {
+				metrics.Applications().IncreaseImageUpdate(app, res.NumImagesUpdated)
+			}
+			metrics.Applications().IncreaseUpdateErrors(app, res.NumErrors)
+			metrics.Applications().SetNumberOfImagesWatched(app, res.NumImagesConsidered)
 			wg.Done()
 		}(app, curApplication)
 	}
@@ -402,9 +411,15 @@ func newRunCommand() *cobra.Command {
 
 			// Health server will start in a go routine and run asynchronously
 			var hsErrCh chan error
+			var msErrCh chan error
 			if cfg.HealthPort > 0 {
 				log.Infof("Starting health probe server TCP port=%d", cfg.HealthPort)
 				hsErrCh = health.StartHealthServer(cfg.HealthPort)
+			}
+
+			if cfg.MetricsPort > 0 {
+				log.Infof("Starting metrics server on TCP port=%d", cfg.MetricsPort)
+				msErrCh = metrics.StartMetricsServer(cfg.MetricsPort)
 			}
 
 			if warmUpCache {
@@ -422,10 +437,17 @@ func newRunCommand() *cobra.Command {
 				case err := <-hsErrCh:
 					if err != nil {
 						log.Errorf("Health probe server exited with error: %v", err)
-						return nil
 					} else {
 						log.Infof("Health probe server exited gracefully")
 					}
+					return nil
+				case err := <-msErrCh:
+					if err != nil {
+						log.Errorf("Metrics server exited with error: %v", err)
+					} else {
+						log.Infof("Metrics server exited gracefully")
+					}
+					return nil
 				default:
 					if lastRun.IsZero() || time.Since(lastRun) > cfg.CheckInterval {
 						result, err := runImageUpdater(cfg, false)
@@ -462,6 +484,7 @@ func newRunCommand() *cobra.Command {
 	runCmd.Flags().StringVar(&cfg.LogLevel, "loglevel", env.GetStringVal("IMAGE_UPDATER_LOGLEVEL", "info"), "set the loglevel to one of trace|debug|info|warn|error")
 	runCmd.Flags().StringVar(&kubeConfig, "kubeconfig", "", "full path to kubernetes client configuration, i.e. ~/.kube/config")
 	runCmd.Flags().IntVar(&cfg.HealthPort, "health-port", 8080, "port to start the health server on, 0 to disable")
+	runCmd.Flags().IntVar(&cfg.MetricsPort, "metrics-port", 8081, "port to start the metrics server on, 0 to disable")
 	runCmd.Flags().BoolVar(&once, "once", false, "run only once, same as specifying --interval=0 and --health-port=0")
 	runCmd.Flags().StringVar(&cfg.RegistriesConf, "registries-conf-path", defaultRegistriesConfPath, "path to registries configuration file")
 	runCmd.Flags().BoolVar(&disableKubernetes, "disable-kubernetes", false, "do not create and use a Kubernetes client")
