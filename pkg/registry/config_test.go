@@ -2,6 +2,7 @@ package registry
 
 import (
 	"testing"
+	"time"
 
 	"github.com/argoproj-labs/argocd-image-updater/test/fixture"
 
@@ -14,7 +15,7 @@ func Test_ParseRegistryConfFromYaml(t *testing.T) {
 		data := fixture.MustReadFile("../../config/example-config.yaml")
 		regList, err := ParseRegistryConfiguration(data)
 		require.NoError(t, err)
-		assert.Len(t, regList.Items, 3)
+		assert.Len(t, regList.Items, 4)
 	})
 
 	t.Run("Parse from invalid YAML: no name found", func(t *testing.T) {
@@ -81,6 +82,10 @@ func Test_LoadRegistryConfiguration(t *testing.T) {
 		reg, err := GetRegistryEndpoint("gcr.io")
 		require.NoError(t, err)
 		assert.Equal(t, "pullsecret:foo/bar", reg.Credentials)
+		reg, err = GetRegistryEndpoint("ghcr.io")
+		require.NoError(t, err)
+		assert.Equal(t, "ext:/some/script", reg.Credentials)
+		assert.Equal(t, 5*time.Hour, reg.CredsExpire)
 		RestoreDefaultRegistryConfiguration()
 		reg, err = GetRegistryEndpoint("gcr.io")
 		require.NoError(t, err)

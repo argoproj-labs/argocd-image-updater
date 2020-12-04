@@ -164,8 +164,20 @@ func (endpoint *RegistryEndpoint) GetTags(img *image.ContainerImage, regClient R
 	return tagList, err
 }
 
+func (ep *RegistryEndpoint) expireCredentials() bool {
+	if ep.Credentials != "" && !ep.CredsUpdated.IsZero() && ep.CredsExpire > 0 && time.Since(ep.CredsUpdated) >= ep.CredsExpire {
+		ep.Username = ""
+		ep.Password = ""
+		return true
+	}
+	return false
+}
+
 // Sets endpoint credentials for this registry from a reference to a K8s secret
 func (ep *RegistryEndpoint) SetEndpointCredentials(kubeClient *client.KubernetesClient) error {
+	if ep.expireCredentials() {
+		log.Debugf("expired credentials for registry %s (updated:%s, expiry:%0fs)", ep.RegistryAPI, ep.CredsUpdated, ep.CredsExpire.Seconds())
+	}
 	if ep.Username == "" && ep.Password == "" && ep.Credentials != "" {
 		credSrc, err := image.ParseCredentialSource(ep.Credentials, false)
 		if err != nil {
@@ -184,6 +196,8 @@ func (ep *RegistryEndpoint) SetEndpointCredentials(kubeClient *client.Kubernetes
 		if err != nil {
 			return err
 		}
+
+		ep.CredsUpdated = time.Now()
 
 		ep.Username = creds.Username
 		ep.Password = creds.Password

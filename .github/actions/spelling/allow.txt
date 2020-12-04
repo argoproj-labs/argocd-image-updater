@@ -12,6 +12,7 @@ argoproj
 argoprojlabs
 args
 auths
+aws
 babayaga
 baralias
 baz
@@ -35,6 +36,7 @@ configmap
 coverprofile
 cred
 creds
+credsexpire
 css
 ctx
 Ctx
@@ -50,6 +52,7 @@ djangoproject
 dockerconfigjson
 dst
 egrep
+EKS
 endif
 ENTRYPOINT
 eps

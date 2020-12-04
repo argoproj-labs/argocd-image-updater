@@ -2,7 +2,9 @@ package registry
 
 import (
 	"fmt"
+	"os"
 	"testing"
+	"time"
 
 	"github.com/argoproj-labs/argocd-image-updater/pkg/image"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/registry/mocks"
@@ -241,4 +243,50 @@ func Test_GetTags(t *testing.T) {
 		require.Nil(t, tag)
 	})
 
+}
+
+func Test_ExpireCredentials(t *testing.T) {
+	epYAML := `
+registries:
+- name: GitHub Container Registry
+  api_url: https://ghcr.io
+  ping: no
+  prefix: ghcr.io
+  credentials: env:TEST_CREDS
+  credsexpire: 3s
+`
+	t.Run("Expire credentials", func(t *testing.T) {
+		epl, err := ParseRegistryConfiguration(epYAML)
+		require.NoError(t, err)
+		require.Len(t, epl.Items, 1)
+
+		// New registry configuration
+		err = AddRegistryEndpointFromConfig(epl.Items[0])
+		require.NoError(t, err)
+		ep, err := GetRegistryEndpoint("ghcr.io")
+		require.NoError(t, err)
+		require.NotEqual(t, 0, ep.CredsExpire)
+
+		// Initial creds
+		os.Setenv("TEST_CREDS", "foo:bar")
+		err = ep.SetEndpointCredentials(nil)
+		assert.NoError(t, err)
+		assert.Equal(t, "foo", ep.Username)
+		assert.Equal(t, "bar", ep.Password)
+		assert.False(t, ep.CredsUpdated.IsZero())
+
+		// Creds should still be cached
+		os.Setenv("TEST_CREDS", "bar:foo")
+		err = ep.SetEndpointCredentials(nil)
+		assert.NoError(t, err)
+		assert.Equal(t, "foo", ep.Username)
+		assert.Equal(t, "bar", ep.Password)
+
+		// Pretend 5 minutes have passed - creds have expired and are re-read from env
+		ep.CredsUpdated = ep.CredsUpdated.Add(time.Minute * -5)
+		err = ep.SetEndpointCredentials(nil)
+		assert.NoError(t, err)
+		assert.Equal(t, "bar", ep.Username)
+		assert.Equal(t, "foo", ep.Password)
+	})
 }
