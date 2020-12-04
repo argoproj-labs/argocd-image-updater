@@ -5,6 +5,7 @@ import (
 	"math"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/argoproj-labs/argocd-image-updater/pkg/cache"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/log"
@@ -58,6 +59,8 @@ type RegistryEndpoint struct {
 	Credentials    string
 	Insecure       bool
 	DefaultNS      string
+	CredsExpire    time.Duration
+	CredsUpdated   time.Time
 	TagListSort    TagListSort
 	Cache          cache.ImageTagCache
 	Limiter        ratelimit.Limiter
@@ -119,8 +122,12 @@ var registries map[string]*RegistryEndpoint = make(map[string]*RegistryEndpoint)
 // Simple RW mutex for concurrent access to registries map
 var registryLock sync.RWMutex
 
+func AddRegistryEndpointFromConfig(epc RegistryConfiguration) error {
+	return AddRegistryEndpoint(epc.Prefix, epc.Name, epc.ApiURL, epc.Credentials, epc.DefaultNS, epc.Insecure, TagListSortFromString(epc.TagSortMode), epc.Limit, epc.CredsExpire)
+}
+
 // AddRegistryEndpoint adds registry endpoint information with the given details
-func AddRegistryEndpoint(prefix, name, apiUrl, credentials, defaultNS string, insecure bool, tagListSort TagListSort, limit int) error {
+func AddRegistryEndpoint(prefix, name, apiUrl, credentials, defaultNS string, insecure bool, tagListSort TagListSort, limit int, credsExpire time.Duration) error {
 	registryLock.Lock()
 	defer registryLock.Unlock()
 	if limit <= 0 {
@@ -132,6 +139,7 @@ func AddRegistryEndpoint(prefix, name, apiUrl, credentials, defaultNS string, in
 		RegistryPrefix: prefix,
 		RegistryAPI:    apiUrl,
 		Credentials:    credentials,
+		CredsExpire:    credsExpire,
 		Cache:          cache.NewMemCache(),
 		Insecure:       insecure,
 		DefaultNS:      defaultNS,
@@ -190,6 +198,8 @@ func (ep *RegistryEndpoint) DeepCopy() *RegistryEndpoint {
 	newEp.Insecure = ep.Insecure
 	newEp.DefaultNS = ep.DefaultNS
 	newEp.Limiter = ep.Limiter
+	newEp.CredsExpire = ep.CredsExpire
+	newEp.CredsUpdated = ep.CredsUpdated
 	ep.lock.RUnlock()
 	return newEp
 }

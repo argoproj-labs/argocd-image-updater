@@ -35,3 +35,9 @@ registries:
   ping: no
   prefix: quay.io
   credentials: secret:foo/bar#creds
+- name: GitHub Container Registry
+  api_url: https://ghcr.io
+  ping: no
+  prefix: ghcr.io
+  credentials: ext:/some/script
+  credsexpire: 5h

@@ -68,6 +68,15 @@ following semantics:
   accessing the registry API (see below). Credentials can also be specified
   [per image](../images/#specifying-pull-secrets)
 
+* `credsexpire` (optional) can be used to set an expiry time for the
+   credentials. The value must be in a `time.Duration` compatible format,
+   having a unit suffix, i.e. `5s` for 5 seconds or `2h` for 2 hours. The
+   value should be positive, and `0` can be used to disable it (the default).
+
+   From the golang documentation:
+
+   > A duration string is a possibly signed sequence of decimal numbers, each with optional fraction and a unit suffix, such as "300ms", "-1.5h" or "2h45m". Valid time units are "ns", "us" (or "µs"), "ms", "s", "m", "h".
+
 * `insecure` (optional) if set to true, does not validate the TLS certificate
   for the connection to the registry. Use with care.
 
@@ -108,6 +117,12 @@ data:
       ping: no
       prefix: quay.io
       credentials: env:REGISTRY_SECRET
+    - name: GitHub Container Registry
+      api_url: https://gcr.io
+      ping: no
+      prefix: gcr.io
+      credentials: ext:/custom/gcr-creds.sh.io
+      credsexpire: 5h
 ```
 
 !!!note
@@ -137,3 +152,28 @@ Credentials can be referenced as follows:
 * An environment variable which holds the credentials in the format
   `<username>:<password>`. This kind of secret is specified using the notation
   `env:<env_var_name>`.
+
+* A script that outputs credentials on a single line to stdout, in the format
+  `<username:password>`. This can be used to support external authentication
+  mechanisms. You can specify this kind of secret in the notation
+  `ext:/path/to/script`. Please note that the script must be referenced as
+  absolute path, and must be executable (i.e. have the `+x` bit set). You
+  can add scripts to `argocd-image-updater` by using an init container.
+
+## Credentials caching
+
+By default, credentials specified in registry configuration are read once on
+startup and then cached until `argocd-image-updater` is restarted. There are
+two strategies to overcome this:
+
+* Use per-image credentials in annotations - credentials will be read every
+  time an image update cycle is performed, and your credentials will always
+  be up-to-date (i.e. if you update a secret).
+
+* Specify credential expiry time in the registry configuration - if set, the
+  registry credentials will have a defined lifetime, and will be re-read from
+  the source after expiration. This can be especially useful if you generate
+  credentials with a script which returns a token with a limited lifetime,
+  i.e. for getting EKS credentials from the aws CLI. For example, if the
+  token has a lifetime of 12 hours, you can set `credsexpire: 12h` and Argo
+  CD Image Updater will get a new token after 12 hours.

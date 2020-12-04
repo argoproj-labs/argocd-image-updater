@@ -3,6 +3,7 @@ package registry
 import (
 	"fmt"
 	"io/ioutil"
+	"time"
 
 	"github.com/argoproj-labs/argocd-image-updater/pkg/log"
 
@@ -12,15 +13,16 @@ import (
 // RegistryConfiguration represents a single repository configuration for being
 // unmarshaled from YAML.
 type RegistryConfiguration struct {
-	Name        string `yaml:"name"`
-	ApiURL      string `yaml:"api_url"`
-	Ping        bool   `yaml:"ping,omitempty"`
-	Credentials string `yaml:"credentials,omitempty"`
-	TagSortMode string `yaml:"tagsortmode,omitempty"`
-	Prefix      string `yaml:"prefix,omitempty"`
-	Insecure    bool   `yaml:"insecure,omitempty"`
-	DefaultNS   string `yaml:"defaultns,omitempty"`
-	Limit       int    `yaml:"limit,omitempty"`
+	Name        string        `yaml:"name"`
+	ApiURL      string        `yaml:"api_url"`
+	Ping        bool          `yaml:"ping,omitempty"`
+	Credentials string        `yaml:"credentials,omitempty"`
+	CredsExpire time.Duration `yaml:"credsexpire,omitempty"`
+	TagSortMode string        `yaml:"tagsortmode,omitempty"`
+	Prefix      string        `yaml:"prefix,omitempty"`
+	Insecure    bool          `yaml:"insecure,omitempty"`
+	DefaultNS   string        `yaml:"defaultns,omitempty"`
+	Limit       int           `yaml:"limit,omitempty"`
 }
 
 // RegistryList contains multiple RegistryConfiguration items
@@ -48,7 +50,7 @@ func LoadRegistryConfiguration(path string, clear bool) error {
 
 	for _, reg := range registryList.Items {
 		tagSortMode := TagListSortFromString(reg.TagSortMode)
-		err = AddRegistryEndpoint(reg.Prefix, reg.Name, reg.ApiURL, reg.Credentials, reg.DefaultNS, reg.Insecure, tagSortMode, reg.Limit)
+		err = AddRegistryEndpoint(reg.Prefix, reg.Name, reg.ApiURL, reg.Credentials, reg.DefaultNS, reg.Insecure, tagSortMode, reg.Limit, reg.CredsExpire)
 		if err != nil {
 			return err
 		}
