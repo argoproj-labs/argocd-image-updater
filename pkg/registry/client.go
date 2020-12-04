@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/argoproj-labs/argocd-image-updater/pkg/log"
+	"github.com/argoproj-labs/argocd-image-updater/pkg/metrics"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/tag"
 
 	"github.com/docker/distribution"
@@ -41,13 +42,16 @@ type registryClient struct {
 type rateLimitTransport struct {
 	limiter   ratelimit.Limiter
 	transport http.RoundTripper
+	endpoint  string
 }
 
 // RoundTrip is a custom RoundTrip method with rate-limiter
 func (rlt *rateLimitTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 	rlt.limiter.Take()
 	log.Tracef("%s", r.URL)
-	return rlt.transport.RoundTrip(r)
+	resp, err := rlt.transport.RoundTrip(r)
+	metrics.Endpoint().IncreaseRequest(rlt.endpoint, err != nil)
+	return resp, err
 }
 
 // newRegistry is a wrapper for creating a registry client that is possibly
@@ -69,6 +73,7 @@ func newRegistry(ep *RegistryEndpoint, opts registry.Options) (*registry.Registr
 	rlt := &rateLimitTransport{
 		limiter:   ep.Limiter,
 		transport: transport,
+		endpoint:  ep.RegistryAPI,
 	}
 
 	logf := opts.Logf

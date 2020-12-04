@@ -221,3 +221,43 @@ If opting for such an approach, you should make sure that:
 * Each instance has a dedicated user in Argo CD, with dedicated RBAC permissions
 * RBAC permissions are set-up so that instances cannot interfere with each
   others managed resources
+
+## Metrics
+
+Starting with v0.8.0, Argo CD Image Updater exports Prometheus-compatible
+metrics on a dedicated endpoint, which by default listens on TCP port 8082
+and serves data from `/metrics` path. This endpoint is exposed by a service
+named `argocd-image-updater` on a port named `metrics`.
+
+The following metrics are being made available:
+
+* Number of applications processed (i.e. those with an annotation)
+
+  * `argocd_image_updater_applications_watched_total`
+
+* Number of images watched for new tags
+
+  * `argocd_image_updater_images_watched_total`
+
+* Number of images updated (successful and failed)
+
+  * `argocd_image_updater_images_updated_total`
+  * `argocd_image_updater_images_errors_total`
+
+* Number of requests to Argo CD API (successful and failed)
+
+  * `argocd_image_updater_argocd_api_requests_total`
+  * `argocd_image_updater_argocd_api_errors_total`
+
+* Number of requests to K8s API (successful and failed)
+
+  * `argocd_image_updater_k8s_api_requests_total`
+  * `argocd_image_updater_k8s_api_errors_total`
+
+* Number of requests to the container registries (successful and failed)
+
+  * `argocd_image_updater_registry_requests_total`
+  * `argocd_image_updater_registry_errors_total`
+
+A (very) rudimentary example dashboard definition for Grafana is provided
+[here](https://github.com/argoproj-labs/argocd-image-updater/tree/master/config)

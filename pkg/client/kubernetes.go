@@ -6,6 +6,8 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/argoproj-labs/argocd-image-updater/pkg/metrics"
+
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -46,7 +48,9 @@ func NewKubernetesClient(kubeconfig string) (*KubernetesClient, error) {
 // GetSecretData returns the raw data from named K8s secret in given namespace
 func (client *KubernetesClient) GetSecretData(namespace string, secretName string) (map[string][]byte, error) {
 	secret, err := client.Clientset.CoreV1().Secrets(namespace).Get(context.TODO(), secretName, v1.GetOptions{})
+	metrics.Clients().IncreaseK8sClientRequest(1)
 	if err != nil {
+		metrics.Clients().IncreaseK8sClientRequest(1)
 		return nil, err
 	}
 	return secret.Data, nil
@@ -55,7 +59,9 @@ func (client *KubernetesClient) GetSecretData(namespace string, secretName strin
 // GetSecretField returns the value of a field from named K8s secret in given namespace
 func (client *KubernetesClient) GetSecretField(namespace string, secretName string, field string) (string, error) {
 	secret, err := client.GetSecretData(namespace, secretName)
+	metrics.Clients().IncreaseK8sClientRequest(1)
 	if err != nil {
+		metrics.Clients().IncreaseK8sClientRequest(1)
 		return "", err
 	}
 	if data, ok := secret[field]; !ok {
