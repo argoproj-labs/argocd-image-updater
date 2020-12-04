@@ -77,6 +77,7 @@ gopkg
 goreportcard
 goroutine
 goroutines
+Grafana
 grpc
 guestbook
 healthport
