@@ -3,3 +3,7 @@
 \/mocks\/
 ignore$
 \.png$
+^\.config/
+\.json$
+\.yaml$
+\.go$
