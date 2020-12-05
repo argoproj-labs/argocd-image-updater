@@ -205,12 +205,15 @@ func newVersionCommand() *cobra.Command {
 
 func newTestCommand() *cobra.Command {
 	var (
-		semverConstraint string
-		strategy         string
-		registriesConf   string
-		logLevel         string
-		allowTags        string
-		ignoreTags       []string
+		semverConstraint  string
+		strategy          string
+		registriesConf    string
+		logLevel          string
+		allowTags         string
+		credentials       string
+		kubeConfig        string
+		disableKubernetes bool
+		ignoreTags        []string
 	)
 	var runCmd = &cobra.Command{
 		Use:   "test IMAGE",
@@ -245,6 +248,15 @@ argocd-image-updater test nginx --allow-tags '^1.19.\d+(\-.*)*$' --update-strate
 				log.Fatalf("could not set log level to %s: %v", logLevel, err)
 			}
 
+			var kubeClient *client.KubernetesClient
+			var err error
+			if kubeConfig != "" {
+				kubeClient, err = getKubeConfig(kubeConfig)
+				if err != nil {
+					log.Fatalf("could not create K8s client: %v", err)
+				}
+			}
+
 			vc := &image.VersionConstraint{
 				Constraint: semverConstraint,
 				SortMode:   image.VersionSortSemVer,
@@ -275,11 +287,26 @@ argocd-image-updater test nginx --allow-tags '^1.19.\d+(\-.*)*$' --update-strate
 				log.Fatalf("could not get registry endpoint: %v", err)
 			}
 
-			if err := ep.SetEndpointCredentials(nil); err != nil {
+			if err := ep.SetEndpointCredentials(kubeClient); err != nil {
 				log.Fatalf("could not set registry credentials: %v", err)
 			}
 
-			regClient, err := registry.NewClient(ep, "", "")
+			var creds *image.Credential
+			var username, password string
+			if credentials != "" {
+				credSrc, err := image.ParseCredentialSource(credentials, false)
+				if err != nil {
+					log.Fatalf("could not parse credential definition '%s': %v", credentials, err)
+				}
+				creds, err = credSrc.FetchCredentials(img.RegistryURL, kubeClient)
+				if err != nil {
+					log.Fatalf("could not fetch credentials: %v", err)
+				}
+				username = creds.Username
+				password = creds.Password
+			}
+
+			regClient, err := registry.NewClient(ep, username, password)
 			if err != nil {
 				log.Fatalf("could not create registry client: %v", err)
 			}
@@ -316,6 +343,9 @@ argocd-image-updater test nginx --allow-tags '^1.19.\d+(\-.*)*$' --update-strate
 	runCmd.Flags().StringVar(&strategy, "update-strategy", "semver", "update strategy to use, one of: semver, latest)")
 	runCmd.Flags().StringVar(&registriesConf, "registries-conf", "", "path to registries configuration")
 	runCmd.Flags().StringVar(&logLevel, "loglevel", "debug", "log level to use (one of trace, debug, info, warn, error)")
+	runCmd.Flags().BoolVar(&disableKubernetes, "disable-kubernetes", false, "whether to disable the Kubernetes client")
+	runCmd.Flags().StringVar(&kubeConfig, "kubeconfig", "", "path to your Kubernetes client configuration")
+	runCmd.Flags().StringVar(&credentials, "credentials", "", "the credentials definition for the test (overrides registry config)")
 	return runCmd
 }
 
@@ -371,29 +401,12 @@ func newRunCommand() *cobra.Command {
 				log.Warnf("Check interval is very low - it is not recommended to run below 1m0s")
 			}
 
-			var fullKubeConfigPath string
 			var err error
-
 			if !disableKubernetes {
-				if kubeConfig != "" {
-					fullKubeConfigPath, err = filepath.Abs(kubeConfig)
-					if err != nil {
-						log.Fatalf("Cannot expand path %s: %v", kubeConfig, err)
-					}
-				}
-
-				if fullKubeConfigPath != "" {
-					log.Debugf("Creating Kubernetes client from %s", fullKubeConfigPath)
-				} else {
-					log.Debugf("Creating in-cluster Kubernetes client")
-				}
-
-				cfg.KubeClient, err = client.NewKubernetesClient(fullKubeConfigPath)
+				cfg.KubeClient, err = getKubeConfig(kubeConfig)
 				if err != nil {
-					log.Fatalf("Cannot create kubernetes client: %v", err)
+					log.Fatalf("could not create K8s client: %v", err)
 				}
-			} else if kubeConfig != "" {
-				return fmt.Errorf("--kubeconfig and --disable-kubernetes cannot be specified together")
 			}
 
 			if token := os.Getenv("ARGOCD_TOKEN"); token != "" && cfg.ClientOpts.AuthToken == "" {
@@ -494,6 +507,32 @@ func newRunCommand() *cobra.Command {
 	runCmd.Flags().BoolVar(&warmUpCache, "warmup-cache", true, "whether to perform a cache warm-up on startup")
 
 	return runCmd
+}
+
+func getKubeConfig(kubeConfig string) (*client.KubernetesClient, error) {
+	var fullKubeConfigPath string
+	var kubeClient *client.KubernetesClient
+	var err error
+
+	if kubeConfig != "" {
+		fullKubeConfigPath, err = filepath.Abs(kubeConfig)
+		if err != nil {
+			return nil, fmt.Errorf("cannot expand path %s: %v", kubeConfig, err)
+		}
+	}
+
+	if fullKubeConfigPath != "" {
+		log.Debugf("Creating Kubernetes client from %s", fullKubeConfigPath)
+	} else {
+		log.Debugf("Creating in-cluster Kubernetes client")
+	}
+
+	kubeClient, err = client.NewKubernetesClient(fullKubeConfigPath)
+	if err != nil {
+		return nil, err
+	}
+
+	return kubeClient, nil
 }
 
 func main() {
