@@ -108,6 +108,9 @@ func (src *CredentialSource) FetchCredentials(registryURL string, kubeclient *cl
 		creds.Password = tokens[1]
 		return &creds, nil
 	case CredentialSourceSecret:
+		if kubeclient == nil {
+			return nil, fmt.Errorf("could not fetch credentials: no Kubernetes client given")
+		}
 		data, err := kubeclient.GetSecretField(src.SecretNamespace, src.SecretName, src.SecretField)
 		if err != nil {
 			return nil, fmt.Errorf("could not fetch secret '%s' from namespace '%s' (field: '%s'): %v", src.SecretName, src.SecretNamespace, src.SecretField, err)
@@ -120,6 +123,9 @@ func (src *CredentialSource) FetchCredentials(registryURL string, kubeclient *cl
 		creds.Password = tokens[1]
 		return &creds, nil
 	case CredentialSourcePullSecret:
+		if kubeclient == nil {
+			return nil, fmt.Errorf("could not fetch credentials: no Kubernetes client given")
+		}
 		src.SecretField = pullSecretField
 		data, err := kubeclient.GetSecretField(src.SecretNamespace, src.SecretName, src.SecretField)
 		if err != nil {
