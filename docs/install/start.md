@@ -9,6 +9,68 @@ with access to any Kubernetes cluster at all.
 
 However, some features might not work without accessing Kubernetes.
 
+## Testing beforehand
+
+With v0.8.0, a new method to test your desired configuration before configuring
+your applications was introduced with the `argocd-image-updater test` command.
+
+You can use this command from your workstation without any modifications to your
+Argo CD installation or applications, and without having to install the image
+updater in your Kubernetes cluster. The `test` command does not need to talk to
+Argo CD, and only needs access to your Kubernetes cluster if you need to use
+image pull secret stored in Kubernetes.
+
+The new `test` command's main purpose is to verify the behaviour of Argo CD
+Image Updater on arbitrary images. For example, the most simple form of running
+a test is the following:
+
+```shell
+argocd-image-updater test <image_name>
+```
+
+For example, to see what Argo CD Image Updater would consider the latest nginx
+version according to semantic versioning, you can run:
+
+```shell
+$ argocd-image-updater test nginx 
+INFO[0000] getting image                                 image_name=nginx registry=
+INFO[0002] Fetching available tags and metadata from registry  image_name=nginx
+INFO[0004] Found 321 tags in registry                    image_name=nginx
+INFO[0004] latest image according to constraint is nginx:1.19.5
+```
+
+To see what it would consider the latest patch version within the 1.17 release,
+run:
+
+```shell
+$ argocd-image-updater test nginx --semver-constraint 1.17.X
+INFO[0000] getting image                                 image_name=nginx registry=
+INFO[0002] Fetching available tags and metadata from registry  image_name=nginx
+INFO[0004] Found 321 tags in registry                    image_name=nginx
+INFO[0004] latest image according to constraint is nginx:1.17.10
+```
+
+You can also specify parameters that you would set for any given application,
+i.e. to use [update strategy](../../configuration/images/#update-strategies)
+`latest` and the registry requires [authentication](../../configuration/images/#specifying-pull-secrets),
+you can use additional command line options:
+
+```shell
+$ export GITHUB_PULLSECRET="<username>:<token>"
+$ argocd-image-updater test docker.pkg.github.com/argoproj/argo-cd/argocd --update-strategy latest --credentials env:GITHUB_PULLSECRET
+INFO[0000] getting image                                 image_name=argoproj/argo-cd/argocd registry=docker.pkg.github.com
+INFO[0000] Fetching available tags and metadata from registry  image_name=argoproj/argo-cd/argocd
+INFO[0040] Found 100 tags in registry                    image_name=argoproj/argo-cd/argocd
+INFO[0040] latest image according to constraint is docker.pkg.github.com/argoproj/argo-cd/argocd:1.8.0-9fb51f7a
+```
+
+For a complete list of available command line parameters, run
+`argocd-image-updater test --help`. 
+
+It is recommended that you read about core updating and image concepts in the
+[documentation](../../configuration/images/)
+before using this command.
+
 ## Prerequisites
 
 Argo CD Image Updater will need access to the API of your Argo CD installation.
@@ -233,31 +295,31 @@ The following metrics are being made available:
 
 * Number of applications processed (i.e. those with an annotation)
 
-  * `argocd_image_updater_applications_watched_total`
+    * `argocd_image_updater_applications_watched_total`
 
 * Number of images watched for new tags
 
-  * `argocd_image_updater_images_watched_total`
+    * `argocd_image_updater_images_watched_total`
 
 * Number of images updated (successful and failed)
 
-  * `argocd_image_updater_images_updated_total`
-  * `argocd_image_updater_images_errors_total`
+    * `argocd_image_updater_images_updated_total`
+    * `argocd_image_updater_images_errors_total`
 
 * Number of requests to Argo CD API (successful and failed)
 
-  * `argocd_image_updater_argocd_api_requests_total`
-  * `argocd_image_updater_argocd_api_errors_total`
+    * `argocd_image_updater_argocd_api_requests_total`
+    * `argocd_image_updater_argocd_api_errors_total`
 
 * Number of requests to K8s API (successful and failed)
 
-  * `argocd_image_updater_k8s_api_requests_total`
-  * `argocd_image_updater_k8s_api_errors_total`
+    * `argocd_image_updater_k8s_api_requests_total`
+    * `argocd_image_updater_k8s_api_errors_total`
 
 * Number of requests to the container registries (successful and failed)
 
-  * `argocd_image_updater_registry_requests_total`
-  * `argocd_image_updater_registry_errors_total`
+    * `argocd_image_updater_registry_requests_total`
+    * `argocd_image_updater_registry_errors_total`
 
 A (very) rudimentary example dashboard definition for Grafana is provided
 [here](https://github.com/argoproj-labs/argocd-image-updater/tree/master/config)
