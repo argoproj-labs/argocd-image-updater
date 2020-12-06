@@ -115,7 +115,7 @@ spec:
               key: log.level
               name: argocd-image-updater-config
               optional: true
-        image: argoprojlabs/argocd-image-updater:latest
+        image: argoprojlabs/argocd-image-updater:v0.8.0
         imagePullPolicy: Always
         livenessProbe:
           httpGet:
