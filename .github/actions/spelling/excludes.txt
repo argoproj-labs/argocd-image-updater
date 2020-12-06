@@ -1,6 +1,7 @@
 ^\.github/
 ^go\.(?:sum|mod)$
 \/mocks\/
+^\/hack\/
 ignore$
 \.png$
 ^\.config/
