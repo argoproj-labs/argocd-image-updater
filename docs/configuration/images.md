@@ -116,6 +116,15 @@ argocd-image-updater.argoproj.io/<image_name>.update-strategy: <strategy>
 If no update strategy is given, or an invalid value was used, the default
 strategy `semver` will be used.
 
+!!!warning
+    As of November 2020, Docker Hub has introduced pull limits for accounts on
+    the free plan and unauthenticated requests. The `latest` update strategy
+    will perform manifest pulls for determining the most recently pushed tags,
+    and these will count into your pull limits. So unless you are not affected
+    by these pull limits, it is **not recommended** to use the `latest` update
+    strategy with images hosted on Docker Hub.
+
+
 ## Filtering tags
 
 You can specify an expression that is matched against each tag returned from
