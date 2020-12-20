@@ -797,7 +797,6 @@ func Test_GetWriteBackConfig(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, wbc)
 		assert.Equal(t, wbc.Method, WriteBackApplication)
-		assert.Equal(t, wbc.GitBranch, "mybranch")
 	})
 
 	t.Run("Default write-back config - argocd", func(t *testing.T) {
