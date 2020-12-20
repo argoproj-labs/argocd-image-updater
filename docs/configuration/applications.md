@@ -65,7 +65,7 @@ The write-back method is configured via an annotation on the `Application`
 resource:
 
 ```yaml
-argocd-image-updater.argoproj.io/write-back-methd: <method>
+argocd-image-updater.argoproj.io/write-back-method: <method>
 ```
 
 Where `<method>` must be one of `argocd` (imperative) or `git` (declarative).
@@ -78,7 +78,7 @@ When using the Argo CD API to write back changes, Argo CD Image Updater will
 perform a similar action as `argocd app set --parameter ...` to instruct
 Argo CD to re-render the manifests using those parameters.
 
-This method is pseudo-persistant. If you delete the `Application` resource
+This method is pseudo-persistent. If you delete the `Application` resource
 from the cluster and re-create it, changes made by Image Updater will be gone.
 The same is true if you manage your `Application` resources using Git, and
 the version stored in Git is synced over the resource in the cluster. This
@@ -95,7 +95,7 @@ This method is the default and requires no further configuration.
 
 The `git` write-back method uses Git to permanently store its parameter
 overrides along with the Application's resource manifests. This will enable
-persistant storage of the parameters in Git.
+persistent storage of the parameters in Git.
 
 By default, Argo CD Image Updater will store the parameter in a file named
 `.argocd-source-<appName>.yaml` in the path used by the Application to source
@@ -130,7 +130,7 @@ this is the workflow how Argo CD Image Updater performs change to Git:
   `.spec.source.targetRevision` in the Application manifest
 * Create or update `.argocd-source-<appName>.yaml` in the local repository
 * Commit the changed file to the local repository
-* Push the commit to the remote repository, using credentials specificed as
+* Push the commit to the remote repository, using credentials specified as
   annotation (see below)
 
 The important pieces to this workflow are:
@@ -154,7 +154,7 @@ Configuration for the Git write-back method comes from two sources:
   are defined in `.spec.source.repoURL` and `.spec.source.path` fields,
   respectively. Additionally, `.spec.source.targetRevision` is used to define
   the branch to commit and push the changes to. The branch to use can be
-  overriden by an annotation, see below.
+  overridden by an annotation, see below.
 
 * A set of annotations on the `Application` manifest, see below
 
