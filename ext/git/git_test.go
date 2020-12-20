@@ -271,6 +271,9 @@ func TestLFSClient(t *testing.T) {
 }
 
 func TestVerifyCommitSignature(t *testing.T) {
+	if os.Getenv("GNUPG_DISABLED") == "true" {
+		t.Skip()
+	}
 	p, err := ioutil.TempDir("", "test-verify-commit-sig")
 	if err != nil {
 		panic(err.Error())
