@@ -71,7 +71,7 @@ jobs:
           go-version: '1.14.4'
       - name: Run tests
         env:
-          GNUPG_DISBALED: true
+          GNUPG_DISABLED: true
         run: |
           make test
       - name: Upload code coverage information to codecov.io
