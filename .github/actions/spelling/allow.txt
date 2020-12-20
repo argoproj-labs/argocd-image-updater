@@ -169,6 +169,7 @@ rlt
 roadmap
 rolebinding
 rolebindings
+rsa
 RUnlock
 semver
 serviceaccount
@@ -176,12 +177,15 @@ Setenv
 SHAs
 sirupsen
 someparam
+somepassword
+someuser
 somevalue
 sortmode
 spf
 Sprintf
 src
 SRCROOT
+ssh
 stderr
 stdout
 stretchr
@@ -221,6 +225,7 @@ Warnf
 webkit
 webroot
 WORKDIR
+workflow
 workflows
 www
 yaml

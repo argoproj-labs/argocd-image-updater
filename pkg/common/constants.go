@@ -38,3 +38,10 @@ const (
 const (
 	SecretListAnnotation = ImageUpdaterAnnotationPrefix + "/%s.pull-secret"
 )
+
+// Application update configuration related annotations
+const (
+	WriteBackMethodAnnotation = ImageUpdaterAnnotationPrefix + "/write-back-method"
+	GitCredentialsAnnotation  = ImageUpdaterAnnotationPrefix + "/git-credentials"
+	GitBranchAnnotation       = ImageUpdaterAnnotationPrefix + "/git-branch"
+)

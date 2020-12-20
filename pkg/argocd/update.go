@@ -3,13 +3,22 @@ package argocd
 import (
 	"context"
 	"fmt"
+	"io/ioutil"
+	"os"
+	"path"
+	"strings"
 
+	"github.com/argoproj-labs/argocd-image-updater/ext/git"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/client"
+	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/image"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/log"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/registry"
 
+	"gopkg.in/yaml.v2"
+
 	"github.com/argoproj/argo-cd/pkg/apiclient/application"
+	"github.com/argoproj/argo-cd/pkg/apis/application/v1alpha1"
 )
 
 // Stores some statistics about the results of a run
@@ -20,6 +29,40 @@ type ImageUpdaterResult struct {
 	NumImagesConsidered      int
 	NumSkipped               int
 	NumErrors                int
+}
+
+type WriteBackMethod int
+
+const (
+	WriteBackApplication WriteBackMethod = 0
+	WriteBackGit         WriteBackMethod = 1
+)
+
+// WriteBackConfig holds information on how to write back the changes to an Application
+type WriteBackConfig struct {
+	Method     WriteBackMethod
+	ArgoClient ArgoCD
+	// If GitClient is not nil, the client will be used for updates. Otherwise, a new client will be created.
+	GitClient  git.Client
+	KubeClient *client.KubernetesClient
+	GitBranch  string
+}
+
+// The following are helper structs to only marshal the fields we require
+type kustomizeImages struct {
+	Images *v1alpha1.KustomizeImages `json:"images"`
+}
+
+type kustomizeOverride struct {
+	Kustomize kustomizeImages `json:"kustomize"`
+}
+
+type helmParameters struct {
+	Parameters []v1alpha1.HelmParameter `json:"parameters"`
+}
+
+type helmOverride struct {
+	Helm helmParameters `json:"helm"`
 }
 
 // UpdateApplication update all images of a single application. Will run in a goroutine.
@@ -161,14 +204,16 @@ func UpdateApplication(newRegFn registry.NewRegistryClient, argoClient ArgoCD, k
 		}
 	}
 
+	wbc, err := getWriteBackConfig(&curApplication.Application, kubeClient, argoClient)
+	if err != nil {
+		return result
+	}
+
 	if needUpdate {
 		logCtx := log.WithContext().AddField("application", app)
 		if !dryRun {
-			logCtx.Infof("Committing %d update(s) to live application spec", result.NumImagesUpdated)
-			_, err := argoClient.UpdateSpec(context.TODO(), &application.ApplicationUpdateSpecRequest{
-				Name: &curApplication.Application.Name,
-				Spec: curApplication.Application.Spec,
-			})
+			logCtx.Infof("Committing %d parameter update(s) for application %s", result.NumImagesUpdated, app)
+			err := commitChanges(&curApplication.Application, wbc)
 			if err != nil {
 				logCtx.Errorf("Could not update application spec: %v", err)
 				result.NumErrors += 1
@@ -177,9 +222,218 @@ func UpdateApplication(newRegFn registry.NewRegistryClient, argoClient ArgoCD, k
 				logCtx.Infof("Successfully updated the live application spec")
 			}
 		} else {
-			logCtx.Infof("Dry run - not performing spec update")
+			logCtx.Infof("Dry run - not commiting %d changes to application", result.NumImagesUpdated)
 		}
 	}
 
 	return result
+}
+
+// marshalParamsOverride marshals the parameter overrides of a given application
+// into YAML bytes
+func marshalParamsOverride(app *v1alpha1.Application) ([]byte, error) {
+	var override []byte
+	var err error
+
+	appType := GetApplicationType(app)
+	switch appType {
+	case ApplicationTypeKustomize:
+		if app.Spec.Source.Kustomize == nil {
+			return []byte{}, nil
+		}
+		params := kustomizeOverride{
+			Kustomize: kustomizeImages{
+				Images: &app.Spec.Source.Kustomize.Images,
+			},
+		}
+		override, err = yaml.Marshal(params)
+	case ApplicationTypeHelm:
+		if app.Spec.Source.Helm == nil {
+			return []byte{}, nil
+		}
+		params := helmOverride{
+			Helm: helmParameters{
+				Parameters: app.Spec.Source.Helm.Parameters,
+			},
+		}
+		override, err = yaml.Marshal(params)
+	default:
+		err = fmt.Errorf("unsupported application type")
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	return override, nil
+}
+
+func getWriteBackConfig(app *v1alpha1.Application, kubeClient *client.KubernetesClient, argoClient ArgoCD) (*WriteBackConfig, error) {
+	wbc := &WriteBackConfig{}
+	// Default write-back is to use Argo CD API
+	wbc.Method = WriteBackApplication
+	wbc.KubeClient = kubeClient
+	wbc.ArgoClient = argoClient
+
+	// If we have no update method, just return our default
+	method, ok := app.Annotations[common.WriteBackMethodAnnotation]
+	if !ok || strings.TrimSpace(method) == "argocd" {
+		return wbc, nil
+	}
+
+	// We might support further methods later
+	switch strings.TrimSpace(method) {
+	case "git":
+		wbc.Method = WriteBackGit
+		branch, ok := app.Annotations[common.GitBranchAnnotation]
+		if ok {
+			wbc.GitBranch = strings.TrimSpace(branch)
+		}
+	default:
+		return nil, fmt.Errorf("invalid update mechanism: %s", method)
+	}
+
+	return wbc, nil
+}
+
+// getGitCreds looks at a secret ref in application's annotations and constructs
+// a Creds object for git client, according to the repository URL in the app
+// spec.
+func getGitCreds(app *v1alpha1.Application, wbc *WriteBackConfig) (git.Creds, error) {
+	var credentials map[string][]byte
+	var ok bool
+	var credentialsSecret string
+	var err error
+
+	if credentialsSecret, ok = app.Annotations[common.GitCredentialsAnnotation]; ok {
+		s := strings.SplitN(credentialsSecret, "/", 2)
+		if len(s) == 2 {
+			credentials, err = wbc.KubeClient.GetSecretData(s[0], s[1])
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			return nil, fmt.Errorf("secret ref must be in format 'namespace/name', but is '%s'", credentialsSecret)
+		}
+	} else {
+		return nil, fmt.Errorf("no secret ref annotation %s found", common.GitCredentialsAnnotation)
+	}
+
+	if ok, _ := git.IsSSHURL(app.Spec.Source.RepoURL); ok {
+		var sshPrivateKey []byte
+		if sshPrivateKey, ok = credentials["sshPrivateKey"]; !ok {
+			return nil, fmt.Errorf("invalid secret %s: does not contain field sshPrivateKey", credentialsSecret)
+		}
+		return git.NewSSHCreds(string(sshPrivateKey), "", true), nil
+	} else if git.IsHTTPSURL(app.Spec.Source.RepoURL) {
+		var username, password []byte
+		if username, ok = credentials["username"]; !ok {
+			return nil, fmt.Errorf("invalid secret %s: does not contain field username", credentialsSecret)
+		}
+		if password, ok = credentials["password"]; !ok {
+			return nil, fmt.Errorf("invalid secret %s: does not contain field password", credentialsSecret)
+		}
+		return git.NewHTTPSCreds(string(username), string(password), "", "", true), nil
+	}
+
+	return nil, fmt.Errorf("unknown repository type")
+}
+
+// commitChanges commits any changes required for updating one or more images
+// after the UpdateApplication cycle has finished.
+func commitChanges(app *v1alpha1.Application, wbc *WriteBackConfig) error {
+	switch wbc.Method {
+	case WriteBackApplication:
+		_, err := wbc.ArgoClient.UpdateSpec(context.TODO(), &application.ApplicationUpdateSpecRequest{
+			Name: &app.Name,
+			Spec: app.Spec,
+		})
+		if err != nil {
+			return err
+		}
+	case WriteBackGit:
+		creds, err := getGitCreds(app, wbc)
+		if err != nil {
+			return fmt.Errorf("could not get creds for repo '%s': %v", app.Spec.Source.RepoURL, err)
+		}
+		tempRoot, err := ioutil.TempDir(os.TempDir(), fmt.Sprintf("git-%s", app.Name))
+		if err != nil {
+			return err
+		}
+		defer func() {
+			err := os.RemoveAll(tempRoot)
+			if err != nil {
+				log.Errorf("could not remove temp dir: %v", err)
+			}
+		}()
+		var gitC git.Client
+		if wbc.GitClient == nil {
+			gitC, err = git.NewClientExt(app.Spec.Source.RepoURL, tempRoot, creds, false, false)
+			if err != nil {
+				return err
+			}
+		} else {
+			gitC = wbc.GitClient
+		}
+		err = gitC.Init()
+		if err != nil {
+			return err
+		}
+		err = gitC.Fetch()
+		if err != nil {
+			return err
+		}
+		checkOutBranch := app.Spec.Source.TargetRevision
+		if wbc.GitBranch != "" {
+			checkOutBranch = wbc.GitBranch
+		}
+		err = gitC.Checkout(checkOutBranch)
+		if err != nil {
+			return err
+		}
+		targetExists := true
+		targetFile := path.Join(tempRoot, app.Spec.Source.Path, fmt.Sprintf(".argocd-source-%s.yaml", app.Name))
+		_, err = os.Stat(targetFile)
+		if err != nil {
+			if !os.IsNotExist(err) {
+				fmt.Printf("--> UHHH: %v\n", err)
+				return err
+			} else {
+				targetExists = false
+			}
+		}
+
+		override, err := marshalParamsOverride(app)
+		if err != nil {
+			return fmt.Errorf("could not marshal parameters: %v", err)
+		}
+
+		// If the target file already exist in the repository, we will check whether
+		// our generated new file is the same as the existing one, and if yes, we
+		// don't proceed further for commit.
+		if targetExists {
+			data, err := ioutil.ReadFile(targetFile)
+			if err != nil {
+				return err
+			}
+			if string(data) == string(override) {
+				return nil
+			}
+		}
+
+		err = ioutil.WriteFile(targetFile, override, 0600)
+		if err != nil {
+			return err
+		}
+		err = gitC.Commit("", "Update to new image versions", "")
+		if err != nil {
+			return err
+		}
+		err = gitC.Push("origin", wbc.GitBranch, false)
+		if err != nil {
+			return err
+		}
+	default:
+		return fmt.Errorf("unknown write back method set: %d", wbc.Method)
+	}
+	return nil
 }

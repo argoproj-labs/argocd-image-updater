@@ -5,6 +5,7 @@ go 1.14
 require (
 	github.com/Masterminds/semver v1.5.0
 	github.com/argoproj/argo-cd v1.7.4
+	github.com/argoproj/gitops-engine v0.1.3-0.20200904164417-c04f859da9b2
 	github.com/argoproj/pkg v0.0.0-20200624215116-23e74cb168fe
 	github.com/docker/distribution v2.7.1+incompatible
 	github.com/docker/libtrust v0.0.0-20160708172513-aabc10ec26b7 // indirect
@@ -16,7 +17,9 @@ require (
 	github.com/spf13/cobra v1.0.0
 	github.com/stretchr/testify v1.6.1
 	go.uber.org/ratelimit v0.1.1-0.20201110185707-e86515f0dda9
+	golang.org/x/crypto v0.0.0-20200220183623-bac4c82f6975
 	golang.org/x/sync v0.0.0-20200625203802-6e8e738ad208
+	gopkg.in/src-d/go-git.v4 v4.13.1
 	gopkg.in/yaml.v2 v2.3.0
 	k8s.io/api v1.18.8
 	k8s.io/apimachinery v1.18.8

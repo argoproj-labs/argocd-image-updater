@@ -48,7 +48,7 @@ mod-vendor:
 
 .PHONY: test
 test:
-	go test -coverprofile coverage.out `go list ./... | egrep -v '(test|mocks)'`
+	go test -coverprofile coverage.out `go list ./... | egrep -v '(test|mocks|ext/)'`
 
 .PHONY: prereq
 prereq:
