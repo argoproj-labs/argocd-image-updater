@@ -225,6 +225,7 @@ Warnf
 webkit
 webroot
 WORKDIR
+workflow
 workflows
 www
 yaml
