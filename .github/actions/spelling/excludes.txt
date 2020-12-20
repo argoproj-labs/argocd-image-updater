@@ -11,3 +11,5 @@ ignore$
 \.go$
 \.css$
 \.js$
+\.yml$
+\.yaml$
