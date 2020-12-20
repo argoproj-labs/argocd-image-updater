@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/argoproj-labs/argocd-image-updater/ext/git"
+	gitmock "github.com/argoproj-labs/argocd-image-updater/ext/git/mocks"
 	argomock "github.com/argoproj-labs/argocd-image-updater/pkg/argocd/mocks"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/client"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
@@ -1061,5 +1062,136 @@ func Test_GetGitCreds(t *testing.T) {
 		creds, err := getGitCreds(&app, &wbc)
 		require.Error(t, err)
 		require.Nil(t, creds)
+	})
+}
+
+func Test_CommitUpdates(t *testing.T) {
+	argoClient := argomock.ArgoCD{}
+	argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+	secret := fixture.NewSecret("argocd-image-updater", "git-creds", map[string][]byte{
+		"sshPrivateKey": []byte("foo"),
+	})
+	kubeClient := client.KubernetesClient{
+		Clientset: fake.NewFakeClientsetWithResources(secret),
+	}
+	app := v1alpha1.Application{
+		ObjectMeta: v1.ObjectMeta{
+			Name: "testapp",
+			Annotations: map[string]string{
+				"argocd-image-updater.argoproj.io/image-list":        "nginx",
+				"argocd-image-updater.argoproj.io/write-back-method": "git",
+				"argocd-image-updater.argoproj.io/git-credentials":   "argocd-image-updater/git-creds",
+			},
+		},
+		Spec: v1alpha1.ApplicationSpec{
+			Source: v1alpha1.ApplicationSource{
+				RepoURL:        "git@example.com:example",
+				TargetRevision: "main",
+			},
+		},
+		Status: v1alpha1.ApplicationStatus{
+			SourceType: v1alpha1.ApplicationSourceTypeKustomize,
+		},
+	}
+
+	t.Run("Good commit", func(t *testing.T) {
+		gitMock := &gitmock.Client{}
+		gitMock.On("Init").Return(nil)
+		gitMock.On("Fetch").Return(nil)
+		gitMock.On("Checkout", mock.Anything).Return(nil)
+		gitMock.On("Commit", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+		gitMock.On("Push", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+		wbc := &WriteBackConfig{
+			Method:     WriteBackGit,
+			GitClient:  gitMock,
+			KubeClient: &kubeClient,
+			ArgoClient: &argoClient,
+		}
+		err := commitChanges(&app, wbc)
+		assert.NoError(t, err)
+	})
+
+	t.Run("Cannot init", func(t *testing.T) {
+		gitMock := &gitmock.Client{}
+		gitMock.On("Init").Return(fmt.Errorf("cannot init"))
+		gitMock.On("Fetch").Return(nil)
+		gitMock.On("Checkout", mock.Anything).Return(nil)
+		gitMock.On("Commit", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+		gitMock.On("Push", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+		wbc := &WriteBackConfig{
+			Method:     WriteBackGit,
+			GitClient:  gitMock,
+			KubeClient: &kubeClient,
+			ArgoClient: &argoClient,
+		}
+		err := commitChanges(&app, wbc)
+		assert.Errorf(t, err, "cannot init")
+	})
+
+	t.Run("Cannot fetch", func(t *testing.T) {
+		gitMock := &gitmock.Client{}
+		gitMock.On("Init").Return(nil)
+		gitMock.On("Fetch").Return(fmt.Errorf("cannot fetch"))
+		gitMock.On("Checkout", mock.Anything).Return(nil)
+		gitMock.On("Commit", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+		gitMock.On("Push", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+		wbc := &WriteBackConfig{
+			Method:     WriteBackGit,
+			GitClient:  gitMock,
+			KubeClient: &kubeClient,
+			ArgoClient: &argoClient,
+		}
+		err := commitChanges(&app, wbc)
+		assert.Errorf(t, err, "cannot init")
+	})
+	t.Run("Cannot checkout", func(t *testing.T) {
+		gitMock := &gitmock.Client{}
+		gitMock.On("Init").Return(nil)
+		gitMock.On("Fetch").Return(nil)
+		gitMock.On("Checkout", mock.Anything).Return(fmt.Errorf("cannot checkout"))
+		gitMock.On("Commit", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+		gitMock.On("Push", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+		wbc := &WriteBackConfig{
+			Method:     WriteBackGit,
+			GitClient:  gitMock,
+			KubeClient: &kubeClient,
+			ArgoClient: &argoClient,
+		}
+		err := commitChanges(&app, wbc)
+		assert.Errorf(t, err, "cannot checkout")
+	})
+
+	t.Run("Cannot commit", func(t *testing.T) {
+		gitMock := &gitmock.Client{}
+		gitMock.On("Init").Return(nil)
+		gitMock.On("Fetch").Return(nil)
+		gitMock.On("Checkout", mock.Anything).Return(nil)
+		gitMock.On("Commit", mock.Anything, mock.Anything, mock.Anything).Return(fmt.Errorf("cannot commit"))
+		gitMock.On("Push", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+		wbc := &WriteBackConfig{
+			Method:     WriteBackGit,
+			GitClient:  gitMock,
+			KubeClient: &kubeClient,
+			ArgoClient: &argoClient,
+		}
+		err := commitChanges(&app, wbc)
+		assert.Errorf(t, err, "cannot commit")
+	})
+
+	t.Run("Cannot push", func(t *testing.T) {
+		gitMock := &gitmock.Client{}
+		gitMock.On("Init").Return(nil)
+		gitMock.On("Fetch").Return(nil)
+		gitMock.On("Checkout", mock.Anything).Return(nil)
+		gitMock.On("Commit", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+		gitMock.On("Push", mock.Anything, mock.Anything, mock.Anything).Return(fmt.Errorf("cannot push"))
+		wbc := &WriteBackConfig{
+			Method:     WriteBackGit,
+			GitClient:  gitMock,
+			KubeClient: &kubeClient,
+			ArgoClient: &argoClient,
+		}
+		err := commitChanges(&app, wbc)
+		assert.Errorf(t, err, "cannot push")
 	})
 }
