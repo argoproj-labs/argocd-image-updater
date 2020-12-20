@@ -38,10 +38,12 @@ const (
 	WriteBackGit         WriteBackMethod = 1
 )
 
+// WriteBackConfig holds information on how to write back the changes to an Application
 type WriteBackConfig struct {
 	Method     WriteBackMethod
 	ArgoClient ArgoCD
-	GitClient  *git.Client
+	// If GitClient is not nil, the client will be used for updates. Otherwise, a new client will be created.
+	GitClient  git.Client
 	KubeClient *client.KubernetesClient
 	GitBranch  string
 }
@@ -202,12 +204,6 @@ func UpdateApplication(newRegFn registry.NewRegistryClient, argoClient ArgoCD, k
 		}
 	}
 
-	// wbc := &WriteBackConfig{
-	// 	Method:     WriteBackGit,
-	// 	ArgoClient: argoClient,
-	// 	KubeClient: kubeClient,
-	// 	GitBranch:  "main",
-	// }
 	wbc, err := getWriteBackConfig(&curApplication.Application, kubeClient, argoClient)
 	if err != nil {
 		return result
@@ -376,7 +372,7 @@ func commitChanges(app *v1alpha1.Application, wbc *WriteBackConfig) error {
 				return err
 			}
 		} else {
-			gitC = *wbc.GitClient
+			gitC = wbc.GitClient
 		}
 		err = gitC.Init()
 		if err != nil {
@@ -398,7 +394,8 @@ func commitChanges(app *v1alpha1.Application, wbc *WriteBackConfig) error {
 		targetFile := path.Join(tempRoot, app.Spec.Source.Path, fmt.Sprintf(".argocd-source-%s.yaml", app.Name))
 		_, err = os.Stat(targetFile)
 		if err != nil {
-			if err != os.ErrExist {
+			if !os.IsNotExist(err) {
+				fmt.Printf("--> UHHH: %v\n", err)
 				return err
 			} else {
 				targetExists = false
