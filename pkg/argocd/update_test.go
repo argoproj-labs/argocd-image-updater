@@ -3,8 +3,10 @@ package argocd
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 
+	"github.com/argoproj-labs/argocd-image-updater/ext/git"
 	argomock "github.com/argoproj-labs/argocd-image-updater/pkg/argocd/mocks"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/client"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
@@ -18,6 +20,7 @@ import (
 	"github.com/docker/distribution/manifest/schema1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -555,4 +558,509 @@ func Test_UpdateApplication(t *testing.T) {
 		assert.Equal(t, 0, res.NumImagesUpdated)
 	})
 
+}
+
+func Test_MarshalParamsOverride(t *testing.T) {
+	t.Run("Valid Kustomize source", func(t *testing.T) {
+		expected := `
+kustomize:
+  images:
+  - foo
+  - bar
+`
+		app := v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name: "testapp",
+				Annotations: map[string]string{
+					"argocd-image-updater.argoproj.io/image-list":        "nginx",
+					"argocd-image-updater.argoproj.io/write-back-method": "git",
+				},
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: v1alpha1.ApplicationSource{
+					RepoURL:        "https://example.com/example",
+					TargetRevision: "main",
+					Kustomize: &v1alpha1.ApplicationSourceKustomize{
+						Images: v1alpha1.KustomizeImages{
+							"foo",
+							"bar",
+						},
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypeKustomize,
+			},
+		}
+
+		yaml, err := marshalParamsOverride(&app)
+		require.NoError(t, err)
+		assert.NotEmpty(t, yaml)
+		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(yaml)))
+	})
+
+	t.Run("Empty Kustomize source", func(t *testing.T) {
+		app := v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name: "testapp",
+				Annotations: map[string]string{
+					"argocd-image-updater.argoproj.io/image-list":        "nginx",
+					"argocd-image-updater.argoproj.io/write-back-method": "git",
+				},
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: v1alpha1.ApplicationSource{
+					RepoURL:        "https://example.com/example",
+					TargetRevision: "main",
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypeKustomize,
+			},
+		}
+
+		yaml, err := marshalParamsOverride(&app)
+		require.NoError(t, err)
+		assert.Empty(t, yaml)
+		assert.Equal(t, "", strings.TrimSpace(string(yaml)))
+	})
+
+	t.Run("Valid Helm source", func(t *testing.T) {
+		expected := `
+helm:
+  parameters:
+	- name: foo
+		value: bar
+		forcestring: true
+	- name: bar
+		value: foo
+		forcestring: true
+`
+		app := v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name: "testapp",
+				Annotations: map[string]string{
+					"argocd-image-updater.argoproj.io/image-list":        "nginx",
+					"argocd-image-updater.argoproj.io/write-back-method": "git",
+				},
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: v1alpha1.ApplicationSource{
+					RepoURL:        "https://example.com/example",
+					TargetRevision: "main",
+					Helm: &v1alpha1.ApplicationSourceHelm{
+						Parameters: []v1alpha1.HelmParameter{
+							{
+								Name:        "foo",
+								Value:       "bar",
+								ForceString: true,
+							},
+							{
+								Name:        "bar",
+								Value:       "foo",
+								ForceString: true,
+							},
+						},
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypeHelm,
+			},
+		}
+
+		yaml, err := marshalParamsOverride(&app)
+		require.NoError(t, err)
+		assert.NotEmpty(t, yaml)
+		assert.Equal(t, strings.TrimSpace(strings.ReplaceAll(expected, "\t", "  ")), strings.TrimSpace(string(yaml)))
+	})
+
+	t.Run("Empty Helm source", func(t *testing.T) {
+		app := v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name: "testapp",
+				Annotations: map[string]string{
+					"argocd-image-updater.argoproj.io/image-list":        "nginx",
+					"argocd-image-updater.argoproj.io/write-back-method": "git",
+				},
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: v1alpha1.ApplicationSource{
+					RepoURL:        "https://example.com/example",
+					TargetRevision: "main",
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypeHelm,
+			},
+		}
+
+		yaml, err := marshalParamsOverride(&app)
+		require.NoError(t, err)
+		assert.Empty(t, yaml)
+	})
+
+	t.Run("Unknown source", func(t *testing.T) {
+		app := v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name: "testapp",
+				Annotations: map[string]string{
+					"argocd-image-updater.argoproj.io/image-list":        "nginx",
+					"argocd-image-updater.argoproj.io/write-back-method": "git",
+				},
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: v1alpha1.ApplicationSource{
+					RepoURL:        "https://example.com/example",
+					TargetRevision: "main",
+					Kustomize: &v1alpha1.ApplicationSourceKustomize{
+						Images: v1alpha1.KustomizeImages{
+							"foo",
+							"bar",
+						},
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypeDirectory,
+			},
+		}
+
+		_, err := marshalParamsOverride(&app)
+		assert.Error(t, err)
+	})
+}
+
+func Test_GetWriteBackConfig(t *testing.T) {
+	t.Run("Valid write-back config - git", func(t *testing.T) {
+		app := v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name: "testapp",
+				Annotations: map[string]string{
+					"argocd-image-updater.argoproj.io/image-list":        "nginx",
+					"argocd-image-updater.argoproj.io/write-back-method": "git",
+					"argocd-image-updater.argoproj.io/git-branch":        "mybranch",
+				},
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: v1alpha1.ApplicationSource{
+					RepoURL:        "https://example.com/example",
+					TargetRevision: "main",
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypeKustomize,
+			},
+		}
+
+		argoClient := argomock.ArgoCD{}
+		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+
+		kubeClient := client.KubernetesClient{
+			Clientset: fake.NewFakeKubeClient(),
+		}
+
+		wbc, err := getWriteBackConfig(&app, &kubeClient, &argoClient)
+		require.NoError(t, err)
+		require.NotNil(t, wbc)
+		assert.Equal(t, wbc.Method, WriteBackGit)
+	})
+
+	t.Run("Valid write-back config - argocd", func(t *testing.T) {
+		app := v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name: "testapp",
+				Annotations: map[string]string{
+					"argocd-image-updater.argoproj.io/image-list":        "nginx",
+					"argocd-image-updater.argoproj.io/write-back-method": "argocd",
+				},
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: v1alpha1.ApplicationSource{
+					RepoURL:        "https://example.com/example",
+					TargetRevision: "main",
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypeKustomize,
+			},
+		}
+
+		argoClient := argomock.ArgoCD{}
+		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+
+		kubeClient := client.KubernetesClient{
+			Clientset: fake.NewFakeKubeClient(),
+		}
+
+		wbc, err := getWriteBackConfig(&app, &kubeClient, &argoClient)
+		require.NoError(t, err)
+		require.NotNil(t, wbc)
+		assert.Equal(t, wbc.Method, WriteBackApplication)
+		assert.Equal(t, wbc.GitBranch, "mybranch")
+	})
+
+	t.Run("Default write-back config - argocd", func(t *testing.T) {
+		app := v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name: "testapp",
+				Annotations: map[string]string{
+					"argocd-image-updater.argoproj.io/image-list": "nginx",
+				},
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: v1alpha1.ApplicationSource{
+					RepoURL:        "https://example.com/example",
+					TargetRevision: "main",
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypeKustomize,
+			},
+		}
+
+		argoClient := argomock.ArgoCD{}
+		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+
+		kubeClient := client.KubernetesClient{
+			Clientset: fake.NewFakeKubeClient(),
+		}
+
+		wbc, err := getWriteBackConfig(&app, &kubeClient, &argoClient)
+		require.NoError(t, err)
+		require.NotNil(t, wbc)
+		assert.Equal(t, wbc.Method, WriteBackApplication)
+	})
+
+	t.Run("Invalid write-back config - unknown", func(t *testing.T) {
+		app := v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name: "testapp",
+				Annotations: map[string]string{
+					"argocd-image-updater.argoproj.io/image-list":        "nginx",
+					"argocd-image-updater.argoproj.io/write-back-method": "unknown",
+				},
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: v1alpha1.ApplicationSource{
+					RepoURL:        "https://example.com/example",
+					TargetRevision: "main",
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypeKustomize,
+			},
+		}
+
+		argoClient := argomock.ArgoCD{}
+		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+
+		kubeClient := client.KubernetesClient{
+			Clientset: fake.NewFakeKubeClient(),
+		}
+
+		wbc, err := getWriteBackConfig(&app, &kubeClient, &argoClient)
+		require.Error(t, err)
+		require.Nil(t, wbc)
+	})
+
+}
+
+func Test_GetGitCreds(t *testing.T) {
+	t.Run("HTTP creds from a secret", func(t *testing.T) {
+		argoClient := argomock.ArgoCD{}
+		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+		secret := fixture.NewSecret("argocd-image-updater", "git-creds", map[string][]byte{
+			"username": []byte("foo"),
+			"password": []byte("bar"),
+		})
+		kubeClient := client.KubernetesClient{
+			Clientset: fake.NewFakeClientsetWithResources(secret),
+		}
+		app := v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name: "testapp",
+				Annotations: map[string]string{
+					"argocd-image-updater.argoproj.io/image-list":        "nginx",
+					"argocd-image-updater.argoproj.io/write-back-method": "git",
+					"argocd-image-updater.argoproj.io/git-credentials":   "argocd-image-updater/git-creds",
+				},
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: v1alpha1.ApplicationSource{
+					RepoURL:        "https://example.com/example",
+					TargetRevision: "main",
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypeKustomize,
+			},
+		}
+		wbc := WriteBackConfig{
+			Method:     WriteBackGit,
+			ArgoClient: &argoClient,
+			KubeClient: &kubeClient,
+		}
+		creds, err := getGitCreds(&app, &wbc)
+		require.NoError(t, err)
+		require.NotNil(t, creds)
+		// Must have HTTPS creds
+		_, ok := creds.(git.HTTPSCreds)
+		require.True(t, ok)
+	})
+
+	t.Run("SSH creds from a secret", func(t *testing.T) {
+		argoClient := argomock.ArgoCD{}
+		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+		secret := fixture.NewSecret("argocd-image-updater", "git-creds", map[string][]byte{
+			"sshPrivateKey": []byte("foo"),
+		})
+		kubeClient := client.KubernetesClient{
+			Clientset: fake.NewFakeClientsetWithResources(secret),
+		}
+		app := v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name: "testapp",
+				Annotations: map[string]string{
+					"argocd-image-updater.argoproj.io/image-list":        "nginx",
+					"argocd-image-updater.argoproj.io/write-back-method": "git",
+					"argocd-image-updater.argoproj.io/git-credentials":   "argocd-image-updater/git-creds",
+				},
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: v1alpha1.ApplicationSource{
+					RepoURL:        "git@example.com:example",
+					TargetRevision: "main",
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypeKustomize,
+			},
+		}
+		wbc := WriteBackConfig{
+			Method:     WriteBackGit,
+			ArgoClient: &argoClient,
+			KubeClient: &kubeClient,
+		}
+		creds, err := getGitCreds(&app, &wbc)
+		require.NoError(t, err)
+		require.NotNil(t, creds)
+		// Must have SSH creds
+		_, ok := creds.(git.SSHCreds)
+		require.True(t, ok)
+	})
+
+	t.Run("Invalid fields in secret", func(t *testing.T) {
+		argoClient := argomock.ArgoCD{}
+		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+		secret := fixture.NewSecret("argocd-image-updater", "git-creds", map[string][]byte{
+			"sshPrivateKex": []byte("foo"),
+		})
+		kubeClient := client.KubernetesClient{
+			Clientset: fake.NewFakeClientsetWithResources(secret),
+		}
+		app := v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name: "testapp",
+				Annotations: map[string]string{
+					"argocd-image-updater.argoproj.io/image-list":        "nginx",
+					"argocd-image-updater.argoproj.io/write-back-method": "git",
+					"argocd-image-updater.argoproj.io/git-credentials":   "argocd-image-updater/git-creds",
+				},
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: v1alpha1.ApplicationSource{
+					RepoURL:        "git@example.com:example",
+					TargetRevision: "main",
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypeKustomize,
+			},
+		}
+		wbc := WriteBackConfig{
+			Method:     WriteBackGit,
+			ArgoClient: &argoClient,
+			KubeClient: &kubeClient,
+		}
+		creds, err := getGitCreds(&app, &wbc)
+		require.Error(t, err)
+		require.Nil(t, creds)
+	})
+
+	t.Run("Invalid secret reference", func(t *testing.T) {
+		argoClient := argomock.ArgoCD{}
+		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+		secret := fixture.NewSecret("argocd-image-updater", "git-creds", map[string][]byte{
+			"sshPrivateKey": []byte("foo"),
+		})
+		kubeClient := client.KubernetesClient{
+			Clientset: fake.NewFakeClientsetWithResources(secret),
+		}
+		app := v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name: "testapp",
+				Annotations: map[string]string{
+					"argocd-image-updater.argoproj.io/image-list":        "nginx",
+					"argocd-image-updater.argoproj.io/write-back-method": "git",
+					"argocd-image-updater.argoproj.io/git-credentials":   "nonexist",
+				},
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: v1alpha1.ApplicationSource{
+					RepoURL:        "git@example.com:example",
+					TargetRevision: "main",
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypeKustomize,
+			},
+		}
+		wbc := WriteBackConfig{
+			Method:     WriteBackGit,
+			ArgoClient: &argoClient,
+			KubeClient: &kubeClient,
+		}
+		creds, err := getGitCreds(&app, &wbc)
+		require.Error(t, err)
+		require.Nil(t, creds)
+	})
+
+	t.Run("Secret does not exist", func(t *testing.T) {
+		argoClient := argomock.ArgoCD{}
+		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+		secret := fixture.NewSecret("argocd-image-updater", "git-creds", map[string][]byte{
+			"sshPrivateKey": []byte("foo"),
+		})
+		kubeClient := client.KubernetesClient{
+			Clientset: fake.NewFakeClientsetWithResources(secret),
+		}
+		app := v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name: "testapp",
+				Annotations: map[string]string{
+					"argocd-image-updater.argoproj.io/image-list":        "nginx",
+					"argocd-image-updater.argoproj.io/write-back-method": "git",
+					"argocd-image-updater.argoproj.io/git-credentials":   "argocd-image-updater/nonexist",
+				},
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: v1alpha1.ApplicationSource{
+					RepoURL:        "git@example.com:example",
+					TargetRevision: "main",
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypeKustomize,
+			},
+		}
+		wbc := WriteBackConfig{
+			Method:     WriteBackGit,
+			ArgoClient: &argoClient,
+			KubeClient: &kubeClient,
+		}
+		creds, err := getGitCreds(&app, &wbc)
+		require.Error(t, err)
+		require.Nil(t, creds)
+	})
 }
