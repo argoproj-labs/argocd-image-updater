@@ -9,3 +9,7 @@ ignore$
 \.json$
 \.yaml$
 \.go$
+\.css$
+\.js$
+\.yml$
+\.yaml$
