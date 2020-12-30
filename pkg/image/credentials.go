@@ -11,7 +11,7 @@ import (
 
 	argoexec "github.com/argoproj/pkg/exec"
 
-	"github.com/argoproj-labs/argocd-image-updater/pkg/client"
+	"github.com/argoproj-labs/argocd-image-updater/pkg/kube"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/log"
 )
 
@@ -92,7 +92,7 @@ func ParseCredentialSource(credentialSource string, requirePrefix bool) (*Creden
 
 // FetchCredentials fetches the credentials for a given registry according to
 // the credential source.
-func (src *CredentialSource) FetchCredentials(registryURL string, kubeclient *client.KubernetesClient) (*Credential, error) {
+func (src *CredentialSource) FetchCredentials(registryURL string, kubeclient *kube.KubernetesClient) (*Credential, error) {
 	var creds Credential
 	switch src.Type {
 	case CredentialSourceEnv:

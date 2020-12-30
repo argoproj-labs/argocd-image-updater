@@ -1,6 +1,7 @@
-package client
+package kube
 
 import (
+	"context"
 	"os"
 	"testing"
 
@@ -13,7 +14,7 @@ import (
 
 func Test_NewKubernetesClient(t *testing.T) {
 	t.Run("Get new K8s client for remote cluster instance", func(t *testing.T) {
-		client, err := NewKubernetesClient("../../test/testdata/kubernetes/config")
+		client, err := NewKubernetesClientFromConfig(context.TODO(), "../../test/testdata/kubernetes/config")
 		require.NoError(t, err)
 		assert.NotNil(t, client)
 	})
@@ -23,7 +24,7 @@ func Test_NewKubernetesClient(t *testing.T) {
 		os.Setenv("KUBERNETES_SERVICE_PORT", "6443")
 		defer os.Setenv("KUBERNETES_SERVICE_HOST", "")
 		defer os.Setenv("KUBERNETES_SERVICE_PORT", "")
-		client, err := NewKubernetesClient("")
+		client, err := NewKubernetesClientFromConfig(context.TODO(), "")
 		// We cannot create /var/run/secrets/kubernetes.io/serviceaccount/token so
 		// we just assume error and look for that path in error message.
 		assert.Errorf(t, err, "open /var/run/secrets/kubernetes.io/serviceaccount/token: no such file or directory")

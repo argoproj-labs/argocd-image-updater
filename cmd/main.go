@@ -10,10 +10,10 @@ import (
 	"time"
 
 	"github.com/argoproj-labs/argocd-image-updater/pkg/argocd"
-	"github.com/argoproj-labs/argocd-image-updater/pkg/client"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/env"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/health"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/image"
+	"github.com/argoproj-labs/argocd-image-updater/pkg/kube"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/log"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/metrics"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/registry"
@@ -39,7 +39,7 @@ type ImageUpdaterConfig struct {
 	CheckInterval   time.Duration
 	ArgoClient      argocd.ArgoCD
 	LogLevel        string
-	KubeClient      *client.KubernetesClient
+	KubeClient      *kube.KubernetesClient
 	MaxConcurrency  int
 	HealthPort      int
 	MetricsPort     int
@@ -248,10 +248,12 @@ argocd-image-updater test nginx --allow-tags '^1.19.\d+(\-.*)*$' --update-strate
 				log.Fatalf("could not set log level to %s: %v", logLevel, err)
 			}
 
-			var kubeClient *client.KubernetesClient
+			ctx := context.Background()
+
+			var kubeClient *kube.KubernetesClient
 			var err error
 			if kubeConfig != "" {
-				kubeClient, err = getKubeConfig(kubeConfig)
+				kubeClient, err = getKubeConfig(ctx, kubeConfig)
 				if err != nil {
 					log.Fatalf("could not create K8s client: %v", err)
 				}
@@ -403,7 +405,8 @@ func newRunCommand() *cobra.Command {
 
 			var err error
 			if !disableKubernetes {
-				cfg.KubeClient, err = getKubeConfig(kubeConfig)
+				ctx := context.Background()
+				cfg.KubeClient, err = getKubeConfig(ctx, kubeConfig)
 				if err != nil {
 					log.Fatalf("could not create K8s client: %v", err)
 				}
@@ -509,9 +512,9 @@ func newRunCommand() *cobra.Command {
 	return runCmd
 }
 
-func getKubeConfig(kubeConfig string) (*client.KubernetesClient, error) {
+func getKubeConfig(ctx context.Context, kubeConfig string) (*kube.KubernetesClient, error) {
 	var fullKubeConfigPath string
-	var kubeClient *client.KubernetesClient
+	var kubeClient *kube.KubernetesClient
 	var err error
 
 	if kubeConfig != "" {
@@ -527,7 +530,7 @@ func getKubeConfig(kubeConfig string) (*client.KubernetesClient, error) {
 		log.Debugf("Creating in-cluster Kubernetes client")
 	}
 
-	kubeClient, err = client.NewKubernetesClient(fullKubeConfigPath)
+	kubeClient, err = kube.NewKubernetesClientFromConfig(ctx, fullKubeConfigPath)
 	if err != nil {
 		return nil, err
 	}

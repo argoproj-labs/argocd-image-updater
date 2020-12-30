@@ -15,8 +15,8 @@ import (
 	"github.com/docker/distribution"
 	"golang.org/x/sync/semaphore"
 
-	"github.com/argoproj-labs/argocd-image-updater/pkg/client"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/image"
+	"github.com/argoproj-labs/argocd-image-updater/pkg/kube"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/log"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/tag"
 )
@@ -174,7 +174,7 @@ func (ep *RegistryEndpoint) expireCredentials() bool {
 }
 
 // Sets endpoint credentials for this registry from a reference to a K8s secret
-func (ep *RegistryEndpoint) SetEndpointCredentials(kubeClient *client.KubernetesClient) error {
+func (ep *RegistryEndpoint) SetEndpointCredentials(kubeClient *kube.KubernetesClient) error {
 	if ep.expireCredentials() {
 		log.Debugf("expired credentials for registry %s (updated:%s, expiry:%0fs)", ep.RegistryAPI, ep.CredsUpdated, ep.CredsExpire.Seconds())
 	}

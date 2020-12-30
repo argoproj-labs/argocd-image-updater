@@ -5,7 +5,8 @@ import (
 	"path"
 	"testing"
 
-	"github.com/argoproj-labs/argocd-image-updater/pkg/client"
+	"github.com/argoproj-labs/argocd-image-updater/pkg/kube"
+
 	"github.com/argoproj-labs/argocd-image-updater/test/fake"
 	"github.com/argoproj-labs/argocd-image-updater/test/fixture"
 
@@ -142,7 +143,7 @@ func Test_FetchCredentialsFromPullSecret(t *testing.T) {
 			SecretNamespace: "test",
 			SecretName:      "test",
 		}
-		creds, err := credSrc.FetchCredentials("https://registry-1.docker.io", &client.KubernetesClient{Clientset: clientset})
+		creds, err := credSrc.FetchCredentials("https://registry-1.docker.io", &kube.KubernetesClient{Clientset: clientset})
 		require.NoError(t, err)
 		require.NotNil(t, creds)
 		assert.Equal(t, "foo", creds.Username)
@@ -161,7 +162,7 @@ func Test_FetchCredentialsFromPullSecret(t *testing.T) {
 			SecretNamespace: "test",
 			SecretName:      "test",
 		}
-		creds, err := credSrc.FetchCredentials("https://registry-1.docker.io", &client.KubernetesClient{Clientset: clientset})
+		creds, err := credSrc.FetchCredentials("https://registry-1.docker.io", &kube.KubernetesClient{Clientset: clientset})
 		require.NoError(t, err)
 		require.NotNil(t, creds)
 		assert.Equal(t, "foo", creds.Username)
