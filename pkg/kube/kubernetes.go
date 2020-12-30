@@ -1,4 +1,4 @@
-package client
+package kube
 
 // Kubernetes client related code
 
@@ -16,14 +16,20 @@ import (
 
 type KubernetesClient struct {
 	Clientset kubernetes.Interface
+	Context   context.Context
+}
+
+func NewKubernetesClient(ctx context.Context, client kubernetes.Interface) *KubernetesClient {
+	kc := &KubernetesClient{}
+	kc.Context = ctx
+	kc.Clientset = client
+	return kc
 }
 
 // NewKubernetesClient creates a new Kubernetes client object from given
 // configuration file. If configuration file is the empty string, in-cluster
 // client will be created.
-func NewKubernetesClient(kubeconfig string) (*KubernetesClient, error) {
-	kClient := KubernetesClient{}
-
+func NewKubernetesClientFromConfig(ctx context.Context, kubeconfig string) (*KubernetesClient, error) {
 	var config *rest.Config
 	var err error
 
@@ -41,13 +47,12 @@ func NewKubernetesClient(kubeconfig string) (*KubernetesClient, error) {
 		return nil, err
 	}
 
-	kClient.Clientset = clientset
-	return &kClient, nil
+	return NewKubernetesClient(ctx, clientset), nil
 }
 
 // GetSecretData returns the raw data from named K8s secret in given namespace
 func (client *KubernetesClient) GetSecretData(namespace string, secretName string) (map[string][]byte, error) {
-	secret, err := client.Clientset.CoreV1().Secrets(namespace).Get(context.TODO(), secretName, v1.GetOptions{})
+	secret, err := client.Clientset.CoreV1().Secrets(namespace).Get(client.Context, secretName, v1.GetOptions{})
 	metrics.Clients().IncreaseK8sClientRequest(1)
 	if err != nil {
 		metrics.Clients().IncreaseK8sClientRequest(1)

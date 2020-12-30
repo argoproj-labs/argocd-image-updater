@@ -9,9 +9,9 @@ import (
 	"github.com/argoproj-labs/argocd-image-updater/ext/git"
 	gitmock "github.com/argoproj-labs/argocd-image-updater/ext/git/mocks"
 	argomock "github.com/argoproj-labs/argocd-image-updater/pkg/argocd/mocks"
-	"github.com/argoproj-labs/argocd-image-updater/pkg/client"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/image"
+	"github.com/argoproj-labs/argocd-image-updater/pkg/kube"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/registry"
 	regmock "github.com/argoproj-labs/argocd-image-updater/pkg/registry/mocks"
 	"github.com/argoproj-labs/argocd-image-updater/test/fake"
@@ -36,7 +36,7 @@ func Test_UpdateApplication(t *testing.T) {
 		argoClient := argomock.ArgoCD{}
 		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
 
-		kubeClient := client.KubernetesClient{
+		kubeClient := kube.KubernetesClient{
 			Clientset: fake.NewFakeKubeClient(),
 		}
 		appImages := &ApplicationImages{
@@ -87,7 +87,7 @@ func Test_UpdateApplication(t *testing.T) {
 		argoClient := argomock.ArgoCD{}
 		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
 
-		kubeClient := client.KubernetesClient{
+		kubeClient := kube.KubernetesClient{
 			Clientset: fake.NewFakeClientsetWithResources(fixture.NewSecret("foo", "bar", map[string][]byte{"creds": []byte("myuser:mypass")})),
 		}
 		appImages := &ApplicationImages{
@@ -139,7 +139,7 @@ func Test_UpdateApplication(t *testing.T) {
 		argoClient := argomock.ArgoCD{}
 		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
 
-		kubeClient := client.KubernetesClient{
+		kubeClient := kube.KubernetesClient{
 			Clientset: fake.NewFakeKubeClient(),
 		}
 		appImages := &ApplicationImages{
@@ -188,7 +188,7 @@ func Test_UpdateApplication(t *testing.T) {
 		argoClient := argomock.ArgoCD{}
 		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
 
-		kubeClient := client.KubernetesClient{
+		kubeClient := kube.KubernetesClient{
 			Clientset: fake.NewFakeKubeClient(),
 		}
 		appImages := &ApplicationImages{
@@ -253,7 +253,7 @@ func Test_UpdateApplication(t *testing.T) {
 		argoClient := argomock.ArgoCD{}
 		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
 
-		kubeClient := client.KubernetesClient{
+		kubeClient := kube.KubernetesClient{
 			Clientset: fake.NewFakeKubeClient(),
 		}
 		appImages := &ApplicationImages{
@@ -322,7 +322,7 @@ func Test_UpdateApplication(t *testing.T) {
 		argoClient := argomock.ArgoCD{}
 		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
 
-		kubeClient := client.KubernetesClient{
+		kubeClient := kube.KubernetesClient{
 			Clientset: fake.NewFakeKubeClient(),
 		}
 		appImages := &ApplicationImages{
@@ -375,7 +375,7 @@ func Test_UpdateApplication(t *testing.T) {
 		argoClient := argomock.ArgoCD{}
 		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
 
-		kubeClient := client.KubernetesClient{
+		kubeClient := kube.KubernetesClient{
 			Clientset: fake.NewFakeKubeClient(),
 		}
 		appImages := &ApplicationImages{
@@ -422,7 +422,7 @@ func Test_UpdateApplication(t *testing.T) {
 		argoClient := argomock.ArgoCD{}
 		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
 
-		kubeClient := client.KubernetesClient{
+		kubeClient := kube.KubernetesClient{
 			Clientset: fake.NewFakeKubeClient(),
 		}
 		appImages := &ApplicationImages{
@@ -471,7 +471,7 @@ func Test_UpdateApplication(t *testing.T) {
 		argoClient := argomock.ArgoCD{}
 		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
 
-		kubeClient := client.KubernetesClient{
+		kubeClient := kube.KubernetesClient{
 			Clientset: fake.NewFakeKubeClient(),
 		}
 		appImages := &ApplicationImages{
@@ -520,7 +520,7 @@ func Test_UpdateApplication(t *testing.T) {
 		argoClient := argomock.ArgoCD{}
 		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
 
-		kubeClient := client.KubernetesClient{
+		kubeClient := kube.KubernetesClient{
 			Clientset: fake.NewFakeKubeClient(),
 		}
 		appImages := &ApplicationImages{
@@ -757,7 +757,7 @@ func Test_GetWriteBackConfig(t *testing.T) {
 		argoClient := argomock.ArgoCD{}
 		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
 
-		kubeClient := client.KubernetesClient{
+		kubeClient := kube.KubernetesClient{
 			Clientset: fake.NewFakeKubeClient(),
 		}
 
@@ -790,7 +790,7 @@ func Test_GetWriteBackConfig(t *testing.T) {
 		argoClient := argomock.ArgoCD{}
 		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
 
-		kubeClient := client.KubernetesClient{
+		kubeClient := kube.KubernetesClient{
 			Clientset: fake.NewFakeKubeClient(),
 		}
 
@@ -822,7 +822,7 @@ func Test_GetWriteBackConfig(t *testing.T) {
 		argoClient := argomock.ArgoCD{}
 		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
 
-		kubeClient := client.KubernetesClient{
+		kubeClient := kube.KubernetesClient{
 			Clientset: fake.NewFakeKubeClient(),
 		}
 
@@ -855,7 +855,7 @@ func Test_GetWriteBackConfig(t *testing.T) {
 		argoClient := argomock.ArgoCD{}
 		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
 
-		kubeClient := client.KubernetesClient{
+		kubeClient := kube.KubernetesClient{
 			Clientset: fake.NewFakeKubeClient(),
 		}
 
@@ -874,7 +874,7 @@ func Test_GetGitCreds(t *testing.T) {
 			"username": []byte("foo"),
 			"password": []byte("bar"),
 		})
-		kubeClient := client.KubernetesClient{
+		kubeClient := kube.KubernetesClient{
 			Clientset: fake.NewFakeClientsetWithResources(secret),
 		}
 		app := v1alpha1.Application{
@@ -915,7 +915,7 @@ func Test_GetGitCreds(t *testing.T) {
 		secret := fixture.NewSecret("argocd-image-updater", "git-creds", map[string][]byte{
 			"sshPrivateKey": []byte("foo"),
 		})
-		kubeClient := client.KubernetesClient{
+		kubeClient := kube.KubernetesClient{
 			Clientset: fake.NewFakeClientsetWithResources(secret),
 		}
 		app := v1alpha1.Application{
@@ -956,7 +956,7 @@ func Test_GetGitCreds(t *testing.T) {
 		secret := fixture.NewSecret("argocd-image-updater", "git-creds", map[string][]byte{
 			"sshPrivateKex": []byte("foo"),
 		})
-		kubeClient := client.KubernetesClient{
+		kubeClient := kube.KubernetesClient{
 			Clientset: fake.NewFakeClientsetWithResources(secret),
 		}
 		app := v1alpha1.Application{
@@ -994,7 +994,7 @@ func Test_GetGitCreds(t *testing.T) {
 		secret := fixture.NewSecret("argocd-image-updater", "git-creds", map[string][]byte{
 			"sshPrivateKey": []byte("foo"),
 		})
-		kubeClient := client.KubernetesClient{
+		kubeClient := kube.KubernetesClient{
 			Clientset: fake.NewFakeClientsetWithResources(secret),
 		}
 		app := v1alpha1.Application{
@@ -1032,7 +1032,7 @@ func Test_GetGitCreds(t *testing.T) {
 		secret := fixture.NewSecret("argocd-image-updater", "git-creds", map[string][]byte{
 			"sshPrivateKey": []byte("foo"),
 		})
-		kubeClient := client.KubernetesClient{
+		kubeClient := kube.KubernetesClient{
 			Clientset: fake.NewFakeClientsetWithResources(secret),
 		}
 		app := v1alpha1.Application{
@@ -1071,7 +1071,7 @@ func Test_CommitUpdates(t *testing.T) {
 	secret := fixture.NewSecret("argocd-image-updater", "git-creds", map[string][]byte{
 		"sshPrivateKey": []byte("foo"),
 	})
-	kubeClient := client.KubernetesClient{
+	kubeClient := kube.KubernetesClient{
 		Clientset: fake.NewFakeClientsetWithResources(secret),
 	}
 	app := v1alpha1.Application{

@@ -9,9 +9,9 @@ import (
 	"strings"
 
 	"github.com/argoproj-labs/argocd-image-updater/ext/git"
-	"github.com/argoproj-labs/argocd-image-updater/pkg/client"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/image"
+	"github.com/argoproj-labs/argocd-image-updater/pkg/kube"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/log"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/registry"
 
@@ -44,7 +44,7 @@ type WriteBackConfig struct {
 	ArgoClient ArgoCD
 	// If GitClient is not nil, the client will be used for updates. Otherwise, a new client will be created.
 	GitClient  git.Client
-	KubeClient *client.KubernetesClient
+	KubeClient *kube.KubernetesClient
 	GitBranch  string
 }
 
@@ -66,7 +66,7 @@ type helmOverride struct {
 }
 
 // UpdateApplication update all images of a single application. Will run in a goroutine.
-func UpdateApplication(newRegFn registry.NewRegistryClient, argoClient ArgoCD, kubeClient *client.KubernetesClient, curApplication *ApplicationImages, dryRun bool) ImageUpdaterResult {
+func UpdateApplication(newRegFn registry.NewRegistryClient, argoClient ArgoCD, kubeClient *kube.KubernetesClient, curApplication *ApplicationImages, dryRun bool) ImageUpdaterResult {
 	var needUpdate bool = false
 
 	result := ImageUpdaterResult{}
@@ -267,7 +267,7 @@ func marshalParamsOverride(app *v1alpha1.Application) ([]byte, error) {
 	return override, nil
 }
 
-func getWriteBackConfig(app *v1alpha1.Application, kubeClient *client.KubernetesClient, argoClient ArgoCD) (*WriteBackConfig, error) {
+func getWriteBackConfig(app *v1alpha1.Application, kubeClient *kube.KubernetesClient, argoClient ArgoCD) (*WriteBackConfig, error) {
 	wbc := &WriteBackConfig{}
 	// Default write-back is to use Argo CD API
 	wbc.Method = WriteBackApplication
