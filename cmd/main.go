@@ -253,7 +253,7 @@ argocd-image-updater test nginx --allow-tags '^1.19.\d+(\-.*)*$' --update-strate
 			var kubeClient *kube.KubernetesClient
 			var err error
 			if kubeConfig != "" {
-				kubeClient, err = getKubeConfig(ctx, kubeConfig)
+				kubeClient, err = getKubeConfig(ctx, "", kubeConfig)
 				if err != nil {
 					log.Fatalf("could not create K8s client: %v", err)
 				}
@@ -406,10 +406,16 @@ func newRunCommand() *cobra.Command {
 			var err error
 			if !disableKubernetes {
 				ctx := context.Background()
-				cfg.KubeClient, err = getKubeConfig(ctx, kubeConfig)
+				cfg.KubeClient, err = getKubeConfig(ctx, cfg.ArgocdNamespace, kubeConfig)
 				if err != nil {
 					log.Fatalf("could not create K8s client: %v", err)
 				}
+				if cfg.ClientOpts.ServerAddr == "" {
+					cfg.ClientOpts.ServerAddr = fmt.Sprintf("argocd-server.%s", cfg.KubeClient.Namespace)
+				}
+			}
+			if cfg.ClientOpts.ServerAddr == "" {
+				cfg.ClientOpts.ServerAddr = defaultArgoCDServerAddr
 			}
 
 			if token := os.Getenv("ARGOCD_TOKEN"); token != "" && cfg.ClientOpts.AuthToken == "" {
@@ -490,7 +496,7 @@ func newRunCommand() *cobra.Command {
 		},
 	}
 
-	runCmd.Flags().StringVar(&cfg.ClientOpts.ServerAddr, "argocd-server-addr", env.GetStringVal("ARGOCD_SERVER", defaultArgoCDServerAddr), "address of ArgoCD API server")
+	runCmd.Flags().StringVar(&cfg.ClientOpts.ServerAddr, "argocd-server-addr", env.GetStringVal("ARGOCD_SERVER", ""), "address of ArgoCD API server")
 	runCmd.Flags().BoolVar(&cfg.ClientOpts.GRPCWeb, "argocd-grpc-web", env.GetBoolVal("ARGOCD_GRPC_WEB", false), "use grpc-web for connection to ArgoCD")
 	runCmd.Flags().BoolVar(&cfg.ClientOpts.Insecure, "argocd-insecure", env.GetBoolVal("ARGOCD_INSECURE", false), "(INSECURE) ignore invalid TLS certs for ArgoCD server")
 	runCmd.Flags().BoolVar(&cfg.ClientOpts.Plaintext, "argocd-plaintext", env.GetBoolVal("ARGOCD_PLAINTEXT", false), "(INSECURE) connect without TLS to ArgoCD server")
@@ -505,14 +511,14 @@ func newRunCommand() *cobra.Command {
 	runCmd.Flags().StringVar(&cfg.RegistriesConf, "registries-conf-path", defaultRegistriesConfPath, "path to registries configuration file")
 	runCmd.Flags().BoolVar(&disableKubernetes, "disable-kubernetes", false, "do not create and use a Kubernetes client")
 	runCmd.Flags().IntVar(&cfg.MaxConcurrency, "max-concurrency", 10, "maximum number of update threads to run concurrently")
-	runCmd.Flags().StringVar(&cfg.ArgocdNamespace, "argocd-namespace", "argocd", "namespace where ArgoCD runs in")
+	runCmd.Flags().StringVar(&cfg.ArgocdNamespace, "argocd-namespace", "", "namespace where ArgoCD runs in (current namespace by default)")
 	runCmd.Flags().StringSliceVar(&cfg.AppNamePatterns, "match-application-name", nil, "patterns to match application name against")
 	runCmd.Flags().BoolVar(&warmUpCache, "warmup-cache", true, "whether to perform a cache warm-up on startup")
 
 	return runCmd
 }
 
-func getKubeConfig(ctx context.Context, kubeConfig string) (*kube.KubernetesClient, error) {
+func getKubeConfig(ctx context.Context, namespace string, kubeConfig string) (*kube.KubernetesClient, error) {
 	var fullKubeConfigPath string
 	var kubeClient *kube.KubernetesClient
 	var err error
@@ -530,7 +536,7 @@ func getKubeConfig(ctx context.Context, kubeConfig string) (*kube.KubernetesClie
 		log.Debugf("Creating in-cluster Kubernetes client")
 	}
 
-	kubeClient, err = kube.NewKubernetesClientFromConfig(ctx, fullKubeConfigPath)
+	kubeClient, err = kube.NewKubernetesClientFromConfig(ctx, namespace, fullKubeConfigPath)
 	if err != nil {
 		return nil, err
 	}

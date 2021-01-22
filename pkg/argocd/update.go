@@ -31,6 +31,8 @@ type ImageUpdaterResult struct {
 	NumErrors                int
 }
 
+type GitCredsSource func(app *v1alpha1.Application) (git.Creds, error)
+
 type WriteBackMethod int
 
 const (
@@ -43,9 +45,9 @@ type WriteBackConfig struct {
 	Method     WriteBackMethod
 	ArgoClient ArgoCD
 	// If GitClient is not nil, the client will be used for updates. Otherwise, a new client will be created.
-	GitClient  git.Client
-	KubeClient *kube.KubernetesClient
-	GitBranch  string
+	GitClient git.Client
+	GetCreds  GitCredsSource
+	GitBranch string
 }
 
 // The following are helper structs to only marshal the fields we require
@@ -271,13 +273,19 @@ func getWriteBackConfig(app *v1alpha1.Application, kubeClient *kube.KubernetesCl
 	wbc := &WriteBackConfig{}
 	// Default write-back is to use Argo CD API
 	wbc.Method = WriteBackApplication
-	wbc.KubeClient = kubeClient
 	wbc.ArgoClient = argoClient
 
 	// If we have no update method, just return our default
 	method, ok := app.Annotations[common.WriteBackMethodAnnotation]
 	if !ok || strings.TrimSpace(method) == "argocd" {
 		return wbc, nil
+	}
+	method = strings.TrimSpace(method)
+
+	creds := "repocreds"
+	if index := strings.Index(method, ":"); index > 0 {
+		creds = method[index+1:]
+		method = method[:index]
 	}
 
 	// We might support further methods later
@@ -288,54 +296,16 @@ func getWriteBackConfig(app *v1alpha1.Application, kubeClient *kube.KubernetesCl
 		if ok {
 			wbc.GitBranch = strings.TrimSpace(branch)
 		}
+		credsSource, err := getGitCredsSource(creds, kubeClient)
+		if err != nil {
+			return nil, fmt.Errorf("invalid git credentials source: %v", err)
+		}
+		wbc.GetCreds = credsSource
 	default:
 		return nil, fmt.Errorf("invalid update mechanism: %s", method)
 	}
 
 	return wbc, nil
-}
-
-// getGitCreds looks at a secret ref in application's annotations and constructs
-// a Creds object for git client, according to the repository URL in the app
-// spec.
-func getGitCreds(app *v1alpha1.Application, wbc *WriteBackConfig) (git.Creds, error) {
-	var credentials map[string][]byte
-	var ok bool
-	var credentialsSecret string
-	var err error
-
-	if credentialsSecret, ok = app.Annotations[common.GitCredentialsAnnotation]; ok {
-		s := strings.SplitN(credentialsSecret, "/", 2)
-		if len(s) == 2 {
-			credentials, err = wbc.KubeClient.GetSecretData(s[0], s[1])
-			if err != nil {
-				return nil, err
-			}
-		} else {
-			return nil, fmt.Errorf("secret ref must be in format 'namespace/name', but is '%s'", credentialsSecret)
-		}
-	} else {
-		return nil, fmt.Errorf("no secret ref annotation %s found", common.GitCredentialsAnnotation)
-	}
-
-	if ok, _ := git.IsSSHURL(app.Spec.Source.RepoURL); ok {
-		var sshPrivateKey []byte
-		if sshPrivateKey, ok = credentials["sshPrivateKey"]; !ok {
-			return nil, fmt.Errorf("invalid secret %s: does not contain field sshPrivateKey", credentialsSecret)
-		}
-		return git.NewSSHCreds(string(sshPrivateKey), "", true), nil
-	} else if git.IsHTTPSURL(app.Spec.Source.RepoURL) {
-		var username, password []byte
-		if username, ok = credentials["username"]; !ok {
-			return nil, fmt.Errorf("invalid secret %s: does not contain field username", credentialsSecret)
-		}
-		if password, ok = credentials["password"]; !ok {
-			return nil, fmt.Errorf("invalid secret %s: does not contain field password", credentialsSecret)
-		}
-		return git.NewHTTPSCreds(string(username), string(password), "", "", true), nil
-	}
-
-	return nil, fmt.Errorf("unknown repository type")
 }
 
 // commitChanges commits any changes required for updating one or more images
@@ -351,7 +321,7 @@ func commitChanges(app *v1alpha1.Application, wbc *WriteBackConfig) error {
 			return err
 		}
 	case WriteBackGit:
-		creds, err := getGitCreds(app, wbc)
+		creds, err := wbc.GetCreds(app)
 		if err != nil {
 			return fmt.Errorf("could not get creds for repo '%s': %v", app.Spec.Source.RepoURL, err)
 		}

@@ -4,3 +4,5 @@ mypass
 otherapp
 wildcard
 wildcards
+credref
+repocreds

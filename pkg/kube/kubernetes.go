@@ -5,41 +5,49 @@ package kube
 import (
 	"context"
 	"fmt"
+	"os"
 
 	"github.com/argoproj-labs/argocd-image-updater/pkg/metrics"
 
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 )
 
 type KubernetesClient struct {
 	Clientset kubernetes.Interface
 	Context   context.Context
+	Namespace string
 }
 
-func NewKubernetesClient(ctx context.Context, client kubernetes.Interface) *KubernetesClient {
+func NewKubernetesClient(ctx context.Context, client kubernetes.Interface, namespace string) *KubernetesClient {
 	kc := &KubernetesClient{}
 	kc.Context = ctx
 	kc.Clientset = client
+	kc.Namespace = namespace
 	return kc
 }
 
 // NewKubernetesClient creates a new Kubernetes client object from given
 // configuration file. If configuration file is the empty string, in-cluster
 // client will be created.
-func NewKubernetesClientFromConfig(ctx context.Context, kubeconfig string) (*KubernetesClient, error) {
-	var config *rest.Config
-	var err error
+func NewKubernetesClientFromConfig(ctx context.Context, namespace string, kubeconfig string) (*KubernetesClient, error) {
+	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
+	loadingRules.DefaultClientConfig = &clientcmd.DefaultClientConfig
+	loadingRules.ExplicitPath = kubeconfig
+	overrides := clientcmd.ConfigOverrides{}
+	clientConfig := clientcmd.NewInteractiveDeferredLoadingClientConfig(loadingRules, &overrides, os.Stdin)
 
-	if kubeconfig != "" {
-		config, err = clientcmd.BuildConfigFromFlags("", kubeconfig)
-	} else {
-		config, err = rest.InClusterConfig()
-	}
+	config, err := clientConfig.ClientConfig()
 	if err != nil {
 		return nil, err
+	}
+
+	if namespace == "" {
+		namespace, _, err = clientConfig.Namespace()
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	clientset, err := kubernetes.NewForConfig(config)
@@ -47,7 +55,7 @@ func NewKubernetesClientFromConfig(ctx context.Context, kubeconfig string) (*Kub
 		return nil, err
 	}
 
-	return NewKubernetesClient(ctx, clientset), nil
+	return NewKubernetesClient(ctx, clientset, namespace), nil
 }
 
 // GetSecretData returns the raw data from named K8s secret in given namespace

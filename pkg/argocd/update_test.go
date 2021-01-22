@@ -18,6 +18,7 @@ import (
 	"github.com/argoproj-labs/argocd-image-updater/test/fixture"
 
 	"github.com/argoproj/argo-cd/pkg/apis/application/v1alpha1"
+	argogit "github.com/argoproj/argo-cd/util/git"
 	"github.com/docker/distribution/manifest/schema1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -882,7 +883,7 @@ func Test_GetGitCreds(t *testing.T) {
 				Name: "testapp",
 				Annotations: map[string]string{
 					"argocd-image-updater.argoproj.io/image-list":        "nginx",
-					"argocd-image-updater.argoproj.io/write-back-method": "git",
+					"argocd-image-updater.argoproj.io/write-back-method": "git:secret:argocd-image-updater/git-creds",
 					"argocd-image-updater.argoproj.io/git-credentials":   "argocd-image-updater/git-creds",
 				},
 			},
@@ -896,12 +897,10 @@ func Test_GetGitCreds(t *testing.T) {
 				SourceType: v1alpha1.ApplicationSourceTypeKustomize,
 			},
 		}
-		wbc := WriteBackConfig{
-			Method:     WriteBackGit,
-			ArgoClient: &argoClient,
-			KubeClient: &kubeClient,
-		}
-		creds, err := getGitCreds(&app, &wbc)
+		wbc, err := getWriteBackConfig(&app, &kubeClient, &argoClient)
+		require.NoError(t, err)
+
+		creds, err := wbc.GetCreds(&app)
 		require.NoError(t, err)
 		require.NotNil(t, creds)
 		// Must have HTTPS creds
@@ -923,8 +922,7 @@ func Test_GetGitCreds(t *testing.T) {
 				Name: "testapp",
 				Annotations: map[string]string{
 					"argocd-image-updater.argoproj.io/image-list":        "nginx",
-					"argocd-image-updater.argoproj.io/write-back-method": "git",
-					"argocd-image-updater.argoproj.io/git-credentials":   "argocd-image-updater/git-creds",
+					"argocd-image-updater.argoproj.io/write-back-method": "git:secret:argocd-image-updater/git-creds",
 				},
 			},
 			Spec: v1alpha1.ApplicationSpec{
@@ -937,16 +935,66 @@ func Test_GetGitCreds(t *testing.T) {
 				SourceType: v1alpha1.ApplicationSourceTypeKustomize,
 			},
 		}
-		wbc := WriteBackConfig{
-			Method:     WriteBackGit,
-			ArgoClient: &argoClient,
-			KubeClient: &kubeClient,
-		}
-		creds, err := getGitCreds(&app, &wbc)
+		wbc, err := getWriteBackConfig(&app, &kubeClient, &argoClient)
+		require.NoError(t, err)
+
+		creds, err := wbc.GetCreds(&app)
 		require.NoError(t, err)
 		require.NotNil(t, creds)
 		// Must have SSH creds
 		_, ok := creds.(git.SSHCreds)
+		require.True(t, ok)
+	})
+
+	t.Run("HTTP creds from Argo CD settings", func(t *testing.T) {
+		argoClient := argomock.ArgoCD{}
+		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+		secret := fixture.NewSecret("argocd", "git-creds", map[string][]byte{
+			"username": []byte("foo"),
+			"password": []byte("bar"),
+		})
+		configMap := fixture.NewConfigMap("argocd", "argocd-cm", map[string]string{
+			"repositories": `
+- url: https://example.com/example
+  passwordSecret:
+    name: git-creds
+    key: password
+  usernameSecret:
+    name: git-creds
+    key: username`,
+		})
+		fixture.AddPartOfArgoCDLabel(secret, configMap)
+
+		kubeClient := kube.KubernetesClient{
+			Clientset: fake.NewFakeClientsetWithResources(secret, configMap),
+			Namespace: "argocd",
+		}
+		app := v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name: "testapp",
+				Annotations: map[string]string{
+					"argocd-image-updater.argoproj.io/image-list":        "nginx",
+					"argocd-image-updater.argoproj.io/write-back-method": "git:repocreds",
+				},
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: v1alpha1.ApplicationSource{
+					RepoURL:        "https://example.com/example",
+					TargetRevision: "main",
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypeKustomize,
+			},
+		}
+		wbc, err := getWriteBackConfig(&app, &kubeClient, &argoClient)
+		require.NoError(t, err)
+
+		creds, err := wbc.GetCreds(&app)
+		require.NoError(t, err)
+		require.NotNil(t, creds)
+		// Must have HTTPS creds
+		_, ok := creds.(argogit.HTTPSCreds)
 		require.True(t, ok)
 	})
 
@@ -964,8 +1012,7 @@ func Test_GetGitCreds(t *testing.T) {
 				Name: "testapp",
 				Annotations: map[string]string{
 					"argocd-image-updater.argoproj.io/image-list":        "nginx",
-					"argocd-image-updater.argoproj.io/write-back-method": "git",
-					"argocd-image-updater.argoproj.io/git-credentials":   "argocd-image-updater/git-creds",
+					"argocd-image-updater.argoproj.io/write-back-method": "git:secret:argocd-image-updater/git-creds",
 				},
 			},
 			Spec: v1alpha1.ApplicationSpec{
@@ -978,12 +1025,10 @@ func Test_GetGitCreds(t *testing.T) {
 				SourceType: v1alpha1.ApplicationSourceTypeKustomize,
 			},
 		}
-		wbc := WriteBackConfig{
-			Method:     WriteBackGit,
-			ArgoClient: &argoClient,
-			KubeClient: &kubeClient,
-		}
-		creds, err := getGitCreds(&app, &wbc)
+		wbc, err := getWriteBackConfig(&app, &kubeClient, &argoClient)
+		require.NoError(t, err)
+
+		creds, err := wbc.GetCreds(&app)
 		require.Error(t, err)
 		require.Nil(t, creds)
 	})
@@ -1002,8 +1047,8 @@ func Test_GetGitCreds(t *testing.T) {
 				Name: "testapp",
 				Annotations: map[string]string{
 					"argocd-image-updater.argoproj.io/image-list":        "nginx",
-					"argocd-image-updater.argoproj.io/write-back-method": "git",
-					"argocd-image-updater.argoproj.io/git-credentials":   "nonexist",
+					"argocd-image-updater.argoproj.io/write-back-method": "git:secret:nonexist",
+					"argocd-image-updater.argoproj.io/git-credentials":   "",
 				},
 			},
 			Spec: v1alpha1.ApplicationSpec{
@@ -1016,12 +1061,10 @@ func Test_GetGitCreds(t *testing.T) {
 				SourceType: v1alpha1.ApplicationSourceTypeKustomize,
 			},
 		}
-		wbc := WriteBackConfig{
-			Method:     WriteBackGit,
-			ArgoClient: &argoClient,
-			KubeClient: &kubeClient,
-		}
-		creds, err := getGitCreds(&app, &wbc)
+		wbc, err := getWriteBackConfig(&app, &kubeClient, &argoClient)
+		require.NoError(t, err)
+
+		creds, err := wbc.GetCreds(&app)
 		require.Error(t, err)
 		require.Nil(t, creds)
 	})
@@ -1054,12 +1097,10 @@ func Test_GetGitCreds(t *testing.T) {
 				SourceType: v1alpha1.ApplicationSourceTypeKustomize,
 			},
 		}
-		wbc := WriteBackConfig{
-			Method:     WriteBackGit,
-			ArgoClient: &argoClient,
-			KubeClient: &kubeClient,
-		}
-		creds, err := getGitCreds(&app, &wbc)
+		wbc, err := getWriteBackConfig(&app, &kubeClient, &argoClient)
+		require.NoError(t, err)
+
+		creds, err := wbc.GetCreds(&app)
 		require.Error(t, err)
 		require.Nil(t, creds)
 	})
@@ -1079,8 +1120,7 @@ func Test_CommitUpdates(t *testing.T) {
 			Name: "testapp",
 			Annotations: map[string]string{
 				"argocd-image-updater.argoproj.io/image-list":        "nginx",
-				"argocd-image-updater.argoproj.io/write-back-method": "git",
-				"argocd-image-updater.argoproj.io/git-credentials":   "argocd-image-updater/git-creds",
+				"argocd-image-updater.argoproj.io/write-back-method": "git:secret:argocd-image-updater/git-creds",
 			},
 		},
 		Spec: v1alpha1.ApplicationSpec{
@@ -1102,13 +1142,12 @@ func Test_CommitUpdates(t *testing.T) {
 		gitMock.On("Add", mock.Anything).Return(nil)
 		gitMock.On("Commit", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 		gitMock.On("Push", mock.Anything, mock.Anything, mock.Anything).Return(nil)
-		wbc := &WriteBackConfig{
-			Method:     WriteBackGit,
-			GitClient:  gitMock,
-			KubeClient: &kubeClient,
-			ArgoClient: &argoClient,
-		}
-		err := commitChanges(&app, wbc)
+
+		wbc, err := getWriteBackConfig(&app, &kubeClient, &argoClient)
+		require.NoError(t, err)
+		wbc.GitClient = gitMock
+
+		err = commitChanges(&app, wbc)
 		assert.NoError(t, err)
 	})
 
@@ -1119,13 +1158,11 @@ func Test_CommitUpdates(t *testing.T) {
 		gitMock.On("Checkout", mock.Anything).Return(nil)
 		gitMock.On("Commit", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 		gitMock.On("Push", mock.Anything, mock.Anything, mock.Anything).Return(nil)
-		wbc := &WriteBackConfig{
-			Method:     WriteBackGit,
-			GitClient:  gitMock,
-			KubeClient: &kubeClient,
-			ArgoClient: &argoClient,
-		}
-		err := commitChanges(&app, wbc)
+		wbc, err := getWriteBackConfig(&app, &kubeClient, &argoClient)
+		require.NoError(t, err)
+		wbc.GitClient = gitMock
+
+		err = commitChanges(&app, wbc)
 		assert.Errorf(t, err, "cannot init")
 	})
 
@@ -1136,13 +1173,11 @@ func Test_CommitUpdates(t *testing.T) {
 		gitMock.On("Checkout", mock.Anything).Return(nil)
 		gitMock.On("Commit", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 		gitMock.On("Push", mock.Anything, mock.Anything, mock.Anything).Return(nil)
-		wbc := &WriteBackConfig{
-			Method:     WriteBackGit,
-			GitClient:  gitMock,
-			KubeClient: &kubeClient,
-			ArgoClient: &argoClient,
-		}
-		err := commitChanges(&app, wbc)
+		wbc, err := getWriteBackConfig(&app, &kubeClient, &argoClient)
+		require.NoError(t, err)
+		wbc.GitClient = gitMock
+
+		err = commitChanges(&app, wbc)
 		assert.Errorf(t, err, "cannot init")
 	})
 	t.Run("Cannot checkout", func(t *testing.T) {
@@ -1152,13 +1187,11 @@ func Test_CommitUpdates(t *testing.T) {
 		gitMock.On("Checkout", mock.Anything).Return(fmt.Errorf("cannot checkout"))
 		gitMock.On("Commit", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 		gitMock.On("Push", mock.Anything, mock.Anything, mock.Anything).Return(nil)
-		wbc := &WriteBackConfig{
-			Method:     WriteBackGit,
-			GitClient:  gitMock,
-			KubeClient: &kubeClient,
-			ArgoClient: &argoClient,
-		}
-		err := commitChanges(&app, wbc)
+		wbc, err := getWriteBackConfig(&app, &kubeClient, &argoClient)
+		require.NoError(t, err)
+		wbc.GitClient = gitMock
+
+		err = commitChanges(&app, wbc)
 		assert.Errorf(t, err, "cannot checkout")
 	})
 
@@ -1170,13 +1203,11 @@ func Test_CommitUpdates(t *testing.T) {
 		gitMock.On("Add", mock.Anything).Return(nil)
 		gitMock.On("Commit", mock.Anything, mock.Anything, mock.Anything).Return(fmt.Errorf("cannot commit"))
 		gitMock.On("Push", mock.Anything, mock.Anything, mock.Anything).Return(nil)
-		wbc := &WriteBackConfig{
-			Method:     WriteBackGit,
-			GitClient:  gitMock,
-			KubeClient: &kubeClient,
-			ArgoClient: &argoClient,
-		}
-		err := commitChanges(&app, wbc)
+		wbc, err := getWriteBackConfig(&app, &kubeClient, &argoClient)
+		require.NoError(t, err)
+		wbc.GitClient = gitMock
+
+		err = commitChanges(&app, wbc)
 		assert.Errorf(t, err, "cannot commit")
 	})
 
@@ -1188,13 +1219,11 @@ func Test_CommitUpdates(t *testing.T) {
 		gitMock.On("Add", mock.Anything).Return(nil)
 		gitMock.On("Commit", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 		gitMock.On("Push", mock.Anything, mock.Anything, mock.Anything).Return(fmt.Errorf("cannot push"))
-		wbc := &WriteBackConfig{
-			Method:     WriteBackGit,
-			GitClient:  gitMock,
-			KubeClient: &kubeClient,
-			ArgoClient: &argoClient,
-		}
-		err := commitChanges(&app, wbc)
+		wbc, err := getWriteBackConfig(&app, &kubeClient, &argoClient)
+		require.NoError(t, err)
+		wbc.GitClient = gitMock
+
+		err = commitChanges(&app, wbc)
 		assert.Errorf(t, err, "cannot push")
 	})
 }
