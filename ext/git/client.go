@@ -62,6 +62,7 @@ type Client interface {
 	Branch(sourceBranch, targetBranch string) error
 	Commit(pathSpec string, message string, signingKey string) error
 	Push(remote string, branch string, force bool) error
+	Add(path string) error
 }
 
 // nativeGitClient implements Client interface using git CLI
@@ -565,6 +566,10 @@ func (m *nativeGitClient) Push(remote string, branch string, force bool) error {
 		return fmt.Errorf("could not push %s to %s: %v", branch, remote, err)
 	}
 	return nil
+}
+
+func (m *nativeGitClient) Add(path string) error {
+	return m.runCredentialedCmd("git", "add", path)
 }
 
 // runWrapper runs a custom command with all the semantics of running the Git client
