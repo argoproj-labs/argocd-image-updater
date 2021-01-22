@@ -2,10 +2,10 @@
 
 ## Runtime environment
 
-It is recommend to run Argo CD Image Updater in the same Kubernetes cluster that
+It is recommended to run Argo CD Image Updater in the same Kubernetes namespace cluster that
 Argo CD is running in, however, this is not a requirement. In fact, it is not
 even a requirement to run Argo CD Image Updater within a Kubernetes cluster or
-with access to any Kubernetes cluster at all.
+with access to any Kubernetes cluster at all. 
 
 However, some features might not work without accessing Kubernetes.
 
@@ -71,9 +71,68 @@ It is recommended that you read about core updating and image concepts in the
 [documentation](../../configuration/images/)
 before using this command.
 
-## Prerequisites
+## Installing as Kubernetes workload in Argo CD namespace
 
-Argo CD Image Updater will need access to the API of your Argo CD installation.
+The most straightforward way to run the image updater is to install is a Kubernetes workload into the namespace where
+Argo CD is running. Don't worry, without any configuration, it will not start messing with your workloads yet.
+
+!!!note
+    We also provide a Kustomize base in addition to the plain Kubernetes YAML
+    manifests. You can use it as remote base and create overlays with your
+    configuration on top of it. The remote base's URL is
+    `https://github.com/argoproj-labs/argocd-image-updater/manifests/base`
+
+### Apply the installation manifests
+
+```shell
+kubectl apply -n argocd -f manifests/install.yaml
+```
+
+!!!note "A word on high availability"
+    It is not advised to run multiple replicas of the same Argo CD Image Updater
+    instance. Just leave the number of replicas at 1, otherwise weird side
+    effects could occur.
+
+### Minimum mandatory configuration
+
+Even if you don't plan to use private registries, you will need to configure at
+least an empty `registries.conf`, because the `argocd-image-updater` pod will
+volume mount this entry from the config map.
+
+Edit the `argocd-image-updater-config` ConfigMap and add the following entry:
+
+```yaml
+data:
+  registries.conf: ""
+```
+
+Without this entry, the `argocd-image-updater` pod will not be able to start.
+
+If you are going to use private container registries, this is also a good time
+to
+[configure them](../../configuration/registries/#configuring-a-custom-container-registry)
+
+### Configure the desired log level
+
+While this step is optional, we recommend to set the log level explicitly.
+During your first steps with the Argo CD Image Updater, a more verbose logging
+can help greatly in troubleshooting things.
+
+Edit the `argocd-image-updater-config` ConfigMap and add the following keys
+(the values are dependent upon your environment)
+
+```yaml
+data:
+  # log.level can be one of trace, debug, info, warn or error
+  log.level: debug
+```
+
+If you omit the `log.level` setting, the default `info` level will be used.
+
+## Connect using Argo CD API Server
+
+If you unable to install Argo CD Image Updater into the same Kubernetes cluster you might
+configure it to use API of your Argo CD installation. 
 If you chose to install the Argo CD Image Updater outside of the cluster where
 Argo CD is running in, the API must be exposed externally (i.e. using Ingress).
 If you have network policies in place, make sure that Argo CD Image Updater will
@@ -128,70 +187,6 @@ apps, however.
 Put the RBAC permissions to Argo CD's `argocd-rbac-cm` ConfigMap and Argo CD will
 pick them up automatically.
 
-## Installing as Kubernetes workload
-
-Installation is straight-forward. Don't worry, without any configuration, it
-will not start messing with your workloads yet.
-
-!!!note
-    We also provide a Kustomize base in addition to the plain Kubernetes YAML
-    manifests. You can use it as remote base and create overlays with your
-    configuration on top of it. The remote base's URL is
-    `https://github.com/argoproj-labs/argocd-image-updater/manifests/base`
-
-### Create a dedicated namespace for Argo CD Image Updater
-
-```shell
-kubectl create ns argocd-image-updater
-```
-
-### Apply the installation manifests
-
-```shell
-kubectl apply -n argocd-image-updater -f manifests/install.yaml
-```
-
-!!!note "A word on high availability"
-    It is not advised to run multiple replicas of the same Argo CD Image Updater
-    instance. Just leave the number of replicas at 1, otherwise weird side
-    effects could occur.
-
-### Minimum mandatory configuration
-
-Even if you don't plan to use private registries, you will need to configure at
-least an empty `registries.conf`, because the `argocd-image-updater` pod will
-volume mount this entry from the config map.
-
-Edit the `argocd-image-updater-config` ConfigMap and add the following entry:
-
-```yaml
-data:
-  registries.conf: ""
-```
-
-Without this entry, the `argocd-image-updater` pod will not be able to start.
-
-If you are going to use private container registries, this is also a good time
-to
-[configure them](../../configuration/registries/#configuring-a-custom-container-registry)
-
-### Configure the desired log level
-
-While this step is optional, we recommend to set the log level explicitly.
-During your first steps with the Argo CD Image Updater, a more verbose logging
-can help greatly in troubleshooting things.
-
-Edit the `argocd-image-updater-config` ConfigMap and add the following keys
-(the values are dependent upon your environment)
-
-```yaml
-data:
-  # log.level can be one of trace, debug, info, warn or error
-  log.level: debug
-```
-
-If you omit the `log.level` setting, the default `info` level will be used.
-
 ### Configure Argo CD endpoint
 
 If you run Argo CD Image Updater in another cluster than Argo CD, or if your
@@ -204,6 +199,7 @@ Edit the `argocd-image-updater-config` ConfigMap and add the following keys
 
 ```yaml
 data:
+  applications_api: argocd
   # The address of Argo CD API endpoint - defaults to argocd-server.argocd
   argocd.server_addr: <FQDN or IP of your Argo CD server>
   # Whether to use GRPC-web protocol instead of GRPC over HTTP/2
@@ -260,6 +256,16 @@ Grab the binary (it does not have any external dependencies) and run:
 export ARGOCD_TOKEN=<yourtoken>
 ./argocd-image-updater run \
   --kubeconfig ~/.kube/config
+  --once
+```
+
+or use `--applications-api` flag if you prefer to connect using Argo CD API
+
+```bash
+export ARGOCD_TOKEN=<yourtoken>
+./argocd-image-updater run \
+  --kubeconfig ~/.kube/config
+  --applications-api argocd
   --argocd-server-addr argo-cd.example.com
   --once
 ```

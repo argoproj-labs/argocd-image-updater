@@ -9,13 +9,59 @@ import (
 
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/image"
+	"github.com/argoproj-labs/argocd-image-updater/pkg/kube"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/log"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/metrics"
 
 	argocdclient "github.com/argoproj/argo-cd/pkg/apiclient"
 	"github.com/argoproj/argo-cd/pkg/apiclient/application"
 	"github.com/argoproj/argo-cd/pkg/apis/application/v1alpha1"
+	"k8s.io/apimachinery/pkg/api/errors"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
+
+// Kubernetes based client
+type k8sClient struct {
+	kubeClient *kube.KubernetesClient
+}
+
+func (client *k8sClient) GetApplication(ctx context.Context, appName string) (*v1alpha1.Application, error) {
+	return client.kubeClient.ApplicationsClientset.ArgoprojV1alpha1().Applications(client.kubeClient.Namespace).Get(ctx, appName, v1.GetOptions{})
+}
+
+func (client *k8sClient) ListApplications() ([]v1alpha1.Application, error) {
+	list, err := client.kubeClient.ApplicationsClientset.ArgoprojV1alpha1().Applications(client.kubeClient.Namespace).List(context.TODO(), v1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	return list.Items, nil
+}
+
+func (client *k8sClient) UpdateSpec(ctx context.Context, spec *application.ApplicationUpdateSpecRequest) (*v1alpha1.ApplicationSpec, error) {
+	for {
+		app, err := client.kubeClient.ApplicationsClientset.ArgoprojV1alpha1().Applications(client.kubeClient.Namespace).Get(ctx, spec.GetName(), v1.GetOptions{})
+		if err != nil {
+			return nil, err
+		}
+		app.Spec = spec.Spec
+
+		updatedApp, err := client.kubeClient.ApplicationsClientset.ArgoprojV1alpha1().Applications(client.kubeClient.Namespace).Update(ctx, app, v1.UpdateOptions{})
+		if err != nil {
+			if errors.IsConflict(err) {
+				continue
+			}
+			return nil, err
+		}
+		return &updatedApp.Spec, nil
+	}
+
+}
+
+// NewAPIClient creates a new API client for ArgoCD and connects to the ArgoCD
+// API server.
+func NewK8SClient(kubeClient *kube.KubernetesClient) ArgoCD {
+	return &k8sClient{kubeClient: kubeClient}
+}
 
 // Native
 type argoCD struct {
@@ -49,9 +95,9 @@ type ClientOptions struct {
 	AuthToken       string
 }
 
-// NewClient creates a new API client for ArgoCD and connects to the ArgoCD
+// NewAPIClient creates a new API client for ArgoCD and connects to the ArgoCD
 // API server.
-func NewClient(opts *ClientOptions) (ArgoCD, error) {
+func NewAPIClient(opts *ClientOptions) (ArgoCD, error) {
 
 	envAuthToken := os.Getenv("ARGOCD_TOKEN")
 	if envAuthToken != "" && opts.AuthToken == "" {

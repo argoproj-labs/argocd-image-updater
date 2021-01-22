@@ -22,6 +22,12 @@ spec:
         image: argoprojlabs/argocd-image-updater:latest
         imagePullPolicy: Always
         env:
+        - name: APPLICATIONS_API
+          valueFrom:
+            configMapKeyRef:
+              name: argocd-image-updater-config
+              key: applications_api
+              optional: true
         - name: ARGOCD_GRPC_WEB
           valueFrom:
             configMapKeyRef:

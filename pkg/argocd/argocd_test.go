@@ -1,16 +1,24 @@
 package argocd
 
 import (
+	"context"
 	"fmt"
 	"testing"
 
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/image"
+	"github.com/argoproj-labs/argocd-image-updater/pkg/kube"
 
+	"github.com/argoproj/argo-cd/pkg/apiclient/application"
 	"github.com/argoproj/argo-cd/pkg/apis/application/v1alpha1"
+	"github.com/argoproj/argo-cd/pkg/client/clientset/versioned/fake"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"k8s.io/apimachinery/pkg/api/errors"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	k8stesting "k8s.io/client-go/testing"
 )
 
 func Test_GetImagesFromApplication(t *testing.T) {
@@ -620,4 +628,74 @@ func Test_SetHelmImage(t *testing.T) {
 		require.Error(t, err)
 	})
 
+}
+
+func TestKubernetesClient(t *testing.T) {
+	app1 := &v1alpha1.Application{
+		ObjectMeta: v1.ObjectMeta{Name: "test-app1", Namespace: "testns1"},
+	}
+	app2 := &v1alpha1.Application{
+		ObjectMeta: v1.ObjectMeta{Name: "test-app2", Namespace: "testns2"},
+	}
+
+	client := NewK8SClient(&kube.KubernetesClient{
+		Namespace:             "testns1",
+		ApplicationsClientset: fake.NewSimpleClientset(app1, app2),
+	})
+
+	t.Run("List applications", func(t *testing.T) {
+		apps, err := client.ListApplications()
+		require.NoError(t, err)
+		require.Len(t, apps, 1)
+
+		assert.ElementsMatch(t, []string{"test-app1"}, []string{app1.Name})
+	})
+
+	t.Run("Get application successful", func(t *testing.T) {
+		app, err := client.GetApplication(context.TODO(), "test-app1")
+		require.NoError(t, err)
+		assert.Equal(t, "test-app1", app.GetName())
+	})
+
+	t.Run("Get application not found", func(t *testing.T) {
+		_, err := client.GetApplication(context.TODO(), "test-app2")
+		require.Error(t, err)
+		assert.True(t, errors.IsNotFound(err))
+	})
+}
+
+func TestKubernetesClient_UpdateSpec_Conflict(t *testing.T) {
+	app := &v1alpha1.Application{
+		ObjectMeta: v1.ObjectMeta{Name: "test-app", Namespace: "testns"},
+	}
+	clientset := fake.NewSimpleClientset(app)
+
+	attempts := 0
+	clientset.PrependReactor("update", "*", func(action k8stesting.Action) (handled bool, ret runtime.Object, err error) {
+		if attempts == 0 {
+			attempts++
+			return true, nil, errors.NewConflict(
+				schema.GroupResource{Group: "argoproj.io", Resource: "Application"}, app.Name, fmt.Errorf("conflict updating %s", app.Name))
+		} else {
+			return false, nil, nil
+		}
+	})
+
+	client := NewK8SClient(&kube.KubernetesClient{
+		Namespace:             "testns",
+		ApplicationsClientset: clientset,
+	})
+
+	appName := "test-app"
+
+	spec, err := client.UpdateSpec(context.TODO(), &application.ApplicationUpdateSpecRequest{
+		Name: &appName,
+		Spec: v1alpha1.ApplicationSpec{Source: v1alpha1.ApplicationSource{
+			RepoURL: "https://github.com/argoproj/argocd-example-apps",
+		}},
+	})
+
+	require.NoError(t, err)
+
+	assert.Equal(t, "https://github.com/argoproj/argocd-example-apps", spec.Source.RepoURL)
 }

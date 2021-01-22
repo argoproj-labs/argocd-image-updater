@@ -31,20 +31,24 @@ const defaultArgoCDServerAddr = "argocd-server.argocd"
 // Default path to registry configuration
 const defaultRegistriesConfPath = "/app/config/registries.conf"
 
+const applicationsAPIKindK8S = "kubernetes"
+const applicationsAPIKindArgoCD = "argocd"
+
 // ImageUpdaterConfig contains global configuration and required runtime data
 type ImageUpdaterConfig struct {
-	ClientOpts      argocd.ClientOptions
-	ArgocdNamespace string
-	DryRun          bool
-	CheckInterval   time.Duration
-	ArgoClient      argocd.ArgoCD
-	LogLevel        string
-	KubeClient      *kube.KubernetesClient
-	MaxConcurrency  int
-	HealthPort      int
-	MetricsPort     int
-	RegistriesConf  string
-	AppNamePatterns []string
+	ApplicationsAPIKind string
+	ClientOpts          argocd.ClientOptions
+	ArgocdNamespace     string
+	DryRun              bool
+	CheckInterval       time.Duration
+	ArgoClient          argocd.ArgoCD
+	LogLevel            string
+	KubeClient          *kube.KubernetesClient
+	MaxConcurrency      int
+	HealthPort          int
+	MetricsPort         int
+	RegistriesConf      string
+	AppNamePatterns     []string
 }
 
 // warmupImageCache performs a cache warm-up, which is basically one cycle of
@@ -71,7 +75,16 @@ func warmupImageCache(cfg *ImageUpdaterConfig) error {
 // Main loop for argocd-image-controller
 func runImageUpdater(cfg *ImageUpdaterConfig, warmUp bool) (argocd.ImageUpdaterResult, error) {
 	result := argocd.ImageUpdaterResult{}
-	argoClient, err := argocd.NewClient(&cfg.ClientOpts)
+	var err error
+	var argoClient argocd.ArgoCD
+	switch cfg.ApplicationsAPIKind {
+	case applicationsAPIKindK8S:
+		argoClient = argocd.NewK8SClient(cfg.KubeClient)
+	case applicationsAPIKindArgoCD:
+		argoClient, err = argocd.NewAPIClient(&cfg.ClientOpts)
+	default:
+		return argocd.ImageUpdaterResult{}, fmt.Errorf("application api '%s' is not supported", cfg.ApplicationsAPIKind)
+	}
 	if err != nil {
 		return result, err
 	}
@@ -423,7 +436,8 @@ func newRunCommand() *cobra.Command {
 				cfg.ClientOpts.AuthToken = token
 			}
 
-			log.Infof("ArgoCD configuration: [server=%s, auth_token=%v, insecure=%v, grpc_web=%v, plaintext=%v]",
+			log.Infof("ArgoCD configuration: [apiKind=%s, server=%s, auth_token=%v, insecure=%v, grpc_web=%v, plaintext=%v]",
+				cfg.ApplicationsAPIKind,
 				cfg.ClientOpts.ServerAddr,
 				cfg.ClientOpts.AuthToken != "",
 				cfg.ClientOpts.Insecure,
@@ -496,6 +510,7 @@ func newRunCommand() *cobra.Command {
 		},
 	}
 
+	runCmd.Flags().StringVar(&cfg.ApplicationsAPIKind, "applications-api", env.GetStringVal("APPLICATIONS_API", applicationsAPIKindK8S), "API kind that is used to manage Argo CD applications ('kubernetes' or 'argocd')")
 	runCmd.Flags().StringVar(&cfg.ClientOpts.ServerAddr, "argocd-server-addr", env.GetStringVal("ARGOCD_SERVER", ""), "address of ArgoCD API server")
 	runCmd.Flags().BoolVar(&cfg.ClientOpts.GRPCWeb, "argocd-grpc-web", env.GetBoolVal("ARGOCD_GRPC_WEB", false), "use grpc-web for connection to ArgoCD")
 	runCmd.Flags().BoolVar(&cfg.ClientOpts.Insecure, "argocd-insecure", env.GetBoolVal("ARGOCD_INSECURE", false), "(INSECURE) ignore invalid TLS certs for ArgoCD server")

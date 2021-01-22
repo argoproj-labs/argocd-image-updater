@@ -9,21 +9,24 @@ import (
 
 	"github.com/argoproj-labs/argocd-image-updater/pkg/metrics"
 
+	"github.com/argoproj/argo-cd/pkg/client/clientset/versioned"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 )
 
 type KubernetesClient struct {
-	Clientset kubernetes.Interface
-	Context   context.Context
-	Namespace string
+	Clientset             kubernetes.Interface
+	ApplicationsClientset versioned.Interface
+	Context               context.Context
+	Namespace             string
 }
 
-func NewKubernetesClient(ctx context.Context, client kubernetes.Interface, namespace string) *KubernetesClient {
+func NewKubernetesClient(ctx context.Context, client kubernetes.Interface, applicationsClientset versioned.Interface, namespace string) *KubernetesClient {
 	kc := &KubernetesClient{}
 	kc.Context = ctx
 	kc.Clientset = client
+	kc.ApplicationsClientset = applicationsClientset
 	kc.Namespace = namespace
 	return kc
 }
@@ -55,7 +58,12 @@ func NewKubernetesClientFromConfig(ctx context.Context, namespace string, kubeco
 		return nil, err
 	}
 
-	return NewKubernetesClient(ctx, clientset, namespace), nil
+	applicationsClientset, err := versioned.NewForConfig(config)
+	if err != nil {
+		return nil, err
+	}
+
+	return NewKubernetesClient(ctx, clientset, applicationsClientset, namespace), nil
 }
 
 // GetSecretData returns the raw data from named K8s secret in given namespace
