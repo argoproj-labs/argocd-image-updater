@@ -1099,6 +1099,7 @@ func Test_CommitUpdates(t *testing.T) {
 		gitMock.On("Init").Return(nil)
 		gitMock.On("Fetch").Return(nil)
 		gitMock.On("Checkout", mock.Anything).Return(nil)
+		gitMock.On("Add", mock.Anything).Return(nil)
 		gitMock.On("Commit", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 		gitMock.On("Push", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 		wbc := &WriteBackConfig{
@@ -1166,6 +1167,7 @@ func Test_CommitUpdates(t *testing.T) {
 		gitMock.On("Init").Return(nil)
 		gitMock.On("Fetch").Return(nil)
 		gitMock.On("Checkout", mock.Anything).Return(nil)
+		gitMock.On("Add", mock.Anything).Return(nil)
 		gitMock.On("Commit", mock.Anything, mock.Anything, mock.Anything).Return(fmt.Errorf("cannot commit"))
 		gitMock.On("Push", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 		wbc := &WriteBackConfig{
@@ -1183,6 +1185,7 @@ func Test_CommitUpdates(t *testing.T) {
 		gitMock.On("Init").Return(nil)
 		gitMock.On("Fetch").Return(nil)
 		gitMock.On("Checkout", mock.Anything).Return(nil)
+		gitMock.On("Add", mock.Anything).Return(nil)
 		gitMock.On("Commit", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 		gitMock.On("Push", mock.Anything, mock.Anything, mock.Anything).Return(fmt.Errorf("cannot push"))
 		wbc := &WriteBackConfig{

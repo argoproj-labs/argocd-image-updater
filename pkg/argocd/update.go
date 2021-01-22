@@ -424,11 +424,19 @@ func commitChanges(app *v1alpha1.Application, wbc *WriteBackConfig) error {
 		if err != nil {
 			return err
 		}
+
+		if !targetExists {
+			err = gitC.Add(targetFile)
+			if err != nil {
+				return err
+			}
+		}
+
 		err = gitC.Commit("", "Update to new image versions", "")
 		if err != nil {
 			return err
 		}
-		err = gitC.Push("origin", wbc.GitBranch, false)
+		err = gitC.Push("origin", checkOutBranch, false)
 		if err != nil {
 			return err
 		}
