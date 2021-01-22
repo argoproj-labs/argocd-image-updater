@@ -160,21 +160,21 @@ Configuration for the Git write-back method comes from two sources:
 
 #### Specifying Git credentials
 
-In order for Argo CD Image Updater to be able to push any changes back to your
-Git repository (e.g. hosted on GitHub, GitLab or elsewhere), you will need to
-configure credentials that have write access to your remote upstream repository.
-Argo CD Image Updater will **not** re-use the credentials you have configured
+By default Argo CD Image Updater re-uses the credentials you have configured
 in Argo CD for accessing the repository.
 
-Credentials must be stored in a Kubernetes secret, which needs to be accessible
-by the Argo CD Image Updater's Service Account. The secret can be configured
-using the `argocd-image-updater.argoproj.io/git-credentials` annotation, whose
-value must be in format `namespace/secret-name`, for example to use a secret
-named `git-creds` in the namespace `argocd-image-updater`, use following
-annotation:
+If you don't want to use credentials configured for Argo CD you can use other credentials stored in a Kubernetes secret,
+which needs to be accessible by the Argo CD Image Updater's Service Account. The secret should be specified in 
+`argocd-image-updater.argoproj.io/write-back-method` annotation using `git:<credref>` format. Where `<credref>` might
+take one of following values:
+
+* `repocreds` (default) - Git repository credentials configured in Argo CD settings
+* `secret:<namespace>/<secret>` - namespace and secret name.
+
+Example:
 
 ```yaml
-argocd-image-updater.argoproj.io/git-credentials: argocd-image-updater/git-creds
+argocd-image-updater.argoproj.io/write-back-method: git:secret:argocd-image-updater/git-creds
 ```
 
 If the repository is accessed using HTTPS, the secret must contain two fields:
