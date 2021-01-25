@@ -59,8 +59,8 @@ func (client *k8sClient) UpdateSpec(ctx context.Context, spec *application.Appli
 
 // NewAPIClient creates a new API client for ArgoCD and connects to the ArgoCD
 // API server.
-func NewK8SClient(kubeClient *kube.KubernetesClient) ArgoCD {
-	return &k8sClient{kubeClient: kubeClient}
+func NewK8SClient(kubeClient *kube.KubernetesClient) (ArgoCD, error) {
+	return &k8sClient{kubeClient: kubeClient}, nil
 }
 
 // Native

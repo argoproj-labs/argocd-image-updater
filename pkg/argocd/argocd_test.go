@@ -638,10 +638,12 @@ func TestKubernetesClient(t *testing.T) {
 		ObjectMeta: v1.ObjectMeta{Name: "test-app2", Namespace: "testns2"},
 	}
 
-	client := NewK8SClient(&kube.KubernetesClient{
+	client, err := NewK8SClient(&kube.KubernetesClient{
 		Namespace:             "testns1",
 		ApplicationsClientset: fake.NewSimpleClientset(app1, app2),
 	})
+
+	require.NoError(t, err)
 
 	t.Run("List applications", func(t *testing.T) {
 		apps, err := client.ListApplications()
@@ -681,10 +683,11 @@ func TestKubernetesClient_UpdateSpec_Conflict(t *testing.T) {
 		}
 	})
 
-	client := NewK8SClient(&kube.KubernetesClient{
+	client, err := NewK8SClient(&kube.KubernetesClient{
 		Namespace:             "testns",
 		ApplicationsClientset: clientset,
 	})
+	require.NoError(t, err)
 
 	appName := "test-app"
 
