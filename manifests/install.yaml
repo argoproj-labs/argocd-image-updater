@@ -158,4 +158,5 @@ spec:
           - key: registries.conf
             path: registries.conf
           name: argocd-image-updater-config
+          optional: true
         name: registries-conf
