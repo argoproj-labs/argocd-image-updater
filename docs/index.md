@@ -5,8 +5,7 @@ that are managed by
 [Argo CD](https://github.com/argoproj/argo-cd).
 
 !!!warning "A note on the current status"
-    Argo CD Image Updater was born just recently. It is not suitable for
-    production use yet, and it might break things in unexpected ways.
+    Argo CD Image Updater is under active development.
 
     You are welcome to test it out on non-critical environments, and to 
     contribute by sending bug reports, enhancement requests and - most
