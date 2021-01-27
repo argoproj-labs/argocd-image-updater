@@ -31,16 +31,11 @@ which is up-to-date with the master branch.
 
 ## Current status
 
-**Disclaimer: This is pre-release code. It might have bugs that will
-break things in unexpected way.**
+Argo CD Image Updater is under active development. We would not recommend it
+yet for *critical* production workloads, but feel free to give it a spin.
 
-Argo CD Image Updater was born just recently, and is not suitable for
-production workloads yet. You are welcome to test it in your non-critical
-environments, and to contribute by filing bugs, enhancement requests or even
-better, sending in pull requests.
-
-We decided to publish the code early, so that the community can be involved
-early on in the development process, too.
+We're very interested in feedback on usability and the user experience as well
+as in bug discoveries and enhancement requests.
 
 **Important note:** Until the first stable version (i.e. `v1.0`) is released,
 breaking changes between the releases must be expected. We will do our best
@@ -78,7 +73,7 @@ The following things are on the roadmap until the `v1.0` release
 * [ ] Extend Argo CD functionality to be able to update images for other types
   of applications.
 
-* [ ] Extend Argo CD functionality to write back to Git
+* [x] Extend Argo CD functionality to write back to Git
 
 * [ ] Provide web hook support to trigger update check for a given image
 
@@ -95,19 +90,14 @@ For more details, check out the
 
 **Does it write back the changes to Git?**
 
-No, and this feature is also not planned for any of the next releases. We think
-it's close to impossible to get such a feature 100% correctly working, because
-there are so many edge-cases to consider (i.e. possible merge conflicts) and
-there's no easy way to find out where a certain resource lives in Git when
-manifests are rendered through a tool. We are thinking about how to implement
-this feature in the meanwhile, but don't expect it before the v1.0 release.
+We're happy to announce that as of `v0.9.0` and Argo CD `v1.9.0`, Argo CD
+Image Updater is able to commit changes to Git. It will not modify your
+application's manifests, but instead writes
+[Parameter Overrides](https://argoproj.github.io/argo-cd/user-guide/parameters/#store-overrides-in-git)
+to the repository.
 
-**How does it persist the changes then?**
-
-The Argo CD Image Updater leverages the Argo CD API to set application parameters,
-and Argo CD will then persist the change in the application's manifest. This is
-something Argo CD will not overwrite upon the next manual (or automatic) sync,
-except when the overrides are explicitly set in the manifest.
+We think that this is a good compromise between functionality (have everything
+in Git) and ease-of-use (minimize conflicts).
 
 **Are there plans to extend functionality beyond Kustomize or Helm?**
 
