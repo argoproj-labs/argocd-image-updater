@@ -9,6 +9,8 @@ RUN mkdir -p dist && \
 
 FROM alpine:latest
 
+RUN apk update && apk upgrade && apk add git
+
 RUN mkdir -p /usr/local/bin
 RUN mkdir -p /app/config
 
