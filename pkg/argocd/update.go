@@ -352,10 +352,24 @@ func commitChanges(app *v1alpha1.Application, wbc *WriteBackConfig) error {
 		if err != nil {
 			return err
 		}
+
+		// The branch to checkout is either a configured branch in the write-back
+		// config, or taken from the application spec's targetRevision. If the
+		// target revision is set to the special value HEAD, or is the empty
+		// string, we'll try to resolve it to a branch name.
 		checkOutBranch := app.Spec.Source.TargetRevision
 		if wbc.GitBranch != "" {
 			checkOutBranch = wbc.GitBranch
 		}
+		log.Tracef("targetRevision for update is '%s'", checkOutBranch)
+		if checkOutBranch == "" || checkOutBranch == "HEAD" {
+			checkOutBranch, err = gitC.SymRefToBranch(checkOutBranch)
+			log.Infof("resolved remote default branch to '%s' and using that for operations", checkOutBranch)
+			if err != nil {
+				return err
+			}
+		}
+
 		err = gitC.Checkout(checkOutBranch)
 		if err != nil {
 			return err
@@ -365,7 +379,6 @@ func commitChanges(app *v1alpha1.Application, wbc *WriteBackConfig) error {
 		_, err = os.Stat(targetFile)
 		if err != nil {
 			if !os.IsNotExist(err) {
-				fmt.Printf("--> UHHH: %v\n", err)
 				return err
 			} else {
 				targetExists = false
@@ -386,6 +399,7 @@ func commitChanges(app *v1alpha1.Application, wbc *WriteBackConfig) error {
 				return err
 			}
 			if string(data) == string(override) {
+				log.Debugf("target parameter file and marshaled data are the same, skipping commit.")
 				return nil
 			}
 		}
