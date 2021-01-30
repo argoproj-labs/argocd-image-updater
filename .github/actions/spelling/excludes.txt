@@ -13,3 +13,4 @@ ignore$
 \.js$
 \.yml$
 \.yaml$
+Dockerfile
