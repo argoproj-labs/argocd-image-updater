@@ -63,6 +63,7 @@ type Client interface {
 	Commit(pathSpec string, message string, signingKey string) error
 	Push(remote string, branch string, force bool) error
 	Add(path string) error
+	SymRefToBranch(symRef string) (string, error)
 }
 
 // nativeGitClient implements Client interface using git CLI
@@ -514,6 +515,12 @@ func (m *nativeGitClient) VerifyCommitSignature(revision string) (string, error)
 	return out, nil
 }
 
+// Commit perfoms a git commit for the given pathSpec to the currently checked
+// out branch. If pathSpec is empty, or the special value "*", all pending
+// changes will be commited. If message is not the empty string, it will be
+// used as the commit message, otherwise a default commit message will be used.
+// If signingKey is not the empty string, commit will be signed with the given
+// GPG key.
 func (m *nativeGitClient) Commit(pathSpec string, message string, signingKey string) error {
 	defaultCommitMsg := "Update parameters"
 	args := []string{"commit"}
@@ -555,6 +562,8 @@ func (m *nativeGitClient) Branch(sourceBranch string, targetBranch string) error
 	return nil
 }
 
+// Push pushes local changes to the remote branch. If force is true, will force
+// the remote to accept the push.
 func (m *nativeGitClient) Push(remote string, branch string, force bool) error {
 	args := []string{"push"}
 	if force {
@@ -568,8 +577,21 @@ func (m *nativeGitClient) Push(remote string, branch string, force bool) error {
 	return nil
 }
 
+// Add adds a path spec to the repository
 func (m *nativeGitClient) Add(path string) error {
 	return m.runCredentialedCmd("git", "add", path)
+}
+
+// SymRefToBranch retrieves the branch name a symbolic ref points to
+func (m *nativeGitClient) SymRefToBranch(symRef string) (string, error) {
+	output, err := m.runCmd("symbolic-ref", symRef)
+	if err != nil {
+		return "", fmt.Errorf("could not resolve symbolic ref '%s': %v", symRef, err)
+	}
+	if a := strings.SplitN(output, "refs/heads/", 2); len(a) == 2 {
+		return a[1], nil
+	}
+	return "", fmt.Errorf("no symbolic ref named '%s' could be found", symRef)
 }
 
 // runWrapper runs a custom command with all the semantics of running the Git client

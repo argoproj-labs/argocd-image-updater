@@ -1134,11 +1134,13 @@ func Test_CommitUpdates(t *testing.T) {
 		},
 	}
 
-	t.Run("Good commit", func(t *testing.T) {
+	t.Run("Good commit to target revision", func(t *testing.T) {
 		gitMock := &gitmock.Client{}
 		gitMock.On("Init").Return(nil)
 		gitMock.On("Fetch").Return(nil)
-		gitMock.On("Checkout", mock.Anything).Return(nil)
+		gitMock.On("Checkout", mock.Anything).Run(func(args mock.Arguments) {
+			args.Assert(t, "main")
+		}).Return(nil)
 		gitMock.On("Add", mock.Anything).Return(nil)
 		gitMock.On("Commit", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 		gitMock.On("Push", mock.Anything, mock.Anything, mock.Anything).Return(nil)
@@ -1148,6 +1150,49 @@ func Test_CommitUpdates(t *testing.T) {
 		wbc.GitClient = gitMock
 
 		err = commitChanges(&app, wbc)
+		assert.NoError(t, err)
+	})
+
+	t.Run("Good commit to configured branch", func(t *testing.T) {
+		gitMock := &gitmock.Client{}
+		gitMock.On("Init").Return(nil)
+		gitMock.On("Fetch").Return(nil)
+		gitMock.On("Checkout", mock.Anything).Run(func(args mock.Arguments) {
+			args.Assert(t, "mybranch")
+		}).Return(nil)
+		gitMock.On("Add", mock.Anything).Return(nil)
+		gitMock.On("Commit", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+		gitMock.On("Push", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+		gitMock.On("SymRefToBranch", mock.Anything).Return("mydefaultbranch", nil)
+
+		wbc, err := getWriteBackConfig(&app, &kubeClient, &argoClient)
+		require.NoError(t, err)
+		wbc.GitClient = gitMock
+		wbc.GitBranch = "mybranch"
+
+		err = commitChanges(&app, wbc)
+		assert.NoError(t, err)
+	})
+
+	t.Run("Good commit to default branch", func(t *testing.T) {
+		app := app.DeepCopy()
+		gitMock := &gitmock.Client{}
+		gitMock.On("Init").Return(nil)
+		gitMock.On("Fetch").Return(nil)
+		gitMock.On("Checkout", mock.Anything).Run(func(args mock.Arguments) {
+			args.Assert(t, "mydefaultbranch")
+		}).Return(nil)
+		gitMock.On("Add", mock.Anything).Return(nil)
+		gitMock.On("Commit", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+		gitMock.On("Push", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+		gitMock.On("SymRefToBranch", mock.Anything).Return("mydefaultbranch", nil)
+		wbc, err := getWriteBackConfig(app, &kubeClient, &argoClient)
+		require.NoError(t, err)
+		wbc.GitClient = gitMock
+		app.Spec.Source.TargetRevision = "HEAD"
+		wbc.GitBranch = ""
+
+		err = commitChanges(app, wbc)
 		assert.NoError(t, err)
 	})
 
@@ -1225,5 +1270,25 @@ func Test_CommitUpdates(t *testing.T) {
 
 		err = commitChanges(&app, wbc)
 		assert.Errorf(t, err, "cannot push")
+	})
+
+	t.Run("Cannot resolve default branch", func(t *testing.T) {
+		app := app.DeepCopy()
+		gitMock := &gitmock.Client{}
+		gitMock.On("Init").Return(nil)
+		gitMock.On("Fetch").Return(nil)
+		gitMock.On("Checkout", mock.Anything).Return(nil)
+		gitMock.On("Add", mock.Anything).Return(nil)
+		gitMock.On("Commit", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+		gitMock.On("Push", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+		gitMock.On("SymRefToBranch", mock.Anything).Return("", fmt.Errorf("failed to resolve ref"))
+		wbc, err := getWriteBackConfig(app, &kubeClient, &argoClient)
+		require.NoError(t, err)
+		wbc.GitClient = gitMock
+		app.Spec.Source.TargetRevision = "HEAD"
+		wbc.GitBranch = ""
+
+		err = commitChanges(app, wbc)
+		assert.Errorf(t, err, "failed to resolve ref")
 	})
 }
