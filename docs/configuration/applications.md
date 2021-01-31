@@ -213,3 +213,13 @@ following would use GitHub's default `main` branch:
 ```yaml
 argocd-image-updater.argoproj.io/git-branch: main
 ```
+
+#### Specifying the user and email address for commits
+
+Each Git commit is associated with an author's name and email address. If not
+configured, commits performed by Argo CD Image Updater will use
+`argocd-image-updater <noreply@argoproj.io>`
+as the author. You can override the author using the
+`--git-commit-user` and `--git-commit-email` command line switches or set
+`git.user` and `git.email`
+in the `argocd-image-updater-config` ConfigMap.

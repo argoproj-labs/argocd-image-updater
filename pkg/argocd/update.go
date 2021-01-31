@@ -31,6 +31,16 @@ type ImageUpdaterResult struct {
 	NumErrors                int
 }
 
+type UpdateConfiguration struct {
+	NewRegFN       registry.NewRegistryClient
+	ArgoClient     ArgoCD
+	KubeClient     *kube.KubernetesClient
+	UpdateApp      *ApplicationImages
+	DryRun         bool
+	GitCommitUser  string
+	GitCommitEmail string
+}
+
 type GitCredsSource func(app *v1alpha1.Application) (git.Creds, error)
 
 type WriteBackMethod int
@@ -45,9 +55,11 @@ type WriteBackConfig struct {
 	Method     WriteBackMethod
 	ArgoClient ArgoCD
 	// If GitClient is not nil, the client will be used for updates. Otherwise, a new client will be created.
-	GitClient git.Client
-	GetCreds  GitCredsSource
-	GitBranch string
+	GitClient      git.Client
+	GetCreds       GitCredsSource
+	GitBranch      string
+	GitCommitUser  string
+	GitCommitEmail string
 }
 
 // The following are helper structs to only marshal the fields we require
@@ -68,14 +80,14 @@ type helmOverride struct {
 }
 
 // UpdateApplication update all images of a single application. Will run in a goroutine.
-func UpdateApplication(newRegFn registry.NewRegistryClient, argoClient ArgoCD, kubeClient *kube.KubernetesClient, curApplication *ApplicationImages, dryRun bool) ImageUpdaterResult {
+func UpdateApplication(updateConf *UpdateConfiguration) ImageUpdaterResult {
 	var needUpdate bool = false
 
 	result := ImageUpdaterResult{}
-	app := curApplication.Application.GetName()
+	app := updateConf.UpdateApp.Application.GetName()
 
 	// Get all images that are deployed with the current application
-	applicationImages := GetImagesFromApplication(&curApplication.Application)
+	applicationImages := GetImagesFromApplication(&updateConf.UpdateApp.Application)
 
 	result.NumApplicationsProcessed += 1
 
@@ -85,7 +97,7 @@ func UpdateApplication(newRegFn registry.NewRegistryClient, argoClient ArgoCD, k
 	// Whether an image qualifies for update is dependent on semantic version
 	// constraints which are part of the application's annotation values.
 	//
-	for _, applicationImage := range curApplication.Images {
+	for _, applicationImage := range updateConf.UpdateApp.Images {
 		updateableImage := applicationImages.ContainsImage(applicationImage, false)
 		if updateableImage == nil {
 			log.WithContext().AddField("application", app).Debugf("Image '%s' seems not to be live in this application, skipping", applicationImage.ImageName)
@@ -119,22 +131,22 @@ func UpdateApplication(newRegFn registry.NewRegistryClient, argoClient ArgoCD, k
 			imgCtx.Debugf("Using no version constraint when looking for a new tag")
 		}
 
-		vc.SortMode = applicationImage.GetParameterUpdateStrategy(curApplication.Application.Annotations)
-		vc.MatchFunc, vc.MatchArgs = applicationImage.GetParameterMatch(curApplication.Application.Annotations)
-		vc.IgnoreList = applicationImage.GetParameterIgnoreTags(curApplication.Application.Annotations)
+		vc.SortMode = applicationImage.GetParameterUpdateStrategy(updateConf.UpdateApp.Application.Annotations)
+		vc.MatchFunc, vc.MatchArgs = applicationImage.GetParameterMatch(updateConf.UpdateApp.Application.Annotations)
+		vc.IgnoreList = applicationImage.GetParameterIgnoreTags(updateConf.UpdateApp.Application.Annotations)
 
 		// The endpoint can provide default credentials for pulling images
-		err = rep.SetEndpointCredentials(kubeClient)
+		err = rep.SetEndpointCredentials(updateConf.KubeClient)
 		if err != nil {
 			imgCtx.Errorf("Could not set registry endpoint credentials: %v", err)
 			result.NumErrors += 1
 			continue
 		}
 
-		imgCredSrc := applicationImage.GetParameterPullSecret(curApplication.Application.Annotations)
+		imgCredSrc := applicationImage.GetParameterPullSecret(updateConf.UpdateApp.Application.Annotations)
 		var creds *image.Credential = &image.Credential{}
 		if imgCredSrc != nil {
-			creds, err = imgCredSrc.FetchCredentials(rep.RegistryAPI, kubeClient)
+			creds, err = imgCredSrc.FetchCredentials(rep.RegistryAPI, updateConf.KubeClient)
 			if err != nil {
 				imgCtx.Warnf("Could not fetch credentials: %v", err)
 				result.NumErrors += 1
@@ -142,7 +154,7 @@ func UpdateApplication(newRegFn registry.NewRegistryClient, argoClient ArgoCD, k
 			}
 		}
 
-		regClient, err := newRegFn(rep, creds.Username, creds.Password)
+		regClient, err := updateConf.NewRegFN(rep, creds.Username, creds.Password)
 		if err != nil {
 			imgCtx.Errorf("Could not create registry client: %v", err)
 			result.NumErrors += 1
@@ -184,10 +196,10 @@ func UpdateApplication(newRegFn registry.NewRegistryClient, argoClient ArgoCD, k
 			imgCtx.Infof("Setting new image to %s", updateableImage.WithTag(latest).String())
 			needUpdate = true
 
-			if appType := GetApplicationType(&curApplication.Application); appType == ApplicationTypeKustomize {
-				err = SetKustomizeImage(&curApplication.Application, applicationImage.WithTag(latest))
+			if appType := GetApplicationType(&updateConf.UpdateApp.Application); appType == ApplicationTypeKustomize {
+				err = SetKustomizeImage(&updateConf.UpdateApp.Application, applicationImage.WithTag(latest))
 			} else if appType == ApplicationTypeHelm {
-				err = SetHelmImage(&curApplication.Application, applicationImage.WithTag(latest))
+				err = SetHelmImage(&updateConf.UpdateApp.Application, applicationImage.WithTag(latest))
 			} else {
 				result.NumErrors += 1
 				err = fmt.Errorf("Could not update application %s - neither Helm nor Kustomize application", app)
@@ -198,7 +210,7 @@ func UpdateApplication(newRegFn registry.NewRegistryClient, argoClient ArgoCD, k
 				result.NumErrors += 1
 				continue
 			} else {
-				imgCtx.Infof("Successfully updated image '%s' to '%s', but pending spec update (dry run=%v)", updateableImage.GetFullNameWithTag(), updateableImage.WithTag(latest).GetFullNameWithTag(), dryRun)
+				imgCtx.Infof("Successfully updated image '%s' to '%s', but pending spec update (dry run=%v)", updateableImage.GetFullNameWithTag(), updateableImage.WithTag(latest).GetFullNameWithTag(), updateConf.DryRun)
 				result.NumImagesUpdated += 1
 			}
 		} else {
@@ -206,16 +218,25 @@ func UpdateApplication(newRegFn registry.NewRegistryClient, argoClient ArgoCD, k
 		}
 	}
 
-	wbc, err := getWriteBackConfig(&curApplication.Application, kubeClient, argoClient)
+	wbc, err := getWriteBackConfig(&updateConf.UpdateApp.Application, updateConf.KubeClient, updateConf.ArgoClient)
 	if err != nil {
 		return result
 	}
 
+	if wbc.Method == WriteBackGit {
+		if updateConf.GitCommitUser != "" {
+			wbc.GitCommitUser = updateConf.GitCommitUser
+		}
+		if updateConf.GitCommitEmail != "" {
+			wbc.GitCommitEmail = updateConf.GitCommitEmail
+		}
+	}
+
 	if needUpdate {
 		logCtx := log.WithContext().AddField("application", app)
-		if !dryRun {
+		if !updateConf.DryRun {
 			logCtx.Infof("Committing %d parameter update(s) for application %s", result.NumImagesUpdated, app)
-			err := commitChanges(&curApplication.Application, wbc)
+			err := commitChanges(&updateConf.UpdateApp.Application, wbc)
 			if err != nil {
 				logCtx.Errorf("Could not update application spec: %v", err)
 				result.NumErrors += 1
@@ -351,6 +372,14 @@ func commitChanges(app *v1alpha1.Application, wbc *WriteBackConfig) error {
 		err = gitC.Fetch()
 		if err != nil {
 			return err
+		}
+
+		// Set username and e-mail address used to identify the commiter
+		if wbc.GitCommitUser != "" && wbc.GitCommitEmail != "" {
+			err = gitC.Config(wbc.GitCommitUser, wbc.GitCommitEmail)
+			if err != nil {
+				return err
+			}
 		}
 
 		// The branch to checkout is either a configured branch in the write-back

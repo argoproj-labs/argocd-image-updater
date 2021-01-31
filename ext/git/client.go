@@ -64,6 +64,7 @@ type Client interface {
 	Push(remote string, branch string, force bool) error
 	Add(path string) error
 	SymRefToBranch(symRef string) (string, error)
+	Config(username string, email string) error
 }
 
 // nativeGitClient implements Client interface using git CLI
@@ -592,6 +593,20 @@ func (m *nativeGitClient) SymRefToBranch(symRef string) (string, error) {
 		return a[1], nil
 	}
 	return "", fmt.Errorf("no symbolic ref named '%s' could be found", symRef)
+}
+
+// Config configures username and email address for the repository
+func (m *nativeGitClient) Config(username string, email string) error {
+	_, err := m.runCmd("config", "user.name", username)
+	if err != nil {
+		return fmt.Errorf("could not set git username: %v", err)
+	}
+	_, err = m.runCmd("config", "user.email", email)
+	if err != nil {
+		return fmt.Errorf("could not set git email: %v", err)
+	}
+
+	return nil
 }
 
 // runWrapper runs a custom command with all the semantics of running the Git client

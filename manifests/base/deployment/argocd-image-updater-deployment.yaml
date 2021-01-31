@@ -64,6 +64,18 @@ spec:
               name: argocd-image-updater-config
               key: log.level
               optional: true
+        - name: GIT_COMMIT_USER
+          valueFrom:
+            configMapKeyRef:
+              name: argocd-image-updater-config
+              key: git.user
+              optional: true
+        - name: GIT_COMMIT_EMAIL
+          valueFrom:
+            configMapKeyRef:
+              name: argocd-image-updater-config
+              key: git.email
+              optional: true
         livenessProbe:
           httpGet:
             path: /healthz
