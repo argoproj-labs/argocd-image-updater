@@ -15,6 +15,7 @@ RUN mkdir -p /usr/local/bin
 RUN mkdir -p /app/config
 
 COPY --from=builder /src/argocd-image-updater/dist/argocd-image-updater /usr/local/bin/
+COPY hack/git-ask-pass.sh /usr/local/bin/git-ask-pass.sh
 
 USER 1000
 
