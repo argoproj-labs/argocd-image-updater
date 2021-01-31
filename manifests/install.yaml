@@ -131,6 +131,18 @@ spec:
               key: log.level
               name: argocd-image-updater-config
               optional: true
+        - name: GIT_COMMIT_USER
+          valueFrom:
+            configMapKeyRef:
+              key: git.user
+              name: argocd-image-updater-config
+              optional: true
+        - name: GIT_COMMIT_EMAIL
+          valueFrom:
+            configMapKeyRef:
+              key: git.email
+              name: argocd-image-updater-config
+              optional: true
         image: argoprojlabs/argocd-image-updater:latest
         imagePullPolicy: Always
         livenessProbe:
