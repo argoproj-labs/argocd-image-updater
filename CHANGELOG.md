@@ -8,13 +8,26 @@ handling on your side.
 
 ### Upgrade notes (no really, you MUST read this)
 
-N/A
+* **Attention**: By default, `argocd-image-updater` now uses the K8s API to retrieve applications, instead of the Argo CD API. Also, it is now recommended to install in the same namespace as Argo CD is running in (`argocd` by default). For existing installations, which are running in a dedicated namespace.
+
+  To retain previous behaviour, set `applications_api: argocd` in `argocd-image-updater-config` ConfigMap before updating. However, it is recommended to move your installation into the `argocd` namespace (or wherever your Argo CD is installed to)
+
+* The permissions for the `argocd-image-updater-sa` ServiceAccount have been adapted to allow read access to resources of type `Secret` and `argoproj.io/Application`
 
 ### Bug fixes
 
+* fix: install missing git binary (#148)
+* fix: run 'git add' for create files before pushing back (#143)
+
 ### New features
 
+* feat: support managing Application CRD using K8S client (#144)
+* feat: Allow reuse of Argo CD repo credentials
+* feat: Git write-back of parameters (#133)
+
 ### Other changes
+
+* refactor: make argocd-image-updater-config volume mapping optional (#145)
 
 ## 2020-12-06 - Release v0.8.0
 
