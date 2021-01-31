@@ -1310,7 +1310,6 @@ func Test_CommitUpdates(t *testing.T) {
 		assert.Errorf(t, err, "could not configure git")
 	})
 
-
 	t.Run("Cannot init", func(t *testing.T) {
 		gitMock := &gitmock.Client{}
 		gitMock.On("Init").Return(fmt.Errorf("cannot init"))
