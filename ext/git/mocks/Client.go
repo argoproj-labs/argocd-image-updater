@@ -89,6 +89,20 @@ func (_m *Client) CommitSHA() (string, error) {
 	return r0, r1
 }
 
+// Config provides a mock function with given fields: username, email
+func (_m *Client) Config(username string, email string) error {
+	ret := _m.Called(username, email)
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(string, string) error); ok {
+		r0 = rf(username, email)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
 // Fetch provides a mock function with given fields:
 func (_m *Client) Fetch() error {
 	ret := _m.Called()

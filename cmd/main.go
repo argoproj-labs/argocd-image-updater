@@ -49,6 +49,8 @@ type ImageUpdaterConfig struct {
 	MetricsPort         int
 	RegistriesConf      string
 	AppNamePatterns     []string
+	GitCommitUser       string
+	GitCommitMail       string
 }
 
 // warmupImageCache performs a cache warm-up, which is basically one cycle of
@@ -142,7 +144,16 @@ func runImageUpdater(cfg *ImageUpdaterConfig, warmUp bool) (argocd.ImageUpdaterR
 		go func(app string, curApplication argocd.ApplicationImages) {
 			defer sem.Release(1)
 			log.Debugf("Processing application %s", app)
-			res := argocd.UpdateApplication(registry.NewClient, cfg.ArgoClient, cfg.KubeClient, &curApplication, dryRun)
+			upconf := &argocd.UpdateConfiguration{
+				NewRegFN:       registry.NewClient,
+				ArgoClient:     cfg.ArgoClient,
+				KubeClient:     cfg.KubeClient,
+				UpdateApp:      &curApplication,
+				DryRun:         dryRun,
+				GitCommitUser:  cfg.GitCommitUser,
+				GitCommitEmail: cfg.GitCommitMail,
+			}
+			res := argocd.UpdateApplication(upconf)
 			result.NumApplicationsProcessed += 1
 			result.NumErrors += res.NumErrors
 			result.NumImagesConsidered += res.NumImagesConsidered
@@ -529,6 +540,8 @@ func newRunCommand() *cobra.Command {
 	runCmd.Flags().StringVar(&cfg.ArgocdNamespace, "argocd-namespace", "", "namespace where ArgoCD runs in (current namespace by default)")
 	runCmd.Flags().StringSliceVar(&cfg.AppNamePatterns, "match-application-name", nil, "patterns to match application name against")
 	runCmd.Flags().BoolVar(&warmUpCache, "warmup-cache", true, "whether to perform a cache warm-up on startup")
+	runCmd.Flags().StringVar(&cfg.GitCommitUser, "git-commit-user", env.GetStringVal("GIT_COMMIT_USER", "argocd-image-updater"), "Username to use for Git commits")
+	runCmd.Flags().StringVar(&cfg.GitCommitMail, "git-commit-email", env.GetStringVal("GIT_COMMIT_EMAIL", "noreply@argoproj.io"), "E-Mail address to use for Git commits")
 
 	return runCmd
 }

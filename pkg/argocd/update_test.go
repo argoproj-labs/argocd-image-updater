@@ -68,7 +68,13 @@ func Test_UpdateApplication(t *testing.T) {
 				image.NewFromIdentifier("jannfis/foobar:~1.0.0"),
 			},
 		}
-		res := UpdateApplication(mockClientFn, &argoClient, &kubeClient, appImages, false)
+		res := UpdateApplication(&UpdateConfiguration{
+			NewRegFN:   mockClientFn,
+			ArgoClient: &argoClient,
+			KubeClient: &kubeClient,
+			UpdateApp:  appImages,
+			DryRun:     false,
+		})
 		assert.Equal(t, 0, res.NumErrors)
 		assert.Equal(t, 0, res.NumSkipped)
 		assert.Equal(t, 1, res.NumApplicationsProcessed)
@@ -122,7 +128,13 @@ func Test_UpdateApplication(t *testing.T) {
 				image.NewFromIdentifier("dummy=jannfis/foobar:1.0.1"),
 			},
 		}
-		res := UpdateApplication(mockClientFn, &argoClient, &kubeClient, appImages, false)
+		res := UpdateApplication(&UpdateConfiguration{
+			NewRegFN:   mockClientFn,
+			ArgoClient: &argoClient,
+			KubeClient: &kubeClient,
+			UpdateApp:  appImages,
+			DryRun:     false,
+		})
 		assert.Equal(t, 0, res.NumErrors)
 		assert.Equal(t, 0, res.NumSkipped)
 		assert.Equal(t, 1, res.NumApplicationsProcessed)
@@ -171,7 +183,13 @@ func Test_UpdateApplication(t *testing.T) {
 				image.NewFromIdentifier("jannfis/barbar:1.0.1"),
 			},
 		}
-		res := UpdateApplication(mockClientFn, &argoClient, &kubeClient, appImages, false)
+		res := UpdateApplication(&UpdateConfiguration{
+			NewRegFN:   mockClientFn,
+			ArgoClient: &argoClient,
+			KubeClient: &kubeClient,
+			UpdateApp:  appImages,
+			DryRun:     false,
+		})
 		assert.Equal(t, 0, res.NumErrors)
 		assert.Equal(t, 1, res.NumSkipped)
 		assert.Equal(t, 1, res.NumApplicationsProcessed)
@@ -220,7 +238,13 @@ func Test_UpdateApplication(t *testing.T) {
 				image.NewFromIdentifier("jannfis/foobar:1.0.1"),
 			},
 		}
-		res := UpdateApplication(mockClientFn, &argoClient, &kubeClient, appImages, false)
+		res := UpdateApplication(&UpdateConfiguration{
+			NewRegFN:   mockClientFn,
+			ArgoClient: &argoClient,
+			KubeClient: &kubeClient,
+			UpdateApp:  appImages,
+			DryRun:     false,
+		})
 		assert.Equal(t, 0, res.NumErrors)
 		assert.Equal(t, 0, res.NumSkipped)
 		assert.Equal(t, 1, res.NumApplicationsProcessed)
@@ -289,7 +313,13 @@ func Test_UpdateApplication(t *testing.T) {
 				image.NewFromIdentifier("dummy=jannfis/foobar"),
 			},
 		}
-		res := UpdateApplication(mockClientFn, &argoClient, &kubeClient, appImages, false)
+		res := UpdateApplication(&UpdateConfiguration{
+			NewRegFN:   mockClientFn,
+			ArgoClient: &argoClient,
+			KubeClient: &kubeClient,
+			UpdateApp:  appImages,
+			DryRun:     false,
+		})
 		assert.Equal(t, 0, res.NumErrors)
 		assert.Equal(t, 0, res.NumSkipped)
 		assert.Equal(t, 1, res.NumApplicationsProcessed)
@@ -358,7 +388,13 @@ func Test_UpdateApplication(t *testing.T) {
 				image.NewFromIdentifier("dummy=jannfis/foobar"),
 			},
 		}
-		res := UpdateApplication(mockClientFn, &argoClient, &kubeClient, appImages, false)
+		res := UpdateApplication(&UpdateConfiguration{
+			NewRegFN:   mockClientFn,
+			ArgoClient: &argoClient,
+			KubeClient: &kubeClient,
+			UpdateApp:  appImages,
+			DryRun:     false,
+		})
 		assert.Equal(t, 0, res.NumErrors)
 		assert.Equal(t, 0, res.NumSkipped)
 		assert.Equal(t, 1, res.NumApplicationsProcessed)
@@ -407,7 +443,13 @@ func Test_UpdateApplication(t *testing.T) {
 				image.NewFromIdentifier("example.io/jannfis/foobar:1.0.1"),
 			},
 		}
-		res := UpdateApplication(mockClientFn, &argoClient, &kubeClient, appImages, false)
+		res := UpdateApplication(&UpdateConfiguration{
+			NewRegFN:   mockClientFn,
+			ArgoClient: &argoClient,
+			KubeClient: &kubeClient,
+			UpdateApp:  appImages,
+			DryRun:     false,
+		})
 		assert.Equal(t, 1, res.NumErrors)
 		assert.Equal(t, 0, res.NumSkipped)
 		assert.Equal(t, 1, res.NumApplicationsProcessed)
@@ -454,7 +496,13 @@ func Test_UpdateApplication(t *testing.T) {
 				image.NewFromIdentifier("jannfis/foobar:1.0.1"),
 			},
 		}
-		res := UpdateApplication(mockClientFn, &argoClient, &kubeClient, appImages, false)
+		res := UpdateApplication(&UpdateConfiguration{
+			NewRegFN:   mockClientFn,
+			ArgoClient: &argoClient,
+			KubeClient: &kubeClient,
+			UpdateApp:  appImages,
+			DryRun:     false,
+		})
 		assert.Equal(t, 1, res.NumErrors)
 		assert.Equal(t, 0, res.NumSkipped)
 		assert.Equal(t, 1, res.NumApplicationsProcessed)
@@ -503,7 +551,13 @@ func Test_UpdateApplication(t *testing.T) {
 				image.NewFromIdentifier("jannfis/foobar:1.0.1"),
 			},
 		}
-		res := UpdateApplication(mockClientFn, &argoClient, &kubeClient, appImages, false)
+		res := UpdateApplication(&UpdateConfiguration{
+			NewRegFN:   mockClientFn,
+			ArgoClient: &argoClient,
+			KubeClient: &kubeClient,
+			UpdateApp:  appImages,
+			DryRun:     false,
+		})
 		assert.Equal(t, 1, res.NumErrors)
 		assert.Equal(t, 0, res.NumSkipped)
 		assert.Equal(t, 1, res.NumApplicationsProcessed)
@@ -552,7 +606,13 @@ func Test_UpdateApplication(t *testing.T) {
 				image.NewFromIdentifier("jannfis/foobar:stable"),
 			},
 		}
-		res := UpdateApplication(mockClientFn, &argoClient, &kubeClient, appImages, false)
+		res := UpdateApplication(&UpdateConfiguration{
+			NewRegFN:   mockClientFn,
+			ArgoClient: &argoClient,
+			KubeClient: &kubeClient,
+			UpdateApp:  appImages,
+			DryRun:     false,
+		})
 		assert.Equal(t, 1, res.NumErrors)
 		assert.Equal(t, 0, res.NumSkipped)
 		assert.Equal(t, 1, res.NumApplicationsProcessed)
