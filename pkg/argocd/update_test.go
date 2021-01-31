@@ -1256,6 +1256,61 @@ func Test_CommitUpdates(t *testing.T) {
 		assert.NoError(t, err)
 	})
 
+	t.Run("Good commit with author information", func(t *testing.T) {
+		app := app.DeepCopy()
+		gitMock := &gitmock.Client{}
+		gitMock.On("Init").Return(nil)
+		gitMock.On("Fetch").Return(nil)
+		gitMock.On("Checkout", mock.Anything).Run(func(args mock.Arguments) {
+			args.Assert(t, "mydefaultbranch")
+		}).Return(nil)
+		gitMock.On("Add", mock.Anything).Return(nil)
+		gitMock.On("Commit", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+		gitMock.On("Push", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+		gitMock.On("SymRefToBranch", mock.Anything).Return("mydefaultbranch", nil)
+		gitMock.On("Config", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
+			args.Assert(t, "someone", "someone@example.com")
+		}).Return(nil)
+		wbc, err := getWriteBackConfig(app, &kubeClient, &argoClient)
+		require.NoError(t, err)
+		wbc.GitClient = gitMock
+		app.Spec.Source.TargetRevision = "HEAD"
+		wbc.GitBranch = ""
+		wbc.GitCommitUser = "someone"
+		wbc.GitCommitEmail = "someone@example.com"
+
+		err = commitChanges(app, wbc)
+		assert.NoError(t, err)
+	})
+
+	t.Run("Cannot set author information", func(t *testing.T) {
+		app := app.DeepCopy()
+		gitMock := &gitmock.Client{}
+		gitMock.On("Init").Return(nil)
+		gitMock.On("Fetch").Return(nil)
+		gitMock.On("Checkout", mock.Anything).Run(func(args mock.Arguments) {
+			args.Assert(t, "mydefaultbranch")
+		}).Return(nil)
+		gitMock.On("Add", mock.Anything).Return(nil)
+		gitMock.On("Commit", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+		gitMock.On("Push", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+		gitMock.On("SymRefToBranch", mock.Anything).Return("mydefaultbranch", nil)
+		gitMock.On("Config", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
+			args.Assert(t, "someone", "someone@example.com")
+		}).Return(fmt.Errorf("could not configure git"))
+		wbc, err := getWriteBackConfig(app, &kubeClient, &argoClient)
+		require.NoError(t, err)
+		wbc.GitClient = gitMock
+		app.Spec.Source.TargetRevision = "HEAD"
+		wbc.GitBranch = ""
+		wbc.GitCommitUser = "someone"
+		wbc.GitCommitEmail = "someone@example.com"
+
+		err = commitChanges(app, wbc)
+		assert.Errorf(t, err, "could not configure git")
+	})
+
+
 	t.Run("Cannot init", func(t *testing.T) {
 		gitMock := &gitmock.Client{}
 		gitMock.On("Init").Return(fmt.Errorf("cannot init"))
