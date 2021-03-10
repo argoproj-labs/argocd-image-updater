@@ -12,8 +12,9 @@ import (
 func StartHealthServer(port int) chan error {
 	errCh := make(chan error)
 	go func() {
-		http.HandleFunc("/healthz", HealthProbe)
-		errCh <- http.ListenAndServe(fmt.Sprintf(":%d", port), nil)
+		sm := http.NewServeMux()
+		sm.HandleFunc("/healthz", HealthProbe)
+		errCh <- http.ListenAndServe(fmt.Sprintf(":%d", port), sm)
 	}()
 	return errCh
 }
