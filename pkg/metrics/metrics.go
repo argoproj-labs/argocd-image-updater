@@ -40,8 +40,9 @@ type ClientMetrics struct {
 func StartMetricsServer(port int) chan error {
 	errCh := make(chan error)
 	go func() {
-		http.Handle("/metrics", promhttp.Handler())
-		errCh <- http.ListenAndServe(fmt.Sprintf(":%d", port), nil)
+		sm := http.NewServeMux()
+		sm.Handle("/metrics", promhttp.Handler())
+		errCh <- http.ListenAndServe(fmt.Sprintf(":%d", port), sm)
 	}()
 	return errCh
 }
