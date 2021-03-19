@@ -6,7 +6,7 @@ set -x
 SRCROOT="$( CDPATH='' cd -- "$(dirname "$0")/.." && pwd -P )"
 # Make sure that KUSTOMIZE points to a v2 - we need that to support the kubectl
 # integration.
-KUSTOMIZE=${KUSTOMIZE:-kustomize}
+KUSTOMIZE=${KUSTOMIZE:-kustomize2}
 TEMPFILE=$(mktemp /tmp/aic-manifests.XXXXXX)
 
 IMAGE_NAMESPACE="${IMAGE_NAMESPACE:-argoprojlabs}"
