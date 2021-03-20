@@ -83,21 +83,3 @@ Otherwise, current known limitations are:
   Image Updater is running in (or has access to). It is currently not possible
   to fetch those secrets from other clusters.
 
-## A short note about Git and write-back
-
-In its current incarnation, Argo CD Image Updater does not write back any of
-the changes to a Git repo. We are investigating ways to implement this much
-requested feature, but this will still take some time. We know how important
-this feature is for the community.
-
-However, as Argo CD Image Updater leverages the Argo CD API, consider that the
-changes that are made by Argo CD Image Updater only affect the Argo CD
-`Application` resource. More precisely, it will update the `Application`
-resource's `Spec` to modify application parameters. Whenever Argo CD renders
-the application's resources' manifests, it will take the parameters in the
-application's spec into the consideration and replace any container image
-references to the values stored in the `Application` spec.
-
-As long as your `Application` resource does not live in Git (i.e. you have
-created the application using the Web UI or via `argocd app create ...` using
-the CLI), there will be no benefit what so ever from writing to Git.
