@@ -90,8 +90,9 @@ This method is the default and requires no further configuration.
 ### Using the Git write-back method
 
 !!!warning "Compatibility with Argo CD"
-    The Git write-back method requires a feature in Argo CD that is not yet
-    GA and will be released with Argo CD v1.9.
+    The Git write-back method requires a feature in Argo CD that has been
+    introduced with Argo CD v2.0. Git write-back will not work with earlier
+    versions of Argo CD.
 
 The `git` write-back method uses Git to permanently store its parameter
 overrides along with the Application's resource manifests. This will enable
