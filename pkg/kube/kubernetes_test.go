@@ -4,10 +4,10 @@ import (
 	"context"
 	"testing"
 
-	appv1alpha1 "github.com/argoproj/argo-cd/pkg/apis/application/v1alpha1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"github.com/argoproj-labs/argocd-image-updater/test/fake"
 	"github.com/argoproj-labs/argocd-image-updater/test/fixture"
+	appv1alpha1 "github.com/argoproj/argo-cd/pkg/apis/application/v1alpha1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -83,15 +83,15 @@ func Test_CreateApplicationEvent(t *testing.T) {
 				},
 			},
 		}
-        annotations := map[string]string {
-            "origin": "nginx:1.12.2",
-        }
+		annotations := map[string]string{
+			"origin": "nginx:1.12.2",
+		}
 		clientset := fake.NewFakeClientsetWithResources()
 		client := &KubernetesClient{Clientset: clientset, Namespace: "default"}
 		event, err := client.CreateApplicationEvent(application, "TestEvent", "test-message", annotations)
 		require.NoError(t, err)
 		require.NotNil(t, event)
-		assert.Equal(t, "ArgocdImageUpdater", string(event.Source.Component))
+		assert.Equal(t, "ArgocdImageUpdater", event.Source.Component)
 		assert.Equal(t, "default", client.Namespace)
 	})
 }

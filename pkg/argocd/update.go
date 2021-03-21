@@ -203,16 +203,19 @@ func UpdateApplication(updateConf *UpdateConfiguration) ImageUpdaterResult {
 				result.NumErrors += 1
 				continue
 			} else {
-                message := fmt.Sprintf("Successfully updated image '%s' to '%s', but pending spec update (dry run=%v)", updateableImage.GetFullNameWithTag(), updateableImage.WithTag(latest).GetFullNameWithTag(), updateConf.DryRun)
+				message := fmt.Sprintf("Successfully updated image '%s' to '%s', but pending spec update (dry run=%v)", updateableImage.GetFullNameWithTag(), updateableImage.WithTag(latest).GetFullNameWithTag(), updateConf.DryRun)
 				imgCtx.Infof(message)
 				result.NumImagesUpdated += 1
-                if ! updateConf.DryRun {
-                    annotations := map[string]string{
-                            "image-old": updateableImage.GetFullNameWithTag(),
-                            "image-new": updateableImage.WithTag(latest).GetFullNameWithTag(),
-                        }
-                    updateConf.KubeClient.CreateApplicationEvent(&updateConf.UpdateApp.Application, "ImageUpdated", message, annotations)
-                }
+				if !updateConf.DryRun {
+					annotations := map[string]string{
+						"image-old": updateableImage.GetFullNameWithTag(),
+						"image-new": updateableImage.WithTag(latest).GetFullNameWithTag(),
+					}
+					_, err = updateConf.KubeClient.CreateApplicationEvent(&updateConf.UpdateApp.Application, "ImageUpdated", message, annotations)
+					if err != nil {
+						imgCtx.Warnf("Event could not be sent: %v", err)
+					}
+				}
 			}
 		} else {
 			// We need to explicitly set the up-to-date images in the spec too, so
