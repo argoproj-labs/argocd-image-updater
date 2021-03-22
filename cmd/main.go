@@ -51,7 +51,7 @@ type ImageUpdaterConfig struct {
 	AppNamePatterns     []string
 	GitCommitUser       string
 	GitCommitMail       string
-	disableKubeEvents   bool
+	DisableKubeEvents   bool
 }
 
 // warmupImageCache performs a cache warm-up, which is basically one cycle of
@@ -153,7 +153,7 @@ func runImageUpdater(cfg *ImageUpdaterConfig, warmUp bool) (argocd.ImageUpdaterR
 				DryRun:            dryRun,
 				GitCommitUser:     cfg.GitCommitUser,
 				GitCommitEmail:    cfg.GitCommitMail,
-				DisableKubeEvents: cfg.disableKubeEvents,
+				DisableKubeEvents: cfg.DisableKubeEvents,
 			}
 			res := argocd.UpdateApplication(upconf)
 			result.NumApplicationsProcessed += 1
@@ -546,7 +546,7 @@ func newRunCommand() *cobra.Command {
 	runCmd.Flags().BoolVar(&warmUpCache, "warmup-cache", true, "whether to perform a cache warm-up on startup")
 	runCmd.Flags().StringVar(&cfg.GitCommitUser, "git-commit-user", env.GetStringVal("GIT_COMMIT_USER", "argocd-image-updater"), "Username to use for Git commits")
 	runCmd.Flags().StringVar(&cfg.GitCommitMail, "git-commit-email", env.GetStringVal("GIT_COMMIT_EMAIL", "noreply@argoproj.io"), "E-Mail address to use for Git commits")
-	runCmd.Flags().BoolVar(&cfg.disableKubeEvents, "disable-kube-events", env.GetBoolVal("IMAGE_UPDATER_KUBE_EVENTS", false), "Disable kubernetes events")
+	runCmd.Flags().BoolVar(&cfg.DisableKubeEvents, "disable-kube-events", env.GetBoolVal("IMAGE_UPDATER_KUBE_EVENTS", false), "Disable kubernetes events")
 
 	return runCmd
 }
