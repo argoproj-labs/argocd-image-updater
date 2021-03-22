@@ -76,6 +76,12 @@ spec:
               name: argocd-image-updater-config
               key: git.email
               optional: true
+        - name: IMAGE_UPDATER_KUBE_EVENTS
+          valueFrom:
+            configMapKeyRef:
+              name: argocd-image-updater-config
+              key: kube.events
+              optional: true
         livenessProbe:
           httpGet:
             path: /healthz

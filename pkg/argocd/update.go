@@ -32,13 +32,14 @@ type ImageUpdaterResult struct {
 }
 
 type UpdateConfiguration struct {
-	NewRegFN       registry.NewRegistryClient
-	ArgoClient     ArgoCD
-	KubeClient     *kube.KubernetesClient
-	UpdateApp      *ApplicationImages
-	DryRun         bool
-	GitCommitUser  string
-	GitCommitEmail string
+	NewRegFN          registry.NewRegistryClient
+	ArgoClient        ArgoCD
+	KubeClient        *kube.KubernetesClient
+	UpdateApp         *ApplicationImages
+	DryRun            bool
+	GitCommitUser     string
+	GitCommitEmail    string
+	DisableKubeEvents bool
 }
 
 type GitCredsSource func(app *v1alpha1.Application) (git.Creds, error)
@@ -206,7 +207,7 @@ func UpdateApplication(updateConf *UpdateConfiguration) ImageUpdaterResult {
 				message := fmt.Sprintf("Successfully updated image '%s' to '%s', but pending spec update (dry run=%v)", updateableImage.GetFullNameWithTag(), updateableImage.WithTag(latest).GetFullNameWithTag(), updateConf.DryRun)
 				imgCtx.Infof(message)
 				result.NumImagesUpdated += 1
-				if !updateConf.DryRun {
+				if !updateConf.DryRun && updateConf.KubeClient != nil && !updateConf.DisableKubeEvents {
 					annotations := map[string]string{
 						"image-old": updateableImage.GetFullNameWithTag(),
 						"image-new": updateableImage.WithTag(latest).GetFullNameWithTag(),

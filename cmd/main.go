@@ -51,6 +51,7 @@ type ImageUpdaterConfig struct {
 	AppNamePatterns     []string
 	GitCommitUser       string
 	GitCommitMail       string
+	disableKubeEvents   bool
 }
 
 // warmupImageCache performs a cache warm-up, which is basically one cycle of
@@ -145,13 +146,14 @@ func runImageUpdater(cfg *ImageUpdaterConfig, warmUp bool) (argocd.ImageUpdaterR
 			defer sem.Release(1)
 			log.Debugf("Processing application %s", app)
 			upconf := &argocd.UpdateConfiguration{
-				NewRegFN:       registry.NewClient,
-				ArgoClient:     cfg.ArgoClient,
-				KubeClient:     cfg.KubeClient,
-				UpdateApp:      &curApplication,
-				DryRun:         dryRun,
-				GitCommitUser:  cfg.GitCommitUser,
-				GitCommitEmail: cfg.GitCommitMail,
+				NewRegFN:          registry.NewClient,
+				ArgoClient:        cfg.ArgoClient,
+				KubeClient:        cfg.KubeClient,
+				UpdateApp:         &curApplication,
+				DryRun:            dryRun,
+				GitCommitUser:     cfg.GitCommitUser,
+				GitCommitEmail:    cfg.GitCommitMail,
+				DisableKubeEvents: cfg.disableKubeEvents,
 			}
 			res := argocd.UpdateApplication(upconf)
 			result.NumApplicationsProcessed += 1
@@ -238,6 +240,7 @@ func newTestCommand() *cobra.Command {
 		kubeConfig        string
 		disableKubernetes bool
 		ignoreTags        []string
+		disableKubeEvents bool
 	)
 	var runCmd = &cobra.Command{
 		Use:   "test IMAGE",
@@ -251,7 +254,7 @@ to using the given parametrization. Command line switches can be used as a
 way to supply the required parameters.
 `,
 		Example: `
-# In the most simple form, check for the latest available (semver) version of 
+# In the most simple form, check for the latest available (semver) version of
 # an image in the registry
 argocd-image-updater test nginx
 
@@ -372,6 +375,7 @@ argocd-image-updater test nginx --allow-tags '^1.19.\d+(\-.*)*$' --update-strate
 	runCmd.Flags().BoolVar(&disableKubernetes, "disable-kubernetes", false, "whether to disable the Kubernetes client")
 	runCmd.Flags().StringVar(&kubeConfig, "kubeconfig", "", "path to your Kubernetes client configuration")
 	runCmd.Flags().StringVar(&credentials, "credentials", "", "the credentials definition for the test (overrides registry config)")
+	runCmd.Flags().BoolVar(&disableKubeEvents, "disable-kubernetes-events", false, "Disable kubernetes events")
 	return runCmd
 }
 
@@ -542,6 +546,7 @@ func newRunCommand() *cobra.Command {
 	runCmd.Flags().BoolVar(&warmUpCache, "warmup-cache", true, "whether to perform a cache warm-up on startup")
 	runCmd.Flags().StringVar(&cfg.GitCommitUser, "git-commit-user", env.GetStringVal("GIT_COMMIT_USER", "argocd-image-updater"), "Username to use for Git commits")
 	runCmd.Flags().StringVar(&cfg.GitCommitMail, "git-commit-email", env.GetStringVal("GIT_COMMIT_EMAIL", "noreply@argoproj.io"), "E-Mail address to use for Git commits")
+	runCmd.Flags().BoolVar(&cfg.disableKubeEvents, "disable-kube-events", env.GetBoolVal("IMAGE_UPDATER_KUBE_EVENTS", false), "Disable kubernetes events")
 
 	return runCmd
 }
