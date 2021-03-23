@@ -34,6 +34,12 @@ rules:
   - list
   - update
   - patch
+- apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - create
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -141,6 +147,12 @@ spec:
           valueFrom:
             configMapKeyRef:
               key: git.email
+              name: argocd-image-updater-config
+              optional: true
+        - name: IMAGE_UPDATER_KUBE_EVENTS
+          valueFrom:
+            configMapKeyRef:
+              key: kube.events
               name: argocd-image-updater-config
               optional: true
         image: argoprojlabs/argocd-image-updater:latest

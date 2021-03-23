@@ -5,7 +5,7 @@ images:
 - name: argoprojlabs/argocd-image-updater
   newTag: latest
 
-bases:
+resources:
 - ./config
 - ./deployment
 - ./rbac
