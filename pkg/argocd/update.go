@@ -196,14 +196,7 @@ func UpdateApplication(updateConf *UpdateConfiguration) ImageUpdaterResult {
 			imgCtx.Infof("Setting new image to %s", updateableImage.WithTag(latest).String())
 			needUpdate = true
 
-			if appType := GetApplicationType(&updateConf.UpdateApp.Application); appType == ApplicationTypeKustomize {
-				err = SetKustomizeImage(&updateConf.UpdateApp.Application, applicationImage.WithTag(latest))
-			} else if appType == ApplicationTypeHelm {
-				err = SetHelmImage(&updateConf.UpdateApp.Application, applicationImage.WithTag(latest))
-			} else {
-				result.NumErrors += 1
-				err = fmt.Errorf("Could not update application %s - neither Helm nor Kustomize application", app)
-			}
+			err = setAppImage(&updateConf.UpdateApp.Application, applicationImage.WithTag(latest))
 
 			if err != nil {
 				imgCtx.Errorf("Error while trying to update image: %v", err)
@@ -214,6 +207,14 @@ func UpdateApplication(updateConf *UpdateConfiguration) ImageUpdaterResult {
 				result.NumImagesUpdated += 1
 			}
 		} else {
+			// We need to explicitly set the up-to-date images in the spec too, so
+			// that we correctly marshal out the parameter overrides to include all
+			// images, regardless of those were updated or not.
+			err = setAppImage(&updateConf.UpdateApp.Application, updateableImage.WithTag(updateableImage.ImageTag))
+			if err != nil {
+				imgCtx.Errorf("Error while trying to update image: %v", err)
+				result.NumErrors += 1
+			}
 			imgCtx.Debugf("Image '%s' already on latest allowed version", updateableImage.GetFullNameWithTag())
 		}
 	}
@@ -250,6 +251,18 @@ func UpdateApplication(updateConf *UpdateConfiguration) ImageUpdaterResult {
 	}
 
 	return result
+}
+
+func setAppImage(app *v1alpha1.Application, img *image.ContainerImage) error {
+	var err error
+	if appType := GetApplicationType(app); appType == ApplicationTypeKustomize {
+		err = SetKustomizeImage(app, img)
+	} else if appType == ApplicationTypeHelm {
+		err = SetHelmImage(app, img)
+	} else {
+		err = fmt.Errorf("Could not update application %s - neither Helm nor Kustomize application", app)
+	}
+	return err
 }
 
 // marshalParamsOverride marshals the parameter overrides of a given application
