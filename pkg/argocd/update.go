@@ -14,6 +14,7 @@ import (
 	"github.com/argoproj-labs/argocd-image-updater/pkg/kube"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/log"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/registry"
+	"github.com/argoproj-labs/argocd-image-updater/pkg/tag"
 
 	"gopkg.in/yaml.v2"
 
@@ -80,12 +81,19 @@ type helmOverride struct {
 	Helm helmParameters `json:"helm"`
 }
 
+type change struct {
+	imageName string
+	oldTag    *tag.ImageTag
+	newTag    *tag.ImageTag
+}
+
 // UpdateApplication update all images of a single application. Will run in a goroutine.
 func UpdateApplication(updateConf *UpdateConfiguration) ImageUpdaterResult {
 	var needUpdate bool = false
 
 	result := ImageUpdaterResult{}
 	app := updateConf.UpdateApp.Application.GetName()
+	changeList := make([]change, 0)
 
 	// Get all images that are deployed with the current application
 	applicationImages := GetImagesFromApplication(&updateConf.UpdateApp.Application)
@@ -204,19 +212,9 @@ func UpdateApplication(updateConf *UpdateConfiguration) ImageUpdaterResult {
 				result.NumErrors += 1
 				continue
 			} else {
-				message := fmt.Sprintf("Successfully updated image '%s' to '%s', but pending spec update (dry run=%v)", updateableImage.GetFullNameWithTag(), updateableImage.WithTag(latest).GetFullNameWithTag(), updateConf.DryRun)
-				imgCtx.Infof(message)
-				result.NumImagesUpdated += 1
-				if !updateConf.DryRun && updateConf.KubeClient != nil && !updateConf.DisableKubeEvents {
-					annotations := map[string]string{
-						"image-old": updateableImage.GetFullNameWithTag(),
-						"image-new": updateableImage.WithTag(latest).GetFullNameWithTag(),
-					}
-					_, err = updateConf.KubeClient.CreateApplicationEvent(&updateConf.UpdateApp.Application, "ImageUpdated", message, annotations)
-					if err != nil {
-						imgCtx.Warnf("Event could not be sent: %v", err)
-					}
-				}
+				containerImageNew := updateableImage.WithTag(latest)
+				imgCtx.Infof("Successfully updated image '%s' to '%s', but pending spec update (dry run=%v)", updateableImage.GetFullNameWithTag(), containerImageNew.GetFullNameWithTag(), updateConf.DryRun)
+				changeList = append(changeList, change{updateableImage.ImageName, updateableImage.ImageTag, containerImageNew.ImageTag})
 			}
 		} else {
 			// We need to explicitly set the up-to-date images in the spec too, so
@@ -256,6 +254,19 @@ func UpdateApplication(updateConf *UpdateConfiguration) ImageUpdaterResult {
 				result.NumImagesUpdated = 0
 			} else {
 				logCtx.Infof("Successfully updated the live application spec")
+				result.NumImagesUpdated += 1
+				if !updateConf.DisableKubeEvents && updateConf.KubeClient != nil {
+					annotations := map[string]string{}
+					for _, c := range changeList {
+						annotations[fmt.Sprintf("%s/oldtag", c.imageName)] = c.oldTag.TagName
+						annotations[fmt.Sprintf("%s/newtag", c.imageName)] = c.newTag.TagName
+					}
+					message := fmt.Sprintf("Successfully updated application '%s'", app)
+					_, err = updateConf.KubeClient.CreateApplicationEvent(&updateConf.UpdateApp.Application, "ImagesUpdated", message, annotations)
+					if err != nil {
+						logCtx.Warnf("Event could not be sent: %v", err)
+					}
+				}
 			}
 		} else {
 			logCtx.Infof("Dry run - not commiting %d changes to application", result.NumImagesUpdated)
