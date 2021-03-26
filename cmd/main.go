@@ -118,6 +118,8 @@ func runImageUpdater(cfg *ImageUpdaterConfig, warmUp bool) (argocd.ImageUpdaterR
 		log.Infof("Starting image update cycle, considering %d annotated application(s) for update", len(appList))
 	}
 
+	syncState := argocd.NewSyncIterationState()
+
 	// Allow a maximum of MaxConcurrency number of goroutines to exist at the
 	// same time. If in warm-up mode, set to 1 explicitly.
 	var concurrency int = cfg.MaxConcurrency
@@ -155,7 +157,7 @@ func runImageUpdater(cfg *ImageUpdaterConfig, warmUp bool) (argocd.ImageUpdaterR
 				GitCommitEmail:    cfg.GitCommitMail,
 				DisableKubeEvents: cfg.DisableKubeEvents,
 			}
-			res := argocd.UpdateApplication(upconf)
+			res := argocd.UpdateApplication(upconf, syncState)
 			result.NumApplicationsProcessed += 1
 			result.NumErrors += res.NumErrors
 			result.NumImagesConsidered += res.NumImagesConsidered

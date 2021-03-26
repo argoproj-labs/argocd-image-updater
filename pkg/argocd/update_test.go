@@ -74,7 +74,7 @@ func Test_UpdateApplication(t *testing.T) {
 			KubeClient: &kubeClient,
 			UpdateApp:  appImages,
 			DryRun:     false,
-		})
+		}, NewSyncIterationState())
 		assert.Equal(t, 0, res.NumErrors)
 		assert.Equal(t, 0, res.NumSkipped)
 		assert.Equal(t, 1, res.NumApplicationsProcessed)
@@ -134,7 +134,7 @@ func Test_UpdateApplication(t *testing.T) {
 			KubeClient: &kubeClient,
 			UpdateApp:  appImages,
 			DryRun:     false,
-		})
+		}, NewSyncIterationState())
 		assert.Equal(t, 0, res.NumErrors)
 		assert.Equal(t, 0, res.NumSkipped)
 		assert.Equal(t, 1, res.NumApplicationsProcessed)
@@ -189,7 +189,7 @@ func Test_UpdateApplication(t *testing.T) {
 			KubeClient: &kubeClient,
 			UpdateApp:  appImages,
 			DryRun:     false,
-		})
+		}, NewSyncIterationState())
 		assert.Equal(t, 0, res.NumErrors)
 		assert.Equal(t, 1, res.NumSkipped)
 		assert.Equal(t, 1, res.NumApplicationsProcessed)
@@ -244,7 +244,7 @@ func Test_UpdateApplication(t *testing.T) {
 			KubeClient: &kubeClient,
 			UpdateApp:  appImages,
 			DryRun:     false,
-		})
+		}, NewSyncIterationState())
 		assert.Equal(t, 0, res.NumErrors)
 		assert.Equal(t, 0, res.NumSkipped)
 		assert.Equal(t, 1, res.NumApplicationsProcessed)
@@ -319,7 +319,7 @@ func Test_UpdateApplication(t *testing.T) {
 			KubeClient: &kubeClient,
 			UpdateApp:  appImages,
 			DryRun:     false,
-		})
+		}, NewSyncIterationState())
 		assert.Equal(t, 0, res.NumErrors)
 		assert.Equal(t, 0, res.NumSkipped)
 		assert.Equal(t, 1, res.NumApplicationsProcessed)
@@ -394,7 +394,7 @@ func Test_UpdateApplication(t *testing.T) {
 			KubeClient: &kubeClient,
 			UpdateApp:  appImages,
 			DryRun:     false,
-		})
+		}, NewSyncIterationState())
 		assert.Equal(t, 0, res.NumErrors)
 		assert.Equal(t, 0, res.NumSkipped)
 		assert.Equal(t, 1, res.NumApplicationsProcessed)
@@ -449,7 +449,7 @@ func Test_UpdateApplication(t *testing.T) {
 			KubeClient: &kubeClient,
 			UpdateApp:  appImages,
 			DryRun:     false,
-		})
+		}, NewSyncIterationState())
 		assert.Equal(t, 1, res.NumErrors)
 		assert.Equal(t, 0, res.NumSkipped)
 		assert.Equal(t, 1, res.NumApplicationsProcessed)
@@ -502,7 +502,7 @@ func Test_UpdateApplication(t *testing.T) {
 			KubeClient: &kubeClient,
 			UpdateApp:  appImages,
 			DryRun:     false,
-		})
+		}, NewSyncIterationState())
 		assert.Equal(t, 1, res.NumErrors)
 		assert.Equal(t, 0, res.NumSkipped)
 		assert.Equal(t, 1, res.NumApplicationsProcessed)
@@ -557,7 +557,7 @@ func Test_UpdateApplication(t *testing.T) {
 			KubeClient: &kubeClient,
 			UpdateApp:  appImages,
 			DryRun:     false,
-		})
+		}, NewSyncIterationState())
 		assert.Equal(t, 1, res.NumErrors)
 		assert.Equal(t, 0, res.NumSkipped)
 		assert.Equal(t, 1, res.NumApplicationsProcessed)
@@ -612,7 +612,7 @@ func Test_UpdateApplication(t *testing.T) {
 			KubeClient: &kubeClient,
 			UpdateApp:  appImages,
 			DryRun:     false,
-		})
+		}, NewSyncIterationState())
 		assert.Equal(t, 1, res.NumErrors)
 		assert.Equal(t, 0, res.NumSkipped)
 		assert.Equal(t, 1, res.NumApplicationsProcessed)
