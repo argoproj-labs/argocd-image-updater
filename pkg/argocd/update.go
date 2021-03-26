@@ -82,7 +82,7 @@ type helmOverride struct {
 }
 
 type change struct {
-	imageName string
+    image     *image.ContainerImage
 	oldTag    *tag.ImageTag
 	newTag    *tag.ImageTag
 }
@@ -214,7 +214,7 @@ func UpdateApplication(updateConf *UpdateConfiguration) ImageUpdaterResult {
 			} else {
 				containerImageNew := updateableImage.WithTag(latest)
 				imgCtx.Infof("Successfully updated image '%s' to '%s', but pending spec update (dry run=%v)", updateableImage.GetFullNameWithTag(), containerImageNew.GetFullNameWithTag(), updateConf.DryRun)
-				changeList = append(changeList, change{updateableImage.ImageName, updateableImage.ImageTag, containerImageNew.ImageTag})
+				changeList = append(changeList, change{containerImageNew, updateableImage.ImageTag, containerImageNew.ImageTag})
 			}
 		} else {
 			// We need to explicitly set the up-to-date images in the spec too, so
@@ -258,7 +258,8 @@ func UpdateApplication(updateConf *UpdateConfiguration) ImageUpdaterResult {
 				if !updateConf.DisableKubeEvents && updateConf.KubeClient != nil {
 					annotations := map[string]string{}
 					for i, c := range changeList {
-						annotations[fmt.Sprintf("argocd-image-updater.image-%d/image-name", i)] = c.imageName
+						annotations[fmt.Sprintf("argocd-image-updater.image-%d/full-image-name", i)] = c.image.GetFullNameWithoutTag()
+						annotations[fmt.Sprintf("argocd-image-updater.image-%d/image-name", i)] = c.image.ImageName
 						annotations[fmt.Sprintf("argocd-image-updater.image-%d/old-tag", i)] = c.oldTag.TagName
 						annotations[fmt.Sprintf("argocd-image-updater.image-%d/new-tag", i)] = c.newTag.TagName
 					}
