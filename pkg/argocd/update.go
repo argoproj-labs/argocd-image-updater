@@ -82,9 +82,9 @@ type helmOverride struct {
 }
 
 type change struct {
-    image     *image.ContainerImage
-	oldTag    *tag.ImageTag
-	newTag    *tag.ImageTag
+	image  *image.ContainerImage
+	oldTag *tag.ImageTag
+	newTag *tag.ImageTag
 }
 
 // UpdateApplication update all images of a single application. Will run in a goroutine.
