@@ -25,3 +25,10 @@ rules:
       - list
       - update
       - patch
+  - apiGroups:
+      - ""
+    resources:
+      - events
+    verbs:
+      - create
+
