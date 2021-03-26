@@ -257,9 +257,10 @@ func UpdateApplication(updateConf *UpdateConfiguration) ImageUpdaterResult {
 				result.NumImagesUpdated += 1
 				if !updateConf.DisableKubeEvents && updateConf.KubeClient != nil {
 					annotations := map[string]string{}
-					for _, c := range changeList {
-						annotations[fmt.Sprintf("%s/oldtag", c.imageName)] = c.oldTag.TagName
-						annotations[fmt.Sprintf("%s/newtag", c.imageName)] = c.newTag.TagName
+					for i, c := range changeList {
+						annotations[fmt.Sprintf("argocd-image-updater.image-%d/image-name", i)] = c.imageName
+						annotations[fmt.Sprintf("argocd-image-updater.image-%d/old-tag", i)] = c.oldTag.TagName
+						annotations[fmt.Sprintf("argocd-image-updater.image-%d/new-tag", i)] = c.newTag.TagName
 					}
 					message := fmt.Sprintf("Successfully updated application '%s'", app)
 					_, err = updateConf.KubeClient.CreateApplicationEvent(&updateConf.UpdateApp.Application, "ImagesUpdated", message, annotations)
