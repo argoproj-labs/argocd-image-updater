@@ -117,6 +117,10 @@ func (il ImageTagList) SortByDate() SortableImageTagList {
 		sil = append(sil, v)
 	}
 	sort.Slice(sil, func(i, j int) bool {
+		if sil[i].TagDate.Equal(*sil[j].TagDate) {
+			// if an image has two tags, return the same consistently
+			return sil[i].TagName < sil[j].TagName
+		}
 		return sil[i].TagDate.Before(*sil[j].TagDate)
 	})
 	return sil
