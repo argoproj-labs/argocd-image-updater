@@ -98,6 +98,23 @@ func Test_SortableImageTagList(t *testing.T) {
 		assert.Equal(t, "v2.0.3", sil[3].TagName)
 		assert.Equal(t, "v2.0.2", sil[4].TagName)
 	})
+
+	t.Run("Sort by date with same dates", func(t *testing.T) {
+		names := []string{"v2.0.2", "v1.0", "v1.0.1", "v2.0.3", "v2.0"}
+		date := time.Unix(0, 0)
+		il := NewImageTagList()
+		for _, name := range names {
+			tag := NewImageTag(name, date)
+			il.Add(tag)
+		}
+		sil := il.SortByDate()
+		require.Len(t, sil, len(names))
+		assert.Equal(t, "v1.0", sil[0].TagName)
+		assert.Equal(t, "v1.0.1", sil[1].TagName)
+		assert.Equal(t, "v2.0", sil[2].TagName)
+		assert.Equal(t, "v2.0.2", sil[3].TagName)
+		assert.Equal(t, "v2.0.3", sil[4].TagName)
+	})
 }
 
 func Test_TagsFromTagList(t *testing.T) {
