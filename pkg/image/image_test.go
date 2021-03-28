@@ -33,6 +33,18 @@ func Test_ParseImageTags(t *testing.T) {
 		assert.Equal(t, "gcr.io/jannfis/test-image", image.GetFullNameWithoutTag())
 	})
 
+	t.Run("Parse valid image name with digest tag", func(t *testing.T) {
+		image := NewFromIdentifier("gcr.io/jannfis/test-image@sha256:abcde")
+		assert.Equal(t, "gcr.io", image.RegistryURL)
+		assert.Empty(t, image.ImageAlias)
+		assert.Equal(t, "jannfis/test-image", image.ImageName)
+		require.NotNil(t, image.ImageTag)
+		assert.Empty(t, image.ImageTag.TagName)
+		assert.Equal(t, "sha256:abcde", image.ImageTag.TagDigest)
+		assert.Equal(t, "gcr.io/jannfis/test-image@sha256:abcde", image.GetFullNameWithTag())
+		assert.Equal(t, "gcr.io/jannfis/test-image", image.GetFullNameWithoutTag())
+	})
+
 	t.Run("Parse valid image name with source name and registry info", func(t *testing.T) {
 		image := NewFromIdentifier("jannfis/orig-image=gcr.io/jannfis/test-image:0.1")
 		assert.Equal(t, "gcr.io", image.RegistryURL)
@@ -79,7 +91,7 @@ func Test_WithTag(t *testing.T) {
 		imageName := "jannfis/argocd=jannfis/orig-image:0.1"
 		nimageName := "jannfis/argocd=jannfis/orig-image:0.2"
 		oImg := NewFromIdentifier(imageName)
-		nImg := oImg.WithTag(tag.NewImageTag("0.2", time.Unix(0, 0)))
+		nImg := oImg.WithTag(tag.NewImageTag("0.2", time.Unix(0, 0), ""))
 		assert.Equal(t, nimageName, nImg.String())
 	})
 }

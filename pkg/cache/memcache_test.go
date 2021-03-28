@@ -15,7 +15,7 @@ func Test_MemCache(t *testing.T) {
 	imageTag := "v1.0.0"
 	t.Run("Cache hit", func(t *testing.T) {
 		mc := NewMemCache()
-		newTag := tag.NewImageTag(imageTag, time.Unix(0, 0))
+		newTag := tag.NewImageTag(imageTag, time.Unix(0, 0), "")
 		mc.SetTag(imageName, newTag)
 		cachedTag, err := mc.GetTag(imageName, imageTag)
 		require.NoError(t, err)
@@ -26,7 +26,7 @@ func Test_MemCache(t *testing.T) {
 
 	t.Run("Cache miss", func(t *testing.T) {
 		mc := NewMemCache()
-		newTag := tag.NewImageTag(imageTag, time.Unix(0, 0))
+		newTag := tag.NewImageTag(imageTag, time.Unix(0, 0), "")
 		mc.SetTag(imageName, newTag)
 		cachedTag, err := mc.GetTag(imageName, "v1.0.1")
 		require.NoError(t, err)
@@ -36,7 +36,7 @@ func Test_MemCache(t *testing.T) {
 
 	t.Run("Cache clear", func(t *testing.T) {
 		mc := NewMemCache()
-		newTag := tag.NewImageTag(imageTag, time.Unix(0, 0))
+		newTag := tag.NewImageTag(imageTag, time.Unix(0, 0), "")
 		mc.SetTag(imageName, newTag)
 		cachedTag, err := mc.GetTag(imageName, imageTag)
 		require.NoError(t, err)

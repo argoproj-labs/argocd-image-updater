@@ -11,17 +11,44 @@ import (
 func Test_NewImageTag(t *testing.T) {
 	t.Run("New image tag from valid Time type", func(t *testing.T) {
 		tagDate := time.Now()
-		tag := NewImageTag("v1.0.0", tagDate)
+		tag := NewImageTag("v1.0.0", tagDate, "")
 		require.NotNil(t, tag)
 		assert.Equal(t, "v1.0.0", tag.TagName)
 		assert.Equal(t, &tagDate, tag.TagDate)
 	})
 }
 
+func Test_ImageTagEqual(t *testing.T) {
+	t.Run("Versions are similar", func(t *testing.T) {
+		tag1 := NewImageTag("v1.0.0", time.Now(), "")
+		tag2 := NewImageTag("v1.0.0", time.Now(), "")
+		assert.True(t, tag1.Equals(tag2))
+	})
+
+	t.Run("Versions are not similar", func(t *testing.T) {
+		tag1 := NewImageTag("v1.0.0", time.Now(), "")
+		tag2 := NewImageTag("v1.0.1", time.Now(), "")
+		assert.False(t, tag1.Equals(tag2))
+	})
+
+	t.Run("Versions are not similar because digest is different", func(t *testing.T) {
+		tag1 := NewImageTag("v1.0.0", time.Now(), "abc")
+		tag2 := NewImageTag("v1.0.0", time.Now(), "def")
+		assert.False(t, tag1.Equals(tag2))
+	})
+
+	t.Run("Versions are not similar because digest is missing", func(t *testing.T) {
+		tag1 := NewImageTag("v1.0.0", time.Now(), "abc")
+		tag2 := NewImageTag("v1.0.0", time.Now(), "")
+		assert.False(t, tag1.Equals(tag2))
+	})
+
+}
+
 func Test_AppendToImageTagList(t *testing.T) {
 	t.Run("Append single entry to ImageTagList", func(t *testing.T) {
 		il := NewImageTagList()
-		tag := NewImageTag("v1.0.0", time.Now())
+		tag := NewImageTag("v1.0.0", time.Now(), "")
 		il.Add(tag)
 		assert.Len(t, il.items, 1)
 		assert.True(t, il.Contains(tag))
@@ -29,9 +56,9 @@ func Test_AppendToImageTagList(t *testing.T) {
 
 	t.Run("Append two same entries to ImageTagList", func(t *testing.T) {
 		il := NewImageTagList()
-		tag := NewImageTag("v1.0.0", time.Now())
+		tag := NewImageTag("v1.0.0", time.Now(), "")
 		il.Add(tag)
-		tag = NewImageTag("v1.0.0", time.Now())
+		tag = NewImageTag("v1.0.0", time.Now(), "")
 		il.Add(tag)
 		assert.True(t, il.Contains(tag))
 		assert.Len(t, il.items, 1)
@@ -39,9 +66,9 @@ func Test_AppendToImageTagList(t *testing.T) {
 
 	t.Run("Append two distinct entries to ImageTagList", func(t *testing.T) {
 		il := NewImageTagList()
-		tag1 := NewImageTag("v1.0.0", time.Now())
+		tag1 := NewImageTag("v1.0.0", time.Now(), "")
 		il.Add(tag1)
-		tag2 := NewImageTag("v1.0.1", time.Now())
+		tag2 := NewImageTag("v1.0.1", time.Now(), "")
 		il.Add(tag2)
 		assert.True(t, il.Contains(tag1))
 		assert.True(t, il.Contains(tag2))
@@ -54,7 +81,7 @@ func Test_SortableImageTagList(t *testing.T) {
 		names := []string{"wohoo", "bazar", "alpha", "jesus", "zebra"}
 		il := NewImageTagList()
 		for _, name := range names {
-			tag := NewImageTag(name, time.Now())
+			tag := NewImageTag(name, time.Now(), "")
 			il.Add(tag)
 		}
 		sil := il.SortByName()
@@ -70,7 +97,7 @@ func Test_SortableImageTagList(t *testing.T) {
 		names := []string{"v2.0.2", "v1.0", "v1.0.1", "v2.0.3", "v2.0"}
 		il := NewImageTagList()
 		for _, name := range names {
-			tag := NewImageTag(name, time.Now())
+			tag := NewImageTag(name, time.Now(), "")
 			il.Add(tag)
 		}
 		sil := il.SortBySemVer()
@@ -87,7 +114,7 @@ func Test_SortableImageTagList(t *testing.T) {
 		dates := []int64{4, 1, 0, 3, 2}
 		il := NewImageTagList()
 		for i, name := range names {
-			tag := NewImageTag(name, time.Unix(dates[i], 0))
+			tag := NewImageTag(name, time.Unix(dates[i], 0), "")
 			il.Add(tag)
 		}
 		sil := il.SortByDate()
@@ -104,7 +131,7 @@ func Test_SortableImageTagList(t *testing.T) {
 		date := time.Unix(0, 0)
 		il := NewImageTagList()
 		for _, name := range names {
-			tag := NewImageTag(name, date)
+			tag := NewImageTag(name, date, "")
 			il.Add(tag)
 		}
 		sil := il.SortByDate()
@@ -122,7 +149,7 @@ func Test_TagsFromTagList(t *testing.T) {
 		names := []string{"wohoo", "bazar", "alpha", "jesus", "zebra"}
 		il := NewImageTagList()
 		for _, name := range names {
-			tag := NewImageTag(name, time.Now())
+			tag := NewImageTag(name, time.Now(), "")
 			il.Add(tag)
 		}
 		tl := il.Tags()
@@ -134,7 +161,7 @@ func Test_TagsFromTagList(t *testing.T) {
 		names := []string{"wohoo", "bazar", "alpha", "jesus", "zebra"}
 		sil := SortableImageTagList{}
 		for _, name := range names {
-			tag := NewImageTag(name, time.Now())
+			tag := NewImageTag(name, time.Now(), "")
 			sil = append(sil, tag)
 		}
 		tl := sil.Tags()

@@ -13,7 +13,7 @@ import (
 func newImageTagList(tagNames []string) *tag.ImageTagList {
 	tagList := tag.NewImageTagList()
 	for _, tagName := range tagNames {
-		tagList.Add(tag.NewImageTag(tagName, time.Unix(0, 0)))
+		tagList.Add(tag.NewImageTag(tagName, time.Unix(0, 0), ""))
 	}
 	return tagList
 }
@@ -21,7 +21,7 @@ func newImageTagList(tagNames []string) *tag.ImageTagList {
 func newImageTagListWithDate(tagNames []string) *tag.ImageTagList {
 	tagList := tag.NewImageTagList()
 	for i, t := range tagNames {
-		tagList.Add(tag.NewImageTag(t, time.Unix(int64(i*5), 0)))
+		tagList.Add(tag.NewImageTag(t, time.Unix(int64(i*5), 0), ""))
 	}
 	return tagList
 }

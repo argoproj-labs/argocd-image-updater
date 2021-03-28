@@ -75,6 +75,8 @@ func ParseUpdateStrategy(val string) VersionSortMode {
 		return VersionSortLatest
 	case "name":
 		return VersionSortName
+	case "digest":
+		return VersionSortDigest
 	default:
 		log.Warnf("Unknown sort option %s -- using semver", val)
 		return VersionSortSemVer

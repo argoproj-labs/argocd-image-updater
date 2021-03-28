@@ -19,6 +19,8 @@ const (
 	VersionSortLatest VersionSortMode = 1
 	// VersionSortName sorts tags alphabetically by name
 	VersionSortName VersionSortMode = 2
+	// VersionSortDigest uses latest digest of an image
+	VersionSortDigest VersionSortMode = 3
 )
 
 // ConstraintMatchMode defines how the constraint should be matched
@@ -64,6 +66,8 @@ func (img *ContainerImage) GetNewestVersionFromTags(vc *VersionConstraint, tagLi
 		availableTags = tagList.SortByName()
 	case VersionSortLatest:
 		availableTags = tagList.SortByDate()
+	case VersionSortDigest:
+		availableTags = tagList.SortByName()
 	}
 
 	considerTags := tag.SortableImageTagList{}
@@ -85,10 +89,12 @@ func (img *ContainerImage) GetNewestVersionFromTags(vc *VersionConstraint, tagLi
 		}
 
 		if vc.Constraint != "" {
-			semverConstraint, err = semver.NewConstraint(vc.Constraint)
-			if err != nil {
-				logCtx.Errorf("invalid constraint '%s' given: '%v'", vc, err)
-				return nil, err
+			if vc.SortMode == VersionSortSemVer {
+				semverConstraint, err = semver.NewConstraint(vc.Constraint)
+				if err != nil {
+					logCtx.Errorf("invalid constraint '%s' given: '%v'", vc, err)
+					return nil, err
+				}
 			}
 		}
 	}
@@ -112,6 +118,11 @@ func (img *ContainerImage) GetNewestVersionFromTags(vc *VersionConstraint, tagLi
 					logCtx.Tracef("%s did not match constraint %s", ver.Original(), vc.Constraint)
 					continue
 				}
+			}
+		} else if vc.SortMode == VersionSortDigest {
+			if tag.TagName != vc.Constraint {
+				logCtx.Tracef("%s did not match contraint %s", tag.TagName, vc.Constraint)
+				continue
 			}
 		}
 
@@ -139,4 +150,14 @@ func (vc *VersionConstraint) IsTagIgnored(tag string) bool {
 		}
 	}
 	return false
+}
+
+// IsCacheable returns true if we can safely cache tags for a given sort mode
+func (vsm VersionSortMode) IsCacheable() bool {
+	switch vsm {
+	case VersionSortDigest:
+		return false
+	default:
+		return true
+	}
 }

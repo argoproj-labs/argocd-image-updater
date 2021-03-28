@@ -200,7 +200,7 @@ func UpdateApplication(updateConf *UpdateConfiguration) ImageUpdaterResult {
 
 		// If the latest tag does not match image's current tag, it means we have
 		// an update candidate.
-		if updateableImage.ImageTag.TagName != latest.TagName {
+		if !updateableImage.ImageTag.Equals(latest) {
 
 			imgCtx.Infof("Setting new image to %s", updateableImage.WithTag(latest).String())
 			needUpdate = true

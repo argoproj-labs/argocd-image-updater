@@ -13,8 +13,9 @@ import (
 // ImageTag is a representation of an image tag with metadata
 // Use NewImageTag to to initialize a new object.
 type ImageTag struct {
-	TagName string
-	TagDate *time.Time
+	TagName   string
+	TagDate   *time.Time
+	TagDigest string
 }
 
 // ImageTagList is a collection of ImageTag objects.
@@ -27,6 +28,7 @@ type ImageTagList struct {
 // TagInfo contains information for a tag
 type TagInfo struct {
 	CreatedAt time.Time
+	Digest    [32]byte
 }
 
 // SortableImageTagList is just that - a sortable list of ImageTag entries
@@ -43,10 +45,11 @@ func (il SortableImageTagList) Swap(i, j int) {
 }
 
 // NewImageTag initializes an ImageTag object and returns it
-func NewImageTag(tagName string, tagDate time.Time) *ImageTag {
+func NewImageTag(tagName string, tagDate time.Time, tagDigest string) *ImageTag {
 	tag := &ImageTag{}
 	tag.TagName = tagName
 	tag.TagDate = &tagDate
+	tag.TagDigest = tagDigest
 	return tag
 }
 
@@ -78,9 +81,29 @@ func (sil *SortableImageTagList) Tags() []string {
 	return tagList
 }
 
-// String returns the tag name of the ImageTag
+// String returns the tag name of the ImageTag, possibly with a digest appended
+// to its name.
 func (tag *ImageTag) String() string {
-	return tag.TagName
+	if tag.TagDigest != "" {
+		return tag.TagDigest
+	} else {
+		return tag.TagName
+	}
+}
+
+// IsDigest returns true if the tag has a digest
+func (tag *ImageTag) IsDigest() bool {
+	return tag.TagDigest != ""
+}
+
+// Equals checks whether two tags are equal. Will consider any digest set for
+// the tag with precedence, otherwise uses a tag's name.
+func (tag *ImageTag) Equals(aTag *ImageTag) bool {
+	if tag.IsDigest() {
+		return tag.TagDigest == aTag.TagDigest
+	} else {
+		return tag.TagName == aTag.TagName
+	}
 }
 
 // Checks whether given tag is contained in tag list in O(n) time
@@ -143,7 +166,7 @@ func (il ImageTagList) SortBySemVer() SortableImageTagList {
 	}
 	sort.Sort(semver.Collection(svl))
 	for _, svi := range svl {
-		sil = append(sil, NewImageTag(svi.Original(), *il.items[svi.Original()].TagDate))
+		sil = append(sil, NewImageTag(svi.Original(), *il.items[svi.Original()].TagDate, il.items[svi.Original()].TagDigest))
 	}
 	return sil
 }
