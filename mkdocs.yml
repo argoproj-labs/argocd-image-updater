@@ -26,6 +26,7 @@ nav:
   - Install:
     - Getting Started: install/start.md
     - Running Argo CD Image Updater: install/running.md
+  - Update strategies: install/strategies.md
   - Configuration: 
     - Applications: configuration/applications.md
     - Images: configuration/images.md
