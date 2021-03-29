@@ -7,6 +7,7 @@ import (
 	"os"
 	"path"
 	"strings"
+	"sync"
 
 	"github.com/argoproj-labs/argocd-image-updater/ext/git"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
@@ -79,8 +80,45 @@ type helmOverride struct {
 	Helm helmParameters `json:"helm"`
 }
 
+// SyncIterationState holds shared state of a running update operation
+type SyncIterationState struct {
+	lock            sync.Mutex
+	repositoryLocks map[string]*sync.Mutex
+}
+
+// NewSyncIterationState returns a new instance of SyncIterationState
+func NewSyncIterationState() *SyncIterationState {
+	return &SyncIterationState{
+		repositoryLocks: make(map[string]*sync.Mutex),
+	}
+}
+
+// GetRepositoryLock returns the lock for a specified repository
+func (state *SyncIterationState) GetRepositoryLock(repository string) *sync.Mutex {
+	state.lock.Lock()
+	defer state.lock.Unlock()
+
+	lock, exists := state.repositoryLocks[repository]
+	if !exists {
+		lock = &sync.Mutex{}
+		state.repositoryLocks[repository] = lock
+	}
+
+	return lock
+}
+
+// RequiresLocking returns true if write-back method requires repository locking
+func (wbc *WriteBackConfig) RequiresLocking() bool {
+	switch wbc.Method {
+	case WriteBackGit:
+		return true
+	default:
+		return false
+	}
+}
+
 // UpdateApplication update all images of a single application. Will run in a goroutine.
-func UpdateApplication(updateConf *UpdateConfiguration) ImageUpdaterResult {
+func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationState) ImageUpdaterResult {
 	var needUpdate bool = false
 
 	result := ImageUpdaterResult{}
@@ -237,7 +275,7 @@ func UpdateApplication(updateConf *UpdateConfiguration) ImageUpdaterResult {
 		logCtx := log.WithContext().AddField("application", app)
 		if !updateConf.DryRun {
 			logCtx.Infof("Committing %d parameter update(s) for application %s", result.NumImagesUpdated, app)
-			err := commitChanges(&updateConf.UpdateApp.Application, wbc)
+			err := commitChangesLocked(&updateConf.UpdateApp.Application, wbc, state)
 			if err != nil {
 				logCtx.Errorf("Could not update application spec: %v", err)
 				result.NumErrors += 1
@@ -340,6 +378,16 @@ func getWriteBackConfig(app *v1alpha1.Application, kubeClient *kube.KubernetesCl
 	}
 
 	return wbc, nil
+}
+
+func commitChangesLocked(app *v1alpha1.Application, wbc *WriteBackConfig, state *SyncIterationState) error {
+	if wbc.RequiresLocking() {
+		lock := state.GetRepositoryLock(app.Spec.Source.RepoURL)
+		lock.Lock()
+		defer lock.Unlock()
+	}
+
+	return commitChanges(app, wbc)
 }
 
 // commitChanges commits any changes required for updating one or more images
