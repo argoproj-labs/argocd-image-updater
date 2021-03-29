@@ -127,6 +127,7 @@ mkdocs
 mktemp
 mutex
 myalias
+myimage
 myimg
 mynamespace
 mysecret
@@ -177,6 +178,7 @@ serviceaccount
 Setenv
 SHAs
 sirupsen
+somelonghashstring
 someparam
 somepassword
 someuser

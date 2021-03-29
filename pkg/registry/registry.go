@@ -63,12 +63,12 @@ func (endpoint *RegistryEndpoint) GetTags(img *image.ContainerImage, regClient R
 	// In some cases, we don't need to fetch the metadata to get the creation time
 	// stamp of from the image's meta data:
 	//
-	// - We do not have sort mode == latest
+	// - We use an update strategy other than latest or digest
 	// - The registry doesn't provide meta data and has tags sorted already
 	//
 	// We just create a dummy time stamp according to the registry's sort mode, if
 	// set.
-	if vc.SortMode != image.VersionSortLatest || endpoint.TagListSort.IsTimeSorted() {
+	if (vc.SortMode != image.VersionSortLatest && vc.SortMode != image.VersionSortDigest) || endpoint.TagListSort.IsTimeSorted() {
 		for i, tagStr := range tags {
 			var ts int
 			if endpoint.TagListSort == SortLatestFirst {
@@ -76,7 +76,7 @@ func (endpoint *RegistryEndpoint) GetTags(img *image.ContainerImage, regClient R
 			} else if endpoint.TagListSort == SortLatestLast {
 				ts = i
 			}
-			imgTag = tag.NewImageTag(tagStr, time.Unix(int64(ts), 0))
+			imgTag = tag.NewImageTag(tagStr, time.Unix(int64(ts), 0), "")
 			tagList.Add(imgTag)
 		}
 		return tagList, nil
@@ -96,16 +96,18 @@ func (endpoint *RegistryEndpoint) GetTags(img *image.ContainerImage, regClient R
 		// Look into the cache first and re-use any found item. If GetTag() returns
 		// an error, we treat it as a cache miss and just go ahead to invalidate
 		// the entry.
-		imgTag, err = endpoint.Cache.GetTag(nameInRegistry, tagStr)
-		if err != nil {
-			log.Warnf("invalid entry for %s:%s in cache, invalidating.", nameInRegistry, imgTag.TagName)
-		} else if imgTag != nil {
-			log.Debugf("Cache hit for %s:%s", nameInRegistry, imgTag.TagName)
-			tagListLock.Lock()
-			tagList.Add(imgTag)
-			tagListLock.Unlock()
-			wg.Done()
-			continue
+		if vc.SortMode.IsCacheable() {
+			imgTag, err = endpoint.Cache.GetTag(nameInRegistry, tagStr)
+			if err != nil {
+				log.Warnf("invalid entry for %s:%s in cache, invalidating.", nameInRegistry, imgTag.TagName)
+			} else if imgTag != nil {
+				log.Debugf("Cache hit for %s:%s", nameInRegistry, imgTag.TagName)
+				tagListLock.Lock()
+				tagList.Add(imgTag)
+				tagListLock.Unlock()
+				wg.Done()
+				continue
+			}
 		}
 
 		log.Tracef("Getting manifest for image %s:%s (operation %d/%d)", nameInRegistry, tagStr, i, len(tags))
@@ -152,7 +154,11 @@ func (endpoint *RegistryEndpoint) GetTags(img *image.ContainerImage, regClient R
 
 			log.Tracef("Found date %s", ti.CreatedAt.String())
 
-			imgTag = tag.NewImageTag(tagStr, ti.CreatedAt)
+			if vc.SortMode == image.VersionSortDigest {
+				imgTag = tag.NewImageTag(tagStr, ti.CreatedAt, fmt.Sprintf("sha256:%x", ti.Digest))
+			} else {
+				imgTag = tag.NewImageTag(tagStr, ti.CreatedAt, "")
+			}
 			tagListLock.Lock()
 			tagList.Add(imgTag)
 			tagListLock.Unlock()

@@ -35,14 +35,7 @@ func (img *ContainerImage) String() string {
 		str += img.ImageAlias
 		str += "="
 	}
-	if img.RegistryURL != "" {
-		str += img.RegistryURL + "/"
-	}
-	str += img.ImageName
-	if img.ImageTag != nil {
-		str += ":"
-		str += img.ImageTag.TagName
-	}
+	str += img.GetFullNameWithTag()
 	return str
 }
 
@@ -55,6 +48,8 @@ func (img *ContainerImage) GetFullNameWithoutTag() string {
 	return str
 }
 
+// GetFullNameWithTag returns the complete image slug, including the registry
+// and any tag digest or tag name set for the image.
 func (img *ContainerImage) GetFullNameWithTag() string {
 	str := ""
 	if img.RegistryURL != "" {
@@ -62,8 +57,13 @@ func (img *ContainerImage) GetFullNameWithTag() string {
 	}
 	str += img.ImageName
 	if img.ImageTag != nil {
-		str += ":"
-		str += img.ImageTag.TagName
+		if img.ImageTag.TagDigest != "" {
+			str += "@"
+			str += img.ImageTag.TagDigest
+		} else if img.ImageTag.TagName != "" {
+			str += ":"
+			str += img.ImageTag.TagName
+		}
 	}
 	return str
 }
@@ -149,10 +149,26 @@ func getImageTagFromIdentifier(identifier string) (string, string, *tag.ImageTag
 		imageString = strings.Join(comp[1:], "/")
 	}
 
-	comp = strings.SplitN(imageString, ":", 2)
-	if len(comp) != 2 {
-		return sourceName, imageString, nil
+	// We can either have a tag name or a digest reference
+	if strings.Contains(imageString, "@") {
+		comp = strings.SplitN(imageString, "@", 2)
+		return sourceName, comp[0], tag.NewImageTag("", time.Unix(0, 0), comp[1])
 	} else {
-		return sourceName, comp[0], tag.NewImageTag(comp[1], time.Unix(0, 0))
+		comp = strings.SplitN(imageString, ":", 2)
+		if len(comp) != 2 {
+			return sourceName, imageString, nil
+		} else {
+			tagName, tagDigest := getImageDigestFromTag(comp[1])
+			return sourceName, comp[0], tag.NewImageTag(tagName, time.Unix(0, 0), tagDigest)
+		}
+	}
+}
+
+func getImageDigestFromTag(tagStr string) (string, string) {
+	a := strings.Split(tagStr, "@")
+	if len(a) != 2 {
+		return tagStr, ""
+	} else {
+		return a[0], a[1]
 	}
 }

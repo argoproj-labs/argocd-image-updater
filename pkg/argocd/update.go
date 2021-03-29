@@ -236,9 +236,20 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 			continue
 		}
 
+		// If the user has specified digest as update strategy, but the running
+		// image is configured to use a tag and no digest, we need to set an
+		// initial dummy digest, so that tag.Equals() will return false.
+		// TODO: Fix this. This is just a workaround.
+		if vc.SortMode == image.VersionSortDigest {
+			if !updateableImage.ImageTag.IsDigest() {
+				log.Tracef("Setting dummy digest for image %s", updateableImage.GetFullNameWithTag())
+				updateableImage.ImageTag.TagDigest = "dummy"
+			}
+		}
+
 		// If the latest tag does not match image's current tag, it means we have
 		// an update candidate.
-		if updateableImage.ImageTag.TagName != latest.TagName {
+		if !updateableImage.ImageTag.Equals(latest) {
 
 			imgCtx.Infof("Setting new image to %s", updateableImage.WithTag(latest).String())
 			needUpdate = true

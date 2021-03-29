@@ -2,6 +2,7 @@ package registry
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
@@ -163,6 +164,12 @@ func (client *registryClient) TagMetadata(repository string, manifest distributi
 		} else {
 			ti.CreatedAt = createdAt
 		}
+		_, mBytes, err := manifest.Payload()
+		if err != nil {
+			return nil, err
+		}
+		ti.Digest = sha256.Sum256(mBytes)
+		log.Tracef("v1 SHA digest is %s", fmt.Sprintf("sha256:%x", ti.Digest))
 		return ti, nil
 
 	case *schema2.DeserializedManifest:
@@ -196,6 +203,13 @@ func (client *registryClient) TagMetadata(repository string, manifest distributi
 		if ti.CreatedAt, err = time.Parse(time.RFC3339Nano, info.Created); err != nil {
 			return nil, err
 		}
+
+		_, mBytes, err := manifest.Payload()
+		if err != nil {
+			return nil, err
+		}
+		ti.Digest = sha256.Sum256(mBytes)
+		log.Tracef("v2 SHA digest is %s", fmt.Sprintf("sha256:%x", ti.Digest))
 		return ti, nil
 
 	default:
