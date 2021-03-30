@@ -23,7 +23,9 @@ This is the default strategy.
 Strategy name: `semver`
 
 ```yaml
-argocd-image-updater.argoproj.io/<image>.update-strategy: semver[:<version_constraint>]
+argocd-image-updater.argoproj.io/image-list: some/image[:<version_constraint>]
+# Specifying update-strategy is optional, because semver is the default
+argocd-image-updater.argoproj.io/<image>.update-strategy: semver
 ```
 
 The `semver` strategy allows you to track & update images which use tags that
@@ -98,8 +100,16 @@ Argo CD Image Updater can update to the image that has the most recent build
 date, and is tagged with an arbitrary name (e.g. a Git commit SHA, or even a
 random string). 
 
-It is important to understand, that this strategy will pick the build date of
-the image, and not the date of when the image was pushed to the registry. 
+It is important to understand, that this strategy will consider the build date
+of the image, and not the date of when the image was tagged or pushed to the
+registry. If you are tagging the same image with multiple tags, these tags
+will have the same build date. In this case, Argo CD Image Updater will sort
+the tag names lexically descending and pick the last tag name of that list.
+For example, consider an image that was tagged with the `f33bacd`, `dev`
+and `latest` tags. You might want to have the `f33bacd` tag set for your
+application, but Image Updater will pick the `latest` tag name. In order to
+prevent such a situation, you need to further restrict the tags that Image
+Updater will inspect, see below.
 
 By default, this update strategy will inspect all of the tags it found in the
 image's repository. If you wish to allow only certain tags to be considered
@@ -150,18 +160,19 @@ Argo CD Image Updater will then update the image when either
   or
 * the currently used digest differs from what is found in the registry
 
-Note that the `digest` update strategy will use image digests for updating
-the image in your applications, so the image running in your application
-will appear as
+!!!note "Tags and digests"
+    Note that the `digest` update strategy will use image digests for updating
+    the image tags in your applications, so the image running in your
+    application will appear as `some/image@sha256:<somelonghashstring>` instead
+    of `some/image:latest`. So in your running system, the tag information will
+    be effectively lost.
 
-```
-some/image@sha256:<somelonghashstring>
-```
+For example, the following specification would always update the image for an
+application on each new push of the image `some/image` with the tag `latest`:
 
-instead of
-
-```
-some/image:latest
+```yaml
+argocd-image-updater.argoproj.io/image-list: myimage=some/image:latest
+argocd-image-updater.argoproj.io/myimage.update-strategy: digest
 ```
 
 ## Update according to lexical sort
