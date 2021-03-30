@@ -23,7 +23,9 @@ This is the default strategy.
 Strategy name: `semver`
 
 ```yaml
-argocd-image-updater.argoproj.io/<image>.update-strategy: semver[:<version_constraint>]
+argocd-image-updater.argoproj.io/image-list: some/image[:<version_constraint>]
+# Specifying update-strategy is optional, because semver is the default
+argocd-image-updater.argoproj.io/<image>.update-strategy: semver
 ```
 
 The `semver` strategy allows you to track & update images which use tags that
@@ -150,18 +152,19 @@ Argo CD Image Updater will then update the image when either
   or
 * the currently used digest differs from what is found in the registry
 
-Note that the `digest` update strategy will use image digests for updating
-the image in your applications, so the image running in your application
-will appear as
+!!!note "Tags and digests"
+    Note that the `digest` update strategy will use image digests for updating
+    the image tags in your applications, so the image running in your
+    application will appear as `some/image@sha256:<somelonghashstring>` instead
+    of `some/image:latest`. So in your running system, the tag information will
+    be effectively lost.
 
-```
-some/image@sha256:<somelonghashstring>
-```
+For example, the following specification would always update the image for an
+application on each new push of the image `some/image` with the tag `latest`:
 
-instead of
-
-```
-some/image:latest
+```yaml
+argocd-image-updater.argoproj.io/image-list: myimage=some/image:latest
+argocd-image-updater.argoproj.io/myimage.update-strategy: digest
 ```
 
 ## Update according to lexical sort
