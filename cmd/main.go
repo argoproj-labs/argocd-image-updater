@@ -2,11 +2,14 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
+	"text/template"
 	"time"
 
 	"github.com/argoproj-labs/argocd-image-updater/pkg/argocd"
@@ -34,6 +37,14 @@ const defaultRegistriesConfPath = "/app/config/registries.conf"
 const applicationsAPIKindK8S = "kubernetes"
 const applicationsAPIKindArgoCD = "argocd"
 
+// The default commit message for Git write-back as a Go template
+const defaultGitCommitMessage = `build: automatic update of {{ .AppName }}
+
+{{ range .AppChanges }}
+updates image {{ .ImageName }} {{ .ImageOldTag }} -> {{ .ImageNewTag }}
+{{ end }}
+`
+
 // ImageUpdaterConfig contains global configuration and required runtime data
 type ImageUpdaterConfig struct {
 	ApplicationsAPIKind string
@@ -51,6 +62,7 @@ type ImageUpdaterConfig struct {
 	AppNamePatterns     []string
 	GitCommitUser       string
 	GitCommitMail       string
+	GitCommitMessage    *template.Template
 	DisableKubeEvents   bool
 }
 
@@ -155,6 +167,7 @@ func runImageUpdater(cfg *ImageUpdaterConfig, warmUp bool) (argocd.ImageUpdaterR
 				DryRun:            dryRun,
 				GitCommitUser:     cfg.GitCommitUser,
 				GitCommitEmail:    cfg.GitCommitMail,
+				GitCommitMessage:  cfg.GitCommitMessage,
 				DisableKubeEvents: cfg.DisableKubeEvents,
 			}
 			res := argocd.UpdateApplication(upconf, syncState)
@@ -388,6 +401,8 @@ func newRunCommand() *cobra.Command {
 	var kubeConfig string
 	var disableKubernetes bool
 	var warmUpCache bool = true
+	var commitMessagePath string
+	var commitMessageTpl string
 	var runCmd = &cobra.Command{
 		Use:   "run",
 		Short: "Runs the argocd-image-updater with a set of options",
@@ -413,6 +428,33 @@ func newRunCommand() *cobra.Command {
 				getPrintableInterval(cfg.CheckInterval),
 				getPrintableHealthPort(cfg.HealthPort),
 			)
+
+			// User can specify a path to a template used for Git commit messages
+			if commitMessagePath != "" {
+				tpl, err := ioutil.ReadFile(commitMessagePath)
+				if err != nil {
+					if errors.Is(err, os.ErrNotExist) {
+						log.Warnf("commit message template at %s does not exist, using default", commitMessagePath)
+						commitMessageTpl = defaultGitCommitMessage
+					} else {
+						log.Fatalf("could not read commit message template: %v", err)
+					}
+				} else {
+					commitMessageTpl = string(tpl)
+				}
+			}
+
+			if commitMessageTpl == "" {
+				log.Infof("Using default Git commit messages")
+				commitMessageTpl = defaultGitCommitMessage
+			}
+
+			if tpl, err := template.New("commitMessage").Parse(commitMessageTpl); err != nil {
+				log.Fatalf("could not parse commit message template: %v", err)
+			} else {
+				log.Debugf("Successfully parsed commit message template")
+				cfg.GitCommitMessage = tpl
+			}
 
 			// Load registries configuration early on. We do not consider it a fatal
 			// error when the file does not exist, but we emit a warning.
@@ -548,6 +590,7 @@ func newRunCommand() *cobra.Command {
 	runCmd.Flags().BoolVar(&warmUpCache, "warmup-cache", true, "whether to perform a cache warm-up on startup")
 	runCmd.Flags().StringVar(&cfg.GitCommitUser, "git-commit-user", env.GetStringVal("GIT_COMMIT_USER", "argocd-image-updater"), "Username to use for Git commits")
 	runCmd.Flags().StringVar(&cfg.GitCommitMail, "git-commit-email", env.GetStringVal("GIT_COMMIT_EMAIL", "noreply@argoproj.io"), "E-Mail address to use for Git commits")
+	runCmd.Flags().StringVar(&commitMessagePath, "git-commit-message", env.GetStringVal("GIT_COMMIT_MESSAGE", ""), "Path to a template to use for Git commit messages")
 	runCmd.Flags().BoolVar(&cfg.DisableKubeEvents, "disable-kube-events", env.GetBoolVal("IMAGE_UPDATER_KUBE_EVENTS", false), "Disable kubernetes events")
 
 	return runCmd

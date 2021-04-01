@@ -8,6 +8,7 @@ import (
 	"path"
 	"strings"
 	"sync"
+	"text/template"
 
 	"github.com/argoproj-labs/argocd-image-updater/ext/git"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
@@ -41,6 +42,7 @@ type UpdateConfiguration struct {
 	DryRun            bool
 	GitCommitUser     string
 	GitCommitEmail    string
+	GitCommitMessage  *template.Template
 	DisableKubeEvents bool
 }
 
