@@ -40,9 +40,9 @@ const applicationsAPIKindArgoCD = "argocd"
 // The default commit message for Git write-back as a Go template
 const defaultGitCommitMessage = `build: automatic update of {{ .AppName }}
 
-{{ range .AppChanges }}
-updates image {{ .ImageName }} {{ .ImageOldTag }} -> {{ .ImageNewTag }}
-{{ end }}
+{{ range .AppChanges -}}
+updates image {{ .Image }} tag '{{ .OldTag }}' to '{{ .NewTag }}'
+{{ end -}}
 `
 
 // ImageUpdaterConfig contains global configuration and required runtime data
@@ -590,7 +590,7 @@ func newRunCommand() *cobra.Command {
 	runCmd.Flags().BoolVar(&warmUpCache, "warmup-cache", true, "whether to perform a cache warm-up on startup")
 	runCmd.Flags().StringVar(&cfg.GitCommitUser, "git-commit-user", env.GetStringVal("GIT_COMMIT_USER", "argocd-image-updater"), "Username to use for Git commits")
 	runCmd.Flags().StringVar(&cfg.GitCommitMail, "git-commit-email", env.GetStringVal("GIT_COMMIT_EMAIL", "noreply@argoproj.io"), "E-Mail address to use for Git commits")
-	runCmd.Flags().StringVar(&commitMessagePath, "git-commit-message", env.GetStringVal("GIT_COMMIT_MESSAGE", ""), "Path to a template to use for Git commit messages")
+	runCmd.Flags().StringVar(&commitMessagePath, "git-commit-message-path", env.GetStringVal("GIT_COMMIT_MESSAGE_PATH", ""), "Path to a template to use for Git commit messages")
 	runCmd.Flags().BoolVar(&cfg.DisableKubeEvents, "disable-kube-events", env.GetBoolVal("IMAGE_UPDATER_KUBE_EVENTS", false), "Disable kubernetes events")
 
 	return runCmd

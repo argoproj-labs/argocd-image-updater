@@ -1,6 +1,7 @@
 package argocd
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io/ioutil"
@@ -60,11 +61,12 @@ type WriteBackConfig struct {
 	Method     WriteBackMethod
 	ArgoClient ArgoCD
 	// If GitClient is not nil, the client will be used for updates. Otherwise, a new client will be created.
-	GitClient      git.Client
-	GetCreds       GitCredsSource
-	GitBranch      string
-	GitCommitUser  string
-	GitCommitEmail string
+	GitClient        git.Client
+	GetCreds         GitCredsSource
+	GitBranch        string
+	GitCommitUser    string
+	GitCommitEmail   string
+	GitCommitMessage string
 }
 
 // The following are helper structs to only marshal the fields we require
@@ -85,9 +87,9 @@ type helmOverride struct {
 }
 
 type change struct {
-	image  *image.ContainerImage
-	oldTag *tag.ImageTag
-	newTag *tag.ImageTag
+	Image  *image.ContainerImage
+	OldTag *tag.ImageTag
+	NewTag *tag.ImageTag
 }
 
 // SyncIterationState holds shared state of a running update operation
@@ -296,6 +298,8 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 
 	if needUpdate {
 		logCtx := log.WithContext().AddField("application", app)
+		wbc.GitCommitMessage = templateCommitMessage(updateConf.GitCommitMessage, updateConf.UpdateApp.Application.Name, changeList)
+		log.Debugf("Using commit message: %s", wbc.GitCommitMessage)
 		if !updateConf.DryRun {
 			logCtx.Infof("Committing %d parameter update(s) for application %s", result.NumImagesUpdated, app)
 			err := commitChangesLocked(&updateConf.UpdateApp.Application, wbc, state)
@@ -309,10 +313,10 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 				if !updateConf.DisableKubeEvents && updateConf.KubeClient != nil {
 					annotations := map[string]string{}
 					for i, c := range changeList {
-						annotations[fmt.Sprintf("argocd-image-updater.image-%d/full-image-name", i)] = c.image.GetFullNameWithoutTag()
-						annotations[fmt.Sprintf("argocd-image-updater.image-%d/image-name", i)] = c.image.ImageName
-						annotations[fmt.Sprintf("argocd-image-updater.image-%d/old-tag", i)] = c.oldTag.TagName
-						annotations[fmt.Sprintf("argocd-image-updater.image-%d/new-tag", i)] = c.newTag.TagName
+						annotations[fmt.Sprintf("argocd-image-updater.image-%d/full-image-name", i)] = c.Image.GetFullNameWithoutTag()
+						annotations[fmt.Sprintf("argocd-image-updater.image-%d/image-name", i)] = c.Image.ImageName
+						annotations[fmt.Sprintf("argocd-image-updater.image-%d/old-tag", i)] = c.OldTag.String()
+						annotations[fmt.Sprintf("argocd-image-updater.image-%d/new-tag", i)] = c.NewTag.String()
 					}
 					message := fmt.Sprintf("Successfully updated application '%s'", app)
 					_, err = updateConf.KubeClient.CreateApplicationEvent(&updateConf.UpdateApp.Application, "ImagesUpdated", message, annotations)
@@ -327,6 +331,42 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 	}
 
 	return result
+}
+
+// templateCommitMessage renders a commit message template and returns it as
+// as a string. If the template could not be rendered, returns a default
+// message.
+func templateCommitMessage(tpl *template.Template, appName string, changeList []change) string {
+	var cmBuf bytes.Buffer
+
+	type commitMessageChange struct {
+		Image  string
+		OldTag string
+		NewTag string
+	}
+
+	// Wrapper for the templating engine
+	type commitMessageTemplate struct {
+		AppName    string
+		AppChanges []commitMessageChange
+	}
+
+	changes := make([]commitMessageChange, 0)
+	for _, c := range changeList {
+		changes = append(changes, commitMessageChange{c.Image.ImageName, c.OldTag.String(), c.NewTag.String()})
+	}
+
+	tplData := commitMessageTemplate{
+		AppName:    appName,
+		AppChanges: changes,
+	}
+	err := tpl.Execute(&cmBuf, tplData)
+	if err != nil {
+		log.Errorf("could not execute template for Git commit message: %v", err)
+		return "build: update of application " + appName
+	}
+
+	return cmBuf.String()
 }
 
 func setAppImage(app *v1alpha1.Application, img *image.ContainerImage) error {
