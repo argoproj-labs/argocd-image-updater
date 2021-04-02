@@ -345,12 +345,13 @@ func templateCommitMessage(tpl *template.Template, appName string, changeList []
 		NewTag string
 	}
 
-	// Wrapper for the templating engine
 	type commitMessageTemplate struct {
 		AppName    string
 		AppChanges []commitMessageChange
 	}
 
+	// We need to transform the change list into something more viable for the
+	// writer of a template.
 	changes := make([]commitMessageChange, 0)
 	for _, c := range changeList {
 		changes = append(changes, commitMessageChange{c.Image.ImageName, c.OldTag.String(), c.NewTag.String()})
