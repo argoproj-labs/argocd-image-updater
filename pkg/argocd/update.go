@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"text/template"
+	"time"
 
 	"github.com/argoproj-labs/argocd-image-updater/ext/git"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
@@ -155,6 +156,13 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 			log.WithContext().AddField("application", app).Debugf("Image '%s' seems not to be live in this application, skipping", applicationImage.ImageName)
 			result.NumSkipped += 1
 			continue
+		}
+
+		// In some cases, the running image has no tag set. We create a dummy
+		// tag, without name, digest and a timestamp of zero. This dummy tag
+		// will trigger an update on the first run.
+		if updateableImage.ImageTag == nil {
+			updateableImage.ImageTag = tag.NewImageTag("", time.Unix(0, 0), "")
 		}
 
 		result.NumImagesConsidered += 1
