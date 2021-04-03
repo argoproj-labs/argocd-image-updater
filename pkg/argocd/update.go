@@ -86,7 +86,8 @@ type helmOverride struct {
 	Helm helmParameters `json:"helm"`
 }
 
-type change struct {
+// ChangeEntry represents an image that has been changed by Image Updater
+type ChangeEntry struct {
 	Image  *image.ContainerImage
 	OldTag *tag.ImageTag
 	NewTag *tag.ImageTag
@@ -135,7 +136,7 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 
 	result := ImageUpdaterResult{}
 	app := updateConf.UpdateApp.Application.GetName()
-	changeList := make([]change, 0)
+	changeList := make([]ChangeEntry, 0)
 
 	// Get all images that are deployed with the current application
 	applicationImages := GetImagesFromApplication(&updateConf.UpdateApp.Application)
@@ -267,7 +268,7 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 			} else {
 				containerImageNew := updateableImage.WithTag(latest)
 				imgCtx.Infof("Successfully updated image '%s' to '%s', but pending spec update (dry run=%v)", updateableImage.GetFullNameWithTag(), containerImageNew.GetFullNameWithTag(), updateConf.DryRun)
-				changeList = append(changeList, change{containerImageNew, updateableImage.ImageTag, containerImageNew.ImageTag})
+				changeList = append(changeList, ChangeEntry{containerImageNew, updateableImage.ImageTag, containerImageNew.ImageTag})
 			}
 		} else {
 			// We need to explicitly set the up-to-date images in the spec too, so
@@ -298,7 +299,7 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 
 	if needUpdate {
 		logCtx := log.WithContext().AddField("application", app)
-		wbc.GitCommitMessage = templateCommitMessage(updateConf.GitCommitMessage, updateConf.UpdateApp.Application.Name, changeList)
+		wbc.GitCommitMessage = TemplateCommitMessage(updateConf.GitCommitMessage, updateConf.UpdateApp.Application.Name, changeList)
 		log.Debugf("Using commit message: %s", wbc.GitCommitMessage)
 		if !updateConf.DryRun {
 			logCtx.Infof("Committing %d parameter update(s) for application %s", result.NumImagesUpdated, app)
@@ -336,7 +337,7 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 // templateCommitMessage renders a commit message template and returns it as
 // as a string. If the template could not be rendered, returns a default
 // message.
-func templateCommitMessage(tpl *template.Template, appName string, changeList []change) string {
+func TemplateCommitMessage(tpl *template.Template, appName string, changeList []ChangeEntry) string {
 	var cmBuf bytes.Buffer
 
 	type commitMessageChange struct {
