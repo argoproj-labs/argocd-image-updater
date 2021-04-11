@@ -56,6 +56,26 @@ func Test_GetImagesFromApplication(t *testing.T) {
 		imageList := GetImagesFromApplication(application)
 		assert.Empty(t, imageList)
 	})
+
+	t.Run("Get list of images from application that has force-update", func(t *testing.T) {
+		application := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "test-app",
+				Namespace: "argocd",
+				Annotations: map[string]string{
+					fmt.Sprintf(common.ForceUpdateOptionAnnotation, "nginx"): "true",
+					common.ImageUpdaterAnnotation:                            "nginx=nginx",
+				},
+			},
+			Spec: v1alpha1.ApplicationSpec{},
+			Status: v1alpha1.ApplicationStatus{
+				Summary: v1alpha1.ApplicationSummary{},
+			},
+		}
+		imageList := GetImagesFromApplication(application)
+		require.Len(t, imageList, 1)
+		assert.Equal(t, "nginx", imageList[0].ImageName)
+	})
 }
 
 func Test_GetApplicationType(t *testing.T) {

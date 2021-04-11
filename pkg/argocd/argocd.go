@@ -173,7 +173,7 @@ func FilterApplicationsForUpdate(apps []v1alpha1.Application, patterns []string)
 		} else {
 			log.Tracef("processing app '%s' of type '%v'", app.GetName(), app.Status.SourceType)
 			imageList := make(image.ContainerImageList, 0)
-			for _, imageName := range strings.Split(updateImage, ",") {
+			for _, imageName := range parseImageList(updateImage) {
 				allowed := image.NewFromIdentifier(strings.TrimSpace(imageName))
 				imageList = append(imageList, allowed)
 			}
@@ -185,6 +185,10 @@ func FilterApplicationsForUpdate(apps []v1alpha1.Application, patterns []string)
 	}
 
 	return appsForUpdate, nil
+}
+
+func parseImageList(updateImage string) []string {
+	return strings.Split(updateImage, ",")
 }
 
 // GetApplication gets the application named appName from Argo CD API
@@ -415,6 +419,18 @@ func GetImagesFromApplication(app *v1alpha1.Application) image.ContainerImageLis
 	for _, imageStr := range app.Status.Summary.Images {
 		image := image.NewFromIdentifier(imageStr)
 		images = append(images, image)
+	}
+
+	annotations := app.Annotations
+	if updateImage, ok := annotations[common.ImageUpdaterAnnotation]; ok {
+		for _, identifier := range parseImageList(updateImage) {
+			img := image.NewFromIdentifier(identifier)
+			if forceStr, force := annotations[fmt.Sprintf(common.ForceUpdateOptionAnnotation, img.ImageAlias)]; force && strings.ToLower(forceStr) == "true" {
+				if images.ContainsImage(img, false) == nil {
+					images = append(images, img)
+				}
+			}
+		}
 	}
 
 	return images
