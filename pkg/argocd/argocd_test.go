@@ -722,3 +722,10 @@ func TestKubernetesClient_UpdateSpec_Conflict(t *testing.T) {
 
 	assert.Equal(t, "https://github.com/argoproj/argocd-example-apps", spec.Source.RepoURL)
 }
+
+func Test_parseImageList(t *testing.T) {
+	assert.Equal(t, []string{"foo", "bar"}, parseImageList(" foo, bar ").Originals())
+	// should whitespace inside the spec be preserved?
+	assert.Equal(t, []string{"foo", "bar", "baz = qux"}, parseImageList(" foo, bar,baz = qux ").Originals())
+	assert.Equal(t, []string{"foo", "bar", "baz=qux"}, parseImageList("foo,bar,baz=qux").Originals())
+}
