@@ -60,7 +60,7 @@ type Client interface {
 	RevisionMetadata(revision string) (*RevisionMetadata, error)
 	VerifyCommitSignature(string) (string, error)
 	Branch(sourceBranch, targetBranch string) error
-	Commit(pathSpec string, message string, signingKey string) error
+	Commit(pathSpec string, message string, messageIsFile bool, signingKey string) error
 	Push(remote string, branch string, force bool) error
 	Add(path string) error
 	SymRefToBranch(symRef string) (string, error)
@@ -522,7 +522,7 @@ func (m *nativeGitClient) VerifyCommitSignature(revision string) (string, error)
 // used as the commit message, otherwise a default commit message will be used.
 // If signingKey is not the empty string, commit will be signed with the given
 // GPG key.
-func (m *nativeGitClient) Commit(pathSpec string, message string, signingKey string) error {
+func (m *nativeGitClient) Commit(pathSpec string, message string, messageIsFile bool, signingKey string) error {
 	defaultCommitMsg := "Update parameters"
 	args := []string{"commit"}
 	if pathSpec == "" || pathSpec == "*" {
@@ -532,7 +532,11 @@ func (m *nativeGitClient) Commit(pathSpec string, message string, signingKey str
 		args = append(args, "-S", signingKey)
 	}
 	if message != "" {
-		args = append(args, "-m", message)
+		if messageIsFile {
+			args = append(args, "-F", message)
+		} else {
+			args = append(args, "-m", message)
+		}
 	} else {
 		args = append(args, "-m", defaultCommitMsg)
 	}

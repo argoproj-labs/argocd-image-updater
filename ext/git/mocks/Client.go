@@ -54,13 +54,13 @@ func (_m *Client) Checkout(revision string) error {
 	return r0
 }
 
-// Commit provides a mock function with given fields: pathSpec, message, signingKey
-func (_m *Client) Commit(pathSpec string, message string, signingKey string) error {
-	ret := _m.Called(pathSpec, message, signingKey)
+// Commit provides a mock function with given fields: pathSpec, message, messageIsFile, signingKey
+func (_m *Client) Commit(pathSpec string, message string, messageIsFile bool, signingKey string) error {
+	ret := _m.Called(pathSpec, message, messageIsFile, signingKey)
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(string, string, string) error); ok {
-		r0 = rf(pathSpec, message, signingKey)
+	if rf, ok := ret.Get(0).(func(string, string, bool, string) error); ok {
+		r0 = rf(pathSpec, message, messageIsFile, signingKey)
 	} else {
 		r0 = ret.Error(0)
 	}
