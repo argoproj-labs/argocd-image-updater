@@ -172,19 +172,24 @@ func FilterApplicationsForUpdate(apps []v1alpha1.Application, patterns []string)
 			continue
 		} else {
 			log.Tracef("processing app '%s' of type '%v'", app.GetName(), app.Status.SourceType)
-			imageList := make(image.ContainerImageList, 0)
-			for _, imageName := range strings.Split(updateImage, ",") {
-				allowed := image.NewFromIdentifier(strings.TrimSpace(imageName))
-				imageList = append(imageList, allowed)
-			}
+			imageList := parseImageList(updateImage)
 			appImages := ApplicationImages{}
 			appImages.Application = app
-			appImages.Images = imageList
+			appImages.Images = *imageList
 			appsForUpdate[app.GetName()] = appImages
 		}
 	}
 
 	return appsForUpdate, nil
+}
+
+func parseImageList(updateImage string) *image.ContainerImageList {
+	splits := strings.Split(updateImage, ",")
+	results := make(image.ContainerImageList, len(splits))
+	for i, s := range splits {
+		results[i] = image.NewFromIdentifier(strings.TrimSpace(s))
+	}
+	return &results
 }
 
 // GetApplication gets the application named appName from Argo CD API
@@ -415,6 +420,19 @@ func GetImagesFromApplication(app *v1alpha1.Application) image.ContainerImageLis
 	for _, imageStr := range app.Status.Summary.Images {
 		image := image.NewFromIdentifier(imageStr)
 		images = append(images, image)
+	}
+
+	// The Application may wish to update images that don't create a container we can detect.
+	// Check the image list for images with a force-update annotation, and add them if they are not already present.
+	annotations := app.Annotations
+	if updateImage, ok := annotations[common.ImageUpdaterAnnotation]; ok {
+		for _, img := range *parseImageList(updateImage) {
+			if forceStr, force := annotations[fmt.Sprintf(common.ForceUpdateOptionAnnotation, img.ImageAlias)]; force && strings.ToLower(forceStr) == "true" {
+				if images.ContainsImage(img, false) == nil {
+					images = append(images, img)
+				}
+			}
+		}
 	}
 
 	return images
