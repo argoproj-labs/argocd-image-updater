@@ -61,6 +61,21 @@ of the [Semver library](https://github.com/Masterminds/semver) we're using.
     [filtering tags](#filtering-tags)
     below.
 
+
+### Forcing Image Updates
+
+By default, Image Updater will only update an image that is actually used in your Application
+(i.e., is it exported in the Status of your ArgoCD Application.)
+
+To support custom resources and things like PodTemplates that don't actually create a container, 
+you may force an update:
+
+```yaml
+argocd-image-updater.argoproj.io/image-list: myalias=some/image
+argocd-image-updater.argoproj.io/myalias.force-update: "true"
+```
+
+
 ## Assigning aliases to images
 
 It's possible (and sometimes necessary) to assign an alias name to any given
