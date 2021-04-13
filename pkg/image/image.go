@@ -103,6 +103,14 @@ func (list *ContainerImageList) ContainsImage(img *ContainerImage, checkVersion 
 	return nil
 }
 
+func (list *ContainerImageList) Originals() []string {
+	results := make([]string, len(*list))
+	for i, img := range *list {
+		results[i] = img.Original()
+	}
+	return results
+}
+
 // String Returns the name of all images as a string, separated using comma
 func (list *ContainerImageList) String() string {
 	imgNameList := make([]string, 0)

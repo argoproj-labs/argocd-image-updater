@@ -61,6 +61,21 @@ of the [Semver library](https://github.com/Masterminds/semver) we're using.
     [filtering tags](#filtering-tags)
     below.
 
+
+### Forcing Image Updates
+
+By default, Image Updater will only update an image that is actually used in your Application
+(i.e., is it exported in the Status of your ArgoCD Application.)
+
+To support custom resources and things like PodTemplates that don't actually create a container, 
+you may force an update:
+
+```yaml
+argocd-image-updater.argoproj.io/image-list: myalias=some/image
+argocd-image-updater.argoproj.io/myalias.force-update: "true"
+```
+
+
 ## Assigning aliases to images
 
 It's possible (and sometimes necessary) to assign an alias name to any given
@@ -77,9 +92,6 @@ argocd-image-updater.argoproj.io/image-list: myalias=some/image
 ```
 
 Assigning an alias name to an image is necessary in these scenarios:
-
-* If you want to use custom images with Kustomize. In this case, the name must
-  match to what is defined in your Kustomize base.
 
 * If you need to specify the Helm parameters used for rendering the image name
   and version using Helm and the parameter names do not equal `image.name` and
@@ -225,23 +237,47 @@ be in format `<username>:<password>`
 
 In Kustomize, if you want to use an image from another registry or a completely
 different image than what is specified in the manifests, you can give the image
-specification as follows:
+specification as follows.
 
-```text
-<image_name>=<image_path>:<image_tag>
+First of all, you will have to set up an `image_alias` for your image so you
+are able to provide additional configuration for it:
+
+```yaml
+argocd-image-updater.argoproj.io/image-list: <image_alias>=<image_name>:<image_tag>
 ```
 
-`<image_name>` will be the original image name, as used in your manifests, and
-`<image_path>:<image_path>` will be the value used when rendering the
-manifests.
+In this case, `image_name` should be the name of the image that you want to 
+update to, rather than the currently running image.
+
+To provide the original image name, you need to set the `kustomize.image-name`
+annotation to the original image's name, like follows:
+
+```yaml
+argocd-image-updater.argoproj.io/<image_alias>.kustomize.image_name: <original_image_name>
+```
 
 Let's take Argo CD's Kustomize base as an example: The original image used by
-Argo CD is `argoproj/argocd`, pulled from the Docker Hub container registry. If
-you are about to follow the latest builds, as published on the GitHub registry,
-you could override the image specification in Kustomize as follows:
+Argo CD is `quay.io/argoproj/argocd`, pulled from Quay container registry. If
+you want to follow the latest builds, as published on the GitHub registry, you
+could override the image specification in Kustomize as follows:
 
-```text
-argoproj/argocd=docker.pkg.github.com/argoproj/argo-cd/argocd:1.7.0-a6399e59
+```yaml
+argocd-image-updater.argoproj.io/image-list: argocd=ghcr.io/argoproj/argocd
+argocd-image-updater.argoproj.io/argocd.kustomize.image_name: quay.io/argoproj/argocd
+```
+
+Under the hood, this would be similar to the following kustomize command:
+
+```shell
+kustomize edit set image quay.io/argoproj/argocd=ghcr.io/argoproj/argocd
+```
+
+Finally, if you have not yet overridden the image name in your manifests (i.e.
+there's no image `ghcr.io/argoproj/argocd` running in your application, you
+may need to tell Image Updater to force the update despite no image is running:
+
+```yaml
+argocd-image-updater.argoproj.io/argocd.force-update: true
 ```
 
 ## Specifying Helm parameter names
