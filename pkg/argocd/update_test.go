@@ -320,17 +320,16 @@ func Test_UpdateApplication(t *testing.T) {
 		kubeClient := kube.KubernetesClient{
 			Clientset: fake.NewFakeKubeClient(),
 		}
-		imageList := "foobar=gcr.io/jannfis/foobar:>=1.0.1"
+		annotations := map[string]string{
+			common.ImageUpdaterAnnotation:                                    "foobar=gcr.io/jannfis/foobar:>=1.0.1",
+			fmt.Sprintf(common.KustomizeApplicationNameAnnotation, "foobar"): "jannfis/foobar",
+		}
 		appImages := &ApplicationImages{
 			Application: v1alpha1.Application{
 				ObjectMeta: v1.ObjectMeta{
-					Name:      "guestbook",
-					Namespace: "guestbook",
-					Annotations: map[string]string{
-						common.ImageUpdaterAnnotation:                                    imageList,
-						fmt.Sprintf(common.KustomizeApplicationNameAnnotation, "foobar"): "jannfis/foobar",
-						fmt.Sprintf(common.ForceUpdateOptionAnnotation, "foobar"):        "true",
-					},
+					Name:        "guestbook",
+					Namespace:   "guestbook",
+					Annotations: annotations,
 				},
 				Spec: v1alpha1.ApplicationSpec{
 					Source: v1alpha1.ApplicationSource{
@@ -350,7 +349,7 @@ func Test_UpdateApplication(t *testing.T) {
 					},
 				},
 			},
-			Images: *parseImageList(imageList),
+			Images: *parseImageList(annotations),
 		}
 		res := UpdateApplication(&UpdateConfiguration{
 			NewRegFN:   mockClientFn,
@@ -364,6 +363,64 @@ func Test_UpdateApplication(t *testing.T) {
 		assert.Equal(t, 1, res.NumApplicationsProcessed)
 		assert.Equal(t, 1, res.NumImagesConsidered)
 		assert.Equal(t, 1, res.NumImagesUpdated)
+	})
+
+	t.Run("Test not updated because kustomize image is the same", func(t *testing.T) {
+		mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
+			regMock := regmock.RegistryClient{}
+			regMock.On("Tags", mock.Anything).Return([]string{"1.0.1"}, nil)
+			return &regMock, nil
+		}
+
+		argoClient := argomock.ArgoCD{}
+		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+
+		kubeClient := kube.KubernetesClient{
+			Clientset: fake.NewFakeKubeClient(),
+		}
+		annotations := map[string]string{
+			common.ImageUpdaterAnnotation:                                    "foobar=gcr.io/jannfis/foobar:>=1.0.1",
+			fmt.Sprintf(common.KustomizeApplicationNameAnnotation, "foobar"): "jannfis/foobar",
+		}
+		appImages := &ApplicationImages{
+			Application: v1alpha1.Application{
+				ObjectMeta: v1.ObjectMeta{
+					Name:        "guestbook",
+					Namespace:   "guestbook",
+					Annotations: annotations,
+				},
+				Spec: v1alpha1.ApplicationSpec{
+					Source: v1alpha1.ApplicationSource{
+						Kustomize: &v1alpha1.ApplicationSourceKustomize{
+							Images: v1alpha1.KustomizeImages{
+								"jannfis/foobar:1.0.1",
+							},
+						},
+					},
+				},
+				Status: v1alpha1.ApplicationStatus{
+					SourceType: v1alpha1.ApplicationSourceTypeKustomize,
+					Summary: v1alpha1.ApplicationSummary{
+						Images: []string{
+							"gcr.io/jannfis/foobar:1.0.1",
+						},
+					},
+				},
+			},
+			Images: *parseImageList(annotations),
+		}
+		res := UpdateApplication(&UpdateConfiguration{
+			NewRegFN:   mockClientFn,
+			ArgoClient: &argoClient,
+			KubeClient: &kubeClient,
+			UpdateApp:  appImages,
+			DryRun:     false,
+		}, NewSyncIterationState())
+		assert.Equal(t, 0, res.NumErrors)
+		assert.Equal(t, 0, res.NumSkipped)
+		assert.Equal(t, 1, res.NumApplicationsProcessed)
+		assert.Equal(t, 1, res.NumImagesConsidered)
+		assert.Equal(t, 0, res.NumImagesUpdated)
 	})
 
 	t.Run("Test skip because of match-tag pattern doesn't match", func(t *testing.T) {

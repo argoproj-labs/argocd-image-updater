@@ -75,6 +75,7 @@ func Test_GetImagesFromApplication(t *testing.T) {
 		imageList := GetImagesFromApplication(application)
 		require.Len(t, imageList, 1)
 		assert.Equal(t, "nginx", imageList[0].ImageName)
+		assert.Nil(t, imageList[0].ImageTag)
 	})
 }
 
@@ -724,8 +725,18 @@ func TestKubernetesClient_UpdateSpec_Conflict(t *testing.T) {
 }
 
 func Test_parseImageList(t *testing.T) {
-	assert.Equal(t, []string{"foo", "bar"}, parseImageList(" foo, bar ").Originals())
-	// should whitespace inside the spec be preserved?
-	assert.Equal(t, []string{"foo", "bar", "baz = qux"}, parseImageList(" foo, bar,baz = qux ").Originals())
-	assert.Equal(t, []string{"foo", "bar", "baz=qux"}, parseImageList("foo,bar,baz=qux").Originals())
+	t.Run("Test basic parsing", func(t *testing.T) {
+		assert.Equal(t, []string{"foo", "bar"}, parseImageList(map[string]string{common.ImageUpdaterAnnotation: " foo, bar "}).Originals())
+		// should whitespace inside the spec be preserved?
+		assert.Equal(t, []string{"foo", "bar", "baz = qux"}, parseImageList(map[string]string{common.ImageUpdaterAnnotation: " foo, bar,baz = qux "}).Originals())
+		assert.Equal(t, []string{"foo", "bar", "baz=qux"}, parseImageList(map[string]string{common.ImageUpdaterAnnotation: "foo,bar,baz=qux"}).Originals())
+	})
+	t.Run("Test kustomize override", func(t *testing.T) {
+		imgs := *parseImageList(map[string]string{
+			common.ImageUpdaterAnnotation:                                 "foo=bar",
+			fmt.Sprintf(common.KustomizeApplicationNameAnnotation, "foo"): "baz",
+		})
+		assert.Equal(t, "bar", imgs[0].ImageName)
+		assert.Equal(t, "baz", imgs[0].KustomizeImage.ImageName)
+	})
 }

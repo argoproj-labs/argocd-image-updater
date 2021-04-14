@@ -167,12 +167,12 @@ func FilterApplicationsForUpdate(apps []v1alpha1.Application, patterns []string)
 
 		// Check whether application has our annotation set
 		annotations := app.GetAnnotations()
-		if updateImage, ok := annotations[common.ImageUpdaterAnnotation]; !ok {
+		if _, ok := annotations[common.ImageUpdaterAnnotation]; !ok {
 			log.Tracef("skipping app '%s' of type '%s' because required annotation is missing", app.GetName(), app.Status.SourceType)
 			continue
 		} else {
 			log.Tracef("processing app '%s' of type '%v'", app.GetName(), app.Status.SourceType)
-			imageList := parseImageList(updateImage)
+			imageList := parseImageList(annotations)
 			appImages := ApplicationImages{}
 			appImages.Application = app
 			appImages.Images = *imageList
@@ -183,11 +183,17 @@ func FilterApplicationsForUpdate(apps []v1alpha1.Application, patterns []string)
 	return appsForUpdate, nil
 }
 
-func parseImageList(updateImage string) *image.ContainerImageList {
-	splits := strings.Split(updateImage, ",")
-	results := make(image.ContainerImageList, len(splits))
-	for i, s := range splits {
-		results[i] = image.NewFromIdentifier(strings.TrimSpace(s))
+func parseImageList(annotations map[string]string) *image.ContainerImageList {
+	results := make(image.ContainerImageList, 0)
+	if updateImage, ok := annotations[common.ImageUpdaterAnnotation]; ok {
+		splits := strings.Split(updateImage, ",")
+		for _, s := range splits {
+			img := image.NewFromIdentifier(strings.TrimSpace(s))
+			if kustomizeImage, ok := annotations[fmt.Sprintf(common.KustomizeApplicationNameAnnotation, img.ImageAlias)]; ok {
+				img.KustomizeImage = image.NewFromIdentifier(kustomizeImage)
+			}
+			results = append(results, img)
+		}
 	}
 	return &results
 }
@@ -425,13 +431,11 @@ func GetImagesFromApplication(app *v1alpha1.Application) image.ContainerImageLis
 	// The Application may wish to update images that don't create a container we can detect.
 	// Check the image list for images with a force-update annotation, and add them if they are not already present.
 	annotations := app.Annotations
-	if updateImage, ok := annotations[common.ImageUpdaterAnnotation]; ok {
-		for _, img := range *parseImageList(updateImage) {
-			img.ImageTag = nil // the tag from the image list will be a version constraint, which isn't a valid tag
-			if forceStr, force := annotations[fmt.Sprintf(common.ForceUpdateOptionAnnotation, img.ImageAlias)]; force && strings.ToLower(forceStr) == "true" {
-				if images.ContainsImage(img, false) == nil {
-					images = append(images, img)
-				}
+	for _, img := range *parseImageList(annotations) {
+		img.ImageTag = nil // the tag from the image list will be a version constraint, which isn't a valid tag
+		if forceStr, force := annotations[fmt.Sprintf(common.ForceUpdateOptionAnnotation, img.ImageAlias)]; force && strings.ToLower(forceStr) == "true" {
+			if images.ContainsImage(img, false) == nil {
+				images = append(images, img)
 			}
 		}
 	}

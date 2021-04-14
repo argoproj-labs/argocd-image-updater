@@ -170,6 +170,10 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 			AddField("image_tag", updateableImage.ImageTag).
 			AddField("alias", applicationImage.ImageAlias)
 
+		if updateableImage.KustomizeImage != nil {
+			imgCtx.AddField("kustomize_image", updateableImage.KustomizeImage)
+		}
+
 		imgCtx.Debugf("Considering this image for update")
 
 		rep, err := registry.GetRegistryEndpoint(updateableImage.RegistryURL)
@@ -256,9 +260,7 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 			}
 		}
 
-		// If the latest tag does not match image's current tag, it means we have
-		// an update candidate.
-		if !updateableImage.ImageTag.Equals(latest) {
+		if needsUpdate(updateableImage, applicationImage, latest) {
 
 			imgCtx.Infof("Setting new image to %s", updateableImage.WithTag(latest).String())
 			needUpdate = true
@@ -338,6 +340,11 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 	}
 
 	return result
+}
+
+func needsUpdate(updateableImage *image.ContainerImage, applicationImage *image.ContainerImage, latest *tag.ImageTag) bool {
+	// If the latest tag does not match image's current tag or the kustomize image is different, it means we have an update candidate.
+	return !updateableImage.ImageTag.Equals(latest) || applicationImage.KustomizeImage != nil && applicationImage.DiffersFrom(updateableImage, false)
 }
 
 func setAppImage(app *v1alpha1.Application, img *image.ContainerImage) error {

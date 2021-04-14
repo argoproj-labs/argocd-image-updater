@@ -14,6 +14,7 @@ type ContainerImage struct {
 	ImageAlias            string
 	HelmParamImageName    string
 	HelmParamImageVersion string
+	KustomizeImage        *ContainerImage
 	original              string
 }
 
@@ -91,8 +92,18 @@ func (img *ContainerImage) WithTag(newTag *tag.ImageTag) *ContainerImage {
 	return nimg
 }
 
+func (img *ContainerImage) DiffersFrom(other *ContainerImage, checkVersion bool) bool {
+	return img.RegistryURL != other.RegistryURL || img.ImageName != other.ImageName || (checkVersion && img.ImageTag.TagName != other.ImageTag.TagName)
+}
+
 // ContainsImage checks whether img is contained in a list of images
 func (list *ContainerImageList) ContainsImage(img *ContainerImage, checkVersion bool) *ContainerImage {
+	// if there is a KustomizeImage override, check it for a match first
+	if img.KustomizeImage != nil {
+		if kustomizeMatch := list.ContainsImage(img.KustomizeImage, checkVersion); kustomizeMatch != nil {
+			return kustomizeMatch
+		}
+	}
 	for _, image := range *list {
 		if img.ImageName == image.ImageName && image.RegistryURL == img.RegistryURL {
 			if !checkVersion || image.ImageTag.TagName == img.ImageTag.TagName {
