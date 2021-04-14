@@ -3,8 +3,6 @@ package argocd
 import (
 	"context"
 	"fmt"
-	"github.com/Masterminds/semver"
-	"github.com/argoproj-labs/argocd-image-updater/pkg/tag"
 	"os"
 	"path/filepath"
 	"strings"
@@ -429,18 +427,9 @@ func GetImagesFromApplication(app *v1alpha1.Application) image.ContainerImageLis
 	annotations := app.Annotations
 	if updateImage, ok := annotations[common.ImageUpdaterAnnotation]; ok {
 		for _, img := range *parseImageList(updateImage) {
+			img.ImageTag = nil // the tag from the image list will be a version constraint, which isn't a valid tag
 			if forceStr, force := annotations[fmt.Sprintf(common.ForceUpdateOptionAnnotation, img.ImageAlias)]; force && strings.ToLower(forceStr) == "true" {
 				if images.ContainsImage(img, false) == nil {
-					// code consuming this list assumes the tag is valid, but for a force update, we may only have a constraint which isn't a valid tag
-					// if using semver, try to parse the tag and remove it if it fails
-					if strategy, set := annotations[fmt.Sprintf(common.UpdateStrategyAnnotation, img.ImageAlias)]; (!set ||
-						image.ParseUpdateStrategy(strategy) == image.VersionSortSemVer) && img.ImageTag != nil {
-						_, err := semver.NewVersion(img.ImageTag.TagName)
-						if err != nil {
-							log.Debugf("Dropping tag from force-update of image %s because %v", img, err)
-							img.ImageTag = &tag.ImageTag{}
-						}
-					}
 					images = append(images, img)
 				}
 			}
