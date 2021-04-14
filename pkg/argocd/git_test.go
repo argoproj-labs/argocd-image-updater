@@ -8,6 +8,7 @@ import (
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/image"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/tag"
+
 	"github.com/stretchr/testify/assert"
 )
 
