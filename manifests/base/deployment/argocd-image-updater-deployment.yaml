@@ -98,14 +98,16 @@ spec:
           initialDelaySeconds: 3
           periodSeconds: 30
         volumeMounts:
-        - name: registries-conf
+        - name: image-updater-conf
           mountPath: /app/config
       serviceAccountName: argocd-image-updater
       volumes:
-      - name: registries-conf
+      - name: image-updater-conf
         configMap:
           name: argocd-image-updater-config
           optional: true
           items:
           - key: registries.conf
             path: registries.conf
+          - key: git.commit-message-template
+            path: commit.template

@@ -2,14 +2,18 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
+	"text/template"
 	"time"
 
 	"github.com/argoproj-labs/argocd-image-updater/pkg/argocd"
+	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/env"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/health"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/image"
@@ -17,6 +21,7 @@ import (
 	"github.com/argoproj-labs/argocd-image-updater/pkg/log"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/metrics"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/registry"
+	"github.com/argoproj-labs/argocd-image-updater/pkg/tag"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/version"
 
 	"github.com/spf13/cobra"
@@ -30,6 +35,9 @@ const defaultArgoCDServerAddr = "argocd-server.argocd"
 
 // Default path to registry configuration
 const defaultRegistriesConfPath = "/app/config/registries.conf"
+
+// Default path to Git commit message template
+const defaultCommitTemplatePath = "/app/config/commit.template"
 
 const applicationsAPIKindK8S = "kubernetes"
 const applicationsAPIKindArgoCD = "argocd"
@@ -51,6 +59,7 @@ type ImageUpdaterConfig struct {
 	AppNamePatterns     []string
 	GitCommitUser       string
 	GitCommitMail       string
+	GitCommitMessage    *template.Template
 	DisableKubeEvents   bool
 }
 
@@ -155,6 +164,7 @@ func runImageUpdater(cfg *ImageUpdaterConfig, warmUp bool) (argocd.ImageUpdaterR
 				DryRun:            dryRun,
 				GitCommitUser:     cfg.GitCommitUser,
 				GitCommitEmail:    cfg.GitCommitMail,
+				GitCommitMessage:  cfg.GitCommitMessage,
 				DisableKubeEvents: cfg.DisableKubeEvents,
 			}
 			res := argocd.UpdateApplication(upconf, syncState)
@@ -203,6 +213,7 @@ func newRootCommand() error {
 	rootCmd.AddCommand(newRunCommand())
 	rootCmd.AddCommand(newVersionCommand())
 	rootCmd.AddCommand(newTestCommand())
+	rootCmd.AddCommand(newTemplateCommand())
 	err := rootCmd.Execute()
 	return err
 }
@@ -229,6 +240,55 @@ func newVersionCommand() *cobra.Command {
 	}
 	versionCmd.Flags().BoolVar(&short, "short", false, "show only the version number")
 	return versionCmd
+}
+
+func newTemplateCommand() *cobra.Command {
+	var (
+		commitMessageTemplatePath string
+		tplStr                    string
+	)
+	var runCmd = &cobra.Command{
+		Use:   "template [<PATH>]",
+		Short: "Test & render a commit message template",
+		Long: `
+The template command lets you validate your commit message template. It will
+parse the template at given PATH and execute it with a defined set of changes
+so that you can see how it looks like when being templated by Image Updater.
+
+If PATH is not given, will show you the default message that is used.
+`,
+		Run: func(cmd *cobra.Command, args []string) {
+			var tpl *template.Template
+			var err error
+			if len(args) != 1 {
+				tplStr = common.DefaultGitCommitMessage
+			} else {
+				commitMessageTemplatePath = args[0]
+				tplData, err := ioutil.ReadFile(commitMessageTemplatePath)
+				if err != nil {
+					log.Fatalf("%v", err)
+				}
+				tplStr = string(tplData)
+			}
+			if tpl, err = template.New("commitMessage").Parse(tplStr); err != nil {
+				log.Fatalf("could not parse commit message template: %v", err)
+			}
+			chL := []argocd.ChangeEntry{
+				{
+					Image:  image.NewFromIdentifier("gcr.io/example/example:1.0.0"),
+					OldTag: tag.NewImageTag("1.0.0", time.Now(), ""),
+					NewTag: tag.NewImageTag("1.0.1", time.Now(), ""),
+				},
+				{
+					Image:  image.NewFromIdentifier("gcr.io/example/updater@sha256:f2ca1bb6c7e907d06dafe4687e579fce76b37e4e93b7605022da52e6ccc26fd2"),
+					OldTag: tag.NewImageTag("", time.Now(), "sha256:01d09d19c2139a46aebfb577780d123d7396e97201bc7ead210a2ebff8239dee"),
+					NewTag: tag.NewImageTag("", time.Now(), "sha256:7aa7a5359173d05b63cfd682e3c38487f3cb4f7f1d60659fe59fab1505977d4c"),
+				},
+			}
+			fmt.Printf("%s\n", argocd.TemplateCommitMessage(tpl, "example-app", chL))
+		},
+	}
+	return runCmd
 }
 
 func newTestCommand() *cobra.Command {
@@ -388,6 +448,8 @@ func newRunCommand() *cobra.Command {
 	var kubeConfig string
 	var disableKubernetes bool
 	var warmUpCache bool = true
+	var commitMessagePath string
+	var commitMessageTpl string
 	var runCmd = &cobra.Command{
 		Use:   "run",
 		Short: "Runs the argocd-image-updater with a set of options",
@@ -413,6 +475,33 @@ func newRunCommand() *cobra.Command {
 				getPrintableInterval(cfg.CheckInterval),
 				getPrintableHealthPort(cfg.HealthPort),
 			)
+
+			// User can specify a path to a template used for Git commit messages
+			if commitMessagePath != "" {
+				tpl, err := ioutil.ReadFile(commitMessagePath)
+				if err != nil {
+					if errors.Is(err, os.ErrNotExist) {
+						log.Warnf("commit message template at %s does not exist, using default", commitMessagePath)
+						commitMessageTpl = common.DefaultGitCommitMessage
+					} else {
+						log.Fatalf("could not read commit message template: %v", err)
+					}
+				} else {
+					commitMessageTpl = string(tpl)
+				}
+			}
+
+			if commitMessageTpl == "" {
+				log.Infof("Using default Git commit messages")
+				commitMessageTpl = common.DefaultGitCommitMessage
+			}
+
+			if tpl, err := template.New("commitMessage").Parse(commitMessageTpl); err != nil {
+				log.Fatalf("could not parse commit message template: %v", err)
+			} else {
+				log.Debugf("Successfully parsed commit message template")
+				cfg.GitCommitMessage = tpl
+			}
 
 			// Load registries configuration early on. We do not consider it a fatal
 			// error when the file does not exist, but we emit a warning.
@@ -548,6 +637,7 @@ func newRunCommand() *cobra.Command {
 	runCmd.Flags().BoolVar(&warmUpCache, "warmup-cache", true, "whether to perform a cache warm-up on startup")
 	runCmd.Flags().StringVar(&cfg.GitCommitUser, "git-commit-user", env.GetStringVal("GIT_COMMIT_USER", "argocd-image-updater"), "Username to use for Git commits")
 	runCmd.Flags().StringVar(&cfg.GitCommitMail, "git-commit-email", env.GetStringVal("GIT_COMMIT_EMAIL", "noreply@argoproj.io"), "E-Mail address to use for Git commits")
+	runCmd.Flags().StringVar(&commitMessagePath, "git-commit-message-path", defaultCommitTemplatePath, "Path to a template to use for Git commit messages")
 	runCmd.Flags().BoolVar(&cfg.DisableKubeEvents, "disable-kube-events", env.GetBoolVal("IMAGE_UPDATER_KUBE_EVENTS", false), "Disable kubernetes events")
 
 	return runCmd

@@ -45,3 +45,11 @@ const (
 	WriteBackMethodAnnotation = ImageUpdaterAnnotationPrefix + "/write-back-method"
 	GitBranchAnnotation       = ImageUpdaterAnnotationPrefix + "/git-branch"
 )
+
+// The default Git commit message's template
+const DefaultGitCommitMessage = `build: automatic update of {{ .AppName }}
+
+{{ range .AppChanges -}}
+updates image {{ .Image }} tag '{{ .OldTag }}' to '{{ .NewTag }}'
+{{ end -}}
+`
