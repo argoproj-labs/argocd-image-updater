@@ -45,6 +45,18 @@ type Refs struct {
 	// heads and remotes are also refs, but are not needed at this time.
 }
 
+// CommitOptions holds options for a git commit operation
+type CommitOptions struct {
+	// CommitMessageText holds a short commit message (-m option)
+	CommitMessageText string
+	// CommitMessagePath holds the path to a file to be used for the commit message (-F option)
+	CommitMessagePath string
+	// SigningKey holds a GnuPG key ID used to sign the commit with (-S option)
+	SigningKey string
+	// SignOff specifies whether to sign-off a commit (-s option)
+	SignOff bool
+}
+
 // Client is a generic git client interface
 type Client interface {
 	Root() string
@@ -60,7 +72,7 @@ type Client interface {
 	RevisionMetadata(revision string) (*RevisionMetadata, error)
 	VerifyCommitSignature(string) (string, error)
 	Branch(sourceBranch, targetBranch string) error
-	Commit(pathSpec string, message string, signingKey string) error
+	Commit(pathSpec string, opts *CommitOptions) error
 	Push(remote string, branch string, force bool) error
 	Add(path string) error
 	SymRefToBranch(symRef string) (string, error)
@@ -522,17 +534,22 @@ func (m *nativeGitClient) VerifyCommitSignature(revision string) (string, error)
 // used as the commit message, otherwise a default commit message will be used.
 // If signingKey is not the empty string, commit will be signed with the given
 // GPG key.
-func (m *nativeGitClient) Commit(pathSpec string, message string, signingKey string) error {
+func (m *nativeGitClient) Commit(pathSpec string, opts *CommitOptions) error {
 	defaultCommitMsg := "Update parameters"
 	args := []string{"commit"}
 	if pathSpec == "" || pathSpec == "*" {
 		args = append(args, "-a")
 	}
-	if signingKey != "" {
-		args = append(args, "-S", signingKey)
+	if opts.SigningKey != "" {
+		args = append(args, "-S", opts.SigningKey)
 	}
-	if message != "" {
-		args = append(args, "-m", message)
+	if opts.SignOff {
+		args = append(args, "-s")
+	}
+	if opts.CommitMessageText != "" {
+		args = append(args, "-m", opts.CommitMessageText)
+	} else if opts.CommitMessagePath != "" {
+		args = append(args, "-F", opts.CommitMessagePath)
 	} else {
 		args = append(args, "-m", defaultCommitMsg)
 	}

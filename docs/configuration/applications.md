@@ -224,3 +224,36 @@ as the author. You can override the author using the
 `--git-commit-user` and `--git-commit-email` command line switches or set
 `git.user` and `git.email`
 in the `argocd-image-updater-config` ConfigMap.
+
+#### Changing the Git commit message
+
+You can change the default commit message used by Argo CD Image Updater to some
+message that best suites your processes and regulations. For this, a simple
+template can be created (evaluating using the `text/template` Golang package)
+and made available through setting the key `git.commit-message-template` in the
+`argocd-image-updater-config` ConfigMap to the template's contents, e.g.
+
+```yaml
+data:
+  git.commit-message-template: |
+    build: automatic update of {{ .AppName }}
+
+    {{ range .AppChanges -}}
+    updates image {{ .Image }} tag '{{ .OldTag }}' to '{{ .NewTag }}'
+    {{ end -}}
+```
+
+Two top-level variables are provided to the template:
+
+* `.AppName` is the name of the application that is being updated
+* `.AppChanges` is a list of changes that were performed by the update. Each
+  entry in this list is a struct providing the following information for
+  each change:
+  * `.Image` holds the full name of the image that was updated
+  * `.OldTag` holds the tag name or SHA digest previous to the update
+  * `.NewTag` holds the tag name or SHA digest that was updated to
+
+In order to test a template before configuring it for use in Image Updater,
+you can store the template you want to use in a temporary file, and then use
+the `argocd-image-updater template /path/to/file` command to render the
+template using pre-defined data and see its outcome on the terminal.

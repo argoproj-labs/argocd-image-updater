@@ -3,11 +3,9 @@ package argocd
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
-	"os"
-	"path"
 	"strings"
 	"sync"
+	"text/template"
 	"time"
 
 	"github.com/argoproj-labs/argocd-image-updater/ext/git"
@@ -42,6 +40,7 @@ type UpdateConfiguration struct {
 	DryRun            bool
 	GitCommitUser     string
 	GitCommitEmail    string
+	GitCommitMessage  *template.Template
 	DisableKubeEvents bool
 }
 
@@ -59,11 +58,12 @@ type WriteBackConfig struct {
 	Method     WriteBackMethod
 	ArgoClient ArgoCD
 	// If GitClient is not nil, the client will be used for updates. Otherwise, a new client will be created.
-	GitClient      git.Client
-	GetCreds       GitCredsSource
-	GitBranch      string
-	GitCommitUser  string
-	GitCommitEmail string
+	GitClient        git.Client
+	GetCreds         GitCredsSource
+	GitBranch        string
+	GitCommitUser    string
+	GitCommitEmail   string
+	GitCommitMessage string
 }
 
 // The following are helper structs to only marshal the fields we require
@@ -83,10 +83,11 @@ type helmOverride struct {
 	Helm helmParameters `json:"helm"`
 }
 
-type change struct {
-	image  *image.ContainerImage
-	oldTag *tag.ImageTag
-	newTag *tag.ImageTag
+// ChangeEntry represents an image that has been changed by Image Updater
+type ChangeEntry struct {
+	Image  *image.ContainerImage
+	OldTag *tag.ImageTag
+	NewTag *tag.ImageTag
 }
 
 // SyncIterationState holds shared state of a running update operation
@@ -132,7 +133,7 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 
 	result := ImageUpdaterResult{}
 	app := updateConf.UpdateApp.Application.GetName()
-	changeList := make([]change, 0)
+	changeList := make([]ChangeEntry, 0)
 
 	// Get all images that are deployed with the current application
 	applicationImages := GetImagesFromApplication(&updateConf.UpdateApp.Application)
@@ -271,7 +272,7 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 			} else {
 				containerImageNew := updateableImage.WithTag(latest)
 				imgCtx.Infof("Successfully updated image '%s' to '%s', but pending spec update (dry run=%v)", updateableImage.GetFullNameWithTag(), containerImageNew.GetFullNameWithTag(), updateConf.DryRun)
-				changeList = append(changeList, change{containerImageNew, updateableImage.ImageTag, containerImageNew.ImageTag})
+				changeList = append(changeList, ChangeEntry{containerImageNew, updateableImage.ImageTag, containerImageNew.ImageTag})
 			}
 		} else {
 			// We need to explicitly set the up-to-date images in the spec too, so
@@ -298,10 +299,14 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 		if updateConf.GitCommitEmail != "" {
 			wbc.GitCommitEmail = updateConf.GitCommitEmail
 		}
+		if len(changeList) > 0 && updateConf.GitCommitMessage != nil {
+			wbc.GitCommitMessage = TemplateCommitMessage(updateConf.GitCommitMessage, updateConf.UpdateApp.Application.Name, changeList)
+		}
 	}
 
 	if needUpdate {
 		logCtx := log.WithContext().AddField("application", app)
+		log.Debugf("Using commit message: %s", wbc.GitCommitMessage)
 		if !updateConf.DryRun {
 			logCtx.Infof("Committing %d parameter update(s) for application %s", result.NumImagesUpdated, app)
 			err := commitChangesLocked(&updateConf.UpdateApp.Application, wbc, state)
@@ -315,10 +320,10 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 				if !updateConf.DisableKubeEvents && updateConf.KubeClient != nil {
 					annotations := map[string]string{}
 					for i, c := range changeList {
-						annotations[fmt.Sprintf("argocd-image-updater.image-%d/full-image-name", i)] = c.image.GetFullNameWithoutTag()
-						annotations[fmt.Sprintf("argocd-image-updater.image-%d/image-name", i)] = c.image.ImageName
-						annotations[fmt.Sprintf("argocd-image-updater.image-%d/old-tag", i)] = c.oldTag.TagName
-						annotations[fmt.Sprintf("argocd-image-updater.image-%d/new-tag", i)] = c.newTag.TagName
+						annotations[fmt.Sprintf("argocd-image-updater.image-%d/full-image-name", i)] = c.Image.GetFullNameWithoutTag()
+						annotations[fmt.Sprintf("argocd-image-updater.image-%d/image-name", i)] = c.Image.ImageName
+						annotations[fmt.Sprintf("argocd-image-updater.image-%d/old-tag", i)] = c.OldTag.String()
+						annotations[fmt.Sprintf("argocd-image-updater.image-%d/new-tag", i)] = c.NewTag.String()
 					}
 					message := fmt.Sprintf("Successfully updated application '%s'", app)
 					_, err = updateConf.KubeClient.CreateApplicationEvent(&updateConf.UpdateApp.Application, "ImagesUpdated", message, annotations)
@@ -447,117 +452,7 @@ func commitChanges(app *v1alpha1.Application, wbc *WriteBackConfig) error {
 			return err
 		}
 	case WriteBackGit:
-		creds, err := wbc.GetCreds(app)
-		if err != nil {
-			return fmt.Errorf("could not get creds for repo '%s': %v", app.Spec.Source.RepoURL, err)
-		}
-		tempRoot, err := ioutil.TempDir(os.TempDir(), fmt.Sprintf("git-%s", app.Name))
-		if err != nil {
-			return err
-		}
-		defer func() {
-			err := os.RemoveAll(tempRoot)
-			if err != nil {
-				log.Errorf("could not remove temp dir: %v", err)
-			}
-		}()
-		var gitC git.Client
-		if wbc.GitClient == nil {
-			gitC, err = git.NewClientExt(app.Spec.Source.RepoURL, tempRoot, creds, false, false)
-			if err != nil {
-				return err
-			}
-		} else {
-			gitC = wbc.GitClient
-		}
-		err = gitC.Init()
-		if err != nil {
-			return err
-		}
-		err = gitC.Fetch()
-		if err != nil {
-			return err
-		}
-
-		// Set username and e-mail address used to identify the commiter
-		if wbc.GitCommitUser != "" && wbc.GitCommitEmail != "" {
-			err = gitC.Config(wbc.GitCommitUser, wbc.GitCommitEmail)
-			if err != nil {
-				return err
-			}
-		}
-
-		// The branch to checkout is either a configured branch in the write-back
-		// config, or taken from the application spec's targetRevision. If the
-		// target revision is set to the special value HEAD, or is the empty
-		// string, we'll try to resolve it to a branch name.
-		checkOutBranch := app.Spec.Source.TargetRevision
-		if wbc.GitBranch != "" {
-			checkOutBranch = wbc.GitBranch
-		}
-		log.Tracef("targetRevision for update is '%s'", checkOutBranch)
-		if checkOutBranch == "" || checkOutBranch == "HEAD" {
-			checkOutBranch, err = gitC.SymRefToBranch(checkOutBranch)
-			log.Infof("resolved remote default branch to '%s' and using that for operations", checkOutBranch)
-			if err != nil {
-				return err
-			}
-		}
-
-		err = gitC.Checkout(checkOutBranch)
-		if err != nil {
-			return err
-		}
-		targetExists := true
-		targetFile := path.Join(tempRoot, app.Spec.Source.Path, fmt.Sprintf(".argocd-source-%s.yaml", app.Name))
-		_, err = os.Stat(targetFile)
-		if err != nil {
-			if !os.IsNotExist(err) {
-				return err
-			} else {
-				targetExists = false
-			}
-		}
-
-		override, err := marshalParamsOverride(app)
-		if err != nil {
-			return fmt.Errorf("could not marshal parameters: %v", err)
-		}
-
-		// If the target file already exist in the repository, we will check whether
-		// our generated new file is the same as the existing one, and if yes, we
-		// don't proceed further for commit.
-		if targetExists {
-			data, err := ioutil.ReadFile(targetFile)
-			if err != nil {
-				return err
-			}
-			if string(data) == string(override) {
-				log.Debugf("target parameter file and marshaled data are the same, skipping commit.")
-				return nil
-			}
-		}
-
-		err = ioutil.WriteFile(targetFile, override, 0600)
-		if err != nil {
-			return err
-		}
-
-		if !targetExists {
-			err = gitC.Add(targetFile)
-			if err != nil {
-				return err
-			}
-		}
-
-		err = gitC.Commit("", "Update to new image versions", "")
-		if err != nil {
-			return err
-		}
-		err = gitC.Push("origin", checkOutBranch, false)
-		if err != nil {
-			return err
-		}
+		return commitChangesGit(app, wbc)
 	default:
 		return fmt.Errorf("unknown write back method set: %d", wbc.Method)
 	}
