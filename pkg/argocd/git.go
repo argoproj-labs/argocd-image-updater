@@ -10,6 +10,7 @@ import (
 
 	"github.com/argoproj-labs/argocd-image-updater/ext/git"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/log"
+
 	"github.com/argoproj/argo-cd/pkg/apis/application/v1alpha1"
 )
 
