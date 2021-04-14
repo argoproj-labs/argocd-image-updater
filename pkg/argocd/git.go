@@ -156,24 +156,24 @@ func commitChangesGit(app *v1alpha1.Application, wbc *WriteBackConfig) error {
 		}
 	}
 
-	var cmP string
+	commitOpts := &git.CommitOptions{}
 	if wbc.GitCommitMessage != "" {
-		cmF, err := ioutil.TempFile("", "image-updater-commit-msg")
+		cm, err := ioutil.TempFile("", "image-updater-commit-msg")
 		if err != nil {
 			return fmt.Errorf("cold not create temp file: %v", err)
 		}
-		log.Debugf("Writing commit message to %s", cmF.Name())
-		err = ioutil.WriteFile(cmF.Name(), []byte(wbc.GitCommitMessage), 0600)
+		log.Debugf("Writing commit message to %s", cm.Name())
+		err = ioutil.WriteFile(cm.Name(), []byte(wbc.GitCommitMessage), 0600)
 		if err != nil {
-			_ = cmF.Close()
-			return fmt.Errorf("could not write commit message to %s: %v", cmF.Name(), err)
+			_ = cm.Close()
+			return fmt.Errorf("could not write commit message to %s: %v", cm.Name(), err)
 		}
-		cmP = cmF.Name()
-		_ = cmF.Close()
-		defer os.Remove(cmF.Name())
+		commitOpts.CommitMessagePath = cm.Name()
+		_ = cm.Close()
+		defer os.Remove(cm.Name())
 	}
 
-	err = gitC.Commit("", cmP, true, "")
+	err = gitC.Commit("", commitOpts)
 	if err != nil {
 		return err
 	}
