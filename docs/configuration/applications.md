@@ -253,7 +253,7 @@ Two top-level variables are provided to the template:
   * `.OldTag` holds the tag name or SHA digest previous to the update
   * `.NewTag` holds the tag name or SHA digest that was updated to
 
-In order to test a template before configuring it for use in Image Updatger,
+In order to test a template before configuring it for use in Image Updater,
 you can store the template you want to use in a temporary file, and then use
 the `argocd-image-updater template /path/to/file` command to render the
 template using pre-defined data and see its outcome on the terminal.
