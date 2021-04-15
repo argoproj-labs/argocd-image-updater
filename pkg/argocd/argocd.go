@@ -427,6 +427,7 @@ func GetImagesFromApplication(app *v1alpha1.Application) image.ContainerImageLis
 	annotations := app.Annotations
 	if updateImage, ok := annotations[common.ImageUpdaterAnnotation]; ok {
 		for _, img := range *parseImageList(updateImage) {
+			img.ImageTag = nil // the tag from the image list will be a version constraint, which isn't a valid tag
 			if forceStr, force := annotations[fmt.Sprintf(common.ForceUpdateOptionAnnotation, img.ImageAlias)]; force && strings.ToLower(forceStr) == "true" {
 				if images.ContainsImage(img, false) == nil {
 					images = append(images, img)
