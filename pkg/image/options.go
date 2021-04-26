@@ -53,6 +53,14 @@ func (img *ContainerImage) GetParameterKustomizeImageName(annotations map[string
 	return val
 }
 
+// HasForceUpdateOptionAnnotation gets the value for force-update option for the
+// image from a set of annotations
+func (img *ContainerImage) HasForceUpdateOptionAnnotation(annotations map[string]string) bool {
+	key := fmt.Sprintf(common.ForceUpdateOptionAnnotation, img.normalizedSymbolicName())
+	val, ok := annotations[key]
+	return ok && val == "true"
+}
+
 // GetParameterSort gets and validates the value for the sort option for the
 // image from a set of annotations
 func (img *ContainerImage) GetParameterUpdateStrategy(annotations map[string]string) VersionSortMode {
