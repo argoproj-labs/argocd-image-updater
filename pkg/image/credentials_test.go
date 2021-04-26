@@ -283,6 +283,14 @@ func Test_ParseDockerConfig(t *testing.T) {
 		assert.Equal(t, "bar", password)
 	})
 
+	t.Run("Parse valid Docker configuration with matching registry as prefix with / in the end", func(t *testing.T) {
+		config := fixture.MustReadFile("../../test/testdata/docker/valid-config-noproto.json")
+		username, password, err := parseDockerConfigJson("https://registry-1.docker.io/", config)
+		require.NoError(t, err)
+		assert.Equal(t, "foo", username)
+		assert.Equal(t, "bar", password)
+	})
+
 	t.Run("Parse valid Docker configuration without matching registry", func(t *testing.T) {
 		config := fixture.MustReadFile("../../test/testdata/docker/valid-config.json")
 		username, password, err := parseDockerConfigJson("https://gcr.io", config)

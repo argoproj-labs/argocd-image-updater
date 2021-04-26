@@ -229,6 +229,10 @@ func parseDockerConfigJson(registryURL string, jsonSource string) (string, strin
 		regPrefix = registryURL
 	}
 
+	if strings.HasSuffix(regPrefix, "/") {
+		regPrefix = strings.TrimSuffix(regPrefix, "/")
+	}
+
 	for registry, authConf := range auths {
 		if !strings.HasPrefix(registry, registryURL) && !strings.HasPrefix(registry, regPrefix) {
 			log.Tracef("found registry %s in image pull secret, but we want %s - skipping", registry, registryURL)
