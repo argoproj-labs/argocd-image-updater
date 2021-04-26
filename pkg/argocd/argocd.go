@@ -189,7 +189,7 @@ func parseImageList(annotations map[string]string) *image.ContainerImageList {
 		splits := strings.Split(updateImage, ",")
 		for _, s := range splits {
 			img := image.NewFromIdentifier(strings.TrimSpace(s))
-			if kustomizeImage, ok := annotations[fmt.Sprintf(common.KustomizeApplicationNameAnnotation, img.ImageAlias)]; ok {
+			if kustomizeImage := img.GetParameterKustomizeImageName(annotations); kustomizeImage != "" {
 				img.KustomizeImage = image.NewFromIdentifier(kustomizeImage)
 			}
 			results = append(results, img)
@@ -432,11 +432,9 @@ func GetImagesFromApplication(app *v1alpha1.Application) image.ContainerImageLis
 	// Check the image list for images with a force-update annotation, and add them if they are not already present.
 	annotations := app.Annotations
 	for _, img := range *parseImageList(annotations) {
-		img.ImageTag = nil // the tag from the image list will be a version constraint, which isn't a valid tag
-		if forceStr, force := annotations[fmt.Sprintf(common.ForceUpdateOptionAnnotation, img.ImageAlias)]; force && strings.ToLower(forceStr) == "true" {
-			if images.ContainsImage(img, false) == nil {
-				images = append(images, img)
-			}
+		if img.HasForceUpdateOptionAnnotation(annotations) {
+			img.ImageTag = nil // the tag from the image list will be a version constraint, which isn't a valid tag
+			images = append(images, img)
 		}
 	}
 
