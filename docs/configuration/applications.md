@@ -257,3 +257,32 @@ In order to test a template before configuring it for use in Image Updater,
 you can store the template you want to use in a temporary file, and then use
 the `argocd-image-updater template /path/to/file` command to render the
 template using pre-defined data and see its outcome on the terminal.
+
+#### Git Write-Back Target
+
+By default, git write-back will create or update `.argocd-source-<appName>.yaml`.
+
+If you are using Kustomize and want the image updates available for normal use with `kustomize`,
+you may set the `write-back-target` to `kustomization`. This method commits changes to the Kustomization
+file back to git as though you ran `kustomize edit set image`.
+
+```yaml
+argocd-image-updater.argoproj.io/write-back-method: git  # all git options are supported
+argocd-image-updater.argoproj.io/write-back-target: kustomization
+```
+
+You may also specify which kustomization to update with either a path relative to the project source path...
+
+```yaml
+argocd-image-updater.argoproj.io/write-back-target: "kustomization:../../base"
+# if the Application spec.source.path = config/overlays/foo, this would update the kustomization in config/base 
+```
+
+...or absolute with respect to the repository:
+
+```yaml
+# absolute paths start with /
+argocd-image-updater.argoproj.io/write-back-target: "kustomization:/config/overlays/bar"
+```
+
+Note that the Kustomization directory needs to be specified, not a file, like when using Kustomize.
