@@ -184,7 +184,7 @@ password or a private access token (PAT) with write access to the repository.
 You can generate such a secret using `kubectl`, e.g.:
 
 ```bash
-kubectl -n argocd-image-updater secret create generic git-creds \
+kubectl -n argocd-image-updater create secret generic git-creds \
   --from-literal=username=someuser \
   --from-literal=password=somepassword
 ```
@@ -195,7 +195,7 @@ format. To create such a secret from an existing private key, you can use
 `kubectl`, for example:
 
 ```bash
-kubectl -n argocd-image-updater secret create generic git-creds \
+kubectl -n argocd-image-updater create secret generic git-creds \
   --from-file=sshPrivateKey=~/.ssh/id_rsa
 ```
 
