@@ -1674,9 +1674,10 @@ func Test_parseTarget(t *testing.T) {
 		target   string
 		path     string
 	}{
-		{"default", ".", "kustomization", "NA"},
+		{"default", ".", "kustomization", ""},
 		{"explicit default", ".", "kustomization:.", "."},
 		{"default path, explicit target", ".", "kustomization:.", ""},
+		{"default target with path", "foo/bar", "kustomization", "foo/bar"},
 		{"default both", ".", "kustomization", ""},
 		{"absolute path", "foo", "kustomization:/foo", "bar"},
 		{"relative path", "bar/foo", "kustomization:foo", "bar"},

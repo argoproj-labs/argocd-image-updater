@@ -437,7 +437,7 @@ func getWriteBackConfig(app *v1alpha1.Application, kubeClient *kube.KubernetesCl
 
 func parseTarget(target string, sourcePath string) (kustomizeBase string) {
 	if target == common.KustomizationPrefix {
-		return "."
+		return filepath.Join(sourcePath, ".")
 	} else if base := target[len(common.KustomizationPrefix)+1:]; strings.HasPrefix(base, "/") {
 		return base[1:]
 	} else {
