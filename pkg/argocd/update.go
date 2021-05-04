@@ -280,7 +280,7 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 			// We need to explicitly set the up-to-date images in the spec too, so
 			// that we correctly marshal out the parameter overrides to include all
 			// images, regardless of those were updated or not.
-			err = setAppImage(&updateConf.UpdateApp.Application, updateableImage.WithTag(updateableImage.ImageTag))
+			err = setAppImage(&updateConf.UpdateApp.Application, applicationImage.WithTag(updateableImage.ImageTag))
 			if err != nil {
 				imgCtx.Errorf("Error while trying to update image: %v", err)
 				result.NumErrors += 1
