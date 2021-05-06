@@ -17,10 +17,9 @@ import (
 	"github.com/argoproj-labs/argocd-image-updater/pkg/registry"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/tag"
 
-	"gopkg.in/yaml.v2"
-
 	"github.com/argoproj/argo-cd/pkg/apiclient/application"
 	"github.com/argoproj/argo-cd/pkg/apis/application/v1alpha1"
+	"gopkg.in/yaml.v2"
 )
 
 // Stores some statistics about the results of a run

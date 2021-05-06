@@ -9,10 +9,11 @@ import (
 	"path/filepath"
 	"text/template"
 
-	"github.com/argoproj-labs/argocd-image-updater/pkg/image"
 	"sigs.k8s.io/kustomize/pkg/commands/kustfile"
 	"sigs.k8s.io/kustomize/pkg/fs"
 	image2 "sigs.k8s.io/kustomize/pkg/image"
+
+	"github.com/argoproj-labs/argocd-image-updater/pkg/image"
 
 	"github.com/argoproj-labs/argocd-image-updater/ext/git"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/log"
