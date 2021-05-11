@@ -44,6 +44,8 @@ const (
 const (
 	WriteBackMethodAnnotation = ImageUpdaterAnnotationPrefix + "/write-back-method"
 	GitBranchAnnotation       = ImageUpdaterAnnotationPrefix + "/git-branch"
+	WriteBackTargetAnnotation = ImageUpdaterAnnotationPrefix + "/write-back-target"
+	KustomizationPrefix       = "kustomization"
 )
 
 // The default Git commit message's template

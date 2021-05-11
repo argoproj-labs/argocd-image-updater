@@ -9,6 +9,8 @@ require (
 	github.com/argoproj/pkg v0.0.0-20200624215116-23e74cb168fe
 	github.com/docker/distribution v2.7.1+incompatible
 	github.com/docker/libtrust v0.0.0-20160708172513-aabc10ec26b7 // indirect
+	github.com/go-openapi/spec v0.19.5 // indirect
+	github.com/google/go-cmp v0.4.0 // indirect
 	github.com/gorilla/mux v1.7.4 // indirect
 	github.com/nokia/docker-registry-client v0.0.0-20201015093031-af1a6d3b4fb1
 	github.com/patrickmn/go-cache v2.1.0+incompatible
@@ -17,14 +19,18 @@ require (
 	github.com/spf13/cobra v1.0.0
 	github.com/stretchr/testify v1.6.1
 	go.uber.org/ratelimit v0.1.1-0.20201110185707-e86515f0dda9
-	golang.org/x/crypto v0.0.0-20200220183623-bac4c82f6975
-	golang.org/x/sync v0.0.0-20200625203802-6e8e738ad208
+	golang.org/x/crypto v0.0.0-20200622213623-75b288015ac9
+	golang.org/x/net v0.0.0-20201021035429-f5854403a974 // indirect
+	golang.org/x/sync v0.0.0-20201020160332-67f06af15bc9
+	golang.org/x/sys v0.0.0-20210119212857-b64e53b001e4 // indirect
+	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1 // indirect
 	gopkg.in/src-d/go-git.v4 v4.13.1
-	gopkg.in/yaml.v2 v2.3.0
+	gopkg.in/yaml.v2 v2.4.0
 	k8s.io/api v1.18.8
 	k8s.io/apimachinery v1.18.8
 	k8s.io/client-go v11.0.1-0.20190816222228-6d55c1b1f1ca+incompatible
 	k8s.io/kubectl v1.18.8 // indirect
+	sigs.k8s.io/kustomize v2.0.3+incompatible
 )
 
 replace (

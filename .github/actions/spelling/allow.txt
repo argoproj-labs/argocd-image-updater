@@ -107,6 +107,7 @@ kubectl
 kubefake
 kubernetes
 Kustomization
+kustomization
 kustomize
 ldflags
 LDFLAGS
@@ -232,6 +233,7 @@ workflow
 workflows
 www
 yaml
+yml
 yourimage
 yourorg
 yourtoken

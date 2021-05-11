@@ -3,6 +3,9 @@ package argocd
 import (
 	"errors"
 	"fmt"
+	"io/ioutil"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -1032,6 +1035,42 @@ func Test_GetWriteBackConfig(t *testing.T) {
 		assert.Equal(t, wbc.Method, WriteBackApplication)
 	})
 
+	t.Run("kustomization write-back config", func(t *testing.T) {
+		app := v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name: "testapp",
+				Annotations: map[string]string{
+					"argocd-image-updater.argoproj.io/image-list":        "nginx",
+					"argocd-image-updater.argoproj.io/write-back-method": "git",
+					"argocd-image-updater.argoproj.io/write-back-target": "kustomization:../bar",
+				},
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: v1alpha1.ApplicationSource{
+					RepoURL:        "https://example.com/example",
+					TargetRevision: "main",
+					Path:           "config/foo",
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypeKustomize,
+			},
+		}
+
+		argoClient := argomock.ArgoCD{}
+		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+
+		kubeClient := kube.KubernetesClient{
+			Clientset: fake.NewFakeKubeClient(),
+		}
+
+		wbc, err := getWriteBackConfig(&app, &kubeClient, &argoClient)
+		require.NoError(t, err)
+		require.NotNil(t, wbc)
+		assert.Equal(t, wbc.Method, WriteBackGit)
+		assert.Equal(t, wbc.KustomizeBase, "config/bar")
+	})
+
 	t.Run("Default write-back config - argocd", func(t *testing.T) {
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
@@ -1366,9 +1405,8 @@ func Test_CommitUpdates(t *testing.T) {
 	}
 
 	t.Run("Good commit to target revision", func(t *testing.T) {
-		gitMock := &gitmock.Client{}
-		gitMock.On("Init").Return(nil)
-		gitMock.On("Fetch").Return(nil)
+		gitMock, _, cleanup := mockGit(t)
+		defer cleanup()
 		gitMock.On("Checkout", mock.Anything).Run(func(args mock.Arguments) {
 			args.Assert(t, "main")
 		}).Return(nil)
@@ -1385,9 +1423,8 @@ func Test_CommitUpdates(t *testing.T) {
 	})
 
 	t.Run("Good commit to configured branch", func(t *testing.T) {
-		gitMock := &gitmock.Client{}
-		gitMock.On("Init").Return(nil)
-		gitMock.On("Fetch").Return(nil)
+		gitMock, _, cleanup := mockGit(t)
+		defer cleanup()
 		gitMock.On("Checkout", mock.Anything).Run(func(args mock.Arguments) {
 			args.Assert(t, "mybranch")
 		}).Return(nil)
@@ -1407,9 +1444,8 @@ func Test_CommitUpdates(t *testing.T) {
 
 	t.Run("Good commit to default branch", func(t *testing.T) {
 		app := app.DeepCopy()
-		gitMock := &gitmock.Client{}
-		gitMock.On("Init").Return(nil)
-		gitMock.On("Fetch").Return(nil)
+		gitMock, _, cleanup := mockGit(t)
+		defer cleanup()
 		gitMock.On("Checkout", mock.Anything).Run(func(args mock.Arguments) {
 			args.Assert(t, "mydefaultbranch")
 		}).Return(nil)
@@ -1427,11 +1463,67 @@ func Test_CommitUpdates(t *testing.T) {
 		assert.NoError(t, err)
 	})
 
+	t.Run("Good commit to kustomization", func(t *testing.T) {
+		app := app.DeepCopy()
+		app.Annotations[common.WriteBackTargetAnnotation] = "kustomization"
+		app.Spec.Source.Kustomize = &v1alpha1.ApplicationSourceKustomize{Images: v1alpha1.KustomizeImages{"foo=bar", "bar=baz:123"}}
+		gitMock, dir, cleanup := mockGit(t)
+		defer cleanup()
+		kf := filepath.Join(dir, "kustomization.yml")
+		assert.NoError(t, ioutil.WriteFile(kf, []byte(`
+kind: Kustomization
+apiVersion: kustomize.config.k8s.io/v1beta1
+`), os.ModePerm))
+
+		gitMock.On("Checkout", mock.Anything).Run(func(args mock.Arguments) {
+			args.Assert(t, "mydefaultbranch")
+		}).Return(nil)
+		gitMock.On("Add", mock.Anything).Return(nil)
+		gitMock.On("Commit", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
+		gitMock.On("Push", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+		gitMock.On("SymRefToBranch", mock.Anything).Return("mydefaultbranch", nil)
+		wbc, err := getWriteBackConfig(app, &kubeClient, &argoClient)
+		require.NoError(t, err)
+		wbc.GitClient = gitMock
+		app.Spec.Source.TargetRevision = "HEAD"
+		wbc.GitBranch = ""
+
+		err = commitChanges(app, wbc)
+		assert.NoError(t, err)
+		kust, err := ioutil.ReadFile(kf)
+		assert.NoError(t, err)
+		assert.YAMLEq(t, `
+kind: Kustomization
+apiVersion: kustomize.config.k8s.io/v1beta1
+images:
+  - name: foo
+    newName: bar
+  - name: bar
+    newName: baz
+    newTag: "123"
+`, string(kust))
+
+		// test the merge case too
+		app.Spec.Source.Kustomize.Images = v1alpha1.KustomizeImages{"foo:123", "bar=qux"}
+		err = commitChanges(app, wbc)
+		assert.NoError(t, err)
+		kust, err = ioutil.ReadFile(kf)
+		assert.NoError(t, err)
+		assert.YAMLEq(t, `
+kind: Kustomization
+apiVersion: kustomize.config.k8s.io/v1beta1
+images:
+  - name: foo
+    newTag: "123"
+  - name: bar
+    newName: qux
+`, string(kust))
+	})
+
 	t.Run("Good commit with author information", func(t *testing.T) {
 		app := app.DeepCopy()
-		gitMock := &gitmock.Client{}
-		gitMock.On("Init").Return(nil)
-		gitMock.On("Fetch").Return(nil)
+		gitMock, _, cleanup := mockGit(t)
+		defer cleanup()
 		gitMock.On("Checkout", mock.Anything).Run(func(args mock.Arguments) {
 			args.Assert(t, "mydefaultbranch")
 		}).Return(nil)
@@ -1526,9 +1618,8 @@ func Test_CommitUpdates(t *testing.T) {
 	})
 
 	t.Run("Cannot commit", func(t *testing.T) {
-		gitMock := &gitmock.Client{}
-		gitMock.On("Init").Return(nil)
-		gitMock.On("Fetch").Return(nil)
+		gitMock, _, cleanup := mockGit(t)
+		defer cleanup()
 		gitMock.On("Checkout", mock.Anything).Return(nil)
 		gitMock.On("Add", mock.Anything).Return(nil)
 		gitMock.On("Commit", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(fmt.Errorf("cannot commit"))
@@ -1542,9 +1633,8 @@ func Test_CommitUpdates(t *testing.T) {
 	})
 
 	t.Run("Cannot push", func(t *testing.T) {
-		gitMock := &gitmock.Client{}
-		gitMock.On("Init").Return(nil)
-		gitMock.On("Fetch").Return(nil)
+		gitMock, _, cleanup := mockGit(t)
+		defer cleanup()
 		gitMock.On("Checkout", mock.Anything).Return(nil)
 		gitMock.On("Add", mock.Anything).Return(nil)
 		gitMock.On("Commit", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
@@ -1559,9 +1649,8 @@ func Test_CommitUpdates(t *testing.T) {
 
 	t.Run("Cannot resolve default branch", func(t *testing.T) {
 		app := app.DeepCopy()
-		gitMock := &gitmock.Client{}
-		gitMock.On("Init").Return(nil)
-		gitMock.On("Fetch").Return(nil)
+		gitMock, _, cleanup := mockGit(t)
+		defer cleanup()
 		gitMock.On("Checkout", mock.Anything).Return(nil)
 		gitMock.On("Add", mock.Anything).Return(nil)
 		gitMock.On("Commit", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
@@ -1576,4 +1665,40 @@ func Test_CommitUpdates(t *testing.T) {
 		err = commitChanges(app, wbc)
 		assert.Errorf(t, err, "failed to resolve ref")
 	})
+}
+
+func Test_parseTarget(t *testing.T) {
+	cases := []struct {
+		name     string
+		expected string
+		target   string
+		path     string
+	}{
+		{"default", ".", "kustomization", ""},
+		{"explicit default", ".", "kustomization:.", "."},
+		{"default path, explicit target", ".", "kustomization:.", ""},
+		{"default target with path", "foo/bar", "kustomization", "foo/bar"},
+		{"default both", ".", "kustomization", ""},
+		{"absolute path", "foo", "kustomization:/foo", "bar"},
+		{"relative path", "bar/foo", "kustomization:foo", "bar"},
+		{"sibling path", "bar/baz", "kustomization:../baz", "bar/foo"},
+	}
+
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, parseTarget(tt.target, tt.path))
+		})
+	}
+}
+
+func mockGit(t *testing.T) (gitMock *gitmock.Client, dir string, cleanup func()) {
+	dir, err := ioutil.TempDir("", "wb-kust")
+	assert.NoError(t, err)
+	gitMock = &gitmock.Client{}
+	gitMock.On("Root").Return(dir)
+	gitMock.On("Init").Return(nil)
+	gitMock.On("Fetch").Return(nil)
+	return gitMock, dir, func() {
+		_ = os.RemoveAll(dir)
+	}
 }

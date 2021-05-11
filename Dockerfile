@@ -2,6 +2,9 @@ FROM golang:1.14.13 AS builder
 
 RUN mkdir -p /src/argocd-image-updater
 WORKDIR /src/argocd-image-updater
+# cache dependencies as a layer for faster rebuilds
+COPY go.mod go.sum ./
+RUN go mod download
 COPY . .
 
 RUN mkdir -p dist && \

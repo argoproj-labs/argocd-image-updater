@@ -3,6 +3,7 @@ package argocd
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"sync"
 	"text/template"
@@ -16,10 +17,9 @@ import (
 	"github.com/argoproj-labs/argocd-image-updater/pkg/registry"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/tag"
 
-	"gopkg.in/yaml.v2"
-
 	"github.com/argoproj/argo-cd/pkg/apiclient/application"
 	"github.com/argoproj/argo-cd/pkg/apis/application/v1alpha1"
+	"gopkg.in/yaml.v2"
 )
 
 // Stores some statistics about the results of a run
@@ -64,6 +64,7 @@ type WriteBackConfig struct {
 	GitCommitUser    string
 	GitCommitEmail   string
 	GitCommitMessage string
+	KustomizeBase    string
 }
 
 // The following are helper structs to only marshal the fields we require
@@ -420,20 +421,40 @@ func getWriteBackConfig(app *v1alpha1.Application, kubeClient *kube.KubernetesCl
 	switch strings.TrimSpace(method) {
 	case "git":
 		wbc.Method = WriteBackGit
-		branch, ok := app.Annotations[common.GitBranchAnnotation]
-		if ok {
-			wbc.GitBranch = strings.TrimSpace(branch)
+		if target, ok := app.Annotations[common.WriteBackTargetAnnotation]; ok && strings.HasPrefix(target, common.KustomizationPrefix) {
+			wbc.KustomizeBase = parseTarget(target, app.Spec.Source.Path)
 		}
-		credsSource, err := getGitCredsSource(creds, kubeClient)
-		if err != nil {
-			return nil, fmt.Errorf("invalid git credentials source: %v", err)
+		if err := parseGitConfig(app, kubeClient, wbc, creds); err != nil {
+			return nil, err
 		}
-		wbc.GetCreds = credsSource
 	default:
 		return nil, fmt.Errorf("invalid update mechanism: %s", method)
 	}
 
 	return wbc, nil
+}
+
+func parseTarget(target string, sourcePath string) (kustomizeBase string) {
+	if target == common.KustomizationPrefix {
+		return filepath.Join(sourcePath, ".")
+	} else if base := target[len(common.KustomizationPrefix)+1:]; strings.HasPrefix(base, "/") {
+		return base[1:]
+	} else {
+		return filepath.Join(sourcePath, base)
+	}
+}
+
+func parseGitConfig(app *v1alpha1.Application, kubeClient *kube.KubernetesClient, wbc *WriteBackConfig, creds string) error {
+	branch, ok := app.Annotations[common.GitBranchAnnotation]
+	if ok {
+		wbc.GitBranch = strings.TrimSpace(branch)
+	}
+	credsSource, err := getGitCredsSource(creds, kubeClient)
+	if err != nil {
+		return fmt.Errorf("invalid git credentials source: %v", err)
+	}
+	wbc.GetCreds = credsSource
+	return nil
 }
 
 func commitChangesLocked(app *v1alpha1.Application, wbc *WriteBackConfig, state *SyncIterationState) error {
@@ -459,7 +480,11 @@ func commitChanges(app *v1alpha1.Application, wbc *WriteBackConfig) error {
 			return err
 		}
 	case WriteBackGit:
-		return commitChangesGit(app, wbc)
+		// if the kustomize base is set, the target is a kustomization
+		if wbc.KustomizeBase != "" {
+			return commitChangesGit(app, wbc, writeKustomization)
+		}
+		return commitChangesGit(app, wbc, writeOverrides)
 	default:
 		return fmt.Errorf("unknown write back method set: %d", wbc.Method)
 	}
