@@ -175,6 +175,8 @@ spec:
         volumeMounts:
         - mountPath: /app/config
           name: image-updater-conf
+        - mountPath: /app/config/ssh
+          name: ssh-known-hosts
       serviceAccountName: argocd-image-updater
       volumes:
       - configMap:
@@ -186,3 +188,6 @@ spec:
           name: argocd-image-updater-config
           optional: true
         name: image-updater-conf
+      - configMap:
+          name: argocd-ssh-known-hosts-cm
+        name: ssh-known-hosts

@@ -98,16 +98,21 @@ spec:
           initialDelaySeconds: 3
           periodSeconds: 30
         volumeMounts:
-        - name: image-updater-conf
-          mountPath: /app/config
+        - mountPath: /app/config
+          name: image-updater-conf
+        - mountPath: /app/config/ssh
+          name: ssh-known-hosts
       serviceAccountName: argocd-image-updater
       volumes:
-      - name: image-updater-conf
-        configMap:
-          name: argocd-image-updater-config
-          optional: true
+      - configMap:
           items:
           - key: registries.conf
             path: registries.conf
           - key: git.commit-message-template
             path: commit.template
+          name: argocd-image-updater-config
+          optional: true
+        name: image-updater-conf
+      - configMap:
+          name: argocd-ssh-known-hosts-cm
+        name: ssh-known-hosts
