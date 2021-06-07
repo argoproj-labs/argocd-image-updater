@@ -190,4 +190,5 @@ spec:
         name: image-updater-conf
       - configMap:
           name: argocd-ssh-known-hosts-cm
+          optional: true
         name: ssh-known-hosts
