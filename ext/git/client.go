@@ -566,13 +566,13 @@ func (m *nativeGitClient) Commit(pathSpec string, opts *CommitOptions) error {
 // Branch creates a new target branch from a given source branch
 func (m *nativeGitClient) Branch(sourceBranch string, targetBranch string) error {
 	if sourceBranch != "" {
-		_, err := m.runCmd("git", "checkout", sourceBranch)
+		_, err := m.runCmd("checkout", sourceBranch)
 		if err != nil {
 			return fmt.Errorf("could not checkout source branch: %v", err)
 		}
 	}
 
-	_, err := m.runCmd("git", "branch", targetBranch)
+	_, err := m.runCmd("branch", targetBranch)
 	if err != nil {
 		return fmt.Errorf("could not create new branch: %v", err)
 	}
