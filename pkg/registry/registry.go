@@ -28,7 +28,6 @@ const (
 // GetTags returns a list of available tags for the given image
 func (endpoint *RegistryEndpoint) GetTags(img *image.ContainerImage, regClient RegistryClient, vc *image.VersionConstraint) (*tag.ImageTagList, error) {
 	var tagList *tag.ImageTagList = tag.NewImageTagList()
-	var imgTag *tag.ImageTag
 	var err error
 
 	// Some registries have a default namespace that is used when the image name
@@ -76,7 +75,7 @@ func (endpoint *RegistryEndpoint) GetTags(img *image.ContainerImage, regClient R
 			} else if endpoint.TagListSort == SortLatestLast {
 				ts = i
 			}
-			imgTag = tag.NewImageTag(tagStr, time.Unix(int64(ts), 0), "")
+			imgTag := tag.NewImageTag(tagStr, time.Unix(int64(ts), 0), "")
 			tagList.Add(imgTag)
 		}
 		return tagList, nil
@@ -97,7 +96,7 @@ func (endpoint *RegistryEndpoint) GetTags(img *image.ContainerImage, regClient R
 		// an error, we treat it as a cache miss and just go ahead to invalidate
 		// the entry.
 		if vc.SortMode.IsCacheable() {
-			imgTag, err = endpoint.Cache.GetTag(nameInRegistry, tagStr)
+			imgTag, err := endpoint.Cache.GetTag(nameInRegistry, tagStr)
 			if err != nil {
 				log.Warnf("invalid entry for %s:%s in cache, invalidating.", nameInRegistry, imgTag.TagName)
 			} else if imgTag != nil {
@@ -153,7 +152,7 @@ func (endpoint *RegistryEndpoint) GetTags(img *image.ContainerImage, regClient R
 			}
 
 			log.Tracef("Found date %s", ti.CreatedAt.String())
-
+			var imgTag *tag.ImageTag
 			if vc.SortMode == image.VersionSortDigest {
 				imgTag = tag.NewImageTag(tagStr, ti.CreatedAt, fmt.Sprintf("sha256:%x", ti.Digest))
 			} else {
