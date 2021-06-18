@@ -63,8 +63,7 @@ func Test_LatestVersion(t *testing.T) {
 		vc := VersionConstraint{Constraint: "~1.0"}
 		newTag, err := img.GetNewestVersionFromTags(&vc, tagList)
 		require.NoError(t, err)
-		require.NotNil(t, newTag)
-		assert.Equal(t, "1.0", newTag.TagName)
+		require.Nil(t, newTag)
 	})
 
 	t.Run("Find the latest version with a semver constraint that is invalid", func(t *testing.T) {
