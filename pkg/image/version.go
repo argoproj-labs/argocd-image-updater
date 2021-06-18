@@ -134,13 +134,13 @@ func (img *ContainerImage) GetNewestVersionFromTags(vc *VersionConstraint, tagLi
 
 	logCtx.Debugf("found %d from %d tags eligible for consideration", len(considerTags), len(availableTags))
 
-	// Sort update candidates and return the most recent version in its original
-	// form, so we can later fetch it from the registry.
+	// If we found tags to consider, return the most recent tag found according
+	// to the update strategy.
 	if len(considerTags) > 0 {
 		return considerTags[len(considerTags)-1], nil
-	} else {
-		return img.ImageTag, nil
 	}
+
+	return nil, nil
 }
 
 // IsTagIgnored matches tag against the patterns in IgnoreList and returns true if one of them matches
