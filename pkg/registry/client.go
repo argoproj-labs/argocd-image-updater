@@ -17,7 +17,7 @@ import (
 	"github.com/docker/distribution"
 	"github.com/docker/distribution/manifest/schema1"
 	"github.com/docker/distribution/manifest/schema2"
-	"github.com/nokia/docker-registry-client/registry"
+	"github.com/re-point/docker-registry-client/registry"
 	"go.uber.org/ratelimit"
 )
 
@@ -113,6 +113,7 @@ func NewClient(endpoint *RegistryEndpoint, username, password string) (RegistryC
 		Username:      username,
 		Password:      password,
 		Insecure:      endpoint.Insecure,
+		DisableBasicAuth: endpoint.OAuthEnabled,
 	})
 	if err != nil {
 		return nil, err
