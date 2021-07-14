@@ -56,6 +56,7 @@ type RegistryEndpoint struct {
 	Username       string
 	Password       string
 	Ping           bool
+	OAuthEnabled   bool
 	Credentials    string
 	Insecure       bool
 	DefaultNS      string
@@ -74,6 +75,7 @@ var defaultRegistries map[string]*RegistryEndpoint = map[string]*RegistryEndpoin
 		RegistryPrefix: "",
 		RegistryAPI:    "https://registry-1.docker.io",
 		Ping:           true,
+		OAuthEnabled:   false,
 		Insecure:       false,
 		DefaultNS:      "library",
 		Cache:          cache.NewMemCache(),
@@ -84,6 +86,7 @@ var defaultRegistries map[string]*RegistryEndpoint = map[string]*RegistryEndpoin
 		RegistryPrefix: "gcr.io",
 		RegistryAPI:    "https://gcr.io",
 		Ping:           false,
+		OAuthEnabled:   false,
 		Insecure:       false,
 		Cache:          cache.NewMemCache(),
 		Limiter:        ratelimit.New(RateLimitDefault),
@@ -93,6 +96,7 @@ var defaultRegistries map[string]*RegistryEndpoint = map[string]*RegistryEndpoin
 		RegistryPrefix: "quay.io",
 		RegistryAPI:    "https://quay.io",
 		Ping:           false,
+		OAuthEnabled:   false,
 		Insecure:       false,
 		Cache:          cache.NewMemCache(),
 		Limiter:        ratelimit.New(RateLimitDefault),
@@ -102,6 +106,7 @@ var defaultRegistries map[string]*RegistryEndpoint = map[string]*RegistryEndpoin
 		RegistryPrefix: "docker.pkg.github.com",
 		RegistryAPI:    "https://docker.pkg.github.com",
 		Ping:           false,
+		OAuthEnabled:   false,
 		Insecure:       false,
 		Cache:          cache.NewMemCache(),
 		Limiter:        ratelimit.New(RateLimitDefault),
@@ -111,6 +116,7 @@ var defaultRegistries map[string]*RegistryEndpoint = map[string]*RegistryEndpoin
 		RegistryPrefix: "ghcr.io",
 		RegistryAPI:    "https://ghcr.io",
 		Ping:           false,
+		OAuthEnabled:   false,
 		Insecure:       false,
 		Cache:          cache.NewMemCache(),
 		Limiter:        ratelimit.New(RateLimitDefault),
@@ -123,11 +129,11 @@ var registries map[string]*RegistryEndpoint = make(map[string]*RegistryEndpoint)
 var registryLock sync.RWMutex
 
 func AddRegistryEndpointFromConfig(epc RegistryConfiguration) error {
-	return AddRegistryEndpoint(epc.Prefix, epc.Name, epc.ApiURL, epc.Credentials, epc.DefaultNS, epc.Insecure, TagListSortFromString(epc.TagSortMode), epc.Limit, epc.CredsExpire)
+	return AddRegistryEndpoint(epc.Prefix, epc.Name, epc.ApiURL, epc.Credentials, epc.DefaultNS, epc.Insecure, TagListSortFromString(epc.TagSortMode), epc.Limit, epc.CredsExpire, epc.OAuthEnabled)
 }
 
 // AddRegistryEndpoint adds registry endpoint information with the given details
-func AddRegistryEndpoint(prefix, name, apiUrl, credentials, defaultNS string, insecure bool, tagListSort TagListSort, limit int, credsExpire time.Duration) error {
+func AddRegistryEndpoint(prefix, name, apiUrl, credentials, defaultNS string, insecure bool, tagListSort TagListSort, limit int, credsExpire time.Duration, oAuthEnabled bool) error {
 	registryLock.Lock()
 	defer registryLock.Unlock()
 	if limit <= 0 {
@@ -145,6 +151,7 @@ func AddRegistryEndpoint(prefix, name, apiUrl, credentials, defaultNS string, in
 		DefaultNS:      defaultNS,
 		TagListSort:    tagListSort,
 		Limiter:        ratelimit.New(limit),
+		OAuthEnabled:   oAuthEnabled,
 	}
 	return nil
 }
