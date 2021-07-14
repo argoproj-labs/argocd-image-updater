@@ -73,7 +73,7 @@ before using this command.
 
 ## Installing as Kubernetes workload in Argo CD namespace
 
-The most straightforward way to run the image updater is to install is a Kubernetes workload into the namespace where
+The most straightforward way to run the image updater is to install it as a Kubernetes workload into the namespace where
 Argo CD is running. Don't worry, without any configuration, it will not start messing with your workloads yet.
 
 !!!note
