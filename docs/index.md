@@ -14,7 +14,8 @@ that are managed by
     There will be (probably a lot of) breaking changes from release to
     release as development progresses until version 1.0. We will do our
     best to indicate any breaking change and how to un-break it in the
-    [Changelog](https://github.com/argoproj-labs/argocd-image-updater/CHANGELOG.md)
+    respective
+    [release notes](https://github.com/argoproj-labs/argocd-image-updater/releases)
 
 ## Overview
 
@@ -48,7 +49,7 @@ RBAC authorization on Application resources etc. are fully supported.
     constraint,
     * `latest`: update to the most recently created image tag,
     * `name`: update to the last tag in an alphabetically sorted list
-* Default support for widely used container registries:
+* Default support for public images on widely used container registries:
     * Docker Hub (docker.io)
     * Google Container Registry (gcr.io)
     * Red Hat Quay (quay.io)
@@ -83,3 +84,12 @@ Otherwise, current known limitations are:
   Image Updater is running in (or has access to). It is currently not possible
   to fetch those secrets from other clusters.
 
+## Questions, help and support
+
+If you have any questions, need some help in setting things up or just want to
+discuss something, feel free to
+
+* open an issue on our GitHub issue tracker or
+
+* join us in the `#argo-cd-image-updater` channel on the
+  [CNCF slack](https://argoproj.github.io/community/join-slack/)

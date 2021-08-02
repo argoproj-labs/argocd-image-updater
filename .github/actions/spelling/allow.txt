@@ -28,6 +28,7 @@ chmod
 CLA
 clientcmd
 clientset
+CNCF
 codecov
 codegen
 codehilite
