@@ -85,7 +85,7 @@ Argo CD is running. Don't worry, without any configuration, it will not start me
 ### Apply the installation manifests
 
 ```shell
-kubectl apply -n argocd -f manifests/install.yaml
+kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj-labs/argocd-image-updater/stable/manifests/install.yaml
 ```
 
 !!!note "A word on high availability"
