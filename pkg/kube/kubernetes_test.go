@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	appv1alpha1 "github.com/argoproj/argo-cd/pkg/apis/application/v1alpha1"
+	appv1alpha1 "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/argoproj-labs/argocd-image-updater/test/fake"
