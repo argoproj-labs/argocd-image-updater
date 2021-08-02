@@ -20,8 +20,8 @@ import (
 	"github.com/argoproj-labs/argocd-image-updater/test/fake"
 	"github.com/argoproj-labs/argocd-image-updater/test/fixture"
 
-	"github.com/argoproj/argo-cd/pkg/apis/application/v1alpha1"
-	argogit "github.com/argoproj/argo-cd/util/git"
+	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
+	argogit "github.com/argoproj/argo-cd/v2/util/git"
 	"github.com/docker/distribution/manifest/schema1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"

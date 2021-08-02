@@ -18,7 +18,7 @@ import (
 	"github.com/argoproj-labs/argocd-image-updater/ext/git"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/log"
 
-	"github.com/argoproj/argo-cd/pkg/apis/application/v1alpha1"
+	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 )
 
 // templateCommitMessage renders a commit message template and returns it as

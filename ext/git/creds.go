@@ -10,7 +10,7 @@ import (
 	argoio "github.com/argoproj/gitops-engine/pkg/utils/io"
 	log "github.com/sirupsen/logrus"
 
-	certutil "github.com/argoproj/argo-cd/util/cert"
+	certutil "github.com/argoproj/argo-cd/v2/util/cert"
 )
 
 type Creds interface {
