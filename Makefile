@@ -67,6 +67,13 @@ image: clean-image mod-vendor
 image-push: image
 	docker push ${IMAGE_PREFIX}${IMAGE_NAME}:${IMAGE_TAG}
 
+.PHONY: extract-binary
+extract-binary:
+	docker rm argocd-image-updater-${IMAGE_TAG} || true
+	docker create --name argocd-image-updater-${IMAGE_TAG} ${IMAGE_PREFIX}${IMAGE_NAME}:${IMAGE_TAG}
+	docker cp argocd-image-updater-${IMAGE_TAG}:/usr/local/bin/argocd-image-updater /tmp/argocd-image-updater_${IMAGE_TAG}_linux-amd64
+	docker rm argocd-image-updater-${IMAGE_TAG}
+
 .PHONY: lint
 lint:
 	golangci-lint run
