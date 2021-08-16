@@ -3,7 +3,7 @@ kind: Kustomization
 
 images:
 - name: argoprojlabs/argocd-image-updater
-  newTag: v0.10.1
+  newTag: v0.10.2
 
 bases:
 - ./config
