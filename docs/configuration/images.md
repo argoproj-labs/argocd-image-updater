@@ -253,7 +253,7 @@ To provide the original image name, you need to set the `kustomize.image-name`
 annotation to the original image's name, like follows:
 
 ```yaml
-argocd-image-updater.argoproj.io/<image_alias>.kustomize.image_name: <original_image_name>
+argocd-image-updater.argoproj.io/<image_alias>.kustomize.image-name: <original_image_name>
 ```
 
 Let's take Argo CD's Kustomize base as an example: The original image used by
@@ -263,7 +263,7 @@ could override the image specification in Kustomize as follows:
 
 ```yaml
 argocd-image-updater.argoproj.io/image-list: argocd=ghcr.io/argoproj/argocd
-argocd-image-updater.argoproj.io/argocd.kustomize.image_name: quay.io/argoproj/argocd
+argocd-image-updater.argoproj.io/argocd.kustomize.image-name: quay.io/argoproj/argocd
 ```
 
 Under the hood, this would be similar to the following kustomize command:
