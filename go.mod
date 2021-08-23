@@ -7,13 +7,14 @@ require (
 	github.com/argoproj/argo-cd/v2 v2.0.5
 	github.com/argoproj/gitops-engine v0.3.3
 	github.com/argoproj/pkg v0.9.1
+	github.com/distribution/distribution/v3 v3.0.0-20210820130019-1cdeff259b9d
 	github.com/docker/distribution v2.7.1+incompatible
 	github.com/docker/libtrust v0.0.0-20160708172513-aabc10ec26b7 // indirect
 	github.com/go-openapi/spec v0.19.5 // indirect
 	github.com/nokia/docker-registry-client v0.0.0-20201015093031-af1a6d3b4fb1
 	github.com/patrickmn/go-cache v2.1.0+incompatible
 	github.com/prometheus/client_golang v1.7.1
-	github.com/sirupsen/logrus v1.6.0
+	github.com/sirupsen/logrus v1.8.1
 	github.com/spf13/cobra v1.1.1
 	github.com/stretchr/testify v1.6.1
 	go.uber.org/ratelimit v0.1.1-0.20201110185707-e86515f0dda9
