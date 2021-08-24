@@ -3,12 +3,12 @@
 package mocks
 
 import (
-	distribution "github.com/docker/distribution"
+	distribution "github.com/distribution/distribution/v3"
 	mock "github.com/stretchr/testify/mock"
 
-	schema1 "github.com/docker/distribution/manifest/schema1"
+	schema1 "github.com/distribution/distribution/v3/manifest/schema1"
 
-	schema2 "github.com/docker/distribution/manifest/schema2"
+	schema2 "github.com/distribution/distribution/v3/manifest/schema2"
 
 	tag "github.com/argoproj-labs/argocd-image-updater/pkg/tag"
 )
