@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/docker/distribution"
+	"github.com/distribution/distribution/v3"
 	"golang.org/x/sync/semaphore"
 
 	"github.com/argoproj-labs/argocd-image-updater/pkg/image"
