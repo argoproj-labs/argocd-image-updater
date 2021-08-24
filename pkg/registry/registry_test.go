@@ -10,8 +10,8 @@ import (
 	"github.com/argoproj-labs/argocd-image-updater/pkg/registry/mocks"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/tag"
 
-	"github.com/docker/distribution/manifest/schema1"
-	"github.com/docker/distribution/manifest/schema2"
+	"github.com/distribution/distribution/v3/manifest/schema1"
+	"github.com/distribution/distribution/v3/manifest/schema2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
