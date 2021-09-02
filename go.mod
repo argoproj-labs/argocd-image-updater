@@ -12,6 +12,7 @@ require (
 	github.com/docker/libtrust v0.0.0-20160708172513-aabc10ec26b7 // indirect
 	github.com/go-openapi/spec v0.19.5 // indirect
 	github.com/nokia/docker-registry-client v0.0.0-20201015093031-af1a6d3b4fb1
+	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/patrickmn/go-cache v2.1.0+incompatible
 	github.com/prometheus/client_golang v1.7.1
 	github.com/sirupsen/logrus v1.8.1
@@ -19,6 +20,7 @@ require (
 	github.com/stretchr/testify v1.6.1
 	go.uber.org/ratelimit v0.1.1-0.20201110185707-e86515f0dda9
 	golang.org/x/crypto v0.0.0-20201002170205-7f63de1d35b0
+	golang.org/x/oauth2 v0.0.0-20210819190943-2bc19b11175f // indirect
 	golang.org/x/sync v0.0.0-20201207232520-09787c993a3a
 	golang.org/x/sys v0.0.0-20210119212857-b64e53b001e4 // indirect
 	gopkg.in/src-d/go-git.v4 v4.13.1

@@ -8,11 +8,11 @@ package registry
 import (
 	"context"
 	"fmt"
+	"github.com/distribution/distribution/v3"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/distribution/distribution/v3"
 	"golang.org/x/sync/semaphore"
 
 	"github.com/argoproj-labs/argocd-image-updater/pkg/image"
@@ -39,7 +39,8 @@ func (endpoint *RegistryEndpoint) GetTags(img *image.ContainerImage, regClient R
 	} else {
 		nameInRegistry = img.ImageName
 	}
-	tTags, err := regClient.Tags(nameInRegistry)
+	err = regClient.NewRepository(nameInRegistry)
+	tTags, err := regClient.Tags()
 	if err != nil {
 		return nil, err
 	}
@@ -131,17 +132,14 @@ func (endpoint *RegistryEndpoint) GetTags(img *image.ContainerImage, regClient R
 
 			// We first try to fetch a V2 manifest, and if that's not available we fall
 			// back to fetching V1 manifest. If that fails also, we just skip this tag.
-			if ml, err = regClient.ManifestV2(nameInRegistry, tagStr); err != nil {
-				log.Debugf("No V2 manifest for %s:%s, fetching V1 (%v)", nameInRegistry, tagStr, err)
-				if ml, err = regClient.ManifestV1(nameInRegistry, tagStr); err != nil {
-					log.Errorf("Error fetching metadata for %s:%s - neither V1 or V2 manifest returned by registry: %v", nameInRegistry, tagStr, err)
+			if ml, err = regClient.Manifest(tagStr); err != nil {
+					log.Errorf("Error fetching metadata for %s:%s - neither V1 or V2 or OCI manifest returned by registry: %v", nameInRegistry, tagStr, err)
 					return
-				}
 			}
 
 			// Parse required meta data from the manifest. The metadata contains all
 			// information needed to decide whether to consider this tag or not.
-			ti, err := regClient.TagMetadata(nameInRegistry, ml)
+			ti, err := regClient.TagMetadata(ml)
 			if err != nil {
 				log.Errorf("error fetching metadata for %s:%s: %v", nameInRegistry, tagStr, err)
 				return
