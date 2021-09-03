@@ -414,6 +414,17 @@ func SetKustomizeImage(app *v1alpha1.Application, newImage *image.ContainerImage
 		app.Spec.Source.Kustomize = &v1alpha1.ApplicationSourceKustomize{}
 	}
 
+	for i, kImg := range app.Spec.Source.Kustomize.Images {
+		curr := image.NewFromIdentifier(string(kImg))
+		override := image.NewFromIdentifier(ksImageParam)
+
+		if curr.ImageName == override.ImageName {
+			curr.ImageAlias = override.ImageAlias
+		}
+
+		app.Spec.Source.Kustomize.Images[i] = v1alpha1.KustomizeImage(curr.String())
+	}
+
 	app.Spec.Source.Kustomize.MergeImage(v1alpha1.KustomizeImage(ksImageParam))
 
 	return nil
