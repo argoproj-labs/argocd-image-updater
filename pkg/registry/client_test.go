@@ -1,9 +1,10 @@
 package registry
 
 import (
+	"testing"
+
 	"github.com/distribution/distribution/v3/manifest/schema1"
 	"github.com/stretchr/testify/require"
-	"testing"
 )
 
 func Test_TagMetadata(t *testing.T) {
@@ -15,7 +16,7 @@ func Test_TagMetadata(t *testing.T) {
 		}
 		ep, err := GetRegistryEndpoint("")
 		require.NoError(t, err)
-		client, err := NewClient(ep,"","")
+		client, err := NewClient(ep, "", "")
 		require.NoError(t, err)
 		_, err = client.TagMetadata(meta1)
 		require.Error(t, err)
@@ -34,7 +35,7 @@ func Test_TagMetadata(t *testing.T) {
 
 		ep, err := GetRegistryEndpoint("")
 		require.NoError(t, err)
-		client, err := NewClient(ep,"","")
+		client, err := NewClient(ep, "", "")
 		require.NoError(t, err)
 		_, err = client.TagMetadata(meta1)
 		require.Error(t, err)
@@ -53,7 +54,7 @@ func Test_TagMetadata(t *testing.T) {
 
 		ep, err := GetRegistryEndpoint("")
 		require.NoError(t, err)
-		client, err := NewClient(ep,"","")
+		client, err := NewClient(ep, "", "")
 		require.NoError(t, err)
 		_, err = client.TagMetadata(meta1)
 		require.Error(t, err)
@@ -73,7 +74,7 @@ func Test_TagMetadata(t *testing.T) {
 		}
 		ep, err := GetRegistryEndpoint("")
 		require.NoError(t, err)
-		client, err := NewClient(ep,"","")
+		client, err := NewClient(ep, "", "")
 		require.NoError(t, err)
 		_, err = client.TagMetadata(meta1)
 		require.Error(t, err)

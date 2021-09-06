@@ -5,10 +5,11 @@ import (
 	"crypto/sha256"
 	"fmt"
 
+	"github.com/argoproj/pkg/json"
+
 	"github.com/argoproj-labs/argocd-image-updater/pkg/log"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/metrics"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/tag"
-	"github.com/argoproj/pkg/json"
 
 	"github.com/distribution/distribution/v3"
 	"github.com/distribution/distribution/v3/manifest/ocischema"
@@ -36,7 +37,7 @@ import (
 type RegistryClient interface {
 	NewRepository(nameInRepository string) error
 	Tags() ([]string, error)
-	Manifest(tagStr string)(distribution.Manifest, error)
+	Manifest(tagStr string) (distribution.Manifest, error)
 	TagMetadata(manifest distribution.Manifest) (*tag.TagInfo, error)
 }
 
@@ -45,10 +46,10 @@ type NewRegistryClient func(*RegistryEndpoint, string, string) (RegistryClient, 
 // Helper type for registry clients
 type registryClient struct {
 	regClient distribution.Repository
-	endpoint *RegistryEndpoint
-	name   reference.Named
-	creds credentials
+	endpoint  *RegistryEndpoint
+	creds     credentials
 }
+
 // credentials is an implementation of distribution/V3/session struct
 // to mangage registry credentials and token
 type credentials struct {
@@ -90,7 +91,7 @@ func (rlt *rateLimitTransport) RoundTrip(r *http.Request) (*http.Response, error
 
 // NewRepository is a wrapper for creating a registry client that is possibly
 // rate-limited by using a custom HTTP round tripper method.
-func (clt *registryClient)NewRepository(nameInRepository string) error {
+func (clt *registryClient) NewRepository(nameInRepository string) error {
 	urlToCall := strings.TrimSuffix(clt.endpoint.RegistryAPI, "/")
 	challengeManager1 := challenge.NewSimpleManager()
 	_, err := ping(challengeManager1, clt.endpoint.RegistryAPI+"/v2/", "")
@@ -108,11 +109,11 @@ func (clt *registryClient)NewRepository(nameInRepository string) error {
 		endpoint:  clt.endpoint.RegistryAPI,
 	}
 
-	named,err := reference.WithName(nameInRepository)
+	named, err := reference.WithName(nameInRepository)
 	if err != nil {
 		return err
 	}
-	clt.regClient, err = client.NewRepository(named,urlToCall, rlt)
+	clt.regClient, err = client.NewRepository(named, urlToCall, rlt)
 	if err != nil {
 		return err
 	}
@@ -132,7 +133,7 @@ func NewClient(endpoint *RegistryEndpoint, username, password string) (RegistryC
 		password: password,
 	}
 	return &registryClient{
-		creds: creds,
+		creds:    creds,
 		endpoint: endpoint,
 	}, nil
 }
@@ -140,11 +141,11 @@ func NewClient(endpoint *RegistryEndpoint, username, password string) (RegistryC
 // Tags returns a list of tags for given name in repository
 func (clt *registryClient) Tags() ([]string, error) {
 	tagService := clt.regClient.Tags(context.Background())
-	tTags,err := tagService.All(context.Background())
+	tTags, err := tagService.All(context.Background())
 	if err != nil {
 		return nil, err
 	}
-	return tTags,nil
+	return tTags, nil
 }
 
 // Manifest  returns a Manifest for a given tag in repository
@@ -153,15 +154,15 @@ func (clt *registryClient) Manifest(tagStr string) (distribution.Manifest, error
 	if err != nil {
 		return nil, err
 	}
-	mediaType  := []string{ocischema.SchemaVersion.MediaType, schema1.SchemaVersion.MediaType, schema2.SchemaVersion.MediaType}
-	manifest,err := manService.Get(
+	mediaType := []string{ocischema.SchemaVersion.MediaType, schema1.SchemaVersion.MediaType, schema2.SchemaVersion.MediaType}
+	manifest, err := manService.Get(
 		context.Background(),
 		digest.FromString(tagStr),
 		distribution.WithTag(tagStr), distribution.WithManifestMediaTypes(mediaType))
 	if err != nil {
 		return nil, err
 	}
-	return manifest,nil
+	return manifest, nil
 }
 
 // TagMetadata retrieves metadata for a given manifest of given repository
