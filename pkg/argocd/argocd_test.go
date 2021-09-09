@@ -466,6 +466,41 @@ func Test_SetKustomizeImage(t *testing.T) {
 		require.Error(t, err)
 	})
 
+	t.Run("Test set Kustomize image parameters with alias name on Kustomize app with param already set", func(t *testing.T) {
+		app := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "test-app",
+				Namespace: "testns",
+				Annotations: map[string]string{
+					fmt.Sprintf(common.KustomizeApplicationNameAnnotation, "foobar"): "foobar",
+				},
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: v1alpha1.ApplicationSource{
+					Kustomize: &v1alpha1.ApplicationSourceKustomize{
+						Images: v1alpha1.KustomizeImages{
+							"jannfis/foobar:1.0.0",
+						},
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypeKustomize,
+				Summary: v1alpha1.ApplicationSummary{
+					Images: []string{
+						"jannfis/foobar:1.0.0",
+					},
+				},
+			},
+		}
+		img := image.NewFromIdentifier("foobar=jannfis/foobar:1.0.1")
+		err := SetKustomizeImage(app, img)
+		require.NoError(t, err)
+		require.NotNil(t, app.Spec.Source.Kustomize)
+		assert.Len(t, app.Spec.Source.Kustomize.Images, 1)
+		assert.Equal(t, v1alpha1.KustomizeImage("foobar=jannfis/foobar:1.0.1"), app.Spec.Source.Kustomize.Images[0])
+	})
+
 }
 
 func Test_SetHelmImage(t *testing.T) {
