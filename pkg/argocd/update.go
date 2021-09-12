@@ -263,17 +263,17 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 
 		if needsUpdate(updateableImage, applicationImage, latest) {
 
-			imgCtx.Infof("Setting new image to %s", updateableImage.WithTag(latest).String())
+			imgCtx.Infof("Setting new image to %s", applicationImage.WithTag(latest).GetFullNameWithTag())
 			needUpdate = true
 
-			err = setAppImage(&updateConf.UpdateApp.Application, updateableImage.WithTag(latest))
+			err = setAppImage(&updateConf.UpdateApp.Application, applicationImage.WithTag(latest))
 
 			if err != nil {
 				imgCtx.Errorf("Error while trying to update image: %v", err)
 				result.NumErrors += 1
 				continue
 			} else {
-				containerImageNew := updateableImage.WithTag(latest)
+				containerImageNew := applicationImage.WithTag(latest)
 				imgCtx.Infof("Successfully updated image '%s' to '%s', but pending spec update (dry run=%v)", updateableImage.GetFullNameWithTag(), containerImageNew.GetFullNameWithTag(), updateConf.DryRun)
 				changeList = append(changeList, ChangeEntry{containerImageNew, updateableImage.ImageTag, containerImageNew.ImageTag})
 			}
