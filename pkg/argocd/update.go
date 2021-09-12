@@ -223,7 +223,7 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 		}
 
 		// Get list of available image tags from the repository
-		tags, err := rep.GetTags(updateableImage, regClient, &vc)
+		tags, err := rep.GetTags(applicationImage, regClient, &vc)
 		if err != nil {
 			imgCtx.Errorf("Could not get tags from registry: %v", err)
 			result.NumErrors += 1
