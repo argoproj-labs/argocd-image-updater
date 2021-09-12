@@ -177,7 +177,7 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 
 		imgCtx.Debugf("Considering this image for update")
 
-		rep, err := registry.GetRegistryEndpoint(updateableImage.RegistryURL)
+		rep, err := registry.GetRegistryEndpoint(applicationImage.RegistryURL)
 		if err != nil {
 			imgCtx.Errorf("Could not get registry endpoint from configuration: %v", err)
 			result.NumErrors += 1
@@ -223,7 +223,7 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 		}
 
 		// Get list of available image tags from the repository
-		tags, err := rep.GetTags(applicationImage, regClient, &vc)
+		tags, err := rep.GetTags(updateableImage, regClient, &vc)
 		if err != nil {
 			imgCtx.Errorf("Could not get tags from registry: %v", err)
 			result.NumErrors += 1
@@ -266,7 +266,7 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 			imgCtx.Infof("Setting new image to %s", updateableImage.WithTag(latest).String())
 			needUpdate = true
 
-			err = setAppImage(&updateConf.UpdateApp.Application, applicationImage.WithTag(latest))
+			err = setAppImage(&updateConf.UpdateApp.Application, updateableImage.WithTag(latest))
 
 			if err != nil {
 				imgCtx.Errorf("Error while trying to update image: %v", err)
