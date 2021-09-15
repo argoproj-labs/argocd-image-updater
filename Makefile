@@ -56,7 +56,7 @@ prereq:
 
 .PHONY: controller
 controller: 
-	CGO_ENABLED=0 go build -ldflags '${LDFLAGS}' -o dist/argocd-image-updater cmd/main.go
+	CGO_ENABLED=0 go build -ldflags '${LDFLAGS}' -o dist/argocd-image-updater cmd/*.go
 
 .PHONY: image
 image: clean-image mod-vendor
