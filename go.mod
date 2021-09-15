@@ -12,10 +12,10 @@ require (
 	github.com/nokia/docker-registry-client v0.0.0-20201015093031-af1a6d3b4fb1
 	github.com/patrickmn/go-cache v2.1.0+incompatible
 	github.com/prometheus/client_golang v1.7.1
-	github.com/sirupsen/logrus v1.6.0
-	github.com/spf13/cobra v1.1.1
+	github.com/sirupsen/logrus v1.7.0
+	github.com/spf13/cobra v1.1.3
 	github.com/spf13/pflag v1.0.5
-	github.com/stretchr/testify v1.6.1
+	github.com/stretchr/testify v1.7.0
 	go.uber.org/ratelimit v0.1.1-0.20201110185707-e86515f0dda9
 	golang.org/x/crypto v0.0.0-20210616213533-5ff15b29337e
 	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
