@@ -7,8 +7,10 @@ import (
 	"github.com/argoproj-labs/argocd-image-updater/pkg/kube"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/log"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/registry"
+	"go.uber.org/ratelimit"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 func newTestCommand() *cobra.Command {
@@ -23,6 +25,7 @@ func newTestCommand() *cobra.Command {
 		disableKubernetes bool
 		ignoreTags        []string
 		disableKubeEvents bool
+		rateLimit         int
 	)
 	var runCmd = &cobra.Command{
 		Use:   "test IMAGE",
@@ -102,6 +105,15 @@ argocd-image-updater test nginx --allow-tags '^1.19.\d+(\-.*)*$' --update-strate
 				log.Fatalf("could not set registry credentials: %v", err)
 			}
 
+			checkFlag := func(f *pflag.Flag) {
+				if f.Name == "rate-limit" {
+					log.Infof("Overriding registry rate-limit to %d requests per second", rateLimit)
+					ep.Limiter = ratelimit.New(rateLimit)
+				}
+			}
+
+			cmd.Flags().Visit(checkFlag)
+
 			var creds *image.Credential
 			var username, password string
 			if credentials != "" {
@@ -158,5 +170,6 @@ argocd-image-updater test nginx --allow-tags '^1.19.\d+(\-.*)*$' --update-strate
 	runCmd.Flags().StringVar(&kubeConfig, "kubeconfig", "", "path to your Kubernetes client configuration")
 	runCmd.Flags().StringVar(&credentials, "credentials", "", "the credentials definition for the test (overrides registry config)")
 	runCmd.Flags().BoolVar(&disableKubeEvents, "disable-kubernetes-events", false, "Disable kubernetes events")
+	runCmd.Flags().IntVar(&rateLimit, "rate-limit", 20, "specificy registry rate limit (overrides registry.conf)")
 	return runCmd
 }
