@@ -33,10 +33,10 @@ func Test_UpdateApplication(t *testing.T) {
 	t.Run("Test successful update", func(t *testing.T) {
 		mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
 			regMock := regmock.RegistryClient{}
-			regMock.On("NewRepository", mock.Anything).Return(nil)
-			regMock.On("Tags", mock.MatchedBy(func(s string) bool {
+			regMock.On("NewRepository", mock.MatchedBy(func(s string) bool {
 				return s == "jannfis/foobar"
-			})).Return([]string{"1.0.1"}, nil)
+			})).Return(nil)
+			regMock.On("Tags").Return([]string{"1.0.1"}, nil)
 			return &regMock, nil
 		}
 
@@ -92,7 +92,10 @@ func Test_UpdateApplication(t *testing.T) {
 		mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
 			regMock := regmock.RegistryClient{}
 			assert.Equal(t, endpoint.RegistryPrefix, "quay.io")
-			regMock.On("Tags", mock.Anything).Return([]string{"1.0.1"}, nil)
+			regMock.On("NewRepository", mock.MatchedBy(func(s string) bool {
+				return s == "jannfis/foobar"
+			})).Return(nil)
+			regMock.On("Tags").Return([]string{"1.0.1"}, nil)
 			return &regMock, nil
 		}
 
@@ -153,9 +156,10 @@ func Test_UpdateApplication(t *testing.T) {
 		mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
 			regMock := regmock.RegistryClient{}
 			assert.Equal(t, endpoint.RegistryPrefix, "quay.io")
-			regMock.On("Tags", mock.MatchedBy(func(s string) bool {
+			regMock.On("NewRepository", mock.MatchedBy(func(s string) bool {
 				return s == "someorg/foobar"
-			})).Return([]string{"1.0.1"}, nil)
+			})).Return(nil)
+			regMock.On("Tags").Return([]string{"1.0.1"}, nil)
 			return &regMock, nil
 		}
 
