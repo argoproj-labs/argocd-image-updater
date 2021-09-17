@@ -33,9 +33,10 @@ func Test_UpdateApplication(t *testing.T) {
 	t.Run("Test successful update", func(t *testing.T) {
 		mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
 			regMock := regmock.RegistryClient{}
-			regMock.On("Tags", mock.MatchedBy(func(s string) bool {
+			regMock.On("NewRepository", mock.MatchedBy(func(s string) bool {
 				return s == "jannfis/foobar"
-			})).Return([]string{"1.0.1"}, nil)
+			})).Return(nil)
+			regMock.On("Tags").Return([]string{"1.0.1"}, nil)
 			return &regMock, nil
 		}
 
@@ -91,7 +92,10 @@ func Test_UpdateApplication(t *testing.T) {
 		mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
 			regMock := regmock.RegistryClient{}
 			assert.Equal(t, endpoint.RegistryPrefix, "quay.io")
-			regMock.On("Tags", mock.Anything).Return([]string{"1.0.1"}, nil)
+			regMock.On("NewRepository", mock.MatchedBy(func(s string) bool {
+				return s == "jannfis/foobar"
+			})).Return(nil)
+			regMock.On("Tags").Return([]string{"1.0.1"}, nil)
 			return &regMock, nil
 		}
 
@@ -152,9 +156,10 @@ func Test_UpdateApplication(t *testing.T) {
 		mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
 			regMock := regmock.RegistryClient{}
 			assert.Equal(t, endpoint.RegistryPrefix, "quay.io")
-			regMock.On("Tags", mock.MatchedBy(func(s string) bool {
+			regMock.On("NewRepository", mock.MatchedBy(func(s string) bool {
 				return s == "someorg/foobar"
-			})).Return([]string{"1.0.1"}, nil)
+			})).Return(nil)
+			regMock.On("Tags").Return([]string{"1.0.1"}, nil)
 			return &regMock, nil
 		}
 
@@ -214,6 +219,7 @@ func Test_UpdateApplication(t *testing.T) {
 	t.Run("Test successful update when no tag is set in running workload", func(t *testing.T) {
 		mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
 			regMock := regmock.RegistryClient{}
+			regMock.On("NewRepository", mock.Anything).Return(nil)
 			regMock.On("Tags", mock.Anything).Return([]string{"1.0.1"}, nil)
 			return &regMock, nil
 		}
@@ -271,6 +277,7 @@ func Test_UpdateApplication(t *testing.T) {
 			regMock := regmock.RegistryClient{}
 			assert.Equal(t, "myuser", username)
 			assert.Equal(t, "mypass", password)
+			regMock.On("NewRepository", mock.Anything).Return(nil)
 			regMock.On("Tags", mock.Anything).Return([]string{"1.0.1"}, nil)
 			return &regMock, nil
 		}
@@ -384,6 +391,7 @@ func Test_UpdateApplication(t *testing.T) {
 	t.Run("Test skip because of image up-to-date", func(t *testing.T) {
 		mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
 			regMock := regmock.RegistryClient{}
+			regMock.On("NewRepository", mock.Anything).Return(nil)
 			regMock.On("Tags", mock.Anything).Return([]string{"1.0.1"}, nil)
 			return &regMock, nil
 		}
@@ -439,6 +447,7 @@ func Test_UpdateApplication(t *testing.T) {
 	t.Run("Test update because of image registry changed", func(t *testing.T) {
 		mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
 			regMock := regmock.RegistryClient{}
+			regMock.On("NewRepository", mock.Anything).Return(nil)
 			regMock.On("Tags", mock.Anything).Return([]string{"1.0.1"}, nil)
 			return &regMock, nil
 		}
@@ -497,6 +506,7 @@ func Test_UpdateApplication(t *testing.T) {
 	t.Run("Test not updated because kustomize image is the same", func(t *testing.T) {
 		mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
 			regMock := regmock.RegistryClient{}
+			regMock.On("NewRepository", mock.Anything).Return(nil)
 			regMock.On("Tags", mock.Anything).Return([]string{"1.0.1"}, nil)
 			return &regMock, nil
 		}
@@ -569,8 +579,9 @@ func Test_UpdateApplication(t *testing.T) {
 		called := 0
 		mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
 			regMock := regmock.RegistryClient{}
+			regMock.On("NewRepository", mock.Anything).Return(nil)
 			regMock.On("Tags", mock.Anything).Return([]string{"one", "two", "three", "four"}, nil)
-			regMock.On("ManifestV1", mock.Anything).Return(meta[called], nil)
+			regMock.On("Manifest", mock.Anything).Return(meta[called], nil)
 			called += 1
 			return &regMock, nil
 		}
@@ -644,8 +655,9 @@ func Test_UpdateApplication(t *testing.T) {
 		called := 0
 		mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
 			regMock := regmock.RegistryClient{}
+			regMock.On("NewRepository", mock.Anything).Return(nil)
 			regMock.On("Tags", mock.Anything).Return([]string{"one", "two", "three", "four"}, nil)
-			regMock.On("ManifestV1", mock.Anything).Return(meta[called], nil)
+			regMock.On("Manifest", mock.Anything).Return(meta[called], nil)
 			called += 1
 			return &regMock, nil
 		}
@@ -705,6 +717,7 @@ func Test_UpdateApplication(t *testing.T) {
 	t.Run("Error - unknown registry", func(t *testing.T) {
 		mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
 			regMock := regmock.RegistryClient{}
+			regMock.On("NewRepository", mock.Anything).Return(nil)
 			regMock.On("Tags", mock.Anything).Return([]string{"1.0.1"}, nil)
 			return &regMock, nil
 		}
@@ -813,6 +826,7 @@ func Test_UpdateApplication(t *testing.T) {
 	t.Run("Test error on failure to list tags", func(t *testing.T) {
 		mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
 			regMock := regmock.RegistryClient{}
+			regMock.On("NewRepository", mock.Anything).Return(nil)
 			regMock.On("Tags", mock.Anything).Return(nil, errors.New("some error"))
 			return &regMock, nil
 		}
@@ -868,6 +882,7 @@ func Test_UpdateApplication(t *testing.T) {
 	t.Run("Test error on improper semver in tag", func(t *testing.T) {
 		mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
 			regMock := regmock.RegistryClient{}
+			regMock.On("NewRepository", mock.Anything).Return(nil)
 			regMock.On("Tags", mock.Anything).Return([]string{"1.0.0", "1.0.1"}, nil)
 			return &regMock, nil
 		}

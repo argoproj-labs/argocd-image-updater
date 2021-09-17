@@ -3,13 +3,8 @@
 package mocks
 
 import (
-	distribution "github.com/docker/distribution"
+	distribution "github.com/distribution/distribution/v3"
 	mock "github.com/stretchr/testify/mock"
-
-	schema1 "github.com/docker/distribution/manifest/schema1"
-
-	schema2 "github.com/docker/distribution/manifest/schema2"
-
 	tag "github.com/argoproj-labs/argocd-image-updater/pkg/tag"
 )
 
@@ -18,59 +13,12 @@ type RegistryClient struct {
 	mock.Mock
 }
 
-// ManifestV1 provides a mock function with given fields: repository, reference
-func (_m *RegistryClient) ManifestV1(repository string, reference string) (*schema1.SignedManifest, error) {
-	ret := _m.Called(repository, reference)
-
-	var r0 *schema1.SignedManifest
-	if rf, ok := ret.Get(0).(func(string, string) *schema1.SignedManifest); ok {
-		r0 = rf(repository, reference)
-	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*schema1.SignedManifest)
-		}
-	}
-
-	var r1 error
-	if rf, ok := ret.Get(1).(func(string, string) error); ok {
-		r1 = rf(repository, reference)
-	} else {
-		r1 = ret.Error(1)
-	}
-
-	return r0, r1
-}
-
-// ManifestV2 provides a mock function with given fields: repository, reference
-func (_m *RegistryClient) ManifestV2(repository string, reference string) (*schema2.DeserializedManifest, error) {
-	ret := _m.Called(repository, reference)
-
-	var r0 *schema2.DeserializedManifest
-	if rf, ok := ret.Get(0).(func(string, string) *schema2.DeserializedManifest); ok {
-		r0 = rf(repository, reference)
-	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*schema2.DeserializedManifest)
-		}
-	}
-
-	var r1 error
-	if rf, ok := ret.Get(1).(func(string, string) error); ok {
-		r1 = rf(repository, reference)
-	} else {
-		r1 = ret.Error(1)
-	}
-
-	return r0, r1
-}
-
-// TagMetadata provides a mock function with given fields: repository, manifest
-func (_m *RegistryClient) TagMetadata(repository string, manifest distribution.Manifest) (*tag.TagInfo, error) {
-	ret := _m.Called(repository, manifest)
+func (_m *RegistryClient) TagMetadata(manifest distribution.Manifest) (*tag.TagInfo, error) {
+	ret := _m.Called(manifest)
 
 	var r0 *tag.TagInfo
-	if rf, ok := ret.Get(0).(func(string, distribution.Manifest) *tag.TagInfo); ok {
-		r0 = rf(repository, manifest)
+	if rf, ok := ret.Get(0).(func(distribution.Manifest) *tag.TagInfo); ok {
+		r0 = rf(manifest)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*tag.TagInfo)
@@ -78,8 +26,8 @@ func (_m *RegistryClient) TagMetadata(repository string, manifest distribution.M
 	}
 
 	var r1 error
-	if rf, ok := ret.Get(1).(func(string, distribution.Manifest) error); ok {
-		r1 = rf(repository, manifest)
+	if rf, ok := ret.Get(1).(func(distribution.Manifest) error); ok {
+		r1 = rf(manifest)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -88,12 +36,11 @@ func (_m *RegistryClient) TagMetadata(repository string, manifest distribution.M
 }
 
 // Tags provides a mock function with given fields: nameInRepository
-func (_m *RegistryClient) Tags(nameInRepository string) ([]string, error) {
-	ret := _m.Called(nameInRepository)
-
+func (_m *RegistryClient) Tags() ([]string, error) {
+	ret := _m.Called()
 	var r0 []string
-	if rf, ok := ret.Get(0).(func(string) []string); ok {
-		r0 = rf(nameInRepository)
+	if rf, ok := ret.Get(0).(func() []string); ok {
+		r0 = rf()
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).([]string)
@@ -101,11 +48,46 @@ func (_m *RegistryClient) Tags(nameInRepository string) ([]string, error) {
 	}
 
 	var r1 error
-	if rf, ok := ret.Get(1).(func(string) error); ok {
-		r1 = rf(nameInRepository)
+	if rf, ok := ret.Get(1).(func() error); ok {
+		r1 = rf()
 	} else {
 		r1 = ret.Error(1)
 	}
 
 	return r0, r1
+}
+
+func (_m *RegistryClient) Manifest(tagStr string) (distribution.Manifest, error) {
+	ret := _m.Called(tagStr)
+
+	var r0 distribution.Manifest
+	if rf, ok := ret.Get(0).(func(string) distribution.Manifest); ok {
+		r0 = rf(tagStr)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(distribution.Manifest)
+		}
+	}
+
+	var r1 error
+	if rf, ok := ret.Get(1).(func(string) error); ok {
+		r1 = rf(tagStr)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+func (_m *RegistryClient) NewRepository(nameInRepository string) (error){
+	ret := _m.Called(nameInRepository)
+
+	var r1 error
+	if rf, ok := ret.Get(0).(func(string) error); ok {
+		r1 = rf(nameInRepository)
+	} else {
+		r1 = ret.Error(0)
+	}
+
+	return r1
 }
