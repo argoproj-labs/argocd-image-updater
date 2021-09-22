@@ -274,7 +274,7 @@ If opting for such an approach, you should make sure that:
 ## Metrics
 
 Starting with v0.8.0, Argo CD Image Updater exports Prometheus-compatible
-metrics on a dedicated endpoint, which by default listens on TCP port 8082
+metrics on a dedicated endpoint, which by default listens on TCP port 8081
 and serves data from `/metrics` path. This endpoint is exposed by a service
 named `argocd-image-updater` on a port named `metrics`.
 
