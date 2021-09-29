@@ -276,6 +276,7 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 				containerImageNew := applicationImage.WithTag(latest)
 				imgCtx.Infof("Successfully updated image '%s' to '%s', but pending spec update (dry run=%v)", updateableImage.GetFullNameWithTag(), containerImageNew.GetFullNameWithTag(), updateConf.DryRun)
 				changeList = append(changeList, ChangeEntry{containerImageNew, updateableImage.ImageTag, containerImageNew.ImageTag})
+				result.NumImagesUpdated += 1
 			}
 		} else {
 			// We need to explicitly set the up-to-date images in the spec too, so
@@ -319,7 +320,6 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 				result.NumImagesUpdated = 0
 			} else {
 				logCtx.Infof("Successfully updated the live application spec")
-				result.NumImagesUpdated += 1
 				if !updateConf.DisableKubeEvents && updateConf.KubeClient != nil {
 					annotations := map[string]string{}
 					for i, c := range changeList {
