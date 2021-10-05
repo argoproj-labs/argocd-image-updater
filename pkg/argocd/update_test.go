@@ -89,7 +89,7 @@ func Test_UpdateApplication(t *testing.T) {
 		assert.Equal(t, 0, res.NumSkipped)
 		assert.Equal(t, 1, res.NumApplicationsProcessed)
 		assert.Equal(t, 2, res.NumImagesConsidered)
-		assert.Equal(t, 1, res.NumImagesUpdated)
+		assert.Equal(t, 2, res.NumImagesUpdated)
 	})
 
 	t.Run("Test successful update", func(t *testing.T) {
