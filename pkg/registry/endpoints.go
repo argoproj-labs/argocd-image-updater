@@ -1,8 +1,10 @@
 package registry
 
 import (
+	"crypto/tls"
 	"fmt"
 	"math"
+	"net/http"
 	"strings"
 	"sync"
 	"time"
@@ -202,6 +204,15 @@ func (ep *RegistryEndpoint) DeepCopy() *RegistryEndpoint {
 	newEp.CredsUpdated = ep.CredsUpdated
 	ep.lock.RUnlock()
 	return newEp
+}
+
+// GetTransport returns a transport object for this endpoint
+func (ep *RegistryEndpoint) GetTransport() *http.Transport {
+	tlsC := &tls.Config{}
+	if ep.Insecure {
+		tlsC.InsecureSkipVerify = true
+	}
+	return &http.Transport{TLSClientConfig: tlsC}
 }
 
 func init() {

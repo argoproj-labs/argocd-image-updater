@@ -77,7 +77,7 @@ func (c credentials) SetRefreshToken(realm *url.URL, service, token string) {
 type rateLimitTransport struct {
 	limiter   ratelimit.Limiter
 	transport http.RoundTripper
-	endpoint  string
+	endpoint  *RegistryEndpoint
 }
 
 // RoundTrip is a custom RoundTrip method with rate-limiter
@@ -85,7 +85,7 @@ func (rlt *rateLimitTransport) RoundTrip(r *http.Request) (*http.Response, error
 	rlt.limiter.Take()
 	log.Tracef("%s", r.URL)
 	resp, err := rlt.transport.RoundTrip(r)
-	metrics.Endpoint().IncreaseRequest(rlt.endpoint, err != nil)
+	metrics.Endpoint().IncreaseRequest(rlt.endpoint.RegistryAPI, err != nil)
 	return resp, err
 }
 
@@ -94,19 +94,20 @@ func (rlt *rateLimitTransport) RoundTrip(r *http.Request) (*http.Response, error
 func (clt *registryClient) NewRepository(nameInRepository string) error {
 	urlToCall := strings.TrimSuffix(clt.endpoint.RegistryAPI, "/")
 	challengeManager1 := challenge.NewSimpleManager()
-	_, err := ping(challengeManager1, clt.endpoint.RegistryAPI+"/v2/", "")
+	_, err := ping(challengeManager1, clt.endpoint, "")
 	if err != nil {
 		return err
 	}
+
 	var transport http.RoundTripper = transport.NewTransport(
-		nil, auth.NewAuthorizer(
+		clt.endpoint.GetTransport(), auth.NewAuthorizer(
 			challengeManager1,
 			auth.NewTokenHandler(nil, clt.creds, nameInRepository, "pull")))
 
 	rlt := &rateLimitTransport{
 		limiter:   clt.endpoint.Limiter,
 		transport: transport,
-		endpoint:  clt.endpoint.RegistryAPI,
+		endpoint:  clt.endpoint,
 	}
 
 	named, err := reference.WithName(nameInRepository)
@@ -257,8 +258,9 @@ func (client *registryClient) TagMetadata(manifest distribution.Manifest) (*tag.
 
 // Implementation of ping method to intialize the challenge list
 // Without this, tokenHandler and AuthorizationHandler won't work
-func ping(manager challenge.Manager, endpoint, versionHeader string) ([]auth.APIVersion, error) {
-	resp, err := http.Get(endpoint)
+func ping(manager challenge.Manager, endpoint *RegistryEndpoint, versionHeader string) ([]auth.APIVersion, error) {
+	httpc := &http.Client{Transport: endpoint.GetTransport()}
+	resp, err := httpc.Get(endpoint.RegistryAPI + "/v2")
 	if err != nil {
 		return nil, err
 	}
