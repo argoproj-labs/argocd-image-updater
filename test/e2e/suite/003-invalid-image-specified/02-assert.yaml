@@ -1,0 +1,17 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: image-updater-003
+status:
+  health:
+    status: Healthy
+  sync:
+    status: Synced
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: image-updater-e2e-003
+status:
+  observedGeneration: 1
+  readyReplicas: 1

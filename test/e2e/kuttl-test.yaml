@@ -1,0 +1,11 @@
+apiVersion: kuttl.dev/v1beta1
+kind: TestSuite
+name: argocd-image-updater-e2e
+testDirs:
+  - ./suite
+suppress:
+  - events
+timeout: 30
+parallel: 1
+reportFormat: JSON
+reportName: argocd-image-updater-e2e

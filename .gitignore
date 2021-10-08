@@ -13,3 +13,5 @@ test-results
 .scannerwork
 .scratch
 *.goe
+**/kuttl-test.json
+**/kubeconfig

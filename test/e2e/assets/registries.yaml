@@ -1,0 +1,5 @@
+configs:
+  "10.42.0.1:30000": 
+    tls:
+      ca_file: /etc/rancher/k3s/local.crt
+      insecure_skip_verify: true

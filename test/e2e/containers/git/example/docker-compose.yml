@@ -1,0 +1,11 @@
+version: '3.2'
+services:
+  gitserver:
+    image: 'cirocosta/gitserver-http'
+    command: 
+      - '-init'
+      - '-start'
+    volumes:
+      - './initial:/var/lib/initial:ro'
+    ports:
+      - '8080:80'
