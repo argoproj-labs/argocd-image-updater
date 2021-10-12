@@ -70,6 +70,13 @@ func Test_ParseImageTags(t *testing.T) {
 		assert.Equal(t, "jannfis/test-image", image.ImageName)
 		assert.Nil(t, image.ImageTag)
 	})
+	t.Run("#273 classic-web=registry:5000/classic-web", func(t *testing.T) {
+		image := NewFromIdentifier("classic-web=registry:5000/classic-web")
+		assert.Equal(t, "registry:5000", image.RegistryURL)
+		assert.Equal(t, "classic-web", image.ImageAlias)
+		assert.Equal(t, "classic-web", image.ImageName)
+		assert.Nil(t, image.ImageTag)
+	})
 }
 
 func Test_ImageToString(t *testing.T) {

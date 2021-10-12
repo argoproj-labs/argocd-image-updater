@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/argoproj-labs/argocd-image-updater/pkg/tag"
+	"github.com/distribution/distribution/v3/reference"
 )
 
 type ContainerImage struct {
@@ -22,6 +23,36 @@ type ContainerImageList []*ContainerImage
 
 // NewFromIdentifier parses an image identifier and returns a populated ContainerImage
 func NewFromIdentifier(identifier string) *ContainerImage {
+	imgRef := identifier
+	alias := ""
+	if strings.Contains(identifier, "=") {
+		n := strings.SplitN(identifier, "=", 2)
+		imgRef = n[1]
+		alias = n[0]
+	}
+	if parsed, err := reference.ParseNormalizedNamed(imgRef); err == nil {
+		img := ContainerImage{}
+		img.RegistryURL = reference.Domain(parsed)
+		// remove default registry for backwards-compatibility
+		if img.RegistryURL == "docker.io" {
+			img.RegistryURL = ""
+		}
+		img.ImageAlias = alias
+		img.ImageName = reference.Path(parsed)
+		if digested, ok := parsed.(reference.Digested); ok {
+			img.ImageTag = &tag.ImageTag{
+				TagDigest: string(digested.Digest()),
+			}
+		} else if tagged, ok := parsed.(reference.Tagged); ok {
+			img.ImageTag = &tag.ImageTag{
+				TagName: tagged.Tag(),
+			}
+		}
+		img.original = identifier
+		return &img
+	}
+
+	// if distribution couldn't parse it, fall back to the legacy parsing logic
 	img := ContainerImage{}
 	img.RegistryURL = getRegistryFromIdentifier(identifier)
 	img.ImageAlias, img.ImageName, img.ImageTag = getImageTagFromIdentifier(identifier)
