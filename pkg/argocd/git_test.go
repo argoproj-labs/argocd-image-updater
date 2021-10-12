@@ -8,6 +8,7 @@ import (
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/image"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/tag"
+	kyaml "sigs.k8s.io/kustomize/kyaml/yaml"
 
 	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	"github.com/stretchr/testify/assert"
@@ -85,4 +86,67 @@ func Test_parseImageOverride(t *testing.T) {
 		})
 	}
 
+}
+
+func Test_imagesFilter(t *testing.T) {
+	for _, tt := range []struct {
+		name     string
+		images   v1alpha1.KustomizeImages
+		expected string
+	}{
+		{name: "simple", images: v1alpha1.KustomizeImages{"foo"}, expected: `
+images:
+- name: foo
+`},
+		{name: "tagged", images: v1alpha1.KustomizeImages{"foo:bar"}, expected: `
+images:
+- name: foo
+  newTag: bar
+`},
+		{name: "rename", images: v1alpha1.KustomizeImages{"baz=foo:bar"}, expected: `
+images:
+- name: baz
+  newName: foo
+  newTag: bar
+`},
+		{name: "digest", images: v1alpha1.KustomizeImages{"baz=foo@sha12345"}, expected: `
+images:
+- name: baz
+  newName: foo
+  digest: sha12345
+`},
+		{name: "digest simple", images: v1alpha1.KustomizeImages{"foo@sha12345"}, expected: `
+images:
+- name: foo
+  digest: sha12345
+`},
+		{name: "all", images: v1alpha1.KustomizeImages{
+			"foo",
+			"foo=bar", // merges with above
+			"baz@sha12345",
+			"bar:123",
+			"foo=bar:123", // merges and overwrites the first two
+		}, expected: `
+images:
+- name: foo
+  newName: bar
+  newTag: "123"
+- name: baz
+  digest: sha12345
+- name: bar
+  newTag: "123"
+`},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			filter, err := imagesFilter(tt.images)
+			assert.NoError(t, err)
+
+			node := kyaml.NewRNode(&kyaml.Node{Kind: kyaml.DocumentNode, Content: []*kyaml.Node{
+				kyaml.NewMapRNode(nil).YNode(),
+			}})
+			node, err = filter.Filter(node)
+			assert.NoError(t, err)
+			assert.YAMLEq(t, tt.expected, node.MustString())
+		})
+	}
 }

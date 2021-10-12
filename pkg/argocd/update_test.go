@@ -1737,6 +1737,8 @@ func Test_CommitUpdates(t *testing.T) {
 		assert.NoError(t, ioutil.WriteFile(kf, []byte(`
 kind: Kustomization
 apiVersion: kustomize.config.k8s.io/v1beta1
+
+replacements: []
 `), os.ModePerm))
 
 		gitMock.On("Checkout", mock.Anything).Run(func(args mock.Arguments) {
@@ -1765,6 +1767,8 @@ images:
   - name: bar
     newName: baz
     newTag: "123"
+
+replacements: []
 `, string(kust))
 
 		// test the merge case too
@@ -1781,6 +1785,8 @@ images:
     newTag: "123"
   - name: bar
     newName: qux
+
+replacements: []
 `, string(kust))
 	})
 
