@@ -2,7 +2,6 @@ package argocd
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -224,7 +223,7 @@ func writeKustomization(app *v1alpha1.Application, wbc *WriteBackConfig, gitC gi
 
 	kustFile := findKustomization(base)
 	if kustFile == "" {
-		return errors.New(fmt.Sprintf("could not find kustomization in %s", base)), false
+		return fmt.Errorf("could not find kustomization in %s", base), false
 	}
 
 	filterFunc, err := imagesFilter(app.Spec.Source.Kustomize.Images)
