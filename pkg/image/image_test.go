@@ -33,6 +33,17 @@ func Test_ParseImageTags(t *testing.T) {
 		assert.Equal(t, "gcr.io/jannfis/test-image", image.GetFullNameWithoutTag())
 	})
 
+	t.Run("Parse valid image name with default registry info", func(t *testing.T) {
+		image := NewFromIdentifier("docker.io/jannfis/test-image:0.1")
+		assert.Equal(t, "docker.io", image.RegistryURL)
+		assert.Empty(t, image.ImageAlias)
+		assert.Equal(t, "jannfis/test-image", image.ImageName)
+		require.NotNil(t, image.ImageTag)
+		assert.Equal(t, "0.1", image.ImageTag.TagName)
+		assert.Equal(t, "docker.io/jannfis/test-image:0.1", image.GetFullNameWithTag())
+		assert.Equal(t, "docker.io/jannfis/test-image", image.GetFullNameWithoutTag())
+	})
+
 	t.Run("Parse valid image name with digest tag", func(t *testing.T) {
 		image := NewFromIdentifier("gcr.io/jannfis/test-image@sha256:abcde")
 		assert.Equal(t, "gcr.io", image.RegistryURL)

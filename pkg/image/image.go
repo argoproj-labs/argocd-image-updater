@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/argoproj-labs/argocd-image-updater/pkg/tag"
+
 	"github.com/distribution/distribution/v3/reference"
 )
 
@@ -34,7 +35,7 @@ func NewFromIdentifier(identifier string) *ContainerImage {
 		img := ContainerImage{}
 		img.RegistryURL = reference.Domain(parsed)
 		// remove default registry for backwards-compatibility
-		if img.RegistryURL == "docker.io" {
+		if img.RegistryURL == "docker.io" && !strings.HasPrefix(imgRef, "docker.io") {
 			img.RegistryURL = ""
 		}
 		img.ImageAlias = alias
