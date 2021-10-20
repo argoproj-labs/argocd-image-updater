@@ -22,6 +22,26 @@ func Test_ParseImageTags(t *testing.T) {
 		assert.Equal(t, "jannfis/test-image", image.GetFullNameWithoutTag())
 	})
 
+	t.Run("Single element image name is unmodified", func(t *testing.T) {
+		image := NewFromIdentifier("test-image")
+		assert.Empty(t, image.RegistryURL)
+		assert.Empty(t, image.ImageAlias)
+		assert.Equal(t, "test-image", image.ImageName)
+		require.Nil(t, image.ImageTag)
+		assert.Equal(t, "test-image", image.GetFullNameWithTag())
+		assert.Equal(t, "test-image", image.GetFullNameWithoutTag())
+	})
+
+	t.Run("library image name is unmodified", func(t *testing.T) {
+		image := NewFromIdentifier("library/test-image")
+		assert.Empty(t, image.RegistryURL)
+		assert.Empty(t, image.ImageAlias)
+		assert.Equal(t, "library/test-image", image.ImageName)
+		require.Nil(t, image.ImageTag)
+		assert.Equal(t, "library/test-image", image.GetFullNameWithTag())
+		assert.Equal(t, "library/test-image", image.GetFullNameWithoutTag())
+	})
+
 	t.Run("Parse valid image name with registry info", func(t *testing.T) {
 		image := NewFromIdentifier("gcr.io/jannfis/test-image:0.1")
 		assert.Equal(t, "gcr.io", image.RegistryURL)
