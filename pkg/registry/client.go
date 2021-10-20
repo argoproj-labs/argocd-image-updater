@@ -260,7 +260,7 @@ func (client *registryClient) TagMetadata(manifest distribution.Manifest) (*tag.
 // Without this, tokenHandler and AuthorizationHandler won't work
 func ping(manager challenge.Manager, endpoint *RegistryEndpoint, versionHeader string) ([]auth.APIVersion, error) {
 	httpc := &http.Client{Transport: endpoint.GetTransport()}
-	resp, err := httpc.Get(endpoint.RegistryAPI + "/v2")
+	resp, err := httpc.Get(endpoint.RegistryAPI + "/v2/")
 	if err != nil {
 		return nil, err
 	}
