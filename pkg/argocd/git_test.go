@@ -8,11 +8,12 @@ import (
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/image"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/tag"
+
+	"sigs.k8s.io/kustomize/api/types"
 	kyaml "sigs.k8s.io/kustomize/kyaml/yaml"
 
 	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	"github.com/stretchr/testify/assert"
-	image2 "sigs.k8s.io/kustomize/pkg/image"
 )
 
 func Test_TemplateCommitMessage(t *testing.T) {
@@ -45,36 +46,36 @@ func Test_parseImageOverride(t *testing.T) {
 	cases := []struct {
 		name     string
 		override v1alpha1.KustomizeImage
-		expected image2.Image
+		expected types.Image
 	}{
-		{"tag update", "ghcr.io:1234/foo/foo:123", image2.Image{
+		{"tag update", "ghcr.io:1234/foo/foo:123", types.Image{
 			Name:   "ghcr.io:1234/foo/foo",
 			NewTag: "123",
 		}},
-		{"image update", "ghcr.io:1234/foo/foo=ghcr.io:1234/bar", image2.Image{
+		{"image update", "ghcr.io:1234/foo/foo=ghcr.io:1234/bar", types.Image{
 			Name:    "ghcr.io:1234/foo/foo",
 			NewName: "ghcr.io:1234/bar",
 		}},
-		{"update everything", "ghcr.io:1234/foo/foo=1234.foo.com:9876/bar:123", image2.Image{
+		{"update everything", "ghcr.io:1234/foo/foo=1234.foo.com:9876/bar:123", types.Image{
 			Name:    "ghcr.io:1234/foo/foo",
 			NewName: "1234.foo.com:9876/bar",
 			NewTag:  "123",
 		}},
-		{"change registry and tag", "ghcr.io:1234/foo/foo=1234.dkr.ecr.us-east-1.amazonaws.com/bar:123", image2.Image{
+		{"change registry and tag", "ghcr.io:1234/foo/foo=1234.dkr.ecr.us-east-1.amazonaws.com/bar:123", types.Image{
 			Name:    "ghcr.io:1234/foo/foo",
 			NewName: "1234.dkr.ecr.us-east-1.amazonaws.com/bar",
 			NewTag:  "123",
 		}},
-		{"change only registry", "0001.dkr.ecr.us-east-1.amazonaws.com/bar=1234.dkr.ecr.us-east-1.amazonaws.com/bar", image2.Image{
+		{"change only registry", "0001.dkr.ecr.us-east-1.amazonaws.com/bar=1234.dkr.ecr.us-east-1.amazonaws.com/bar", types.Image{
 			Name:    "0001.dkr.ecr.us-east-1.amazonaws.com/bar",
 			NewName: "1234.dkr.ecr.us-east-1.amazonaws.com/bar",
 		}},
-		{"change image and set digest", "foo=acme/app@sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", image2.Image{
+		{"change image and set digest", "foo=acme/app@sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", types.Image{
 			Name:    "foo",
 			NewName: "acme/app",
 			Digest:  "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
 		}},
-		{"set digest", "acme/app@sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", image2.Image{
+		{"set digest", "acme/app@sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", types.Image{
 			Name:   "acme/app",
 			Digest: "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
 		}},
