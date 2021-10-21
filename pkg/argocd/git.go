@@ -9,9 +9,9 @@ import (
 	"path/filepath"
 	"text/template"
 
-	"sigs.k8s.io/kustomize/pkg/commands/kustfile"
-	"sigs.k8s.io/kustomize/pkg/fs"
-	image2 "sigs.k8s.io/kustomize/pkg/image"
+	"sigs.k8s.io/kustomize/api/konfig"
+	"sigs.k8s.io/kustomize/api/types"
+	kyaml "sigs.k8s.io/kustomize/kyaml/yaml"
 
 	"github.com/argoproj-labs/argocd-image-updater/pkg/image"
 
@@ -221,36 +221,71 @@ func writeKustomization(app *v1alpha1.Application, wbc *WriteBackConfig, gitC gi
 
 	log.Infof("updating base %s", base)
 
-	kf, err := kustfile.NewKustomizationFile(fs.MakeRealFS())
-	if err != nil {
-		return
-	}
-	kustomization, err := kf.Read()
-	if err != nil {
-		return
+	kustFile := findKustomization(base)
+	if kustFile == "" {
+		return fmt.Errorf("could not find kustomization in %s", base), false
 	}
 
-Images:
-	for _, img := range app.Spec.Source.Kustomize.Images {
-		override := parseImageOverride(img)
-		for i, imgSet := range kustomization.Images {
-			if imgSet.Name == override.Name {
-				kustomization.Images[i] = override
-				continue Images
-			}
-		}
-		// wasn't an existing override, add one
-		kustomization.Images = append(kustomization.Images, override)
+	filterFunc, err := imagesFilter(app.Spec.Source.Kustomize.Images)
+	if err != nil {
+		return err, false
 	}
-
-	if err := kf.Write(kustomization); err != nil {
+	err = kyaml.UpdateFile(filterFunc, kustFile)
+	if err != nil {
 		return err, false
 	}
 
-	return
+	return nil, false
 }
 
-func parseImageOverride(str v1alpha1.KustomizeImage) image2.Image {
+func imagesFilter(images v1alpha1.KustomizeImages) (kyaml.Filter, error) {
+	var overrides []kyaml.Filter
+	for _, img := range images {
+		override, err := imageFilter(parseImageOverride(img))
+		if err != nil {
+			return nil, err
+		}
+		overrides = append(overrides, override)
+	}
+
+	return kyaml.FilterFunc(func(object *kyaml.RNode) (*kyaml.RNode, error) {
+		err := object.PipeE(append([]kyaml.Filter{kyaml.LookupCreate(
+			kyaml.SequenceNode, "images",
+		)}, overrides...)...)
+		return object, err
+	}), nil
+}
+
+func imageFilter(imgSet types.Image) (kyaml.Filter, error) {
+	data, err := kyaml.Marshal(imgSet)
+	if err != nil {
+		return nil, err
+	}
+	update, err := kyaml.Parse(string(data))
+	if err != nil {
+		return nil, err
+	}
+	setter := kyaml.ElementSetter{
+		Element: update.YNode(),
+		Keys:    []string{"name"},
+		Values:  []string{imgSet.Name},
+	}
+	return kyaml.FilterFunc(func(object *kyaml.RNode) (*kyaml.RNode, error) {
+		return object, object.PipeE(setter)
+	}), nil
+}
+
+func findKustomization(base string) string {
+	for _, f := range konfig.RecognizedKustomizationFileNames() {
+		kustFile := path.Join(base, f)
+		if stat, err := os.Stat(kustFile); err == nil && !stat.IsDir() {
+			return kustFile
+		}
+	}
+	return ""
+}
+
+func parseImageOverride(str v1alpha1.KustomizeImage) types.Image {
 	// TODO is this a valid use? format could diverge
 	img := image.NewFromIdentifier(string(str))
 	tagName := ""
@@ -267,7 +302,7 @@ func parseImageOverride(str v1alpha1.KustomizeImage) image2.Image {
 		img.ImageAlias = img.ImageName
 		img.ImageName = "" // inside baseball (see return): name isn't changing, just tag, so don't write newName
 	}
-	return image2.Image{
+	return types.Image{
 		Name:    img.ImageAlias,
 		NewName: img.ImageName,
 		NewTag:  tagName,
