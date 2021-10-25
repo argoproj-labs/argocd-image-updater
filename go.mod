@@ -7,9 +7,13 @@ require (
 	github.com/argoproj/argo-cd/v2 v2.1.2
 	github.com/argoproj/gitops-engine v0.4.1
 	github.com/argoproj/pkg v0.9.1
+	github.com/bradleyfalzon/ghinstallation v1.1.1
 	github.com/distribution/distribution/v3 v3.0.0-20210820130019-1cdeff259b9d
 	github.com/docker/distribution v2.7.1+incompatible
 	github.com/docker/libtrust v0.0.0-20160708172513-aabc10ec26b7 // indirect
+	github.com/go-git/go-git/v5 v5.2.0
+	github.com/google/go-cmp v0.5.6 // indirect
+	github.com/google/go-querystring v1.1.0 // indirect
 	github.com/opencontainers/go-digest v1.0.0
 	github.com/patrickmn/go-cache v2.1.0+incompatible
 	github.com/prometheus/client_golang v1.7.1
@@ -18,10 +22,9 @@ require (
 	github.com/spf13/pflag v1.0.5
 	github.com/stretchr/testify v1.7.0
 	go.uber.org/ratelimit v0.1.1-0.20201110185707-e86515f0dda9
-	golang.org/x/crypto v0.0.0-20210616213533-5ff15b29337e
+	golang.org/x/crypto v0.0.0-20210817164053-32db794688a5
 	golang.org/x/oauth2 v0.0.0-20210819190943-2bc19b11175f // indirect
 	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
-	gopkg.in/src-d/go-git.v4 v4.13.1
 	gopkg.in/yaml.v2 v2.4.0
 	k8s.io/api v1.21.0
 	k8s.io/apimachinery v1.21.0

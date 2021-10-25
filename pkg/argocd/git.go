@@ -79,7 +79,7 @@ func commitChangesGit(app *v1alpha1.Application, wbc *WriteBackConfig, write cha
 				log.Errorf("could not remove temp dir: %v", err)
 			}
 		}()
-		gitC, err = git.NewClientExt(app.Spec.Source.RepoURL, tempRoot, creds, false, false)
+		gitC, err = git.NewClientExt(app.Spec.Source.RepoURL, tempRoot, creds, false, false, "")
 		if err != nil {
 			return err
 		}
@@ -90,7 +90,7 @@ func commitChangesGit(app *v1alpha1.Application, wbc *WriteBackConfig, write cha
 	if err != nil {
 		return err
 	}
-	err = gitC.Fetch()
+	err = gitC.Fetch("")
 	if err != nil {
 		return err
 	}
