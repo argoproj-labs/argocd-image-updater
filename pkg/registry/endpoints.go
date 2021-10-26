@@ -67,6 +67,7 @@ type RegistryEndpoint struct {
 	Cache          cache.ImageTagCache
 	Limiter        ratelimit.Limiter
 	lock           sync.RWMutex
+	HookSecret     string
 }
 
 // Map of configured registries, pre-filled with some well-known registries
@@ -125,11 +126,11 @@ var registries map[string]*RegistryEndpoint = make(map[string]*RegistryEndpoint)
 var registryLock sync.RWMutex
 
 func AddRegistryEndpointFromConfig(epc RegistryConfiguration) error {
-	return AddRegistryEndpoint(epc.Prefix, epc.Name, epc.ApiURL, epc.Credentials, epc.DefaultNS, epc.Insecure, TagListSortFromString(epc.TagSortMode), epc.Limit, epc.CredsExpire)
+	return AddRegistryEndpoint(epc.Prefix, epc.Name, epc.ApiURL, epc.Credentials, epc.DefaultNS, epc.Insecure, TagListSortFromString(epc.TagSortMode), epc.Limit, epc.CredsExpire, epc.HookSecret)
 }
 
 // AddRegistryEndpoint adds registry endpoint information with the given details
-func AddRegistryEndpoint(prefix, name, apiUrl, credentials, defaultNS string, insecure bool, tagListSort TagListSort, limit int, credsExpire time.Duration) error {
+func AddRegistryEndpoint(prefix, name, apiUrl, credentials, defaultNS string, insecure bool, tagListSort TagListSort, limit int, credsExpire time.Duration, hookSecret string) error {
 	registryLock.Lock()
 	defer registryLock.Unlock()
 	if limit <= 0 {
@@ -147,6 +148,7 @@ func AddRegistryEndpoint(prefix, name, apiUrl, credentials, defaultNS string, in
 		DefaultNS:      defaultNS,
 		TagListSort:    tagListSort,
 		Limiter:        ratelimit.New(limit),
+		HookSecret:     hookSecret,
 	}
 	return nil
 }
@@ -202,6 +204,7 @@ func (ep *RegistryEndpoint) DeepCopy() *RegistryEndpoint {
 	newEp.Limiter = ep.Limiter
 	newEp.CredsExpire = ep.CredsExpire
 	newEp.CredsUpdated = ep.CredsUpdated
+	newEp.HookSecret = ep.HookSecret
 	ep.lock.RUnlock()
 	return newEp
 }

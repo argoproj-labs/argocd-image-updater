@@ -138,6 +138,9 @@ func newRunCommand() *cobra.Command {
 			// Health server will start in a go routine and run asynchronously
 			var hsErrCh chan error
 			var msErrCh chan error
+			var webhookErrCh chan error
+			var webhookEventCh chan registry.WebhookEvent
+
 			if cfg.HealthPort > 0 {
 				log.Infof("Starting health probe server TCP port=%d", cfg.HealthPort)
 				hsErrCh = health.StartHealthServer(cfg.HealthPort)
@@ -146,6 +149,12 @@ func newRunCommand() *cobra.Command {
 			if cfg.MetricsPort > 0 {
 				log.Infof("Starting metrics server on TCP port=%d", cfg.MetricsPort)
 				msErrCh = metrics.StartMetricsServer(cfg.MetricsPort)
+			}
+
+			if cfg.RegistryWebhookPort > 0 {
+				log.Infof("Starting registry hook server on TCP port=%d", cfg.RegistryWebhookPort)
+				webhookErrCh = registry.StartRegistryHookServer(cfg.RegistryWebhookPort)
+				webhookEventCh = registry.GetWebhookEventChan()
 			}
 
 			if warmUpCache {
@@ -174,9 +183,31 @@ func newRunCommand() *cobra.Command {
 						log.Infof("Metrics server exited gracefully")
 					}
 					return nil
+				case err := <-webhookErrCh:
+					if err != nil {
+						log.Errorf("Registry hook server exited with error: %v", err)
+					} else {
+						log.Infof("Registry hook server exited gracefully")
+					}
+					break
+				case webhookEv := <-webhookEventCh:
+					log.Debugf("Got new hook event %s | %s | %s", webhookEv.RepoName, webhookEv.ImageName, webhookEv.TagName)
+					result, err := runImageUpdater(cfg, false, webhookEv)
+					if err != nil {
+						log.Errorf("Error: %v", err)
+					} else {
+						log.Infof("Processing results: applications=%d images_considered=%d images_skipped=%d images_updated=%d errors=%d",
+							result.NumApplicationsProcessed,
+							result.NumImagesConsidered,
+							result.NumSkipped,
+							result.NumImagesUpdated,
+							result.NumErrors)
+					}
+					lastRun = time.Now()
+					break
 				default:
 					if lastRun.IsZero() || time.Since(lastRun) > cfg.CheckInterval {
-						result, err := runImageUpdater(cfg, false)
+						result, err := runImageUpdater(cfg, false, registry.WebhookEvent{})
 						if err != nil {
 							log.Errorf("Error: %v", err)
 						} else {
@@ -212,6 +243,7 @@ func newRunCommand() *cobra.Command {
 	runCmd.Flags().StringVar(&kubeConfig, "kubeconfig", "", "full path to kubernetes client configuration, i.e. ~/.kube/config")
 	runCmd.Flags().IntVar(&cfg.HealthPort, "health-port", 8080, "port to start the health server on, 0 to disable")
 	runCmd.Flags().IntVar(&cfg.MetricsPort, "metrics-port", 8081, "port to start the metrics server on, 0 to disable")
+	runCmd.Flags().IntVar(&cfg.RegistryWebhookPort, "registry-webhook-port", 8082, "port to start registry webhook server on, 0 to disable")
 	runCmd.Flags().BoolVar(&once, "once", false, "run only once, same as specifying --interval=0 and --health-port=0")
 	runCmd.Flags().StringVar(&cfg.RegistriesConf, "registries-conf-path", defaultRegistriesConfPath, "path to registries configuration file")
 	runCmd.Flags().BoolVar(&disableKubernetes, "disable-kubernetes", false, "do not create and use a Kubernetes client")
@@ -228,7 +260,7 @@ func newRunCommand() *cobra.Command {
 }
 
 // Main loop for argocd-image-controller
-func runImageUpdater(cfg *ImageUpdaterConfig, warmUp bool) (argocd.ImageUpdaterResult, error) {
+func runImageUpdater(cfg *ImageUpdaterConfig, warmUp bool, webhookEvent registry.WebhookEvent) (argocd.ImageUpdaterResult, error) {
 	result := argocd.ImageUpdaterResult{}
 	var err error
 	var argoClient argocd.ArgoCD
@@ -310,7 +342,7 @@ func runImageUpdater(cfg *ImageUpdaterConfig, warmUp bool) (argocd.ImageUpdaterR
 				GitCommitMessage:  cfg.GitCommitMessage,
 				DisableKubeEvents: cfg.DisableKubeEvents,
 			}
-			res := argocd.UpdateApplication(upconf, syncState)
+			res := argocd.UpdateApplication(upconf, syncState, webhookEvent)
 			result.NumApplicationsProcessed += 1
 			result.NumErrors += res.NumErrors
 			result.NumImagesConsidered += res.NumImagesConsidered
@@ -336,7 +368,7 @@ func runImageUpdater(cfg *ImageUpdaterConfig, warmUp bool) (argocd.ImageUpdaterR
 // of 1, i.e. sequential processing.
 func warmupImageCache(cfg *ImageUpdaterConfig) error {
 	log.Infof("Warming up image cache")
-	_, err := runImageUpdater(cfg, true)
+	_, err := runImageUpdater(cfg, true, registry.WebhookEvent{})
 	if err != nil {
 		return nil
 	}

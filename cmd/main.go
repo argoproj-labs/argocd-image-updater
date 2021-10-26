@@ -38,6 +38,7 @@ type ImageUpdaterConfig struct {
 	MaxConcurrency      int
 	HealthPort          int
 	MetricsPort         int
+	RegistryWebhookPort int
 	RegistriesConf      string
 	AppNamePatterns     []string
 	GitCommitUser       string
