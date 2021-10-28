@@ -94,6 +94,7 @@ func ParseCredentialSource(credentialSource string, requirePrefix bool) (*Creden
 // the credential source.
 func (src *CredentialSource) FetchCredentials(registryURL string, kubeclient *kube.KubernetesClient) (*Credential, error) {
 	var creds Credential
+	log.Tracef("Fetching credentials for registry %s", registryURL)
 	switch src.Type {
 	case CredentialSourceEnv:
 		credEnv := os.Getenv(src.EnvName)
@@ -233,7 +234,7 @@ func parseDockerConfigJson(registryURL string, jsonSource string) (string, strin
 
 	for registry, authConf := range auths {
 		if !strings.HasPrefix(registry, registryURL) && !strings.HasPrefix(registry, regPrefix) {
-			log.Tracef("found registry %s in image pull secret, but we want %s - skipping", registry, registryURL)
+			log.Tracef("found registry %s in image pull secret, but we want %s (%s) - skipping", registry, registryURL, regPrefix)
 			continue
 		}
 		authEntry, ok := authConf.(map[string]interface{})
