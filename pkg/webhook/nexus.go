@@ -1,7 +1,5 @@
-package nexus
+package webhook
 
-// this package receives the Nexus webhook
-// https://help.sonatype.com/repomanager3/webhooks
 import (
 	"crypto/hmac"
 	"crypto/sha1"
@@ -24,18 +22,17 @@ var (
 	ErrInvalidHTTPMethod            = errors.New("invalid HTTP Method")
 	ErrMissingNexusWebhookIDHeader  = errors.New("missing X-Nexus-Webhook-Id Header")
 	ErrMissingNexusWebhookSignature = errors.New("missing X-Nexus-Webhook-Signature Header")
+	ErrMissingRegistrySecretConfig  = errors.New("missing registry hook secret config")
 	ErrParsingPayload               = errors.New("error parsing payload")
 )
-
-// Event defines a Nexus hook event type
-type Event string
 
 // Nexus hook event types
 const (
 	RepositoryComponentEvent Event = "rm:repository:component"
 	RepositoryAssetEvent     Event = "rm:repository:asset"
 	RepositoryEvent          Event = "rm:repository"
-	AuditEvent               Event = "rm:audit" // TODO: double check this
+	AuditEvent               Event = "rm:audit"
+	// TODO: double check this AuditEvent string
 )
 
 // RepositoryComponentPayload a Nexus build notice
@@ -100,41 +97,24 @@ type AuditPayload struct {
 	} `json:"audit"`
 }
 
-// Option is a configuration option for the webhook
-type Option func(*Webhook) error
-
-// Options is a namespace var for configuration options
-var Options = WebhookOptions{}
-
-// WebhookOptions is a namespace for configuration option methods
-type WebhookOptions struct{}
-
-// Secret registers the Nexus secret
-func (WebhookOptions) Secret(secret string) Option {
-	return func(hook *Webhook) error {
-		hook.secret = secret
-		return nil
-	}
-}
-
-// Webhook instance contains all methods needed to process events
-type Webhook struct {
+type NexusWebhook struct {
 	secret string
 }
 
-// New creates and returns a WebHook instance denoted by the Provider type
-func New(options ...Option) (*Webhook, error) {
-	hook := new(Webhook)
-	for _, opt := range options {
-		if err := opt(hook); err != nil {
-			return nil, errors.New("Error applying Option")
-		}
+// NewNexusWebhook creates and returns a RegistryWebhook instance
+func NewNexusWebhook(secret string) RegistryWebhook {
+	hook := NexusWebhook{
+		secret: secret,
 	}
+	return &hook
+}
+
+func (hook *NexusWebhook) New(secret string) (RegistryWebhook, error) {
+	hook.secret = secret
 	return hook, nil
 }
 
-// Parse verifies and parses the events specified and returns the payload object or an error
-func (hook Webhook) Parse(r *http.Request, events ...Event) (interface{}, error) {
+func (hook *NexusWebhook) Parse(r *http.Request, events ...Event) (*WebhookEvent, error) {
 	log.Debugf("nexus parse payload %v", r)
 	defer func() {
 		_, _ = io.Copy(ioutil.Discard, r.Body)
@@ -149,11 +129,11 @@ func (hook Webhook) Parse(r *http.Request, events ...Event) (interface{}, error)
 		return nil, ErrInvalidHTTPMethod
 	}
 
-	event := r.Header.Get("X-Nexus-Webhook-Id")
-	if event == "" {
+	webhookID := r.Header.Get("X-Nexus-Webhook-Id")
+	if webhookID == "" {
 		return nil, ErrMissingNexusWebhookIDHeader
 	}
-	nexusEvent := Event(event)
+	nexusEvent := Event(webhookID)
 
 	var found bool
 	for _, evt := range events {
@@ -172,30 +152,20 @@ func (hook Webhook) Parse(r *http.Request, events ...Event) (interface{}, error)
 		return nil, ErrParsingPayload
 	}
 
-	var pl interface{}
+	var pl RepositoryComponentPayload
 	switch nexusEvent {
 	case RepositoryComponentEvent:
-		pl = pl.(RepositoryComponentPayload)
 		err = json.Unmarshal(payload, &pl)
-		break
+		if err != nil {
+			log.Errorf("Could not Unmarshal nexus payload %v", err)
+		}
 	case RepositoryAssetEvent:
-		pl = pl.(RepositoryAssetPayload)
-		err = json.Unmarshal(payload, &pl)
-		break
 	case RepositoryEvent:
-		pl = pl.(RepositoryPayload)
-		err = json.Unmarshal(payload, &pl)
-		break
 	case AuditEvent:
-		pl = pl.(AuditPayload)
-		err = json.Unmarshal(payload, &pl)
-		break
 	default:
-		return nil, fmt.Errorf("unknown event %s", nexusEvent)
+		return nil, fmt.Errorf("expecting event %s, got %s", RepositoryComponentEvent, nexusEvent)
 	}
 
-	// TODO: should we also reject all request with component.format other than docker?
-	// If we have a Secret set, we should check the MAC
 	if len(hook.secret) > 0 {
 		signature := r.Header.Get("X-Nexus-Webhook-Signature")
 		if len(signature) == 0 {
@@ -214,5 +184,11 @@ func (hook Webhook) Parse(r *http.Request, events ...Event) (interface{}, error)
 		}
 	}
 
-	return pl, nil
+	webhookEvent := WebhookEvent{
+		ImageName: pl.Component.Name,
+		RepoName:  pl.RepositoryName,
+		TagName:   pl.Component.Version,
+	}
+
+	return &webhookEvent, nil
 }

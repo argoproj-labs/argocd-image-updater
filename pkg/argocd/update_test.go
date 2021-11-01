@@ -18,6 +18,7 @@ import (
 	"github.com/argoproj-labs/argocd-image-updater/pkg/kube"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/registry"
 	regmock "github.com/argoproj-labs/argocd-image-updater/pkg/registry/mocks"
+	"github.com/argoproj-labs/argocd-image-updater/pkg/webhook"
 	"github.com/argoproj-labs/argocd-image-updater/test/fake"
 	"github.com/argoproj-labs/argocd-image-updater/test/fixture"
 
@@ -83,7 +84,7 @@ func Test_UpdateApplication(t *testing.T) {
 			KubeClient: &kubeClient,
 			UpdateApp:  appImages,
 			DryRun:     false,
-		}, NewSyncIterationState(), registry.WebhookEvent{})
+		}, NewSyncIterationState(), webhook.WebhookEvent{})
 		assert.Equal(t, v1alpha1.KustomizeImage("gcr.io/jannfis/foobar:1.0.3"), appImages.Application.Spec.Source.Kustomize.Images[0])
 		assert.Equal(t, v1alpha1.KustomizeImage("gcr.io/jannfis/barbar:1.0.3"), appImages.Application.Spec.Source.Kustomize.Images[1])
 		assert.Equal(t, 0, res.NumErrors)
@@ -143,7 +144,7 @@ func Test_UpdateApplication(t *testing.T) {
 			KubeClient: &kubeClient,
 			UpdateApp:  appImages,
 			DryRun:     false,
-		}, NewSyncIterationState(), registry.WebhookEvent{})
+		}, NewSyncIterationState(), webhook.WebhookEvent{})
 		assert.Equal(t, 0, res.NumErrors)
 		assert.Equal(t, 0, res.NumSkipped)
 		assert.Equal(t, 1, res.NumApplicationsProcessed)
@@ -204,7 +205,7 @@ func Test_UpdateApplication(t *testing.T) {
 			KubeClient: &kubeClient,
 			UpdateApp:  appImages,
 			DryRun:     false,
-		}, NewSyncIterationState(), registry.WebhookEvent{})
+		}, NewSyncIterationState(), webhook.WebhookEvent{})
 		assert.Equal(t, 0, res.NumErrors)
 		assert.Equal(t, 0, res.NumSkipped)
 		assert.Equal(t, 1, res.NumApplicationsProcessed)
@@ -268,7 +269,7 @@ func Test_UpdateApplication(t *testing.T) {
 			KubeClient: &kubeClient,
 			UpdateApp:  appImages,
 			DryRun:     false,
-		}, NewSyncIterationState(), registry.WebhookEvent{})
+		}, NewSyncIterationState(), webhook.WebhookEvent{})
 		assert.Equal(t, 0, res.NumErrors)
 		assert.Equal(t, 0, res.NumSkipped)
 		assert.Equal(t, 1, res.NumApplicationsProcessed)
@@ -332,7 +333,7 @@ func Test_UpdateApplication(t *testing.T) {
 			KubeClient: &kubeClient,
 			UpdateApp:  appImages,
 			DryRun:     false,
-		}, NewSyncIterationState(), registry.WebhookEvent{})
+		}, NewSyncIterationState(), webhook.WebhookEvent{})
 		assert.Equal(t, 0, res.NumErrors)
 		assert.Equal(t, 0, res.NumSkipped)
 		assert.Equal(t, 1, res.NumApplicationsProcessed)
@@ -388,7 +389,7 @@ func Test_UpdateApplication(t *testing.T) {
 			KubeClient: &kubeClient,
 			UpdateApp:  appImages,
 			DryRun:     false,
-		}, NewSyncIterationState(), registry.WebhookEvent{})
+		}, NewSyncIterationState(), webhook.WebhookEvent{})
 		assert.Equal(t, 0, res.NumErrors)
 		assert.Equal(t, 0, res.NumSkipped)
 		assert.Equal(t, 1, res.NumApplicationsProcessed)
@@ -449,7 +450,7 @@ func Test_UpdateApplication(t *testing.T) {
 			KubeClient: &kubeClient,
 			UpdateApp:  appImages,
 			DryRun:     false,
-		}, NewSyncIterationState(), registry.WebhookEvent{})
+		}, NewSyncIterationState(), webhook.WebhookEvent{})
 		assert.Equal(t, 0, res.NumErrors)
 		assert.Equal(t, 0, res.NumSkipped)
 		assert.Equal(t, 1, res.NumApplicationsProcessed)
@@ -504,7 +505,7 @@ func Test_UpdateApplication(t *testing.T) {
 			KubeClient: &kubeClient,
 			UpdateApp:  appImages,
 			DryRun:     false,
-		}, NewSyncIterationState(), registry.WebhookEvent{})
+		}, NewSyncIterationState(), webhook.WebhookEvent{})
 		assert.Equal(t, 0, res.NumErrors)
 		assert.Equal(t, 1, res.NumSkipped)
 		assert.Equal(t, 1, res.NumApplicationsProcessed)
@@ -560,7 +561,7 @@ func Test_UpdateApplication(t *testing.T) {
 			KubeClient: &kubeClient,
 			UpdateApp:  appImages,
 			DryRun:     false,
-		}, NewSyncIterationState(), registry.WebhookEvent{})
+		}, NewSyncIterationState(), webhook.WebhookEvent{})
 		assert.Equal(t, 0, res.NumErrors)
 		assert.Equal(t, 0, res.NumSkipped)
 		assert.Equal(t, 1, res.NumApplicationsProcessed)
@@ -619,7 +620,7 @@ func Test_UpdateApplication(t *testing.T) {
 			KubeClient: &kubeClient,
 			UpdateApp:  appImages,
 			DryRun:     false,
-		}, NewSyncIterationState(), registry.WebhookEvent{})
+		}, NewSyncIterationState(), webhook.WebhookEvent{})
 		assert.Equal(t, 0, res.NumErrors)
 		assert.Equal(t, 0, res.NumSkipped)
 		assert.Equal(t, 1, res.NumApplicationsProcessed)
@@ -678,7 +679,7 @@ func Test_UpdateApplication(t *testing.T) {
 			KubeClient: &kubeClient,
 			UpdateApp:  appImages,
 			DryRun:     false,
-		}, NewSyncIterationState(), registry.WebhookEvent{})
+		}, NewSyncIterationState(), webhook.WebhookEvent{})
 		assert.Equal(t, 0, res.NumErrors)
 		assert.Equal(t, 0, res.NumSkipped)
 		assert.Equal(t, 1, res.NumApplicationsProcessed)
@@ -754,7 +755,7 @@ func Test_UpdateApplication(t *testing.T) {
 			KubeClient: &kubeClient,
 			UpdateApp:  appImages,
 			DryRun:     false,
-		}, NewSyncIterationState(), registry.WebhookEvent{})
+		}, NewSyncIterationState(), webhook.WebhookEvent{})
 		assert.Equal(t, 0, res.NumErrors)
 		assert.Equal(t, 0, res.NumSkipped)
 		assert.Equal(t, 1, res.NumApplicationsProcessed)
@@ -830,7 +831,7 @@ func Test_UpdateApplication(t *testing.T) {
 			KubeClient: &kubeClient,
 			UpdateApp:  appImages,
 			DryRun:     false,
-		}, NewSyncIterationState(), registry.WebhookEvent{})
+		}, NewSyncIterationState(), webhook.WebhookEvent{})
 		assert.Equal(t, 0, res.NumErrors)
 		assert.Equal(t, 0, res.NumSkipped)
 		assert.Equal(t, 1, res.NumApplicationsProcessed)
@@ -886,7 +887,7 @@ func Test_UpdateApplication(t *testing.T) {
 			KubeClient: &kubeClient,
 			UpdateApp:  appImages,
 			DryRun:     false,
-		}, NewSyncIterationState(), registry.WebhookEvent{})
+		}, NewSyncIterationState(), webhook.WebhookEvent{})
 		assert.Equal(t, 1, res.NumErrors)
 		assert.Equal(t, 0, res.NumSkipped)
 		assert.Equal(t, 1, res.NumApplicationsProcessed)
@@ -939,7 +940,7 @@ func Test_UpdateApplication(t *testing.T) {
 			KubeClient: &kubeClient,
 			UpdateApp:  appImages,
 			DryRun:     false,
-		}, NewSyncIterationState(), registry.WebhookEvent{})
+		}, NewSyncIterationState(), webhook.WebhookEvent{})
 		assert.Equal(t, 1, res.NumErrors)
 		assert.Equal(t, 0, res.NumSkipped)
 		assert.Equal(t, 1, res.NumApplicationsProcessed)
@@ -995,7 +996,7 @@ func Test_UpdateApplication(t *testing.T) {
 			KubeClient: &kubeClient,
 			UpdateApp:  appImages,
 			DryRun:     false,
-		}, NewSyncIterationState(), registry.WebhookEvent{})
+		}, NewSyncIterationState(), webhook.WebhookEvent{})
 		assert.Equal(t, 1, res.NumErrors)
 		assert.Equal(t, 0, res.NumSkipped)
 		assert.Equal(t, 1, res.NumApplicationsProcessed)
@@ -1051,7 +1052,7 @@ func Test_UpdateApplication(t *testing.T) {
 			KubeClient: &kubeClient,
 			UpdateApp:  appImages,
 			DryRun:     false,
-		}, NewSyncIterationState(), registry.WebhookEvent{})
+		}, NewSyncIterationState(), webhook.WebhookEvent{})
 		assert.Equal(t, 1, res.NumErrors)
 		assert.Equal(t, 0, res.NumSkipped)
 		assert.Equal(t, 1, res.NumApplicationsProcessed)
@@ -1106,7 +1107,7 @@ func Test_UpdateApplication(t *testing.T) {
 			KubeClient: &kubeClient,
 			UpdateApp:  appImages,
 			DryRun:     false,
-		}, NewSyncIterationState(), registry.WebhookEvent{
+		}, NewSyncIterationState(), webhook.WebhookEvent{
 			RegistryPrefix: "docker.io",
 			RepoName:       "test",
 			ImageName:      "jannfis/foobar",

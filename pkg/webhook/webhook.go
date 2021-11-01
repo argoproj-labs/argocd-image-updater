@@ -1,4 +1,4 @@
-package registry
+package webhook
 
 import (
 	"fmt"
@@ -10,7 +10,7 @@ import (
 	"gopkg.in/go-playground/webhooks.v5/docker"
 
 	"github.com/argoproj-labs/argocd-image-updater/pkg/log"
-	"github.com/argoproj-labs/argocd-image-updater/pkg/registry/nexus"
+	"github.com/argoproj-labs/argocd-image-updater/pkg/registry"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/tag"
 )
 
@@ -23,9 +23,16 @@ type WebhookEvent struct {
 	Digest         string
 }
 
+type Event string
+
+type RegistryWebhook interface {
+	New(secret string) (RegistryWebhook, error)
+	Parse(r *http.Request, events ...Event) (*WebhookEvent, error)
+}
+
 var webhookEventCh (chan WebhookEvent) = make(chan WebhookEvent)
 
-// StartRegistryHookServer return a chan for WebhookEvent
+// GetWebhookEventChan return a chan for WebhookEvent
 func GetWebhookEventChan() chan WebhookEvent {
 	return webhookEventCh
 }
@@ -36,10 +43,10 @@ func StartRegistryHookServer(port int) chan error {
 	go func() {
 		sm := http.NewServeMux()
 
-		for _, reg := range registries {
-			log.Debugf("registry prefix: %s, %s", reg.RegistryPrefix, reg.RegistryName)
-			var regPrefix string = reg.RegistryPrefix
-			if reg.RegistryPrefix == "" {
+		regPrefixes := registry.ConfiguredEndpoints()
+		for _, prefix := range regPrefixes {
+			var regPrefix string = prefix
+			if regPrefix == "" {
 				regPrefix = "docker.io"
 			}
 			var path string = fmt.Sprintf("/api/webhook/%s", regPrefix)
@@ -50,28 +57,14 @@ func StartRegistryHookServer(port int) chan error {
 	return errCh
 }
 
-func parsePayloadToWebhookEvent(payloadIf interface{}) (webhookEvent WebhookEvent) {
-	switch payload := payloadIf.(type) {
-	case docker.BuildPayload:
-		webhookEvent.ImageName = payload.Repository.Name
-		webhookEvent.RepoName = payload.Repository.RepoName
-		webhookEvent.TagName = payload.PushData.Tag
-	case nexus.RepositoryComponentPayload:
-		webhookEvent.ImageName = payload.Component.Name
-		webhookEvent.RepoName = payload.RepositoryName
-		webhookEvent.TagName = payload.Component.Version
-	}
-	return webhookEvent
-}
-
 func getTagMetadata(regPrefix string, imageName string, tagStr string) (*tag.TagInfo, error) {
-	rep, err := GetRegistryEndpoint(regPrefix)
+	rep, err := registry.GetRegistryEndpoint(regPrefix)
 	if err != nil {
 		log.Errorf("Could not get registry endpoint for %s", regPrefix)
 		return nil, err
 	}
 
-	regClient, err := NewClient(rep, "", "")
+	regClient, err := registry.NewClient(rep, rep.Username, rep.Password)
 	if err != nil {
 		log.Errorf("Could not creating new registry client for %s", regPrefix)
 		return nil, err
@@ -107,16 +100,16 @@ func getTagMetadata(regPrefix string, imageName string, tagStr string) (*tag.Tag
 }
 
 func getWebhookSecretByPrefix(regPrefix string) string {
-	for _, reg := range registries {
-		if regPrefix == reg.RegistryPrefix {
-			return reg.HookSecret
-		}
+	rep, err := registry.GetRegistryEndpoint(regPrefix)
+	if err != nil {
+		log.Errorf("Could not get registry endpoint %s", regPrefix)
+		return ""
 	}
-	return ""
+	return rep.HookSecret
 }
 
 func webhookHandler(w http.ResponseWriter, r *http.Request) {
-	var payload interface{}
+	var webhookEv *WebhookEvent
 	var err error
 
 	parts := strings.Split(r.URL.Path, "/")
@@ -127,28 +120,20 @@ func webhookHandler(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case r.Header.Get("X-Docker-Event") != "":
 		log.Debugf("Callback from Dockerhub, X-Docker-Event=%s", r.Header.Get("X-Docker-Event"))
-		dockerWebhook, err := docker.New()
-		if err != nil {
-			log.Errorf("Could not create DockerHub webhook")
-			return
-		}
-		payload, err = dockerWebhook.Parse(r, docker.BuildEvent)
+		dockerWebhook := NewDockerWebhook("")
+		webhookEv, err = dockerWebhook.Parse(r, (Event(docker.BuildEvent)))
 		if err != nil {
 			log.Errorf("Could not parse DockerHub payload %v", err)
 		}
 	case r.Header.Get("X-Nexus-Webhook-Id") != "":
 		webhookID := r.Header.Get("X-Nexus-Webhook-Id")
 		log.Debugf("Callback from Nexus, X-Nexus-Webhook-Id=%s", webhookID)
-		if webhookID != string(nexus.RepositoryComponentEvent) {
-			log.Debugf("Expecting X-Nexus-Webhook-Id header to be %s, got %s", nexus.RepositoryComponentEvent, webhookID)
+		if webhookID != string(RepositoryComponentEvent) {
+			log.Debugf("Expecting X-Nexus-Webhook-Id header to be %s, got %s", RepositoryComponentEvent, webhookID)
 			return
 		}
-		nexusHook, err := nexus.New(nexus.Options.Secret(hookSecret))
-		if err != nil {
-			log.Errorf("Could not create Nexus webhook")
-			return
-		}
-		payload, err = nexusHook.Parse(r, nexus.RepositoryComponentEvent)
+		nexusHook := NewNexusWebhook(hookSecret)
+		webhookEv, err = nexusHook.Parse(r, RepositoryComponentEvent)
 		if err != nil {
 			log.Errorf("Could not parse Nexus payload %v", err)
 		}
@@ -169,19 +154,18 @@ func webhookHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Debugf("Payload: %v", payload)
+	log.Debugf("Payload: %v", webhookEv)
 
-	webhookEvent := parsePayloadToWebhookEvent(payload)
-	webhookEvent.RegistryPrefix = regPrefix
+	webhookEv.RegistryPrefix = regPrefix
 
-	tagInfo, err := getTagMetadata(regPrefix, webhookEvent.ImageName, webhookEvent.TagName)
+	tagInfo, err := getTagMetadata(regPrefix, webhookEv.ImageName, webhookEv.TagName)
 	if err != nil {
-		log.Errorf("Could not get tag metadata for %s:%s. Stop updating.", webhookEvent.ImageName, webhookEvent.TagName)
+		log.Errorf("Could not get tag metadata for %s:%s. Stop updating.", webhookEv.ImageName, webhookEv.TagName)
 		return
 	}
-	webhookEvent.Digest = string(tagInfo.Digest[:])
-	webhookEvent.CreatedAt = tagInfo.CreatedAt
+	webhookEv.Digest = string(tagInfo.Digest[:])
+	webhookEv.CreatedAt = tagInfo.CreatedAt
 
-	log.Debugf("HandleEvent: imageName=%s, repoName=%s, tag id=%s", webhookEvent.ImageName, webhookEvent.RepoName, webhookEvent.TagName)
-	webhookEventCh <- webhookEvent
+	log.Debugf("HandleEvent: imageName=%s, repoName=%s, tag id=%s", webhookEv.ImageName, webhookEv.RepoName, webhookEv.TagName)
+	webhookEventCh <- *webhookEv
 }
