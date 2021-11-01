@@ -244,7 +244,7 @@ func newRunCommand() *cobra.Command {
 	runCmd.Flags().StringVar(&kubeConfig, "kubeconfig", "", "full path to kubernetes client configuration, i.e. ~/.kube/config")
 	runCmd.Flags().IntVar(&cfg.HealthPort, "health-port", 8080, "port to start the health server on, 0 to disable")
 	runCmd.Flags().IntVar(&cfg.MetricsPort, "metrics-port", 8081, "port to start the metrics server on, 0 to disable")
-	runCmd.Flags().IntVar(&cfg.RegistryWebhookPort, "registry-webhook-port", 8082, "port to start registry webhook server on, 0 to disable")
+	runCmd.Flags().IntVar(&cfg.RegistryWebhookPort, "registry-webhook-port", 0, "port to start registry webhook server on, 0 to disable")
 	runCmd.Flags().BoolVar(&once, "once", false, "run only once, same as specifying --interval=0 and --health-port=0")
 	runCmd.Flags().StringVar(&cfg.RegistriesConf, "registries-conf-path", defaultRegistriesConfPath, "path to registries configuration file")
 	runCmd.Flags().BoolVar(&disableKubernetes, "disable-kubernetes", false, "do not create and use a Kubernetes client")
