@@ -195,7 +195,7 @@ func (ep *RegistryEndpoint) SetEndpointCredentials(kubeClient *kube.KubernetesCl
 		if (credSrc.Type == image.CredentialSourcePullSecret || credSrc.Type == image.CredentialSourceSecret) && kubeClient == nil {
 			log.WithContext().
 				AddField("registry", ep.RegistryAPI).
-				Warnf("cannot user K8s credentials without Kubernetes client")
+				Warnf("cannot use K8s credentials without Kubernetes client")
 			return fmt.Errorf("could not fetch image tags")
 		}
 
