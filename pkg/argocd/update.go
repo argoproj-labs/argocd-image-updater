@@ -65,6 +65,7 @@ type WriteBackConfig struct {
 	GitCommitEmail   string
 	GitCommitMessage string
 	KustomizeBase    string
+	Target           string
 }
 
 // The following are helper structs to only marshal the fields we require
@@ -421,8 +422,31 @@ func getWriteBackConfig(app *v1alpha1.Application, kubeClient *kube.KubernetesCl
 	switch strings.TrimSpace(method) {
 	case "git":
 		wbc.Method = WriteBackGit
-		if target, ok := app.Annotations[common.WriteBackTargetAnnotation]; ok && strings.HasPrefix(target, common.KustomizationPrefix) {
-			wbc.KustomizeBase = parseTarget(target, app.Spec.Source.Path)
+		// Set Default Target File
+		defaultTargetFile := fmt.Sprintf(".argocd-source-%s.yaml", app.Name)
+		wbc.Target = filepath.Join(app.Spec.Source.Path, defaultTargetFile)
+
+		if target, ok := app.Annotations[common.WriteBackTargetAnnotation]; ok {
+			appType := GetApplicationType(app)
+
+			switch appType {
+			case ApplicationTypeKustomize:
+				base, err := parseKustomizeTarget(target, app.Spec.Source.Path)
+				if err != nil {
+					return nil, err
+				}
+
+				wbc.KustomizeBase = base
+			case ApplicationTypeHelm:
+				target, err := parseHelmTarget(target, app.Spec.Source.Path, defaultTargetFile)
+				if err != nil {
+					return nil, err
+				}
+
+				wbc.Target = target
+			case ApplicationTypeUnsupported:
+				return nil, fmt.Errorf("unsupported applciation type")
+			}
 		}
 		if err := parseGitConfig(app, kubeClient, wbc, creds); err != nil {
 			return nil, err
@@ -434,14 +458,36 @@ func getWriteBackConfig(app *v1alpha1.Application, kubeClient *kube.KubernetesCl
 	return wbc, nil
 }
 
-func parseTarget(target string, sourcePath string) (kustomizeBase string) {
-	if target == common.KustomizationPrefix {
-		return filepath.Join(sourcePath, ".")
-	} else if base := target[len(common.KustomizationPrefix)+1:]; strings.HasPrefix(base, "/") {
-		return base[1:]
-	} else {
-		return filepath.Join(sourcePath, base)
+func parseHelmTarget(target string, sourcePath string, defaultTargetFile string) (string, error) {
+	if target == common.HelmPrefix {
+		return filepath.Join(sourcePath, defaultTargetFile), nil
 	}
+
+	if strings.HasPrefix(target, common.HelmPrefix+":") {
+		base := target[len(common.HelmPrefix)+1:]
+		if strings.HasPrefix(base, "/") {
+			return base[1:], nil
+		}
+		return filepath.Join(sourcePath, base), nil
+	}
+
+	return "", fmt.Errorf("unable to parse helm taget: %s", target)
+}
+
+func parseKustomizeTarget(target string, sourcePath string) (string, error) {
+	if target == common.KustomizationPrefix {
+		return filepath.Join(sourcePath, "."), nil
+	}
+
+	if strings.HasPrefix(target, common.KustomizationPrefix+":") {
+		base := target[len(common.KustomizationPrefix)+1:]
+		if strings.HasPrefix(base, "/") {
+			return base[1:], nil
+		}
+		return filepath.Join(sourcePath, base), nil
+	}
+
+	return "", fmt.Errorf("unable to parse kustomize taget: %s", target)
 }
 
 func parseGitConfig(app *v1alpha1.Application, kubeClient *kube.KubernetesClient, wbc *WriteBackConfig, creds string) error {
@@ -480,13 +526,19 @@ func commitChanges(app *v1alpha1.Application, wbc *WriteBackConfig) error {
 			return err
 		}
 	case WriteBackGit:
-		// if the kustomize base is set, the target is a kustomization
-		if wbc.KustomizeBase != "" {
-			return commitChangesGit(app, wbc, writeKustomization)
+		appType := GetApplicationType(app)
+		switch appType {
+		case ApplicationTypeKustomize:
+			if wbc.KustomizeBase != "" {
+				return commitChangesGit(app, wbc, writeKustomization)
+			}
+		case ApplicationTypeHelm:
+			return commitChangesGit(app, wbc, writeOverrides)
 		}
 		return commitChangesGit(app, wbc, writeOverrides)
 	default:
 		return fmt.Errorf("unknown write back method set: %d", wbc.Method)
 	}
+
 	return nil
 }

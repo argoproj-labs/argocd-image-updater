@@ -1937,26 +1937,70 @@ replacements: []
 	})
 }
 
-func Test_parseTarget(t *testing.T) {
+func Test_parseHelmTarget(t *testing.T) {
+	defaultTarget := "superargo.yaml"
+
+	cases := []struct {
+		name              string
+		expected          string
+		target            string
+		defaultTargetFile string
+		path              string
+		wantErr           bool
+	}{
+		{"default", defaultTarget, "helm", defaultTarget, "", false},
+		{"explicit default", ".", "helm:.", defaultTarget, ".", false},
+		{"default path, explicit target", ".", "helm:.", defaultTarget, "", false},
+		{"default target with path", "foo/bar/" + defaultTarget, "helm", defaultTarget, "foo/bar", false},
+		{"default both", defaultTarget, "helm", defaultTarget, "", false},
+		{"absolute path", "foo", "helm:/foo", defaultTarget, "bar", false},
+		{"relative path", "bar/foo", "helm:foo", defaultTarget, "bar", false},
+		{"sibling path", "bar/baz", "helm:../baz", defaultTarget, "bar/foo", false},
+		{"bad input", "", "helm../baz", defaultTarget, "bar/foo", true},
+		{"blank identifier input", "", "../baz", defaultTarget, "bar/foo", true},
+	}
+
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			base, err := parseHelmTarget(tt.target, tt.path, tt.defaultTargetFile)
+			assert.Equal(t, tt.expected, base)
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+func Test_parseKustomizeTarget(t *testing.T) {
 	cases := []struct {
 		name     string
 		expected string
 		target   string
 		path     string
+		wantErr  bool
 	}{
-		{"default", ".", "kustomization", ""},
-		{"explicit default", ".", "kustomization:.", "."},
-		{"default path, explicit target", ".", "kustomization:.", ""},
-		{"default target with path", "foo/bar", "kustomization", "foo/bar"},
-		{"default both", ".", "kustomization", ""},
-		{"absolute path", "foo", "kustomization:/foo", "bar"},
-		{"relative path", "bar/foo", "kustomization:foo", "bar"},
-		{"sibling path", "bar/baz", "kustomization:../baz", "bar/foo"},
+		{"default", ".", "kustomization", "", false},
+		{"explicit default", ".", "kustomization:.", ".", false},
+		{"default path, explicit target", ".", "kustomization:.", "", false},
+		{"default target with path", "foo/bar", "kustomization", "foo/bar", false},
+		{"default both", ".", "kustomization", "", false},
+		{"absolute path", "foo", "kustomization:/foo", "bar", false},
+		{"relative path", "bar/foo", "kustomization:foo", "bar", false},
+		{"sibling path", "bar/baz", "kustomization:../baz", "bar/foo", false},
+		{"bad input", "", "kustomization../baz", "bar/foo", true},
+		{"blank identifier input", "", "../baz", "bar/foo", true},
 	}
 
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.expected, parseTarget(tt.target, tt.path))
+			base, err := parseKustomizeTarget(tt.target, tt.path)
+			assert.Equal(t, tt.expected, base)
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
 		})
 	}
 }
