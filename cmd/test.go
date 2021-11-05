@@ -60,11 +60,10 @@ argocd-image-updater test nginx --allow-tags '^1.19.\d+(\-.*)*$' --update-strate
 				log.Fatalf("could not set log level to %s: %v", logLevel, err)
 			}
 
-			ctx := context.Background()
-
 			var kubeClient *kube.KubernetesClient
 			var err error
-			if kubeConfig != "" {
+			if !disableKubernetes {
+				ctx := context.Background()
 				kubeClient, err = getKubeConfig(ctx, "", kubeConfig)
 				if err != nil {
 					log.Fatalf("could not create K8s client: %v", err)
