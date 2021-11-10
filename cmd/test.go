@@ -15,17 +15,17 @@ import (
 
 func newTestCommand() *cobra.Command {
 	var (
-		semverConstraint  string
-		strategy          string
-		registriesConf    string
-		logLevel          string
-		allowTags         string
-		credentials       string
-		kubeConfig        string
-		disableKubernetes bool
-		ignoreTags        []string
-		disableKubeEvents bool
-		rateLimit         int
+		semverConstraint   string
+		strategy           string
+		registriesConfPath string
+		logLevel           string
+		allowTags          string
+		credentials        string
+		kubeConfig         string
+		disableKubernetes  bool
+		ignoreTags         []string
+		disableKubeEvents  bool
+		rateLimit          int
 	)
 	var runCmd = &cobra.Command{
 		Use:   "test IMAGE",
@@ -89,8 +89,8 @@ argocd-image-updater test nginx --allow-tags '^1.19.\d+(\-.*)*$' --update-strate
 				AddField("image_name", img.ImageName).
 				Infof("getting image")
 
-			if registriesConf != "" {
-				if err := registry.LoadRegistryConfiguration(registriesConf, false); err != nil {
+			if registriesConfPath != "" {
+				if err := registry.LoadRegistryConfiguration(registriesConfPath, false); err != nil {
 					log.Fatalf("could not load registries configuration: %v", err)
 				}
 			}
@@ -163,7 +163,7 @@ argocd-image-updater test nginx --allow-tags '^1.19.\d+(\-.*)*$' --update-strate
 	runCmd.Flags().StringVar(&allowTags, "allow-tags", "", "only consider tags in registry that satisfy the match function")
 	runCmd.Flags().StringArrayVar(&ignoreTags, "ignore-tags", nil, "ignore tags in registry that match given glob pattern")
 	runCmd.Flags().StringVar(&strategy, "update-strategy", "semver", "update strategy to use, one of: semver, latest)")
-	runCmd.Flags().StringVar(&registriesConf, "registries-conf", "", "path to registries configuration")
+	runCmd.Flags().StringVar(&registriesConfPath, "registries-conf-path", "", "path to registries configuration")
 	runCmd.Flags().StringVar(&logLevel, "loglevel", "debug", "log level to use (one of trace, debug, info, warn, error)")
 	runCmd.Flags().BoolVar(&disableKubernetes, "disable-kubernetes", false, "whether to disable the Kubernetes client")
 	runCmd.Flags().StringVar(&kubeConfig, "kubeconfig", "", "path to your Kubernetes client configuration")
