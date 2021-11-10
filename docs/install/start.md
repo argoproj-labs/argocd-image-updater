@@ -184,11 +184,11 @@ data:
   # The address of Argo CD API endpoint - defaults to argocd-server.argocd
   argocd.server_addr: <FQDN or IP of your Argo CD server>
   # Whether to use GRPC-web protocol instead of GRPC over HTTP/2
-  argocd.grpc_web: true
+  argocd.grpc_web: "true"
   # Whether to ignore invalid TLS cert from Argo CD API endpoint
-  argocd.insecure: false
+  argocd.insecure: "false"
   # Whether to use plain text connection (http) instead of TLS (https)
-  argocd.plaintext: false
+  argocd.plaintext: "false"
 ```
 
 After changing values in the ConfigMap, Argo CD Image Updater needs to be
