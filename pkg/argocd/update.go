@@ -16,10 +16,10 @@ import (
 	"github.com/argoproj-labs/argocd-image-updater/pkg/log"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/registry"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/tag"
+	"gopkg.in/yaml.v2"
 
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/application"
 	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
-	"gopkg.in/yaml.v2"
 )
 
 // Stores some statistics about the results of a run
@@ -366,31 +366,49 @@ func marshalParamsOverride(app *v1alpha1.Application) ([]byte, error) {
 	var override []byte
 	var err error
 
-	appType := GetApplicationType(app)
-	switch appType {
-	case ApplicationTypeKustomize:
-		if app.Spec.Source.Kustomize == nil {
-			return []byte{}, nil
-		}
-		params := kustomizeOverride{
-			Kustomize: kustomizeImages{
-				Images: &app.Spec.Source.Kustomize.Images,
-			},
-		}
-		override, err = yaml.Marshal(params)
-	case ApplicationTypeHelm:
-		if app.Spec.Source.Helm == nil {
-			return []byte{}, nil
-		}
-		params := helmOverride{
-			Helm: helmParameters{
-				Parameters: app.Spec.Source.Helm.Parameters,
-			},
-		}
-		override, err = yaml.Marshal(params)
-	default:
-		err = fmt.Errorf("unsupported application type")
+	// appType := GetApplicationType(app)
+	// switch appType {
+	// case ApplicationTypeKustomize:
+	// 	if app.Spec.Source.Kustomize == nil {
+	// 		return []byte{}, nil
+	// 	}
+	// 	params := kustomizeOverride{
+	// 		Kustomize: kustomizeImages{
+	// 			Images: &app.Spec.Source.Kustomize.Images,
+	// 		},
+	// 	}
+	// 	override, err = yaml.Marshal(params)
+	// case ApplicationTypeHelm:
+	// 	if app.Spec.Source.Helm == nil {
+	// 		return []byte{}, nil
+	// 	}
+	// 	params := helmOverride{
+	// 		Helm: helmParameters{
+	// 			Parameters: app.Spec.Source.Helm.Parameters,
+	// 		},
+	// 	}
+	// 	override, err = yaml.Marshal(params)
+	// default:
+	// 	err = fmt.Errorf("unsupported application type")
+	// }
+
+	var params struct {
+		Tag string
 	}
+
+	// get latest tag
+	var tagParam v1alpha1.HelmParameter
+	for _, p := range app.Spec.Source.Helm.Parameters {
+		if p.Name == "image.tag" {
+			tagParam = p
+			break
+		}
+	}
+
+	// just get the tag and igonre everything else
+	params.Tag = tagParam.Value
+
+	override, err = yaml.Marshal(params)
 	if err != nil {
 		return nil, err
 	}

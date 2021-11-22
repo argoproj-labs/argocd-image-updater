@@ -474,13 +474,15 @@ func IsValidApplicationType(app *v1alpha1.Application) bool {
 
 // getApplicationType returns the type of the application
 func getApplicationType(app *v1alpha1.Application) ApplicationType {
-	if app.Status.SourceType == v1alpha1.ApplicationSourceTypeKustomize {
-		return ApplicationTypeKustomize
-	} else if app.Status.SourceType == v1alpha1.ApplicationSourceTypeHelm {
-		return ApplicationTypeHelm
-	} else {
-		return ApplicationTypeUnsupported
-	}
+	// if app.Status.SourceType == v1alpha1.ApplicationSourceTypeKustomize {
+	// 	return ApplicationTypeKustomize
+	// } else if app.Status.SourceType == v1alpha1.ApplicationSourceTypeHelm {
+	// 	return ApplicationTypeHelm
+	// } else {
+	// 	return ApplicationTypeUnsupported
+	// }
+	// fake it till you make it
+	return ApplicationTypeHelm
 }
 
 // String returns a string representation of the application type
