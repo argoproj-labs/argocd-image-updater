@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/argoproj-labs/argocd-image-updater/ext/git"
 	gitmock "github.com/argoproj-labs/argocd-image-updater/ext/git/mocks"
@@ -17,6 +18,7 @@ import (
 	"github.com/argoproj-labs/argocd-image-updater/pkg/kube"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/registry"
 	regmock "github.com/argoproj-labs/argocd-image-updater/pkg/registry/mocks"
+	"github.com/argoproj-labs/argocd-image-updater/pkg/tag"
 	"github.com/argoproj-labs/argocd-image-updater/test/fake"
 	"github.com/argoproj-labs/argocd-image-updater/test/fixture"
 
@@ -1682,7 +1684,7 @@ func Test_CommitUpdates(t *testing.T) {
 		require.NoError(t, err)
 		wbc.GitClient = gitMock
 
-		err = commitChanges(&app, wbc)
+		err = commitChanges(&app, wbc, nil)
 		assert.NoError(t, err)
 	})
 
@@ -1702,7 +1704,7 @@ func Test_CommitUpdates(t *testing.T) {
 		wbc.GitClient = gitMock
 		wbc.GitBranch = "mybranch"
 
-		err = commitChanges(&app, wbc)
+		err = commitChanges(&app, wbc, nil)
 		assert.NoError(t, err)
 	})
 
@@ -1723,7 +1725,37 @@ func Test_CommitUpdates(t *testing.T) {
 		app.Spec.Source.TargetRevision = "HEAD"
 		wbc.GitBranch = ""
 
-		err = commitChanges(app, wbc)
+		err = commitChanges(app, wbc, nil)
+		assert.NoError(t, err)
+	})
+
+	t.Run("Good commit to different than base branch", func(t *testing.T) {
+		gitMock, _, cleanup := mockGit(t)
+		defer cleanup()
+		gitMock.On("Checkout", mock.Anything).Run(func(args mock.Arguments) {
+			args.Assert(t, "mydefaultbranch")
+		}).Return(nil)
+		gitMock.On("Add", mock.Anything).Return(nil)
+		gitMock.On("Branch", mock.Anything, mock.Anything).Return(nil)
+		gitMock.On("Commit", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
+		gitMock.On("Push", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+		gitMock.On("SymRefToBranch", mock.Anything).Return("mydefaultbranch", nil)
+
+		wbc, err := getWriteBackConfig(&app, &kubeClient, &argoClient)
+		require.NoError(t, err)
+		wbc.GitClient = gitMock
+		wbc.GitBranch = "mydefaultbranch"
+		wbc.GitWriteBranch = "image-updater{{range .Images}}-{{.Name}}-{{.NewTag}}{{end}}"
+
+		cl := []ChangeEntry{
+			{
+				Image:  image.NewFromIdentifier("foo/bar"),
+				OldTag: tag.NewImageTag("1.0", time.Now(), ""),
+				NewTag: tag.NewImageTag("1.1", time.Now(), ""),
+			},
+		}
+
+		err = commitChanges(&app, wbc, cl)
 		assert.NoError(t, err)
 	})
 
@@ -1754,7 +1786,7 @@ replacements: []
 		app.Spec.Source.TargetRevision = "HEAD"
 		wbc.GitBranch = ""
 
-		err = commitChanges(app, wbc)
+		err = commitChanges(app, wbc, nil)
 		assert.NoError(t, err)
 		kust, err := ioutil.ReadFile(kf)
 		assert.NoError(t, err)
@@ -1773,7 +1805,7 @@ replacements: []
 
 		// test the merge case too
 		app.Spec.Source.Kustomize.Images = v1alpha1.KustomizeImages{"foo:123", "bar=qux"}
-		err = commitChanges(app, wbc)
+		err = commitChanges(app, wbc, nil)
 		assert.NoError(t, err)
 		kust, err = ioutil.ReadFile(kf)
 		assert.NoError(t, err)
@@ -1812,7 +1844,7 @@ replacements: []
 		wbc.GitCommitUser = "someone"
 		wbc.GitCommitEmail = "someone@example.com"
 
-		err = commitChanges(app, wbc)
+		err = commitChanges(app, wbc, nil)
 		assert.NoError(t, err)
 	})
 
@@ -1839,7 +1871,7 @@ replacements: []
 		wbc.GitCommitUser = "someone"
 		wbc.GitCommitEmail = "someone@example.com"
 
-		err = commitChanges(app, wbc)
+		err = commitChanges(app, wbc, nil)
 		assert.Errorf(t, err, "could not configure git")
 	})
 
@@ -1854,7 +1886,7 @@ replacements: []
 		require.NoError(t, err)
 		wbc.GitClient = gitMock
 
-		err = commitChanges(&app, wbc)
+		err = commitChanges(&app, wbc, nil)
 		assert.Errorf(t, err, "cannot init")
 	})
 
@@ -1869,7 +1901,7 @@ replacements: []
 		require.NoError(t, err)
 		wbc.GitClient = gitMock
 
-		err = commitChanges(&app, wbc)
+		err = commitChanges(&app, wbc, nil)
 		assert.Errorf(t, err, "cannot init")
 	})
 	t.Run("Cannot checkout", func(t *testing.T) {
@@ -1883,7 +1915,7 @@ replacements: []
 		require.NoError(t, err)
 		wbc.GitClient = gitMock
 
-		err = commitChanges(&app, wbc)
+		err = commitChanges(&app, wbc, nil)
 		assert.Errorf(t, err, "cannot checkout")
 	})
 
@@ -1898,7 +1930,7 @@ replacements: []
 		require.NoError(t, err)
 		wbc.GitClient = gitMock
 
-		err = commitChanges(&app, wbc)
+		err = commitChanges(&app, wbc, nil)
 		assert.Errorf(t, err, "cannot commit")
 	})
 
@@ -1913,7 +1945,7 @@ replacements: []
 		require.NoError(t, err)
 		wbc.GitClient = gitMock
 
-		err = commitChanges(&app, wbc)
+		err = commitChanges(&app, wbc, nil)
 		assert.Errorf(t, err, "cannot push")
 	})
 
@@ -1932,7 +1964,7 @@ replacements: []
 		app.Spec.Source.TargetRevision = "HEAD"
 		wbc.GitBranch = ""
 
-		err = commitChanges(app, wbc)
+		err = commitChanges(app, wbc, nil)
 		assert.Errorf(t, err, "failed to resolve ref")
 	})
 }
