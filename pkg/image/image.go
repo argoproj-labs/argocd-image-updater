@@ -105,8 +105,8 @@ func (img *ContainerImage) GetFullNameWithTag() string {
 	return str
 }
 
-// GetFullTag returns tag name along with any tag digest set for the image
-func (img *ContainerImage) GetFullTag() string {
+// GetTagWithDigest returns tag name along with any tag digest set for the image
+func (img *ContainerImage) GetTagWithDigest() string {
 	str := ""
 	if img.ImageTag != nil {
 		if img.ImageTag.TagName != "" {
