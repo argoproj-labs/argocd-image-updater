@@ -105,6 +105,24 @@ func (img *ContainerImage) GetFullNameWithTag() string {
 	return str
 }
 
+// GetTagWithDigest returns tag name along with any tag digest set for the image
+func (img *ContainerImage) GetTagWithDigest() string {
+	str := ""
+	if img.ImageTag != nil {
+		if img.ImageTag.TagName != "" {
+			str += img.ImageTag.TagName
+		}
+		if img.ImageTag.TagDigest != "" {
+			if str == "" {
+				str += "latest"
+			}
+			str += "@"
+			str += img.ImageTag.TagDigest
+		}
+	}
+	return str
+}
+
 func (img *ContainerImage) Original() string {
 	return img.original
 }

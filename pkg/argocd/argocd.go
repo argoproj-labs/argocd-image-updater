@@ -376,7 +376,7 @@ func SetHelmImage(app *v1alpha1.Application, newImage *image.ContainerImage) err
 			mergeParams = append(mergeParams, p)
 		}
 		if hpImageTag != "" {
-			p := v1alpha1.HelmParameter{Name: hpImageTag, Value: newImage.ImageTag.String(), ForceString: true}
+			p := v1alpha1.HelmParameter{Name: hpImageTag, Value: newImage.GetTagWithDigest(), ForceString: true}
 			mergeParams = append(mergeParams, p)
 		}
 	}
