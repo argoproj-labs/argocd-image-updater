@@ -72,8 +72,18 @@ func Test_ParseImageTags(t *testing.T) {
 		require.NotNil(t, image.ImageTag)
 		assert.Empty(t, image.ImageTag.TagName)
 		assert.Equal(t, "sha256:abcde", image.ImageTag.TagDigest)
+		assert.Equal(t, "latest@sha256:abcde", image.GetTagWithDigest())
 		assert.Equal(t, "gcr.io/jannfis/test-image@sha256:abcde", image.GetFullNameWithTag())
 		assert.Equal(t, "gcr.io/jannfis/test-image", image.GetFullNameWithoutTag())
+	})
+
+	t.Run("Parse valid image name with tag and digest", func(t *testing.T) {
+		image := NewFromIdentifier("gcr.io/jannfis/test-image:test-tag@sha256:abcde")
+		require.NotNil(t, image.ImageTag)
+		assert.Empty(t, image.ImageTag.TagName)
+		assert.Equal(t, "sha256:abcde", image.ImageTag.TagDigest)
+		assert.Equal(t, "latest@sha256:abcde", image.GetTagWithDigest())
+		assert.Equal(t, "gcr.io/jannfis/test-image:test-tag@sha256:abcde", image.GetFullNameWithTag())
 	})
 
 	t.Run("Parse valid image name with source name and registry info", func(t *testing.T) {
