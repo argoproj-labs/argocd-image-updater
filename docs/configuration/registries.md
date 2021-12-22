@@ -94,7 +94,7 @@ following semantics:
   if the `<image_alias>.sort-mode` is `latest` but will instead use the sorting
   from the tag list.
 
-If you want to take above example to the `argocd-image-updater-cm` ConfigMap,
+If you want to take above example to the `argocd-image-updater-config` ConfigMap,
 you need to define the key `registries.conf` in the data of the ConfigMap as
 below:
 
