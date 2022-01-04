@@ -244,7 +244,7 @@ The following variables are provided for this template:
   entry in this list is a struct providing the following information for
   each change:
   * `.Name` holds the full name of the image that was updated
-  * `.Name` holds the alias of the image that was updated
+  * `.Alias` holds the alias of the image that was updated
   * `.OldTag` holds the tag name or SHA digest previous to the update
   * `.NewTag` holds the tag name or SHA digest that was updated to
 * `.SHA1` is a unique SHA1 has representing these changes
