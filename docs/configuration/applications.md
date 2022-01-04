@@ -232,7 +232,13 @@ was updated to the new tag `1.1`.
 argocd-image-updater.argoproj.io/git-write-branch: image-updater{{range .Images}}-{{.Name}}-{{.NewTag}}{{end}}
 ```
 
-One top-level variable is provided for this template:
+Alternatively, to assure unique branch names you could use the SHA1 representation of the changes:
+
+```yaml
+argocd-image-updater.argoproj.io/git-write-branch: image-updater-{{.SHA1}}
+```
+
+The following varaibles are provided for this template:
 
 * `.Images` is a list of changes that were performed by the update. Each
   entry in this list is a struct providing the following information for
@@ -241,6 +247,9 @@ One top-level variable is provided for this template:
   * `.Name` holds the alias of the image that was updated
   * `.OldTag` holds the tag name or SHA digest previous to the update
   * `.NewTag` holds the tag name or SHA digest that was updated to
+* `.SHA1` is a unique SHA1 has representing these changes
+
+Please note that if the output of the template exceeds 255 characters (git branch name limit) it will be truncated.
 
 #### Specifying the user and email address for commits
 

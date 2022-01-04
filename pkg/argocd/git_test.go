@@ -78,7 +78,7 @@ func Test_TemplateBranchName(t *testing.T) {
 	})
 	t.Run("Template branch name with hash", func(t *testing.T) {
 		exp := `image-updater-1cec79355bbe50a50ece77a6ecc3503e0ae1fd41`
-		tpl := "image-updater-{{ .SHA1 }}"
+		tpl := "image-updater-{{.SHA1}}"
 		cl := []ChangeEntry{
 			{
 				Image:  image.NewFromIdentifier("foo/bar"),
