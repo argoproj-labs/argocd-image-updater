@@ -213,7 +213,7 @@ following would use GitHub's default `main` branch:
 argocd-image-updater.argoproj.io/git-branch: main
 ```
 
-#### Specifying a seperate base and commit branch
+#### Specifying a separate base and commit branch
 
 By default, Argo CD Imager Updater will checkout, commit, and push back to the
 same branch specified above. There are many scenarios where this is not

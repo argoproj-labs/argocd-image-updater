@@ -72,10 +72,10 @@ func TemplateBranchName(branchName string, changeList []ChangeEntry) string {
 	}
 
 	type imageChange struct {
-		Name  		string
-		Alias  		string
-		OldTag 		string
-		NewTag 		string
+		Name   string
+		Alias  string
+		OldTag string
+		NewTag string
 	}
 
 	type branchNameTemplate struct {
@@ -89,7 +89,7 @@ func TemplateBranchName(branchName string, changeList []ChangeEntry) string {
 		changes = append(changes, imageChange{c.Image.ImageName, c.Image.ImageAlias, c.OldTag.String(), c.NewTag.String()})
 	}
 
-	tplData := branchNameTemplate {
+	tplData := branchNameTemplate{
 		Images: changes,
 	}
 
@@ -176,9 +176,9 @@ func commitChangesGit(app *v1alpha1.Application, wbc *WriteBackConfig, changeLis
 	pushBranch := checkOutBranch
 
 	if wbc.GitWriteBranch != "" {
-		log.Debugf("Using branch template: %s", wbc.GitWriteBranch,)
+		log.Debugf("Using branch template: %s", wbc.GitWriteBranch)
 		pushBranch = TemplateBranchName(wbc.GitWriteBranch, changeList)
-		if (pushBranch != "") {
+		if pushBranch != "" {
 			log.Debugf("Creating branch '%s' and using that for push operations", pushBranch)
 			err = gitC.Branch(checkOutBranch, pushBranch)
 			if err != nil {

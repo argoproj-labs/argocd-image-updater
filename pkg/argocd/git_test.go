@@ -45,7 +45,7 @@ updates image bar/baz tag '2.0' to '2.1'
 func Test_TemplateBranchName(t *testing.T) {
 	t.Run("Template branch name with image name", func(t *testing.T) {
 		exp := `image-updater-foo/bar-1.1-bar/baz-2.1`
-		tpl :=  "image-updater{{range .Images}}-{{.Name}}-{{.NewTag}}{{end}}"
+		tpl := "image-updater{{range .Images}}-{{.Name}}-{{.NewTag}}{{end}}"
 		cl := []ChangeEntry{
 			{
 				Image:  image.NewFromIdentifier("foo/bar"),
@@ -64,7 +64,7 @@ func Test_TemplateBranchName(t *testing.T) {
 	})
 	t.Run("Template branch name with alias", func(t *testing.T) {
 		exp := `image-updater-bar-1.1`
-		tpl :=  "image-updater{{range .Images}}-{{.Alias}}-{{.NewTag}}{{end}}"
+		tpl := "image-updater{{range .Images}}-{{.Alias}}-{{.NewTag}}{{end}}"
 		cl := []ChangeEntry{
 			{
 				Image:  image.NewFromIdentifier("bar=0001.dkr.ecr.us-east-1.amazonaws.com/bar"),
