@@ -76,6 +76,33 @@ func Test_TemplateBranchName(t *testing.T) {
 		assert.NotEmpty(t, r)
 		assert.Equal(t, exp, r)
 	})
+	t.Run("Template branch name with hash", func(t *testing.T) {
+		exp := `image-updater-1cec79355bbe50a50ece77a6ecc3503e0ae1fd41`
+		tpl := "image-updater-{{ .SHA1 }}"
+		cl := []ChangeEntry{
+			{
+				Image:  image.NewFromIdentifier("foo/bar"),
+				OldTag: tag.NewImageTag("1.0", time.Now(), ""),
+				NewTag: tag.NewImageTag("1.1", time.Now(), ""),
+			},
+		}
+		r := TemplateBranchName(tpl, cl)
+		assert.NotEmpty(t, r)
+		assert.Equal(t, exp, r)
+	})
+	t.Run("Template branch over 255 chars", func(t *testing.T) {
+		tpl := "image-updater-lorem-ipsum-dolor-sit-amet-consectetur-" +
+			"adipiscing-elit-phasellus-imperdiet-vitae-elit-quis-pulvinar-" +
+			"suspendisse-pulvinar-lacus-vel-semper-congue-enim-purus-posuere-" +
+			"orci-ut-vulputate-mi-ipsum-quis-ipsum-quisque-elit-arcu-lobortis-" +
+			"in-blandit-vel-pharetra-vel-urna-aliquam-euismod-elit-vel-mi"
+		exp := tpl[:255]
+		cl := []ChangeEntry{}
+		r := TemplateBranchName(tpl, cl)
+		assert.NotEmpty(t, r)
+		assert.Equal(t, exp, r)
+		assert.Len(t, r, 255)
+	})
 }
 
 func Test_parseImageOverride(t *testing.T) {

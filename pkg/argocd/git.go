@@ -2,6 +2,8 @@ package argocd
 
 import (
 	"bytes"
+	"crypto/sha1"
+	"encoding/hex"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -80,17 +82,24 @@ func TemplateBranchName(branchName string, changeList []ChangeEntry) string {
 
 	type branchNameTemplate struct {
 		Images []imageChange
+		SHA1   string
 	}
+
+	// Let's add a unique hash to the template
+	hasher := sha1.New()
 
 	// We need to transform the change list into something more viable for the
 	// writer of a template.
 	changes := make([]imageChange, 0)
 	for _, c := range changeList {
 		changes = append(changes, imageChange{c.Image.ImageName, c.Image.ImageAlias, c.OldTag.String(), c.NewTag.String()})
+		id := fmt.Sprintf("%v-%v-%v,", c.Image.ImageName, c.OldTag.String(), c.NewTag.String())
+		hasher.Write([]byte(id))
 	}
 
 	tplData := branchNameTemplate{
 		Images: changes,
+		SHA1:   hex.EncodeToString(hasher.Sum(nil)),
 	}
 
 	err2 := tpl.Execute(&cmBuf, tplData)
@@ -99,7 +108,13 @@ func TemplateBranchName(branchName string, changeList []ChangeEntry) string {
 		return ""
 	}
 
-	return cmBuf.String()
+	toReturn := cmBuf.String()
+
+	if len(toReturn) > 255 {
+		return toReturn[:255]
+	} else {
+		return toReturn
+	}
 }
 
 type changeWriter func(app *v1alpha1.Application, wbc *WriteBackConfig, gitC git.Client) (err error, skip bool)
