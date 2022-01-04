@@ -94,7 +94,11 @@ func TemplateBranchName(branchName string, changeList []ChangeEntry) string {
 	for _, c := range changeList {
 		changes = append(changes, imageChange{c.Image.ImageName, c.Image.ImageAlias, c.OldTag.String(), c.NewTag.String()})
 		id := fmt.Sprintf("%v-%v-%v,", c.Image.ImageName, c.OldTag.String(), c.NewTag.String())
-		hasher.Write([]byte(id))
+		_, hasherErr := hasher.Write([]byte(id))
+		if hasherErr != nil {
+			log.Errorf("could not write image string to hasher: %v", hasherErr)
+			return ""
+		}
 	}
 
 	tplData := branchNameTemplate{
