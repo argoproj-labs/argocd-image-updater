@@ -238,7 +238,7 @@ Alternatively, to assure unique branch names you could use the SHA1 representati
 argocd-image-updater.argoproj.io/git-write-branch: image-updater-{{.SHA1}}
 ```
 
-The following varaibles are provided for this template:
+The following variables are provided for this template:
 
 * `.Images` is a list of changes that were performed by the update. Each
   entry in this list is a struct providing the following information for
