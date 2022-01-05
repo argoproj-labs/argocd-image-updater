@@ -135,11 +135,10 @@ func AddRegistryEndpoint(prefix, name, apiUrl, credentials, defaultNS string, in
 	if limit <= 0 {
 		limit = RateLimitNone
 	}
-	log.Debugf("rate limit for %s is %d", apiUrl, limit)
 	registries[prefix] = &RegistryEndpoint{
 		RegistryName:   name,
 		RegistryPrefix: prefix,
-		RegistryAPI:    apiUrl,
+		RegistryAPI:    strings.TrimSuffix(apiUrl, "/"),
 		Credentials:    credentials,
 		CredsExpire:    credsExpire,
 		Cache:          cache.NewMemCache(),
@@ -147,6 +146,15 @@ func AddRegistryEndpoint(prefix, name, apiUrl, credentials, defaultNS string, in
 		DefaultNS:      defaultNS,
 		TagListSort:    tagListSort,
 		Limiter:        ratelimit.New(limit),
+	}
+
+	logCtx := log.WithContext()
+	logCtx.AddField("registry", registries[prefix].RegistryAPI)
+	logCtx.AddField("prefix", registries[prefix].RegistryPrefix)
+	if limit != RateLimitNone {
+		logCtx.Debugf("setting rate limit to %d requests per second", limit)
+	} else {
+		logCtx.Debugf("rate limiting is disabled")
 	}
 	return nil
 }
