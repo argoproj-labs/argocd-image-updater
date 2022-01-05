@@ -376,7 +376,7 @@ func SetHelmImage(app *v1alpha1.Application, newImage *image.ContainerImage) err
 			mergeParams = append(mergeParams, p)
 		}
 		if hpImageTag != "" {
-			p := v1alpha1.HelmParameter{Name: hpImageTag, Value: newImage.ImageTag.String(), ForceString: true}
+			p := v1alpha1.HelmParameter{Name: hpImageTag, Value: newImage.GetTagWithDigest(), ForceString: true}
 			mergeParams = append(mergeParams, p)
 		}
 	}
@@ -474,9 +474,14 @@ func IsValidApplicationType(app *v1alpha1.Application) bool {
 
 // getApplicationType returns the type of the application
 func getApplicationType(app *v1alpha1.Application) ApplicationType {
-	if app.Status.SourceType == v1alpha1.ApplicationSourceTypeKustomize {
+	sourceType := app.Status.SourceType
+	if st, set := app.Annotations[common.WriteBackTargetAnnotation]; set &&
+		strings.HasPrefix(st, common.KustomizationPrefix) {
+		sourceType = v1alpha1.ApplicationSourceTypeKustomize
+	}
+	if sourceType == v1alpha1.ApplicationSourceTypeKustomize {
 		return ApplicationTypeKustomize
-	} else if app.Status.SourceType == v1alpha1.ApplicationSourceTypeHelm {
+	} else if sourceType == v1alpha1.ApplicationSourceTypeHelm {
 		return ApplicationTypeHelm
 	} else {
 		return ApplicationTypeUnsupported

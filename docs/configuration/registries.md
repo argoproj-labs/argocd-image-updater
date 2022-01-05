@@ -94,7 +94,7 @@ following semantics:
   if the `<image_alias>.sort-mode` is `latest` but will instead use the sorting
   from the tag list.
 
-If you want to take above example to the `argocd-image-updater-cm` ConfigMap,
+If you want to take above example to the `argocd-image-updater-config` ConfigMap,
 you need to define the key `registries.conf` in the data of the ConfigMap as
 below:
 
@@ -118,10 +118,10 @@ data:
       prefix: quay.io
       credentials: env:REGISTRY_SECRET
     - name: GitHub Container Registry
-      api_url: https://gcr.io
+      api_url: https://ghcr.io
       ping: no
-      prefix: gcr.io
-      credentials: ext:/custom/gcr-creds.sh.io
+      prefix: ghcr.io
+      credentials: ext:/custom/ghcr-creds.sh.io
       credsexpire: 5h
 ```
 

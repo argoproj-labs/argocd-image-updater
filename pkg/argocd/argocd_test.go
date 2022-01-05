@@ -137,6 +137,27 @@ func Test_GetApplicationType(t *testing.T) {
 		assert.Equal(t, "Unsupported", appType.String())
 	})
 
+	t.Run("Get application with kustomize target", func(t *testing.T) {
+		application := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "test-app",
+				Namespace: "argocd",
+				Annotations: map[string]string{
+					common.WriteBackTargetAnnotation: "kustomization:.",
+				},
+			},
+			Spec: v1alpha1.ApplicationSpec{},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypePlugin,
+				Summary: v1alpha1.ApplicationSummary{
+					Images: []string{"nginx:1.12.2", "that/image", "quay.io/dexidp/dex:v1.23.0"},
+				},
+			},
+		}
+		appType := GetApplicationType(application)
+		assert.Equal(t, ApplicationTypeKustomize, appType)
+	})
+
 }
 
 func Test_FilterApplicationsForUpdate(t *testing.T) {
