@@ -261,11 +261,16 @@ func (client *registryClient) TagMetadata(manifest distribution.Manifest) (*tag.
 // Without this, tokenHandler and AuthorizationHandler won't work
 func ping(manager challenge.Manager, endpoint *RegistryEndpoint, versionHeader string) ([]auth.APIVersion, error) {
 	httpc := &http.Client{Transport: endpoint.GetTransport()}
-	resp, err := httpc.Get(endpoint.RegistryAPI + "/v2/")
+	url := endpoint.RegistryAPI + "/v2/"
+	resp, err := httpc.Get(url)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
+	// Let's consider only HTTP 200 and 401 valid responses for the inital request
+	if resp.StatusCode != 200 && resp.StatusCode != 401 {
+		return nil, fmt.Errorf("endpoint %s does not seem to be a valid v2 Docker Registry API (received HTTP code %d for GET %s)", endpoint.RegistryAPI, resp.StatusCode, url)
+	}
 
 	if err := manager.AddResponse(resp); err != nil {
 		return nil, err
