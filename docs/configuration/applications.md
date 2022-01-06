@@ -226,6 +226,13 @@ push to this new branch instead:
 argocd-image-updater.argoproj.io/git-branch: base:target
 ```
 
+If you want to specify a write-branch but continue to use the target revision from the application
+specification, just omit the base branch name:
+
+```yaml
+argocd-image-updater.argoproj.io/git-branch: :target
+```
+
 A static branch name may not be desired for this value, so a simple template
 can be created (evaluating using the `text/template` Golang package) within
 the annotation. For example, the following would create a branch named
