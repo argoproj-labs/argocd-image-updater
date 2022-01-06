@@ -218,24 +218,28 @@ argocd-image-updater.argoproj.io/git-branch: main
 By default, Argo CD Imager Updater will checkout, commit, and push back to the
 same branch specified above. There are many scenarios where this is not
 desired or possible, such as when the default branch is protected. You can
-specify the annotation `argocd-image-updater.argoproj.io/git-write-branch`,
-which will create a new branch from the base branch (specified in the previous
-section), and push to this new branch instead.
+add a separate write-branch by modifying `argocd-image-updater.argoproj.io/git-branch`
+with additional data, which will create a new branch from the base branch, and
+push to this new branch instead:
+
+```yaml
+argocd-image-updater.argoproj.io/git-branch: base:target
+```
 
 A static branch name may not be desired for this value, so a simple template
 can be created (evaluating using the `text/template` Golang package) within
 the annotation. For example, the following would create a branch named
-`image-updater-foo/bar-1.1` in the event an image with the name `foo/bar`
-was updated to the new tag `1.1`.
+`image-updater-foo/bar-1.1` based on `main` in the event an image with
+the name `foo/bar` was updated to the new tag `1.1`.
 
 ```yaml
-argocd-image-updater.argoproj.io/git-write-branch: image-updater{{range .Images}}-{{.Name}}-{{.NewTag}}{{end}}
+argocd-image-updater.argoproj.io/git-branch: main:image-updater{{range .Images}}-{{.Name}}-{{.NewTag}}{{end}}
 ```
 
 Alternatively, to assure unique branch names you could use the SHA1 representation of the changes:
 
 ```yaml
-argocd-image-updater.argoproj.io/git-write-branch: image-updater-{{.SHA256}}
+argocd-image-updater.argoproj.io/git-branch: main:image-updater-{{.SHA256}}
 ```
 
 The following variables are provided for this template:

@@ -44,7 +44,6 @@ const (
 const (
 	WriteBackMethodAnnotation = ImageUpdaterAnnotationPrefix + "/write-back-method"
 	GitBranchAnnotation       = ImageUpdaterAnnotationPrefix + "/git-branch"
-	GitWriteBranchAnnotation  = ImageUpdaterAnnotationPrefix + "/git-write-branch"
 	WriteBackTargetAnnotation = ImageUpdaterAnnotationPrefix + "/write-back-target"
 	KustomizationPrefix       = "kustomization"
 )

@@ -82,7 +82,7 @@ func TemplateBranchName(branchName string, changeList []ChangeEntry) string {
 
 	type branchNameTemplate struct {
 		Images []imageChange
-		SHA256   string
+		SHA256 string
 	}
 
 	// Let's add a unique hash to the template
@@ -192,8 +192,8 @@ func commitChangesGit(app *v1alpha1.Application, wbc *WriteBackConfig, changeLis
 	}
 
 	// The push branch is by default the same as the checkout branch, unless
-	// specified with the git-write-branch annotation, in which case a new
-	// branch will be made following a template that can use the list of
+	// specified after a : separator git-branch annotation, in which case a
+	// new branch will be made following a template that can use the list of
 	// changed images.
 	pushBranch := checkOutBranch
 

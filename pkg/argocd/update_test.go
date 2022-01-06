@@ -1241,7 +1241,7 @@ func Test_GetWriteBackConfig(t *testing.T) {
 				Annotations: map[string]string{
 					"argocd-image-updater.argoproj.io/image-list":        "nginx",
 					"argocd-image-updater.argoproj.io/write-back-method": "git",
-					"argocd-image-updater.argoproj.io/git-branch":        "mybranch",
+					"argocd-image-updater.argoproj.io/git-branch":        "mybranch:mytargetbranch",
 				},
 			},
 			Spec: v1alpha1.ApplicationSpec{
@@ -1266,6 +1266,8 @@ func Test_GetWriteBackConfig(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, wbc)
 		assert.Equal(t, wbc.Method, WriteBackGit)
+		assert.Equal(t, "mybranch", wbc.GitBranch)
+		assert.Equal(t, "mytargetbranch", wbc.GitWriteBranch)
 	})
 
 	t.Run("Valid write-back config - argocd", func(t *testing.T) {

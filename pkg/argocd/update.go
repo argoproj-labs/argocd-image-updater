@@ -448,11 +448,14 @@ func parseTarget(target string, sourcePath string) (kustomizeBase string) {
 func parseGitConfig(app *v1alpha1.Application, kubeClient *kube.KubernetesClient, wbc *WriteBackConfig, creds string) error {
 	branch, ok := app.Annotations[common.GitBranchAnnotation]
 	if ok {
-		wbc.GitBranch = strings.TrimSpace(branch)
-	}
-	writebranch, ok := app.Annotations[common.GitWriteBranchAnnotation]
-	if ok {
-		wbc.GitWriteBranch = strings.TrimSpace(writebranch)
+		branches := strings.Split(strings.TrimSpace(branch), ":")
+		if len(branches) > 2 {
+			return fmt.Errorf("invalid format for git-branch annotation: %v", branch)
+		}
+		wbc.GitBranch = branches[0]
+		if len(branches) == 2 {
+			wbc.GitWriteBranch = branches[1]
+		}
 	}
 	credsSource, err := getGitCredsSource(creds, kubeClient)
 	if err != nil {
