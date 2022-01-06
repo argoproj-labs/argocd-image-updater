@@ -235,7 +235,7 @@ argocd-image-updater.argoproj.io/git-write-branch: image-updater{{range .Images}
 Alternatively, to assure unique branch names you could use the SHA1 representation of the changes:
 
 ```yaml
-argocd-image-updater.argoproj.io/git-write-branch: image-updater-{{.SHA1}}
+argocd-image-updater.argoproj.io/git-write-branch: image-updater-{{.SHA256}}
 ```
 
 The following variables are provided for this template:
@@ -247,7 +247,7 @@ The following variables are provided for this template:
   * `.Alias` holds the alias of the image that was updated
   * `.OldTag` holds the tag name or SHA digest previous to the update
   * `.NewTag` holds the tag name or SHA digest that was updated to
-* `.SHA1` is a unique SHA1 has representing these changes
+* `.SHA256` is a unique SHA256 has representing these changes
 
 Please note that if the output of the template exceeds 255 characters (git branch name limit) it will be truncated.
 

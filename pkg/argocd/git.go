@@ -2,7 +2,7 @@ package argocd
 
 import (
 	"bytes"
-	"crypto/sha1"
+	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"io/ioutil"
@@ -82,11 +82,11 @@ func TemplateBranchName(branchName string, changeList []ChangeEntry) string {
 
 	type branchNameTemplate struct {
 		Images []imageChange
-		SHA1   string
+		SHA256   string
 	}
 
 	// Let's add a unique hash to the template
-	hasher := sha1.New()
+	hasher := sha256.New()
 
 	// We need to transform the change list into something more viable for the
 	// writer of a template.
@@ -95,6 +95,7 @@ func TemplateBranchName(branchName string, changeList []ChangeEntry) string {
 		changes = append(changes, imageChange{c.Image.ImageName, c.Image.ImageAlias, c.OldTag.String(), c.NewTag.String()})
 		id := fmt.Sprintf("%v-%v-%v,", c.Image.ImageName, c.OldTag.String(), c.NewTag.String())
 		_, hasherErr := hasher.Write([]byte(id))
+		log.Infof("writing to hasher %v", id)
 		if hasherErr != nil {
 			log.Errorf("could not write image string to hasher: %v", hasherErr)
 			return ""
@@ -103,7 +104,7 @@ func TemplateBranchName(branchName string, changeList []ChangeEntry) string {
 
 	tplData := branchNameTemplate{
 		Images: changes,
-		SHA1:   hex.EncodeToString(hasher.Sum(nil)),
+		SHA256: hex.EncodeToString(hasher.Sum(nil)),
 	}
 
 	err2 := tpl.Execute(&cmBuf, tplData)
@@ -115,7 +116,9 @@ func TemplateBranchName(branchName string, changeList []ChangeEntry) string {
 	toReturn := cmBuf.String()
 
 	if len(toReturn) > 255 {
-		return toReturn[:255]
+		trunc := toReturn[:255]
+		log.Warnf("write-branch name %v exceeded 255 characters and was truncated to %v", toReturn, trunc)
+		return trunc
 	} else {
 		return toReturn
 	}

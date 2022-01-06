@@ -77,8 +77,9 @@ func Test_TemplateBranchName(t *testing.T) {
 		assert.Equal(t, exp, r)
 	})
 	t.Run("Template branch name with hash", func(t *testing.T) {
-		exp := `image-updater-1cec79355bbe50a50ece77a6ecc3503e0ae1fd41`
-		tpl := "image-updater-{{.SHA1}}"
+		// Expected value generated from https://emn178.github.io/online-tools/sha256.html
+		exp := `image-updater-0fcc2782543e4bb067c174c21bf44eb947f3e55c0d62c403e359c1c209cbd041`
+		tpl := "image-updater-{{.SHA256}}"
 		cl := []ChangeEntry{
 			{
 				Image:  image.NewFromIdentifier("foo/bar"),
