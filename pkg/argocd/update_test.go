@@ -1270,6 +1270,56 @@ func Test_GetWriteBackConfig(t *testing.T) {
 		assert.Equal(t, "mytargetbranch", wbc.GitWriteBranch)
 	})
 
+	t.Run("Valid git branch name determiniation - write branch only", func(t *testing.T) {
+		app := v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name: "testapp",
+				Annotations: map[string]string{
+					"argocd-image-updater.argoproj.io/write-back-method": "git",
+					"argocd-image-updater.argoproj.io/git-branch":        ":mytargetbranch",
+				},
+			},
+		}
+
+		argoClient := argomock.ArgoCD{}
+		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+
+		kubeClient := kube.KubernetesClient{
+			Clientset: fake.NewFakeKubeClient(),
+		}
+
+		wbc, err := getWriteBackConfig(&app, &kubeClient, &argoClient)
+		require.NoError(t, err)
+		require.NotNil(t, wbc)
+		assert.Equal(t, "", wbc.GitBranch)
+		assert.Equal(t, "mytargetbranch", wbc.GitWriteBranch)
+	})
+
+	t.Run("Valid git branch name determiniation - base branch only", func(t *testing.T) {
+		app := v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name: "testapp",
+				Annotations: map[string]string{
+					"argocd-image-updater.argoproj.io/write-back-method": "git",
+					"argocd-image-updater.argoproj.io/git-branch":        "mybranch",
+				},
+			},
+		}
+
+		argoClient := argomock.ArgoCD{}
+		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+
+		kubeClient := kube.KubernetesClient{
+			Clientset: fake.NewFakeKubeClient(),
+		}
+
+		wbc, err := getWriteBackConfig(&app, &kubeClient, &argoClient)
+		require.NoError(t, err)
+		require.NotNil(t, wbc)
+		assert.Equal(t, "mybranch", wbc.GitBranch)
+		assert.Equal(t, "", wbc.GitWriteBranch)
+	})
+
 	t.Run("Valid write-back config - argocd", func(t *testing.T) {
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
