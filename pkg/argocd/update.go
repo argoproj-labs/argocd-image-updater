@@ -194,7 +194,7 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 		}
 
 		vc.SortMode = applicationImage.GetParameterUpdateStrategy(updateConf.UpdateApp.Application.Annotations)
-		vc.MatchFunc, vc.MatchArgs = applicationImage.GetParameterMatch(updateConf.UpdateApp.Application.Annotations)
+		vc.MatchFunc, vc.MatchArgs = applicationImage.GetParameterAllowTags(updateConf.UpdateApp.Application.Annotations)
 		vc.IgnoreList = applicationImage.GetParameterIgnoreTags(updateConf.UpdateApp.Application.Annotations)
 
 		// The endpoint can provide default credentials for pulling images

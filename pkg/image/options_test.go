@@ -73,7 +73,7 @@ func Test_GetKustomizeOptions(t *testing.T) {
 	})
 }
 
-func Test_GetSortOption(t *testing.T) {
+func Test_GetUpdateStrategy(t *testing.T) {
 
 	t.Run("Get update strategy semver for configured application", func(t *testing.T) {
 		annotations := map[string]string{
@@ -120,11 +120,7 @@ func Test_GetSortOption(t *testing.T) {
 
 	t.Run("Get default update strategy", func(t *testing.T) {
 		annotations := map[string]string{
-			common.DefaultUpdateStrategyAnnotation:    "latest",
-			common.DefaultSecretListAnnotation:        "env:FOOBAR",
-			common.DefaultForceUpdateOptionAnnotation: "true",
-			common.DefaultAllowTagsOptionAnnotation:   "regexp:^.*$",
-			common.DefaultIgnoreTagsOptionAnnotation:  "foo-*",
+			common.DefaultUpdateStrategyAnnotation: "latest",
 		}
 		img := NewFromIdentifier("dummy=foo/bar:1.12")
 		assert.Equal(t, img.GetParameterUpdateStrategy(annotations), VersionSortLatest)
@@ -134,10 +130,6 @@ func Test_GetSortOption(t *testing.T) {
 		annotations := map[string]string{
 			fmt.Sprintf(common.UpdateStrategyAnnotation, "dummy"): "digest",
 			common.DefaultUpdateStrategyAnnotation:                "latest",
-			common.DefaultSecretListAnnotation:                    "env:FOOBAR",
-			common.DefaultForceUpdateOptionAnnotation:             "true",
-			common.DefaultAllowTagsOptionAnnotation:               "regexp:^.*$",
-			common.DefaultIgnoreTagsOptionAnnotation:              "foo-*",
 		}
 		img := NewFromIdentifier("dummy=foo/bar:1.12")
 		assert.Equal(t, img.GetParameterUpdateStrategy(annotations), VersionSortDigest)
@@ -151,7 +143,7 @@ func Test_GetMatchOption(t *testing.T) {
 			fmt.Sprintf(common.AllowTagsOptionAnnotation, "dummy"): "regexp:a-z",
 		}
 		img := NewFromIdentifier("dummy=foo/bar:1.12")
-		matchFunc, matchArgs := img.GetParameterMatch(annotations)
+		matchFunc, matchArgs := img.GetParameterAllowTags(annotations)
 		require.NotNil(t, matchFunc)
 		require.NotNil(t, matchArgs)
 		assert.IsType(t, &regexp.Regexp{}, matchArgs)
@@ -162,7 +154,7 @@ func Test_GetMatchOption(t *testing.T) {
 			fmt.Sprintf(common.AllowTagsOptionAnnotation, "dummy"): `regexp:/foo\`,
 		}
 		img := NewFromIdentifier("dummy=foo/bar:1.12")
-		matchFunc, matchArgs := img.GetParameterMatch(annotations)
+		matchFunc, matchArgs := img.GetParameterAllowTags(annotations)
 		require.NotNil(t, matchFunc)
 		require.Nil(t, matchArgs)
 	})
@@ -172,7 +164,7 @@ func Test_GetMatchOption(t *testing.T) {
 			fmt.Sprintf(common.AllowTagsOptionAnnotation, "dummy"): "invalid",
 		}
 		img := NewFromIdentifier("dummy=foo/bar:1.12")
-		matchFunc, matchArgs := img.GetParameterMatch(annotations)
+		matchFunc, matchArgs := img.GetParameterAllowTags(annotations)
 		require.NotNil(t, matchFunc)
 		require.Equal(t, false, matchFunc("", nil))
 		assert.Nil(t, matchArgs)
@@ -187,7 +179,7 @@ func Test_GetMatchOption(t *testing.T) {
 			common.DefaultIgnoreTagsOptionAnnotation:  "foo-*",
 		}
 		img := NewFromIdentifier("dummy=foo/bar:1.12")
-		matchFunc, matchArgs := img.GetParameterMatch(annotations)
+		matchFunc, matchArgs := img.GetParameterAllowTags(annotations)
 		require.NotNil(t, MatchFuncRegexp, matchFunc)
 		require.IsType(t, &regexp.Regexp{}, matchArgs)
 		assert.True(t, matchFunc("foo", matchArgs))
@@ -204,7 +196,7 @@ func Test_GetMatchOption(t *testing.T) {
 			common.DefaultIgnoreTagsOptionAnnotation:               "foo-*",
 		}
 		img := NewFromIdentifier("dummy=foo/bar:1.12")
-		matchFunc, matchArgs := img.GetParameterMatch(annotations)
+		matchFunc, matchArgs := img.GetParameterAllowTags(annotations)
 		require.NotNil(t, MatchFuncRegexp, matchFunc)
 		require.IsType(t, &regexp.Regexp{}, matchArgs)
 		assert.False(t, matchFunc("foo", matchArgs))

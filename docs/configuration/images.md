@@ -114,6 +114,7 @@ Argo CD Image Updater can update images according to the following strategies:
 |--------|-----------|
 |`semver`| Update to the tag with the highest allowed semantic version|
 |`latest`| Update to the tag with the most recent creation date|
+|`digest`| Update to the SHA256 digest of a given tag|
 |`name`  | Update to the tag with the latest entry from an alphabetically sorted list|
 
 You can define the update strategy for each image independently by setting the
@@ -410,14 +411,10 @@ with specific configuration.
 The following annotations are available. Please note, all annotations must be
 prefixed with `argocd-image-updater.argoproj.io/`.
 
-|Annotation name|Default value|Description|
-|---------------|-------|-----------|
-|`update-strategy`|`semver`|The update strategy to be used for the image|
-|`<image_alias>.allow-tags`|*any*|A function to match tag names from registry against to be considered for update|
-|`<image_alias>.ignore-tags`|*none*|A comma-separated list of glob patterns that when match ignore a certain tag from the registry|
-|`<image_alias>.pull-secret`|*none*|A reference to a secret to be used as registry credentials for this image|
-|`<image_alias>.helm.image-spec`|*none*|Name of the Helm parameter to specify the canonical name of the image, i.e. holds `image/name:1.0`. If this is set, other Helm parameter related options will be ignored.|
-|`<image_alias>.helm.image-name`|`image.name`|Name of the Helm parameter used for specifying the image name, i.e. holds `image/name`|
-|`<image_alias>.helm.image-tag`|`image.tag`|Name of the Helm parameter used for specifying the image tag, i.e. holds `1.0`|
-|`<image_alias>.kustomize.image-name`|*original name of image*|Name of Kustomize image parameter to set during updates|
-
+|Annotation name|Description|
+|---------------|-----------|
+|`update-strategy`|The update strategy to be used for all images|
+|`force-update`|If set to "true" (with quotes), even images that are not currently deployed will be updated|
+|`allow-tags`|A function to match tag names from registry against to be considered for update|
+|`ignore-tags`|A comma-separated list of glob patterns that when match ignore a certain tag from the registry|
+|`pull-secret`|A reference to a secret to be used as registry credentials for this image|

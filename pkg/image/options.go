@@ -86,10 +86,10 @@ func (img *ContainerImage) ParseUpdateStrategy(val string) VersionSortMode {
 
 }
 
-// GetParameterMatch returns the match function and pattern to use for matching
+// GetParameterAllowTags returns the match function and pattern to use for matching
 // tag names. If an invalid option is found, it returns MatchFuncNone as the
 // default, to prevent accidental matches.
-func (img *ContainerImage) GetParameterMatch(annotations map[string]string) (MatchFuncFn, interface{}) {
+func (img *ContainerImage) GetParameterAllowTags(annotations map[string]string) (MatchFuncFn, interface{}) {
 	key := fmt.Sprintf(common.AllowTagsOptionAnnotation, img.normalizedSymbolicName())
 	val := getAnnotationWithDefault(annotations, key, common.DefaultAllowTagsOptionAnnotation, "")
 	if val == "" {
