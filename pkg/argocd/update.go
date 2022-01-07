@@ -16,6 +16,7 @@ import (
 	"github.com/argoproj-labs/argocd-image-updater/pkg/log"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/registry"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/tag"
+	"github.com/argoproj-labs/argocd-image-updater/pkg/webhook"
 
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/application"
 	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
@@ -129,7 +130,7 @@ func (wbc *WriteBackConfig) RequiresLocking() bool {
 }
 
 // UpdateApplication update all images of a single application. Will run in a goroutine.
-func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationState) ImageUpdaterResult {
+func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationState, webhookEvent webhook.WebhookEvent) ImageUpdaterResult {
 	var needUpdate bool = false
 
 	result := ImageUpdaterResult{}
@@ -223,11 +224,27 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 		}
 
 		// Get list of available image tags from the repository
-		tags, err := rep.GetTags(applicationImage, regClient, &vc)
-		if err != nil {
-			imgCtx.Errorf("Could not get tags from registry: %v", err)
-			result.NumErrors += 1
-			continue
+		// if we got webhookEvent, we only consider the current tag and the incoming tag from webhook
+		var tags *tag.ImageTagList
+		if (webhook.WebhookEvent{}) != webhookEvent {
+			log.Tracef("We got incoming webhook => consider only [currentTag, newTag]")
+			currentTag := updateableImage.ImageTag
+			if currentTag.TagDate == nil {
+				defaultDate := time.Unix(0, 0)
+				currentTag.TagDate = &defaultDate
+			}
+			newTag := tag.NewImageTag(webhookEvent.TagName, webhookEvent.CreatedAt, webhookEvent.Digest)
+			tags = tag.NewImageTagList()
+			tags.Add(currentTag)
+			tags.Add(newTag)
+		} else {
+			log.Tracef("Webhook event empty. This is a regular CheckInterval run")
+			tags, err = rep.GetTags(applicationImage, regClient, &vc)
+			if err != nil {
+				imgCtx.Errorf("Could not get tags from registry: %v", err)
+				result.NumErrors += 1
+				continue
+			}
 		}
 
 		imgCtx.Tracef("List of available tags found: %v", tags.Tags())
