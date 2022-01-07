@@ -61,7 +61,6 @@ of the [Semver library](https://github.com/Masterminds/semver) we're using.
     [filtering tags](#filtering-tags)
     below.
 
-
 ### Forcing Image Updates
 
 By default, Image Updater will only update an image that is actually used in your Application
@@ -74,7 +73,6 @@ you may force an update:
 argocd-image-updater.argoproj.io/image-list: myalias=some/image
 argocd-image-updater.argoproj.io/myalias.force-update: "true"
 ```
-
 
 ## Assigning aliases to images
 
@@ -135,7 +133,6 @@ strategy `semver` will be used.
     and these will count into your pull limits. So unless you are not affected
     by these pull limits, it is **not recommended** to use the `latest` update
     strategy with images hosted on Docker Hub.
-
 
 ## Filtering tags
 
@@ -389,7 +386,7 @@ argocd-image-updater.argoproj.io/baralias.helm.image-tag: bar.tag
 
 The following is a complete list of available annotations to control the
 update strategy and set options for images. Please note, all annotations
-must be prefixed with `argocd-image-updater.argoproj.io`.
+must be prefixed with `argocd-image-updater.argoproj.io/`.
 
 |Annotation name|Default value|Description|
 |---------------|-------|-----------|
@@ -402,3 +399,25 @@ must be prefixed with `argocd-image-updater.argoproj.io`.
 |`<image_alias>.helm.image-name`|`image.name`|Name of the Helm parameter used for specifying the image name, i.e. holds `image/name`|
 |`<image_alias>.helm.image-tag`|`image.tag`|Name of the Helm parameter used for specifying the image tag, i.e. holds `1.0`|
 |`<image_alias>.kustomize.image-name`|*original name of image*|Name of Kustomize image parameter to set during updates|
+
+### Application-wide defaults
+
+If you want to update multiple images in an Application, that all share common
+settings (such as, update strategy, allowed tags, etc), you can define common
+options. These options are valid for all images, unless an image overrides it
+with specific configuration.
+
+The following annotations are available. Please note, all annotations must be
+prefixed with `argocd-image-updater.argoproj.io/`.
+
+|Annotation name|Default value|Description|
+|---------------|-------|-----------|
+|`update-strategy`|`semver`|The update strategy to be used for the image|
+|`<image_alias>.allow-tags`|*any*|A function to match tag names from registry against to be considered for update|
+|`<image_alias>.ignore-tags`|*none*|A comma-separated list of glob patterns that when match ignore a certain tag from the registry|
+|`<image_alias>.pull-secret`|*none*|A reference to a secret to be used as registry credentials for this image|
+|`<image_alias>.helm.image-spec`|*none*|Name of the Helm parameter to specify the canonical name of the image, i.e. holds `image/name:1.0`. If this is set, other Helm parameter related options will be ignored.|
+|`<image_alias>.helm.image-name`|`image.name`|Name of the Helm parameter used for specifying the image name, i.e. holds `image/name`|
+|`<image_alias>.helm.image-tag`|`image.tag`|Name of the Helm parameter used for specifying the image tag, i.e. holds `1.0`|
+|`<image_alias>.kustomize.image-name`|*original name of image*|Name of Kustomize image parameter to set during updates|
+

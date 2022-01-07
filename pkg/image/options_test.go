@@ -117,6 +117,31 @@ func Test_GetSortOption(t *testing.T) {
 		sortMode := img.GetParameterUpdateStrategy(annotations)
 		assert.Equal(t, VersionSortSemVer, sortMode)
 	})
+
+	t.Run("Get default update strategy", func(t *testing.T) {
+		annotations := map[string]string{
+			common.DefaultUpdateStrategyAnnotation:    "latest",
+			common.DefaultSecretListAnnotation:        "env:FOOBAR",
+			common.DefaultForceUpdateOptionAnnotation: "true",
+			common.DefaultAllowTagsOptionAnnotation:   "regexp:^.*$",
+			common.DefaultIgnoreTagsOptionAnnotation:  "foo-*",
+		}
+		img := NewFromIdentifier("dummy=foo/bar:1.12")
+		assert.Equal(t, img.GetParameterUpdateStrategy(annotations), VersionSortLatest)
+	})
+
+	t.Run("Specific update strategy overrides default", func(t *testing.T) {
+		annotations := map[string]string{
+			fmt.Sprintf(common.UpdateStrategyAnnotation, "dummy"): "digest",
+			common.DefaultUpdateStrategyAnnotation:                "latest",
+			common.DefaultSecretListAnnotation:                    "env:FOOBAR",
+			common.DefaultForceUpdateOptionAnnotation:             "true",
+			common.DefaultAllowTagsOptionAnnotation:               "regexp:^.*$",
+			common.DefaultIgnoreTagsOptionAnnotation:              "foo-*",
+		}
+		img := NewFromIdentifier("dummy=foo/bar:1.12")
+		assert.Equal(t, img.GetParameterUpdateStrategy(annotations), VersionSortDigest)
+	})
 }
 
 func Test_GetMatchOption(t *testing.T) {
@@ -153,6 +178,38 @@ func Test_GetMatchOption(t *testing.T) {
 		assert.Nil(t, matchArgs)
 	})
 
+	t.Run("Get default allow-tags option", func(t *testing.T) {
+		annotations := map[string]string{
+			common.DefaultUpdateStrategyAnnotation:    "latest",
+			common.DefaultSecretListAnnotation:        "env:FOOBAR",
+			common.DefaultForceUpdateOptionAnnotation: "true",
+			common.DefaultAllowTagsOptionAnnotation:   "regexp:^foo$",
+			common.DefaultIgnoreTagsOptionAnnotation:  "foo-*",
+		}
+		img := NewFromIdentifier("dummy=foo/bar:1.12")
+		matchFunc, matchArgs := img.GetParameterMatch(annotations)
+		require.NotNil(t, MatchFuncRegexp, matchFunc)
+		require.IsType(t, &regexp.Regexp{}, matchArgs)
+		assert.True(t, matchFunc("foo", matchArgs))
+	})
+
+	t.Run("Specific allow-tags overrides default", func(t *testing.T) {
+		annotations := map[string]string{
+			fmt.Sprintf(common.UpdateStrategyAnnotation, "dummy"):  "digest",
+			common.DefaultUpdateStrategyAnnotation:                 "latest",
+			common.DefaultSecretListAnnotation:                     "env:FOOBAR",
+			common.DefaultForceUpdateOptionAnnotation:              "true",
+			fmt.Sprintf(common.AllowTagsOptionAnnotation, "dummy"): "regexp:^bar$",
+			common.DefaultAllowTagsOptionAnnotation:                "regexp:^foo$",
+			common.DefaultIgnoreTagsOptionAnnotation:               "foo-*",
+		}
+		img := NewFromIdentifier("dummy=foo/bar:1.12")
+		matchFunc, matchArgs := img.GetParameterMatch(annotations)
+		require.NotNil(t, MatchFuncRegexp, matchFunc)
+		require.IsType(t, &regexp.Regexp{}, matchArgs)
+		assert.False(t, matchFunc("foo", matchArgs))
+	})
+
 }
 
 func Test_GetSecretOption(t *testing.T) {
@@ -177,6 +234,32 @@ func Test_GetSecretOption(t *testing.T) {
 		credSrc := img.GetParameterPullSecret(annotations)
 		require.Nil(t, credSrc)
 	})
+
+	t.Run("Get default pull-secret option", func(t *testing.T) {
+		annotations := map[string]string{
+			common.DefaultSecretListAnnotation: "env:FOOBAR",
+		}
+		img := NewFromIdentifier("dummy=foo/bar:1.12")
+		credSrc := img.GetParameterPullSecret(annotations)
+		require.NotNil(t, credSrc)
+		assert.Equal(t, CredentialSourceEnv, credSrc.Type)
+		assert.Equal(t, "FOOBAR", credSrc.EnvName)
+	})
+
+	t.Run("Specific pull-secret overrides default", func(t *testing.T) {
+		annotations := map[string]string{
+			common.DefaultSecretListAnnotation:                "env:FOOBAR",
+			fmt.Sprintf(common.SecretListAnnotation, "dummy"): "pullsecret:foo/bar",
+		}
+		img := NewFromIdentifier("dummy=foo/bar:1.12")
+		credSrc := img.GetParameterPullSecret(annotations)
+		require.NotNil(t, credSrc)
+		assert.Equal(t, CredentialSourcePullSecret, credSrc.Type)
+		assert.Equal(t, "foo", credSrc.SecretNamespace)
+		assert.Equal(t, "bar", credSrc.SecretName)
+		assert.Equal(t, ".dockerconfigjson", credSrc.SecretField)
+	})
+
 }
 
 func Test_GetIgnoreTags(t *testing.T) {

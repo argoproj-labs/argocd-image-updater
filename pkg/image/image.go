@@ -4,6 +4,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/argoproj-labs/argocd-image-updater/pkg/log"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/tag"
 
 	"github.com/distribution/distribution/v3/reference"
@@ -21,6 +22,14 @@ type ContainerImage struct {
 }
 
 type ContainerImageList []*ContainerImage
+
+// LogContext returns a log context set up for current image
+func (img *ContainerImage) LogContext() *log.LogContext {
+	return log.WithContext().
+		AddField("image_name", img.ImageName).
+		AddField("image_alias", img.ImageAlias).
+		AddField("image_registry", img.RegistryURL)
+}
 
 // NewFromIdentifier parses an image identifier and returns a populated ContainerImage
 func NewFromIdentifier(identifier string) *ContainerImage {

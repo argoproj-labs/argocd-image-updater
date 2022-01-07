@@ -75,15 +75,15 @@ argocd-image-updater test nginx --allow-tags '^1.19.\d+(\-.*)*$' --update-strate
 				SortMode:   image.VersionSortSemVer,
 			}
 
-			vc.SortMode = image.ParseUpdateStrategy(strategy)
+			img := image.NewFromIdentifier(args[0])
+			vc.SortMode = img.ParseUpdateStrategy(strategy)
 
 			if allowTags != "" {
-				vc.MatchFunc, vc.MatchArgs = image.ParseMatchfunc(allowTags)
+				vc.MatchFunc, vc.MatchArgs = img.ParseMatchfunc(allowTags)
 			}
 
 			vc.IgnoreList = ignoreTags
 
-			img := image.NewFromIdentifier(args[0])
 			log.WithContext().
 				AddField("registry", img.RegistryURL).
 				AddField("image_name", img.ImageName).
