@@ -172,11 +172,7 @@ func Test_GetMatchOption(t *testing.T) {
 
 	t.Run("Get default allow-tags option", func(t *testing.T) {
 		annotations := map[string]string{
-			common.DefaultUpdateStrategyAnnotation:    "latest",
-			common.DefaultSecretListAnnotation:        "env:FOOBAR",
-			common.DefaultForceUpdateOptionAnnotation: "true",
-			common.DefaultAllowTagsOptionAnnotation:   "regexp:^foo$",
-			common.DefaultIgnoreTagsOptionAnnotation:  "foo-*",
+			common.DefaultAllowTagsOptionAnnotation: "regexp:^foo$",
 		}
 		img := NewFromIdentifier("dummy=foo/bar:1.12")
 		matchFunc, matchArgs := img.GetParameterAllowTags(annotations)
@@ -187,13 +183,8 @@ func Test_GetMatchOption(t *testing.T) {
 
 	t.Run("Specific allow-tags overrides default", func(t *testing.T) {
 		annotations := map[string]string{
-			fmt.Sprintf(common.UpdateStrategyAnnotation, "dummy"):  "digest",
-			common.DefaultUpdateStrategyAnnotation:                 "latest",
-			common.DefaultSecretListAnnotation:                     "env:FOOBAR",
-			common.DefaultForceUpdateOptionAnnotation:              "true",
 			fmt.Sprintf(common.AllowTagsOptionAnnotation, "dummy"): "regexp:^bar$",
 			common.DefaultAllowTagsOptionAnnotation:                "regexp:^foo$",
-			common.DefaultIgnoreTagsOptionAnnotation:               "foo-*",
 		}
 		img := NewFromIdentifier("dummy=foo/bar:1.12")
 		matchFunc, matchArgs := img.GetParameterAllowTags(annotations)
@@ -266,5 +257,32 @@ func Test_GetIgnoreTags(t *testing.T) {
 		assert.Equal(t, "tag2", tags[1])
 		assert.Equal(t, "tag3", tags[2])
 		assert.Equal(t, "tag4", tags[3])
+	})
+}
+
+func Test_getAnnotationWithDefault(t *testing.T) {
+	annotations := map[string]string{
+		"foo": "bar",
+		"bar": "foo",
+	}
+
+	t.Run("Get existing annotation without default requested", func(t *testing.T) {
+		r := getAnnotationWithDefault(annotations, "foo", "", "baz")
+		assert.Equal(t, r, "bar")
+	})
+
+	t.Run("Get existing annotation with default specified", func(t *testing.T) {
+		r := getAnnotationWithDefault(annotations, "foo", "bar", "baz")
+		assert.Equal(t, r, "bar")
+	})
+
+	t.Run("Get non-existing annotation with default specified", func(t *testing.T) {
+		r := getAnnotationWithDefault(annotations, "foofoo", "bar", "baz")
+		assert.Equal(t, r, "foo")
+	})
+
+	t.Run("Get non-existing annotation with non-existing default specified", func(t *testing.T) {
+		r := getAnnotationWithDefault(annotations, "foofoo", "barbar", "baz")
+		assert.Equal(t, r, "baz")
 	})
 }
