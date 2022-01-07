@@ -14,7 +14,7 @@ fi
 
 TARGET_TAG="v${TARGET_VERSION}"
 
-if ! echo "${TARGET_VERSION}" | egrep -q '^[0-9]\.[0-9]\.[0-9]$'; then
+if ! echo "${TARGET_VERSION}" | egrep -q '^[0-9]+\.[0-9]+\.[0-9]+$'; then
 	echo "Error: Target version '${TARGET_VERSION}' is not well-formed. Must be X.Y.Z" >&2
 	exit 1
 fi
