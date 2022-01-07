@@ -156,7 +156,7 @@ func (clt *registryClient) Manifest(tagStr string) (distribution.Manifest, error
 	if err != nil {
 		return nil, err
 	}
-	mediaType := []string{ocischema.SchemaVersion.MediaType, schema1.SchemaVersion.MediaType, schema2.SchemaVersion.MediaType}
+	mediaType := []string{ocischema.SchemaVersion.MediaType, schema1.MediaTypeSignedManifest, schema2.SchemaVersion.MediaType}
 	manifest, err := manService.Get(
 		context.Background(),
 		digest.FromString(tagStr),
