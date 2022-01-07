@@ -19,7 +19,7 @@ spec:
       - command:
         - /usr/local/bin/argocd-image-updater
         - run
-        image: argoprojlabs/argocd-image-updater:latest
+        image: quay.io/argoprojlabs/argocd-image-updater:latest
         imagePullPolicy: Always
         env:
         - name: APPLICATIONS_API

@@ -1,4 +1,4 @@
-IMAGE_NAMESPACE?=argoprojlabs
+IMAGE_NAMESPACE?=quay.io/argoprojlabs
 IMAGE_NAME=argocd-image-updater
 IMAGE_TAG?=latest
 ifdef IMAGE_NAMESPACE
