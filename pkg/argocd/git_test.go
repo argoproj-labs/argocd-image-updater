@@ -42,6 +42,70 @@ updates image bar/baz tag '2.0' to '2.1'
 	})
 }
 
+func Test_TemplateBranchName(t *testing.T) {
+	t.Run("Template branch name with image name", func(t *testing.T) {
+		exp := `image-updater-foo/bar-1.1-bar/baz-2.1`
+		tpl := "image-updater{{range .Images}}-{{.Name}}-{{.NewTag}}{{end}}"
+		cl := []ChangeEntry{
+			{
+				Image:  image.NewFromIdentifier("foo/bar"),
+				OldTag: tag.NewImageTag("1.0", time.Now(), ""),
+				NewTag: tag.NewImageTag("1.1", time.Now(), ""),
+			},
+			{
+				Image:  image.NewFromIdentifier("bar/baz"),
+				OldTag: tag.NewImageTag("2.0", time.Now(), ""),
+				NewTag: tag.NewImageTag("2.1", time.Now(), ""),
+			},
+		}
+		r := TemplateBranchName(tpl, cl)
+		assert.NotEmpty(t, r)
+		assert.Equal(t, exp, r)
+	})
+	t.Run("Template branch name with alias", func(t *testing.T) {
+		exp := `image-updater-bar-1.1`
+		tpl := "image-updater{{range .Images}}-{{.Alias}}-{{.NewTag}}{{end}}"
+		cl := []ChangeEntry{
+			{
+				Image:  image.NewFromIdentifier("bar=0001.dkr.ecr.us-east-1.amazonaws.com/bar"),
+				OldTag: tag.NewImageTag("1.0", time.Now(), ""),
+				NewTag: tag.NewImageTag("1.1", time.Now(), ""),
+			},
+		}
+		r := TemplateBranchName(tpl, cl)
+		assert.NotEmpty(t, r)
+		assert.Equal(t, exp, r)
+	})
+	t.Run("Template branch name with hash", func(t *testing.T) {
+		// Expected value generated from https://emn178.github.io/online-tools/sha256.html
+		exp := `image-updater-0fcc2782543e4bb067c174c21bf44eb947f3e55c0d62c403e359c1c209cbd041`
+		tpl := "image-updater-{{.SHA256}}"
+		cl := []ChangeEntry{
+			{
+				Image:  image.NewFromIdentifier("foo/bar"),
+				OldTag: tag.NewImageTag("1.0", time.Now(), ""),
+				NewTag: tag.NewImageTag("1.1", time.Now(), ""),
+			},
+		}
+		r := TemplateBranchName(tpl, cl)
+		assert.NotEmpty(t, r)
+		assert.Equal(t, exp, r)
+	})
+	t.Run("Template branch over 255 chars", func(t *testing.T) {
+		tpl := "image-updater-lorem-ipsum-dolor-sit-amet-consectetur-" +
+			"adipiscing-elit-phasellus-imperdiet-vitae-elit-quis-pulvinar-" +
+			"suspendisse-pulvinar-lacus-vel-semper-congue-enim-purus-posuere-" +
+			"orci-ut-vulputate-mi-ipsum-quis-ipsum-quisque-elit-arcu-lobortis-" +
+			"in-blandit-vel-pharetra-vel-urna-aliquam-euismod-elit-vel-mi"
+		exp := tpl[:255]
+		cl := []ChangeEntry{}
+		r := TemplateBranchName(tpl, cl)
+		assert.NotEmpty(t, r)
+		assert.Equal(t, exp, r)
+		assert.Len(t, r, 255)
+	})
+}
+
 func Test_parseImageOverride(t *testing.T) {
 	cases := []struct {
 		name     string

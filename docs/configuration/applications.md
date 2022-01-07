@@ -139,9 +139,7 @@ The important pieces to this workflow are:
 * Credentials configured in Argo CD will not be re-used, you have to supply a
   dedicated set of credentials
 
-* Write-back is a commit to the tracking branch of the Application. Currently,
-  Image Updater does not support creating a new branch or creating pull or
-  merge requests
+* Write-back is a commit to the tracking branch of the Application.
 
 * If `.spec.source.targetRevision` does not reference a *branch*, you will have
   to specify the branch to use manually (see below)
@@ -214,6 +212,55 @@ following would use GitHub's default `main` branch:
 ```yaml
 argocd-image-updater.argoproj.io/git-branch: main
 ```
+
+#### Specifying a separate base and commit branch
+
+By default, Argo CD Imager Updater will checkout, commit, and push back to the
+same branch specified above. There are many scenarios where this is not
+desired or possible, such as when the default branch is protected. You can
+add a separate write-branch by modifying `argocd-image-updater.argoproj.io/git-branch`
+with additional data, which will create a new branch from the base branch, and
+push to this new branch instead:
+
+```yaml
+argocd-image-updater.argoproj.io/git-branch: base:target
+```
+
+If you want to specify a write-branch but continue to use the target revision from the application
+specification, just omit the base branch name:
+
+```yaml
+argocd-image-updater.argoproj.io/git-branch: :target
+```
+
+A static branch name may not be desired for this value, so a simple template
+can be created (evaluating using the `text/template` Golang package) within
+the annotation. For example, the following would create a branch named
+`image-updater-foo/bar-1.1` based on `main` in the event an image with
+the name `foo/bar` was updated to the new tag `1.1`.
+
+```yaml
+argocd-image-updater.argoproj.io/git-branch: main:image-updater{{range .Images}}-{{.Name}}-{{.NewTag}}{{end}}
+```
+
+Alternatively, to assure unique branch names you could use the SHA1 representation of the changes:
+
+```yaml
+argocd-image-updater.argoproj.io/git-branch: main:image-updater-{{.SHA256}}
+```
+
+The following variables are provided for this template:
+
+* `.Images` is a list of changes that were performed by the update. Each
+  entry in this list is a struct providing the following information for
+  each change:
+  * `.Name` holds the full name of the image that was updated
+  * `.Alias` holds the alias of the image that was updated
+  * `.OldTag` holds the tag name or SHA digest previous to the update
+  * `.NewTag` holds the tag name or SHA digest that was updated to
+* `.SHA256` is a unique SHA256 has representing these changes
+
+Please note that if the output of the template exceeds 255 characters (git branch name limit) it will be truncated.
 
 #### Specifying the user and email address for commits
 

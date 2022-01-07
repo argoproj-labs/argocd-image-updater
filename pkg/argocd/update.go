@@ -61,6 +61,7 @@ type WriteBackConfig struct {
 	GitClient        git.Client
 	GetCreds         GitCredsSource
 	GitBranch        string
+	GitWriteBranch   string
 	GitCommitUser    string
 	GitCommitEmail   string
 	GitCommitMessage string
@@ -313,7 +314,7 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 		log.Debugf("Using commit message: %s", wbc.GitCommitMessage)
 		if !updateConf.DryRun {
 			logCtx.Infof("Committing %d parameter update(s) for application %s", result.NumImagesUpdated, app)
-			err := commitChangesLocked(&updateConf.UpdateApp.Application, wbc, state)
+			err := commitChangesLocked(&updateConf.UpdateApp.Application, wbc, state, changeList)
 			if err != nil {
 				logCtx.Errorf("Could not update application spec: %v", err)
 				result.NumErrors += 1
@@ -447,7 +448,14 @@ func parseTarget(target string, sourcePath string) (kustomizeBase string) {
 func parseGitConfig(app *v1alpha1.Application, kubeClient *kube.KubernetesClient, wbc *WriteBackConfig, creds string) error {
 	branch, ok := app.Annotations[common.GitBranchAnnotation]
 	if ok {
-		wbc.GitBranch = strings.TrimSpace(branch)
+		branches := strings.Split(strings.TrimSpace(branch), ":")
+		if len(branches) > 2 {
+			return fmt.Errorf("invalid format for git-branch annotation: %v", branch)
+		}
+		wbc.GitBranch = branches[0]
+		if len(branches) == 2 {
+			wbc.GitWriteBranch = branches[1]
+		}
 	}
 	credsSource, err := getGitCredsSource(creds, kubeClient)
 	if err != nil {
@@ -457,19 +465,19 @@ func parseGitConfig(app *v1alpha1.Application, kubeClient *kube.KubernetesClient
 	return nil
 }
 
-func commitChangesLocked(app *v1alpha1.Application, wbc *WriteBackConfig, state *SyncIterationState) error {
+func commitChangesLocked(app *v1alpha1.Application, wbc *WriteBackConfig, state *SyncIterationState, changeList []ChangeEntry) error {
 	if wbc.RequiresLocking() {
 		lock := state.GetRepositoryLock(app.Spec.Source.RepoURL)
 		lock.Lock()
 		defer lock.Unlock()
 	}
 
-	return commitChanges(app, wbc)
+	return commitChanges(app, wbc, changeList)
 }
 
 // commitChanges commits any changes required for updating one or more images
 // after the UpdateApplication cycle has finished.
-func commitChanges(app *v1alpha1.Application, wbc *WriteBackConfig) error {
+func commitChanges(app *v1alpha1.Application, wbc *WriteBackConfig, changeList []ChangeEntry) error {
 	switch wbc.Method {
 	case WriteBackApplication:
 		_, err := wbc.ArgoClient.UpdateSpec(context.TODO(), &application.ApplicationUpdateSpecRequest{
@@ -482,9 +490,9 @@ func commitChanges(app *v1alpha1.Application, wbc *WriteBackConfig) error {
 	case WriteBackGit:
 		// if the kustomize base is set, the target is a kustomization
 		if wbc.KustomizeBase != "" {
-			return commitChangesGit(app, wbc, writeKustomization)
+			return commitChangesGit(app, wbc, changeList, writeKustomization)
 		}
-		return commitChangesGit(app, wbc, writeOverrides)
+		return commitChangesGit(app, wbc, changeList, writeOverrides)
 	default:
 		return fmt.Errorf("unknown write back method set: %d", wbc.Method)
 	}
