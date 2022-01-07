@@ -76,8 +76,8 @@ argocd-image-updater.argoproj.io/image-list: some/image:2.x-0
 If no version constraint is specified in the list of allowed images, Argo CD
 Image Updater will pick the highest version number found in the registry.
 
-Argo CD Image Updater will any tags from your registry that do not match a
-semantic version when using the `semver` update strategy.
+Argo CD Image Updater will omit any tags from your registry that do not match 
+a semantic version when using the `semver` update strategy.
 
 ## Update to the most recently built image
 

@@ -2,6 +2,8 @@ package argocd
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -58,11 +60,75 @@ func TemplateCommitMessage(tpl *template.Template, appName string, changeList []
 	return cmBuf.String()
 }
 
+// TemplateBranchName parses a string to a template, and returns a
+// branch name from that new template. If a branch name can not be
+// rendered, it returns an empty value.
+func TemplateBranchName(branchName string, changeList []ChangeEntry) string {
+	var cmBuf bytes.Buffer
+
+	tpl, err1 := template.New("branchName").Parse(branchName)
+
+	if err1 != nil {
+		log.Errorf("could not create template for Git branch name: %v", err1)
+		return ""
+	}
+
+	type imageChange struct {
+		Name   string
+		Alias  string
+		OldTag string
+		NewTag string
+	}
+
+	type branchNameTemplate struct {
+		Images []imageChange
+		SHA256 string
+	}
+
+	// Let's add a unique hash to the template
+	hasher := sha256.New()
+
+	// We need to transform the change list into something more viable for the
+	// writer of a template.
+	changes := make([]imageChange, 0)
+	for _, c := range changeList {
+		changes = append(changes, imageChange{c.Image.ImageName, c.Image.ImageAlias, c.OldTag.String(), c.NewTag.String()})
+		id := fmt.Sprintf("%v-%v-%v,", c.Image.ImageName, c.OldTag.String(), c.NewTag.String())
+		_, hasherErr := hasher.Write([]byte(id))
+		log.Infof("writing to hasher %v", id)
+		if hasherErr != nil {
+			log.Errorf("could not write image string to hasher: %v", hasherErr)
+			return ""
+		}
+	}
+
+	tplData := branchNameTemplate{
+		Images: changes,
+		SHA256: hex.EncodeToString(hasher.Sum(nil)),
+	}
+
+	err2 := tpl.Execute(&cmBuf, tplData)
+	if err2 != nil {
+		log.Errorf("could not execute template for Git branch name: %v", err2)
+		return ""
+	}
+
+	toReturn := cmBuf.String()
+
+	if len(toReturn) > 255 {
+		trunc := toReturn[:255]
+		log.Warnf("write-branch name %v exceeded 255 characters and was truncated to %v", toReturn, trunc)
+		return trunc
+	} else {
+		return toReturn
+	}
+}
+
 type changeWriter func(app *v1alpha1.Application, wbc *WriteBackConfig, gitC git.Client) (err error, skip bool)
 
 // commitChanges commits any changes required for updating one or more images
 // after the UpdateApplication cycle has finished.
-func commitChangesGit(app *v1alpha1.Application, wbc *WriteBackConfig, write changeWriter) error {
+func commitChangesGit(app *v1alpha1.Application, wbc *WriteBackConfig, changeList []ChangeEntry, write changeWriter) error {
 	creds, err := wbc.GetCreds(app)
 	if err != nil {
 		return fmt.Errorf("could not get creds for repo '%s': %v", app.Spec.Source.RepoURL, err)
@@ -125,6 +191,26 @@ func commitChangesGit(app *v1alpha1.Application, wbc *WriteBackConfig, write cha
 		return err
 	}
 
+	// The push branch is by default the same as the checkout branch, unless
+	// specified after a : separator git-branch annotation, in which case a
+	// new branch will be made following a template that can use the list of
+	// changed images.
+	pushBranch := checkOutBranch
+
+	if wbc.GitWriteBranch != "" {
+		log.Debugf("Using branch template: %s", wbc.GitWriteBranch)
+		pushBranch = TemplateBranchName(wbc.GitWriteBranch, changeList)
+		if pushBranch != "" {
+			log.Debugf("Creating branch '%s' and using that for push operations", pushBranch)
+			err = gitC.Branch(checkOutBranch, pushBranch)
+			if err != nil {
+				return err
+			}
+		} else {
+			return fmt.Errorf("Git branch name could not be created from the template: %s", wbc.GitWriteBranch)
+		}
+	}
+
 	if err, skip := write(app, wbc, gitC); err != nil {
 		return err
 	} else if skip {
@@ -152,7 +238,7 @@ func commitChangesGit(app *v1alpha1.Application, wbc *WriteBackConfig, write cha
 	if err != nil {
 		return err
 	}
-	err = gitC.Push("origin", checkOutBranch, false)
+	err = gitC.Push("origin", pushBranch, false)
 	if err != nil {
 		return err
 	}
