@@ -155,7 +155,7 @@ spec:
               key: kube.events
               name: argocd-image-updater-config
               optional: true
-        image: argoprojlabs/argocd-image-updater:v0.11.0
+        image: argoprojlabs/argocd-image-updater:v0.11.1
         imagePullPolicy: Always
         livenessProbe:
           httpGet:
