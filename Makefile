@@ -6,6 +6,10 @@ IMAGE_PREFIX=${IMAGE_NAMESPACE}/
 else
 IMAGE_PREFIX=
 endif
+OS?=$(shell go env GOOS)
+ARCH?=$(shell go env GOARCH)
+OUTDIR?=dist
+BINNAME?=argocd-image-updater
 
 CURRENT_DIR=$(shell pwd)
 VERSION=$(shell cat ${CURRENT_DIR}/VERSION)
@@ -55,8 +59,8 @@ prereq:
 	mkdir -p dist
 
 .PHONY: controller
-controller: 
-	CGO_ENABLED=0 go build -ldflags '${LDFLAGS}' -o dist/argocd-image-updater cmd/*.go
+controller:
+	CGO_ENABLED=0 GOOS=${OS} GOARCH=${ARCH} go build -ldflags '${LDFLAGS}' -o ${OUTDIR}/${BINNAME} cmd/*.go
 
 .PHONY: image
 image: clean-image mod-vendor
@@ -66,6 +70,13 @@ image: clean-image mod-vendor
 .PHONY: image-push
 image-push: image
 	docker push ${IMAGE_PREFIX}${IMAGE_NAME}:${IMAGE_TAG}
+
+.PHONY: release-binaries
+release-binaries:
+	BINNAME=argocd-image-updater-linux_amd64 OUTDIR=dist/release OS=linux ARCH=amd64 make controller
+	BINNAME=argocd-image-updater-linux_arm64 OUTDIR=dist/release OS=linux ARCH=arm64 make controller
+	BINNAME=argocd-image-updater-darwin_amd64 OUTDIR=dist/release OS=darwin ARCH=amd64 make controller
+	BINNAME=argocd-image-updater-darwin_arm64 OUTDIR=dist/release OS=darwin ARCH=arm64 make controller
 
 .PHONY: extract-binary
 extract-binary:
