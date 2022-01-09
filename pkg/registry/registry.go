@@ -52,10 +52,9 @@ func (endpoint *RegistryEndpoint) GetTags(img *image.ContainerImage, regClient R
 	tags := []string{}
 
 	// For digest strategy, we do require a version constraint
-	if vc.SortMode == image.VersionSortDigest {
-		if vc.Constraint == "" {
-			return nil, fmt.Errorf("cannot use digest strategy for image %s without a version constraint", img.Original())
-		}
+	if vc.SortMode == image.VersionSortDigest && vc.Constraint == "" {
+		return nil, fmt.Errorf("cannot use digest strategy for image %s without a version constraint", img.Original())
+	}
 	}
 
 	// Loop through tags, removing those we do not want. If update strategy is
