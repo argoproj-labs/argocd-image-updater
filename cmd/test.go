@@ -2,10 +2,13 @@ package main
 
 import (
 	"context"
+	"fmt"
+	"runtime"
 
 	"github.com/argoproj-labs/argocd-image-updater/pkg/image"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/kube"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/log"
+	"github.com/argoproj-labs/argocd-image-updater/pkg/options"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/registry"
 
 	"github.com/spf13/cobra"
@@ -26,6 +29,7 @@ func newTestCommand() *cobra.Command {
 		ignoreTags         []string
 		disableKubeEvents  bool
 		rateLimit          int
+		platform           string
 	)
 	var runCmd = &cobra.Command{
 		Use:   "test IMAGE",
@@ -88,6 +92,15 @@ argocd-image-updater test nginx --allow-tags '^1.19.\d+(\-.*)*$' --update-strate
 				AddField("registry", img.RegistryURL).
 				AddField("image_name", img.ImageName).
 				Infof("getting image")
+
+			vc.Options = options.NewManifestOptions()
+			if platform != "" {
+				os, arch, variant, err := image.ParsePlatform(platform)
+				if err != nil {
+					log.Fatalf("Platform %s: %v", platform, err)
+				}
+				vc.Options = vc.Options.WithPlatform(os, arch, variant)
+			}
 
 			if registriesConfPath != "" {
 				if err := registry.LoadRegistryConfiguration(registriesConfPath, false); err != nil {
@@ -168,6 +181,7 @@ argocd-image-updater test nginx --allow-tags '^1.19.\d+(\-.*)*$' --update-strate
 	runCmd.Flags().BoolVar(&disableKubernetes, "disable-kubernetes", false, "whether to disable the Kubernetes client")
 	runCmd.Flags().StringVar(&kubeConfig, "kubeconfig", "", "path to your Kubernetes client configuration")
 	runCmd.Flags().StringVar(&credentials, "credentials", "", "the credentials definition for the test (overrides registry config)")
+	runCmd.Flags().StringVar(&platform, "platform", fmt.Sprintf("%s/%s", runtime.GOOS, runtime.GOARCH), "limit images to given platform")
 	runCmd.Flags().BoolVar(&disableKubeEvents, "disable-kubernetes-events", false, "Disable kubernetes events")
 	runCmd.Flags().IntVar(&rateLimit, "rate-limit", 20, "specificy registry rate limit (overrides registry.conf)")
 	return runCmd

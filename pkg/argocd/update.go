@@ -42,6 +42,7 @@ type UpdateConfiguration struct {
 	GitCommitEmail    string
 	GitCommitMessage  *template.Template
 	DisableKubeEvents bool
+	IgnorePlatforms   bool
 }
 
 type GitCredsSource func(app *v1alpha1.Application) (git.Creds, error)
@@ -196,6 +197,7 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 		vc.SortMode = applicationImage.GetParameterUpdateStrategy(updateConf.UpdateApp.Application.Annotations)
 		vc.MatchFunc, vc.MatchArgs = applicationImage.GetParameterMatch(updateConf.UpdateApp.Application.Annotations)
 		vc.IgnoreList = applicationImage.GetParameterIgnoreTags(updateConf.UpdateApp.Application.Annotations)
+		vc.Options = applicationImage.GetPlatformOptions(updateConf.UpdateApp.Application.Annotations, updateConf.IgnorePlatforms)
 
 		// The endpoint can provide default credentials for pulling images
 		err = rep.SetEndpointCredentials(updateConf.KubeClient)

@@ -3,9 +3,11 @@ package image
 import (
 	"fmt"
 	"regexp"
+	"runtime"
 	"testing"
 
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
+	"github.com/argoproj-labs/argocd-image-updater/pkg/options"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -191,5 +193,81 @@ func Test_GetIgnoreTags(t *testing.T) {
 		assert.Equal(t, "tag2", tags[1])
 		assert.Equal(t, "tag3", tags[2])
 		assert.Equal(t, "tag4", tags[3])
+	})
+}
+
+func Test_GetPlatformOptions(t *testing.T) {
+	t.Run("Empty platform options with restriction", func(t *testing.T) {
+		annotations := map[string]string{}
+		img := NewFromIdentifier("dummy=foo/bar:1.12")
+		opts := img.GetPlatformOptions(annotations, false)
+		os := runtime.GOOS
+		arch := runtime.GOARCH
+		assert.True(t, opts.WantsPlatform(os, arch, ""))
+		assert.False(t, opts.WantsPlatform(os, arch, "invalid"))
+	})
+	t.Run("Empty platform options without restriction", func(t *testing.T) {
+		annotations := map[string]string{}
+		img := NewFromIdentifier("dummy=foo/bar:1.12")
+		opts := img.GetPlatformOptions(annotations, true)
+		os := runtime.GOOS
+		arch := runtime.GOARCH
+		assert.True(t, opts.WantsPlatform(os, arch, ""))
+		assert.True(t, opts.WantsPlatform(os, arch, "invalid"))
+		assert.True(t, opts.WantsPlatform("windows", "amd64", ""))
+	})
+	t.Run("Single platform without variant requested", func(t *testing.T) {
+		os := "linux"
+		arch := "arm64"
+		variant := ""
+		annotations := map[string]string{
+			fmt.Sprintf(common.PlatformsAnnotation, "dummy"): options.PlatformKey(os, arch, variant),
+		}
+		img := NewFromIdentifier("dummy=foo/bar:1.12")
+		opts := img.GetPlatformOptions(annotations, false)
+		assert.True(t, opts.WantsPlatform(os, arch, variant))
+		assert.False(t, opts.WantsPlatform(os, arch, "invalid"))
+	})
+	t.Run("Single platform with variant requested", func(t *testing.T) {
+		os := "linux"
+		arch := "arm"
+		variant := "v6"
+		annotations := map[string]string{
+			fmt.Sprintf(common.PlatformsAnnotation, "dummy"): options.PlatformKey(os, arch, variant),
+		}
+		img := NewFromIdentifier("dummy=foo/bar:1.12")
+		opts := img.GetPlatformOptions(annotations, false)
+		assert.True(t, opts.WantsPlatform(os, arch, variant))
+		assert.False(t, opts.WantsPlatform(os, arch, ""))
+		assert.False(t, opts.WantsPlatform(runtime.GOOS, runtime.GOARCH, ""))
+		assert.False(t, opts.WantsPlatform(runtime.GOOS, runtime.GOARCH, variant))
+	})
+	t.Run("Multiple platforms requested", func(t *testing.T) {
+		os := "linux"
+		arch := "arm"
+		variant := "v6"
+		annotations := map[string]string{
+			fmt.Sprintf(common.PlatformsAnnotation, "dummy"): options.PlatformKey(os, arch, variant) + ", " + options.PlatformKey(runtime.GOOS, runtime.GOARCH, ""),
+		}
+		img := NewFromIdentifier("dummy=foo/bar:1.12")
+		opts := img.GetPlatformOptions(annotations, false)
+		assert.True(t, opts.WantsPlatform(os, arch, variant))
+		assert.True(t, opts.WantsPlatform(runtime.GOOS, runtime.GOARCH, ""))
+		assert.False(t, opts.WantsPlatform(os, arch, ""))
+		assert.False(t, opts.WantsPlatform(runtime.GOOS, runtime.GOARCH, variant))
+	})
+	t.Run("Invalid platform requested", func(t *testing.T) {
+		os := "linux"
+		arch := "arm"
+		variant := "v6"
+		annotations := map[string]string{
+			fmt.Sprintf(common.PlatformsAnnotation, "dummy"): "invalid",
+		}
+		img := NewFromIdentifier("dummy=foo/bar:1.12")
+		opts := img.GetPlatformOptions(annotations, false)
+		assert.False(t, opts.WantsPlatform(os, arch, variant))
+		assert.False(t, opts.WantsPlatform(runtime.GOOS, runtime.GOARCH, ""))
+		assert.False(t, opts.WantsPlatform(os, arch, ""))
+		assert.False(t, opts.WantsPlatform(runtime.GOOS, runtime.GOARCH, variant))
 	})
 }

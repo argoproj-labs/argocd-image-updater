@@ -90,7 +90,7 @@ func Test_GetTags(t *testing.T) {
 		regClient := mocks.RegistryClient{}
 		regClient.On("NewRepository", mock.Anything).Return(nil)
 		regClient.On("Tags", mock.Anything).Return([]string{"1.2.0", "1.2.1", "1.2.2"}, nil)
-		regClient.On("Manifest", mock.Anything, mock.Anything).Return(meta1, nil)
+		regClient.On("ManifestForTag", mock.Anything, mock.Anything).Return(meta1, nil)
 		regClient.On("TagMetadata", mock.Anything, mock.Anything).Return(&tag.TagInfo{}, nil)
 
 		ep, err := GetRegistryEndpoint("")

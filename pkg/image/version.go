@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 
 	"github.com/argoproj-labs/argocd-image-updater/pkg/log"
+	"github.com/argoproj-labs/argocd-image-updater/pkg/options"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/tag"
 
 	"github.com/Masterminds/semver"
@@ -42,6 +43,7 @@ type VersionConstraint struct {
 	MatchArgs  interface{}
 	IgnoreList []string
 	SortMode   VersionSortMode
+	Options    *options.ManifestOptions
 }
 
 type MatchFuncFn func(tagName string, pattern interface{}) bool

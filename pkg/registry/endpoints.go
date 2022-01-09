@@ -220,7 +220,10 @@ func (ep *RegistryEndpoint) GetTransport() *http.Transport {
 	if ep.Insecure {
 		tlsC.InsecureSkipVerify = true
 	}
-	return &http.Transport{TLSClientConfig: tlsC}
+	return &http.Transport{
+		Proxy:           http.ProxyFromEnvironment,
+		TLSClientConfig: tlsC,
+	}
 }
 
 func init() {
