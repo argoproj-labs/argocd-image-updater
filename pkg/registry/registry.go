@@ -51,10 +51,16 @@ func (endpoint *RegistryEndpoint) GetTags(img *image.ContainerImage, regClient R
 
 	tags := []string{}
 
-	// Loop through tags, removing those we do not want
-	if vc.MatchFunc != nil || len(vc.IgnoreList) > 0 {
+	// For digest strategy, we do require a version constraint
+	if vc.SortMode == image.VersionSortDigest && vc.Constraint == "" {
+		return nil, fmt.Errorf("cannot use digest strategy for image %s without a version constraint", img.Original())
+	}
+
+	// Loop through tags, removing those we do not want. If update strategy is
+	// digest, all but the constraint tag are ignored.
+	if vc.MatchFunc != nil || len(vc.IgnoreList) > 0 || vc.SortMode == image.VersionSortDigest {
 		for _, t := range tTags {
-			if (vc.MatchFunc != nil && !vc.MatchFunc(t, vc.MatchArgs)) || vc.IsTagIgnored(t) {
+			if (vc.MatchFunc != nil && !vc.MatchFunc(t, vc.MatchArgs)) || vc.IsTagIgnored(t) || (vc.SortMode == image.VersionSortDigest && t != vc.Constraint) {
 				log.Tracef("Removing tag %s because it either didn't match defined pattern or is ignored", t)
 			} else {
 				tags = append(tags, t)
