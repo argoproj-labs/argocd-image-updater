@@ -60,7 +60,7 @@ controller:
 
 .PHONY: image
 image: clean-image mod-vendor
-	docker build -t ${IMAGE_PREFIX}${IMAGE_NAME}:${IMAGE_TAG} .
+	docker build --pull -t ${IMAGE_PREFIX}${IMAGE_NAME}:${IMAGE_TAG} .
 	rm -rf vendor/
 
 .PHONY: image-push
