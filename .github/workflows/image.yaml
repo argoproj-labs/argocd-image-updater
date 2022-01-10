@@ -16,6 +16,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v2
+        with:
+          path: argocd-image-updater
       - name: Setup qemu
         uses: docker/setup-qemu-action@v1
       - name: Setup Docker buildx
@@ -39,7 +41,7 @@ jobs:
           else
             make image
           fi
-        working-directory: ./argocd-image-updater
+        working-directory: argocd-image-updater
         env:
           DOCKER_USERNAME: ${{ secrets.QUAY_USERNAME }}
           DOCKER_PASSWORD: ${{ secrets.QUAY_TOKEN }}
