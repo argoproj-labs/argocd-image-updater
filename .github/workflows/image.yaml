@@ -27,13 +27,13 @@ jobs:
           set -ex
           MULTIARCH=no
           PUSH=no
-          if [[ "${{ github.event_name }}" == "push"; then
+          if [[ "${{ github.event_name }}" == "push" ]]; then
             MULTIARCH=yes
             PUSH=yes
-          elif "${{ contains(github.event.pull_request.labels.*.name, 'test-arm-image') }}" == "true" ]]; then
+          elif [[ "${{ contains(github.event.pull_request.labels.*.name, 'test-arm-image') }}" == "true" ]]; then
             MULTIARCH=yes
           fi
-          if [[ "${PUSH}" == "yes"; then
+          if [[ "${PUSH}" == "yes" ]]; then
             docker login --username "${DOCKER_USERNAME}" --password "${DOCKER_TOKEN}" quay.io
           fi
           if [[ "${MULTIARCH}" = "yes" ]]; then
