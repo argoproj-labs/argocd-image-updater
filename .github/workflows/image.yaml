@@ -34,7 +34,7 @@ jobs:
             MULTIARCH=yes
           fi
           if [[ "${PUSH}" == "yes" ]]; then
-            docker login --username "${DOCKER_USERNAME}" --password "${DOCKER_TOKEN}" quay.io
+            docker login --username "${DOCKER_USERNAME}" --password "${DOCKER_PASSWORD}" quay.io
           fi
           if [[ "${MULTIARCH}" = "yes" ]]; then
             IMAGE_PUSH=${PUSH} make multiarch-image
