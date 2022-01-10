@@ -1,0 +1,41 @@
+name: Build and push image
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+    types: [ labeled, unlabeled, opened, synchronize, reopened ]
+
+jobs:
+  publish:
+    if: github.repository == 'argoprojlabs/argocd-image-updater'
+    runs-on: ubuntu-latest
+    steps:
+      # build
+      - uses: actions/checkout@v2
+      - uses: docker/setup-qemu-action@v1
+      - uses: docker/setup-buildx-action@v1
+      - run: |
+          MULTIARCH=no
+          PUSH=no
+          if [[ "${{ github.event_name }}" == "push"; then
+            MULTIARCH=yes
+            PUSH=yes
+          elif "${{ contains(github.event.pull_request.labels.*.name, 'test-arm-image') }}" == "true" ]]; then
+            MULTIARCH=yes
+          fi
+          if [[ "${PUSH}" == "yes"; then
+            docker login --username "${DOCKER_USERNAME}" --password "${DOCKER_TOKEN}" quay.io
+          fi
+          if [[ "${MULTIARCH}" = "yes" ]]; then
+            IMAGE_PUSH=${PUSH} make multiarch-image
+          else
+            make image
+          fi
+        working-directory: ./argocd-image-updater
+        env:
+          DOCKER_USERNAME: ${{ secrets.QUAY_USERNAME }}
+          DOCKER_PASSWORD: ${{ secrets.QUAY_TOKEN }}
