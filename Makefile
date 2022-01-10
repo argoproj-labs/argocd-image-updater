@@ -6,6 +6,11 @@ IMAGE_PREFIX=${IMAGE_NAMESPACE}/
 else
 IMAGE_PREFIX=
 endif
+IMAGE_PUSH?=no
+OS?=$(shell go env GOOS)
+ARCH?=$(shell go env GOARCH)
+OUTDIR?=dist
+BINNAME?=argocd-image-updater
 
 CURRENT_DIR=$(shell pwd)
 VERSION=$(shell cat ${CURRENT_DIR}/VERSION)
@@ -14,7 +19,14 @@ BUILD_DATE=$(shell date -u +'%Y-%m-%dT%H:%M:%SZ')
 
 LDFLAGS=
 
+RELEASE_IMAGE_PLATFORMS?=linux/amd64,linux/arm64
+
 VERSION_PACKAGE=github.com/argoproj-labs/argocd-image-updater/pkg/version
+ifeq ($(IMAGE_PUSH), yes)
+DOCKERX_PUSH=--push
+else
+DOCKERX_PUSH=
+endif
 
 override LDFLAGS += -extldflags "-static"
 override LDFLAGS += \
@@ -55,17 +67,37 @@ prereq:
 	mkdir -p dist
 
 .PHONY: controller
-controller: 
-	CGO_ENABLED=0 go build -ldflags '${LDFLAGS}' -o dist/argocd-image-updater cmd/*.go
+controller:
+	CGO_ENABLED=0 GOOS=${OS} GOARCH=${ARCH} go build -ldflags '${LDFLAGS}' -o ${OUTDIR}/${BINNAME} cmd/*.go
 
 .PHONY: image
 image: clean-image mod-vendor
-	docker build -t ${IMAGE_PREFIX}${IMAGE_NAME}:${IMAGE_TAG} .
+	docker build \
+		-t ${IMAGE_PREFIX}${IMAGE_NAME}:${IMAGE_TAG} \
+		--pull \
+		.
 	rm -rf vendor/
+
+.PHONY: multiarch-image
+multiarch-image:
+	docker buildx build \
+		-t ${IMAGE_PREFIX}${IMAGE_NAME}:${IMAGE_TAG} \
+		--progress plain \
+		--pull \
+		--platform ${RELEASE_IMAGE_PLATFORMS} ${DOCKERX_PUSH} \
+		.
 
 .PHONY: image-push
 image-push: image
 	docker push ${IMAGE_PREFIX}${IMAGE_NAME}:${IMAGE_TAG}
+
+.PHONY: release-binaries
+release-binaries:
+	BINNAME=argocd-image-updater-linux_amd64 OUTDIR=dist/release OS=linux ARCH=amd64 make controller
+	BINNAME=argocd-image-updater-linux_arm64 OUTDIR=dist/release OS=linux ARCH=arm64 make controller
+	BINNAME=argocd-image-updater-darwin_amd64 OUTDIR=dist/release OS=darwin ARCH=amd64 make controller
+	BINNAME=argocd-image-updater-darwin_arm64 OUTDIR=dist/release OS=darwin ARCH=arm64 make controller
+	BINNAME=argocd-image-updater-win64.exe OUTDIR=dist/release OS=windows ARCH=amd64 make controller
 
 .PHONY: extract-binary
 extract-binary:
