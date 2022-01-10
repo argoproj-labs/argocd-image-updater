@@ -402,3 +402,21 @@ must be prefixed with `argocd-image-updater.argoproj.io`.
 |`<image_alias>.helm.image-name`|`image.name`|Name of the Helm parameter used for specifying the image name, i.e. holds `image/name`|
 |`<image_alias>.helm.image-tag`|`image.tag`|Name of the Helm parameter used for specifying the image tag, i.e. holds `1.0`|
 |`<image_alias>.kustomize.image-name`|*original name of image*|Name of Kustomize image parameter to set during updates|
+
+### Application-wide defaults
+
+If you want to update multiple images in an Application, that all share common
+settings (such as, update strategy, allowed tags, etc), you can define common
+options. These options are valid for all images, unless an image overrides it
+with specific configuration.
+
+The following annotations are available. Please note, all annotations must be
+prefixed with `argocd-image-updater.argoproj.io/`.
+
+|Annotation name|Description|
+|---------------|-----------|
+|`update-strategy`|The update strategy to be used for all images|
+|`force-update`|If set to "true" (with quotes), even images that are not currently deployed will be updated|
+|`allow-tags`|A function to match tag names from registry against to be considered for update|
+|`ignore-tags`|A comma-separated list of glob patterns that when match ignore a certain tag from the registry|
+|`pull-secret`|A reference to a secret to be used as registry credentials for this image|

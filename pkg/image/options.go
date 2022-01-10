@@ -57,24 +57,42 @@ func (img *ContainerImage) GetParameterKustomizeImageName(annotations map[string
 // HasForceUpdateOptionAnnotation gets the value for force-update option for the
 // image from a set of annotations
 func (img *ContainerImage) HasForceUpdateOptionAnnotation(annotations map[string]string) bool {
-	key := fmt.Sprintf(common.ForceUpdateOptionAnnotation, img.normalizedSymbolicName())
-	val, ok := annotations[key]
-	return ok && val == "true"
+	forceUpdateAnnotations := []string{
+		fmt.Sprintf(common.ForceUpdateOptionAnnotation, img.normalizedSymbolicName()),
+		common.ApplicationWideForceUpdateOptionAnnotation,
+	}
+	var forceUpdateVal = ""
+	for _, key := range forceUpdateAnnotations {
+		if val, ok := annotations[key]; ok {
+			forceUpdateVal = val
+			break
+		}
+	}
+	return forceUpdateVal == "true"
 }
 
 // GetParameterSort gets and validates the value for the sort option for the
 // image from a set of annotations
 func (img *ContainerImage) GetParameterUpdateStrategy(annotations map[string]string) UpdateStrategy {
+	updateStrategyAnnotations := []string{
+		fmt.Sprintf(common.UpdateStrategyAnnotation, img.normalizedSymbolicName()),
+		common.ApplicationWideUpdateStrategyAnnotation,
+	}
+	var updateStrategyVal = ""
+	for _, key := range updateStrategyAnnotations {
+		if val, ok := annotations[key]; ok {
+			updateStrategyVal = val
+			break
+		}
+	}
 	logCtx := img.LogContext()
-	key := fmt.Sprintf(common.UpdateStrategyAnnotation, img.normalizedSymbolicName())
-	val, ok := annotations[key]
-	if !ok {
+	if updateStrategyVal == "" {
+		logCtx.Tracef("No sort option found")
 		// Default is sort by version
-		logCtx.Tracef("No sort option %s found", key)
 		return StrategySemVer
 	}
-	logCtx.Tracef("found update strategy %s in %s", val, key)
-	return img.ParseUpdateStrategy(val)
+	logCtx.Tracef("Found update strategy %s", updateStrategyVal)
+	return img.ParseUpdateStrategy(updateStrategyVal)
 }
 
 func (img *ContainerImage) ParseUpdateStrategy(val string) UpdateStrategy {
@@ -92,30 +110,39 @@ func (img *ContainerImage) ParseUpdateStrategy(val string) UpdateStrategy {
 		logCtx.Warnf("Unknown sort option %s -- using semver", val)
 		return StrategySemVer
 	}
-
 }
 
 // GetParameterMatch returns the match function and pattern to use for matching
 // tag names. If an invalid option is found, it returns MatchFuncNone as the
 // default, to prevent accidental matches.
 func (img *ContainerImage) GetParameterMatch(annotations map[string]string) (MatchFuncFn, interface{}) {
-	logCtx := img.LogContext()
-	key := fmt.Sprintf(common.AllowTagsOptionAnnotation, img.normalizedSymbolicName())
-	val, ok := annotations[key]
-	if !ok {
-		// The old match-tag annotation is deprecated and will be subject to removal
-		// in a future version.
-		key = fmt.Sprintf(common.OldMatchOptionAnnotation, img.normalizedSymbolicName())
-		val, ok = annotations[key]
-		if !ok {
-			logCtx.Tracef("No match annotation %s found", key)
-			return MatchFuncAny, ""
-		} else {
-			logCtx.Warnf("The 'tag-match' annotation is deprecated and subject to removal. Please use 'allow-tags' annotation instead.")
+	allowTagsAnnotations := []string{
+		fmt.Sprintf(common.AllowTagsOptionAnnotation, img.normalizedSymbolicName()),
+		common.ApplicationWideAllowTagsOptionAnnotation,
+	}
+	var allowTagsVal = ""
+	for _, key := range allowTagsAnnotations {
+		if val, ok := annotations[key]; ok {
+			allowTagsVal = val
+			break
 		}
 	}
-
-	return img.ParseMatchfunc(val)
+	logCtx := img.LogContext()
+	if allowTagsVal == "" {
+		// The old match-tag annotation is deprecated and will be subject to removal
+		// in a future version.
+		key := fmt.Sprintf(common.OldMatchOptionAnnotation, img.normalizedSymbolicName())
+		val, ok := annotations[key]
+		if ok {
+			logCtx.Warnf("The 'tag-match' annotation is deprecated and subject to removal. Please use 'allow-tags' annotation instead.")
+			allowTagsVal = val
+		}
+	}
+	if allowTagsVal == "" {
+		logCtx.Tracef("No match annotation found")
+		return MatchFuncAny, ""
+	}
+	return img.ParseMatchfunc(allowTagsVal)
 }
 
 // ParseMatchfunc returns a matcher function and its argument from given value
@@ -148,16 +175,25 @@ func (img *ContainerImage) ParseMatchfunc(val string) (MatchFuncFn, interface{})
 
 // GetParameterPullSecret retrieves an image's pull secret credentials
 func (img *ContainerImage) GetParameterPullSecret(annotations map[string]string) *CredentialSource {
+	pullSecretAnnotations := []string{
+		fmt.Sprintf(common.SecretListAnnotation, img.normalizedSymbolicName()),
+		common.ApplicationWideSecretListAnnotation,
+	}
+	var pullSecretVal = ""
+	for _, key := range pullSecretAnnotations {
+		if val, ok := annotations[key]; ok {
+			pullSecretVal = val
+			break
+		}
+	}
 	logCtx := img.LogContext()
-	key := fmt.Sprintf(common.SecretListAnnotation, img.normalizedSymbolicName())
-	val, ok := annotations[key]
-	if !ok {
-		logCtx.Tracef("No secret annotation %s found", key)
+	if pullSecretVal == "" {
+		logCtx.Tracef("No pull-secret annotation found")
 		return nil
 	}
-	credSrc, err := ParseCredentialSource(val, false)
+	credSrc, err := ParseCredentialSource(pullSecretVal, false)
 	if err != nil {
-		logCtx.Warnf("Invalid credential reference specified: %s", val)
+		logCtx.Warnf("Invalid credential reference specified: %s", pullSecretVal)
 		return nil
 	}
 	return credSrc
@@ -165,15 +201,24 @@ func (img *ContainerImage) GetParameterPullSecret(annotations map[string]string)
 
 // GetParameterIgnoreTags retrieves a list of tags to ignore from a comma-separated string
 func (img *ContainerImage) GetParameterIgnoreTags(annotations map[string]string) []string {
+	ignoreTagsAnnotations := []string{
+		fmt.Sprintf(common.IgnoreTagsOptionAnnotation, img.normalizedSymbolicName()),
+		common.ApplicationWideIgnoreTagsOptionAnnotation,
+	}
+	var ignoreTagsVal = ""
+	for _, key := range ignoreTagsAnnotations {
+		if val, ok := annotations[key]; ok {
+			ignoreTagsVal = val
+			break
+		}
+	}
 	logCtx := img.LogContext()
-	key := fmt.Sprintf(common.IgnoreTagsOptionAnnotation, img.normalizedSymbolicName())
-	val, ok := annotations[key]
-	if !ok {
-		logCtx.Tracef("No ignore-tags annotation %s found", key)
+	if ignoreTagsVal == "" {
+		logCtx.Tracef("No ignore-tags annotation found")
 		return nil
 	}
 	ignoreList := make([]string, 0)
-	tags := strings.Split(strings.TrimSpace(val), ",")
+	tags := strings.Split(strings.TrimSpace(ignoreTagsVal), ",")
 	for _, tag := range tags {
 		// We ignore empty tags
 		trimmed := strings.TrimSpace(tag)

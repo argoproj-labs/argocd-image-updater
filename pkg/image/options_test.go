@@ -76,7 +76,6 @@ func Test_GetKustomizeOptions(t *testing.T) {
 }
 
 func Test_GetSortOption(t *testing.T) {
-
 	t.Run("Get update strategy semver for configured application", func(t *testing.T) {
 		annotations := map[string]string{
 			fmt.Sprintf(common.UpdateStrategyAnnotation, "dummy"): "semver",
@@ -119,10 +118,28 @@ func Test_GetSortOption(t *testing.T) {
 		sortMode := img.GetParameterUpdateStrategy(annotations)
 		assert.Equal(t, StrategySemVer, sortMode)
 	})
+
+	t.Run("Prefer update strategy option from image-specific annotation", func(t *testing.T) {
+		annotations := map[string]string{
+			fmt.Sprintf(common.UpdateStrategyAnnotation, "dummy"): "name",
+			common.ApplicationWideUpdateStrategyAnnotation:        "latest",
+		}
+		img := NewFromIdentifier("dummy=foo/bar:1.12")
+		sortMode := img.GetParameterUpdateStrategy(annotations)
+		assert.Equal(t, StrategyName, sortMode)
+	})
+
+	t.Run("Get update strategy option from application-wide annotation", func(t *testing.T) {
+		annotations := map[string]string{
+			common.ApplicationWideUpdateStrategyAnnotation: "latest",
+		}
+		img := NewFromIdentifier("dummy=foo/bar:1.12")
+		sortMode := img.GetParameterUpdateStrategy(annotations)
+		assert.Equal(t, StrategyLatest, sortMode)
+	})
 }
 
 func Test_GetMatchOption(t *testing.T) {
-
 	t.Run("Get regexp match option for configured application", func(t *testing.T) {
 		annotations := map[string]string{
 			fmt.Sprintf(common.AllowTagsOptionAnnotation, "dummy"): "regexp:a-z",
@@ -155,6 +172,32 @@ func Test_GetMatchOption(t *testing.T) {
 		assert.Nil(t, matchArgs)
 	})
 
+	t.Run("Prefer match option from image-specific annotation", func(t *testing.T) {
+		annotations := map[string]string{
+			fmt.Sprintf(common.AllowTagsOptionAnnotation, "dummy"): "regexp:^[0-9]",
+			common.ApplicationWideAllowTagsOptionAnnotation:        "regexp:^v",
+		}
+		img := NewFromIdentifier("dummy=foo/bar:1.12")
+		matchFunc, matchArgs := img.GetParameterMatch(annotations)
+		require.NotNil(t, matchFunc)
+		require.NotNil(t, matchArgs)
+		assert.IsType(t, &regexp.Regexp{}, matchArgs)
+		assert.True(t, matchFunc("0.0.1", matchArgs))
+		assert.False(t, matchFunc("v0.0.1", matchArgs))
+	})
+
+	t.Run("Get match option from application-wide annotation", func(t *testing.T) {
+		annotations := map[string]string{
+			common.ApplicationWideAllowTagsOptionAnnotation: "regexp:^v",
+		}
+		img := NewFromIdentifier("dummy=foo/bar:1.12")
+		matchFunc, matchArgs := img.GetParameterMatch(annotations)
+		require.NotNil(t, matchFunc)
+		require.NotNil(t, matchArgs)
+		assert.IsType(t, &regexp.Regexp{}, matchArgs)
+		assert.False(t, matchFunc("0.0.1", matchArgs))
+		assert.True(t, matchFunc("v0.0.1", matchArgs))
+	})
 }
 
 func Test_GetSecretOption(t *testing.T) {
@@ -179,10 +222,37 @@ func Test_GetSecretOption(t *testing.T) {
 		credSrc := img.GetParameterPullSecret(annotations)
 		require.Nil(t, credSrc)
 	})
+
+	t.Run("Prefer cred source from image-specific annotation", func(t *testing.T) {
+		annotations := map[string]string{
+			fmt.Sprintf(common.SecretListAnnotation, "dummy"): "pullsecret:image/specific",
+			common.ApplicationWideSecretListAnnotation:        "pullsecret:app/wide",
+		}
+		img := NewFromIdentifier("dummy=foo/bar:1.12")
+		credSrc := img.GetParameterPullSecret(annotations)
+		require.NotNil(t, credSrc)
+		assert.Equal(t, CredentialSourcePullSecret, credSrc.Type)
+		assert.Equal(t, "image", credSrc.SecretNamespace)
+		assert.Equal(t, "specific", credSrc.SecretName)
+		assert.Equal(t, ".dockerconfigjson", credSrc.SecretField)
+	})
+
+	t.Run("Get cred source from application-wide annotation", func(t *testing.T) {
+		annotations := map[string]string{
+			common.ApplicationWideSecretListAnnotation: "pullsecret:app/wide",
+		}
+		img := NewFromIdentifier("dummy=foo/bar:1.12")
+		credSrc := img.GetParameterPullSecret(annotations)
+		require.NotNil(t, credSrc)
+		assert.Equal(t, CredentialSourcePullSecret, credSrc.Type)
+		assert.Equal(t, "app", credSrc.SecretNamespace)
+		assert.Equal(t, "wide", credSrc.SecretName)
+		assert.Equal(t, ".dockerconfigjson", credSrc.SecretField)
+	})
 }
 
 func Test_GetIgnoreTags(t *testing.T) {
-	t.Run("Get list of tags to ignore from annotation", func(t *testing.T) {
+	t.Run("Get list of tags to ignore from image-specific annotation", func(t *testing.T) {
 		annotations := map[string]string{
 			fmt.Sprintf(common.IgnoreTagsOptionAnnotation, "dummy"): "tag1, ,tag2,  tag3  , tag4",
 		}
@@ -193,6 +263,59 @@ func Test_GetIgnoreTags(t *testing.T) {
 		assert.Equal(t, "tag2", tags[1])
 		assert.Equal(t, "tag3", tags[2])
 		assert.Equal(t, "tag4", tags[3])
+	})
+
+	t.Run("Prefer list of tags to ignore from image-specific annotation", func(t *testing.T) {
+		annotations := map[string]string{
+			fmt.Sprintf(common.IgnoreTagsOptionAnnotation, "dummy"): "tag1, tag2",
+			common.ApplicationWideIgnoreTagsOptionAnnotation:        "tag3, tag4",
+		}
+		img := NewFromIdentifier("dummy=foo/bar:1.12")
+		tags := img.GetParameterIgnoreTags(annotations)
+		require.Len(t, tags, 2)
+		assert.Equal(t, "tag1", tags[0])
+		assert.Equal(t, "tag2", tags[1])
+	})
+
+	t.Run("Get list of tags to ignore from application-wide annotation", func(t *testing.T) {
+		annotations := map[string]string{
+			common.ApplicationWideIgnoreTagsOptionAnnotation: "tag3, tag4",
+		}
+		img := NewFromIdentifier("dummy=foo/bar:1.12")
+		tags := img.GetParameterIgnoreTags(annotations)
+		require.Len(t, tags, 2)
+		assert.Equal(t, "tag3", tags[0])
+		assert.Equal(t, "tag4", tags[1])
+	})
+}
+
+func Test_HasForceUpdateOptionAnnotation(t *testing.T) {
+	t.Run("Get force-update option from image-specific annotation", func(t *testing.T) {
+		annotations := map[string]string{
+			fmt.Sprintf(common.ForceUpdateOptionAnnotation, "dummy"): "true",
+		}
+		img := NewFromIdentifier("dummy=foo/bar:1.12")
+		forceUpdate := img.HasForceUpdateOptionAnnotation(annotations)
+		assert.True(t, forceUpdate)
+	})
+
+	t.Run("Prefer force-update option from image-specific annotation", func(t *testing.T) {
+		annotations := map[string]string{
+			fmt.Sprintf(common.ForceUpdateOptionAnnotation, "dummy"): "true",
+			common.ApplicationWideForceUpdateOptionAnnotation:        "false",
+		}
+		img := NewFromIdentifier("dummy=foo/bar:1.12")
+		forceUpdate := img.HasForceUpdateOptionAnnotation(annotations)
+		assert.True(t, forceUpdate)
+	})
+
+	t.Run("Get force-update option from application-wide annotation", func(t *testing.T) {
+		annotations := map[string]string{
+			common.ApplicationWideForceUpdateOptionAnnotation: "false",
+		}
+		img := NewFromIdentifier("dummy=foo/bar:1.12")
+		forceUpdate := img.HasForceUpdateOptionAnnotation(annotations)
+		assert.False(t, forceUpdate)
 	})
 }
 
