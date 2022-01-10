@@ -11,7 +11,7 @@ on:
 
 jobs:
   publish:
-    if: github.repository == 'argoprojlabs/argocd-image-updater'
+    if: github.repository == 'argoproj-labs/argocd-image-updater'
     runs-on: ubuntu-latest
     steps:
       # build
