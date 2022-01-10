@@ -6,6 +6,7 @@ IMAGE_PREFIX=${IMAGE_NAMESPACE}/
 else
 IMAGE_PREFIX=
 endif
+IMAGE_PUSH?=no
 OS?=$(shell go env GOOS)
 ARCH?=$(shell go env GOARCH)
 OUTDIR?=dist
@@ -21,6 +22,11 @@ LDFLAGS=
 RELEASE_IMAGE_PLATFORMS?=linux/amd64,linux/arm64
 
 VERSION_PACKAGE=github.com/argoproj-labs/argocd-image-updater/pkg/version
+ifeq ($(IMAGE_PUSH), yes)
+DOCKERX_PUSH=--push
+else
+DOCKERX_PUSH=
+endif
 
 override LDFLAGS += -extldflags "-static"
 override LDFLAGS += \
@@ -72,8 +78,8 @@ image: clean-image mod-vendor
 multiarch-image:
 	docker buildx build \
 		-t ${IMAGE_PREFIX}${IMAGE_NAME}:${IMAGE_TAG} \
-		--platform ${RELEASE_IMAGE_PLATFORMS} \
-		--load \
+		--progress plain \
+		--platform ${RELEASE_IMAGE_PLATFORMS} ${DOCKERX_PUSH} \
 		.
 
 .PHONY: image-push
