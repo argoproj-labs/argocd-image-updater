@@ -72,13 +72,18 @@ controller:
 
 .PHONY: image
 image: clean-image mod-vendor
-	docker build -t ${IMAGE_PREFIX}${IMAGE_NAME}:${IMAGE_TAG} .
+	docker build \
+		-t ${IMAGE_PREFIX}${IMAGE_NAME}:${IMAGE_TAG} \
+		--pull \
+		.
 	rm -rf vendor/
 
+.PHONY: multiarch-image
 multiarch-image:
 	docker buildx build \
 		-t ${IMAGE_PREFIX}${IMAGE_NAME}:${IMAGE_TAG} \
 		--progress plain \
+		--pull \
 		--platform ${RELEASE_IMAGE_PLATFORMS} ${DOCKERX_PUSH} \
 		.
 
