@@ -18,6 +18,8 @@ BUILD_DATE=$(shell date -u +'%Y-%m-%dT%H:%M:%SZ')
 
 LDFLAGS=
 
+RELEASE_IMAGE_PLATFORMS?=linux/amd64,linux/arm64
+
 VERSION_PACKAGE=github.com/argoproj-labs/argocd-image-updater/pkg/version
 
 override LDFLAGS += -extldflags "-static"
@@ -67,6 +69,13 @@ image: clean-image mod-vendor
 	docker build -t ${IMAGE_PREFIX}${IMAGE_NAME}:${IMAGE_TAG} .
 	rm -rf vendor/
 
+multiarch-image:
+	docker buildx build \
+		-t ${IMAGE_PREFIX}${IMAGE_NAME}:${IMAGE_TAG} \
+		--platform ${RELEASE_IMAGE_PLATFORMS} \
+		--load \
+		.
+
 .PHONY: image-push
 image-push: image
 	docker push ${IMAGE_PREFIX}${IMAGE_NAME}:${IMAGE_TAG}
@@ -77,6 +86,7 @@ release-binaries:
 	BINNAME=argocd-image-updater-linux_arm64 OUTDIR=dist/release OS=linux ARCH=arm64 make controller
 	BINNAME=argocd-image-updater-darwin_amd64 OUTDIR=dist/release OS=darwin ARCH=amd64 make controller
 	BINNAME=argocd-image-updater-darwin_arm64 OUTDIR=dist/release OS=darwin ARCH=arm64 make controller
+	BINNAME=argocd-image-updater-win64.exe OUTDIR=dist/release OS=windows ARCH=amd64 make controller
 
 .PHONY: extract-binary
 extract-binary:
