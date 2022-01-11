@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/argoproj-labs/argocd-image-updater/pkg/options"
+
 	"github.com/distribution/distribution/v3/manifest/schema1"
 	"github.com/stretchr/testify/require"
 )
