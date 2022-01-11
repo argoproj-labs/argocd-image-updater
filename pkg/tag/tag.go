@@ -1,6 +1,7 @@
 package tag
 
 import (
+	"encoding/hex"
 	"sort"
 	"sync"
 	"time"
@@ -177,4 +178,8 @@ func (il ImageTagList) unlockedContains(tag *ImageTag) bool {
 		return true
 	}
 	return false
+}
+
+func (ti *TagInfo) EncodedDigest() string {
+	return "sha256:" + hex.EncodeToString(ti.Digest[:])
 }

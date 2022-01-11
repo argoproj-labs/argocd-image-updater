@@ -33,6 +33,7 @@ const (
 	IgnoreTagsOptionAnnotation  = ImageUpdaterAnnotationPrefix + "/%s.ignore-tags"
 	ForceUpdateOptionAnnotation = ImageUpdaterAnnotationPrefix + "/%s.force-update"
 	UpdateStrategyAnnotation    = ImageUpdaterAnnotationPrefix + "/%s.update-strategy"
+	PlatformsAnnotation         = ImageUpdaterAnnotationPrefix + "/%s.platforms"
 )
 
 // Image pull secret related annotations

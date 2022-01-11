@@ -9,9 +9,11 @@ import (
 
 	"github.com/argoproj-labs/argocd-image-updater/pkg/log"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/metrics"
+	"github.com/argoproj-labs/argocd-image-updater/pkg/options"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/tag"
 
 	"github.com/distribution/distribution/v3"
+	"github.com/distribution/distribution/v3/manifest/manifestlist"
 	"github.com/distribution/distribution/v3/manifest/ocischema"
 	"github.com/distribution/distribution/v3/manifest/schema1"
 	"github.com/distribution/distribution/v3/manifest/schema2"
@@ -37,8 +39,9 @@ import (
 type RegistryClient interface {
 	NewRepository(nameInRepository string) error
 	Tags() ([]string, error)
-	Manifest(tagStr string) (distribution.Manifest, error)
-	TagMetadata(manifest distribution.Manifest) (*tag.TagInfo, error)
+	ManifestForTag(tagStr string) (distribution.Manifest, error)
+	ManifestForDigest(dgst digest.Digest) (distribution.Manifest, error)
+	TagMetadata(manifest distribution.Manifest, opts *options.ManifestOptions) (*tag.TagInfo, error)
 }
 
 type NewRegistryClient func(*RegistryEndpoint, string, string) (RegistryClient, error)
@@ -151,12 +154,12 @@ func (clt *registryClient) Tags() ([]string, error) {
 }
 
 // Manifest  returns a Manifest for a given tag in repository
-func (clt *registryClient) Manifest(tagStr string) (distribution.Manifest, error) {
+func (clt *registryClient) ManifestForTag(tagStr string) (distribution.Manifest, error) {
 	manService, err := clt.regClient.Manifests(context.Background())
 	if err != nil {
 		return nil, err
 	}
-	mediaType := []string{ocischema.SchemaVersion.MediaType, schema1.MediaTypeSignedManifest, schema2.SchemaVersion.MediaType}
+	mediaType := []string{ocischema.SchemaVersion.MediaType, schema1.MediaTypeSignedManifest, schema2.SchemaVersion.MediaType, manifestlist.SchemaVersion.MediaType}
 	manifest, err := manService.Get(
 		context.Background(),
 		digest.FromString(tagStr),
@@ -167,18 +170,40 @@ func (clt *registryClient) Manifest(tagStr string) (distribution.Manifest, error
 	return manifest, nil
 }
 
+// ManifestForDigest  returns a Manifest for a given digest in repository
+func (clt *registryClient) ManifestForDigest(dgst digest.Digest) (distribution.Manifest, error) {
+	manService, err := clt.regClient.Manifests(context.Background())
+	if err != nil {
+		return nil, err
+	}
+	mediaType := []string{ocischema.SchemaVersion.MediaType, schema1.MediaTypeSignedManifest, schema2.SchemaVersion.MediaType, manifestlist.SchemaVersion.MediaType}
+	manifest, err := manService.Get(
+		context.Background(),
+		dgst,
+		distribution.WithManifestMediaTypes(mediaType))
+	if err != nil {
+		return nil, err
+	}
+	return manifest, nil
+}
+
 // TagMetadata retrieves metadata for a given manifest of given repository
-func (client *registryClient) TagMetadata(manifest distribution.Manifest) (*tag.TagInfo, error) {
+func (client *registryClient) TagMetadata(manifest distribution.Manifest, opts *options.ManifestOptions) (*tag.TagInfo, error) {
 	ti := &tag.TagInfo{}
 
 	var info struct {
 		Arch    string `json:"architecture"`
 		Created string `json:"created"`
 		OS      string `json:"os"`
+		Variant string `json:"variant"`
 	}
+
+	// We support the following types of manifests as returned by the registry:
 	//
-	// We support both V1,V2 AND OCI manifest schemas. Everything else will trigger
-	// an error.
+	// V1 (legacy, might go away), V2 and OCI
+	//
+	// Also ManifestLists (e.g. on multi-arch images) are supported.
+	//
 	switch deserialized := manifest.(type) {
 
 	case *schema1.SignedManifest:
@@ -186,25 +211,119 @@ func (client *registryClient) TagMetadata(manifest distribution.Manifest) (*tag.
 		if len(man.History) == 0 {
 			return nil, fmt.Errorf("no history information found in schema V1")
 		}
+
+		_, mBytes, err := manifest.Payload()
+		if err != nil {
+			return nil, err
+		}
+		ti.Digest = sha256.Sum256(mBytes)
+
+		log.Tracef("v1 SHA digest is %s", ti.EncodedDigest())
 		if err := json.Unmarshal([]byte(man.History[0].V1Compatibility), &info); err != nil {
 			return nil, err
+		}
+		if !opts.WantsPlatform(info.OS, info.Arch, "") {
+			log.Debugf("ignoring v1 manifest %v. Manifest platform: %s, requested: %s",
+				ti.EncodedDigest(), options.PlatformKey(info.OS, info.Arch, info.Variant), strings.Join(opts.Platforms(), ","))
+			return nil, nil
 		}
 		if createdAt, err := time.Parse(time.RFC3339Nano, info.Created); err != nil {
 			return nil, err
 		} else {
 			ti.CreatedAt = createdAt
 		}
-		_, mBytes, err := manifest.Payload()
+		return ti, nil
+
+	case *manifestlist.DeserializedManifestList:
+		var list manifestlist.DeserializedManifestList = *deserialized
+		var ml []distribution.Descriptor
+		platforms := []string{}
+
+		// List must contain at least one image manifest
+		if len(list.Manifests) == 0 {
+			return nil, fmt.Errorf("empty manifestlist not supported")
+		}
+
+		// We use the SHA from the manifest list to let the container engine
+		// decide which image to pull, in case of multi-arch clusters.
+		_, mBytes, err := list.Payload()
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("could not retrieve manifestlist payload: %v", err)
 		}
 		ti.Digest = sha256.Sum256(mBytes)
-		log.Tracef("v1 SHA digest is %s", fmt.Sprintf("sha256:%x", ti.Digest))
+
+		log.Tracef("SHA256 of manifest parent is %v", ti.EncodedDigest())
+
+		for _, ref := range list.References() {
+			platforms = append(platforms, ref.Platform.OS+"/"+ref.Platform.Architecture)
+			log.Tracef("Found %s", options.PlatformKey(ref.Platform.OS, ref.Platform.Architecture, ref.Platform.Variant))
+			if !opts.WantsPlatform(ref.Platform.OS, ref.Platform.Architecture, ref.Platform.Variant) {
+				log.Tracef("Ignoring referenced manifest %v because platform %s does not match any of: %s",
+					ref.Digest,
+					options.PlatformKey(ref.Platform.OS, ref.Platform.Architecture, ref.Platform.Variant),
+					strings.Join(opts.Platforms(), ","))
+				continue
+			}
+			ml = append(ml, ref)
+		}
+
+		// We need at least one reference that matches requested plaforms
+		if len(ml) == 0 {
+			log.Debugf("Manifest list did not contain any usable reference. Platforms requested: (%s), platforms included: (%s)",
+				strings.Join(opts.Platforms(), ","), strings.Join(platforms, ","))
+			return nil, nil
+		}
+
+		// For some strategies, we do not need to fetch metadata for further
+		// processing.
+		if !opts.WantsMetdata() {
+			return ti, nil
+		}
+
+		// Loop through all referenced manifests to get their metadata. We only
+		// consider manifests for platforms we are interested in.
+		for _, ref := range ml {
+			log.Tracef("Inspecting metadata of reference: %v", ref.Digest)
+
+			man, err := client.ManifestForDigest(ref.Digest)
+			if err != nil {
+				return nil, fmt.Errorf("could not fetch manifest %v: %v", ref.Digest, err)
+			}
+
+			cti, err := client.TagMetadata(man, opts)
+			if err != nil {
+				return nil, fmt.Errorf("could not fetch metadata for manifest %v: %v", ref.Digest, err)
+			}
+
+			// We save the timestamp of the most recent pushed manifest for any
+			// given reference, if the metadata for the tag was correctly
+			// retrieved. This is important for the latest update strategy to
+			// be able to handle multi-arch images. The latest strategy will
+			// consider the most recent reference from a manifest list.
+			if cti != nil {
+				if cti.CreatedAt.After(ti.CreatedAt) {
+					ti.CreatedAt = cti.CreatedAt
+				}
+			} else {
+				log.Warnf("returned metadata for manifest %v is nil, this should not happen.", ref.Digest)
+				continue
+			}
+		}
+
 		return ti, nil
 
 	case *schema2.DeserializedManifest:
 		var man schema2.Manifest = deserialized.Manifest
 
+		log.Tracef("Manifest digest is %v", man.Config.Digest.Encoded())
+
+		_, mBytes, err := manifest.Payload()
+		if err != nil {
+			return nil, err
+		}
+		ti.Digest = sha256.Sum256(mBytes)
+		log.Tracef("v2 SHA digest is %s", ti.EncodedDigest())
+
 		// The data we require from a V2 manifest is in a blob that we need to
 		// fetch from the registry.
 		blobReader, err := client.regClient.Blobs(context.Background()).Get(context.Background(), man.Config.Digest)
@@ -216,20 +335,27 @@ func (client *registryClient) TagMetadata(manifest distribution.Manifest) (*tag.
 			return nil, err
 		}
 
+		if !opts.WantsPlatform(info.OS, info.Arch, info.Variant) {
+			log.Debugf("ignoring v2 manifest %v. Manifest platform: %s/%s, requested: %s",
+				ti.EncodedDigest(), info.OS, info.Arch, strings.Join(opts.Platforms(), ","))
+			return nil, nil
+		}
+
 		if ti.CreatedAt, err = time.Parse(time.RFC3339Nano, info.Created); err != nil {
 			return nil, err
 		}
 
-		_, mBytes, err := manifest.Payload()
-		if err != nil {
-			return nil, err
-		}
-		ti.Digest = sha256.Sum256(mBytes)
-		log.Tracef("v2 SHA digest is %s", fmt.Sprintf("sha256:%x", ti.Digest))
 		return ti, nil
 	case *ocischema.DeserializedManifest:
 		var man ocischema.Manifest = deserialized.Manifest
 
+		_, mBytes, err := manifest.Payload()
+		if err != nil {
+			return nil, err
+		}
+		ti.Digest = sha256.Sum256(mBytes)
+		log.Tracef("OCI SHA digest is %s", ti.EncodedDigest())
+
 		// The data we require from a V2 manifest is in a blob that we need to
 		// fetch from the registry.
 		blobReader, err := client.regClient.Blobs(context.Background()).Get(context.Background(), man.Config.Digest)
@@ -241,16 +367,16 @@ func (client *registryClient) TagMetadata(manifest distribution.Manifest) (*tag.
 			return nil, err
 		}
 
+		if !opts.WantsPlatform(info.OS, info.Arch, info.Variant) {
+			log.Debugf("ignoring OCI manifest %v. Manifest platform: %s/%s, requested: %s",
+				ti.EncodedDigest(), info.OS, info.Arch, strings.Join(opts.Platforms(), ","))
+			return nil, nil
+		}
+
 		if ti.CreatedAt, err = time.Parse(time.RFC3339Nano, info.Created); err != nil {
 			return nil, err
 		}
 
-		_, mBytes, err := manifest.Payload()
-		if err != nil {
-			return nil, err
-		}
-		ti.Digest = sha256.Sum256(mBytes)
-		log.Tracef("oci SHA digest is %s", fmt.Sprintf("sha256:%x", ti.Digest))
 		return ti, nil
 	default:
 		return nil, fmt.Errorf("invalid manifest type")

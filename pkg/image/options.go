@@ -3,10 +3,12 @@ package image
 import (
 	"fmt"
 	"regexp"
+	"runtime"
 	"strings"
 
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/log"
+	"github.com/argoproj-labs/argocd-image-updater/pkg/options"
 )
 
 // GetParameterHelmImageName gets the value for image-name option for the image
@@ -175,6 +177,65 @@ func (img *ContainerImage) GetParameterIgnoreTags(annotations map[string]string)
 		}
 	}
 	return ignoreList
+}
+
+// GetPlatformOptions sets up platform constraints for an image. If no platform
+// is specified in the annotations, we restrict the platform for images to the
+// platform we're executed on unless unrestricted is set to true, in which case
+// we do not setup a platform restriction if no platform annotation is found.
+func (img *ContainerImage) GetPlatformOptions(annotations map[string]string, unrestricted bool) *options.ManifestOptions {
+	var opts *options.ManifestOptions = options.NewManifestOptions()
+	key := fmt.Sprintf(common.PlatformsAnnotation, img.normalizedSymbolicName())
+	logCtx := log.WithContext().
+		AddField("image", img.ImageName).
+		AddField("registry", img.RegistryURL)
+
+	val, ok := annotations[key]
+	if !ok {
+		if !unrestricted {
+			os := runtime.GOOS
+			arch := runtime.GOARCH
+			variant := ""
+			if strings.Contains(runtime.GOARCH, "/") {
+				a := strings.SplitN(runtime.GOARCH, "/", 2)
+				arch = a[0]
+				variant = a[1]
+			}
+			logCtx.Tracef("Using runtime platform constraint %s", options.PlatformKey(os, arch, variant))
+			opts = opts.WithPlatform(os, arch, variant)
+		}
+	} else {
+		platforms := strings.Split(val, ",")
+		for _, ps := range platforms {
+			pt := strings.TrimSpace(ps)
+			os, arch, variant, err := ParsePlatform(pt)
+			if err != nil {
+				// If the platform identifier could not be parsed, we set the
+				// constraint intentionally to the invalid value so we don't
+				// end up updating to the wrong architecture possibly.
+				os = ps
+				logCtx.Warnf("could not parse platform identifier '%v': invalid format", pt)
+			}
+			logCtx.Tracef("Adding platform constraint %s", options.PlatformKey(os, arch, variant))
+			opts = opts.WithPlatform(os, arch, variant)
+		}
+	}
+
+	return opts
+}
+
+func ParsePlatform(platformID string) (string, string, string, error) {
+	p := strings.SplitN(platformID, "/", 3)
+	if len(p) < 2 {
+		return "", "", "", fmt.Errorf("could not parse platform constraint '%s'", platformID)
+	}
+	os := p[0]
+	arch := p[1]
+	variant := ""
+	if len(p) == 3 {
+		variant = p[2]
+	}
+	return os, arch, variant, nil
 }
 
 func (img *ContainerImage) normalizedSymbolicName() string {

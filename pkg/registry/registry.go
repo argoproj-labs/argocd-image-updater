@@ -142,14 +142,14 @@ func (endpoint *RegistryEndpoint) GetTags(img *image.ContainerImage, regClient R
 
 			// We first try to fetch a V2 manifest, and if that's not available we fall
 			// back to fetching V1 manifest. If that fails also, we just skip this tag.
-			if ml, err = regClient.Manifest(tagStr); err != nil {
+			if ml, err = regClient.ManifestForTag(tagStr); err != nil {
 				log.Errorf("Error fetching metadata for %s:%s - neither V1 or V2 or OCI manifest returned by registry: %v", nameInRegistry, tagStr, err)
 				return
 			}
 
 			// Parse required meta data from the manifest. The metadata contains all
 			// information needed to decide whether to consider this tag or not.
-			ti, err := regClient.TagMetadata(ml)
+			ti, err := regClient.TagMetadata(ml, vc.Options)
 			if err != nil {
 				log.Errorf("error fetching metadata for %s:%s: %v", nameInRegistry, tagStr, err)
 				return
