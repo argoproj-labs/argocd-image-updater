@@ -153,31 +153,31 @@ func FilterApplicationsForUpdate(apps []v1alpha1.Application, patterns []string)
 
 	for _, app := range apps {
 
-		// Check for valid application type
-		if !IsValidApplicationType(&app) {
-			log.Tracef("skipping app '%s' of type '%s' because it's not of supported source type", app.GetName(), app.Status.SourceType)
-			continue
-		}
-
-		// Check if application name matches requested patterns
-		if !nameMatchesPattern(app.GetName(), patterns) {
-			log.Tracef("Skipping app '%s' because it does not match requested patterns", app.GetName())
-			continue
-		}
-
 		// Check whether application has our annotation set
 		annotations := app.GetAnnotations()
 		if _, ok := annotations[common.ImageUpdaterAnnotation]; !ok {
 			log.Tracef("skipping app '%s' of type '%s' because required annotation is missing", app.GetName(), app.Status.SourceType)
 			continue
-		} else {
-			log.Tracef("processing app '%s' of type '%v'", app.GetName(), app.Status.SourceType)
-			imageList := parseImageList(annotations)
-			appImages := ApplicationImages{}
-			appImages.Application = app
-			appImages.Images = *imageList
-			appsForUpdate[app.GetName()] = appImages
 		}
+
+		// Check for valid application type
+		if !IsValidApplicationType(&app) {
+			log.Warnf("skipping app '%s' of type '%s' because it's not of supported source type", app.GetName(), app.Status.SourceType)
+			continue
+		}
+
+		// Check if application name matches requested patterns
+		if !nameMatchesPattern(app.GetName(), patterns) {
+			log.Debugf("Skipping app '%s' because it does not match requested patterns", app.GetName())
+			continue
+		}
+
+		log.Tracef("processing app '%s' of type '%v'", app.GetName(), app.Status.SourceType)
+		imageList := parseImageList(annotations)
+		appImages := ApplicationImages{}
+		appImages.Application = app
+		appImages.Images = *imageList
+		appsForUpdate[app.GetName()] = appImages
 	}
 
 	return appsForUpdate, nil
