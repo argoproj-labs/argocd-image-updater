@@ -70,7 +70,7 @@ func (o *ManifestOptions) Platforms() []string {
 }
 
 // WantsMetdata returns true if metadata should be requested
-func (o *ManifestOptions) WantsMetdata() bool {
+func (o *ManifestOptions) WantsMetadata() bool {
 	return o.metadata
 }
 

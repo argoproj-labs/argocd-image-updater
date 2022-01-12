@@ -102,6 +102,10 @@ argocd-image-updater test nginx --allow-tags '^1.19.\d+(\-.*)*$' --update-strate
 				vc.Options = vc.Options.WithPlatform(os, arch, variant)
 			}
 
+			if vc.SortMode == image.VersionSortLatest {
+				vc.Options = vc.Options.WithMetadata()
+			}
+
 			if registriesConfPath != "" {
 				if err := registry.LoadRegistryConfiguration(registriesConfPath, false); err != nil {
 					log.Fatalf("could not load registries configuration: %v", err)

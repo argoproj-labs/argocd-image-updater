@@ -42,15 +42,15 @@ func Test_WantsPlatform(t *testing.T) {
 func Test_WantsMetadata(t *testing.T) {
 	opts := NewManifestOptions()
 	t.Run("Empty options", func(t *testing.T) {
-		assert.False(t, opts.WantsMetdata())
+		assert.False(t, opts.WantsMetadata())
 	})
 	t.Run("Wants metadata", func(t *testing.T) {
 		opts = opts.WithMetadata()
-		assert.True(t, opts.WantsMetdata())
+		assert.True(t, opts.WantsMetadata())
 	})
 	t.Run("Does not want metadata", func(t *testing.T) {
 		opts = opts.WithoutMetadata()
-		assert.False(t, opts.WantsMetdata())
+		assert.False(t, opts.WantsMetadata())
 	})
 }
 
