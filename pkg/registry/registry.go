@@ -52,15 +52,15 @@ func (endpoint *RegistryEndpoint) GetTags(img *image.ContainerImage, regClient R
 	tags := []string{}
 
 	// For digest strategy, we do require a version constraint
-	if vc.SortMode == image.VersionSortDigest && vc.Constraint == "" {
-		return nil, fmt.Errorf("cannot use digest strategy for image %s without a version constraint", img.Original())
+	if vc.Strategy.NeedsVersionConstraint() && vc.Constraint == "" {
+		return nil, fmt.Errorf("cannot use update strategy 'digest' for image '%s' without a version constraint", img.Original())
 	}
 
 	// Loop through tags, removing those we do not want. If update strategy is
 	// digest, all but the constraint tag are ignored.
-	if vc.MatchFunc != nil || len(vc.IgnoreList) > 0 || vc.SortMode == image.VersionSortDigest {
+	if vc.MatchFunc != nil || len(vc.IgnoreList) > 0 || vc.Strategy.WantsOnlyConstraintTag() {
 		for _, t := range tTags {
-			if (vc.MatchFunc != nil && !vc.MatchFunc(t, vc.MatchArgs)) || vc.IsTagIgnored(t) || (vc.SortMode == image.VersionSortDigest && t != vc.Constraint) {
+			if (vc.MatchFunc != nil && !vc.MatchFunc(t, vc.MatchArgs)) || vc.IsTagIgnored(t) || (vc.Strategy.WantsOnlyConstraintTag() && t != vc.Constraint) {
 				log.Tracef("Removing tag %s because it either didn't match defined pattern or is ignored", t)
 			} else {
 				tags = append(tags, t)
@@ -78,7 +78,7 @@ func (endpoint *RegistryEndpoint) GetTags(img *image.ContainerImage, regClient R
 	//
 	// We just create a dummy time stamp according to the registry's sort mode, if
 	// set.
-	if (vc.SortMode != image.VersionSortLatest && vc.SortMode != image.VersionSortDigest) || endpoint.TagListSort.IsTimeSorted() {
+	if (vc.Strategy != image.StrategyLatest && vc.Strategy != image.StrategyDigest) || endpoint.TagListSort.IsTimeSorted() {
 		for i, tagStr := range tags {
 			var ts int
 			if endpoint.TagListSort == SortLatestFirst {
@@ -106,7 +106,7 @@ func (endpoint *RegistryEndpoint) GetTags(img *image.ContainerImage, regClient R
 		// Look into the cache first and re-use any found item. If GetTag() returns
 		// an error, we treat it as a cache miss and just go ahead to invalidate
 		// the entry.
-		if vc.SortMode.IsCacheable() {
+		if vc.Strategy.IsCacheable() {
 			imgTag, err := endpoint.Cache.GetTag(nameInRegistry, tagStr)
 			if err != nil {
 				log.Warnf("invalid entry for %s:%s in cache, invalidating.", nameInRegistry, imgTag.TagName)
@@ -161,7 +161,7 @@ func (endpoint *RegistryEndpoint) GetTags(img *image.ContainerImage, regClient R
 
 			log.Tracef("Found date %s", ti.CreatedAt.String())
 			var imgTag *tag.ImageTag
-			if vc.SortMode == image.VersionSortDigest {
+			if vc.Strategy == image.StrategyDigest {
 				imgTag = tag.NewImageTag(tagStr, ti.CreatedAt, fmt.Sprintf("sha256:%x", ti.Digest))
 			} else {
 				imgTag = tag.NewImageTag(tagStr, ti.CreatedAt, "")

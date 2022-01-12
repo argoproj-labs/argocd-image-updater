@@ -65,31 +65,31 @@ func (img *ContainerImage) HasForceUpdateOptionAnnotation(annotations map[string
 
 // GetParameterSort gets and validates the value for the sort option for the
 // image from a set of annotations
-func (img *ContainerImage) GetParameterUpdateStrategy(annotations map[string]string) VersionSortMode {
+func (img *ContainerImage) GetParameterUpdateStrategy(annotations map[string]string) UpdateStrategy {
 	key := fmt.Sprintf(common.UpdateStrategyAnnotation, img.normalizedSymbolicName())
 	val, ok := annotations[key]
 	if !ok {
 		// Default is sort by version
 		log.Tracef("No sort option %s found", key)
-		return VersionSortSemVer
+		return StrategySemVer
 	}
 	log.Tracef("found update strategy %s in %s", val, key)
 	return ParseUpdateStrategy(val)
 }
 
-func ParseUpdateStrategy(val string) VersionSortMode {
+func ParseUpdateStrategy(val string) UpdateStrategy {
 	switch strings.ToLower(val) {
 	case "semver":
-		return VersionSortSemVer
+		return StrategySemVer
 	case "latest":
-		return VersionSortLatest
+		return StrategyLatest
 	case "name":
-		return VersionSortName
+		return StrategyName
 	case "digest":
-		return VersionSortDigest
+		return StrategyDigest
 	default:
 		log.Warnf("Unknown sort option %s -- using semver", val)
-		return VersionSortSemVer
+		return StrategySemVer
 	}
 
 }

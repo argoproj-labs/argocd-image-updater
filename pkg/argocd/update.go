@@ -194,10 +194,10 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 			imgCtx.Debugf("Using no version constraint when looking for a new tag")
 		}
 
-		vc.SortMode = applicationImage.GetParameterUpdateStrategy(updateConf.UpdateApp.Application.Annotations)
+		vc.Strategy = applicationImage.GetParameterUpdateStrategy(updateConf.UpdateApp.Application.Annotations)
 		vc.MatchFunc, vc.MatchArgs = applicationImage.GetParameterMatch(updateConf.UpdateApp.Application.Annotations)
 		vc.IgnoreList = applicationImage.GetParameterIgnoreTags(updateConf.UpdateApp.Application.Annotations)
-		vc.Options = applicationImage.GetPlatformOptions(updateConf.UpdateApp.Application.Annotations, updateConf.IgnorePlatforms).WithMetadata(vc.SortMode.NeedsMetadata())
+		vc.Options = applicationImage.GetPlatformOptions(updateConf.UpdateApp.Application.Annotations, updateConf.IgnorePlatforms).WithMetadata(vc.Strategy.NeedsMetadata())
 
 		// The endpoint can provide default credentials for pulling images
 		err = rep.SetEndpointCredentials(updateConf.KubeClient)
@@ -257,7 +257,7 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 		// image is configured to use a tag and no digest, we need to set an
 		// initial dummy digest, so that tag.Equals() will return false.
 		// TODO: Fix this. This is just a workaround.
-		if vc.SortMode == image.VersionSortDigest {
+		if vc.Strategy == image.StrategyDigest {
 			if !updateableImage.ImageTag.IsDigest() {
 				log.Tracef("Setting dummy digest for image %s", updateableImage.GetFullNameWithTag())
 				updateableImage.ImageTag.TagDigest = "dummy"
