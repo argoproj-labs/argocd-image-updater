@@ -45,11 +45,11 @@ func Test_WantsMetadata(t *testing.T) {
 		assert.False(t, opts.WantsMetadata())
 	})
 	t.Run("Wants metadata", func(t *testing.T) {
-		opts = opts.WithMetadata()
+		opts = opts.WithMetadata(true)
 		assert.True(t, opts.WantsMetadata())
 	})
 	t.Run("Does not want metadata", func(t *testing.T) {
-		opts = opts.WithoutMetadata()
+		opts = opts.WithMetadata(false)
 		assert.False(t, opts.WantsMetadata())
 	})
 }

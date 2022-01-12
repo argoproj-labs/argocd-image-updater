@@ -165,3 +165,13 @@ func (vsm VersionSortMode) IsCacheable() bool {
 		return true
 	}
 }
+
+// NeedsMetadata returns true if v requires image metadata to work correctly
+func (vsm VersionSortMode) NeedsMetadata() bool {
+	switch vsm {
+	case VersionSortLatest:
+		return true
+	default:
+		return false
+	}
+}

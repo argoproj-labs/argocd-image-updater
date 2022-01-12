@@ -197,11 +197,7 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 		vc.SortMode = applicationImage.GetParameterUpdateStrategy(updateConf.UpdateApp.Application.Annotations)
 		vc.MatchFunc, vc.MatchArgs = applicationImage.GetParameterMatch(updateConf.UpdateApp.Application.Annotations)
 		vc.IgnoreList = applicationImage.GetParameterIgnoreTags(updateConf.UpdateApp.Application.Annotations)
-		vc.Options = applicationImage.GetPlatformOptions(updateConf.UpdateApp.Application.Annotations, updateConf.IgnorePlatforms)
-
-		if vc.SortMode == image.VersionSortLatest {
-			vc.Options = vc.Options.WithMetadata()
-		}
+		vc.Options = applicationImage.GetPlatformOptions(updateConf.UpdateApp.Application.Annotations, updateConf.IgnorePlatforms).WithMetadata(vc.SortMode.NeedsMetadata())
 
 		// The endpoint can provide default credentials for pulling images
 		err = rep.SetEndpointCredentials(updateConf.KubeClient)
