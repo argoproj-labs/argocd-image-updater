@@ -83,7 +83,7 @@ func Test_GetSortOption(t *testing.T) {
 		}
 		img := NewFromIdentifier("dummy=foo/bar:1.12")
 		sortMode := img.GetParameterUpdateStrategy(annotations)
-		assert.Equal(t, VersionSortSemVer, sortMode)
+		assert.Equal(t, StrategySemVer, sortMode)
 	})
 
 	t.Run("Get update strategy date for configured application", func(t *testing.T) {
@@ -92,7 +92,7 @@ func Test_GetSortOption(t *testing.T) {
 		}
 		img := NewFromIdentifier("dummy=foo/bar:1.12")
 		sortMode := img.GetParameterUpdateStrategy(annotations)
-		assert.Equal(t, VersionSortLatest, sortMode)
+		assert.Equal(t, StrategyLatest, sortMode)
 	})
 
 	t.Run("Get update strategy name for configured application", func(t *testing.T) {
@@ -101,7 +101,7 @@ func Test_GetSortOption(t *testing.T) {
 		}
 		img := NewFromIdentifier("dummy=foo/bar:1.12")
 		sortMode := img.GetParameterUpdateStrategy(annotations)
-		assert.Equal(t, VersionSortName, sortMode)
+		assert.Equal(t, StrategyName, sortMode)
 	})
 
 	t.Run("Get update strategy option configured application because of invalid option", func(t *testing.T) {
@@ -110,14 +110,14 @@ func Test_GetSortOption(t *testing.T) {
 		}
 		img := NewFromIdentifier("dummy=foo/bar:1.12")
 		sortMode := img.GetParameterUpdateStrategy(annotations)
-		assert.Equal(t, VersionSortSemVer, sortMode)
+		assert.Equal(t, StrategySemVer, sortMode)
 	})
 
 	t.Run("Get update strategy option configured application because of option not set", func(t *testing.T) {
 		annotations := map[string]string{}
 		img := NewFromIdentifier("dummy=foo/bar:1.12")
 		sortMode := img.GetParameterUpdateStrategy(annotations)
-		assert.Equal(t, VersionSortSemVer, sortMode)
+		assert.Equal(t, StrategySemVer, sortMode)
 	})
 }
 

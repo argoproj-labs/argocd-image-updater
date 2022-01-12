@@ -27,7 +27,7 @@ func Test_GetTags(t *testing.T) {
 
 		img := image.NewFromIdentifier("foo/bar:1.2.0")
 
-		tl, err := ep.GetTags(img, &regClient, &image.VersionConstraint{SortMode: image.VersionSortSemVer})
+		tl, err := ep.GetTags(img, &regClient, &image.VersionConstraint{Strategy: image.StrategySemVer})
 		require.NoError(t, err)
 		assert.NotEmpty(t, tl)
 
@@ -46,7 +46,7 @@ func Test_GetTags(t *testing.T) {
 
 		img := image.NewFromIdentifier("foo/bar:1.2.0")
 
-		tl, err := ep.GetTags(img, &regClient, &image.VersionConstraint{SortMode: image.VersionSortSemVer, MatchFunc: image.MatchFuncNone})
+		tl, err := ep.GetTags(img, &regClient, &image.VersionConstraint{Strategy: image.StrategySemVer, MatchFunc: image.MatchFuncNone})
 		require.NoError(t, err)
 		assert.Empty(t, tl.Tags())
 
@@ -66,7 +66,7 @@ func Test_GetTags(t *testing.T) {
 
 		img := image.NewFromIdentifier("foo/bar:1.2.0")
 
-		tl, err := ep.GetTags(img, &regClient, &image.VersionConstraint{SortMode: image.VersionSortName})
+		tl, err := ep.GetTags(img, &regClient, &image.VersionConstraint{Strategy: image.StrategyName})
 		require.NoError(t, err)
 		assert.NotEmpty(t, tl)
 
@@ -98,7 +98,7 @@ func Test_GetTags(t *testing.T) {
 		ep.Cache.ClearCache()
 
 		img := image.NewFromIdentifier("foo/bar:1.2.0")
-		tl, err := ep.GetTags(img, &regClient, &image.VersionConstraint{SortMode: image.VersionSortLatest})
+		tl, err := ep.GetTags(img, &regClient, &image.VersionConstraint{Strategy: image.StrategyLatest})
 		require.NoError(t, err)
 		assert.NotEmpty(t, tl)
 

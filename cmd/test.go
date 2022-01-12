@@ -76,10 +76,10 @@ argocd-image-updater test nginx --allow-tags '^1.19.\d+(\-.*)*$' --update-strate
 
 			vc := &image.VersionConstraint{
 				Constraint: semverConstraint,
-				SortMode:   image.VersionSortSemVer,
+				Strategy:   image.StrategySemVer,
 			}
 
-			vc.SortMode = image.ParseUpdateStrategy(strategy)
+			vc.Strategy = image.ParseUpdateStrategy(strategy)
 
 			if allowTags != "" {
 				vc.MatchFunc, vc.MatchArgs = image.ParseMatchfunc(allowTags)
@@ -101,7 +101,7 @@ argocd-image-updater test nginx --allow-tags '^1.19.\d+(\-.*)*$' --update-strate
 				}
 				vc.Options = vc.Options.
 					WithPlatform(os, arch, variant).
-					WithMetadata(vc.SortMode.NeedsMetadata())
+					WithMetadata(vc.Strategy.NeedsMetadata())
 			}
 
 			if registriesConfPath != "" {
