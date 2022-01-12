@@ -99,7 +99,9 @@ argocd-image-updater test nginx --allow-tags '^1.19.\d+(\-.*)*$' --update-strate
 				if err != nil {
 					log.Fatalf("Platform %s: %v", platform, err)
 				}
-				vc.Options = vc.Options.WithPlatform(os, arch, variant)
+				vc.Options = vc.Options.
+					WithPlatform(os, arch, variant).
+					WithMetadata(vc.SortMode.NeedsMetadata())
 			}
 
 			if registriesConfPath != "" {

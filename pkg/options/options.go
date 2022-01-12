@@ -70,18 +70,12 @@ func (o *ManifestOptions) Platforms() []string {
 }
 
 // WantsMetdata returns true if metadata should be requested
-func (o *ManifestOptions) WantsMetdata() bool {
+func (o *ManifestOptions) WantsMetadata() bool {
 	return o.metadata
 }
 
 // WithMetadata sets metadata to be requested
-func (o *ManifestOptions) WithMetadata() *ManifestOptions {
-	o.metadata = true
-	return o
-}
-
-// WithoutMetadata sets metadata not not be requested
-func (o *ManifestOptions) WithoutMetadata() *ManifestOptions {
-	o.metadata = false
+func (o *ManifestOptions) WithMetadata(val bool) *ManifestOptions {
+	o.metadata = val
 	return o
 }

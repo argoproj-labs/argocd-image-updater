@@ -276,7 +276,7 @@ func (client *registryClient) TagMetadata(manifest distribution.Manifest, opts *
 
 		// For some strategies, we do not need to fetch metadata for further
 		// processing.
-		if !opts.WantsMetdata() {
+		if !opts.WantsMetadata() {
 			return ti, nil
 		}
 
