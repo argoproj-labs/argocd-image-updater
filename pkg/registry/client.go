@@ -102,7 +102,7 @@ func (clt *registryClient) NewRepository(nameInRepository string) error {
 	authTransport := transport.NewTransport(
 		clt.endpoint.GetTransport(), auth.NewAuthorizer(
 			challengeManager1,
-			auth.NewTokenHandler(nil, clt.creds, nameInRepository, "pull"),
+			auth.NewTokenHandler(clt.endpoint.GetTransport(), clt.creds, nameInRepository, "pull"),
 			auth.NewBasicHandler(clt.creds)))
 
 	rlt := &rateLimitTransport{
