@@ -71,12 +71,11 @@ controller:
 	CGO_ENABLED=0 GOOS=${OS} GOARCH=${ARCH} go build -ldflags '${LDFLAGS}' -o ${OUTDIR}/${BINNAME} cmd/*.go
 
 .PHONY: image
-image: clean-image mod-vendor
+image: clean-image
 	docker build \
 		-t ${IMAGE_PREFIX}${IMAGE_NAME}:${IMAGE_TAG} \
 		--pull \
 		.
-	rm -rf vendor/
 
 .PHONY: multiarch-image
 multiarch-image:
