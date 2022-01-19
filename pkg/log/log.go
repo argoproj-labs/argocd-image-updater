@@ -13,6 +13,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"sync"
 
 	"github.com/sirupsen/logrus"
 )
@@ -25,6 +26,7 @@ type LogContext struct {
 	fields    logrus.Fields
 	normalOut io.Writer
 	errorOut  io.Writer
+	mutex     sync.RWMutex
 }
 
 // NewContext returns a LogContext with default settings
@@ -62,7 +64,9 @@ func WithContext() *LogContext {
 
 // AddField adds a structured field to logctx
 func (logctx *LogContext) AddField(key string, value interface{}) *LogContext {
+	logctx.mutex.Lock()
 	logctx.fields[key] = value
+	logctx.mutex.Unlock()
 	return logctx
 }
 

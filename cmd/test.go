@@ -74,54 +74,55 @@ argocd-image-updater test nginx --allow-tags '^1.19.\d+(\-.*)*$' --update-strate
 				}
 			}
 
+			img := image.NewFromIdentifier(args[0])
+
 			vc := &image.VersionConstraint{
 				Constraint: semverConstraint,
 				Strategy:   image.StrategySemVer,
 			}
 
-			vc.Strategy = image.ParseUpdateStrategy(strategy)
+			vc.Strategy = img.ParseUpdateStrategy(strategy)
 
 			if allowTags != "" {
-				vc.MatchFunc, vc.MatchArgs = image.ParseMatchfunc(allowTags)
+				vc.MatchFunc, vc.MatchArgs = img.ParseMatchfunc(allowTags)
 			}
 
 			vc.IgnoreList = ignoreTags
 
-			img := image.NewFromIdentifier(args[0])
-			log.WithContext().
-				AddField("registry", img.RegistryURL).
-				AddField("image_name", img.ImageName).
-				Infof("getting image")
+			logCtx := img.LogContext()
+			logCtx.Infof("retrieving information about image")
 
 			vc.Options = options.NewManifestOptions()
 			if platform != "" {
 				os, arch, variant, err := image.ParsePlatform(platform)
 				if err != nil {
-					log.Fatalf("Platform %s: %v", platform, err)
+					logCtx.Fatalf("Platform %s: %v", platform, err)
 				}
 				vc.Options = vc.Options.
 					WithPlatform(os, arch, variant).
 					WithMetadata(vc.Strategy.NeedsMetadata())
 			}
 
+			vc.Options.WithLogger(logCtx.AddField("application", "test"))
+
 			if registriesConfPath != "" {
 				if err := registry.LoadRegistryConfiguration(registriesConfPath, false); err != nil {
-					log.Fatalf("could not load registries configuration: %v", err)
+					logCtx.Fatalf("could not load registries configuration: %v", err)
 				}
 			}
 
 			ep, err := registry.GetRegistryEndpoint(img.RegistryURL)
 			if err != nil {
-				log.Fatalf("could not get registry endpoint: %v", err)
+				logCtx.Fatalf("could not get registry endpoint: %v", err)
 			}
 
 			if err := ep.SetEndpointCredentials(kubeClient); err != nil {
-				log.Fatalf("could not set registry credentials: %v", err)
+				logCtx.Fatalf("could not set registry credentials: %v", err)
 			}
 
 			checkFlag := func(f *pflag.Flag) {
 				if f.Name == "rate-limit" {
-					log.Infof("Overriding registry rate-limit to %d requests per second", rateLimit)
+					logCtx.Infof("Overriding registry rate-limit to %d requests per second", rateLimit)
 					ep.Limiter = ratelimit.New(rateLimit)
 				}
 			}
@@ -133,11 +134,11 @@ argocd-image-updater test nginx --allow-tags '^1.19.\d+(\-.*)*$' --update-strate
 			if credentials != "" {
 				credSrc, err := image.ParseCredentialSource(credentials, false)
 				if err != nil {
-					log.Fatalf("could not parse credential definition '%s': %v", credentials, err)
+					logCtx.Fatalf("could not parse credential definition '%s': %v", credentials, err)
 				}
 				creds, err = credSrc.FetchCredentials(ep.RegistryAPI, kubeClient)
 				if err != nil {
-					log.Fatalf("could not fetch credentials: %v", err)
+					logCtx.Fatalf("could not fetch credentials: %v", err)
 				}
 				username = creds.Username
 				password = creds.Password
@@ -145,32 +146,28 @@ argocd-image-updater test nginx --allow-tags '^1.19.\d+(\-.*)*$' --update-strate
 
 			regClient, err := registry.NewClient(ep, username, password)
 			if err != nil {
-				log.Fatalf("could not create registry client: %v", err)
+				logCtx.Fatalf("could not create registry client: %v", err)
 			}
 
-			log.WithContext().
-				AddField("image_name", img.ImageName).
-				Infof("Fetching available tags and metadata from registry")
+			logCtx.Infof("Fetching available tags and metadata from registry")
 
 			tags, err := ep.GetTags(img, regClient, vc)
 			if err != nil {
-				log.Fatalf("could not get tags: %v", err)
+				logCtx.Fatalf("could not get tags: %v", err)
 			}
 
-			log.WithContext().
-				AddField("image_name", img.ImageName).
-				Infof("Found %d tags in registry", len(tags.Tags()))
+			logCtx.Infof("Found %d tags in registry", len(tags.Tags()))
 
 			upImg, err := img.GetNewestVersionFromTags(vc, tags)
 			if err != nil {
-				log.Fatalf("could not get updateable image from tags: %v", err)
+				logCtx.Fatalf("could not get updateable image from tags: %v", err)
 			}
 			if upImg == nil {
-				log.Infof("no newer version of image found")
+				logCtx.Infof("no newer version of image found")
 				return
 			}
 
-			log.Infof("latest image according to constraint is %s", img.WithTag(upImg))
+			logCtx.Infof("latest image according to constraint is %s", img.WithTag(upImg))
 		},
 	}
 

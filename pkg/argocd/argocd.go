@@ -152,27 +152,27 @@ func FilterApplicationsForUpdate(apps []v1alpha1.Application, patterns []string)
 	var appsForUpdate = make(map[string]ApplicationImages)
 
 	for _, app := range apps {
-
+		logCtx := log.WithContext().AddField("application", app.GetName())
 		// Check whether application has our annotation set
 		annotations := app.GetAnnotations()
 		if _, ok := annotations[common.ImageUpdaterAnnotation]; !ok {
-			log.Tracef("skipping app '%s' of type '%s' because required annotation is missing", app.GetName(), app.Status.SourceType)
+			logCtx.Tracef("skipping app '%s' of type '%s' because required annotation is missing", app.GetName(), app.Status.SourceType)
 			continue
 		}
 
 		// Check for valid application type
 		if !IsValidApplicationType(&app) {
-			log.Warnf("skipping app '%s' of type '%s' because it's not of supported source type", app.GetName(), app.Status.SourceType)
+			logCtx.Warnf("skipping app '%s' of type '%s' because it's not of supported source type", app.GetName(), app.Status.SourceType)
 			continue
 		}
 
 		// Check if application name matches requested patterns
 		if !nameMatchesPattern(app.GetName(), patterns) {
-			log.Debugf("Skipping app '%s' because it does not match requested patterns", app.GetName())
+			logCtx.Debugf("Skipping app '%s' because it does not match requested patterns", app.GetName())
 			continue
 		}
 
-		log.Tracef("processing app '%s' of type '%v'", app.GetName(), app.Status.SourceType)
+		logCtx.Tracef("processing app '%s' of type '%v'", app.GetName(), app.Status.SourceType)
 		imageList := parseImageList(annotations)
 		appImages := ApplicationImages{}
 		appImages.Application = app
@@ -408,7 +408,7 @@ func SetKustomizeImage(app *v1alpha1.Application, newImage *image.ContainerImage
 		ksImageParam = newImage.GetFullNameWithTag()
 	}
 
-	log.Tracef("Setting Kustomize parameter %s", ksImageParam)
+	log.WithContext().AddField("application", app.GetName()).Tracef("Setting Kustomize parameter %s", ksImageParam)
 
 	if app.Spec.Source.Kustomize == nil {
 		app.Spec.Source.Kustomize = &v1alpha1.ApplicationSourceKustomize{}

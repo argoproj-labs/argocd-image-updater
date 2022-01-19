@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/argoproj-labs/argocd-image-updater/pkg/image"
+	"github.com/argoproj-labs/argocd-image-updater/pkg/options"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/registry/mocks"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/tag"
 
@@ -27,7 +28,7 @@ func Test_GetTags(t *testing.T) {
 
 		img := image.NewFromIdentifier("foo/bar:1.2.0")
 
-		tl, err := ep.GetTags(img, &regClient, &image.VersionConstraint{Strategy: image.StrategySemVer})
+		tl, err := ep.GetTags(img, &regClient, &image.VersionConstraint{Strategy: image.StrategySemVer, Options: options.NewManifestOptions()})
 		require.NoError(t, err)
 		assert.NotEmpty(t, tl)
 
@@ -46,7 +47,10 @@ func Test_GetTags(t *testing.T) {
 
 		img := image.NewFromIdentifier("foo/bar:1.2.0")
 
-		tl, err := ep.GetTags(img, &regClient, &image.VersionConstraint{Strategy: image.StrategySemVer, MatchFunc: image.MatchFuncNone})
+		tl, err := ep.GetTags(img, &regClient, &image.VersionConstraint{
+			Strategy:  image.StrategySemVer,
+			MatchFunc: image.MatchFuncNone,
+			Options:   options.NewManifestOptions()})
 		require.NoError(t, err)
 		assert.Empty(t, tl.Tags())
 
@@ -66,7 +70,7 @@ func Test_GetTags(t *testing.T) {
 
 		img := image.NewFromIdentifier("foo/bar:1.2.0")
 
-		tl, err := ep.GetTags(img, &regClient, &image.VersionConstraint{Strategy: image.StrategyName})
+		tl, err := ep.GetTags(img, &regClient, &image.VersionConstraint{Strategy: image.StrategyName, Options: options.NewManifestOptions()})
 		require.NoError(t, err)
 		assert.NotEmpty(t, tl)
 
@@ -98,7 +102,7 @@ func Test_GetTags(t *testing.T) {
 		ep.Cache.ClearCache()
 
 		img := image.NewFromIdentifier("foo/bar:1.2.0")
-		tl, err := ep.GetTags(img, &regClient, &image.VersionConstraint{Strategy: image.StrategyLatest})
+		tl, err := ep.GetTags(img, &regClient, &image.VersionConstraint{Strategy: image.StrategyLatest, Options: options.NewManifestOptions()})
 		require.NoError(t, err)
 		assert.NotEmpty(t, tl)
 

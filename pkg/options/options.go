@@ -12,6 +12,7 @@ type ManifestOptions struct {
 	platforms map[string]bool
 	mutex     sync.RWMutex
 	metadata  bool
+	logger    *log.LogContext
 }
 
 // NewManifestOptions returns an initialized ManifestOptions struct
@@ -49,7 +50,6 @@ func (o *ManifestOptions) WithPlatform(os string, arch string, variant string) *
 	if o.platforms == nil {
 		o.platforms = map[string]bool{}
 	}
-	log.Debugf("Adding platform " + PlatformKey(os, arch, variant))
 	o.platforms[PlatformKey(os, arch, variant)] = true
 	return o
 }
@@ -78,4 +78,20 @@ func (o *ManifestOptions) WantsMetadata() bool {
 func (o *ManifestOptions) WithMetadata(val bool) *ManifestOptions {
 	o.metadata = val
 	return o
+}
+
+// WithLogger sets the log context to use for the given manifest options.
+func (o *ManifestOptions) WithLogger(logger *log.LogContext) *ManifestOptions {
+	o.logger = logger
+	return o
+}
+
+// Logger gets the configured log context for given manifest options. If logger
+// is nil, returns a default log context.
+func (o *ManifestOptions) Logger() *log.LogContext {
+	if o.logger == nil {
+		return log.WithContext()
+	} else {
+		return o.logger
+	}
 }

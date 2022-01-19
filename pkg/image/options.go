@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
-	"github.com/argoproj-labs/argocd-image-updater/pkg/log"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/options"
 )
 
@@ -66,18 +65,20 @@ func (img *ContainerImage) HasForceUpdateOptionAnnotation(annotations map[string
 // GetParameterSort gets and validates the value for the sort option for the
 // image from a set of annotations
 func (img *ContainerImage) GetParameterUpdateStrategy(annotations map[string]string) UpdateStrategy {
+	logCtx := img.LogContext()
 	key := fmt.Sprintf(common.UpdateStrategyAnnotation, img.normalizedSymbolicName())
 	val, ok := annotations[key]
 	if !ok {
 		// Default is sort by version
-		log.Tracef("No sort option %s found", key)
+		logCtx.Tracef("No sort option %s found", key)
 		return StrategySemVer
 	}
-	log.Tracef("found update strategy %s in %s", val, key)
-	return ParseUpdateStrategy(val)
+	logCtx.Tracef("found update strategy %s in %s", val, key)
+	return img.ParseUpdateStrategy(val)
 }
 
-func ParseUpdateStrategy(val string) UpdateStrategy {
+func (img *ContainerImage) ParseUpdateStrategy(val string) UpdateStrategy {
+	logCtx := img.LogContext()
 	switch strings.ToLower(val) {
 	case "semver":
 		return StrategySemVer
@@ -88,7 +89,7 @@ func ParseUpdateStrategy(val string) UpdateStrategy {
 	case "digest":
 		return StrategyDigest
 	default:
-		log.Warnf("Unknown sort option %s -- using semver", val)
+		logCtx.Warnf("Unknown sort option %s -- using semver", val)
 		return StrategySemVer
 	}
 
@@ -98,7 +99,7 @@ func ParseUpdateStrategy(val string) UpdateStrategy {
 // tag names. If an invalid option is found, it returns MatchFuncNone as the
 // default, to prevent accidental matches.
 func (img *ContainerImage) GetParameterMatch(annotations map[string]string) (MatchFuncFn, interface{}) {
-
+	logCtx := img.LogContext()
 	key := fmt.Sprintf(common.AllowTagsOptionAnnotation, img.normalizedSymbolicName())
 	val, ok := annotations[key]
 	if !ok {
@@ -107,18 +108,20 @@ func (img *ContainerImage) GetParameterMatch(annotations map[string]string) (Mat
 		key = fmt.Sprintf(common.OldMatchOptionAnnotation, img.normalizedSymbolicName())
 		val, ok = annotations[key]
 		if !ok {
-			log.Tracef("No match annotation %s found", key)
+			logCtx.Tracef("No match annotation %s found", key)
 			return MatchFuncAny, ""
 		} else {
-			log.Warnf("The 'tag-match' annotation is deprecated and subject to removal. Please use 'allow-tags' annotation instead.")
+			logCtx.Warnf("The 'tag-match' annotation is deprecated and subject to removal. Please use 'allow-tags' annotation instead.")
 		}
 	}
 
-	return ParseMatchfunc(val)
+	return img.ParseMatchfunc(val)
 }
 
 // ParseMatchfunc returns a matcher function and its argument from given value
-func ParseMatchfunc(val string) (MatchFuncFn, interface{}) {
+func (img *ContainerImage) ParseMatchfunc(val string) (MatchFuncFn, interface{}) {
+	logCtx := img.LogContext()
+
 	// The special value "any" doesn't take any parameter
 	if strings.ToLower(val) == "any" {
 		return MatchFuncAny, nil
@@ -126,34 +129,35 @@ func ParseMatchfunc(val string) (MatchFuncFn, interface{}) {
 
 	opt := strings.SplitN(val, ":", 2)
 	if len(opt) != 2 {
-		log.Warnf("Invalid match option syntax '%s', ignoring", val)
+		logCtx.Warnf("Invalid match option syntax '%s', ignoring", val)
 		return MatchFuncNone, nil
 	}
 	switch strings.ToLower(opt[0]) {
 	case "regexp":
 		re, err := regexp.Compile(opt[1])
 		if err != nil {
-			log.Warnf("Could not compile regexp '%s'", opt[1])
+			logCtx.Warnf("Could not compile regexp '%s'", opt[1])
 			return MatchFuncNone, nil
 		}
 		return MatchFuncRegexp, re
 	default:
-		log.Warnf("Unknown match function: %s", opt[0])
+		logCtx.Warnf("Unknown match function: %s", opt[0])
 		return MatchFuncNone, nil
 	}
 }
 
 // GetParameterPullSecret retrieves an image's pull secret credentials
 func (img *ContainerImage) GetParameterPullSecret(annotations map[string]string) *CredentialSource {
+	logCtx := img.LogContext()
 	key := fmt.Sprintf(common.SecretListAnnotation, img.normalizedSymbolicName())
 	val, ok := annotations[key]
 	if !ok {
-		log.Tracef("No secret annotation %s found", key)
+		logCtx.Tracef("No secret annotation %s found", key)
 		return nil
 	}
 	credSrc, err := ParseCredentialSource(val, false)
 	if err != nil {
-		log.Warnf("Invalid credential reference specified: %s", val)
+		logCtx.Warnf("Invalid credential reference specified: %s", val)
 		return nil
 	}
 	return credSrc
@@ -161,10 +165,11 @@ func (img *ContainerImage) GetParameterPullSecret(annotations map[string]string)
 
 // GetParameterIgnoreTags retrieves a list of tags to ignore from a comma-separated string
 func (img *ContainerImage) GetParameterIgnoreTags(annotations map[string]string) []string {
+	logCtx := img.LogContext()
 	key := fmt.Sprintf(common.IgnoreTagsOptionAnnotation, img.normalizedSymbolicName())
 	val, ok := annotations[key]
 	if !ok {
-		log.Tracef("No ignore-tags annotation %s found", key)
+		logCtx.Tracef("No ignore-tags annotation %s found", key)
 		return nil
 	}
 	ignoreList := make([]string, 0)
@@ -184,12 +189,9 @@ func (img *ContainerImage) GetParameterIgnoreTags(annotations map[string]string)
 // platform we're executed on unless unrestricted is set to true, in which case
 // we do not setup a platform restriction if no platform annotation is found.
 func (img *ContainerImage) GetPlatformOptions(annotations map[string]string, unrestricted bool) *options.ManifestOptions {
+	logCtx := img.LogContext()
 	var opts *options.ManifestOptions = options.NewManifestOptions()
 	key := fmt.Sprintf(common.PlatformsAnnotation, img.normalizedSymbolicName())
-	logCtx := log.WithContext().
-		AddField("image", img.ImageName).
-		AddField("registry", img.RegistryURL)
-
 	val, ok := annotations[key]
 	if !ok {
 		if !unrestricted {

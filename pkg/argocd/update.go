@@ -197,7 +197,10 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 		vc.Strategy = applicationImage.GetParameterUpdateStrategy(updateConf.UpdateApp.Application.Annotations)
 		vc.MatchFunc, vc.MatchArgs = applicationImage.GetParameterMatch(updateConf.UpdateApp.Application.Annotations)
 		vc.IgnoreList = applicationImage.GetParameterIgnoreTags(updateConf.UpdateApp.Application.Annotations)
-		vc.Options = applicationImage.GetPlatformOptions(updateConf.UpdateApp.Application.Annotations, updateConf.IgnorePlatforms).WithMetadata(vc.Strategy.NeedsMetadata())
+		vc.Options = applicationImage.
+			GetPlatformOptions(updateConf.UpdateApp.Application.Annotations, updateConf.IgnorePlatforms).
+			WithMetadata(vc.Strategy.NeedsMetadata()).
+			WithLogger(imgCtx.AddField("application", app))
 
 		// The endpoint can provide default credentials for pulling images
 		err = rep.SetEndpointCredentials(updateConf.KubeClient)
@@ -358,7 +361,7 @@ func setAppImage(app *v1alpha1.Application, img *image.ContainerImage) error {
 	} else if appType == ApplicationTypeHelm {
 		err = SetHelmImage(app, img)
 	} else {
-		err = fmt.Errorf("Could not update application %s - neither Helm nor Kustomize application", app)
+		err = fmt.Errorf("could not update application %s - neither Helm nor Kustomize application", app)
 	}
 	return err
 }
