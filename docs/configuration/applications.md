@@ -136,7 +136,7 @@ this is the workflow how Argo CD Image Updater performs change to Git:
 
 The important pieces to this workflow are:
 
-* Credentials configured in Argo CD will not be re-used, you have to supply a
+* Credentials configured in Argo CD will be re-used, unless you override with a
   dedicated set of credentials
 
 * Write-back is a commit to the tracking branch of the Application.
