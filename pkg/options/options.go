@@ -3,8 +3,6 @@ package options
 import (
 	"sort"
 	"sync"
-
-	"github.com/argoproj-labs/argocd-image-updater/pkg/log"
 )
 
 // ManifestOptions define some options when retrieving image manifests
@@ -49,7 +47,6 @@ func (o *ManifestOptions) WithPlatform(os string, arch string, variant string) *
 	if o.platforms == nil {
 		o.platforms = map[string]bool{}
 	}
-	log.Debugf("Adding platform " + PlatformKey(os, arch, variant))
 	o.platforms[PlatformKey(os, arch, variant)] = true
 	return o
 }

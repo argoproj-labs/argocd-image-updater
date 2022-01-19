@@ -4,6 +4,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/argoproj-labs/argocd-image-updater/pkg/log"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/tag"
 
 	"github.com/distribution/distribution/v3/reference"
@@ -244,4 +245,18 @@ func getImageDigestFromTag(tagStr string) (string, string) {
 	} else {
 		return a[0], a[1]
 	}
+}
+
+// LogContext returns a log context for the given image, with required fields
+// set to the image's information.
+func (img *ContainerImage) LogContext() *log.LogContext {
+	logCtx := log.WithContext()
+	logCtx.AddField("image_name", img.GetFullNameWithoutTag())
+	logCtx.AddField("image_alias", img.ImageAlias)
+	logCtx.AddField("registry_url", img.RegistryURL)
+	if img.ImageTag != nil {
+		logCtx.AddField("image_tag", img.ImageTag.TagName)
+		logCtx.AddField("image_digest", img.ImageTag.TagDigest)
+	}
+	return logCtx
 }

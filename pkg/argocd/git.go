@@ -129,6 +129,7 @@ type changeWriter func(app *v1alpha1.Application, wbc *WriteBackConfig, gitC git
 // commitChanges commits any changes required for updating one or more images
 // after the UpdateApplication cycle has finished.
 func commitChangesGit(app *v1alpha1.Application, wbc *WriteBackConfig, changeList []ChangeEntry, write changeWriter) error {
+	logCtx := log.WithContext().AddField("application", app.GetName())
 	creds, err := wbc.GetCreds(app)
 	if err != nil {
 		return fmt.Errorf("could not get creds for repo '%s': %v", app.Spec.Source.RepoURL, err)
@@ -142,7 +143,7 @@ func commitChangesGit(app *v1alpha1.Application, wbc *WriteBackConfig, changeLis
 		defer func() {
 			err := os.RemoveAll(tempRoot)
 			if err != nil {
-				log.Errorf("could not remove temp dir: %v", err)
+				logCtx.Errorf("could not remove temp dir: %v", err)
 			}
 		}()
 		gitC, err = git.NewClientExt(app.Spec.Source.RepoURL, tempRoot, creds, false, false, "")
@@ -177,10 +178,10 @@ func commitChangesGit(app *v1alpha1.Application, wbc *WriteBackConfig, changeLis
 	if wbc.GitBranch != "" {
 		checkOutBranch = wbc.GitBranch
 	}
-	log.Tracef("targetRevision for update is '%s'", checkOutBranch)
+	logCtx.Tracef("targetRevision for update is '%s'", checkOutBranch)
 	if checkOutBranch == "" || checkOutBranch == "HEAD" {
 		checkOutBranch, err = gitC.SymRefToBranch(checkOutBranch)
-		log.Infof("resolved remote default branch to '%s' and using that for operations", checkOutBranch)
+		logCtx.Infof("resolved remote default branch to '%s' and using that for operations", checkOutBranch)
 		if err != nil {
 			return err
 		}
@@ -198,10 +199,10 @@ func commitChangesGit(app *v1alpha1.Application, wbc *WriteBackConfig, changeLis
 	pushBranch := checkOutBranch
 
 	if wbc.GitWriteBranch != "" {
-		log.Debugf("Using branch template: %s", wbc.GitWriteBranch)
+		logCtx.Debugf("Using branch template: %s", wbc.GitWriteBranch)
 		pushBranch = TemplateBranchName(wbc.GitWriteBranch, changeList)
 		if pushBranch != "" {
-			log.Debugf("Creating branch '%s' and using that for push operations", pushBranch)
+			logCtx.Debugf("Creating branch '%s' and using that for push operations", pushBranch)
 			err = gitC.Branch(checkOutBranch, pushBranch)
 			if err != nil {
 				return err
@@ -223,7 +224,7 @@ func commitChangesGit(app *v1alpha1.Application, wbc *WriteBackConfig, changeLis
 		if err != nil {
 			return fmt.Errorf("cold not create temp file: %v", err)
 		}
-		log.Debugf("Writing commit message to %s", cm.Name())
+		logCtx.Debugf("Writing commit message to %s", cm.Name())
 		err = ioutil.WriteFile(cm.Name(), []byte(wbc.GitCommitMessage), 0600)
 		if err != nil {
 			_ = cm.Close()
@@ -247,6 +248,7 @@ func commitChangesGit(app *v1alpha1.Application, wbc *WriteBackConfig, changeLis
 }
 
 func writeOverrides(app *v1alpha1.Application, _ *WriteBackConfig, gitC git.Client) (err error, skip bool) {
+	logCtx := log.WithContext().AddField("application", app.GetName())
 	targetExists := true
 	targetFile := path.Join(gitC.Root(), app.Spec.Source.Path, fmt.Sprintf(".argocd-source-%s.yaml", app.Name))
 	_, err = os.Stat(targetFile)
@@ -272,7 +274,7 @@ func writeOverrides(app *v1alpha1.Application, _ *WriteBackConfig, gitC git.Clie
 			return err, false
 		}
 		if string(data) == string(override) {
-			log.Debugf("target parameter file and marshaled data are the same, skipping commit.")
+			logCtx.Debugf("target parameter file and marshaled data are the same, skipping commit.")
 			return nil, true
 		}
 	}
@@ -292,6 +294,7 @@ var _ changeWriter = writeOverrides
 
 // writeKustomization writes any changes required for updating one or more images to a kustomization.yml
 func writeKustomization(app *v1alpha1.Application, wbc *WriteBackConfig, gitC git.Client) (err error, skip bool) {
+	logCtx := log.WithContext().AddField("application", app.GetName())
 	if oldDir, err := os.Getwd(); err != nil {
 		return err, false
 	} else {
@@ -305,7 +308,7 @@ func writeKustomization(app *v1alpha1.Application, wbc *WriteBackConfig, gitC gi
 		return err, false
 	}
 
-	log.Infof("updating base %s", base)
+	logCtx.Infof("updating base %s", base)
 
 	kustFile := findKustomization(base)
 	if kustFile == "" {
