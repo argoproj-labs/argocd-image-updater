@@ -31,12 +31,14 @@ func (endpoint *RegistryEndpoint) GetTags(img *image.ContainerImage, regClient R
 	var tagList *tag.ImageTagList = tag.NewImageTagList()
 	var err error
 
+	logCtx := vc.Options.Logger()
+
 	// Some registries have a default namespace that is used when the image name
 	// doesn't specify one. For example at Docker Hub, this is 'library'.
 	var nameInRegistry string
 	if len := len(strings.Split(img.ImageName, "/")); len == 1 && endpoint.DefaultNS != "" {
 		nameInRegistry = endpoint.DefaultNS + "/" + img.ImageName
-		log.Debugf("Using canonical image name '%s' for image '%s'", nameInRegistry, img.ImageName)
+		logCtx.Debugf("Using canonical image name '%s' for image '%s'", nameInRegistry, img.ImageName)
 	} else {
 		nameInRegistry = img.ImageName
 	}
@@ -61,7 +63,7 @@ func (endpoint *RegistryEndpoint) GetTags(img *image.ContainerImage, regClient R
 	if vc.MatchFunc != nil || len(vc.IgnoreList) > 0 || vc.Strategy.WantsOnlyConstraintTag() {
 		for _, t := range tTags {
 			if (vc.MatchFunc != nil && !vc.MatchFunc(t, vc.MatchArgs)) || vc.IsTagIgnored(t) || (vc.Strategy.WantsOnlyConstraintTag() && t != vc.Constraint) {
-				log.Tracef("Removing tag %s because it either didn't match defined pattern or is ignored", t)
+				logCtx.Tracef("Removing tag %s because it either didn't match defined pattern or is ignored", t)
 			} else {
 				tags = append(tags, t)
 			}
@@ -111,7 +113,7 @@ func (endpoint *RegistryEndpoint) GetTags(img *image.ContainerImage, regClient R
 			if err != nil {
 				log.Warnf("invalid entry for %s:%s in cache, invalidating.", nameInRegistry, imgTag.TagName)
 			} else if imgTag != nil {
-				log.Debugf("Cache hit for %s:%s", nameInRegistry, imgTag.TagName)
+				logCtx.Debugf("Cache hit for %s:%s", nameInRegistry, imgTag.TagName)
 				tagListLock.Lock()
 				tagList.Add(imgTag)
 				tagListLock.Unlock()
@@ -120,7 +122,7 @@ func (endpoint *RegistryEndpoint) GetTags(img *image.ContainerImage, regClient R
 			}
 		}
 
-		log.Tracef("Getting manifest for image %s:%s (operation %d/%d)", nameInRegistry, tagStr, i, len(tags))
+		logCtx.Tracef("Getting manifest for image %s:%s (operation %d/%d)", nameInRegistry, tagStr, i, len(tags))
 
 		lockErr := sem.Acquire(context.TODO(), 1)
 		if lockErr != nil {
@@ -128,7 +130,7 @@ func (endpoint *RegistryEndpoint) GetTags(img *image.ContainerImage, regClient R
 			wg.Done()
 			continue
 		}
-		log.Tracef("acquired metadata semaphore")
+		logCtx.Tracef("acquired metadata semaphore")
 
 		go func(tagStr string) {
 			defer func() {
@@ -143,7 +145,7 @@ func (endpoint *RegistryEndpoint) GetTags(img *image.ContainerImage, regClient R
 			// We first try to fetch a V2 manifest, and if that's not available we fall
 			// back to fetching V1 manifest. If that fails also, we just skip this tag.
 			if ml, err = regClient.ManifestForTag(tagStr); err != nil {
-				log.Errorf("Error fetching metadata for %s:%s - neither V1 or V2 or OCI manifest returned by registry: %v", nameInRegistry, tagStr, err)
+				logCtx.Errorf("Error fetching metadata for %s:%s - neither V1 or V2 or OCI manifest returned by registry: %v", nameInRegistry, tagStr, err)
 				return
 			}
 
@@ -151,15 +153,15 @@ func (endpoint *RegistryEndpoint) GetTags(img *image.ContainerImage, regClient R
 			// information needed to decide whether to consider this tag or not.
 			ti, err := regClient.TagMetadata(ml, vc.Options)
 			if err != nil {
-				log.Errorf("error fetching metadata for %s:%s: %v", nameInRegistry, tagStr, err)
+				logCtx.Errorf("error fetching metadata for %s:%s: %v", nameInRegistry, tagStr, err)
 				return
 			}
 			if ti == nil {
-				log.Debugf("No metadata found for %s:%s", nameInRegistry, tagStr)
+				logCtx.Debugf("No metadata found for %s:%s", nameInRegistry, tagStr)
 				return
 			}
 
-			log.Tracef("Found date %s", ti.CreatedAt.String())
+			logCtx.Tracef("Found date %s", ti.CreatedAt.String())
 			var imgTag *tag.ImageTag
 			if vc.Strategy == image.StrategyDigest {
 				imgTag = tag.NewImageTag(tagStr, ti.CreatedAt, fmt.Sprintf("sha256:%x", ti.Digest))

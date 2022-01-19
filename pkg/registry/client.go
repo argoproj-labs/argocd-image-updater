@@ -86,7 +86,7 @@ type rateLimitTransport struct {
 // RoundTrip is a custom RoundTrip method with rate-limiter
 func (rlt *rateLimitTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 	rlt.limiter.Take()
-	log.Tracef("%s", r.URL)
+	log.Tracef("Performing HTTP %s %s", r.Method, r.URL)
 	resp, err := rlt.transport.RoundTrip(r)
 	metrics.Endpoint().IncreaseRequest(rlt.endpoint.RegistryAPI, err != nil)
 	return resp, err
@@ -190,7 +190,7 @@ func (clt *registryClient) ManifestForDigest(dgst digest.Digest) (distribution.M
 // TagMetadata retrieves metadata for a given manifest of given repository
 func (client *registryClient) TagMetadata(manifest distribution.Manifest, opts *options.ManifestOptions) (*tag.TagInfo, error) {
 	ti := &tag.TagInfo{}
-
+	logCtx := opts.Logger()
 	var info struct {
 		Arch    string `json:"architecture"`
 		Created string `json:"created"`
@@ -218,12 +218,12 @@ func (client *registryClient) TagMetadata(manifest distribution.Manifest, opts *
 		}
 		ti.Digest = sha256.Sum256(mBytes)
 
-		log.Tracef("v1 SHA digest is %s", ti.EncodedDigest())
+		logCtx.Tracef("v1 SHA digest is %s", ti.EncodedDigest())
 		if err := json.Unmarshal([]byte(man.History[0].V1Compatibility), &info); err != nil {
 			return nil, err
 		}
 		if !opts.WantsPlatform(info.OS, info.Arch, "") {
-			log.Debugf("ignoring v1 manifest %v. Manifest platform: %s, requested: %s",
+			logCtx.Debugf("ignoring v1 manifest %v. Manifest platform: %s, requested: %s",
 				ti.EncodedDigest(), options.PlatformKey(info.OS, info.Arch, info.Variant), strings.Join(opts.Platforms(), ","))
 			return nil, nil
 		}
@@ -252,13 +252,13 @@ func (client *registryClient) TagMetadata(manifest distribution.Manifest, opts *
 		}
 		ti.Digest = sha256.Sum256(mBytes)
 
-		log.Tracef("SHA256 of manifest parent is %v", ti.EncodedDigest())
+		logCtx.Tracef("SHA256 of manifest parent is %v", ti.EncodedDigest())
 
 		for _, ref := range list.References() {
 			platforms = append(platforms, ref.Platform.OS+"/"+ref.Platform.Architecture)
-			log.Tracef("Found %s", options.PlatformKey(ref.Platform.OS, ref.Platform.Architecture, ref.Platform.Variant))
+			logCtx.Tracef("Found %s", options.PlatformKey(ref.Platform.OS, ref.Platform.Architecture, ref.Platform.Variant))
 			if !opts.WantsPlatform(ref.Platform.OS, ref.Platform.Architecture, ref.Platform.Variant) {
-				log.Tracef("Ignoring referenced manifest %v because platform %s does not match any of: %s",
+				logCtx.Tracef("Ignoring referenced manifest %v because platform %s does not match any of: %s",
 					ref.Digest,
 					options.PlatformKey(ref.Platform.OS, ref.Platform.Architecture, ref.Platform.Variant),
 					strings.Join(opts.Platforms(), ","))
@@ -269,7 +269,7 @@ func (client *registryClient) TagMetadata(manifest distribution.Manifest, opts *
 
 		// We need at least one reference that matches requested plaforms
 		if len(ml) == 0 {
-			log.Debugf("Manifest list did not contain any usable reference. Platforms requested: (%s), platforms included: (%s)",
+			logCtx.Debugf("Manifest list did not contain any usable reference. Platforms requested: (%s), platforms included: (%s)",
 				strings.Join(opts.Platforms(), ","), strings.Join(platforms, ","))
 			return nil, nil
 		}
@@ -283,7 +283,7 @@ func (client *registryClient) TagMetadata(manifest distribution.Manifest, opts *
 		// Loop through all referenced manifests to get their metadata. We only
 		// consider manifests for platforms we are interested in.
 		for _, ref := range ml {
-			log.Tracef("Inspecting metadata of reference: %v", ref.Digest)
+			logCtx.Tracef("Inspecting metadata of reference: %v", ref.Digest)
 
 			man, err := client.ManifestForDigest(ref.Digest)
 			if err != nil {
@@ -305,7 +305,7 @@ func (client *registryClient) TagMetadata(manifest distribution.Manifest, opts *
 					ti.CreatedAt = cti.CreatedAt
 				}
 			} else {
-				log.Warnf("returned metadata for manifest %v is nil, this should not happen.", ref.Digest)
+				logCtx.Warnf("returned metadata for manifest %v is nil, this should not happen.", ref.Digest)
 				continue
 			}
 		}
@@ -315,14 +315,14 @@ func (client *registryClient) TagMetadata(manifest distribution.Manifest, opts *
 	case *schema2.DeserializedManifest:
 		var man schema2.Manifest = deserialized.Manifest
 
-		log.Tracef("Manifest digest is %v", man.Config.Digest.Encoded())
+		logCtx.Tracef("Manifest digest is %v", man.Config.Digest.Encoded())
 
 		_, mBytes, err := manifest.Payload()
 		if err != nil {
 			return nil, err
 		}
 		ti.Digest = sha256.Sum256(mBytes)
-		log.Tracef("v2 SHA digest is %s", ti.EncodedDigest())
+		logCtx.Tracef("v2 SHA digest is %s", ti.EncodedDigest())
 
 		// The data we require from a V2 manifest is in a blob that we need to
 		// fetch from the registry.
@@ -336,7 +336,7 @@ func (client *registryClient) TagMetadata(manifest distribution.Manifest, opts *
 		}
 
 		if !opts.WantsPlatform(info.OS, info.Arch, info.Variant) {
-			log.Debugf("ignoring v2 manifest %v. Manifest platform: %s/%s, requested: %s",
+			logCtx.Debugf("ignoring v2 manifest %v. Manifest platform: %s/%s, requested: %s",
 				ti.EncodedDigest(), info.OS, info.Arch, strings.Join(opts.Platforms(), ","))
 			return nil, nil
 		}
@@ -354,7 +354,7 @@ func (client *registryClient) TagMetadata(manifest distribution.Manifest, opts *
 			return nil, err
 		}
 		ti.Digest = sha256.Sum256(mBytes)
-		log.Tracef("OCI SHA digest is %s", ti.EncodedDigest())
+		logCtx.Tracef("OCI SHA digest is %s", ti.EncodedDigest())
 
 		// The data we require from a V2 manifest is in a blob that we need to
 		// fetch from the registry.
@@ -368,7 +368,7 @@ func (client *registryClient) TagMetadata(manifest distribution.Manifest, opts *
 		}
 
 		if !opts.WantsPlatform(info.OS, info.Arch, info.Variant) {
-			log.Debugf("ignoring OCI manifest %v. Manifest platform: %s/%s, requested: %s",
+			logCtx.Debugf("ignoring OCI manifest %v. Manifest platform: %s/%s, requested: %s",
 				ti.EncodedDigest(), info.OS, info.Arch, strings.Join(opts.Platforms(), ","))
 			return nil, nil
 		}

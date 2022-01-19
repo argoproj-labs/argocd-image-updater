@@ -197,7 +197,10 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 		vc.Strategy = applicationImage.GetParameterUpdateStrategy(updateConf.UpdateApp.Application.Annotations)
 		vc.MatchFunc, vc.MatchArgs = applicationImage.GetParameterMatch(updateConf.UpdateApp.Application.Annotations)
 		vc.IgnoreList = applicationImage.GetParameterIgnoreTags(updateConf.UpdateApp.Application.Annotations)
-		vc.Options = applicationImage.GetPlatformOptions(updateConf.UpdateApp.Application.Annotations, updateConf.IgnorePlatforms).WithMetadata(vc.Strategy.NeedsMetadata())
+		vc.Options = applicationImage.
+			GetPlatformOptions(updateConf.UpdateApp.Application.Annotations, updateConf.IgnorePlatforms).
+			WithMetadata(vc.Strategy.NeedsMetadata()).
+			WithLogger(imgCtx.AddField("application", app))
 
 		// The endpoint can provide default credentials for pulling images
 		err = rep.SetEndpointCredentials(updateConf.KubeClient)
