@@ -1,0 +1,11 @@
+resources:
+  - https://github.com/argoproj/argo-cd/manifests/cluster-install?ref=v2.1.5
+  - repository.yaml
+
+patches:
+  - path: clusterrolebinding.json
+    target:
+      group: rbac.authorization.k8s.io
+      version: v1
+      kind: ClusterRoleBinding
+      name: argocd-application-controller

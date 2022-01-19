@@ -1,0 +1,22 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: image-updater-001
+spec:
+  source:
+    kustomize:
+      images:
+      - 10.42.0.1:30000/test-image:1.0.2
+status:
+  health:
+    status: Healthy
+  sync:
+    status: Synced
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  namespace: image-updater-e2e-001
+spec:
+  containers:
+  - image: 10.42.0.1:30000/test-image:1.0.2

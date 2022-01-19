@@ -1,0 +1,8 @@
+version: '3.2'
+services:
+  gitserver:
+    image: 'cirocosta/gitserver-http'
+    command: 
+     - '-start'  
+    ports:
+      - '8082:80'

@@ -1,0 +1,7 @@
+apiVersion: kuttl.dev/v1beta1
+kind: TestStep
+commands:
+- script: |
+    echo "Building first image"
+    cd $SRC_DIR/test/e2e/images
+    IMAGE_TAG=latest make

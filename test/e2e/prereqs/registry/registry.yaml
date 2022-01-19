@@ -1,0 +1,333 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: e2e-registry-public
+  labels:
+    app: registry
+    type: public
+    component: argocd-image-updater-e2e
+data:
+  registry.conf: |
+    version: 0.1
+    storage:
+      filesystem:
+        rootdirectory: /var/lib/storage
+        maxthreads: 100
+    http:
+      addr: 0.0.0.0:5000
+      tls:
+        certificate: /tmp/config/registry.crt
+        key: /tmp/config/registry.key
+  registry.crt: |
+    -----BEGIN CERTIFICATE-----
+    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
+    E4GvTlf+S3U=
+    -----END CERTIFICATE-----
+
+  registry.key: |
+    -----BEGIN PRIVATE KEY-----
+    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
+    6s67HUzoeh083rX2A1SDRB95PGzWMu0=
+    -----END PRIVATE KEY-----
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: e2e-registry-public
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: registry
+      type: public
+      component: argocd-image-updater-e2e
+  template:
+    metadata:
+      labels:
+        app: registry
+        type: public
+        component: argocd-image-updater-e2e
+    spec:
+      containers:
+      - name: registry
+        command:
+        - registry
+        - serve
+        - /tmp/config/registry.conf
+        image: registry
+        ports:
+          - containerPort: 5000
+        volumeMounts:
+        - name: config
+          mountPath: /tmp/config
+      volumes:
+        - name: config
+          configMap:
+            name: e2e-registry-public
+            items:
+            - key: registry.conf
+              path: registry.conf
+            - key: registry.crt
+              path: registry.crt
+            - key: registry.key
+              path: registry.key
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: e2e-registry-public
+spec:
+  type: NodePort
+  selector:
+    app: registry
+    type: public
+  ports:
+    - protocol: TCP
+      port: 443
+      targetPort: 5000
+      nodePort: 30000
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: e2e-registry-private
+  labels:
+    app: registry
+    type: private
+    component: argocd-image-updater-e2e
+data:
+  registry.conf: |
+    version: 0.1
+    storage:
+      filesystem:
+        rootdirectory: /var/lib/storage
+        maxthreads: 100
+    http:
+      addr: 0.0.0.0:5000
+      tls:
+        certificate: /tmp/config/registry.crt
+        key: /tmp/config/registry.key
+  registry.crt: |
+    -----BEGIN CERTIFICATE-----
+    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
+    E4GvTlf+S3U=
+    -----END CERTIFICATE-----
+
+  registry.key: |
+    -----BEGIN PRIVATE KEY-----
+    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
+    6s67HUzoeh083rX2A1SDRB95PGzWMu0=
+    -----END PRIVATE KEY-----
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: e2e-registry-private
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: registry
+      type: private
+      component: argocd-image-updater-e2e
+  template:
+    metadata:
+      labels:
+        app: registry
+        type: private
+        component: argocd-image-updater-e2e
+    spec:
+      containers:
+      - name: registry
+        command:
+        - registry
+        - serve
+        - /tmp/config/registry.conf
+        image: registry
+        ports:
+          - containerPort: 5000
+        volumeMounts:
+        - name: config
+          mountPath: /tmp/config
+      volumes:
+        - name: config
+          configMap:
+            name: e2e-registry-private
+            items:
+            - key: registry.conf
+              path: registry.conf
+            - key: registry.crt
+              path: registry.crt
+            - key: registry.key
+              path: registry.key
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: e2e-registry-private
+spec:
+  type: NodePort
+  selector:
+    app: registry
+    type: private
+  ports:
+    - protocol: TCP
+      port: 443
+      targetPort: 5000
+      nodePort: 30001
+---
+
