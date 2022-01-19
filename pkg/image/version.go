@@ -53,6 +53,14 @@ func (vc *VersionConstraint) String() string {
 	return vc.Constraint
 }
 
+func NewVersionConstraint() *VersionConstraint {
+	return &VersionConstraint{
+		MatchFunc: MatchFuncNone,
+		Strategy:  StrategySemVer,
+		Options:   options.NewManifestOptions(),
+	}
+}
+
 // GetNewestVersionFromTags returns the latest available version from a list of
 // tags while optionally taking a semver constraint into account. Returns the
 // original version if no new version could be found from the list of tags.
