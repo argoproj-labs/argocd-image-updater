@@ -515,7 +515,7 @@
           "refId": "A"
         },
         {
-          "expr": "sum by (registry) (increase(argocd_image_updater_registry_errors_total[1m]))",
+          "expr": "sum by (registry) (increase(argocd_image_updater_registry_requests_failed_total[1m]))",
           "interval": "",
           "legendFormat": "{{registry}} | errors",
           "refId": "B"
