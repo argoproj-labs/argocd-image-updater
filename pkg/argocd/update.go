@@ -202,6 +202,12 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 			WithMetadata(vc.Strategy.NeedsMetadata()).
 			WithLogger(imgCtx.AddField("application", app))
 
+		// If a strategy needs meta-data and tagsortmode is set for the
+		// registry, let the user know.
+		if rep.TagListSort > registry.TagListSortUnsorted && vc.Strategy.NeedsMetadata() {
+			imgCtx.Infof("taglistsort is set to '%s' but update strategy '%s' requires metadata. Results may not be what you expect.", rep.TagListSort.String(), vc.Strategy.String())
+		}
+
 		// The endpoint can provide default credentials for pulling images
 		err = rep.SetEndpointCredentials(updateConf.KubeClient)
 		if err != nil {

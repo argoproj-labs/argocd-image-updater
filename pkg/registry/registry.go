@@ -83,9 +83,9 @@ func (endpoint *RegistryEndpoint) GetTags(img *image.ContainerImage, regClient R
 	if (vc.Strategy != image.StrategyLatest && vc.Strategy != image.StrategyDigest) || endpoint.TagListSort.IsTimeSorted() {
 		for i, tagStr := range tags {
 			var ts int
-			if endpoint.TagListSort == SortLatestFirst {
+			if endpoint.TagListSort == TagListSortLatestFirst {
 				ts = len(tags) - i
-			} else if endpoint.TagListSort == SortLatestLast {
+			} else if endpoint.TagListSort == TagListSortLatestLast {
 				ts = i
 			}
 			imgTag := tag.NewImageTag(tagStr, time.Unix(int64(ts), 0), "")

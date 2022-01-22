@@ -19,9 +19,14 @@ import (
 type TagListSort int
 
 const (
-	SortUnsorted    TagListSort = 0
-	SortLatestFirst TagListSort = 1
-	SortLatestLast  TagListSort = 2
+	TagListSortUnknown           TagListSort = -1
+	TagListSortUnsorted          TagListSort = 0
+	TagListSortLatestFirst       TagListSort = 1
+	TagListSortLatestLast        TagListSort = 2
+	TagListSortUnsortedString    string      = "unsorted"
+	TagListSortLatestFirstString string      = "latest-first"
+	TagListSortLatestLastString  string      = "latest-last"
+	TagListSortUnknownString     string      = "unknown"
 )
 
 const (
@@ -31,22 +36,36 @@ const (
 
 // IsTimeSorted returns whether a tag list is time sorted
 func (tls TagListSort) IsTimeSorted() bool {
-	return tls == SortLatestFirst || tls == SortLatestLast
+	return tls == TagListSortLatestFirst || tls == TagListSortLatestLast
 }
 
 // TagListSortFromString gets the TagListSort value from a given string
 func TagListSortFromString(tls string) TagListSort {
 	switch strings.ToLower(tls) {
 	case "latest-first":
-		return SortLatestFirst
+		return TagListSortLatestFirst
 	case "latest-last":
-		return SortLatestLast
+		return TagListSortLatestLast
 	case "none", "":
-		return SortUnsorted
+		return TagListSortUnsorted
 	default:
 		log.Warnf("unknown tag list sort mode: %s", tls)
-		return SortUnsorted
+		return TagListSortUnknown
 	}
+}
+
+// String returns the string representation of a TagListSort value
+func (tls TagListSort) String() string {
+	switch tls {
+	case TagListSortLatestFirst:
+		return TagListSortLatestFirstString
+	case TagListSortLatestLast:
+		return TagListSortLatestLastString
+	case TagListSortUnsorted:
+		return TagListSortUnsortedString
+	}
+
+	return TagListSortUnknownString
 }
 
 // RegistryEndpoint holds information on how to access any specific registry API
