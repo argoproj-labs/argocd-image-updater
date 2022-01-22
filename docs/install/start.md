@@ -306,7 +306,7 @@ The following metrics are being made available:
 * Number of requests to the container registries (successful and failed)
 
     * `argocd_image_updater_registry_requests_total`
-    * `argocd_image_updater_registry_errors_total`
+    * `argocd_image_updater_registry_requests_failed_total`
 
 A (very) rudimentary example dashboard definition for Grafana is provided
 [here](https://github.com/argoproj-labs/argocd-image-updater/tree/master/config)
