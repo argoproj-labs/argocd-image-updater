@@ -50,6 +50,9 @@ func LoadRegistryConfiguration(path string, clear bool) error {
 
 	for _, reg := range registryList.Items {
 		tagSortMode := TagListSortFromString(reg.TagSortMode)
+		if tagSortMode != TagListSortUnsorted {
+			log.Warnf("Registry %s has tag sort mode set to %s, meta data retrieval will be disabled for this registry.", reg.ApiURL, tagSortMode)
+		}
 		err = AddRegistryEndpoint(reg.Prefix, reg.Name, reg.ApiURL, reg.Credentials, reg.DefaultNS, reg.Insecure, tagSortMode, reg.Limit, reg.CredsExpire)
 		if err != nil {
 			return err
@@ -85,9 +88,7 @@ func ParseRegistryConfiguration(yamlSource string) (RegistryList, error) {
 		}
 
 		if err == nil {
-			switch registry.TagSortMode {
-			case "latest-first", "latest-last", "none", "":
-			default:
+			if tls := TagListSortFromString(registry.TagSortMode); tls == TagListSortUnknown {
 				err = fmt.Errorf("unknown tag sort mode for registry %s: %s", registry.Name, registry.TagSortMode)
 			}
 		}

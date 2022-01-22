@@ -31,7 +31,7 @@ func Test_GetEndpoints(t *testing.T) {
 
 func Test_AddEndpoint(t *testing.T) {
 	t.Run("Add new endpoint", func(t *testing.T) {
-		err := AddRegistryEndpoint("example.com", "Example", "https://example.com", "", "", false, SortUnsorted, 5, 0)
+		err := AddRegistryEndpoint("example.com", "Example", "https://example.com", "", "", false, TagListSortUnsorted, 5, 0)
 		require.NoError(t, err)
 	})
 	t.Run("Get example.com endpoint", func(t *testing.T) {
@@ -43,17 +43,17 @@ func Test_AddEndpoint(t *testing.T) {
 		assert.Equal(t, ep.RegistryAPI, "https://example.com")
 		assert.Equal(t, ep.Insecure, false)
 		assert.Equal(t, ep.DefaultNS, "")
-		assert.Equal(t, ep.TagListSort, SortUnsorted)
+		assert.Equal(t, ep.TagListSort, TagListSortUnsorted)
 	})
 	t.Run("Change existing endpoint", func(t *testing.T) {
-		err := AddRegistryEndpoint("example.com", "Example", "https://example.com", "", "library", true, SortLatestFirst, 5, 0)
+		err := AddRegistryEndpoint("example.com", "Example", "https://example.com", "", "library", true, TagListSortLatestFirst, 5, 0)
 		require.NoError(t, err)
 		ep, err := GetRegistryEndpoint("example.com")
 		require.NoError(t, err)
 		require.NotNil(t, ep)
 		assert.Equal(t, ep.Insecure, true)
 		assert.Equal(t, ep.DefaultNS, "library")
-		assert.Equal(t, ep.TagListSort, SortLatestFirst)
+		assert.Equal(t, ep.TagListSort, TagListSortLatestFirst)
 	})
 }
 
@@ -122,22 +122,22 @@ func Test_DeepCopy(t *testing.T) {
 func Test_GetTagListSortFromString(t *testing.T) {
 	t.Run("Get latest-first sorting", func(t *testing.T) {
 		tls := TagListSortFromString("latest-first")
-		assert.Equal(t, SortLatestFirst, tls)
+		assert.Equal(t, TagListSortLatestFirst, tls)
 	})
 	t.Run("Get latest-last sorting", func(t *testing.T) {
 		tls := TagListSortFromString("latest-last")
-		assert.Equal(t, SortLatestLast, tls)
+		assert.Equal(t, TagListSortLatestLast, tls)
 	})
 	t.Run("Get none sorting explicit", func(t *testing.T) {
 		tls := TagListSortFromString("none")
-		assert.Equal(t, SortUnsorted, tls)
+		assert.Equal(t, TagListSortUnsorted, tls)
 	})
 	t.Run("Get none sorting implicit", func(t *testing.T) {
 		tls := TagListSortFromString("")
-		assert.Equal(t, SortUnsorted, tls)
+		assert.Equal(t, TagListSortUnsorted, tls)
 	})
-	t.Run("Get none sorting from unknown", func(t *testing.T) {
+	t.Run("Get unknown sorting from unknown string", func(t *testing.T) {
 		tls := TagListSortFromString("unknown")
-		assert.Equal(t, SortUnsorted, tls)
+		assert.Equal(t, TagListSortUnknown, tls)
 	})
 }

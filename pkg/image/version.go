@@ -24,6 +24,21 @@ const (
 	StrategyDigest UpdateStrategy = 3
 )
 
+func (us UpdateStrategy) String() string {
+	switch us {
+	case StrategySemVer:
+		return "semver"
+	case StrategyLatest:
+		return "latest"
+	case StrategyName:
+		return "name"
+	case StrategyDigest:
+		return "digest"
+	}
+
+	return "unknown"
+}
+
 // ConstraintMatchMode defines how the constraint should be matched
 type ConstraintMatchMode int
 
