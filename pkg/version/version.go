@@ -3,12 +3,11 @@ package version
 import (
 	"fmt"
 	"runtime"
-	"time"
 )
 
 var (
 	version    = "9.9.99"
-	buildDate  = time.Now().UTC().Format(time.RFC3339)
+	buildDate  = "1970-01-01T00:00:00Z"
 	gitCommit  = "unknown"
 	binaryName = "argocd-image-updater"
 )
