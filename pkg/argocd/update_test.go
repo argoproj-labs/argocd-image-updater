@@ -839,11 +839,11 @@ func Test_UpdateApplication(t *testing.T) {
 		assert.Equal(t, 0, res.NumImagesUpdated)
 	})
 
-	t.Run("Error - unknown registry", func(t *testing.T) {
+	t.Run("Update from infered registry", func(t *testing.T) {
 		mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
 			regMock := regmock.RegistryClient{}
 			regMock.On("NewRepository", mock.Anything).Return(nil)
-			regMock.On("Tags", mock.Anything).Return([]string{"1.0.1"}, nil)
+			regMock.On("Tags", mock.Anything).Return([]string{"1.0.1", "1.0.2"}, nil)
 			return &regMock, nil
 		}
 
@@ -863,7 +863,7 @@ func Test_UpdateApplication(t *testing.T) {
 					Source: v1alpha1.ApplicationSource{
 						Kustomize: &v1alpha1.ApplicationSourceKustomize{
 							Images: v1alpha1.KustomizeImages{
-								"example.io/jannfis/foobar:1.0.1",
+								"example.io/jannfis/example:1.0.1",
 							},
 						},
 					},
@@ -872,13 +872,13 @@ func Test_UpdateApplication(t *testing.T) {
 					SourceType: v1alpha1.ApplicationSourceTypeKustomize,
 					Summary: v1alpha1.ApplicationSummary{
 						Images: []string{
-							"example.io/jannfis/foobar:1.0.1",
+							"example.io/jannfis/example:1.0.1",
 						},
 					},
 				},
 			},
 			Images: image.ContainerImageList{
-				image.NewFromIdentifier("example.io/jannfis/foobar:1.0.1"),
+				image.NewFromIdentifier("example.io/jannfis/example:1.0.x"),
 			},
 		}
 		res := UpdateApplication(&UpdateConfiguration{
@@ -888,11 +888,11 @@ func Test_UpdateApplication(t *testing.T) {
 			UpdateApp:  appImages,
 			DryRun:     false,
 		}, NewSyncIterationState())
-		assert.Equal(t, 1, res.NumErrors)
+		assert.Equal(t, 0, res.NumErrors)
 		assert.Equal(t, 0, res.NumSkipped)
 		assert.Equal(t, 1, res.NumApplicationsProcessed)
 		assert.Equal(t, 1, res.NumImagesConsidered)
-		assert.Equal(t, 0, res.NumImagesUpdated)
+		assert.Equal(t, 1, res.NumImagesUpdated)
 	})
 
 	t.Run("Test error on generic registry client failure", func(t *testing.T) {

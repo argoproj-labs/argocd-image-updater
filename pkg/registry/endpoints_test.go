@@ -13,7 +13,7 @@ func Test_GetEndpoints(t *testing.T) {
 		ep, err := GetRegistryEndpoint("")
 		require.NoError(t, err)
 		require.NotNil(t, ep)
-		assert.Equal(t, ep.RegistryPrefix, "")
+		assert.Equal(t, "docker.io", ep.RegistryPrefix)
 	})
 	t.Run("Get GCR endpoint", func(t *testing.T) {
 		ep, err := GetRegistryEndpoint("gcr.io")
@@ -22,16 +22,18 @@ func Test_GetEndpoints(t *testing.T) {
 		assert.Equal(t, ep.RegistryPrefix, "gcr.io")
 	})
 
-	t.Run("Get non-existing endpoint", func(t *testing.T) {
+	t.Run("Infer endpoint", func(t *testing.T) {
 		ep, err := GetRegistryEndpoint("foobar.com")
-		assert.Error(t, err)
-		assert.Nil(t, ep)
+		require.NoError(t, err)
+		require.NotNil(t, ep)
+		assert.Equal(t, "foobar.com", ep.RegistryPrefix)
+		assert.Equal(t, "https://foobar.com", ep.RegistryAPI)
 	})
 }
 
 func Test_AddEndpoint(t *testing.T) {
 	t.Run("Add new endpoint", func(t *testing.T) {
-		err := AddRegistryEndpoint("example.com", "Example", "https://example.com", "", "", false, TagListSortUnsorted, 5, 0)
+		err := AddRegistryEndpoint(NewRegistryEndpoint("example.com", "Example", "https://example.com", "", "", false, TagListSortUnsorted, 5, 0))
 		require.NoError(t, err)
 	})
 	t.Run("Get example.com endpoint", func(t *testing.T) {
@@ -46,7 +48,7 @@ func Test_AddEndpoint(t *testing.T) {
 		assert.Equal(t, ep.TagListSort, TagListSortUnsorted)
 	})
 	t.Run("Change existing endpoint", func(t *testing.T) {
-		err := AddRegistryEndpoint("example.com", "Example", "https://example.com", "", "library", true, TagListSortLatestFirst, 5, 0)
+		err := AddRegistryEndpoint(NewRegistryEndpoint("example.com", "Example", "https://example.com", "", "library", true, TagListSortLatestFirst, 5, 0))
 		require.NoError(t, err)
 		ep, err := GetRegistryEndpoint("example.com")
 		require.NoError(t, err)
@@ -101,6 +103,24 @@ func Test_EndpointConcurrentAccess(t *testing.T) {
 			}(i)
 		}
 	})
+}
+
+func Test_SetDefault(t *testing.T) {
+	dep := GetDefaultRegistry()
+	require.NotNil(t, dep)
+	assert.Equal(t, "docker.io", dep.RegistryPrefix)
+	assert.True(t, dep.IsDefault)
+
+	ep, err := GetRegistryEndpoint("ghcr.io")
+	require.NoError(t, err)
+	require.NotNil(t, ep)
+	require.False(t, ep.IsDefault)
+
+	SetDefaultRegistry(ep)
+	assert.True(t, ep.IsDefault)
+	assert.False(t, dep.IsDefault)
+	require.NotNil(t, GetDefaultRegistry())
+	assert.Equal(t, ep.RegistryPrefix, GetDefaultRegistry().RegistryPrefix)
 }
 
 func Test_DeepCopy(t *testing.T) {

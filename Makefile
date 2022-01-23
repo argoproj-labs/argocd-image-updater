@@ -62,6 +62,9 @@ mod-vendor:
 test:
 	go test -coverprofile coverage.out `go list ./... | egrep -v '(test|mocks|ext/)'`
 
+test-race:
+	go test -race -coverprofile coverage.out `go list ./... | egrep -v '(test|mocks|ext/)'`
+
 .PHONY: prereq
 prereq:
 	mkdir -p dist
