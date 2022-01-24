@@ -40,6 +40,7 @@ type ImageUpdaterConfig struct {
 	MetricsPort         int
 	RegistriesConf      string
 	AppNamePatterns     []string
+	AppLabel            string
 	GitCommitUser       string
 	GitCommitMail       string
 	GitCommitMessage    *template.Template

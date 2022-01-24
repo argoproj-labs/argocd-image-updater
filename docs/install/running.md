@@ -116,6 +116,16 @@ style wildcards, i.e. `*-staging` would match any application name with a
 suffix of `-staging`. Can be specified multiple times to define more than
 one pattern, from which at least one has to match.
 
+**--match-application-label *label* **
+
+Only process applications that have a valid annotation and match the given
+*label*. The *label* is a string that matches the standard kubernetes label 
+syntax of `key=value`. For e.g, `custom.label/name=xyz` would be a valid label
+that can be supplied through this parameter. Any applications carrying this 
+exact label will be considered as candidates for image updates. This parameter
+currently does not support patten matching on label values (e.g `customer.label/name=*-staging`)
+and only accepts a single label to match applications against. 
+
 **--max-concurrency *number* **
 
 Process a maximum of *number* applications concurrently. To disable concurrent

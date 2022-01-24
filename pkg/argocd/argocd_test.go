@@ -203,7 +203,7 @@ func Test_FilterApplicationsForUpdate(t *testing.T) {
 				},
 			},
 		}
-		filtered, err := FilterApplicationsForUpdate(applicationList, []string{})
+		filtered, err := FilterApplicationsForUpdate(applicationList, []string{}, "")
 		require.NoError(t, err)
 		require.Len(t, filtered, 1)
 		require.Contains(t, filtered, "app1")
@@ -255,11 +255,52 @@ func Test_FilterApplicationsForUpdate(t *testing.T) {
 				},
 			},
 		}
-		filtered, err := FilterApplicationsForUpdate(applicationList, []string{"app*"})
+		filtered, err := FilterApplicationsForUpdate(applicationList, []string{"app*"}, "")
 		require.NoError(t, err)
 		require.Len(t, filtered, 2)
 		require.Contains(t, filtered, "app1")
 		require.Contains(t, filtered, "app2")
+		assert.Len(t, filtered["app1"].Images, 2)
+	})
+
+	t.Run("Filter for applications with label", func(t *testing.T) {
+		applicationList := []v1alpha1.Application{
+			// Annotated and carries required label
+			{
+				ObjectMeta: v1.ObjectMeta{
+					Name:      "app1",
+					Namespace: "argocd",
+					Annotations: map[string]string{
+						common.ImageUpdaterAnnotation: "nginx, quay.io/dexidp/dex:v1.23.0",
+					},
+					Labels: map[string]string{
+						"custom.label/name": "xyz",
+					},
+				},
+				Spec: v1alpha1.ApplicationSpec{},
+				Status: v1alpha1.ApplicationStatus{
+					SourceType: v1alpha1.ApplicationSourceTypeKustomize,
+				},
+			},
+			// Annotated but does not carry required label
+			{
+				ObjectMeta: v1.ObjectMeta{
+					Name:      "app2",
+					Namespace: "argocd",
+					Annotations: map[string]string{
+						common.ImageUpdaterAnnotation: "nginx, quay.io/dexidp/dex:v1.23.0",
+					},
+				},
+				Spec: v1alpha1.ApplicationSpec{},
+				Status: v1alpha1.ApplicationStatus{
+					SourceType: v1alpha1.ApplicationSourceTypeHelm,
+				},
+			},
+		}
+		filtered, err := FilterApplicationsForUpdate(applicationList, []string{}, "custom.label/name=xyz")
+		require.NoError(t, err)
+		require.Len(t, filtered, 1)
+		require.Contains(t, filtered, "app1")
 		assert.Len(t, filtered["app1"].Images, 2)
 	})
 
