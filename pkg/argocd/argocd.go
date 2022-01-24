@@ -145,10 +145,34 @@ func nameMatchesPattern(name string, patterns []string) bool {
 	return false
 }
 
+// Match app labels against provided filter label
+func matchAppLabels(appName string, appLabels map[string]string, filterLabel string) bool {
+
+	if filterLabel == "" {
+		return true
+	}
+
+	filterLabelMap, err := parseLabel(filterLabel)
+	if err != nil {
+		log.Errorf("Unable match app labels against %s: %s", filterLabel, err)
+		return false
+	}
+
+	for filterLabelKey, filterLabelValue := range filterLabelMap {
+		log.Tracef("Matching application name %s against label %s", appName, filterLabel)
+		if appLabelValue, ok := appLabels[filterLabelKey]; ok {
+			if appLabelValue == filterLabelValue {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // Retrieve a list of applications from ArgoCD that qualify for image updates
 // Application needs either to be of type Kustomize or Helm and must have the
 // correct annotation in order to be considered.
-func FilterApplicationsForUpdate(apps []v1alpha1.Application, patterns []string) (map[string]ApplicationImages, error) {
+func FilterApplicationsForUpdate(apps []v1alpha1.Application, patterns []string, appLabel string) (map[string]ApplicationImages, error) {
 	var appsForUpdate = make(map[string]ApplicationImages)
 
 	for _, app := range apps {
@@ -169,6 +193,12 @@ func FilterApplicationsForUpdate(apps []v1alpha1.Application, patterns []string)
 		// Check if application name matches requested patterns
 		if !nameMatchesPattern(app.GetName(), patterns) {
 			logCtx.Debugf("Skipping app '%s' because it does not match requested patterns", app.GetName())
+			continue
+		}
+
+		// Check if application carries requested label
+		if !matchAppLabels(app.GetName(), app.GetLabels(), appLabel) {
+			logCtx.Debugf("Skipping app '%s' because it does not carry requested label", app.GetName())
 			continue
 		}
 
@@ -196,6 +226,20 @@ func parseImageList(annotations map[string]string) *image.ContainerImageList {
 		}
 	}
 	return &results
+}
+
+func parseLabel(inputLabel string) (map[string]string, error) {
+	var selectedLabels map[string]string
+	const labelFieldDelimiter = "="
+	if inputLabel != "" {
+		selectedLabels = map[string]string{}
+		fields := strings.Split(inputLabel, labelFieldDelimiter)
+		if len(fields) != 2 {
+			return nil, fmt.Errorf("labels should have key%svalue, but instead got: %s", labelFieldDelimiter, inputLabel)
+		}
+		selectedLabels[fields[0]] = fields[1]
+	}
+	return selectedLabels, nil
 }
 
 // GetApplication gets the application named appName from Argo CD API
