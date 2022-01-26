@@ -1,43 +1,21 @@
 # Example configuration for argocd-image-controller
-
-# Registry configuration. Each registry must have the following properties:
-# 
-# name (string)
-#   A name for the registry. Can be anything basically.
-# api_url (string)
-#   API endpoint URL
-# prefix: (string)
-#   The prefix for images from this registry
-# ping: (boolean) 
-#   Whether to perform a request on /v2 endpoint initially. Some registries
-#   do not support this.
-# credentials: (string)
-#   The credentials to use for the registry. See "specifying credentials" in
-#   the documentation for string format.
-# 
-# Exactly one registry can be specified without a prefix, which is then used
-# as the default registry for images. Most likely, this will be Docker Hub.
-#
-# Each prefix can be specified exactly once. There must not be more than one
-# registry with the same prefix configured.
 registries:
-- name: Docker Hub
+- name: Docker Hub 
   api_url: https://registry-1.docker.io
-  ping: yes
+  prefix: docker.io
   credentials: env:SOME_ENV_VAR
+  default: true
+  defaultns: library
 - name: Google Container Registry
   api_url: https://gcr.io
   prefix: gcr.io
-  ping: no
   credentials: pullsecret:foo/bar
 - name: RedHat Quay
   api_url: https://quay.io
-  ping: no
   prefix: quay.io
   credentials: secret:foo/bar#creds
 - name: GitHub Container Registry
   api_url: https://ghcr.io
-  ping: no
   prefix: ghcr.io
   credentials: ext:/some/script
   credsexpire: 5h

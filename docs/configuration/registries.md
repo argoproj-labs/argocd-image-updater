@@ -1,128 +1,201 @@
-# Configuring Container Registries
+# Configuration of Container Registries
 
-Argo CD Image Updater comes with support for the following registries out of the
-box:
+## <a name="supported-registries"></a>Supported registries
 
-* Docker Hub Registry
-* Google Container Registry (*gcr.io*)
-* RedHat Quay Registry (*quay.io*)
-* GitHub Docker Packages (*docker.pkg.github.com*)
-* GitHub Container Registry (*ghcr.io*)
+Argo CD Image Updater comes with out of the box support for most container
+registries that implement the Docker registry v2 API.
 
-Adding additional (and custom) container registries is supported by means of a
-configuration file. If you run Argo CD Image Updater within Kubernetes, you can
-edit the registries in a ConfigMap resource, which will get mounted to the pod
-running Argo CD Image Updater.
+It has been successfully tested against the following popular registries:
 
-## Configuring a custom container registry
+* Docker Hub (`docker.io`)
+* Docker Registry v2 reference implementation (on-premise)
+* Red Hat Quay (`quay.io` and on-premise)
+* JFrog Artifactory (`jfrog.io` and on-premise)
+* GitHub Container Registry (`ghcr.io`)
+* GitHub Packages Registry (`docker.pkg.github.com`)
+* GitLab Container Registry (`registry.gitlab.com`)
+* Google Container Registry (`gcr.io`)
 
-A sample configuration configuring a couple of registries might look like the
-following:
+Chances are, that it will work out of the box for other registries as well.
+
+If you have a registry that doesn't work with Argo CD Image Updater, please
+let us know.
+
+## <a name="custom-registry-when"></a>When to configure a custom registry?
+
+Generally, there is no need to configure custom registries. Image Updater will
+infer the registry from the image slug, e.g. if you are using an image that is
+defined as `ghcr.io/somerepo/someimage`, Image Updater will infer the registry
+from the `ghcr.io` prefix and use the Docker registry at `https://ghcr.io/v2`.
+
+However, there may be reasons when you need to configure a custom registry, or
+adapt the default settings to your requirements:
+
+* Your registry uses a self-signed (or not publicly known) TLS certificate,
+  and you want to either turn off TLS certificate verification or provide a
+  custom CA certificate to be used for verification
+
+* Your registry has its API endpoint at a different location. One notable
+  example is Docker Hub, which uses `docker.io` as image prefix but the
+  registry is at `registry-1.docker.io`. However, this quirk related to
+  Docker Hub has been accounted for in Argo CD Image Updater, so you won't
+  have to configure Docker Hub as a custom registry.
+
+* You want to use a certain registry with deviations from the default settings,
+  such as setting a custom rate limit, or configuring global credentials for
+  accessing that registry.
+
+* Your cluster's container engine is set up to use a different registry than
+  `docker.io` as the default so that it does not pull images from Docker Hub
+  when no prefix is specified, but e.g. from an on-premise registry.
+
+## Can I use my registry without further configuration?
+
+There is an easy way to find out by running the argocd-image-updater CLI in
+[test mode](../install/testing.md). You can run the CLI either from your
+workstation (if the registry is reachable from there) or from the pod deployed
+to your cluster.
+
+Assuming you have an image at `myregistry.com/somerepo/someimage`, and you
+want to find out if Argo CD Image Updater could possibly connect to that
+specific registry at `myregistry.com` and gather information about the image,
+run the following command:
+
+```
+argocd-image-updater test myregistry.com/somerepo/someimage
+```
+
+You may also want to pass some options to that command to set the appropriate
+[update strategy](../basics/update-strategies.md)
+or
+[credentials](../basics/authentication.md)
+to access the registy.
+
+The `argocd-image-updater test` command won't perform any modifications to
+your cluster or your workloads.
+
+## <a name="custom-registries"></a>Configuring custom registries
+### <a name="registry-configuration-format"></a>Configuration format
+
+Registries are configured in a configuration file in YAML syntax. That YAML
+must have a top level key of `registries`, which holds a list of registries
+to be configured. Each item in the list represents a single registry. You
+can add as many registries as you like.
+
+The following properties can be set to configure a registry. Most of these
+properties are optional, unless otherwise stated:
+
+  * `name` (mandatory) - The symbolic name for your registry. Can be any string,
+    used only for informational purposes.
+
+    Default value: _none_
+
+    Example value: `My Custom Registry`
+
+  * `prefix` - (mandatory) The lookup prefix for this registry. Must match a DNS
+    name, and must be unique in the configuration.
+
+    Default value: _none_
+
+    Example value: `docker.io`
+
+  * `api_url` - The URL to the API of the Docker registry. Must be a HTTP or
+    HTTPS URL.
+
+    Default value: _none_
+
+    Example value: `https://registry-1.docker.io`
+
+  * `defaultns`- Some registries (notably Docker Hub) have a default namespace,
+    which can be specified here.
+
+    Default value: _none_
+
+    Example value: `library`
+
+  * `default` - If set to true, use this registry as the default registry.
+   
+    Default value: `false`
+
+    Example value: `true`
+   
+  * `credentials` - A string describing the credential source to use when
+    accessing this registry and no other credentials are configured on the
+    image level. For more information, refer to
+    [Authenticating to container registries](../../basics/authentication/#auth-registries).
+
+    Default value: _none_
+
+    Example value: `pullsecret:argocd/dockerhub-secret`
+
+  * `credsexpire` - Whether and when credentials should expire and be
+    re-fetched. Must be specified as _Duration_ value, with an integer value
+    and a unit suffix, i.e. `s` for seconds, `m` for minutes, or `h` for hours.
+
+    Default value: _none (no expiry)_
+
+    Example value: `5h`
+  
+  * `insecure` - Whether to turn off verification of the registry's TLS
+    certificate. As the name implies, it's insecure and should not be used in
+    production environments
+
+    Default value: `false`
+
+    Example value: `true`
+
+  * `limit` - The rate limit (max. number of requests per second) to use for
+    this registry, specified as integer.
+
+    Default value: `20`
+
+    Example value: `100`
+
+The following is an example that configures two registries.
 
 ```yaml
 registries:
 - name: Docker Hub
+  prefix: docker.io
   api_url: https://registry-1.docker.io
-  ping: yes
   credentials: secret:foo/bar#creds
   defaultns: library
-- name: Google Container Registry
-  api_url: https://gcr.io
-  prefix: gcr.io
-  ping: no
-  credentials: pullsecret:foo/bar
+  default: true
 - name: RedHat Quay
   api_url: https://quay.io
-  ping: no
   prefix: quay.io
   insecure: yes
   credentials: env:REGISTRY_SECRET
-- name: GitHub Docker Packages
-  prefix: docker.pkg.github.com
-  api_url: https://docker.pkg.github.com
-  ping: no
-  tagsortmode: latest-first
-- name: GitHub Container Registry
-  prefix: ghcr.io
-  api_url: https://docker.pkg.github.com
-  ping: no
-  tagsortmode: latest-last
 ```
 
-The above example defines access to three registries. The properties have the
-following semantics:
+When running Argo CD Image Updater from the command line (e.g. using the `test`
+command), the path to this YAML file can be specified with the command line
+parameter `--registries-conf-path <path>`.
 
-* `name` is just a symbolic name for the registry. Must be unique.
-
-* `api_url` is the base URL (without `/v2` suffix) to the API of the registry
-
-* `ping` specifies whether to send a ping request to `/v2` endpoint first.
-  Some registries don't support this.
-
-* `prefix` is the prefix used in the image specification. This prefix will
-  be consulted when determining the configuration for given image(s). If no
-  prefix is specified, will be used as the default registry. The prefix is
-  mandatory, except for one of the registries in the configuration.
-
-* `credentials` (optional) is a reference to the credentials to use for
-  accessing the registry API (see below). Credentials can also be specified
-  [per image](../images/#specifying-pull-secrets)
-
-* `credsexpire` (optional) can be used to set an expiry time for the
-   credentials. The value must be in a `time.Duration` compatible format,
-   having a unit suffix, i.e. `5s` for 5 seconds or `2h` for 2 hours. The
-   value should be positive, and `0` can be used to disable it (the default).
-
-   From the golang documentation:
-
-   > A duration string is a possibly signed sequence of decimal numbers, each with optional fraction and a unit suffix, such as "300ms", "-1.5h" or "2h45m". Valid time units are "ns", "us" (or "µs"), "ms", "s", "m", "h".
-
-* `insecure` (optional) if set to true, does not validate the TLS certificate
-  for the connection to the registry. Use with care.
-
-* `defaultns` (optional) defines a default namespace for images that do not
-  specify one. For example, Docker Hub uses the default namespace `library`
-  which turns an image specification of `nginx:latest` into the canonical name
-  `library/nginx:latest`.
-
-* `tagsortmode` (optional) defines whether and how the list of tags is sorted
-  chronologically by the registry. Valid values are `latest-first` (the last
-  pushed image will appear first in list), `latest-last` (the last pushed image
-  will appear last in list) or `none` (the default, list is not chronological
-  sorted). If `tagsortmode` is set to one of `latest-first` or `latest-last`,
-  Argo CD Image Updater will not request additional meta data from the registry
-  if the `<image_alias>.sort-mode` is `latest` but will instead use the sorting
-  from the tag list.
-
-If you want to take above example to the `argocd-image-updater-config` ConfigMap,
-you need to define the key `registries.conf` in the data of the ConfigMap as
-below:
+If you are running Argo CD Image Updater as a Kubernetes workload, you will
+need to tie that up in the `argocd-image-updater-config` ConfigMap, as a multi
+line string under the `registries.conf` key, e.g.:
 
 ```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-image-updater-config
 data:
   registries.conf: |
     registries:
     - name: Docker Hub
+      prefix: docker.io
       api_url: https://registry-1.docker.io
-      ping: yes
       credentials: secret:foo/bar#creds
       defaultns: library
-    - name: Google Container Registry
-      api_url: https://gcr.io
-      prefix: gcr.io
-      ping: no
-      credentials: pullsecret:foo/bar
+      default: true
     - name: RedHat Quay
       api_url: https://quay.io
-      ping: no
       prefix: quay.io
+      insecure: yes
       credentials: env:REGISTRY_SECRET
-    - name: GitHub Container Registry
-      api_url: https://ghcr.io
-      ping: no
-      prefix: ghcr.io
-      credentials: ext:/custom/ghcr-creds.sh.io
-      credsexpire: 5h
+
 ```
 
 !!!note
@@ -130,45 +203,117 @@ data:
     configuration to take effect. There are plans to change this behaviour so
     that changes will be reload automatically in a future release.
 
-## Specifying credentials for accessing container registries
+### <a name="default-registry"></a>Configuring a default registry
 
-You can optionally specify a reference to a secret or an environment variable
-which contain credentials for accessing the container registry. If credentials
-are configured for a registry, they will be used as a default when accessing
-the registry and no dedicated credential is specified for the image that is
-being processed.
+!!!warning
+    When you change the default registry for Argo CD Image Updater, make sure
+    it matches the default registry set up in your cluster. If the default
+    registries mismatch between the Argo CD Image Updater and your cluster,
+    it is going to break your workloads.
 
-Credentials can be referenced as follows:
+Most container engines will follow Docker's approach and use Docker Hub as the
+default registry when no registry is specified in the image's reference. For
+example, in most environments, the two image references `argoproj/argocd` and
+`docker.io/argoproj/argocd` are semantically the same, and would refer to the
+same image stored in Docker Hub's registry. You can configure the default
+registry if your cluster's container engine is configured to use a different
+default registry than `docker.io`, which is the default for Argo CD Image
+Updater in the standard configuration.
 
-* A typical pull secret, i.e. a secret containing a `.dockerconfigjson` field
-  which holds a Docker client configuration with auth information in JSON
-  format. This kind of secret is specified using the notation
-  `pullsecret:<namespace>/<secret_name>`
+In order to set another registry to be used as default, you will have to set
+the registry's `default` property to `true`, e.g. the following:
 
-* A custom secret, which has the credentials stored in a configurable field in
-  the format `<username>:<password>`. This kind of secret is specified using
-  the notation `secret:<namespace>/<secret_name>#<field_in_secret>`
+```yaml
+registries:
+- name: RedHat Quay
+  api_url: https://quay.io
+  prefix: quay.io
+  default: true
+```
 
-* An environment variable which holds the credentials in the format
-  `<username>:<password>`. This kind of secret is specified using the notation
-  `env:<env_var_name>`.
+would make `quay.io` the default registry, so `argoproj/argocd` would become
+synonymous to `quay.io/argoproj/argocd`.
 
-* A script that outputs credentials on a single line to stdout, in the format
-  `<username:password>`. This can be used to support external authentication
-  mechanisms. You can specify this kind of secret in the notation
-  `ext:/path/to/script`. Please note that the script must be referenced as
-  absolute path, and must be executable (i.e. have the `+x` bit set). You
-  can add scripts to `argocd-image-updater` by using an init container.
+Please note that you can only configure one registry as the default registry.
+If you set `default` to `true` for more than one registry's configuration,
+Argo CD Image Updater will not load that configuration.
 
-## Credentials caching
+Also note, as stated previously, Docker Hub (i.e. `docker.io`) is the default
+used by Image Updater without any additional configuration.
+
+### <a name="default-namespace"></a>Configuring a registry's default namespace
+
+Some registries provide a default namespace, that is, a namespace that doesn't
+have to be specified in the image's slug. A good example for that is the
+implicit `library` namespace on Docker Hub, that allows you to pull an image
+from that library by just specifying the name of the image. Consider e.g. the
+command `docker pull nginx`, which will pull from `docker.io/library/nginx`.
+
+If your registry supports a default namespace and you would like this to be
+used with Image Updater, you can configure this by setting the `defaultns`
+property of the registry to the name of the namespace to use as the default.
+
+The canonical example for Docker Hub would be:
+
+```yaml
+registries:
+- name: Docker Hub
+  api_url: https://registry-1.docker.io
+  prefix: docker.io
+  defaultns: library
+```
+
+### <a name="rate-limit"></a>Configuring a request rate limit for your registry
+
+Some registries might be picky about how many requests per time they let you
+perform from a client's connection. In order to play nicely, and to prevent
+Image Updater from triggering rate limit failures on your registry, you can
+set a rate limit for each of the registries you are using.
+
+The rate limit can currently be configured as _requests per second_ allowed
+and is specified via the `limit` configuration property. It takes an integer
+as argument.
+
+For example, the following connection would cap requests to `quay.io` to 10
+per second:
+
+```yaml
+registries:
+- name: RedHat Quay
+  api_url: https://quay.io
+  prefix: quay.io
+  limit: 10
+```
+
+Please note that the limit considers all HTTP requests sent to the registry.
+For inspecting a single tag of any given image, Image Updater may require
+performing multiple requests to the registry.
+
+The default for all registries is 20 requests per second. If your registry
+doesn't impose limits upon you, raising this limit may significantly speed
+up Argo CD Image Updater. But please be considerate and careful before you
+increase the limit.
+
+### <a name="registry-credentials"></a>Configuring default credentials for container registries
+
+If you require authentication for accessing your registry, you can configure
+a set of default credentials to use. If you have configured the credentials
+on the registry level, it will be reused for any image processed from that
+registry, unless an image configuration overrides it. A benefit of having
+the credentials configured at the registry level is
+
+Registry credentials are configured using the `credentials` property of a
+registry's configuration.
+
+### <a name="credentials-caching"></a>Credentials caching
 
 By default, credentials specified in registry configuration are read once on
 startup and then cached until `argocd-image-updater` is restarted. There are
 two strategies to overcome this:
 
-* Use per-image credentials in annotations - credentials will be read every
-  time an image update cycle is performed, and your credentials will always
-  be up-to-date (i.e. if you update a secret).
+* Use per-image credentials in annotations - credentials will be read from
+  their source every time an image update cycle is performed, and your
+  credentials will always be up-to-date (i.e. if you update a secret).
 
 * Specify credential expiry time in the registry configuration - if set, the
   registry credentials will have a defined lifetime, and will be re-read from
