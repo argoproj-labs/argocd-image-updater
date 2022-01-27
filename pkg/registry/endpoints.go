@@ -85,76 +85,50 @@ type RegistryEndpoint struct {
 	TagListSort    TagListSort
 	Cache          cache.ImageTagCache
 	Limiter        ratelimit.Limiter
+	IsDefault      bool
 	lock           sync.RWMutex
+	limit          int
 }
 
-// Map of configured registries, pre-filled with some well-known registries
-var defaultRegistries map[string]*RegistryEndpoint = map[string]*RegistryEndpoint{
-	"": {
+// registryTweaks should contain a list of registries whose settings cannot be
+// infered by just looking at the image prefix. Prominent example here is the
+// Docker Hub registry, which is refered to as docker.io from the image, but
+// its API endpoint is https://registry-1.docker.io (and not https://docker.io)
+var registryTweaks map[string]*RegistryEndpoint = map[string]*RegistryEndpoint{
+	"docker.io": {
 		RegistryName:   "Docker Hub",
-		RegistryPrefix: "",
+		RegistryPrefix: "docker.io",
 		RegistryAPI:    "https://registry-1.docker.io",
 		Ping:           true,
 		Insecure:       false,
 		DefaultNS:      "library",
 		Cache:          cache.NewMemCache(),
 		Limiter:        ratelimit.New(RateLimitDefault),
-	},
-	"gcr.io": {
-		RegistryName:   "Google Container Registry",
-		RegistryPrefix: "gcr.io",
-		RegistryAPI:    "https://gcr.io",
-		Ping:           false,
-		Insecure:       false,
-		Cache:          cache.NewMemCache(),
-		Limiter:        ratelimit.New(RateLimitDefault),
-	},
-	"quay.io": {
-		RegistryName:   "RedHat Quay",
-		RegistryPrefix: "quay.io",
-		RegistryAPI:    "https://quay.io",
-		Ping:           false,
-		Insecure:       false,
-		Cache:          cache.NewMemCache(),
-		Limiter:        ratelimit.New(RateLimitDefault),
-	},
-	"docker.pkg.github.com": {
-		RegistryName:   "GitHub packages",
-		RegistryPrefix: "docker.pkg.github.com",
-		RegistryAPI:    "https://docker.pkg.github.com",
-		Ping:           false,
-		Insecure:       false,
-		Cache:          cache.NewMemCache(),
-		Limiter:        ratelimit.New(RateLimitDefault),
-	},
-	"ghcr.io": {
-		RegistryName:   "GitHub Container Registry",
-		RegistryPrefix: "ghcr.io",
-		RegistryAPI:    "https://ghcr.io",
-		Ping:           false,
-		Insecure:       false,
-		Cache:          cache.NewMemCache(),
-		Limiter:        ratelimit.New(RateLimitDefault),
+		IsDefault:      true,
 	},
 }
 
 var registries map[string]*RegistryEndpoint = make(map[string]*RegistryEndpoint)
 
+// Default registry points to the registry that is to be used as the default,
+// e.g. when no registry prefix is given for a certain image.
+var defaultRegistry *RegistryEndpoint
+
 // Simple RW mutex for concurrent access to registries map
 var registryLock sync.RWMutex
 
 func AddRegistryEndpointFromConfig(epc RegistryConfiguration) error {
-	return AddRegistryEndpoint(epc.Prefix, epc.Name, epc.ApiURL, epc.Credentials, epc.DefaultNS, epc.Insecure, TagListSortFromString(epc.TagSortMode), epc.Limit, epc.CredsExpire)
+	ep := NewRegistryEndpoint(epc.Prefix, epc.Name, epc.ApiURL, epc.Credentials, epc.DefaultNS, epc.Insecure, TagListSortFromString(epc.TagSortMode), epc.Limit, epc.CredsExpire)
+	return AddRegistryEndpoint(ep)
 }
 
-// AddRegistryEndpoint adds registry endpoint information with the given details
-func AddRegistryEndpoint(prefix, name, apiUrl, credentials, defaultNS string, insecure bool, tagListSort TagListSort, limit int, credsExpire time.Duration) error {
-	registryLock.Lock()
-	defer registryLock.Unlock()
+// NewRegistryEndpoint returns an endpoint object with the given configuration
+// pre-populated and a fresh cache.
+func NewRegistryEndpoint(prefix, name, apiUrl, credentials, defaultNS string, insecure bool, tagListSort TagListSort, limit int, credsExpire time.Duration) *RegistryEndpoint {
 	if limit <= 0 {
 		limit = RateLimitNone
 	}
-	registries[prefix] = &RegistryEndpoint{
+	ep := &RegistryEndpoint{
 		RegistryName:   name,
 		RegistryPrefix: prefix,
 		RegistryAPI:    strings.TrimSuffix(apiUrl, "/"),
@@ -165,28 +139,97 @@ func AddRegistryEndpoint(prefix, name, apiUrl, credentials, defaultNS string, in
 		DefaultNS:      defaultNS,
 		TagListSort:    tagListSort,
 		Limiter:        ratelimit.New(limit),
+		limit:          limit,
 	}
+	return ep
+}
+
+// AddRegistryEndpoint adds registry endpoint information with the given details
+func AddRegistryEndpoint(ep *RegistryEndpoint) error {
+	prefix := ep.RegistryPrefix
+
+	registryLock.Lock()
+	// If the endpoint is supposed to be the default endpoint, make sure that
+	// any previously set default endpoint is unset.
+	if ep.IsDefault {
+		if dep := GetDefaultRegistry(); dep != nil {
+			dep.IsDefault = false
+		}
+		SetDefaultRegistry(ep)
+	}
+	registries[prefix] = ep
+	registryLock.Unlock()
 
 	logCtx := log.WithContext()
-	logCtx.AddField("registry", registries[prefix].RegistryAPI)
-	logCtx.AddField("prefix", registries[prefix].RegistryPrefix)
-	if limit != RateLimitNone {
-		logCtx.Debugf("setting rate limit to %d requests per second", limit)
+	logCtx.AddField("registry", ep.RegistryAPI)
+	logCtx.AddField("prefix", ep.RegistryPrefix)
+	if ep.limit != RateLimitNone {
+		logCtx.Debugf("setting rate limit to %d requests per second", ep.limit)
 	} else {
 		logCtx.Debugf("rate limiting is disabled")
 	}
 	return nil
 }
 
+// inferRegistryEndpointFromPrefix returns a registry endpoint with the API
+// URL infered from the prefix and adds it to the list of the configured
+// registries.
+func inferRegistryEndpointFromPrefix(prefix string) *RegistryEndpoint {
+	apiURL := "https://" + prefix
+	return NewRegistryEndpoint(prefix, prefix, apiURL, "", "", false, TagListSortUnsorted, 20, 0)
+}
+
 // GetRegistryEndpoint retrieves the endpoint information for the given prefix
 func GetRegistryEndpoint(prefix string) (*RegistryEndpoint, error) {
+	if prefix == "" {
+		if defaultRegistry == nil {
+			return nil, fmt.Errorf("no default endpoint configured")
+		} else {
+			return defaultRegistry, nil
+		}
+	}
+
 	registryLock.RLock()
-	defer registryLock.RUnlock()
-	if registry, ok := registries[prefix]; ok {
+	registry, ok := registries[prefix]
+	registryLock.RUnlock()
+
+	if ok {
 		return registry, nil
 	} else {
-		return nil, fmt.Errorf("no registry with prefix '%s' configured", prefix)
+		var err error
+		ep := inferRegistryEndpointFromPrefix(prefix)
+		if ep != nil {
+			err = AddRegistryEndpoint(ep)
+		} else {
+			err = fmt.Errorf("could not infer registry configuration from prefix %s", prefix)
+		}
+		if err == nil {
+			log.Debugf("Infered registry from prefix %s to use API %s", prefix, ep.RegistryAPI)
+		}
+		return ep, err
 	}
+}
+
+// SetDefaultRegistry sets a given registry endpoint as the default
+func SetDefaultRegistry(ep *RegistryEndpoint) {
+	log.Debugf("Setting default registry endpoint to %s", ep.RegistryPrefix)
+	ep.IsDefault = true
+	if defaultRegistry != nil {
+		log.Debugf("Previous default registry was %s", defaultRegistry.RegistryPrefix)
+		defaultRegistry.IsDefault = false
+	}
+	defaultRegistry = ep
+}
+
+// GetDefaultRegistry returns the registry endpoint that is set as default,
+// or nil if no default registry endpoint is set
+func GetDefaultRegistry() *RegistryEndpoint {
+	if defaultRegistry != nil {
+		log.Debugf("Getting default registry endpoint: %s", defaultRegistry.RegistryPrefix)
+	} else {
+		log.Debugf("No default registry defined.")
+	}
+	return defaultRegistry
 }
 
 // SetRegistryEndpointCredentials allows to change the credentials used for
@@ -229,6 +272,8 @@ func (ep *RegistryEndpoint) DeepCopy() *RegistryEndpoint {
 	newEp.Limiter = ep.Limiter
 	newEp.CredsExpire = ep.CredsExpire
 	newEp.CredsUpdated = ep.CredsUpdated
+	newEp.IsDefault = ep.IsDefault
+	newEp.limit = ep.limit
 	ep.lock.RUnlock()
 	return newEp
 }
@@ -245,8 +290,16 @@ func (ep *RegistryEndpoint) GetTransport() *http.Transport {
 	}
 }
 
+// init initializes the registry configuration
 func init() {
-	for k, v := range defaultRegistries {
+	for k, v := range registryTweaks {
 		registries[k] = v.DeepCopy()
+		if v.IsDefault {
+			if defaultRegistry == nil {
+				defaultRegistry = v
+			} else {
+				panic("only one default registry can be configured")
+			}
+		}
 	}
 }

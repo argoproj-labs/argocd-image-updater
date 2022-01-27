@@ -23,11 +23,18 @@ type RegistryConfiguration struct {
 	Insecure    bool          `yaml:"insecure,omitempty"`
 	DefaultNS   string        `yaml:"defaultns,omitempty"`
 	Limit       int           `yaml:"limit,omitempty"`
+	IsDefault   bool          `yaml:"default,omitempty"`
 }
 
 // RegistryList contains multiple RegistryConfiguration items
 type RegistryList struct {
 	Items []RegistryConfiguration `yaml:"registries"`
+}
+
+func clearRegistries() {
+	registryLock.Lock()
+	registries = make(map[string]*RegistryEndpoint)
+	registryLock.Unlock()
 }
 
 // LoadRegistryConfiguration loads a YAML-formatted registry configuration from
@@ -43,19 +50,34 @@ func LoadRegistryConfiguration(path string, clear bool) error {
 	}
 
 	if clear {
-		registryLock.Lock()
-		registries = make(map[string]*RegistryEndpoint)
-		registryLock.Unlock()
+		clearRegistries()
 	}
+
+	haveDefault := false
 
 	for _, reg := range registryList.Items {
 		tagSortMode := TagListSortFromString(reg.TagSortMode)
 		if tagSortMode != TagListSortUnsorted {
 			log.Warnf("Registry %s has tag sort mode set to %s, meta data retrieval will be disabled for this registry.", reg.ApiURL, tagSortMode)
 		}
-		err = AddRegistryEndpoint(reg.Prefix, reg.Name, reg.ApiURL, reg.Credentials, reg.DefaultNS, reg.Insecure, tagSortMode, reg.Limit, reg.CredsExpire)
-		if err != nil {
+		ep := NewRegistryEndpoint(reg.Prefix, reg.Name, reg.ApiURL, reg.Credentials, reg.DefaultNS, reg.Insecure, tagSortMode, reg.Limit, reg.CredsExpire)
+		if reg.IsDefault {
+			if haveDefault {
+				dep := GetDefaultRegistry()
+				if dep == nil {
+					panic("unexpected: default registry should be set, but is not")
+				}
+				return fmt.Errorf("cannot set registry %s as default - only one default registry allowed, currently set to %s", ep.RegistryPrefix, dep.RegistryPrefix)
+			}
+		}
+
+		if err := AddRegistryEndpoint(ep); err != nil {
 			return err
+		}
+
+		if reg.IsDefault {
+			SetDefaultRegistry(ep)
+			haveDefault = true
 		}
 	}
 
@@ -106,8 +128,12 @@ func ParseRegistryConfiguration(yamlSource string) (RegistryList, error) {
 func RestoreDefaultRegistryConfiguration() {
 	registryLock.Lock()
 	defer registryLock.Unlock()
+	defaultRegistry = nil
 	registries = make(map[string]*RegistryEndpoint)
-	for k, v := range defaultRegistries {
+	for k, v := range registryTweaks {
 		registries[k] = v.DeepCopy()
+		if v.IsDefault {
+			SetDefaultRegistry(registries[k])
+		}
 	}
 }

@@ -75,10 +75,12 @@ registries:
 }
 
 func Test_LoadRegistryConfiguration(t *testing.T) {
+	RestoreDefaultRegistryConfiguration()
+
 	t.Run("Load from valid location", func(t *testing.T) {
-		err := LoadRegistryConfiguration("../../config/example-config.yaml", false)
+		err := LoadRegistryConfiguration("../../config/example-config.yaml", true)
 		require.NoError(t, err)
-		assert.Len(t, registries, 5)
+		assert.Len(t, registries, 4)
 		reg, err := GetRegistryEndpoint("gcr.io")
 		require.NoError(t, err)
 		assert.Equal(t, "pullsecret:foo/bar", reg.Credentials)
@@ -91,4 +93,18 @@ func Test_LoadRegistryConfiguration(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, "", reg.Credentials)
 	})
+
+	t.Run("Load from invalid location", func(t *testing.T) {
+		err := LoadRegistryConfiguration("../../test/testdata/registry/config/does-not-exist.yaml", true)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "no such file or directory")
+	})
+
+	t.Run("Two defaults defined in same config", func(t *testing.T) {
+		err := LoadRegistryConfiguration("../../test/testdata/registry/config/two-defaults.yaml", true)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "cannot set registry")
+	})
+
+	RestoreDefaultRegistryConfiguration()
 }
