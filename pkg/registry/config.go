@@ -70,6 +70,7 @@ func LoadRegistryConfiguration(path string, clear bool) error {
 				return fmt.Errorf("cannot set registry %s as default - only one default registry allowed, currently set to %s", ep.RegistryPrefix, dep.RegistryPrefix)
 			}
 		}
+
 		if err := AddRegistryEndpoint(ep); err != nil {
 			return err
 		}
@@ -127,8 +128,12 @@ func ParseRegistryConfiguration(yamlSource string) (RegistryList, error) {
 func RestoreDefaultRegistryConfiguration() {
 	registryLock.Lock()
 	defer registryLock.Unlock()
+	defaultRegistry = nil
 	registries = make(map[string]*RegistryEndpoint)
 	for k, v := range registryTweaks {
 		registries[k] = v.DeepCopy()
+		if v.IsDefault {
+			SetDefaultRegistry(registries[k])
+		}
 	}
 }

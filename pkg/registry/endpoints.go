@@ -182,17 +182,17 @@ func inferRegistryEndpointFromPrefix(prefix string) *RegistryEndpoint {
 // GetRegistryEndpoint retrieves the endpoint information for the given prefix
 func GetRegistryEndpoint(prefix string) (*RegistryEndpoint, error) {
 	if prefix == "" {
-		for _, v := range registries {
-			if v.IsDefault {
-				return v, nil
-			}
+		if defaultRegistry == nil {
+			return nil, fmt.Errorf("no default endpoint configured")
+		} else {
+			return defaultRegistry, nil
 		}
-		return nil, fmt.Errorf("no default endpoint configured")
 	}
 
 	registryLock.RLock()
 	registry, ok := registries[prefix]
 	registryLock.RUnlock()
+
 	if ok {
 		return registry, nil
 	} else {
@@ -212,8 +212,10 @@ func GetRegistryEndpoint(prefix string) (*RegistryEndpoint, error) {
 
 // SetDefaultRegistry sets a given registry endpoint as the default
 func SetDefaultRegistry(ep *RegistryEndpoint) {
+	log.Debugf("Setting default registry endpoint to %s", ep.RegistryPrefix)
 	ep.IsDefault = true
 	if defaultRegistry != nil {
+		log.Debugf("Previous default registry was %s", defaultRegistry.RegistryPrefix)
 		defaultRegistry.IsDefault = false
 	}
 	defaultRegistry = ep
@@ -222,6 +224,11 @@ func SetDefaultRegistry(ep *RegistryEndpoint) {
 // GetDefaultRegistry returns the registry endpoint that is set as default,
 // or nil if no default registry endpoint is set
 func GetDefaultRegistry() *RegistryEndpoint {
+	if defaultRegistry != nil {
+		log.Debugf("Getting default registry endpoint: %s", defaultRegistry.RegistryPrefix)
+	} else {
+		log.Debugf("No default registry defined.")
+	}
 	return defaultRegistry
 }
 

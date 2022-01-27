@@ -75,6 +75,8 @@ registries:
 }
 
 func Test_LoadRegistryConfiguration(t *testing.T) {
+	RestoreDefaultRegistryConfiguration()
+
 	t.Run("Load from valid location", func(t *testing.T) {
 		err := LoadRegistryConfiguration("../../config/example-config.yaml", true)
 		require.NoError(t, err)
@@ -103,4 +105,6 @@ func Test_LoadRegistryConfiguration(t *testing.T) {
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "cannot set registry")
 	})
+
+	RestoreDefaultRegistryConfiguration()
 }
