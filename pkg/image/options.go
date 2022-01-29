@@ -176,8 +176,8 @@ func (img *ContainerImage) ParseMatchfunc(val string) (MatchFuncFn, interface{})
 // GetParameterPullSecret retrieves an image's pull secret credentials
 func (img *ContainerImage) GetParameterPullSecret(annotations map[string]string) *CredentialSource {
 	pullSecretAnnotations := []string{
-		fmt.Sprintf(common.SecretListAnnotation, img.normalizedSymbolicName()),
-		common.ApplicationWideSecretListAnnotation,
+		fmt.Sprintf(common.PullSecretAnnotation, img.normalizedSymbolicName()),
+		common.ApplicationWidePullSecretAnnotation,
 	}
 	var pullSecretVal = ""
 	for _, key := range pullSecretAnnotations {

@@ -203,7 +203,7 @@ func Test_GetMatchOption(t *testing.T) {
 func Test_GetSecretOption(t *testing.T) {
 	t.Run("Get cred source from annotation", func(t *testing.T) {
 		annotations := map[string]string{
-			fmt.Sprintf(common.SecretListAnnotation, "dummy"): "pullsecret:foo/bar",
+			fmt.Sprintf(common.PullSecretAnnotation, "dummy"): "pullsecret:foo/bar",
 		}
 		img := NewFromIdentifier("dummy=foo/bar:1.12")
 		credSrc := img.GetParameterPullSecret(annotations)
@@ -216,7 +216,7 @@ func Test_GetSecretOption(t *testing.T) {
 
 	t.Run("Invalid reference in annotation", func(t *testing.T) {
 		annotations := map[string]string{
-			fmt.Sprintf(common.SecretListAnnotation, "dummy"): "foo/bar",
+			fmt.Sprintf(common.PullSecretAnnotation, "dummy"): "foo/bar",
 		}
 		img := NewFromIdentifier("dummy=foo/bar:1.12")
 		credSrc := img.GetParameterPullSecret(annotations)
@@ -225,8 +225,8 @@ func Test_GetSecretOption(t *testing.T) {
 
 	t.Run("Prefer cred source from image-specific annotation", func(t *testing.T) {
 		annotations := map[string]string{
-			fmt.Sprintf(common.SecretListAnnotation, "dummy"): "pullsecret:image/specific",
-			common.ApplicationWideSecretListAnnotation:        "pullsecret:app/wide",
+			fmt.Sprintf(common.PullSecretAnnotation, "dummy"): "pullsecret:image/specific",
+			common.ApplicationWidePullSecretAnnotation:        "pullsecret:app/wide",
 		}
 		img := NewFromIdentifier("dummy=foo/bar:1.12")
 		credSrc := img.GetParameterPullSecret(annotations)
@@ -239,7 +239,7 @@ func Test_GetSecretOption(t *testing.T) {
 
 	t.Run("Get cred source from application-wide annotation", func(t *testing.T) {
 		annotations := map[string]string{
-			common.ApplicationWideSecretListAnnotation: "pullsecret:app/wide",
+			common.ApplicationWidePullSecretAnnotation: "pullsecret:app/wide",
 		}
 		img := NewFromIdentifier("dummy=foo/bar:1.12")
 		credSrc := img.GetParameterPullSecret(annotations)

@@ -33,7 +33,7 @@ const (
 	IgnoreTagsOptionAnnotation  = ImageUpdaterAnnotationPrefix + "/%s.ignore-tags"
 	ForceUpdateOptionAnnotation = ImageUpdaterAnnotationPrefix + "/%s.force-update"
 	UpdateStrategyAnnotation    = ImageUpdaterAnnotationPrefix + "/%s.update-strategy"
-	SecretListAnnotation        = ImageUpdaterAnnotationPrefix + "/%s.pull-secret"
+	PullSecretAnnotation        = ImageUpdaterAnnotationPrefix + "/%s.pull-secret"
 	PlatformsAnnotation         = ImageUpdaterAnnotationPrefix + "/%s.platforms"
 )
 
@@ -43,7 +43,7 @@ const (
 	ApplicationWideIgnoreTagsOptionAnnotation  = ImageUpdaterAnnotationPrefix + "/ignore-tags"
 	ApplicationWideForceUpdateOptionAnnotation = ImageUpdaterAnnotationPrefix + "/force-update"
 	ApplicationWideUpdateStrategyAnnotation    = ImageUpdaterAnnotationPrefix + "/update-strategy"
-	ApplicationWideSecretListAnnotation        = ImageUpdaterAnnotationPrefix + "/pull-secret"
+	ApplicationWidePullSecretAnnotation        = ImageUpdaterAnnotationPrefix + "/pull-secret"
 )
 
 // Application update configuration related annotations
