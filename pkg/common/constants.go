@@ -26,19 +26,24 @@ const (
 	KustomizeApplicationNameAnnotation = ImageUpdaterAnnotationPrefix + "/%s.kustomize.image-name"
 )
 
-// Upgrade strategy related annotations
+// Image specific configuration annotations
 const (
 	OldMatchOptionAnnotation    = ImageUpdaterAnnotationPrefix + "/%s.tag-match" // Deprecated and will be removed
 	AllowTagsOptionAnnotation   = ImageUpdaterAnnotationPrefix + "/%s.allow-tags"
 	IgnoreTagsOptionAnnotation  = ImageUpdaterAnnotationPrefix + "/%s.ignore-tags"
 	ForceUpdateOptionAnnotation = ImageUpdaterAnnotationPrefix + "/%s.force-update"
 	UpdateStrategyAnnotation    = ImageUpdaterAnnotationPrefix + "/%s.update-strategy"
+	PullSecretAnnotation        = ImageUpdaterAnnotationPrefix + "/%s.pull-secret"
 	PlatformsAnnotation         = ImageUpdaterAnnotationPrefix + "/%s.platforms"
 )
 
-// Image pull secret related annotations
+// Application-wide update strategy related annotations
 const (
-	SecretListAnnotation = ImageUpdaterAnnotationPrefix + "/%s.pull-secret"
+	ApplicationWideAllowTagsOptionAnnotation   = ImageUpdaterAnnotationPrefix + "/allow-tags"
+	ApplicationWideIgnoreTagsOptionAnnotation  = ImageUpdaterAnnotationPrefix + "/ignore-tags"
+	ApplicationWideForceUpdateOptionAnnotation = ImageUpdaterAnnotationPrefix + "/force-update"
+	ApplicationWideUpdateStrategyAnnotation    = ImageUpdaterAnnotationPrefix + "/update-strategy"
+	ApplicationWidePullSecretAnnotation        = ImageUpdaterAnnotationPrefix + "/pull-secret"
 )
 
 // Application update configuration related annotations

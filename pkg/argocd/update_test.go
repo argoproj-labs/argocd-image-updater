@@ -419,7 +419,7 @@ func Test_UpdateApplication(t *testing.T) {
 					Name:      "guestbook",
 					Namespace: "guestbook",
 					Annotations: map[string]string{
-						fmt.Sprintf(common.SecretListAnnotation, "dummy"): "secret:foo/bar#creds",
+						fmt.Sprintf(common.PullSecretAnnotation, "dummy"): "secret:foo/bar#creds",
 					},
 				},
 				Spec: v1alpha1.ApplicationSpec{
