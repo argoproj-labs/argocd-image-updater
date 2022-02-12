@@ -67,6 +67,7 @@ type WriteBackConfig struct {
 	GitCommitEmail   string
 	GitCommitMessage string
 	KustomizeBase    string
+	Target           string
 }
 
 // The following are helper structs to only marshal the fields we require
@@ -415,6 +416,7 @@ func getWriteBackConfig(app *v1alpha1.Application, kubeClient *kube.KubernetesCl
 	// Default write-back is to use Argo CD API
 	wbc.Method = WriteBackApplication
 	wbc.ArgoClient = argoClient
+	wbc.Target = parseDefaultTarget(app.Name, app.Spec.Source.Path)
 
 	// If we have no update method, just return our default
 	method, ok := app.Annotations[common.WriteBackMethodAnnotation]
@@ -444,6 +446,12 @@ func getWriteBackConfig(app *v1alpha1.Application, kubeClient *kube.KubernetesCl
 	}
 
 	return wbc, nil
+}
+
+func parseDefaultTarget(appName string, path string) string {
+	defaultTargetFile := fmt.Sprintf(common.DefaultTargetFilePattern, appName)
+
+	return filepath.Join(path, defaultTargetFile)
 }
 
 func parseTarget(target string, sourcePath string) (kustomizeBase string) {
