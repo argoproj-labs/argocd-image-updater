@@ -121,8 +121,9 @@ func NewAPIClient(opts *ClientOptions) (ArgoCD, error) {
 }
 
 type ApplicationImages struct {
-	Application v1alpha1.Application
-	Images      image.ContainerImageList
+	Application  v1alpha1.Application
+	Images       image.ContainerImageList
+	ChartVersion *string
 }
 
 // Will hold a list of applications with the images allowed to considered for
@@ -179,14 +180,34 @@ func FilterApplicationsForUpdate(apps []v1alpha1.Application, patterns []string,
 		logCtx := log.WithContext().AddField("application", app.GetName())
 		// Check whether application has our annotation set
 		annotations := app.GetAnnotations()
-		if _, ok := annotations[common.ImageUpdaterAnnotation]; !ok {
-			logCtx.Tracef("skipping app '%s' of type '%s' because required annotation is missing", app.GetName(), app.Status.SourceType)
-			continue
+
+		var enableAnnotation string
+		for _, anno := range []string{common.ImageUpdaterAnnotation, common.ChartVersionAnnotation} {
+			if _, ok := annotations[anno]; ok {
+				if enableAnnotation != "" {
+					logCtx.Errorf("unable to use %s and %s annotations at the same time for app '%s' of type '%s'", enableAnnotation, anno, app.GetName(), app.Status.SourceType)
+					continue
+				}
+				enableAnnotation = anno
+			}
 		}
 
-		// Check for valid application type
-		if !IsValidApplicationType(&app) {
-			logCtx.Warnf("skipping app '%s' of type '%s' because it's not of supported source type", app.GetName(), app.Status.SourceType)
+		switch enableAnnotation {
+		case common.ChartVersionAnnotation:
+			if app.Spec.Source.Chart == "" {
+				logCtx.Errorf("skipping app '%s' because chart version updater supported only for an application sourced from the OCI helm chart repository", app.GetName())
+				continue
+			}
+
+		case common.ImageUpdaterAnnotation:
+			// Check for valid application type
+			if !IsValidApplicationType(&app) {
+				logCtx.Warnf("skipping app '%s' of type '%s' because it's not of supported source type", app.GetName(), app.Status.SourceType)
+				continue
+			}
+
+		default:
+			logCtx.Tracef("skipping app '%s' of type '%s' because required annotation is missing", app.GetName(), app.Status.SourceType)
 			continue
 		}
 
@@ -204,13 +225,26 @@ func FilterApplicationsForUpdate(apps []v1alpha1.Application, patterns []string,
 
 		logCtx.Tracef("processing app '%s' of type '%v'", app.GetName(), app.Status.SourceType)
 		imageList := parseImageList(annotations)
+		chartVersion := parseChartVersion(annotations)
 		appImages := ApplicationImages{}
 		appImages.Application = app
 		appImages.Images = *imageList
+		appImages.ChartVersion = chartVersion
 		appsForUpdate[app.GetName()] = appImages
 	}
 
 	return appsForUpdate, nil
+}
+
+func parseChartVersion(annotations map[string]string) *string {
+	spec, ok := annotations[common.ChartVersionAnnotation]
+	if !ok {
+		return nil
+	}
+
+	res := new(string)
+	*res = spec
+	return res
 }
 
 func parseImageList(annotations map[string]string) *image.ContainerImageList {

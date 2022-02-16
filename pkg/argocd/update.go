@@ -25,6 +25,7 @@ import (
 // Stores some statistics about the results of a run
 type ImageUpdaterResult struct {
 	NumApplicationsProcessed int
+	NumChartVersionUpdated   int
 	NumImagesFound           int
 	NumImagesUpdated         int
 	NumImagesConsidered      int
@@ -142,6 +143,29 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 	applicationImages := GetImagesFromApplication(&updateConf.UpdateApp.Application)
 
 	result.NumApplicationsProcessed += 1
+
+	if updateConf.UpdateApp.ChartVersion != nil {
+		ctx := log.WithContext().
+			AddField("application", app).
+			AddField("registry", updateConf.UpdateApp.Application.Spec.Source.RepoURL).
+			AddField("chart", updateConf.UpdateApp.Application.Spec.Source.Chart).
+			AddField("current_version", updateConf.UpdateApp.Application.Spec.Source.TargetRevision)
+
+		updated, err := updateChartVersion(
+			ctx, *updateConf.UpdateApp.ChartVersion, &updateConf.UpdateApp.Application, updateConf.ArgoClient, updateConf.KubeClient, updateConf.NewRegFN,
+			UpdateChartVersionOptions{IgnorePlatforms: updateConf.IgnorePlatforms},
+		)
+
+		switch {
+		case err != nil:
+			ctx.Errorf("Unable to update application chart version: %s", err)
+			result.NumErrors += 1
+		case updated:
+			result.NumChartVersionUpdated += 1
+		default:
+			result.NumSkipped += 1
+		}
+	}
 
 	// Loop through all images of current application, and check whether one of
 	// its images is eligible for updating.
@@ -353,6 +377,120 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 	}
 
 	return result
+}
+
+type UpdateChartVersionOptions struct {
+	IgnorePlatforms bool
+}
+
+func updateChartVersion(ctx *log.LogContext, chartVersion string, app *v1alpha1.Application, argoClient ArgoCD, kubeClient *kube.KubernetesClient, newRegFN registry.NewRegistryClient, opts UpdateChartVersionOptions) (bool, error) {
+	ctx.Debugf("Start chart update within chart-version %s", chartVersion)
+
+	currentChartImage := image.NewFromIdentifier(fmt.Sprintf(
+		"%s/%s:%s", app.Spec.Source.RepoURL, app.Spec.Source.Chart, app.Spec.Source.TargetRevision,
+	))
+
+	var vc image.VersionConstraint
+
+	vc.Constraint = chartVersion
+	ctx.Debugf("Using version constraint '%s' when looking for a new tag", vc.Constraint)
+
+	vc.Strategy = currentChartImage.GetParameterUpdateStrategy(app.Annotations)
+	vc.MatchFunc, vc.MatchArgs = currentChartImage.GetParameterMatch(app.Annotations)
+	vc.IgnoreList = currentChartImage.GetParameterIgnoreTags(app.Annotations)
+	vc.Options = currentChartImage.
+		GetPlatformOptions(app.Annotations, opts.IgnorePlatforms).
+		WithMetadata(vc.Strategy.NeedsMetadata()).
+		WithLogger(ctx)
+
+	rep, err := registry.GetRegistryEndpoint(currentChartImage.RegistryURL)
+	if err != nil {
+		return false, fmt.Errorf("could not get registry endpoint from configuration: %w", err)
+	}
+
+	// If a strategy needs meta-data and tagsortmode is set for the
+	// registry, let the user know.
+	if rep.TagListSort > registry.TagListSortUnsorted && vc.Strategy.NeedsMetadata() {
+		ctx.Infof("taglistsort is set to '%s' but update strategy '%s' requires metadata. Results may not be what you expect.", rep.TagListSort.String(), vc.Strategy.String())
+	}
+
+	imgCredSrc := currentChartImage.GetParameterPullSecret(app.Annotations)
+	creds := &image.Credential{}
+	if imgCredSrc != nil {
+		creds, err = imgCredSrc.FetchCredentials(rep.RegistryAPI, kubeClient)
+		if err != nil {
+			return false, fmt.Errorf("unable to fetch credentials: %w", err)
+		}
+	}
+
+	// The endpoint can provide default credentials for pulling images
+	err = rep.SetEndpointCredentials(kubeClient)
+	if err != nil {
+		return false, fmt.Errorf("could not set registry endpoint credentials: %w", err)
+	}
+
+	regClient, err := newRegFN(rep, creds.Username, creds.Password)
+	if err != nil {
+		return false, fmt.Errorf("could not create registry client: %w", err)
+	}
+
+	// Get list of available image tags from the repository
+	tags, err := rep.GetTags(currentChartImage, regClient, &vc)
+	if err != nil {
+		return false, fmt.Errorf("could not get tags from registry: %w", err)
+	}
+
+	ctx.Tracef("List of available tags found: %v", tags.Tags())
+
+	// Get the latest available tag matching any constraint that might be set
+	// for allowed updates.
+	latest, err := currentChartImage.GetNewestVersionFromTags(&vc, tags)
+	if err != nil {
+		return false, fmt.Errorf("unable to find newest version from available tags: %w", err)
+	}
+
+	// If we have no latest tag information, it means there was no tag which
+	// has met our version constraint (or there was no semantic versioned tag
+	// at all in the repository)
+	if latest == nil {
+		ctx.Debugf("No suitable image tag for upgrade found in list of available tags.")
+		return false, nil
+	}
+
+	// If the user has specified digest as update strategy, but the running
+	// image is configured to use a tag and no digest, we need to set an
+	// initial dummy digest, so that tag.Equals() will return false.
+	// TODO: Fix this. This is just a workaround.
+	if vc.Strategy == image.StrategyDigest {
+		//return false, fmt.Errorf("misconfiguration: cannot update chart by the digest strategy")
+		if !currentChartImage.ImageTag.IsDigest() {
+			log.Tracef("Setting dummy digest for image %s", currentChartImage.GetFullNameWithTag())
+			currentChartImage.ImageTag.TagDigest = "dummy"
+		}
+	}
+
+	if app.Spec.Source.TargetRevision != latest.TagName {
+		specUpdReq := &application.ApplicationUpdateSpecRequest{}
+
+		specUpdReq.Name = new(string)
+		*specUpdReq.Name = app.GetName()
+
+		specUpdReq.Spec = app.Spec
+		specUpdReq.Spec.Source.TargetRevision = latest.TagName
+
+		specUpdReq.Validate = new(bool)
+		*specUpdReq.Validate = true
+
+		ctx.Infof("Setting application %s targetRevision from %s to %s", app.GetName(), app.Spec.Source.TargetRevision, latest.TagName)
+
+		if _, err := argoClient.UpdateSpec(context.Background(), specUpdReq); err != nil {
+			return false, fmt.Errorf("unable to set argo application %q targetRevision to %q: %s", app.GetName(), latest.TagName, err)
+		}
+	} else {
+		ctx.Infof("Application %s targetRevision %s is actual", app.GetName(), app.Spec.Source.TargetRevision)
+	}
+
+	return true, nil
 }
 
 func needsUpdate(updateableImage *image.ContainerImage, applicationImage *image.ContainerImage, latest *tag.ImageTag) bool {
