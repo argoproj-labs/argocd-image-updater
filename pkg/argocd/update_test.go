@@ -1786,7 +1786,7 @@ func Test_CommitUpdates(t *testing.T) {
 		defer cleanup()
 		gitMock.On("Checkout", mock.Anything).Run(func(args mock.Arguments) {
 			args.Assert(t, "mydefaultbranch")
-		}).Return(nil)
+		}).Return(nil).Once()
 		gitMock.On("Add", mock.Anything).Return(nil)
 		gitMock.On("Branch", mock.Anything, mock.Anything).Return(nil)
 		gitMock.On("Commit", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
@@ -1806,6 +1806,7 @@ func Test_CommitUpdates(t *testing.T) {
 				NewTag: tag.NewImageTag("1.1", time.Now(), ""),
 			},
 		}
+		gitMock.On("Checkout", TemplateBranchName(wbc.GitWriteBranch, cl)).Return(nil).Once()
 
 		err = commitChanges(&app, wbc, cl)
 		assert.NoError(t, err)
