@@ -207,6 +207,10 @@ func commitChangesGit(app *v1alpha1.Application, wbc *WriteBackConfig, changeLis
 			if err != nil {
 				return err
 			}
+			err = gitC.Checkout(pushBranch)
+			if err != nil {
+				return err
+			}
 		} else {
 			return fmt.Errorf("Git branch name could not be created from the template: %s", wbc.GitWriteBranch)
 		}
