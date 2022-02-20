@@ -1,0 +1,27 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: image-updater-e2e-004
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: image-updater-004
+  annotations:
+    argocd-image-updater.argoproj.io/image-list: test1=10.42.0.1:30000/test-image:1.X.X,test2=10.42.0.1:30000/other-image:1.X.X
+    argocd-image-updater.argoproj.io/test.update-strategy: semver
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: http://10.42.0.1:30002/testdata.git
+    path: ./004-multi-images
+    targetRevision: HEAD
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: image-updater-e2e-004
+  syncPolicy:
+    automated: {}
+    retry:
+      limit: 2
