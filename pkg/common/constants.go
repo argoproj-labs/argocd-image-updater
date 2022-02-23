@@ -54,6 +54,9 @@ const (
 	KustomizationPrefix       = "kustomization"
 )
 
+// DefaultTargetFilePattern configurations related to the write-back functionality
+const DefaultTargetFilePattern = ".argocd-source-%s.yaml"
+
 // The default Git commit message's template
 const DefaultGitCommitMessage = `build: automatic update of {{ .AppName }}
 

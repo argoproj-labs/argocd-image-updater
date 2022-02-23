@@ -247,10 +247,10 @@ func commitChangesGit(app *v1alpha1.Application, wbc *WriteBackConfig, changeLis
 	return nil
 }
 
-func writeOverrides(app *v1alpha1.Application, _ *WriteBackConfig, gitC git.Client) (err error, skip bool) {
+func writeOverrides(app *v1alpha1.Application, wbc *WriteBackConfig, gitC git.Client) (err error, skip bool) {
 	logCtx := log.WithContext().AddField("application", app.GetName())
 	targetExists := true
-	targetFile := path.Join(gitC.Root(), app.Spec.Source.Path, fmt.Sprintf(".argocd-source-%s.yaml", app.Name))
+	targetFile := path.Join(gitC.Root(), wbc.Target)
 	_, err = os.Stat(targetFile)
 	if err != nil {
 		if !os.IsNotExist(err) {
