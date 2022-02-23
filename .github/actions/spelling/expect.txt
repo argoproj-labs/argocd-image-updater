@@ -7,3 +7,5 @@ wildcard
 wildcards
 credref
 repocreds
+yyyy
+YYYY
