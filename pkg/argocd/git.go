@@ -187,11 +187,6 @@ func commitChangesGit(app *v1alpha1.Application, wbc *WriteBackConfig, changeLis
 		}
 	}
 
-	err = gitC.Checkout(checkOutBranch)
-	if err != nil {
-		return err
-	}
-
 	// The push branch is by default the same as the checkout branch, unless
 	// specified after a : separator git-branch annotation, in which case a
 	// new branch will be made following a template that can use the list of
@@ -210,6 +205,11 @@ func commitChangesGit(app *v1alpha1.Application, wbc *WriteBackConfig, changeLis
 		} else {
 			return fmt.Errorf("Git branch name could not be created from the template: %s", wbc.GitWriteBranch)
 		}
+	}
+
+	err = gitC.Checkout(pushBranch)
+	if err != nil {
+		return err
 	}
 
 	if err, skip := write(app, wbc, gitC); err != nil {
