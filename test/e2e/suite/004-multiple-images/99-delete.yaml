@@ -1,0 +1,10 @@
+apiVersion: kuttl.dev/v1beta1
+kind: TestStep
+timeout: 120
+delete:
+- apiVersion: argoproj.io/v1alpha1
+  kind: Application
+  name: image-updater-004
+- apiVersion: v1
+  kind: Namespace
+  name: image-updater-e2e-004
