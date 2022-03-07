@@ -117,6 +117,7 @@ Argo CD Image Updater can update images according to the following strategies:
 |`semver`| Update to the tag with the highest allowed semantic version|
 |`latest`| Update to the tag with the most recent creation date|
 |`name`  | Update to the tag with the latest entry from an alphabetically sorted list|
+|`digest`| Update to the most recent pushed version of a mutable tag|
 
 You can define the update strategy for each image independently by setting the
 following annotation to an appropriate value:
