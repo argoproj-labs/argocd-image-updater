@@ -55,7 +55,7 @@ of the [Semver library](https://github.com/Masterminds/semver) we're using.
 !!!note
     If you use an
     [update strategy](#update-strategies)
-    other than `semver`, the `version_constraint` will not be have any effect
+    other than `semver` or `digest`, the `version_constraint` will not be have any effect
     and all tags returned from the registry will be considered for update. If
     you need to further restrict the list of tags to consider, see
     [filtering tags](#filtering-tags)
