@@ -4,3 +4,4 @@ kind: Kustomization
 resources:
 - argocd-image-updater-cm.yaml
 - argocd-image-updater-secret.yaml
+- argocd-image-updater-ssh-config.yaml
