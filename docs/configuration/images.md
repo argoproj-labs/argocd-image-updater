@@ -55,7 +55,7 @@ of the [Semver library](https://github.com/Masterminds/semver) we're using.
 !!!note
     If you use an
     [update strategy](#update-strategies)
-    other than `semver`, the `version_constraint` will not be have any effect
+    other than `semver` or `digest`, the `version_constraint` will not be have any effect
     and all tags returned from the registry will be considered for update. If
     you need to further restrict the list of tags to consider, see
     [filtering tags](#filtering-tags)
@@ -117,6 +117,7 @@ Argo CD Image Updater can update images according to the following strategies:
 |`semver`| Update to the tag with the highest allowed semantic version|
 |`latest`| Update to the tag with the most recent creation date|
 |`name`  | Update to the tag with the latest entry from an alphabetically sorted list|
+|`digest`| Update to the most recent pushed version of a mutable tag|
 
 You can define the update strategy for each image independently by setting the
 following annotation to an appropriate value:

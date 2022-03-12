@@ -49,6 +49,7 @@ RBAC authorization on Application resources etc. are fully supported.
     constraint,
     * `latest`: update to the most recently created image tag,
     * `name`: update to the last tag in an alphabetically sorted list
+    * `digest`: update to the most recent pushed version of a mutable tag
 * Default support for public images on widely used container registries:
     * Docker Hub (docker.io)
     * Google Container Registry (gcr.io)
