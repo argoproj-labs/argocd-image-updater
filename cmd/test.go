@@ -98,6 +98,9 @@ argocd-image-updater test nginx --allow-tags '^1.19.\d+(\-.*)*$' --update-strate
 				if err != nil {
 					logCtx.Fatalf("Could not parse platform %s: %v", platform, err)
 				}
+				if os != "linux" && os != "windows" {
+					log.Warnf("Target platform is '%s/%s', but that's not a supported container platform. Forgot --platforms?", os, arch)
+				}
 				vc.Options = vc.Options.WithPlatform(os, arch, variant)
 			}
 			vc.Options = vc.Options.WithMetadata(vc.Strategy.NeedsMetadata())
