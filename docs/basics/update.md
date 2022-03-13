@@ -14,7 +14,7 @@ The workflow of Argo CD Image Updater can be described as follows:
   whose name match a given pattern, or match a given label.
 
 * It then goes through the list of `Applications` found and inspects each
-  for the the annotation `argocd-image-upater.argoproj.io/image-list`. This
+  for the the annotation `argocd-image-updater.argoproj.io/image-list`. This
   annotation holds a list of image names that should be updated, and is a
   mandatory annotation for Argo CD Image Updater to indicate it should
   process this `Application`. Read more about the syntax expected in this
@@ -25,7 +25,7 @@ The workflow of Argo CD Image Updater can be described as follows:
   if this image is actually deployed with the application. It does a strict
   check for the complete image name, including the registry the image is
   pulled from. For example, `docker.io/some/image` and `quay.io/some/image`,
-  while both refering to `some/image`, are not considered equal. This strict
+  while both referring to `some/image`, are not considered equal. This strict
   behavior can be relaxed, however. See [forcing image updates](#TODO) for
   further explanation.
 

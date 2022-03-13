@@ -108,7 +108,7 @@ a semantic version when using the `semver` update strategy.
     strategy with images hosted on Docker Hub.
 
 !!!note
-    If you are using _reprocudible builds_ for your container images (e.g. if
+    If you are using *reproducible builds* for your container images (e.g. if
     your build pipeline always sets the creation date of the image to the same
     value), the `latest` strategy will not be able to determine which tag to
     update to.

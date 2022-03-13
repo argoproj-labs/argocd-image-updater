@@ -51,7 +51,7 @@ $ argocd-image-updater test gcr.io/heptio-images/ks-guestbook-demo --platform da
 DEBU[0000] Creating in-cluster Kubernetes client        
 INFO[0000] retrieving information about image            image_alias= image_name=gcr.io/heptio-images/ks-guestbook-demo registry_url=gcr.io
 DEBU[0000] setting rate limit to 20 requests per second  prefix=gcr.io registry="https://gcr.io"
-DEBU[0000] Infered registry from prefix gcr.io to use API https://gcr.io 
+DEBU[0000] Inferred registry from prefix gcr.io to use API https://gcr.io 
 INFO[0000] Fetching available tags and metadata from registry  application=test image_alias= image_name=gcr.io/heptio-images/ks-guestbook-demo registry_url=gcr.io
 DEBU[0001] ignoring v2 manifest sha256:fe18e00a6aeece16b5b2f77a32ee60929e8a60e27c71df8df66bf804f5677f47. Manifest platform: linux/amd64, requested: darwin/amd64  application=test image_alias= image_name=gcr.io/heptio-images/ks-guestbook-demo registry_url=gcr.io
 DEBU[0001] No metadata found for heptio-images/ks-guestbook-demo:0.1  application=test image_alias= image_name=gcr.io/heptio-images/ks-guestbook-demo registry_url=gcr.io
@@ -68,7 +68,7 @@ $ argocd-image-updater test gcr.io/heptio-images/ks-guestbook-demo --platform li
 DEBU[0000] Creating in-cluster Kubernetes client        
 INFO[0000] retrieving information about image            image_alias= image_name=gcr.io/heptio-images/ks-guestbook-demo registry_url=gcr.io
 DEBU[0000] setting rate limit to 20 requests per second  prefix=gcr.io registry="https://gcr.io"
-DEBU[0000] Infered registry from prefix gcr.io to use API https://gcr.io 
+DEBU[0000] Inferred registry from prefix gcr.io to use API https://gcr.io 
 INFO[0000] Fetching available tags and metadata from registry  application=test image_alias= image_name=gcr.io/heptio-images/ks-guestbook-demo registry_url=gcr.io
 INFO[0001] Found 2 tags in registry                      application=test image_alias= image_name=gcr.io/heptio-images/ks-guestbook-demo registry_url=gcr.io
 DEBU[0001] found 2 from 2 tags eligible for consideration  image=gcr.io/heptio-images/ks-guestbook-demo
@@ -100,7 +100,7 @@ $ argocd-image-updater test ghcr.io/argoproj/argocd --update-strategy latest
 DEBU[0000] Creating in-cluster Kubernetes client        
 INFO[0000] retrieving information about image            image_alias= image_name=ghcr.io/argoproj/argocd registry_url=ghcr.io
 DEBU[0000] setting rate limit to 20 requests per second  prefix=ghcr.io registry="https://ghcr.io"
-DEBU[0000] Infered registry from prefix ghcr.io to use API https://ghcr.io 
+DEBU[0000] Inferred registry from prefix ghcr.io to use API https://ghcr.io 
 INFO[0000] Fetching available tags and metadata from registry  application=test image_alias= image_name=ghcr.io/argoproj/argocd registry_url=ghcr.io
 INFO[0139] Found 864 tags in registry                    application=test image_alias= image_name=ghcr.io/argoproj/argocd registry_url=ghcr.io
 DEBU[0139] found 864 from 864 tags eligible for consideration  image=ghcr.io/argoproj/argocd

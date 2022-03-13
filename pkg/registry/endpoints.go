@@ -204,7 +204,7 @@ func GetRegistryEndpoint(prefix string) (*RegistryEndpoint, error) {
 			err = fmt.Errorf("could not infer registry configuration from prefix %s", prefix)
 		}
 		if err == nil {
-			log.Debugf("Infered registry from prefix %s to use API %s", prefix, ep.RegistryAPI)
+			log.Debugf("Inferred registry from prefix %s to use API %s", prefix, ep.RegistryAPI)
 		}
 		return ep, err
 	}
