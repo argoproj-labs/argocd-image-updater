@@ -19,14 +19,20 @@ extra_javascript:
 markdown_extensions:
 - codehilite
 - admonition
+- tables
 - toc:
     permalink: true
 nav:
   - Overview: index.md
-  - Install:
-    - Getting Started: install/start.md
-    - Running Argo CD Image Updater: install/running.md
-  - Update strategies: install/strategies.md
+  - Getting started:
+    - Installation: install/installation.md
+    - Testing: install/testing.md
+    - Command Line and Configuration reference: install/reference.md
+  - Basics:
+    - Updating images: basics/update.md
+    - Update methods: basics/update-methods.md
+    - Update strategies: basics/update-strategies.md
+    - Authentication: basics/authentication.md
   - Configuration: 
     - Applications: configuration/applications.md
     - Images: configuration/images.md
@@ -34,5 +40,6 @@ nav:
   - Contributing:
     - Overview: contributing/start.md
     - Developing: contributing/development.md
+  - Examples: examples/index.md
   - Releases ⧉: https://github.com/argoproj-labs/argocd-image-updater/releases
   - Roadmap ⧉: https://github.com/argoproj-labs/argocd-image-updater/milestones

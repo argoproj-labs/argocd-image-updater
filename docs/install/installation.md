@@ -1,77 +1,16 @@
 # Getting Started
 
-## Runtime environment
+## Installation methods
 
-It is recommended to run Argo CD Image Updater in the same Kubernetes namespace cluster that
-Argo CD is running in, however, this is not a requirement. In fact, it is not
-even a requirement to run Argo CD Image Updater within a Kubernetes cluster or
-with access to any Kubernetes cluster at all. 
+It is recommended to run Argo CD Image Updater in the same Kubernetes namespace
+cluster that Argo CD is running in, however, this is not a requirement. In fact,
+it is not even a requirement to run Argo CD Image Updater within a Kubernetes
+cluster or with access to any Kubernetes cluster at all.
 
-However, some features might not work without accessing Kubernetes.
+However, some features might not work without accessing Kubernetes, and it is
+strongly advised to use the first installation method.
 
-## Testing beforehand
-
-With v0.8.0, a new method to test your desired configuration before configuring
-your applications was introduced with the `argocd-image-updater test` command.
-
-You can use this command from your workstation without any modifications to your
-Argo CD installation or applications, and without having to install the image
-updater in your Kubernetes cluster. The `test` command does not need to talk to
-Argo CD, and only needs access to your Kubernetes cluster if you need to use
-image pull secret stored in Kubernetes.
-
-The new `test` command's main purpose is to verify the behaviour of Argo CD
-Image Updater on arbitrary images. For example, the most simple form of running
-a test is the following:
-
-```shell
-argocd-image-updater test <image_name>
-```
-
-For example, to see what Argo CD Image Updater would consider the latest nginx
-version according to semantic versioning, you can run:
-
-```shell
-$ argocd-image-updater test nginx 
-INFO[0000] getting image                                 image_name=nginx registry=
-INFO[0002] Fetching available tags and metadata from registry  image_name=nginx
-INFO[0004] Found 321 tags in registry                    image_name=nginx
-INFO[0004] latest image according to constraint is nginx:1.19.5
-```
-
-To see what it would consider the latest patch version within the 1.17 release,
-run:
-
-```shell
-$ argocd-image-updater test nginx --semver-constraint 1.17.X
-INFO[0000] getting image                                 image_name=nginx registry=
-INFO[0002] Fetching available tags and metadata from registry  image_name=nginx
-INFO[0004] Found 321 tags in registry                    image_name=nginx
-INFO[0004] latest image according to constraint is nginx:1.17.10
-```
-
-You can also specify parameters that you would set for any given application,
-i.e. to use [update strategy](../../configuration/images/#update-strategies)
-`latest` and the registry requires [authentication](../../configuration/images/#specifying-pull-secrets),
-you can use additional command line options:
-
-```shell
-$ export GITHUB_PULLSECRET="<username>:<token>"
-$ argocd-image-updater test docker.pkg.github.com/argoproj/argo-cd/argocd --update-strategy latest --credentials env:GITHUB_PULLSECRET
-INFO[0000] getting image                                 image_name=argoproj/argo-cd/argocd registry=docker.pkg.github.com
-INFO[0000] Fetching available tags and metadata from registry  image_name=argoproj/argo-cd/argocd
-INFO[0040] Found 100 tags in registry                    image_name=argoproj/argo-cd/argocd
-INFO[0040] latest image according to constraint is docker.pkg.github.com/argoproj/argo-cd/argocd:1.8.0-9fb51f7a
-```
-
-For a complete list of available command line parameters, run
-`argocd-image-updater test --help`. 
-
-It is recommended that you read about core updating and image concepts in the
-[documentation](../../configuration/images/)
-before using this command.
-
-## Installing as Kubernetes workload in Argo CD namespace
+## <a name="install-kubernetes"></a>Method 1: Installing as Kubernetes workload in Argo CD namespace
 
 The most straightforward way to run the image updater is to install it as a Kubernetes workload into the namespace where
 Argo CD is running. Don't worry, without any configuration, it will not start messing with your workloads yet.
@@ -110,15 +49,30 @@ data:
 
 If you omit the `log.level` setting, the default `info` level will be used.
 
-## Connect using Argo CD API Server
+## Method 2: Connect using Argo CD API Server
 
-If you unable to install Argo CD Image Updater into the same Kubernetes cluster you might
-configure it to use API of your Argo CD installation. 
+If you are unable to install Argo CD Image Updater into the same Kubernetes
+cluster you can configure it to use the API of your Argo CD installation.
+
 If you chose to install the Argo CD Image Updater outside of the cluster where
 Argo CD is running in, the API must be exposed externally (i.e. using Ingress).
 If you have network policies in place, make sure that Argo CD Image Updater will
 be allowed to communicate with the Argo CD API, which is usually the service
 `argocd-server` in namespace `argocd` on port 443 and port 80.
+
+### Apply the manifests
+
+First, create a namespace and apply the manifests to your cluster
+
+```shell
+kubectl create namespace argocd-image-updater
+kubectl apply -n argocd-image-updater -f https://raw.githubusercontent.com/argoproj-labs/argocd-image-updater/stable/manifests/install.yaml
+```
+
+!!!note "A word on high availability"
+    It is not advised to run multiple replicas of the same Argo CD Image Updater
+    instance. Just leave the number of replicas at 1, otherwise weird side
+    effects could occur.
 
 ### Create a local user within Argo CD
 

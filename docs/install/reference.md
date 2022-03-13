@@ -1,4 +1,4 @@
-# Running Argo CD Image Updater
+# Configuration and command line reference
 
 The `argocd-image-updater` provides some command line parameters to control the
 behaviour of its operations. The following is a list of available parameters

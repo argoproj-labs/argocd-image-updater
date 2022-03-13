@@ -7,9 +7,9 @@ that are managed by
 !!!warning "A note on the current status"
     Argo CD Image Updater is under active development.
 
-    You are welcome to test it out on non-critical environments, and to 
-    contribute by sending bug reports, enhancement requests and - most
-    appreciated - pull requests.
+    You are welcome to test it out on non-critical environments, and of
+    course to 
+    [contribute](./contributing/start.md) by many means.
 
     There will be (probably a lot of) breaking changes from release to
     release as development progresses until version 1.0. We will do our
@@ -44,23 +44,26 @@ RBAC authorization on Application resources etc. are fully supported.
 
 * Updates images of apps that are managed by Argo CD and are either generated
   from *Helm* or *Kustomize* tooling
-* Update app images according to different update strategies
+* Update app images according to different
+  [update strategies](./basics/update-strategies.md)
     * `semver`: update to highest allowed version according to given image
     constraint,
     * `latest`: update to the most recently created image tag,
     * `name`: update to the last tag in an alphabetically sorted list
     * `digest`: update to the most recent pushed version of a mutable tag
-* Default support for public images on widely used container registries:
-    * Docker Hub (docker.io)
-    * Google Container Registry (gcr.io)
-    * Red Hat Quay (quay.io)
-    * GitHub Container Registry (docker.pkg.github.com)
-* Support for private container registries via configuration
+* Support for 
+  [widely used container registries](./configuration/registries.md#supported-registries)
+* Support for private container registries via 
+  [configuration](./configuration/registries.md#custom-registries)
+* Can write changes
+  [back to Git](./basics/update-methods.md#method-git)
 * Ability to filter list of tags returned by a registry using matcher functions
-* Support for custom, per-image pull secrets (using generic K8s secrets, K8s
-  pull secrets or environment variables)
-* Runs in a Kubernetes cluster or can be used stand-alone from the command
-  line
+* Support for custom, per-image 
+  [pull secrets](./basics/authentication.md#auth-registries) (using generic K8s
+  secrets, K8s pull secrets, environment variables or external scripts)
+* Runs in a 
+  [Kubernetes cluster](./install/installation.md#install-kubernetes) or can be
+  used stand-alone from the command line
 * Ability to perform parallel update of applications
 
 ## Limitations

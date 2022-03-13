@@ -61,20 +61,18 @@ of the [Semver library](https://github.com/Masterminds/semver) we're using.
     [filtering tags](#filtering-tags)
     below.
 
-
 ### Forcing Image Updates
 
 By default, Image Updater will only update an image that is actually used in your Application
 (i.e., is it exported in the Status of your ArgoCD Application.)
 
-To support custom resources and things like PodTemplates that don't actually create a container, 
+To support custom resources and things like PodTemplates that don't actually create a container,
 you may force an update:
 
 ```yaml
 argocd-image-updater.argoproj.io/image-list: myalias=some/image
 argocd-image-updater.argoproj.io/myalias.force-update: "true"
 ```
-
 
 ## Assigning aliases to images
 
@@ -108,6 +106,11 @@ as `_` (underscore) in the annotation. This is a limit of Kubernetes. So for
 example, if you assign the alias `argoproj/argocd` to your image, the
 appropriate key in the annotation would be referenced as `argoproj_argocd`.
 
+!!!note
+    It is generally recommended to set aliases for each of your images. Many of
+    the features depend on an alias being set, and aliases might become a strict
+    requirement in the future.
+
 ## Update strategies
 
 Argo CD Image Updater can update images according to the following strategies:
@@ -136,7 +139,6 @@ strategy `semver` will be used.
     and these will count into your pull limits. So unless you are not affected
     by these pull limits, it is **not recommended** to use the `latest` update
     strategy with images hosted on Docker Hub.
-
 
 ## Filtering tags
 
@@ -190,7 +192,38 @@ argocd-image-updater.argoproj.io/<image_name>.ignore-tags: "*"
 
 Please note that regular expressions are not supported to be used for patterns.
 
-## Specifying pull secrets
+## <a name="platforms"></a>Image platforms
+
+By default, Argo CD Image Updater will only consider images from the registry
+that are built for the same platform as the one Argo CD Image Updater is
+running on. In multi-arch clusters, your workloads may be targeted to a
+different platform, and you can configure the allowed platforms for a given
+image.
+
+For example, when Argo CD Image Updater is running on a `linux/amd64` node but
+your application will be executed on a node with `linux/arm64` platform, you
+need to let Argo CD Image Updater know:
+
+```yaml
+argocd-image-updater.argoproj.io/<image_alias>.platforms: linux/arm64
+```
+
+You can specify multiple allowed platforms as a comma separated list of allowed
+platforms:
+
+```yaml
+argocd-image-updater.argoproj.io/<image_alias>.platforms: linux/arm64,linux/amd64
+```
+
+The correct image to execute will be chosen by Kubernetes.
+
+!!!note
+    The `platforms` annotation only has effect for images that use an update
+    strategy which fetches meta-data. Currently, these are the `latest` and
+    `digest` strategies. For `semver` and `name` strategies, the `platforms`
+    setting has no effect.
+
+## <a name="pull-secrets"></a>Specifying pull secrets
 
 There are generally two ways on how to specify pull secrets for Argo CD Image
 Updater to use. Either you configure a secret reference globally for the
@@ -384,27 +417,52 @@ argocd-image-updater.argoproj.io/baralias.helm.image-name: bar.image
 argocd-image-updater.argoproj.io/baralias.helm.image-tag: bar.tag
 ```
 
+### Tracking an image's `latest` tag
+
+*Scenario:* You want to track the latest build of a given tag, e.g. the `latest`
+tag that many images use without having to restart your pods manually.
+
+*Solution:*
+
+1. Define an alias for your image, i.e. `fooalias`
+
+2. Set the constraint of your image to the tag you want to track, e.g. `latest`
+
+3. Set the update strategy for this image to `digest`
+
+```yaml
+argocd-image-updater.argoproj.io/image-list: fooalias=yourorg/yourimage:latest
+argocd-image-updater.argoproj.io/fooalias.update-strategy: digest
+```
+
+When there's a new build for `yourorg/yourimage:latest` found in the registry,
+Argo CD Image Updater will update your configuration to use the SHA256 sum of
+the image, and Kubernetes will restart your pods automatically to have them
+use the new image.
+
 ## Appendix
 
-### Available annotations
+### <a name="appendix-annotations"></a>Available annotations
 
 The following is a complete list of available annotations to control the
 update strategy and set options for images. Please note, all annotations
-must be prefixed with `argocd-image-updater.argoproj.io`.
+must be prefixed with `argocd-image-updater.argoproj.io/`.
 
 |Annotation name|Default value|Description|
 |---------------|-------|-----------|
 |`image-list`|*none*|Comma separated list of images to consider for update|
 |`<image_alias>.update-strategy`|`semver`|The update strategy to be used for the image|
+|`<image_alias>.force-update`|`"false"`|If set to "true" (with quotes), even images that are not currently deployed will be updated|
 |`<image_alias>.allow-tags`|*any*|A function to match tag names from registry against to be considered for update|
 |`<image_alias>.ignore-tags`|*none*|A comma-separated list of glob patterns that when match ignore a certain tag from the registry|
 |`<image_alias>.pull-secret`|*none*|A reference to a secret to be used as registry credentials for this image|
+|`<image_alias>.platform`|*none*|Only update to images for given platform(s). Comma separated list, e.g. `linux/amd64,linux/arm64`|
 |`<image_alias>.helm.image-spec`|*none*|Name of the Helm parameter to specify the canonical name of the image, i.e. holds `image/name:1.0`. If this is set, other Helm parameter related options will be ignored.|
 |`<image_alias>.helm.image-name`|`image.name`|Name of the Helm parameter used for specifying the image name, i.e. holds `image/name`|
 |`<image_alias>.helm.image-tag`|`image.tag`|Name of the Helm parameter used for specifying the image tag, i.e. holds `1.0`|
 |`<image_alias>.kustomize.image-name`|*original name of image*|Name of Kustomize image parameter to set during updates|
 
-### Application-wide defaults
+### <a name="appendix-defaults"></a>Application-wide defaults
 
 If you want to update multiple images in an Application, that all share common
 settings (such as, update strategy, allowed tags, etc), you can define common

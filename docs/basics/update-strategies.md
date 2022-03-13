@@ -1,26 +1,44 @@
 # Update strategies
 
+## <a name="supported-strategies"></a>Supported update strategies
+
+An update strategy defines how Argo CD Image Updater will find new versions of
+an image that is to be updated.
+
 Argo CD Image Updater supports different update strategies for the images that
 are configured to be tracked and updated.
 
-You can configure the strategy to be used for each image individually, with the
-default strategy being `semver` (see below).
+You can configure the update strategy to be used for each image individually,
+with the default being the `semver` strategy.
+
+The following update strategies are currently supported:
+
+* [semver](#strategy-semver) - Update to the latest version of an image
+  considering semantic versioning constraints
+* [latest](#strategy-latest) - Update to the most recently built image found in a registry
+* [digest](#strategy-digest) - Update to the latest version of a given version (tag), using the tag's SHA digest
+* [name](#strategy-name) - Sorts tags alphabetically and update to the one with the highest cardinality
 
 Some of the strategies will require additional configuration, or can be tweaked
 with additional parameters. Please have a look at the
 [image configuration](../../configuration/images)
 documentation for more details.
 
+## <a name="mutable-immutable"></a>Mutable vs immutable tags
+
 Please note that all update strategies except `digest` assume tags to be
 *immutable* and that new images will be pushed with a new, unique tag. If
 you want to update to *mutable* tags (e.g. the commonly used `latest` tag),
 you should use the `digest` strategy.
 
-## Update to semantic versions
+## Update strategies in detail
+### <a name="strategy-semver"></a>semver - Update to semantic versions
 
 This is the default strategy.
 
 Strategy name: `semver`
+
+Basic configuration:
 
 ```yaml
 argocd-image-updater.argoproj.io/image-list: some/image[:<version_constraint>]
@@ -79,7 +97,7 @@ Image Updater will pick the highest version number found in the registry.
 Argo CD Image Updater will omit any tags from your registry that do not match 
 a semantic version when using the `semver` update strategy.
 
-## Update to the most recently built image
+### <a name="strategy-latest"></a>latest - Update to the most recently built image
 
 !!!warning
     As of November 2020, Docker Hub has introduced pull limits for accounts on
@@ -89,7 +107,15 @@ a semantic version when using the `semver` update strategy.
     by these pull limits, it is **not recommended** to use the `latest` update
     strategy with images hosted on Docker Hub.
 
+!!!note
+    If you are using *reproducible builds* for your container images (e.g. if
+    your build pipeline always sets the creation date of the image to the same
+    value), the `latest` strategy will not be able to determine which tag to
+    update to.
+
 Strategy name: `latest`
+
+Basic configuration:
 
 ```yaml
 argocd-image-updater.argoproj.io/image-list: <alias>=some/image
@@ -138,9 +164,11 @@ This would allow for considering all tags found but `latest` and `master`. You
 can read more about filtering tags
 [here](../../configuration/images/#filtering-tags).
 
-## Update to the most recent pushed version of a tag
+### <a name="strategy-digest"></a>digest - Update to the most recent pushed version of a given tag
 
 Strategy name: `digest`
+
+Basic configuration:
 
 ```yaml
 argocd-image-updater.argoproj.io/image-list: <alias>=some/image:<tag_name>
@@ -152,7 +180,8 @@ updates the image on any change to the previous state. The tag name to be
 inspected must be specified as a version constraint in the image list.
 
 Use this update strategy if you want to follow a *mutable* tag, such as the
-commonly used `latest` tag. 
+commonly used `latest` tag, or when your CI system produces a tag named as
+the environment it is intended for, e.g. `dev` or `stage` or `prod`.
 
 Argo CD Image Updater will then update the image when either
 
@@ -175,9 +204,11 @@ argocd-image-updater.argoproj.io/image-list: myimage=some/image:latest
 argocd-image-updater.argoproj.io/myimage.update-strategy: digest
 ```
 
-## Update according to lexical sort
+### <a name="strategy-name"></a>Update according to lexical sort
 
 Strategy name: `name`
+
+Basic configuration:
 
 ```yaml
 argocd-image-updater.argoproj.io/image-list: <alias>=some/image
