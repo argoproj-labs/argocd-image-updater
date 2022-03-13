@@ -69,7 +69,7 @@ You may also want to pass some options to that command to set the appropriate
 [update strategy](../basics/update-strategies.md)
 or
 [credentials](../basics/authentication.md)
-to access the registy.
+to access the registry.
 
 The `argocd-image-updater test` command won't perform any modifications to
 your cluster or your workloads.
