@@ -29,7 +29,7 @@ func newTestCommand() *cobra.Command {
 		ignoreTags         []string
 		disableKubeEvents  bool
 		rateLimit          int
-		platform           string
+		platforms          []string
 	)
 	var runCmd = &cobra.Command{
 		Use:   "test IMAGE",
@@ -93,15 +93,14 @@ argocd-image-updater test nginx --allow-tags '^1.19.\d+(\-.*)*$' --update-strate
 			logCtx.Infof("retrieving information about image")
 
 			vc.Options = options.NewManifestOptions()
-			if platform != "" {
+			for _, platform := range platforms {
 				os, arch, variant, err := image.ParsePlatform(platform)
 				if err != nil {
-					logCtx.Fatalf("Platform %s: %v", platform, err)
+					logCtx.Fatalf("Could not parse platform %s: %v", platform, err)
 				}
-				vc.Options = vc.Options.
-					WithPlatform(os, arch, variant).
-					WithMetadata(vc.Strategy.NeedsMetadata())
+				vc.Options = vc.Options.WithPlatform(os, arch, variant)
 			}
+			vc.Options = vc.Options.WithMetadata(vc.Strategy.NeedsMetadata())
 
 			vc.Options.WithLogger(logCtx.AddField("application", "test"))
 
@@ -180,7 +179,7 @@ argocd-image-updater test nginx --allow-tags '^1.19.\d+(\-.*)*$' --update-strate
 	runCmd.Flags().BoolVar(&disableKubernetes, "disable-kubernetes", false, "whether to disable the Kubernetes client")
 	runCmd.Flags().StringVar(&kubeConfig, "kubeconfig", "", "path to your Kubernetes client configuration")
 	runCmd.Flags().StringVar(&credentials, "credentials", "", "the credentials definition for the test (overrides registry config)")
-	runCmd.Flags().StringVar(&platform, "platform", fmt.Sprintf("%s/%s", runtime.GOOS, runtime.GOARCH), "limit images to given platform")
+	runCmd.Flags().StringSliceVar(&platforms, "platforms", []string{fmt.Sprintf("%s/%s", runtime.GOOS, runtime.GOARCH)}, "limit images to given platforms")
 	runCmd.Flags().BoolVar(&disableKubeEvents, "disable-kubernetes-events", false, "Disable kubernetes events")
 	runCmd.Flags().IntVar(&rateLimit, "rate-limit", 20, "specificy registry rate limit (overrides registry.conf)")
 	return runCmd
