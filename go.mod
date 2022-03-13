@@ -8,7 +8,7 @@ require (
 	github.com/argoproj/gitops-engine v0.5.2
 	github.com/argoproj/pkg v0.11.1-0.20211203175135-36c59d8fafe0
 	github.com/bradleyfalzon/ghinstallation v1.1.1
-	github.com/distribution/distribution/v3 v3.0.0-20210820130019-1cdeff259b9d
+	github.com/distribution/distribution/v3 v3.0.0-20220311160646-514cbd71bedb
 	github.com/docker/distribution v2.7.1+incompatible
 	github.com/docker/libtrust v0.0.0-20160708172513-aabc10ec26b7 // indirect
 	github.com/go-git/go-git/v5 v5.2.0
@@ -21,7 +21,7 @@ require (
 	github.com/spf13/pflag v1.0.5
 	github.com/stretchr/testify v1.7.0
 	go.uber.org/ratelimit v0.1.1-0.20201110185707-e86515f0dda9
-	golang.org/x/crypto v0.0.0-20210817164053-32db794688a5
+	golang.org/x/crypto v0.0.0-20211215153901-e495a2d5b3d3
 	golang.org/x/oauth2 v0.0.0-20210819190943-2bc19b11175f // indirect
 	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
 	gopkg.in/yaml.v2 v2.4.0
