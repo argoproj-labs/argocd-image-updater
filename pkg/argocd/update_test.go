@@ -24,7 +24,7 @@ import (
 
 	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	argogit "github.com/argoproj/argo-cd/v2/util/git"
-	"github.com/docker/distribution/manifest/schema1"
+	"github.com/distribution/distribution/v3/manifest/schema1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"

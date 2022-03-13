@@ -9,7 +9,6 @@ require (
 	github.com/argoproj/pkg v0.11.1-0.20211203175135-36c59d8fafe0
 	github.com/bradleyfalzon/ghinstallation v1.1.1
 	github.com/distribution/distribution/v3 v3.0.0-20220311160646-514cbd71bedb
-	github.com/docker/distribution v2.7.1+incompatible
 	github.com/docker/libtrust v0.0.0-20160708172513-aabc10ec26b7 // indirect
 	github.com/go-git/go-git/v5 v5.2.0
 	github.com/google/go-querystring v1.1.0 // indirect
@@ -33,6 +32,7 @@ require (
 )
 
 replace (
+	github.com/docker/distribution => github.com/docker/distribution v2.8.1+incompatible
 	github.com/golang/protobuf => github.com/golang/protobuf v1.4.2
 
 	google.golang.org/grpc => google.golang.org/grpc v1.15.0
