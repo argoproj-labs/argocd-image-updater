@@ -50,8 +50,11 @@ echo "*** performing release commit"
 git commit -S -s -m "Release ${TARGET_TAG}" VERSION manifests/
 git tag ${TARGET_TAG}
 
-echo "*** build docker image"
-make image
+echo "*** build multiarch docker image"
+make multiarch-image
+
+echo "*** build multiarch release binaries"
+make release-images
 
 echo
 echo "*** done"
@@ -59,6 +62,6 @@ echo
 echo "If everything is fine, push changes to GitHub and Docker Hub:"
 echo 
 echo "   git push ${TARGET_REMOTE} $RELEASE_BRANCH ${TARGET_TAG}"
-echo "   make IMAGE_TAG='${TARGET_TAG}' image-push"
+echo "   make IMAGE_TAG='${TARGET_TAG}' multiarch-image-push"
 echo
-echo "Then, create release tag and execute upload-release-assets.sh"
+echo "Then, create release tag and execute upload-multiarch-release-assets.sh"
