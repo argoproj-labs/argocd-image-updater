@@ -89,6 +89,16 @@ multiarch-image:
 		--platform ${RELEASE_IMAGE_PLATFORMS} ${DOCKERX_PUSH} \
 		.
 
+.PHONY: multiarch-image
+multiarch-image-push:
+	docker buildx build \
+		-t ${IMAGE_PREFIX}${IMAGE_NAME}:${IMAGE_TAG} \
+		--progress plain \
+		--pull \
+		--push \
+		--platform ${RELEASE_IMAGE_PLATFORMS} ${DOCKERX_PUSH} \
+		.
+
 .PHONY: image-push
 image-push: image
 	docker push ${IMAGE_PREFIX}${IMAGE_NAME}:${IMAGE_TAG}
