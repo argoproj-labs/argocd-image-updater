@@ -54,7 +54,7 @@ echo "*** build multiarch docker image"
 make multiarch-image
 
 echo "*** build multiarch release binaries"
-make release-images
+make release-binaries
 
 echo
 echo "*** done"
