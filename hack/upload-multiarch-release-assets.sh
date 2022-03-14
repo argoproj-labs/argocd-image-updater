@@ -31,9 +31,9 @@ echo "*** Reverse verify signature"
 gpg -a --verify release-${TARGET_VERSION}.sha256.asc
 
 echo "*** Uploading release assets"
-for asset in ${BINARIES} ${TARGET_VERSION}.sha256 ${TARGET_VERSION}.sha256.asc; do
+for asset in ${BINARIES} release-${TARGET_VERSION}.sha256 release-${TARGET_VERSION}.sha256.asc; do
     echo "     -> $asset"
-    echo gh release upload ${TARGET_VERSION} ${asset}
+    gh release upload ${TARGET_VERSION} ${asset}
 done
 
 echo "Done."
