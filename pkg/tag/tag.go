@@ -14,9 +14,11 @@ import (
 // ImageTag is a representation of an image tag with metadata
 // Use NewImageTag to to initialize a new object.
 type ImageTag struct {
-	TagName   string
-	TagDate   *time.Time
-	TagDigest string
+	TagName     string
+	TagNamePart string
+	TagDate     *time.Time
+	TagDigest   string
+	TagVersion  *semver.Version
 }
 
 // ImageTagList is a collection of ImageTag objects.
@@ -47,11 +49,32 @@ func (il SortableImageTagList) Swap(i, j int) {
 
 // NewImageTag initializes an ImageTag object and returns it
 func NewImageTag(tagName string, tagDate time.Time, tagDigest string) *ImageTag {
+	return NewImageTagWithTagPart(tagName, tagName, tagDate, tagDigest)
+}
+
+// NewImageTagWithTagPart initializes an ImageTag object and returns it
+func NewImageTagWithTagPart(tagName, tagNamePart string, tagDate time.Time, tagDigest string) *ImageTag {
 	tag := &ImageTag{}
 	tag.TagName = tagName
+	tag.TagNamePart = tagNamePart
 	tag.TagDate = &tagDate
 	tag.TagDigest = tagDigest
+	tag.TagVersion = tryParseSemVer(tagNamePart)
 	return tag
+}
+
+func tryParseSemVer(tag string) *semver.Version {
+	if len(tag) > 0 && tag[0] != 'v' {
+		tag = "v" + tag
+	}
+
+	svi, err := semver.NewVersion(tag)
+	if err != nil {
+		log.Debugf("could not parse input tag %s as semver: %v", tag, err)
+		return nil
+	}
+
+	return svi
 }
 
 // NewImageTagList initializes an ImageTagList object and returns it
@@ -157,17 +180,17 @@ func (il ImageTagList) SortBySemVer() SortableImageTagList {
 
 	sil := SortableImageTagList{}
 	svl := make([]*semver.Version, 0)
+	tagMap := make(map[string]*ImageTag)
 	for _, v := range il.items {
-		svi, err := semver.NewVersion(v.TagName)
-		if err != nil {
-			log.Debugf("could not parse input tag %s as semver: %v", v.TagName, err)
+		if v.TagVersion == nil {
 			continue
 		}
-		svl = append(svl, svi)
+		tagMap[v.TagVersion.Original()] = v
+		svl = append(svl, v.TagVersion)
 	}
 	sort.Sort(semver.Collection(svl))
 	for _, svi := range svl {
-		sil = append(sil, NewImageTag(svi.Original(), *il.items[svi.Original()].TagDate, il.items[svi.Original()].TagDigest))
+		sil = append(sil, tagMap[svi.Original()])
 	}
 	return sil
 }
