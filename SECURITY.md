@@ -1,4 +1,4 @@
-# Security Policy for Argo CD
+# Security Policy for Argo CD Image Updater
 
 Version: **v1.0 (2022-03-25)**
 
