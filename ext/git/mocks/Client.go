@@ -89,6 +89,29 @@ func (_m *Client) CommitSHA() (string, error) {
 	return r0, r1
 }
 
+// RemoteBranches lists all remote branches
+func (_m *Client) RemoteBranches() ([]string, error) {
+	ret := _m.Called()
+	
+	var r0 []string
+	if rf, ok := ret.Get(0).(func() []string); ok {
+		r0 = rf()
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]string)
+		}
+	}
+
+	var r1 error
+	if rf, ok := ret.Get(1).(func() error); ok {
+		r1 = rf()
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
 // Config provides a mock function with given fields: username, email
 func (_m *Client) Config(username string, email string) error {
 	ret := _m.Called(username, email)

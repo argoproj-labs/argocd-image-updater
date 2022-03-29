@@ -1786,6 +1786,7 @@ func Test_CommitUpdates(t *testing.T) {
 		defer cleanup()
 		gitMock.On("Add", mock.Anything).Return(nil)
 		gitMock.On("Branch", mock.Anything, mock.Anything).Return(nil)
+		gitMock.On("RemoteBranches").Return([]string{"origin/HEAD -> origin/master", "origin/master"}, nil)
 		gitMock.On("Commit", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 		gitMock.On("Push", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 		gitMock.On("SymRefToBranch", mock.Anything).Return("mydefaultbranch", nil)
@@ -1804,6 +1805,37 @@ func Test_CommitUpdates(t *testing.T) {
 			},
 		}
 		gitMock.On("Checkout", TemplateBranchName(wbc.GitWriteBranch, cl)).Return(nil)
+
+		err = commitChanges(&app, wbc, cl)
+		assert.NoError(t, err)
+	})
+
+	t.Run("Good commit to already exists branch", func(t *testing.T) {
+		gitMock, _, cleanup := mockGit(t)
+		defer cleanup()
+		gitMock.On("Add", mock.Anything).Return(nil)
+		gitMock.On("RemoteBranches").Return([]string{"origin/HEAD -> origin/master", "origin/master", "origin/myupdatebranch"}, nil)
+		gitMock.On("Commit", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
+		gitMock.On("Push", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+		gitMock.On("SymRefToBranch", mock.Anything).Return("mydefaultbranch", nil)
+
+		wbc, err := getWriteBackConfig(&app, &kubeClient, &argoClient)
+		require.NoError(t, err)
+		wbc.GitClient = gitMock
+		wbc.GitBranch = "mydefaultbranch"
+		wbc.GitWriteBranch = "myupdatebranch"
+
+		cl := []ChangeEntry{
+			{
+				Image:  image.NewFromIdentifier("foo/bar"),
+				OldTag: tag.NewImageTag("1.0", time.Now(), ""),
+				NewTag: tag.NewImageTag("1.1", time.Now(), ""),
+			},
+		}
+		gitMock.On("Checkout", TemplateBranchName(wbc.GitWriteBranch, cl)).Return(nil)
+		gitMock.On("Branch", mock.Anything).Run(func(args mock.Arguments) {
+			t.Fail()
+		}).Return(nil)
 
 		err = commitChanges(&app, wbc, cl)
 		assert.NoError(t, err)
