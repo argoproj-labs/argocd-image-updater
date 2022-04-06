@@ -196,7 +196,16 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 		}
 
 		vc.Strategy = applicationImage.GetParameterUpdateStrategy(updateConf.UpdateApp.Application.Annotations)
-		vc.MatchFunc, vc.MatchArgs = applicationImage.GetParameterMatch(updateConf.UpdateApp.Application.Annotations)
+		if vc.MatchFunc, err = applicationImage.GetParameterMatch(updateConf.UpdateApp.Application.Annotations); err != nil {
+			imgCtx.Errorf("Could not parse match parameter: %v", err)
+			result.NumErrors += 1
+			continue
+		}
+		if vc.SemVerTransformFunc, err = applicationImage.GetParameterSemVerTransformer(updateConf.UpdateApp.Application.Annotations); err != nil {
+			imgCtx.Errorf("Could not parse transform parameter: %v", err)
+			result.NumErrors += 1
+			continue
+		}
 		vc.IgnoreList = applicationImage.GetParameterIgnoreTags(updateConf.UpdateApp.Application.Annotations)
 		vc.Options = applicationImage.
 			GetPlatformOptions(updateConf.UpdateApp.Application.Annotations, updateConf.IgnorePlatforms).

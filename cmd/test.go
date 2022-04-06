@@ -23,6 +23,7 @@ func newTestCommand() *cobra.Command {
 		registriesConfPath string
 		logLevel           string
 		allowTags          string
+		semverTransformer  string
 		credentials        string
 		kubeConfig         string
 		disableKubernetes  bool
@@ -75,6 +76,7 @@ argocd-image-updater test nginx --allow-tags '^1.19.\d+(\-.*)*$' --update-strate
 			}
 
 			img := image.NewFromIdentifier(args[0])
+			logCtx := img.LogContext()
 
 			vc := &image.VersionConstraint{
 				Constraint: semverConstraint,
@@ -84,12 +86,21 @@ argocd-image-updater test nginx --allow-tags '^1.19.\d+(\-.*)*$' --update-strate
 			vc.Strategy = img.ParseUpdateStrategy(strategy)
 
 			if allowTags != "" {
-				vc.MatchFunc, vc.MatchArgs = img.ParseMatchfunc(allowTags)
+				vc.MatchFunc, err = img.ParseMatchfunc(allowTags)
+				if err != nil {
+					logCtx.Fatalf("failed to parse match func: %v", err)
+				}
+			}
+
+			if semverTransformer != "" {
+				vc.SemVerTransformFunc, err = img.ParseSemVerTransformFunc(semverTransformer)
+				if err != nil {
+					logCtx.Fatalf("failed to parse semver transformer: %v", err)
+				}
 			}
 
 			vc.IgnoreList = ignoreTags
 
-			logCtx := img.LogContext()
 			logCtx.Infof("retrieving information about image")
 
 			vc.Options = options.NewManifestOptions()
@@ -176,6 +187,7 @@ argocd-image-updater test nginx --allow-tags '^1.19.\d+(\-.*)*$' --update-strate
 	runCmd.Flags().StringVar(&semverConstraint, "semver-constraint", "", "only consider tags matching semantic version constraint")
 	runCmd.Flags().StringVar(&allowTags, "allow-tags", "", "only consider tags in registry that satisfy the match function")
 	runCmd.Flags().StringArrayVar(&ignoreTags, "ignore-tags", nil, "ignore tags in registry that match given glob pattern")
+	runCmd.Flags().StringVar(&semverTransformer, "semver-transformer", "", "transform tags before parsing semvers")
 	runCmd.Flags().StringVar(&strategy, "update-strategy", "semver", "update strategy to use, one of: semver, latest)")
 	runCmd.Flags().StringVar(&registriesConfPath, "registries-conf-path", "", "path to registries configuration")
 	runCmd.Flags().StringVar(&logLevel, "loglevel", "debug", "log level to use (one of trace, debug, info, warn, error)")

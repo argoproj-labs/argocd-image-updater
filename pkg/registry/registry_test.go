@@ -2,6 +2,7 @@ package registry
 
 import (
 	"os"
+	"regexp"
 	"testing"
 	"time"
 
@@ -110,6 +111,55 @@ func Test_GetTags(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, tag)
 		require.Equal(t, "1.2.1", tag.TagName)
+	})
+
+	t.Run("Check for correctly returned tags with transform", func(t *testing.T) {
+		ts := "2006-01-02T15:04:05.999999999Z"
+		meta1 := &schema1.SignedManifest{
+			Manifest: schema1.Manifest{
+				History: []schema1.History{
+					{
+						V1Compatibility: `{"created":"` + ts + `"}`,
+					},
+				},
+			},
+		}
+
+		img := image.NewFromIdentifier("foo/bar:1.24.0.4930-ab6e1a058")
+
+		ep, err := GetRegistryEndpoint("")
+		require.NoError(t, err)
+
+		pattern := regexp.MustCompile(`\d+\.\d+\.\d+`)
+
+		vc := image.VersionConstraint{
+			Strategy:            image.StrategyLatest,
+			Options:             options.NewManifestOptions(),
+			SemVerTransformFunc: image.SemVerTransformerFuncRegexpFactory(pattern),
+		}
+
+		regClient := mocks.RegistryClient{}
+		regClient.On("NewRepository", mock.Anything).Return(nil)
+		regClient.On("Tags", mock.Anything).Return([]string{"latest", "1.24.2.4973-2b1b51db9", "1.25.0.5282-2edd3c44d", "1.25.3.5409-f11334058"}, nil)
+		regClient.On("ManifestForTag", mock.Anything, mock.Anything).Return(meta1, nil)
+		regClient.On("TagMetadata", mock.Anything, mock.Anything).Return(&tag.TagInfo{}, nil)
+
+		tl, err := ep.GetTags(img, &regClient, &vc)
+		require.NotEmpty(t, tl)
+		require.Len(t, tl.Tags(), 3)
+		sorted := tl.SortBySemVer()
+		require.Equal(t, sorted.Len(), 3)
+		assert.Equal(t, "1.24.2", sorted[0].TagVersion.String())
+		assert.Equal(t, "1.24.2.4973-2b1b51db9", sorted[0].TagName)
+		assert.Equal(t, "1.25.0", sorted[1].TagVersion.String())
+		assert.Equal(t, "1.25.0.5282-2edd3c44d", sorted[1].TagName)
+		assert.Equal(t, "1.25.3", sorted[2].TagVersion.String())
+		assert.Equal(t, "1.25.3.5409-f11334058", sorted[2].TagName)
+
+		tag, err := ep.Cache.GetTag("foo/bar", "1.25.3.5409-f11334058")
+		require.NoError(t, err)
+		require.NotNil(t, tag)
+		assert.Equal(t, "1.25.3.5409-f11334058", tag.TagName)
 	})
 
 }

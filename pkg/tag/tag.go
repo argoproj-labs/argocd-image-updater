@@ -6,8 +6,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/argoproj-labs/argocd-image-updater/pkg/log"
-
 	"github.com/Masterminds/semver"
 )
 
@@ -17,6 +15,8 @@ type ImageTag struct {
 	TagName   string
 	TagDate   *time.Time
 	TagDigest string
+
+	TagVersion *semver.Version
 }
 
 // ImageTagList is a collection of ImageTag objects.
@@ -51,6 +51,7 @@ func NewImageTag(tagName string, tagDate time.Time, tagDigest string) *ImageTag 
 	tag.TagName = tagName
 	tag.TagDate = &tagDate
 	tag.TagDigest = tagDigest
+	tag.TagVersion, _ = semver.NewVersion(tagName)
 	return tag
 }
 
@@ -157,17 +158,17 @@ func (il ImageTagList) SortBySemVer() SortableImageTagList {
 
 	sil := SortableImageTagList{}
 	svl := make([]*semver.Version, 0)
+	tagMap := make(map[string]*ImageTag)
 	for _, v := range il.items {
-		svi, err := semver.NewVersion(v.TagName)
-		if err != nil {
-			log.Debugf("could not parse input tag %s as semver: %v", v.TagName, err)
+		if v.TagVersion == nil {
 			continue
 		}
-		svl = append(svl, svi)
+		tagMap[v.TagVersion.Original()] = v
+		svl = append(svl, v.TagVersion)
 	}
 	sort.Sort(semver.Collection(svl))
 	for _, svi := range svl {
-		sil = append(sil, NewImageTag(svi.Original(), *il.items[svi.Original()].TagDate, il.items[svi.Original()].TagDigest))
+		sil = append(sil, tagMap[svi.Original()])
 	}
 	return sil
 }

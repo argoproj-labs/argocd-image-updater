@@ -8,6 +8,7 @@ import (
 
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/options"
+	"sigs.k8s.io/kustomize/kyaml/errors"
 )
 
 // GetParameterHelmImageName gets the value for image-name option for the image
@@ -112,10 +113,33 @@ func (img *ContainerImage) ParseUpdateStrategy(val string) UpdateStrategy {
 	}
 }
 
+// GetParameterSemVerTransformer returns the transform function and pattern to use for transforming
+// tagnames before matching or sorting.
+func (img *ContainerImage) GetParameterSemVerTransformer(annotations map[string]string) (SemVerTransformFuncFn, error) {
+	allowTagsAnnotations := []string{
+		fmt.Sprintf(common.SemverTransformAnnotation, img.normalizedSymbolicName()),
+		common.ApplicationWideSemverTransformAnnotation,
+	}
+	var allowTagsVal = ""
+	for _, key := range allowTagsAnnotations {
+		if val, ok := annotations[key]; ok {
+			allowTagsVal = val
+			break
+		}
+	}
+	logCtx := img.LogContext()
+	if allowTagsVal == "" {
+		logCtx.Tracef("No match annotation found")
+		return SemVerTransformFuncNone, nil
+	}
+	return img.ParseSemVerTransformFunc(allowTagsVal)
+
+}
+
 // GetParameterMatch returns the match function and pattern to use for matching
 // tag names. If an invalid option is found, it returns MatchFuncNone as the
 // default, to prevent accidental matches.
-func (img *ContainerImage) GetParameterMatch(annotations map[string]string) (MatchFuncFn, interface{}) {
+func (img *ContainerImage) GetParameterMatch(annotations map[string]string) (MatchFuncFn, error) {
 	allowTagsAnnotations := []string{
 		fmt.Sprintf(common.AllowTagsOptionAnnotation, img.normalizedSymbolicName()),
 		common.ApplicationWideAllowTagsOptionAnnotation,
@@ -140,15 +164,13 @@ func (img *ContainerImage) GetParameterMatch(annotations map[string]string) (Mat
 	}
 	if allowTagsVal == "" {
 		logCtx.Tracef("No match annotation found")
-		return MatchFuncAny, ""
+		return MatchFuncAny, nil
 	}
 	return img.ParseMatchfunc(allowTagsVal)
 }
 
 // ParseMatchfunc returns a matcher function and its argument from given value
-func (img *ContainerImage) ParseMatchfunc(val string) (MatchFuncFn, interface{}) {
-	logCtx := img.LogContext()
-
+func (img *ContainerImage) ParseMatchfunc(val string) (MatchFuncFn, error) {
 	// The special value "any" doesn't take any parameter
 	if strings.ToLower(val) == "any" {
 		return MatchFuncAny, nil
@@ -156,20 +178,34 @@ func (img *ContainerImage) ParseMatchfunc(val string) (MatchFuncFn, interface{})
 
 	opt := strings.SplitN(val, ":", 2)
 	if len(opt) != 2 {
-		logCtx.Warnf("Invalid match option syntax '%s', ignoring", val)
-		return MatchFuncNone, nil
+		return nil, fmt.Errorf("invalid match option syntax %q", val)
 	}
 	switch strings.ToLower(opt[0]) {
 	case "regexp":
 		re, err := regexp.Compile(opt[1])
 		if err != nil {
-			logCtx.Warnf("Could not compile regexp '%s'", opt[1])
-			return MatchFuncNone, nil
+			return nil, fmt.Errorf("could not compile regexp %q: %w", opt[1], err)
 		}
-		return MatchFuncRegexp, re
+		return MatchFuncRegexpFactory(re), nil
 	default:
-		logCtx.Warnf("Unknown match function: %s", opt[0])
-		return MatchFuncNone, nil
+		return nil, fmt.Errorf("unknown match function: %q", opt[0])
+	}
+}
+
+func (img *ContainerImage) ParseSemVerTransformFunc(val string) (SemVerTransformFuncFn, error) {
+	opt := strings.SplitN(val, ":", 2)
+	if len(opt) != 2 {
+		return nil, fmt.Errorf("invalid match option syntax %q", val)
+	}
+	switch strings.ToLower(opt[0]) {
+	case "regexp":
+		re, err := regexp.Compile(opt[1])
+		if err != nil {
+			return nil, errors.Errorf("could not compile regexp %q: %w", opt[1], err)
+		}
+		return SemVerTransformerFuncRegexpFactory(re), nil
+	default:
+		return nil, fmt.Errorf("unknown match function: %q", opt[0])
 	}
 }
 

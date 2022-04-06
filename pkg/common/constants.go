@@ -35,6 +35,7 @@ const (
 	UpdateStrategyAnnotation    = ImageUpdaterAnnotationPrefix + "/%s.update-strategy"
 	PullSecretAnnotation        = ImageUpdaterAnnotationPrefix + "/%s.pull-secret"
 	PlatformsAnnotation         = ImageUpdaterAnnotationPrefix + "/%s.platforms"
+	SemverTransformAnnotation   = ImageUpdaterAnnotationPrefix + "/%s.semver-transformer"
 )
 
 // Application-wide update strategy related annotations
@@ -44,6 +45,7 @@ const (
 	ApplicationWideForceUpdateOptionAnnotation = ImageUpdaterAnnotationPrefix + "/force-update"
 	ApplicationWideUpdateStrategyAnnotation    = ImageUpdaterAnnotationPrefix + "/update-strategy"
 	ApplicationWidePullSecretAnnotation        = ImageUpdaterAnnotationPrefix + "/pull-secret"
+	ApplicationWideSemverTransformAnnotation   = ImageUpdaterAnnotationPrefix + "/semver-transformer"
 )
 
 // Application update configuration related annotations
