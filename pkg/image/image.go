@@ -4,6 +4,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Masterminds/semver"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/log"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/tag"
 
@@ -54,6 +55,11 @@ func NewFromIdentifier(identifier string) *ContainerImage {
 				TagName: tagged.Tag(),
 			}
 		}
+
+		if img.ImageTag != nil && img.ImageTag.TagName != "" {
+			img.ImageTag.TagVersion, _ = semver.NewVersion(img.ImageTag.TagName)
+		}
+
 		img.original = identifier
 		return &img
 	}

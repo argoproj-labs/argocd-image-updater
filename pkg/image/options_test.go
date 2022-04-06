@@ -2,7 +2,6 @@ package image
 
 import (
 	"fmt"
-	"regexp"
 	"runtime"
 	"testing"
 
@@ -145,10 +144,9 @@ func Test_GetMatchOption(t *testing.T) {
 			fmt.Sprintf(common.AllowTagsOptionAnnotation, "dummy"): "regexp:a-z",
 		}
 		img := NewFromIdentifier("dummy=foo/bar:1.12")
-		matchFunc, matchArgs := img.GetParameterMatch(annotations)
+		matchFunc, err := img.GetParameterMatch(annotations)
 		require.NotNil(t, matchFunc)
-		require.NotNil(t, matchArgs)
-		assert.IsType(t, &regexp.Regexp{}, matchArgs)
+		require.NoError(t, err)
 	})
 
 	t.Run("Get regexp match option for configured application with invalid expression", func(t *testing.T) {
@@ -156,9 +154,9 @@ func Test_GetMatchOption(t *testing.T) {
 			fmt.Sprintf(common.AllowTagsOptionAnnotation, "dummy"): `regexp:/foo\`,
 		}
 		img := NewFromIdentifier("dummy=foo/bar:1.12")
-		matchFunc, matchArgs := img.GetParameterMatch(annotations)
-		require.NotNil(t, matchFunc)
-		require.Nil(t, matchArgs)
+		matchFunc, err := img.GetParameterMatch(annotations)
+		require.Nil(t, matchFunc)
+		require.Error(t, err)
 	})
 
 	t.Run("Get invalid match option for configured application", func(t *testing.T) {
@@ -166,10 +164,9 @@ func Test_GetMatchOption(t *testing.T) {
 			fmt.Sprintf(common.AllowTagsOptionAnnotation, "dummy"): "invalid",
 		}
 		img := NewFromIdentifier("dummy=foo/bar:1.12")
-		matchFunc, matchArgs := img.GetParameterMatch(annotations)
-		require.NotNil(t, matchFunc)
-		require.Equal(t, false, matchFunc("", nil))
-		assert.Nil(t, matchArgs)
+		matchFunc, err := img.GetParameterMatch(annotations)
+		require.Nil(t, matchFunc)
+		require.Error(t, err)
 	})
 
 	t.Run("Prefer match option from image-specific annotation", func(t *testing.T) {
@@ -178,12 +175,11 @@ func Test_GetMatchOption(t *testing.T) {
 			common.ApplicationWideAllowTagsOptionAnnotation:        "regexp:^v",
 		}
 		img := NewFromIdentifier("dummy=foo/bar:1.12")
-		matchFunc, matchArgs := img.GetParameterMatch(annotations)
+		matchFunc, err := img.GetParameterMatch(annotations)
+		require.NoError(t, err)
 		require.NotNil(t, matchFunc)
-		require.NotNil(t, matchArgs)
-		assert.IsType(t, &regexp.Regexp{}, matchArgs)
-		assert.True(t, matchFunc("0.0.1", matchArgs))
-		assert.False(t, matchFunc("v0.0.1", matchArgs))
+		assert.True(t, matchFunc("0.0.1"))
+		assert.False(t, matchFunc("v0.0.1"))
 	})
 
 	t.Run("Get match option from application-wide annotation", func(t *testing.T) {
@@ -191,12 +187,81 @@ func Test_GetMatchOption(t *testing.T) {
 			common.ApplicationWideAllowTagsOptionAnnotation: "regexp:^v",
 		}
 		img := NewFromIdentifier("dummy=foo/bar:1.12")
-		matchFunc, matchArgs := img.GetParameterMatch(annotations)
+		matchFunc, err := img.GetParameterMatch(annotations)
+		require.NoError(t, err)
 		require.NotNil(t, matchFunc)
-		require.NotNil(t, matchArgs)
-		assert.IsType(t, &regexp.Regexp{}, matchArgs)
-		assert.False(t, matchFunc("0.0.1", matchArgs))
-		assert.True(t, matchFunc("v0.0.1", matchArgs))
+		assert.False(t, matchFunc("0.0.1"))
+		assert.True(t, matchFunc("v0.0.1"))
+	})
+}
+
+func Test_GetTransformOption(t *testing.T) {
+	t.Run("Get regexp transform option for configured application", func(t *testing.T) {
+		annotations := map[string]string{
+			fmt.Sprintf(common.SemverTransformAnnotation, "dummy"): "regexp:a-z",
+		}
+		img := NewFromIdentifier("dummy=foo/bar:1.12")
+		transformFunc, err := img.GetParameterSemVerTransformer(annotations)
+		require.NoError(t, err)
+		require.NotNil(t, transformFunc)
+	})
+
+	t.Run("Get regexp transform option for configured application with invalid expression", func(t *testing.T) {
+		annotations := map[string]string{
+			fmt.Sprintf(common.SemverTransformAnnotation, "dummy"): `regexp:/foo\`,
+		}
+		img := NewFromIdentifier("dummy=foo/bar:1.12")
+		transformFunc, err := img.GetParameterSemVerTransformer(annotations)
+		require.Error(t, err)
+		require.Nil(t, transformFunc)
+	})
+
+	t.Run("Get invalid transform option for configured application", func(t *testing.T) {
+		annotations := map[string]string{
+			fmt.Sprintf(common.SemverTransformAnnotation, "dummy"): "invalid",
+		}
+		img := NewFromIdentifier("dummy=foo/bar:1.12")
+		transformFunc, err := img.GetParameterSemVerTransformer(annotations)
+		require.Error(t, err)
+		require.Nil(t, transformFunc)
+	})
+
+	t.Run("Prefer transform option from image-specific annotation", func(t *testing.T) {
+		annotations := map[string]string{
+			fmt.Sprintf(common.SemverTransformAnnotation, "dummy"): "regexp:^[0-9]",
+			common.ApplicationWideSemverTransformAnnotation:        "regexp:^v",
+		}
+		img := NewFromIdentifier("dummy=foo/bar:1.12")
+		transformFunc, err := img.GetParameterSemVerTransformer(annotations)
+		require.NoError(t, err)
+		require.NotNil(t, transformFunc)
+
+		result, err := transformFunc("0.0.1")
+		require.NoError(t, err)
+		require.NotNil(t, result)
+		assert.Equal(t, "0", result.Original())
+
+		result, err = transformFunc("v0.0.1")
+		require.Error(t, err)
+		require.Nil(t, result)
+	})
+
+	t.Run("Get transform option from application-wide annotation", func(t *testing.T) {
+		annotations := map[string]string{
+			common.ApplicationWideSemverTransformAnnotation: `regexp:^v\d+`,
+		}
+		img := NewFromIdentifier("dummy=foo/bar:1.12")
+		transformFunc, err := img.GetParameterSemVerTransformer(annotations)
+		require.NoError(t, err)
+		require.NotNil(t, transformFunc)
+
+		result, err := transformFunc("0.0.1")
+		assert.Nil(t, result)
+		assert.Error(t, err)
+
+		result, err = transformFunc("v0.0.1")
+		assert.NoError(t, err)
+		assert.Equal(t, "v0", result.Original())
 	})
 }
 

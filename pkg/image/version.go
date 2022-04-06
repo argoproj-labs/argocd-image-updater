@@ -1,6 +1,7 @@
 package image
 
 import (
+	"fmt"
 	"path/filepath"
 
 	"github.com/argoproj-labs/argocd-image-updater/pkg/log"
@@ -10,17 +11,17 @@ import (
 	"github.com/Masterminds/semver"
 )
 
-// VersionSortMode defines the method to sort a list of tags
+// UpdateStrategy defines the method to sort a list of tags
 type UpdateStrategy int
 
 const (
-	// VersionSortSemVer sorts tags using semver sorting (the default)
+	// StrategySemVer sorts tags using semver sorting (the default)
 	StrategySemVer UpdateStrategy = 0
-	// VersionSortLatest sorts tags after their creation date
+	// StrategyLatest sorts tags after their creation date
 	StrategyLatest UpdateStrategy = 1
-	// VersionSortName sorts tags alphabetically by name
+	// StrategyName sorts tags alphabetically by name
 	StrategyName UpdateStrategy = 2
-	// VersionSortDigest uses latest digest of an image
+	// StrategyDigest uses latest digest of an image
 	StrategyDigest UpdateStrategy = 3
 )
 
@@ -39,29 +40,19 @@ func (us UpdateStrategy) String() string {
 	return "unknown"
 }
 
-// ConstraintMatchMode defines how the constraint should be matched
-type ConstraintMatchMode int
-
-const (
-	// ConstraintMatchSemVer uses semver to match a constraint
-	ConstraintMatchSemver ConstraintMatchMode = 0
-	// ConstraintMatchRegExp uses regexp to match a constraint
-	ConstraintMatchRegExp ConstraintMatchMode = 1
-	// ConstraintMatchNone does not enforce a constraint
-	ConstraintMatchNone ConstraintMatchMode = 2
-)
-
 // VersionConstraint defines a constraint for comparing versions
 type VersionConstraint struct {
 	Constraint string
 	MatchFunc  MatchFuncFn
-	MatchArgs  interface{}
 	IgnoreList []string
 	Strategy   UpdateStrategy
 	Options    *options.ManifestOptions
+
+	SemVerTransformFunc SemVerTransformFuncFn
 }
 
-type MatchFuncFn func(tagName string, pattern interface{}) bool
+type MatchFuncFn func(tagName string) bool
+type SemVerTransformFuncFn func(tagName string) (*semver.Version, error)
 
 // String returns the string representation of VersionConstraint
 func (vc *VersionConstraint) String() string {
@@ -108,11 +99,8 @@ func (img *ContainerImage) GetNewestVersionFromTags(vc *VersionConstraint, tagLi
 	if vc.Strategy == StrategySemVer {
 		// TODO: Shall we really ensure a valid semver on the current tag?
 		// This prevents updating from a non-semver tag currently.
-		if img.ImageTag != nil && img.ImageTag.TagName != "" {
-			_, err := semver.NewVersion(img.ImageTag.TagName)
-			if err != nil {
-				return nil, err
-			}
+		if img.ImageTag != nil && img.ImageTag.TagVersion == nil {
+			return nil, fmt.Errorf("tag %q is not a valid semver", img.ImageTag.TagName)
 		}
 
 		if vc.Constraint != "" {
@@ -131,10 +119,9 @@ func (img *ContainerImage) GetNewestVersionFromTags(vc *VersionConstraint, tagLi
 		logCtx.Tracef("Finding out whether to consider %s for being updateable", tag.TagName)
 
 		if vc.Strategy == StrategySemVer {
-			// Non-parseable tag does not mean error - just skip it
-			ver, err := semver.NewVersion(tag.TagName)
-			if err != nil {
-				logCtx.Tracef("Not a valid version: %s", tag.TagName)
+			ver := tag.TagVersion
+			if ver == nil {
+				// only check tags that have a valid semver
 				continue
 			}
 

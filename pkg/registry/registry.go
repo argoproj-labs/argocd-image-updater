@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Masterminds/semver"
 	"github.com/distribution/distribution/v3"
 
 	"golang.org/x/sync/semaphore"
@@ -51,8 +52,12 @@ func (endpoint *RegistryEndpoint) GetTags(img *image.ContainerImage, regClient R
 		return nil, err
 	}
 
-	tags := []string{}
+	type tuple struct {
+		original string
+		semver   *semver.Version
+	}
 
+	tags := []tuple{}
 	// For digest strategy, we do require a version constraint
 	if vc.Strategy.NeedsVersionConstraint() && vc.Constraint == "" {
 		return nil, fmt.Errorf("cannot use update strategy 'digest' for image '%s' without a version constraint", img.Original())
@@ -60,16 +65,33 @@ func (endpoint *RegistryEndpoint) GetTags(img *image.ContainerImage, regClient R
 
 	// Loop through tags, removing those we do not want. If update strategy is
 	// digest, all but the constraint tag are ignored.
-	if vc.MatchFunc != nil || len(vc.IgnoreList) > 0 || vc.Strategy.WantsOnlyConstraintTag() {
-		for _, t := range tTags {
-			if (vc.MatchFunc != nil && !vc.MatchFunc(t, vc.MatchArgs)) || vc.IsTagIgnored(t) || (vc.Strategy.WantsOnlyConstraintTag() && t != vc.Constraint) {
-				logCtx.Tracef("Removing tag %s because it either didn't match defined pattern or is ignored", t)
-			} else {
-				tags = append(tags, t)
-			}
+	for _, t := range tTags {
+		if vc.MatchFunc != nil && !vc.MatchFunc(t) {
+			logCtx.Tracef("Removing tag %q because it didn't match defined pattern", t)
+			continue
 		}
-	} else {
-		tags = tTags
+
+		if vc.IsTagIgnored(t) {
+			logCtx.Tracef("Removing tag %q because it is in the ignored list", t)
+			continue
+		}
+
+		if vc.Strategy.WantsOnlyConstraintTag() && t != vc.Constraint {
+			logCtx.Tracef("Removing tag %q because it doesn't match the 'wants only' constraint", t)
+			continue
+		}
+
+		tagInfo := tuple{t, nil}
+		if vc.SemVerTransformFunc != nil {
+			transformed, err := vc.SemVerTransformFunc(t)
+			if err != nil {
+				logCtx.Warnf("tag %q is not a valid semver, skipping: %v", t, err)
+				continue
+			}
+
+			tagInfo.semver = transformed
+		}
+		tags = append(tags, tagInfo)
 	}
 
 	// In some cases, we don't need to fetch the metadata to get the creation time
@@ -81,14 +103,15 @@ func (endpoint *RegistryEndpoint) GetTags(img *image.ContainerImage, regClient R
 	// We just create a dummy time stamp according to the registry's sort mode, if
 	// set.
 	if (vc.Strategy != image.StrategyLatest && vc.Strategy != image.StrategyDigest) || endpoint.TagListSort.IsTimeSorted() {
-		for i, tagStr := range tags {
+		for i, tagInfo := range tags {
 			var ts int
 			if endpoint.TagListSort == TagListSortLatestFirst {
 				ts = len(tags) - i
 			} else if endpoint.TagListSort == TagListSortLatestLast {
 				ts = i
 			}
-			imgTag := tag.NewImageTag(tagStr, time.Unix(int64(ts), 0), "")
+			imgTag := tag.NewImageTag(tagInfo.original, time.Unix(int64(ts), 0), "")
+			imgTag.TagVersion = tagInfo.semver
 			tagList.Add(imgTag)
 		}
 		return tagList, nil
@@ -103,13 +126,13 @@ func (endpoint *RegistryEndpoint) GetTags(img *image.ContainerImage, regClient R
 	// Fetch the manifest for the tag -- we need v1, because it contains history
 	// information that we require.
 	i := 0
-	for _, tagStr := range tags {
+	for _, tagInfo := range tags {
 		i += 1
 		// Look into the cache first and re-use any found item. If GetTag() returns
 		// an error, we treat it as a cache miss and just go ahead to invalidate
 		// the entry.
 		if vc.Strategy.IsCacheable() {
-			imgTag, err := endpoint.Cache.GetTag(nameInRegistry, tagStr)
+			imgTag, err := endpoint.Cache.GetTag(nameInRegistry, tagInfo.original)
 			if err != nil {
 				log.Warnf("invalid entry for %s:%s in cache, invalidating.", nameInRegistry, imgTag.TagName)
 			} else if imgTag != nil {
@@ -122,7 +145,7 @@ func (endpoint *RegistryEndpoint) GetTags(img *image.ContainerImage, regClient R
 			}
 		}
 
-		logCtx.Tracef("Getting manifest for image %s:%s (operation %d/%d)", nameInRegistry, tagStr, i, len(tags))
+		logCtx.Tracef("Getting manifest for image %s:%s (operation %d/%d)", nameInRegistry, tagInfo.original, i, len(tags))
 
 		lockErr := sem.Acquire(context.TODO(), 1)
 		if lockErr != nil {
@@ -132,7 +155,7 @@ func (endpoint *RegistryEndpoint) GetTags(img *image.ContainerImage, regClient R
 		}
 		logCtx.Tracef("acquired metadata semaphore")
 
-		go func(tagStr string) {
+		go func(tagInfo tuple) {
 			defer func() {
 				sem.Release(1)
 				wg.Done()
@@ -144,8 +167,8 @@ func (endpoint *RegistryEndpoint) GetTags(img *image.ContainerImage, regClient R
 
 			// We first try to fetch a V2 manifest, and if that's not available we fall
 			// back to fetching V1 manifest. If that fails also, we just skip this tag.
-			if ml, err = regClient.ManifestForTag(tagStr); err != nil {
-				logCtx.Errorf("Error fetching metadata for %s:%s - neither V1 or V2 or OCI manifest returned by registry: %v", nameInRegistry, tagStr, err)
+			if ml, err = regClient.ManifestForTag(tagInfo.original); err != nil {
+				logCtx.Errorf("Error fetching metadata for %s:%s - neither V1 or V2 or OCI manifest returned by registry: %v", nameInRegistry, tagInfo.original, err)
 				return
 			}
 
@@ -153,26 +176,30 @@ func (endpoint *RegistryEndpoint) GetTags(img *image.ContainerImage, regClient R
 			// information needed to decide whether to consider this tag or not.
 			ti, err := regClient.TagMetadata(ml, vc.Options)
 			if err != nil {
-				logCtx.Errorf("error fetching metadata for %s:%s: %v", nameInRegistry, tagStr, err)
+				logCtx.Errorf("error fetching metadata for %s:%s: %v", nameInRegistry, tagInfo.original, err)
 				return
 			}
 			if ti == nil {
-				logCtx.Debugf("No metadata found for %s:%s", nameInRegistry, tagStr)
+				logCtx.Debugf("No metadata found for %s:%s", nameInRegistry, tagInfo.original)
 				return
 			}
 
 			logCtx.Tracef("Found date %s", ti.CreatedAt.String())
 			var imgTag *tag.ImageTag
 			if vc.Strategy == image.StrategyDigest {
-				imgTag = tag.NewImageTag(tagStr, ti.CreatedAt, fmt.Sprintf("sha256:%x", ti.Digest))
+				imgTag = tag.NewImageTag(tagInfo.original, ti.CreatedAt, fmt.Sprintf("sha256:%x", ti.Digest))
 			} else {
-				imgTag = tag.NewImageTag(tagStr, ti.CreatedAt, "")
+				imgTag = tag.NewImageTag(tagInfo.original, ti.CreatedAt, "")
 			}
+			if tagInfo.semver != nil {
+				imgTag.TagVersion = tagInfo.semver
+			}
+
 			tagListLock.Lock()
 			tagList.Add(imgTag)
 			tagListLock.Unlock()
 			endpoint.Cache.SetTag(nameInRegistry, imgTag)
-		}(tagStr)
+		}(tagInfo)
 	}
 
 	wg.Wait()
