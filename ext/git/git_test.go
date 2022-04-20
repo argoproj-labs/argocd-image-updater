@@ -267,7 +267,7 @@ func TestLFSClient(t *testing.T) {
 	err = client.Checkout(commitSHA)
 	assert.NoError(t, err)
 
-	remoteBranches, err := client.RemoteBranches()
+	remoteBranches, err := client.LsRemoteBranches()
 	assert.NoError(t, err)
 	assert.Contains(t, remoteBranches, "origin/master")
 

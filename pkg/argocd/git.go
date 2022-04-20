@@ -197,7 +197,7 @@ func commitChangesGit(app *v1alpha1.Application, wbc *WriteBackConfig, changeLis
 		logCtx.Debugf("Using branch template: %s", wbc.GitWriteBranch)
 		pushBranch = TemplateBranchName(wbc.GitWriteBranch, changeList)
 
-		remoteBranches, err := gitC.RemoteBranches()
+		remoteBranches, err := gitC.LsRemoteBranches()
 		if err != nil {
 			return err
 		}

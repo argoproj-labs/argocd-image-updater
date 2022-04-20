@@ -89,8 +89,8 @@ func (_m *Client) CommitSHA() (string, error) {
 	return r0, r1
 }
 
-// RemoteBranches lists all remote branches
-func (_m *Client) RemoteBranches() ([]string, error) {
+// LsRemoteBranches lists all remote branches
+func (_m *Client) LsRemoteBranches() ([]string, error) {
 	ret := _m.Called()
 	
 	var r0 []string

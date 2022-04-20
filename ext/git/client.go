@@ -65,7 +65,7 @@ type Client interface {
 	VerifyCommitSignature(string) (string, error)
 	Commit(pathSpec string, opts *CommitOptions) error
 	Branch(sourceBranch string, targetBranch string) error
-	RemoteBranches() ([]string, error)
+	LsRemoteBranches() ([]string, error)
 	Push(remote string, branch string, force bool) error
 	Add(path string) error
 	SymRefToBranch(symRef string) (string, error)
@@ -366,8 +366,8 @@ func (m *nativeGitClient) LsLargeFiles() ([]string, error) {
 	return ss, nil
 }
 
-// RemoteBranches lists all remote branches
-func (m *nativeGitClient) RemoteBranches() ([]string, error) {
+// LsRemoteBranches lists all remote branches
+func (m *nativeGitClient) LsRemoteBranches() ([]string, error) {
 	out, err := m.runCmd("branch", "-r")
 	if err != nil {
 		return nil, err
