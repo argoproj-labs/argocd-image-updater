@@ -1810,7 +1810,7 @@ func Test_CommitUpdates(t *testing.T) {
 		assert.NoError(t, err)
 	})
 
-	t.Run("Good commit to already exists branch", func(t *testing.T) {
+	t.Run("Good commit to existing branch", func(t *testing.T) {
 		gitMock, _, cleanup := mockGit(t)
 		defer cleanup()
 		gitMock.On("Add", mock.Anything).Return(nil)
