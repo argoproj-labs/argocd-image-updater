@@ -131,7 +131,7 @@ func commitChangesGit(app *v1alpha1.Application, wbc *WriteBackConfig, changeLis
 	logCtx := log.WithContext().AddField("application", app.GetName())
 	creds, err := wbc.GetCreds(app)
 	if err != nil {
-		return fmt.Errorf("could not get creds for repo '%s': %v", app.Spec.Source.RepoURL, err)
+		return fmt.Errorf("could not get creds for repo '%s': %v", wbc.GitRepo, err)
 	}
 	var gitC git.Client
 	if wbc.GitClient == nil {
@@ -145,7 +145,7 @@ func commitChangesGit(app *v1alpha1.Application, wbc *WriteBackConfig, changeLis
 				logCtx.Errorf("could not remove temp dir: %v", err)
 			}
 		}()
-		gitC, err = git.NewClientExt(app.Spec.Source.RepoURL, tempRoot, creds, false, false, "")
+		gitC, err = git.NewClientExt(wbc.GitRepo, tempRoot, creds, false, false, "")
 		if err != nil {
 			return err
 		}
