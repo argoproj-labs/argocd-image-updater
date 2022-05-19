@@ -206,6 +206,15 @@ func newRunCommand() *cobra.Command {
 	runCmd.Flags().BoolVar(&cfg.ClientOpts.Insecure, "argocd-insecure", env.GetBoolVal("ARGOCD_INSECURE", false), "(INSECURE) ignore invalid TLS certs for ArgoCD server")
 	runCmd.Flags().BoolVar(&cfg.ClientOpts.Plaintext, "argocd-plaintext", env.GetBoolVal("ARGOCD_PLAINTEXT", false), "(INSECURE) connect without TLS to ArgoCD server")
 	runCmd.Flags().StringVar(&cfg.ClientOpts.AuthToken, "argocd-auth-token", "", "use token for authenticating to ArgoCD (unsafe - consider setting ARGOCD_TOKEN env var instead)")
+	// Tentative production Blackouts:
+	// (sleep / dormir) 17:00MST-09:00EDT 23:00UTC-13:00UTC
+	// (food / comida)  11:00EDT-11:30MST 15:00UTC-17:30UTC
+
+	// For example:
+	//   --ss="v1,v2" --ss="v3"
+	// will result in
+	//   []string{"v1", "v2", "v3"}
+	runCmd.Flags().StringSliceVar(&cfg.BlackoutWindows, "blackout-window", nil, "time window to pause the image updater, i.e. 23:00UTC-13:00UTC")
 	runCmd.Flags().BoolVar(&cfg.DryRun, "dry-run", false, "run in dry-run mode. If set to true, do not perform any changes")
 	runCmd.Flags().DurationVar(&cfg.CheckInterval, "interval", 2*time.Minute, "interval for how often to check for updates")
 	runCmd.Flags().StringVar(&cfg.LogLevel, "loglevel", env.GetStringVal("IMAGE_UPDATER_LOGLEVEL", "info"), "set the loglevel to one of trace|debug|info|warn|error")

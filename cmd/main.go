@@ -30,6 +30,7 @@ type ImageUpdaterConfig struct {
 	ApplicationsAPIKind string
 	ClientOpts          argocd.ClientOptions
 	ArgocdNamespace     string
+	BlackoutWindows     []string
 	DryRun              bool
 	CheckInterval       time.Duration
 	ArgoClient          argocd.ArgoCD
