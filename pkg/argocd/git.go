@@ -4,11 +4,16 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"io/ioutil"
+	"net/http"
 	"os"
 	"path"
 	"path/filepath"
+	"strings"
 	"text/template"
 
 	"sigs.k8s.io/kustomize/api/konfig"
@@ -30,9 +35,11 @@ func TemplateCommitMessage(tpl *template.Template, appName string, changeList []
 	var cmBuf bytes.Buffer
 
 	type commitMessageChange struct {
-		Image  string
-		OldTag string
-		NewTag string
+		Image         string
+		OldTag        string
+		NewTag        string
+		Author        string
+		CommitMessage string
 	}
 
 	type commitMessageTemplate struct {
@@ -44,7 +51,16 @@ func TemplateCommitMessage(tpl *template.Template, appName string, changeList []
 	// writer of a template.
 	changes := make([]commitMessageChange, 0)
 	for _, c := range changeList {
-		changes = append(changes, commitMessageChange{c.Image.ImageName, c.OldTag.String(), c.NewTag.String()})
+		newTag := c.NewTag.String()
+		image := c.Image.ImageName
+		applicationName := (strings.Split(image, "/"))[1]
+		CommitId := (strings.Split(newTag, "-"))[4]
+		CommitMessage, Author, err := GetCommitDetails(CommitId, "b64token", applicationName, "bukukasio")
+		if err != nil {
+			log.Errorf("Unable to get details", err)
+		}
+		changes = append(changes, commitMessageChange{c.Image.ImageName, c.OldTag.String(), c.NewTag.String(), Author, CommitMessage})
+
 	}
 
 	tplData := commitMessageTemplate{
@@ -94,6 +110,7 @@ func TemplateBranchName(branchName string, changeList []ChangeEntry) string {
 	for _, c := range changeList {
 		changes = append(changes, imageChange{c.Image.ImageName, c.Image.ImageAlias, c.OldTag.String(), c.NewTag.String()})
 		id := fmt.Sprintf("%v-%v-%v,", c.Image.ImageName, c.OldTag.String(), c.NewTag.String())
+
 		_, hasherErr := hasher.Write([]byte(id))
 		log.Infof("writing to hasher %v", id)
 		if hasherErr != nil {
@@ -400,3 +417,65 @@ func parseImageOverride(str v1alpha1.KustomizeImage) types.Image {
 }
 
 var _ changeWriter = writeKustomization
+
+// code for get commit details
+
+type Body struct {
+	Commit Commit `json:"commit"`
+}
+
+type Commit struct {
+	Author  Author `json:"author"`
+	Message string `json:"message"`
+}
+
+type Author struct {
+	Name  string `json:"name"`
+	Email string `json:"email"`
+}
+
+// This function will return commit author and commit message of commit id. For authentication used base64 encoded personal access token along withrepo and organisation name
+//  example: GetCommitDetails("3b5768e", "Z2hwX21xeXZBNDNzNmRkQWM3WjJYQjJJMHlNTU53SUxvbjFvdTVaYg==", "tokko-merchant-web", "bukukasio")
+func GetCommitDetails(commitsha, accesstoken, repo, organisation string) (string, string, error) {
+
+	req, err := http.NewRequest("GET", "https://api.github.com/repos/"+organisation+"/"+repo+"/commits/"+commitsha, nil)
+	if err != nil {
+		log.Errorf("Unable Create a Request", err)
+		return "", "", err
+	}
+	req.Header.Set("Authorization", "Basic "+accesstoken)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		log.Errorf("Execute command", err)
+		return "", "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusOK {
+		bodyBytes, err := io.ReadAll(resp.Body)
+		if err != nil {
+			log.Errorf("Error in Reading Response", err)
+			return "", "", err
+		}
+		resp := Body{}
+		jsonErr := json.Unmarshal(bodyBytes, &resp)
+		if jsonErr != nil {
+			log.Errorf("json Error", jsonErr)
+			return "", "", err
+		}
+
+		commitMessage := resp.Commit.Message
+		commitAuthor := resp.Commit.Author
+		log.Infof(resp.Commit.Message)
+		log.Infof(resp.Commit.Author.Name)
+		// bodyString := string(bodyBytes)
+		// log.Info(bodyString)
+		return commitMessage, commitAuthor.Name, nil
+	} else {
+		log.Errorf("Invalid details provided!")
+		err := errors.New("invalid details provided")
+		return "", "", err
+	}
+
+}

@@ -233,6 +233,7 @@ data:
     build: automatic update of {{ .AppName }}
 
     {{ range .AppChanges -}}
+    Changes triggered by: {{.Author}} for {{.CommitMessage}}
     updates image {{ .Image }} tag '{{ .OldTag }}' to '{{ .NewTag }}'
     {{ end -}}
 ```
