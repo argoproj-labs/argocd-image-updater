@@ -55,7 +55,7 @@ func TemplateCommitMessage(tpl *template.Template, appName string, changeList []
 		image := c.Image.ImageName
 		applicationName := (strings.Split(image, "/"))[1]
 		CommitId := (strings.Split(newTag, "-"))[4]
-		CommitMessage, Author, err := GetCommitDetails(CommitId, "b64token", applicationName, "bukukasio")
+		CommitMessage, Author, err := GetCommitDetails(CommitId, os.Getenv("PAT"), applicationName, "bukukasio")
 		if err != nil {
 			log.Errorf("Unable to get details", err)
 		}

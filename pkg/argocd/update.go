@@ -20,7 +20,6 @@ import (
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/application"
 	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	"gopkg.in/yaml.v2"
-	"github.com/bukukasio/tokko-ops-utils/image-updater-github/service"
 )
 
 // Stores some statistics about the results of a run
@@ -319,7 +318,7 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 		}
 		if len(changeList) > 0 && updateConf.GitCommitMessage != nil {
 			wbc.GitCommitMessage = TemplateCommitMessage(updateConf.GitCommitMessage, updateConf.UpdateApp.Application.Name, changeList)
-			
+
 		}
 	}
 
