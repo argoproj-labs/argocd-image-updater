@@ -53,9 +53,9 @@ func TemplateCommitMessage(tpl *template.Template, appName string, changeList []
 	for _, c := range changeList {
 		newTag := c.NewTag.String()
 		image := c.Image.ImageName
-		applicationName := (strings.Split(image, "/"))[1]
-		CommitId := (strings.Split(newTag, "-"))[4]
-		CommitMessage, Author, err := GetCommitDetails(CommitId, os.Getenv("PAT"), applicationName, "bukukasio")
+		applicationName, CommitId := GetApplicationDetails(newTag, image)
+		log.Infof("Commit ID for deployment: ", CommitId)
+		CommitMessage, Author, err := GetCommitDetails(CommitId, os.Getenv("PAT"), applicationName, os.Getenv("organisation"))
 		if err != nil {
 			log.Errorf("Unable to get details", err)
 		}
@@ -74,6 +74,19 @@ func TemplateCommitMessage(tpl *template.Template, appName string, changeList []
 	}
 
 	return cmBuf.String()
+}
+
+// Get repo name and commit id from Image tag and image name
+func GetApplicationDetails(newTag, Image string) (string, string) {
+	applicationName := (strings.Split(Image, "/"))[1]
+	Commit := (strings.Split(newTag, "-"))
+	var CommitId string
+	if len(CommitId) < 5 {
+		CommitId = Commit[4]
+	} else {
+		CommitId = Commit[1]
+	}
+	return applicationName, CommitId
 }
 
 // TemplateBranchName parses a string to a template, and returns a
@@ -435,7 +448,7 @@ type Author struct {
 }
 
 // This function will return commit author and commit message of commit id. For authentication used base64 encoded personal access token along withrepo and organisation name
-//  example: GetCommitDetails("3b5768e", "Z2hwX21xeXZBNDNzNmRkQWM3WjJYQjJJMHlNTU53SUxvbjFvdTVaYg==", "tokko-merchant-web", "bukukasio")
+//  example: GetCommitDetails("3b5768e", "Z2hwX21xeXZBNDNzNmRkQWM3WjJYQjJJMHlNTU53SUxvbjFvdTVaYg==", "tokko-merchant-web", "organisation")
 func GetCommitDetails(commitsha, accesstoken, repo, organisation string) (string, string, error) {
 
 	req, err := http.NewRequest("GET", "https://api.github.com/repos/"+organisation+"/"+repo+"/commits/"+commitsha, nil)
