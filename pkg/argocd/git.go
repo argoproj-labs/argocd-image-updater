@@ -303,7 +303,7 @@ func writeKustomization(app *v1alpha1.Application, wbc *WriteBackConfig, gitC gi
 		}()
 	}
 
-	base := filepath.Join(gitC.Root(), wbc.KustomizeBase)
+	base := filepath.Join(gitC.Root(), wbc.TargetBase)
 	if err := os.Chdir(base); err != nil {
 		return err, false
 	}

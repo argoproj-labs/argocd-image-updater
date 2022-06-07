@@ -74,8 +74,8 @@ type WriteBackConfig struct {
 	GitCommitEmail     string
 	GitCommitMessage   string
 	KustomizeBase      string
-	TargetBase         string
 	Target             string
+	TargetBase         string
 	TargetType         WriteBackTargetType
 	TargetChangeWriter changeWriter
 }
@@ -426,8 +426,9 @@ func getWriteBackConfig(app *v1alpha1.Application, kubeClient *kube.KubernetesCl
 	// Default write-back is to use Argo CD API
 	wbc.Method = WriteBackApplication
 	wbc.ArgoClient = argoClient
-	wbc.TargetChangeWriter = writeKustomization
 	wbc.TargetBase = parseDefaultTarget(app.Name, app.Spec.Source.Path)
+	wbc.TargetType = WriteBackTargetHelm
+	wbc.TargetChangeWriter = writeOverrides
 
 	// If we have no update method, just return our default
 	method, ok := app.Annotations[common.WriteBackMethodAnnotation]
@@ -448,8 +449,8 @@ func getWriteBackConfig(app *v1alpha1.Application, kubeClient *kube.KubernetesCl
 		wbc.Method = WriteBackGit
 		if target, ok := app.Annotations[common.WriteBackTargetAnnotation]; ok && (strings.HasPrefix(target, common.KustomizationPrefix) || strings.HasPrefix(target, common.HelmPrefix)) {
 			wbc.TargetBase, wbc.TargetType = parseTarget(target, app.Spec.Source.Path)
-			if wbc.TargetType == WriteBackTargetHelm {
-				wbc.TargetChangeWriter = writeOverrides
+			if wbc.TargetType == WriteBackTargetKustomization {
+				wbc.TargetChangeWriter = writeKustomization
 			}
 		}
 		if err := parseGitConfig(app, kubeClient, wbc, creds); err != nil {
@@ -474,7 +475,7 @@ func parseTarget(target string, sourcePath string) (base string, targetType Writ
 		base = baseForTargetType(target[len(common.KustomizationPrefix):], sourcePath)
 	} else if strings.HasPrefix(target, common.HelmPrefix) {
 		targetType = WriteBackTargetHelm
-		base = baseForTargetType(target[len(common.KustomizationPrefix):], sourcePath)
+		base = baseForTargetType(target[len(common.HelmPrefix):], sourcePath)
 	} else {
 		targetType = WriteBackTargetHelm
 		base = filepath.Join(sourcePath, ".")
@@ -482,12 +483,15 @@ func parseTarget(target string, sourcePath string) (base string, targetType Writ
 	return
 }
 
-func baseForTargetType(trimmedTarget, sourcePath string) string {
-	base := "."
-	if strings.HasPrefix(trimmedTarget, ":") {
-		base = trimmedTarget[1:]
+func baseForTargetType(trimmedTarget, sourcePath string) (target string) {
+	if trimmedTarget == "" {
+		target = filepath.Join(sourcePath, ".")
+	} else if target = trimmedTarget[1:]; target[0:1] ==  "/" {
+		target = target[1:]
+	} else {
+		target = filepath.Join(sourcePath, target)
 	}
-	return filepath.Join(sourcePath, base)
+	return
 }
 
 func parseGitConfig(app *v1alpha1.Application, kubeClient *kube.KubernetesClient, wbc *WriteBackConfig, creds string) error {
@@ -533,6 +537,7 @@ func commitChanges(app *v1alpha1.Application, wbc *WriteBackConfig, changeList [
 			return err
 		}
 	case WriteBackGit:
+		fmt.Printf("#########################\n%v\n#########################\n", wbc.TargetChangeWriter)
 		return commitChangesGit(app, wbc, changeList, wbc.TargetChangeWriter)
 	default:
 		return fmt.Errorf("unknown write back method set: %d", wbc.Method)
