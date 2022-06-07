@@ -54,20 +54,30 @@ const (
 	WriteBackGit         WriteBackMethod = 1
 )
 
+type WriteBackTargetType int
+
+const (
+	WriteBackTargetKustomization WriteBackTargetType = 0
+	WriteBackTargetHelm          WriteBackTargetType = 1
+)
+
 // WriteBackConfig holds information on how to write back the changes to an Application
 type WriteBackConfig struct {
 	Method     WriteBackMethod
 	ArgoClient ArgoCD
 	// If GitClient is not nil, the client will be used for updates. Otherwise, a new client will be created.
-	GitClient        git.Client
-	GetCreds         GitCredsSource
-	GitBranch        string
-	GitWriteBranch   string
-	GitCommitUser    string
-	GitCommitEmail   string
-	GitCommitMessage string
-	KustomizeBase    string
-	Target           string
+	GitClient          git.Client
+	GetCreds           GitCredsSource
+	GitBranch          string
+	GitWriteBranch     string
+	GitCommitUser      string
+	GitCommitEmail     string
+	GitCommitMessage   string
+	KustomizeBase      string
+	TargetBase         string
+	Target             string
+	TargetType         WriteBackTargetType
+	TargetChangeWriter changeWriter
 }
 
 // The following are helper structs to only marshal the fields we require
@@ -416,7 +426,8 @@ func getWriteBackConfig(app *v1alpha1.Application, kubeClient *kube.KubernetesCl
 	// Default write-back is to use Argo CD API
 	wbc.Method = WriteBackApplication
 	wbc.ArgoClient = argoClient
-	wbc.Target = parseDefaultTarget(app.Name, app.Spec.Source.Path)
+	wbc.TargetChangeWriter = writeKustomization
+	wbc.TargetBase = parseDefaultTarget(app.Name, app.Spec.Source.Path)
 
 	// If we have no update method, just return our default
 	method, ok := app.Annotations[common.WriteBackMethodAnnotation]
@@ -435,8 +446,11 @@ func getWriteBackConfig(app *v1alpha1.Application, kubeClient *kube.KubernetesCl
 	switch strings.TrimSpace(method) {
 	case "git":
 		wbc.Method = WriteBackGit
-		if target, ok := app.Annotations[common.WriteBackTargetAnnotation]; ok && strings.HasPrefix(target, common.KustomizationPrefix) {
-			wbc.KustomizeBase = parseTarget(target, app.Spec.Source.Path)
+		if target, ok := app.Annotations[common.WriteBackTargetAnnotation]; ok && (strings.HasPrefix(target, common.KustomizationPrefix) || strings.HasPrefix(target, common.HelmPrefix)) {
+			wbc.TargetBase, wbc.TargetType = parseTarget(target, app.Spec.Source.Path)
+			if wbc.TargetType == WriteBackTargetHelm {
+				wbc.TargetChangeWriter = writeOverrides
+			}
 		}
 		if err := parseGitConfig(app, kubeClient, wbc, creds); err != nil {
 			return nil, err
@@ -454,14 +468,26 @@ func parseDefaultTarget(appName string, path string) string {
 	return filepath.Join(path, defaultTargetFile)
 }
 
-func parseTarget(target string, sourcePath string) (kustomizeBase string) {
-	if target == common.KustomizationPrefix {
-		return filepath.Join(sourcePath, ".")
-	} else if base := target[len(common.KustomizationPrefix)+1:]; strings.HasPrefix(base, "/") {
-		return base[1:]
+func parseTarget(target string, sourcePath string) (base string, targetType WriteBackTargetType) {
+	if strings.HasPrefix(target, common.KustomizationPrefix) {
+		targetType = WriteBackTargetKustomization
+		base = baseForTargetType(target[len(common.KustomizationPrefix):], sourcePath)
+	} else if strings.HasPrefix(target, common.HelmPrefix) {
+		targetType = WriteBackTargetHelm
+		base = baseForTargetType(target[len(common.KustomizationPrefix):], sourcePath)
 	} else {
-		return filepath.Join(sourcePath, base)
+		targetType = WriteBackTargetHelm
+		base = filepath.Join(sourcePath, ".")
 	}
+	return
+}
+
+func baseForTargetType(trimmedTarget, sourcePath string) string {
+	base := "."
+	if strings.HasPrefix(trimmedTarget, ":") {
+		base = trimmedTarget[1:]
+	}
+	return filepath.Join(sourcePath, base)
 }
 
 func parseGitConfig(app *v1alpha1.Application, kubeClient *kube.KubernetesClient, wbc *WriteBackConfig, creds string) error {
@@ -507,11 +533,7 @@ func commitChanges(app *v1alpha1.Application, wbc *WriteBackConfig, changeList [
 			return err
 		}
 	case WriteBackGit:
-		// if the kustomize base is set, the target is a kustomization
-		if wbc.KustomizeBase != "" {
-			return commitChangesGit(app, wbc, changeList, writeKustomization)
-		}
-		return commitChangesGit(app, wbc, changeList, writeOverrides)
+		return commitChangesGit(app, wbc, changeList, wbc.TargetChangeWriter)
 	default:
 		return fmt.Errorf("unknown write back method set: %d", wbc.Method)
 	}
