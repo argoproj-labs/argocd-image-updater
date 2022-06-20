@@ -47,7 +47,7 @@ line option, e.g. the following demonstrates no available images for the given
 platform:
 
 ```shell
-$ argocd-image-updater test gcr.io/heptio-images/ks-guestbook-demo --platform darwin/amd64 --update-strategy latest
+$ argocd-image-updater test gcr.io/heptio-images/ks-guestbook-demo --platforms darwin/amd64 --update-strategy latest
 DEBU[0000] Creating in-cluster Kubernetes client        
 INFO[0000] retrieving information about image            image_alias= image_name=gcr.io/heptio-images/ks-guestbook-demo registry_url=gcr.io
 DEBU[0000] setting rate limit to 20 requests per second  prefix=gcr.io registry="https://gcr.io"
@@ -64,7 +64,7 @@ INFO[0001] no newer version of image found               application=test image_
 While setting the `platforms` to include `linux/amd64`, yields the following:
 
 ```shell
-$ argocd-image-updater test gcr.io/heptio-images/ks-guestbook-demo --platform linux/amd64 --update-strategy latest
+$ argocd-image-updater test gcr.io/heptio-images/ks-guestbook-demo --platforms linux/amd64 --update-strategy latest
 DEBU[0000] Creating in-cluster Kubernetes client        
 INFO[0000] retrieving information about image            image_alias= image_name=gcr.io/heptio-images/ks-guestbook-demo registry_url=gcr.io
 DEBU[0000] setting rate limit to 20 requests per second  prefix=gcr.io registry="https://gcr.io"
