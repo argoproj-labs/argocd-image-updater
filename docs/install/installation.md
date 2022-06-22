@@ -149,7 +149,7 @@ After changing values in the ConfigMap, Argo CD Image Updater needs to be
 restarted for the changes to take effect, i.e.
 
 ```shell
-kubectl -n argocd-image-updater rollout restart deployment argocd-image-updater
+kubectl -n argocd rollout restart deployment argocd-image-updater
 ```
 
 ### Configure API access token secret
@@ -166,13 +166,13 @@ secret with `kubectl` and apply it over the existing resource:
 ```shell
 kubectl create secret generic argocd-image-updater-secret \
   --from-literal argocd.token=$YOUR_TOKEN --dry-run -o yaml |
-  kubectl -n argocd-image-updater apply -f -
+  kubectl -n argocd apply -f -
 ```
 
 You must restart the `argocd-image-updater` pod after such a change, i.e run
 
 ```shell
-kubectl -n argocd-image-updater rollout restart deployment argocd-image-updater
+kubectl -n argocd rollout restart deployment argocd-image-updater
 ```
 
 Or alternatively, simply delete the running pod to have it recreated by
