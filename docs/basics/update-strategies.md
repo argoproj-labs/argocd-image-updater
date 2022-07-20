@@ -15,9 +15,13 @@ The following update strategies are currently supported:
 
 * [semver](#strategy-semver) - Update to the latest version of an image
   considering semantic versioning constraints
-* [latest](#strategy-latest) - Update to the most recently built image found in a registry
+* [latest/newest-build](#strategy-latest) - Update to the most recently built image found in a registry
 * [digest](#strategy-digest) - Update to the latest version of a given version (tag), using the tag's SHA digest
-* [name](#strategy-name) - Sorts tags alphabetically and update to the one with the highest cardinality
+* [name/alphabetical](#strategy-name) - Sorts tags alphabetically and update to the one with the highest cardinality
+
+!!!warning "Renamed image update strategies
+    The `latest` strategy has been renamed to `newest-build`, and `name` strategy has been renamed to `alphabetical`. 
+    Please switch to the new convention as support for the old naming convention will be removed in future releases.
 
 Some of the strategies will require additional configuration, or can be tweaked
 with additional parameters. Please have a look at the
@@ -97,29 +101,41 @@ Image Updater will pick the highest version number found in the registry.
 Argo CD Image Updater will omit any tags from your registry that do not match 
 a semantic version when using the `semver` update strategy.
 
-### <a name="strategy-latest"></a>latest - Update to the most recently built image
+### <a name="strategy-latest"></a>latest/newest-build - Update to the most recently built image
+
+
+!!!warning "Renamed image update strategies"
+    The `latest` strategy has been renamed to `newest-build`.
+    Please switch to the new convention as support for the old naming convention will be removed in future releases.
+    Detected usage of `latest` will result in a warning message within the image-updater controller logs.
 
 !!!warning
     As of November 2020, Docker Hub has introduced pull limits for accounts on
-    the free plan and unauthenticated requests. The `latest` update strategy
+    the free plan and unauthenticated requests. The `latest` or `newest-build` update strategy
     will perform manifest pulls for determining the most recently pushed tags,
     and these will count into your pull limits. So unless you are not affected
-    by these pull limits, it is **not recommended** to use the `latest` update
+    by these pull limits, it is **not recommended** to use the `latest` or `newest-build` update
     strategy with images hosted on Docker Hub.
 
 !!!note
     If you are using *reproducible builds* for your container images (e.g. if
     your build pipeline always sets the creation date of the image to the same
-    value), the `latest` strategy will not be able to determine which tag to
+    value), the `latest` or `newest-build` strategy will not be able to determine which tag to
     update to.
 
-Strategy name: `latest`
+Strategy name: `latest` or `newest-build`
 
 Basic configuration:
 
 ```yaml
 argocd-image-updater.argoproj.io/image-list: <alias>=some/image
 argocd-image-updater.argoproj.io/<alias>.update-strategy: latest
+```
+or
+
+```yaml
+argocd-image-updater.argoproj.io/image-list: <alias>=some/image
+argocd-image-updater.argoproj.io/<alias>.update-strategy: newest-build
 ```
 
 Argo CD Image Updater can update to the image that has the most recent build
@@ -147,6 +163,14 @@ argocd-image-updater.argoproj.io/myimage.update-strategy: latest
 argocd-image-updater.argoproj.io/myimage.allow-tags: regexp:^[0-9a-f]{7}$
 ```
 
+or 
+
+```yaml
+argocd-image-updater.argoproj.io/image-list: myimage=some/image
+argocd-image-updater.argoproj.io/myimage.update-strategy: newest-build
+argocd-image-updater.argoproj.io/myimage.allow-tags: regexp:^[0-9a-f]{7}$
+```
+
 would only consider tags that match a given regular expression for update. In
 this case, the regular expression matches a 7-digit hexadecimal string that
 could represent the short version of a Git commit SHA, so it would match tags
@@ -157,6 +181,14 @@ Likewise, you can ignore a certain list of tags from your repository:
 ```yaml
 argocd-image-updater.argoproj.io/image-list: myimage=some/image
 argocd-image-updater.argoproj.io/myimage.update-strategy: latest
+argocd-image-updater.argoproj.io/myimage.ignore-tags: latest, master
+```
+
+or 
+
+```yaml
+argocd-image-updater.argoproj.io/image-list: myimage=some/image
+argocd-image-updater.argoproj.io/myimage.update-strategy: newest-build
 argocd-image-updater.argoproj.io/myimage.ignore-tags: latest, master
 ```
 
@@ -206,13 +238,25 @@ argocd-image-updater.argoproj.io/myimage.update-strategy: digest
 
 ### <a name="strategy-name"></a>Update according to lexical sort
 
-Strategy name: `name`
+!!!warning "Renamed image update strategies"
+    The `name` strategy has been renamed to `alphabetical`.
+    Please switch to the new convention as support for the old naming convention will be removed in future releases.
+    Detected usage of `name` will result in a warning message within the image-updater controller logs.
+
+
+Strategy name: `name` or `alphabetical`
 
 Basic configuration:
 
 ```yaml
 argocd-image-updater.argoproj.io/image-list: <alias>=some/image
 argocd-image-updater.argoproj.io/<alias>.update-strategy: name
+```
+or
+
+```yaml
+argocd-image-updater.argoproj.io/image-list: <alias>=some/image
+argocd-image-updater.argoproj.io/<alias>.update-strategy: alphabetical
 ```
 
 This update strategy sorts the tags returned by the registry in a lexical way
@@ -228,6 +272,14 @@ for update, you will need additional configuration. For example,
 ```yaml
 argocd-image-updater.argoproj.io/image-list: myimage=some/image
 argocd-image-updater.argoproj.io/myimage.update-strategy: name
+argocd-image-updater.argoproj.io/myimage.allow-tags: regexp:^[0-9]{4}-[0-9]{2}[0-9]{2}$
+```
+
+or 
+
+```yaml
+argocd-image-updater.argoproj.io/image-list: myimage=some/image
+argocd-image-updater.argoproj.io/myimage.update-strategy: alphabetical
 argocd-image-updater.argoproj.io/myimage.allow-tags: regexp:^[0-9]{4}-[0-9]{2}[0-9]{2}$
 ```
 

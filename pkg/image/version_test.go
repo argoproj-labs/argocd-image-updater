@@ -88,7 +88,7 @@ func Test_LatestVersion(t *testing.T) {
 	t.Run("Find the latest version using latest sortmode", func(t *testing.T) {
 		tagList := newImageTagListWithDate([]string{"zz", "bb", "yy", "cc", "yy", "aa", "ll"})
 		img := NewFromIdentifier("jannfis/test:bb")
-		vc := VersionConstraint{Strategy: StrategyLatest}
+		vc := VersionConstraint{Strategy: StrategyNewestBuild}
 		newTag, err := img.GetNewestVersionFromTags(&vc, tagList)
 		require.NoError(t, err)
 		require.NotNil(t, newTag)

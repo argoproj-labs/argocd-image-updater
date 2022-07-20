@@ -17,9 +17,9 @@ const (
 	// VersionSortSemVer sorts tags using semver sorting (the default)
 	StrategySemVer UpdateStrategy = 0
 	// VersionSortLatest sorts tags after their creation date
-	StrategyLatest UpdateStrategy = 1
+	StrategyNewestBuild UpdateStrategy = 1
 	// VersionSortName sorts tags alphabetically by name
-	StrategyName UpdateStrategy = 2
+	StrategyAlphabetical UpdateStrategy = 2
 	// VersionSortDigest uses latest digest of an image
 	StrategyDigest UpdateStrategy = 3
 )
@@ -28,10 +28,10 @@ func (us UpdateStrategy) String() string {
 	switch us {
 	case StrategySemVer:
 		return "semver"
-	case StrategyLatest:
-		return "latest"
-	case StrategyName:
-		return "name"
+	case StrategyNewestBuild:
+		return "newest-build"
+	case StrategyAlphabetical:
+		return "alphabetical"
 	case StrategyDigest:
 		return "digest"
 	}
@@ -87,12 +87,12 @@ func (img *ContainerImage) GetNewestVersionFromTags(vc *VersionConstraint, tagLi
 	switch vc.Strategy {
 	case StrategySemVer:
 		availableTags = tagList.SortBySemVer()
-	case StrategyName:
-		availableTags = tagList.SortByName()
-	case StrategyLatest:
+	case StrategyAlphabetical:
+		availableTags = tagList.SortAlphabetically()
+	case StrategyNewestBuild:
 		availableTags = tagList.SortByDate()
 	case StrategyDigest:
-		availableTags = tagList.SortByName()
+		availableTags = tagList.SortAlphabetically()
 	}
 
 	considerTags := tag.SortableImageTagList{}
@@ -192,7 +192,7 @@ func (s UpdateStrategy) IsCacheable() bool {
 // NeedsMetadata returns true if strategy s requires image metadata to work correctly
 func (s UpdateStrategy) NeedsMetadata() bool {
 	switch s {
-	case StrategyLatest:
+	case StrategyNewestBuild:
 		return true
 	default:
 		return false

@@ -96,7 +96,7 @@ func Test_SortableImageTagList(t *testing.T) {
 			tag := NewImageTag(name, time.Now(), "")
 			il.Add(tag)
 		}
-		sil := il.SortByName()
+		sil := il.SortAlphabetically()
 		require.Len(t, sil, len(names))
 		assert.Equal(t, "alpha", sil[0].TagName)
 		assert.Equal(t, "bazar", sil[1].TagName)
