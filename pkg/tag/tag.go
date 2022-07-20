@@ -123,7 +123,7 @@ func (il ImageTagList) Add(tag *ImageTag) {
 }
 
 // SortByName returns an array of ImageTag objects, sorted by the tag's name
-func (il ImageTagList) SortByName() SortableImageTagList {
+func (il ImageTagList) SortAlphabetically() SortableImageTagList {
 	sil := SortableImageTagList{}
 	for _, v := range il.items {
 		sil = append(sil, v)

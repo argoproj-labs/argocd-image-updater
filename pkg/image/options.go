@@ -101,9 +101,15 @@ func (img *ContainerImage) ParseUpdateStrategy(val string) UpdateStrategy {
 	case "semver":
 		return StrategySemVer
 	case "latest":
-		return StrategyLatest
+		logCtx.Warnf("\"latest\" strategy has been renamed to \"newest-build\". Please switch to the new convention as support for the old naming convention will be removed in future versions.")
+		fallthrough
+	case "newest-build":
+		return StrategyNewestBuild
 	case "name":
-		return StrategyName
+		logCtx.Warnf("\"name\" strategy has been renamed to \"alphabetical\". Please switch to the new convention as support for the old naming convention will be removed in future versions.")
+		fallthrough
+	case "alphabetical":
+		return StrategyAlphabetical
 	case "digest":
 		return StrategyDigest
 	default:

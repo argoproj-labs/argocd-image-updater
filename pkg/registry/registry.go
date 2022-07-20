@@ -80,7 +80,7 @@ func (endpoint *RegistryEndpoint) GetTags(img *image.ContainerImage, regClient R
 	//
 	// We just create a dummy time stamp according to the registry's sort mode, if
 	// set.
-	if (vc.Strategy != image.StrategyLatest && vc.Strategy != image.StrategyDigest) || endpoint.TagListSort.IsTimeSorted() {
+	if (vc.Strategy != image.StrategyNewestBuild && vc.Strategy != image.StrategyDigest) || endpoint.TagListSort.IsTimeSorted() {
 		for i, tagStr := range tags {
 			var ts int
 			if endpoint.TagListSort == TagListSortLatestFirst {

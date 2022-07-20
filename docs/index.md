@@ -42,14 +42,18 @@ RBAC authorization on Application resources etc. are fully supported.
 
 ## Features
 
+!!!warning "Renamed image update strategies"
+    The `latest` strategy has been renamed to `newest-build`, and `name` strategy has been renamed to `alphabetical`. 
+    Please switch to the new convention as support for the old naming convention will be removed in future releases.
+
 * Updates images of apps that are managed by Argo CD and are either generated
   from *Helm* or *Kustomize* tooling
 * Update app images according to different
   [update strategies](./basics/update-strategies.md)
     * `semver`: update to highest allowed version according to given image
     constraint,
-    * `latest`: update to the most recently created image tag,
-    * `name`: update to the last tag in an alphabetically sorted list
+    * `latest/newest-build`: update to the most recently created image tag,
+    * `name/alphabetical`: update to the last tag in an alphabetically sorted list
     * `digest`: update to the most recent pushed version of a mutable tag
 * Support for 
   [widely used container registries](./configuration/registries.md#supported-registries)

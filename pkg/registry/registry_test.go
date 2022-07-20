@@ -70,7 +70,7 @@ func Test_GetTags(t *testing.T) {
 
 		img := image.NewFromIdentifier("foo/bar:1.2.0")
 
-		tl, err := ep.GetTags(img, &regClient, &image.VersionConstraint{Strategy: image.StrategyName, Options: options.NewManifestOptions()})
+		tl, err := ep.GetTags(img, &regClient, &image.VersionConstraint{Strategy: image.StrategyAlphabetical, Options: options.NewManifestOptions()})
 		require.NoError(t, err)
 		assert.NotEmpty(t, tl)
 
@@ -102,7 +102,7 @@ func Test_GetTags(t *testing.T) {
 		ep.Cache.ClearCache()
 
 		img := image.NewFromIdentifier("foo/bar:1.2.0")
-		tl, err := ep.GetTags(img, &regClient, &image.VersionConstraint{Strategy: image.StrategyLatest, Options: options.NewManifestOptions()})
+		tl, err := ep.GetTags(img, &regClient, &image.VersionConstraint{Strategy: image.StrategyNewestBuild, Options: options.NewManifestOptions()})
 		require.NoError(t, err)
 		assert.NotEmpty(t, tl)
 

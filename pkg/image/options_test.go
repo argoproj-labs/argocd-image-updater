@@ -85,13 +85,22 @@ func Test_GetSortOption(t *testing.T) {
 		assert.Equal(t, StrategySemVer, sortMode)
 	})
 
+	t.Run("Use update strategy newest-build for configured application", func(t *testing.T) {
+		annotations := map[string]string{
+			fmt.Sprintf(common.UpdateStrategyAnnotation, "dummy"): "newest-build",
+		}
+		img := NewFromIdentifier("dummy=foo/bar:1.12")
+		sortMode := img.GetParameterUpdateStrategy(annotations)
+		assert.Equal(t, StrategyNewestBuild, sortMode)
+	})
+
 	t.Run("Get update strategy date for configured application", func(t *testing.T) {
 		annotations := map[string]string{
 			fmt.Sprintf(common.UpdateStrategyAnnotation, "dummy"): "latest",
 		}
 		img := NewFromIdentifier("dummy=foo/bar:1.12")
 		sortMode := img.GetParameterUpdateStrategy(annotations)
-		assert.Equal(t, StrategyLatest, sortMode)
+		assert.Equal(t, StrategyNewestBuild, sortMode)
 	})
 
 	t.Run("Get update strategy name for configured application", func(t *testing.T) {
@@ -100,7 +109,16 @@ func Test_GetSortOption(t *testing.T) {
 		}
 		img := NewFromIdentifier("dummy=foo/bar:1.12")
 		sortMode := img.GetParameterUpdateStrategy(annotations)
-		assert.Equal(t, StrategyName, sortMode)
+		assert.Equal(t, StrategyAlphabetical, sortMode)
+	})
+
+	t.Run("Use update strategy alphabetical for configured application", func(t *testing.T) {
+		annotations := map[string]string{
+			fmt.Sprintf(common.UpdateStrategyAnnotation, "dummy"): "alphabetical",
+		}
+		img := NewFromIdentifier("dummy=foo/bar:1.12")
+		sortMode := img.GetParameterUpdateStrategy(annotations)
+		assert.Equal(t, StrategyAlphabetical, sortMode)
 	})
 
 	t.Run("Get update strategy option configured application because of invalid option", func(t *testing.T) {
@@ -121,21 +139,21 @@ func Test_GetSortOption(t *testing.T) {
 
 	t.Run("Prefer update strategy option from image-specific annotation", func(t *testing.T) {
 		annotations := map[string]string{
-			fmt.Sprintf(common.UpdateStrategyAnnotation, "dummy"): "name",
-			common.ApplicationWideUpdateStrategyAnnotation:        "latest",
+			fmt.Sprintf(common.UpdateStrategyAnnotation, "dummy"): "alphabetical",
+			common.ApplicationWideUpdateStrategyAnnotation:        "newest-build",
 		}
 		img := NewFromIdentifier("dummy=foo/bar:1.12")
 		sortMode := img.GetParameterUpdateStrategy(annotations)
-		assert.Equal(t, StrategyName, sortMode)
+		assert.Equal(t, StrategyAlphabetical, sortMode)
 	})
 
 	t.Run("Get update strategy option from application-wide annotation", func(t *testing.T) {
 		annotations := map[string]string{
-			common.ApplicationWideUpdateStrategyAnnotation: "latest",
+			common.ApplicationWideUpdateStrategyAnnotation: "newest-build",
 		}
 		img := NewFromIdentifier("dummy=foo/bar:1.12")
 		sortMode := img.GetParameterUpdateStrategy(annotations)
-		assert.Equal(t, StrategyLatest, sortMode)
+		assert.Equal(t, StrategyNewestBuild, sortMode)
 	})
 }
 
