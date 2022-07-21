@@ -112,7 +112,7 @@ create a pull secret for Docker Hub named `dockerhub-secret` in the namespace
 kubectl create -n argocd secret docker-registry dockerhub-secret \
   --docker-username someuser \
   --docker-password s0m3p4ssw0rd \
-  --docker-registry "https://registry-1.docker.io"
+  --docker-server "https://registry-1.docker.io"
 ```
 
 This secret could then be referred to as
