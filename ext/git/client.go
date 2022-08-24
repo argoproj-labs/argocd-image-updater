@@ -327,9 +327,9 @@ func (m *nativeGitClient) Fetch(revision string) error {
 
 	var err error
 	if revision != "" {
-		err = m.runCredentialedCmd("git", "fetch", "origin", revision, "--tags", "--force")
+		err = m.runCredentialedCmd("git", "fetch", "origin", revision, "--tags", "--force", "--depth", "1")
 	} else {
-		err = m.runCredentialedCmd("git", "fetch", "origin", "--tags", "--force")
+		err = m.runCredentialedCmd("git", "fetch", "origin", "--tags", "--force", "--depth", "1")
 	}
 	// When we have LFS support enabled, check for large files and fetch them too.
 	if err == nil && m.IsLFSEnabled() {
