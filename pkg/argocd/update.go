@@ -486,9 +486,10 @@ func parseGitConfig(app *v1alpha1.Application, kubeClient *kube.KubernetesClient
 
 func commitChangesLocked(app *v1alpha1.Application, wbc *WriteBackConfig, state *SyncIterationState, changeList []ChangeEntry) error {
 	if wbc.RequiresLocking() {
-		lock := state.GetRepositoryLock(app.Spec.Source.RepoURL)
-		lock.Lock()
-		defer lock.Unlock()
+		// TODO: temporary skip lock
+		// lock := state.GetRepositoryLock(app.Spec.Source.RepoURL)
+		// lock.Lock()
+		// defer lock.Unlock()
 	}
 
 	return commitChanges(app, wbc, changeList)
