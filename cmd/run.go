@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"strings"
 	"sync"
@@ -62,7 +61,7 @@ func newRunCommand() *cobra.Command {
 
 			// User can specify a path to a template used for Git commit messages
 			if commitMessagePath != "" {
-				tpl, err := ioutil.ReadFile(commitMessagePath)
+				tpl, err := os.ReadFile(commitMessagePath)
 				if err != nil {
 					if errors.Is(err, os.ErrNotExist) {
 						log.Warnf("commit message template at %s does not exist, using default", commitMessagePath)

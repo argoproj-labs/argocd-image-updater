@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	"io/ioutil"
+	"os"
 	"text/template"
 	"time"
 
@@ -37,7 +37,7 @@ If PATH is not given, will show you the default message that is used.
 				tplStr = common.DefaultGitCommitMessage
 			} else {
 				commitMessageTemplatePath = args[0]
-				tplData, err := ioutil.ReadFile(commitMessageTemplatePath)
+				tplData, err := os.ReadFile(commitMessageTemplatePath)
 				if err != nil {
 					log.Fatalf("%v", err)
 				}
