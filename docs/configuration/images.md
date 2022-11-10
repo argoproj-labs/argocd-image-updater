@@ -246,7 +246,7 @@ Valid values for `secret_ref` are:
 * `secret:<namespace>/<secret_name>#<field>` - Use credentials stored in the
   field `field` from secret `secret_name` in namespace `namespace`.
 
-* `pullsecret:<namespace>/<secret_name>` - Use credentials stored in the secret
+* `pull-secret:<namespace>/<secret_name>` - Use credentials stored in the secret
   `secret_name` in namespace `namespace`. The secret is treated as Docker pull
   secret, that is, it must have a valid Docker config in JSON format in the
   field `.dockerconfigjson`.
