@@ -3,7 +3,6 @@ package argocd
 import (
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -2044,7 +2043,7 @@ func Test_parseTarget(t *testing.T) {
 }
 
 func mockGit(t *testing.T) (gitMock *gitmock.Client, dir string, cleanup func()) {
-	dir, err := ioutil.TempDir("", "wb-kust")
+	dir, err := os.MkdirTemp("", "wb-kust")
 	assert.NoError(t, err)
 	gitMock = &gitmock.Client{}
 	gitMock.On("Root").Return(dir)

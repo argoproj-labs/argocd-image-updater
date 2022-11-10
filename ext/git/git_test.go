@@ -2,7 +2,7 @@ package git
 
 import (
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -245,7 +245,7 @@ func TestLFSClient(t *testing.T) {
 	// TODO(alexmt): dockerize tests in and enabled it
 	t.Skip()
 
-	tempDir, err := ioutil.TempDir("", "git-client-lfs-test-")
+	tempDir, err := os.MkdirTemp("", "git-client-lfs-test-")
 	assert.NoError(t, err)
 	if err == nil {
 		defer func() { _ = os.RemoveAll(tempDir) }()
@@ -275,7 +275,7 @@ func TestLFSClient(t *testing.T) {
 	assert.NoError(t, err)
 	if err == nil {
 		defer fileHandle.Close()
-		text, err := ioutil.ReadAll(fileHandle)
+		text, err := io.ReadAll(fileHandle)
 		assert.NoError(t, err)
 		if err == nil {
 			assert.Equal(t, "This is not a YAML, sorry.\n", string(text))
@@ -284,7 +284,7 @@ func TestLFSClient(t *testing.T) {
 }
 
 func TestVerifyCommitSignature(t *testing.T) {
-	p, err := ioutil.TempDir("", "test-verify-commit-sig")
+	p, err := os.MkdirTemp("", "test-verify-commit-sig")
 	if err != nil {
 		panic(err.Error())
 	}
@@ -343,7 +343,7 @@ func TestNewFactory(t *testing.T) {
 			test.Flaky(t)
 		}
 
-		dirName, err := ioutil.TempDir("", "git-client-test-")
+		dirName, err := os.MkdirTemp("", "git-client-test-")
 		assert.NoError(t, err)
 		defer func() { _ = os.RemoveAll(dirName) }()
 
@@ -381,7 +381,7 @@ func TestNewFactory(t *testing.T) {
 }
 
 func TestListRevisions(t *testing.T) {
-	dir, err := ioutil.TempDir("", "test-list-revisions")
+	dir, err := os.MkdirTemp("", "test-list-revisions")
 	if err != nil {
 		panic(err.Error())
 	}

@@ -5,7 +5,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path"
 	"path/filepath"
@@ -136,7 +135,7 @@ func commitChangesGit(app *v1alpha1.Application, wbc *WriteBackConfig, changeLis
 	}
 	var gitC git.Client
 	if wbc.GitClient == nil {
-		tempRoot, err := ioutil.TempDir(os.TempDir(), fmt.Sprintf("git-%s", app.Name))
+		tempRoot, err := os.MkdirTemp(os.TempDir(), fmt.Sprintf("git-%s", app.Name))
 		if err != nil {
 			return err
 		}
@@ -220,7 +219,7 @@ func commitChangesGit(app *v1alpha1.Application, wbc *WriteBackConfig, changeLis
 
 	commitOpts := &git.CommitOptions{}
 	if wbc.GitCommitMessage != "" {
-		cm, err := ioutil.TempFile("", "image-updater-commit-msg")
+		cm, err := os.CreateTemp("", "image-updater-commit-msg")
 		if err != nil {
 			return fmt.Errorf("cold not create temp file: %v", err)
 		}
