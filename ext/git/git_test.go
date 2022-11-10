@@ -137,11 +137,11 @@ func TestCustomHTTPClient(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotEqual(t, "", keyFile)
 
-	certData, err := ioutil.ReadFile(certFile)
+	certData, err := os.ReadFile(certFile)
 	assert.NoError(t, err)
 	assert.NotEqual(t, "", string(certData))
 
-	keyData, err := ioutil.ReadFile(keyFile)
+	keyData, err := os.ReadFile(keyFile)
 	assert.NoError(t, err)
 	assert.NotEqual(t, "", string(keyData))
 

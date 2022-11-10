@@ -1816,7 +1816,7 @@ func Test_CommitUpdates(t *testing.T) {
 		gitMock, dir, cleanup := mockGit(t)
 		defer cleanup()
 		kf := filepath.Join(dir, "kustomization.yml")
-		assert.NoError(t, ioutil.WriteFile(kf, []byte(`
+		assert.NoError(t, os.WriteFile(kf, []byte(`
 kind: Kustomization
 apiVersion: kustomize.config.k8s.io/v1beta1
 
@@ -1838,7 +1838,7 @@ replacements: []
 
 		err = commitChanges(app, wbc, nil)
 		assert.NoError(t, err)
-		kust, err := ioutil.ReadFile(kf)
+		kust, err := os.ReadFile(kf)
 		assert.NoError(t, err)
 		assert.YAMLEq(t, `
 kind: Kustomization
@@ -1857,7 +1857,7 @@ replacements: []
 		app.Spec.Source.Kustomize.Images = v1alpha1.KustomizeImages{"foo:123", "bar=qux"}
 		err = commitChanges(app, wbc, nil)
 		assert.NoError(t, err)
-		kust, err = ioutil.ReadFile(kf)
+		kust, err = os.ReadFile(kf)
 		assert.NoError(t, err)
 		assert.YAMLEq(t, `
 kind: Kustomization

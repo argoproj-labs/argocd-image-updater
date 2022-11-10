@@ -225,7 +225,7 @@ func commitChangesGit(app *v1alpha1.Application, wbc *WriteBackConfig, changeLis
 			return fmt.Errorf("cold not create temp file: %v", err)
 		}
 		logCtx.Debugf("Writing commit message to %s", cm.Name())
-		err = ioutil.WriteFile(cm.Name(), []byte(wbc.GitCommitMessage), 0600)
+		err = os.WriteFile(cm.Name(), []byte(wbc.GitCommitMessage), 0600)
 		if err != nil {
 			_ = cm.Close()
 			return fmt.Errorf("could not write commit message to %s: %v", cm.Name(), err)
@@ -269,7 +269,7 @@ func writeOverrides(app *v1alpha1.Application, wbc *WriteBackConfig, gitC git.Cl
 	// our generated new file is the same as the existing one, and if yes, we
 	// don't proceed further for commit.
 	if targetExists {
-		data, err := ioutil.ReadFile(targetFile)
+		data, err := os.ReadFile(targetFile)
 		if err != nil {
 			return err, false
 		}
@@ -279,7 +279,7 @@ func writeOverrides(app *v1alpha1.Application, wbc *WriteBackConfig, gitC git.Cl
 		}
 	}
 
-	err = ioutil.WriteFile(targetFile, override, 0600)
+	err = os.WriteFile(targetFile, override, 0600)
 	if err != nil {
 		return
 	}
