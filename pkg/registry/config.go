@@ -2,7 +2,7 @@ package registry
 
 import (
 	"fmt"
-	"io/ioutil"
+	"os"
 	"time"
 
 	"github.com/argoproj-labs/argocd-image-updater/pkg/log"
@@ -40,7 +40,7 @@ func clearRegistries() {
 // LoadRegistryConfiguration loads a YAML-formatted registry configuration from
 // a given file at path.
 func LoadRegistryConfiguration(path string, clear bool) error {
-	registryBytes, err := ioutil.ReadFile(path)
+	registryBytes, err := os.ReadFile(path)
 	if err != nil {
 		return err
 	}

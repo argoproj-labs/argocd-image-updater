@@ -1,7 +1,7 @@
 package fixture
 
 import (
-	"io/ioutil"
+	"io"
 	"os"
 )
 
@@ -22,7 +22,7 @@ func CaptureStdout(callback func()) (string, error) {
 
 	w.Close()
 
-	data, err := ioutil.ReadAll(r)
+	data, err := io.ReadAll(r)
 
 	if err != nil {
 		return "", err
@@ -46,7 +46,7 @@ func CaptureStderr(callback func()) (string, error) {
 	callback()
 	w.Close()
 
-	data, err := ioutil.ReadAll(r)
+	data, err := io.ReadAll(r)
 
 	if err != nil {
 		return "", err
