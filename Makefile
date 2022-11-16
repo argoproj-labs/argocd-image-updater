@@ -34,6 +34,11 @@ override LDFLAGS += \
 	-X ${VERSION_PACKAGE}.gitCommit=${GIT_COMMIT} \
 	-X ${VERSION_PACKAGE}.buildDate=${BUILD_DATE}
 
+
+MKDOCS_DOCKER_IMAGE?=squidfunk/mkdocs-material:4.1.1
+MKDOCS_RUN_ARGS?=
+
+
 .PHONY: all
 all: prereq controller
 
@@ -137,3 +142,8 @@ run-test:
 		--kubeconfig /kube/config \
 		--argocd-server-addr $(ARGOCD_SERVER) \
 		--grpc-web
+
+
+.PHONY: serve-docs
+serve-docs:
+	docker run ${MKDOCS_RUN_ARGS} --rm -it -p 8000:8000 -v ${CURRENT_DIR}:/docs ${MKDOCS_DOCKER_IMAGE} serve -a 0.0.0.0:8000

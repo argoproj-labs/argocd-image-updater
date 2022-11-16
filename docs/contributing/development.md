@@ -27,6 +27,8 @@ important targets are:
 * `manifests` - this will build the installation manifests for Kubernetes from
   the Kustomize sources
 
+* `serve-docs` will render the documentation at localhost:8000 (requires Docker)
+
 ### Windows Developer Tips
 
 If you are running the cmd shell and are running into issues running `make all`, consider using Git bash.
