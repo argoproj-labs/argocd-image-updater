@@ -32,13 +32,13 @@ The workflow of Argo CD Image Updater can be described as follows:
 * If Argo CD Image Updater considers an image from the list eligible for an
   update check, it will connect the corresponding container registry to see
   if there is a newer version of the image according to the
-  [update strategy](../strategies/)
+  [update strategy](../update-strategies/)
   and other constraints that may have been configured for the image (e.g.
   a list of tags that are allowed to consider).
 
 * If a newer version of an image was found, Argo CD Image Updater will try
   to update the image according to the configured
-  [update method](../methods/). Please note that Argo CD Image Updater will
+  [update method](../update-methods/). Please note that Argo CD Image Updater will
   never update your manifests, instead it re-configures your Application
   sources to use the new image tag, and control is handed over to Argo CD.
 
