@@ -16,7 +16,7 @@ Role that holds the required permissions, and a RoleBinding to bind the
 Role to the ServiceAccount.
 
 In the default installation scenario, i.e. Argo CD Image Updater installed
-to the `argocd` namespace, no further configuration has to done in order
+to the `argocd` namespace, no further configuration has to be done in order
 for Argo CD Image Updater to access the Kubernetes API. If your Argo CD
 installation is in a different namespace than `argocd`, you would have
 to adapt the RoleBinding to bind to the ServiceAccount in the correct
