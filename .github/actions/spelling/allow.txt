@@ -117,6 +117,7 @@ LDFLAGS
 len
 linted
 linux
+localhost
 logctx
 logf
 Logf
