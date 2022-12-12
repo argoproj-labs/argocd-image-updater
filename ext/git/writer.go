@@ -63,7 +63,28 @@ func (m *nativeGitClient) Branch(sourceBranch string, targetBranch string) error
 		}
 	}
 
-	_, err := m.runCmd("branch", targetBranch)
+	// Check if remote branch already exist
+	_, err := m.runCmd("ls-remote", "--exit-code", "--heads", "origin", targetBranch)
+	if err != nil {
+		log.Infof("branch already exists")
+
+		// If so - checkout
+		_, err = m.runCmd("checkout", targetBranch)
+		if err != nil {
+			return fmt.Errorf("could not checkout target branch: %v", err)
+		}
+
+		// Rebase against source branch
+		_, err = m.runCmd("rebase", sourceBranch)
+		if err != nil {
+			return fmt.Errorf("could not rebase against source branch: %v", err)
+		}
+
+		return nil
+	}
+
+	// If remote branch doesn't exist, create new branch
+	_, err = m.runCmd("branch", targetBranch)
 	if err != nil {
 		return fmt.Errorf("could not create new branch: %v", err)
 	}
