@@ -4,8 +4,8 @@ go 1.18
 
 require (
 	github.com/Masterminds/semver v1.5.0
-	github.com/argoproj/argo-cd/v2 v2.2.7
-	github.com/argoproj/gitops-engine v0.5.2
+	github.com/argoproj/argo-cd/v2 v2.2.10
+	github.com/argoproj/gitops-engine v0.5.5
 	github.com/argoproj/pkg v0.11.1-0.20211203175135-36c59d8fafe0
 	github.com/bradleyfalzon/ghinstallation v1.1.1
 	github.com/distribution/distribution/v3 v3.0.0-20221208165359-362910506bc2
