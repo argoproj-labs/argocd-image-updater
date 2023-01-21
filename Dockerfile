@@ -1,4 +1,4 @@
-FROM golang:1.17.8 AS builder
+FROM golang:1.18 AS builder
 
 RUN mkdir -p /src/argocd-image-updater
 WORKDIR /src/argocd-image-updater
