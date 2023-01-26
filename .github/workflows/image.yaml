@@ -43,7 +43,7 @@ jobs:
             type=semver,pattern={{major}}
             type=ref,event=branch,suffix=-{{date 'YYYYMMDDHHmmss'}}
             type=ref,event=pr,suffix=-{{date 'YYYYMMDDHHmmss'}}
-            type=raw,value=latest,enable=${{ github.ref == format('refs/heads/{0}', 'main') }}
+            type=raw,value=latest,enable=${{ github.ref == format('refs/heads/{0}', 'master') }}
             type=sha
 
       - name: Build and push
