@@ -35,7 +35,7 @@ jobs:
           flavor: |
             latest=auto
           images: |
-            ${{ env.REGISTRY }}/${{ github.repository }}/argocd-image-updater
+            ghcr.io/${{ github.repository }}/argocd-image-updater
           tags: |
             type=schedule
             type=semver,pattern={{version}}
