@@ -249,7 +249,7 @@ func commitChangesGit(app *v1alpha1.Application, wbc *WriteBackConfig, changeLis
 func writeOverrides(app *v1alpha1.Application, wbc *WriteBackConfig, gitC git.Client) (err error, skip bool) {
 	logCtx := log.WithContext().AddField("application", app.GetName())
 	targetExists := true
-	targetFile := path.Join(gitC.Root(), wbc.Target)
+	targetFile := path.Join(gitC.Root(), wbc.TargetBase)
 	_, err = os.Stat(targetFile)
 	if err != nil {
 		if !os.IsNotExist(err) {
@@ -302,7 +302,7 @@ func writeKustomization(app *v1alpha1.Application, wbc *WriteBackConfig, gitC gi
 		}()
 	}
 
-	base := filepath.Join(gitC.Root(), wbc.KustomizeBase)
+	base := filepath.Join(gitC.Root(), wbc.TargetBase)
 	if err := os.Chdir(base); err != nil {
 		return err, false
 	}

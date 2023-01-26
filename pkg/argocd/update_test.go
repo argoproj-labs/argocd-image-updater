@@ -1385,7 +1385,45 @@ func Test_GetWriteBackConfig(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, wbc)
 		assert.Equal(t, wbc.Method, WriteBackGit)
-		assert.Equal(t, wbc.KustomizeBase, "config/bar")
+		assert.Equal(t, wbc.TargetType, WriteBackTargetKustomization)
+		assert.Equal(t, wbc.TargetBase, "config/bar")
+	})
+
+	t.Run("helm write-back config", func(t *testing.T) {
+		app := v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name: "testapp",
+				Annotations: map[string]string{
+					"argocd-image-updater.argoproj.io/image-list":        "nginx",
+					"argocd-image-updater.argoproj.io/write-back-method": "git",
+					"argocd-image-updater.argoproj.io/write-back-target": "helm:../bar",
+				},
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: v1alpha1.ApplicationSource{
+					RepoURL:        "https://example.com/example",
+					TargetRevision: "main",
+					Path:           "config/foo",
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypeKustomize,
+			},
+		}
+
+		argoClient := argomock.ArgoCD{}
+		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+
+		kubeClient := kube.KubernetesClient{
+			Clientset: fake.NewFakeKubeClient(),
+		}
+
+		wbc, err := getWriteBackConfig(&app, &kubeClient, &argoClient)
+		require.NoError(t, err)
+		require.NotNil(t, wbc)
+		assert.Equal(t, wbc.Method, WriteBackGit)
+		assert.Equal(t, wbc.TargetType, WriteBackTargetHelm)
+		assert.Equal(t, wbc.TargetBase, "config/bar")
 	})
 
 	t.Run("Default write-back config - argocd", func(t *testing.T) {
@@ -2025,19 +2063,29 @@ func Test_parseTarget(t *testing.T) {
 		target   string
 		path     string
 	}{
-		{"default", ".", "kustomization", ""},
-		{"explicit default", ".", "kustomization:.", "."},
-		{"default path, explicit target", ".", "kustomization:.", ""},
-		{"default target with path", "foo/bar", "kustomization", "foo/bar"},
-		{"default both", ".", "kustomization", ""},
-		{"absolute path", "foo", "kustomization:/foo", "bar"},
-		{"relative path", "bar/foo", "kustomization:foo", "bar"},
-		{"sibling path", "bar/baz", "kustomization:../baz", "bar/foo"},
+		{"default", ".", "", ""},
+		{"explicit default", ".", ":.", "."},
+		{"default path, explicit target", ".", ":.", ""},
+		{"default target with path", "foo/bar", "", "foo/bar"},
+		{"default both", ".", "", ""},
+		{"absolute path", "foo", ":/foo", "bar"},
+		{"relative path", "bar/foo", ":foo", "bar"},
+		{"sibling path", "bar/baz", ":../baz", "bar/foo"},
 	}
 
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.expected, parseTarget(tt.target, tt.path))
+			// Test kustomization verisons
+			kTarget := fmt.Sprintf("kustomization%s", tt.target)
+			base, tType := parseTarget(kTarget, tt.path)
+			assert.Equal(t, tt.expected, base)
+			assert.Equal(t, WriteBackTargetKustomization, tType)
+
+			// Test helm versions
+			hTarget := fmt.Sprintf("helm%s", tt.target)
+			base, tType = parseTarget(hTarget, tt.path)
+			assert.Equal(t, tt.expected, base)
+			assert.Equal(t, WriteBackTargetHelm, tType)
 		})
 	}
 }

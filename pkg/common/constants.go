@@ -52,6 +52,7 @@ const (
 	GitBranchAnnotation       = ImageUpdaterAnnotationPrefix + "/git-branch"
 	WriteBackTargetAnnotation = ImageUpdaterAnnotationPrefix + "/write-back-target"
 	KustomizationPrefix       = "kustomization"
+	HelmPrefix                = "helm"
 )
 
 // DefaultTargetFilePattern configurations related to the write-back functionality
