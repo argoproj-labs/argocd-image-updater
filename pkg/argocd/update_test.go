@@ -1426,6 +1426,43 @@ func Test_GetWriteBackConfig(t *testing.T) {
 		assert.Equal(t, wbc.TargetBase, "config/bar")
 	})
 
+		t.Run("helm values write-back config", func(t *testing.T) {
+		app := v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name: "testapp",
+				Annotations: map[string]string{
+					"argocd-image-updater.argoproj.io/image-list":        "nginx",
+					"argocd-image-updater.argoproj.io/write-back-method": "git",
+					"argocd-image-updater.argoproj.io/write-back-target": "values:../bar",
+				},
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: v1alpha1.ApplicationSource{
+					RepoURL:        "https://example.com/example",
+					TargetRevision: "main",
+					Path:           "config/foo",
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypeKustomize,
+			},
+		}
+
+		argoClient := argomock.ArgoCD{}
+		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+
+		kubeClient := kube.KubernetesClient{
+			Clientset: fake.NewFakeKubeClient(),
+		}
+
+		wbc, err := getWriteBackConfig(&app, &kubeClient, &argoClient)
+		require.NoError(t, err)
+		require.NotNil(t, wbc)
+		assert.Equal(t, wbc.Method, WriteBackGit)
+		assert.Equal(t, wbc.TargetType, WriteBackTargetHelmValues)
+		assert.Equal(t, wbc.TargetBase, "config/bar")
+	})
+
 	t.Run("Default write-back config - argocd", func(t *testing.T) {
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{

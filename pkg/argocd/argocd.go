@@ -82,6 +82,7 @@ const (
 	ApplicationTypeUnsupported ApplicationType = 0
 	ApplicationTypeHelm        ApplicationType = 1
 	ApplicationTypeKustomize   ApplicationType = 2
+	ApplicationTypeHelmValues  ApplicationType = 3
 )
 
 // Basic wrapper struct for ArgoCD client options
@@ -379,6 +380,62 @@ func mergeHelmParams(src []v1alpha1.HelmParameter, merge []v1alpha1.HelmParamete
 }
 
 // SetHelmImage sets image parameters for a Helm application
+func SetHelmValuesImage(app *v1alpha1.Application, newImage *image.ContainerImage) error {
+	appName := app.GetName()
+
+	var hpImageName, hpImageTag, hpImageSpec string
+
+	hpImageSpec = newImage.GetParameterHelmImageSpec(app.Annotations)
+	hpImageName = newImage.GetParameterHelmImageName(app.Annotations)
+	hpImageTag = newImage.GetParameterHelmImageTag(app.Annotations)
+
+	if hpImageSpec == "" {
+		if hpImageName == "" {
+			hpImageName = common.DefaultHelmImageName
+		}
+		if hpImageTag == "" {
+			hpImageTag = common.DefaultHelmImageTag
+		}
+	}
+
+	log.WithContext().
+		AddField("application", appName).
+		AddField("image", newImage.GetFullNameWithoutTag()).
+		Debugf("target parameters: image-spec=%s image-name=%s, image-tag=%s", hpImageSpec, hpImageName, hpImageTag)
+
+	mergeParams := make([]v1alpha1.HelmParameter, 0)
+
+	// The logic behind this is that image-spec is an override - if this is set,
+	// we simply ignore any image-name and image-tag parameters that might be
+	// there.
+	if hpImageSpec != "" {
+		p := v1alpha1.HelmParameter{Name: hpImageSpec, Value: newImage.GetFullNameWithTag(), ForceString: true}
+		mergeParams = append(mergeParams, p)
+	} else {
+		if hpImageName != "" {
+			p := v1alpha1.HelmParameter{Name: hpImageName, Value: newImage.GetFullNameWithoutTag(), ForceString: true}
+			mergeParams = append(mergeParams, p)
+		}
+		if hpImageTag != "" {
+			p := v1alpha1.HelmParameter{Name: hpImageTag, Value: newImage.GetTagWithDigest(), ForceString: true}
+			mergeParams = append(mergeParams, p)
+		}
+	}
+
+	if app.Spec.Source.Helm == nil {
+		app.Spec.Source.Helm = &v1alpha1.ApplicationSourceHelm{}
+	}
+
+	if app.Spec.Source.Helm.Parameters == nil {
+		app.Spec.Source.Helm.Parameters = make([]v1alpha1.HelmParameter, 0)
+	}
+
+	app.Spec.Source.Helm.Parameters = mergeHelmParams(app.Spec.Source.Helm.Parameters, mergeParams)
+
+	return nil
+}
+
+// SetHelmImage sets image parameters for a Helm application
 func SetHelmImage(app *v1alpha1.Application, newImage *image.ContainerImage) error {
 	if appType := getApplicationType(app); appType != ApplicationTypeHelm {
 		return fmt.Errorf("cannot set Helm params on non-Helm application")
@@ -527,9 +584,17 @@ func getApplicationType(app *v1alpha1.Application) ApplicationType {
 		strings.HasPrefix(st, common.HelmPrefix) {
 		sourceType = v1alpha1.ApplicationSourceTypeHelm
 	}
+	if st, set := app.Annotations[common.WriteBackTargetAnnotation]; set &&
+		strings.HasPrefix(st, common.HelmValuesPrefix) {
+		sourceType = v1alpha1.ApplicationSourceTypeHelm
+	}
 	if sourceType == v1alpha1.ApplicationSourceTypeKustomize {
 		return ApplicationTypeKustomize
 	} else if sourceType == v1alpha1.ApplicationSourceTypeHelm {
+		if st, set := app.Annotations[common.WriteBackTargetAnnotation]; set &&
+			strings.HasPrefix(st, common.HelmValuesPrefix) {
+			return ApplicationTypeHelmValues
+		}
 		return ApplicationTypeHelm
 	} else {
 		return ApplicationTypeUnsupported
@@ -542,6 +607,8 @@ func (a ApplicationType) String() string {
 	case ApplicationTypeKustomize:
 		return "Kustomize"
 	case ApplicationTypeHelm:
+		return "Helm"
+	case ApplicationTypeHelmValues:
 		return "Helm"
 	case ApplicationTypeUnsupported:
 		return "Unsupported"

@@ -53,6 +53,7 @@ const (
 	WriteBackTargetAnnotation = ImageUpdaterAnnotationPrefix + "/write-back-target"
 	KustomizationPrefix       = "kustomization"
 	HelmPrefix                = "helm"
+	HelmValuesPrefix					= "values"
 )
 
 // DefaultTargetFilePattern configurations related to the write-back functionality

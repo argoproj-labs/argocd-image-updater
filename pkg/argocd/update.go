@@ -59,6 +59,7 @@ type WriteBackTargetType int
 const (
 	WriteBackTargetKustomization WriteBackTargetType = 0
 	WriteBackTargetHelm          WriteBackTargetType = 1
+	WriteBackTargetHelmValues				 WriteBackTargetType = 2
 )
 
 // WriteBackConfig holds information on how to write back the changes to an Application
@@ -95,6 +96,19 @@ type helmParameters struct {
 
 type helmOverride struct {
 	Helm helmParameters `json:"helm"`
+}
+
+type valuesImage struct {
+	Repository  string `json:"repository"`
+	Tag string `json:"tag"`
+}
+
+type valuesImages struct {
+	Images []valuesImage `json:"images"`
+}
+
+type valuesOverride struct {
+	Image valuesImage `json:"image"`
 }
 
 // ChangeEntry represents an image that has been changed by Image Updater
@@ -377,6 +391,8 @@ func setAppImage(app *v1alpha1.Application, img *image.ContainerImage) error {
 		err = SetKustomizeImage(app, img)
 	} else if appType == ApplicationTypeHelm {
 		err = SetHelmImage(app, img)
+	} else if appType == ApplicationTypeHelmValues {
+		err = SetHelmValuesImage(app, img)
 	} else {
 		err = fmt.Errorf("could not update application %s - neither Helm nor Kustomize application", app)
 	}
@@ -408,6 +424,17 @@ func marshalParamsOverride(app *v1alpha1.Application) ([]byte, error) {
 		params := helmOverride{
 			Helm: helmParameters{
 				Parameters: app.Spec.Source.Helm.Parameters,
+			},
+		}
+		override, err = yaml.Marshal(params)
+	case ApplicationTypeHelmValues:
+		if app.Spec.Source.Helm == nil {
+			return []byte{}, nil
+		}
+		params := valuesOverride{
+			Image: valuesImage{
+				Repository: app.Spec.Source.Helm.Parameters[0].Value,
+				Tag: app.Spec.Source.Helm.Parameters[1].Value,
 			},
 		}
 		override, err = yaml.Marshal(params)
@@ -447,7 +474,7 @@ func getWriteBackConfig(app *v1alpha1.Application, kubeClient *kube.KubernetesCl
 	switch strings.TrimSpace(method) {
 	case "git":
 		wbc.Method = WriteBackGit
-		if target, ok := app.Annotations[common.WriteBackTargetAnnotation]; ok && (strings.HasPrefix(target, common.KustomizationPrefix) || strings.HasPrefix(target, common.HelmPrefix)) {
+		if target, ok := app.Annotations[common.WriteBackTargetAnnotation]; ok && (strings.HasPrefix(target, common.KustomizationPrefix) || strings.HasPrefix(target, common.HelmPrefix) || strings.HasPrefix(target, common.HelmValuesPrefix)) {
 			wbc.TargetBase, wbc.TargetType = parseTarget(target, app.Spec.Source.Path)
 			if wbc.TargetType == WriteBackTargetKustomization {
 				wbc.TargetChangeWriter = writeKustomization
@@ -476,6 +503,9 @@ func parseTarget(target string, sourcePath string) (base string, targetType Writ
 	} else if strings.HasPrefix(target, common.HelmPrefix) {
 		targetType = WriteBackTargetHelm
 		base = baseForTargetType(target[len(common.HelmPrefix):], sourcePath)
+	} else if strings.HasPrefix(target, common.HelmValuesPrefix) {
+		targetType = WriteBackTargetHelmValues
+		base = baseForTargetType(target[len(common.HelmValuesPrefix):], sourcePath)
 	} else {
 		targetType = WriteBackTargetHelm
 		base = filepath.Join(sourcePath, ".")
