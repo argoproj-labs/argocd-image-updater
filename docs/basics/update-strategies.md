@@ -278,7 +278,7 @@ for update, you will need additional configuration. For example,
 ```yaml
 argocd-image-updater.argoproj.io/image-list: myimage=some/image
 argocd-image-updater.argoproj.io/myimage.update-strategy: name
-argocd-image-updater.argoproj.io/myimage.allow-tags: regexp:^[0-9]{4}-[0-9]{2}[0-9]{2}$
+argocd-image-updater.argoproj.io/myimage.allow-tags: regexp:^[0-9]{4}-[0-9]{2}-[0-9]{2}$
 ```
 
 or 
@@ -286,7 +286,7 @@ or
 ```yaml
 argocd-image-updater.argoproj.io/image-list: myimage=some/image
 argocd-image-updater.argoproj.io/myimage.update-strategy: alphabetical
-argocd-image-updater.argoproj.io/myimage.allow-tags: regexp:^[0-9]{4}-[0-9]{2}[0-9]{2}$
+argocd-image-updater.argoproj.io/myimage.allow-tags: regexp:^[0-9]{4}-[0-9]{2}-[0-9]{2}$
 ```
 
 would only consider tags that match a given regular expression for update. In
