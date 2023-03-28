@@ -3,6 +3,7 @@ package registry
 import (
 	"testing"
 
+	"github.com/argoproj-labs/argocd-image-updater/pkg/image"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/options"
 
 	"github.com/distribution/distribution/v3/manifest/schema1"
@@ -16,7 +17,7 @@ func Test_TagMetadata(t *testing.T) {
 				History: []schema1.History{},
 			},
 		}
-		ep, err := GetRegistryEndpoint("")
+		ep, err := GetRegistryEndpoint(&image.ContainerImage{RegistryURL: ""})
 		require.NoError(t, err)
 		client, err := NewClient(ep, "", "")
 		require.NoError(t, err)
@@ -35,7 +36,7 @@ func Test_TagMetadata(t *testing.T) {
 			},
 		}
 
-		ep, err := GetRegistryEndpoint("")
+		ep, err := GetRegistryEndpoint(&image.ContainerImage{RegistryURL: ""})
 		require.NoError(t, err)
 		client, err := NewClient(ep, "", "")
 		require.NoError(t, err)
@@ -54,7 +55,7 @@ func Test_TagMetadata(t *testing.T) {
 			},
 		}
 
-		ep, err := GetRegistryEndpoint("")
+		ep, err := GetRegistryEndpoint(&image.ContainerImage{RegistryURL: ""})
 		require.NoError(t, err)
 		client, err := NewClient(ep, "", "")
 		require.NoError(t, err)
@@ -74,7 +75,7 @@ func Test_TagMetadata(t *testing.T) {
 				},
 			},
 		}
-		ep, err := GetRegistryEndpoint("")
+		ep, err := GetRegistryEndpoint(&image.ContainerImage{RegistryURL: ""})
 		require.NoError(t, err)
 		client, err := NewClient(ep, "", "")
 		require.NoError(t, err)

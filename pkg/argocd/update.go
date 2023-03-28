@@ -180,7 +180,7 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 
 		imgCtx.Debugf("Considering this image for update")
 
-		rep, err := registry.GetRegistryEndpoint(applicationImage.RegistryURL)
+		rep, err := registry.GetRegistryEndpoint(applicationImage)
 		if err != nil {
 			imgCtx.Errorf("Could not get registry endpoint from configuration: %v", err)
 			result.NumErrors += 1

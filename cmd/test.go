@@ -113,7 +113,7 @@ argocd-image-updater test nginx --allow-tags '^1.19.\d+(\-.*)*$' --update-strate
 				}
 			}
 
-			ep, err := registry.GetRegistryEndpoint(img.RegistryURL)
+			ep, err := registry.GetRegistryEndpoint(img)
 			if err != nil {
 				logCtx.Fatalf("could not get registry endpoint: %v", err)
 			}
