@@ -57,7 +57,7 @@ jobs:
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v2
         with:
-          version: v1.46.2
+          version: v1.52.2
           args: --timeout 5m
   test:
     name: Ensure unit tests are passing
