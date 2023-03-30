@@ -11,6 +11,8 @@ import (
 
 	"github.com/argoproj-labs/argocd-image-updater/ext/git"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/kube"
+
+	argoGit "github.com/argoproj/argo-cd/v2/util/git"
 )
 
 // getGitCredsSource returns git credentials source that loads credentials from the secret or from Argo CD settings
@@ -42,7 +44,7 @@ func getCredsFromArgoCD(app *v1alpha1.Application, kubeClient *kube.KubernetesCl
 	if !repo.HasCredentials() {
 		return nil, fmt.Errorf("credentials for '%s' are not configured in Argo CD settings", app.Spec.Source.RepoURL)
 	}
-	return repo.GetGitCreds(), nil
+	return repo.GetGitCreds(argoGit.NoopCredsStore{}), nil
 }
 
 // getCredsFromSecret loads repository credentials from secret
