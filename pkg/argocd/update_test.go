@@ -84,8 +84,8 @@ func Test_UpdateApplication(t *testing.T) {
 			UpdateApp:  appImages,
 			DryRun:     false,
 		}, NewSyncIterationState())
-		assert.Equal(t, v1alpha1.KustomizeImage("gcr.io/jannfis/foobar:1.0.3"), appImages.Application.Spec.Source.Kustomize.Images[0])
-		assert.Equal(t, v1alpha1.KustomizeImage("gcr.io/jannfis/barbar:1.0.3"), appImages.Application.Spec.Source.Kustomize.Images[1])
+		assert.Equal(t, v1alpha1.KustomizeImage("gcr.io/jannfis/foobar:1.0.3"), appImages.Application.Spec.GetSource().Kustomize.Images[0])
+		assert.Equal(t, v1alpha1.KustomizeImage("gcr.io/jannfis/barbar:1.0.3"), appImages.Application.Spec.GetSource().Kustomize.Images[1])
 		assert.Equal(t, 0, res.NumErrors)
 		assert.Equal(t, 0, res.NumSkipped)
 		assert.Equal(t, 1, res.NumApplicationsProcessed)
