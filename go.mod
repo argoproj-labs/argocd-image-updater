@@ -3,7 +3,7 @@ module github.com/argoproj-labs/argocd-image-updater
 go 1.18
 
 require (
-	github.com/Masterminds/semver v1.5.0
+	github.com/Masterminds/semver/v3 v3.2.0
 	github.com/argoproj/argo-cd/v2 v2.2.7
 	github.com/argoproj/gitops-engine v0.5.2
 	github.com/argoproj/pkg v0.11.1-0.20211203175135-36c59d8fafe0
@@ -39,6 +39,7 @@ require (
 	github.com/Azure/go-autorest/logger v0.2.1 // indirect
 	github.com/Azure/go-autorest/tracing v0.6.0 // indirect
 	github.com/MakeNowJust/heredoc v0.0.0-20170808103936-bb23615498cd // indirect
+	github.com/Masterminds/semver v1.5.0 // indirect
 	github.com/PuerkitoBio/purell v1.1.1 // indirect
 	github.com/PuerkitoBio/urlesc v0.0.0-20170810143723-de5bf2ad4578 // indirect
 	github.com/andres-erbsen/clock v0.0.0-20160526145045-9e14626cd129 // indirect

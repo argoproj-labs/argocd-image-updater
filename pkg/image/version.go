@@ -7,7 +7,7 @@ import (
 	"github.com/argoproj-labs/argocd-image-updater/pkg/options"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/tag"
 
-	"github.com/Masterminds/semver"
+	"github.com/Masterminds/semver/v3"
 )
 
 // VersionSortMode defines the method to sort a list of tags
@@ -123,6 +123,10 @@ func (img *ContainerImage) GetNewestVersionFromTags(vc *VersionConstraint, tagLi
 					return nil, err
 				}
 			}
+		} else if vc.Strategy == StrategySemVer {
+			// The is the special case where an empty string was passed in which
+			// is equivalent to * or >=0.0.0
+			semverConstraint, _ = semver.NewConstraint("*")
 		}
 	}
 

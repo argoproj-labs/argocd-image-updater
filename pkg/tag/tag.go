@@ -8,7 +8,7 @@ import (
 
 	"github.com/argoproj-labs/argocd-image-updater/pkg/log"
 
-	"github.com/Masterminds/semver"
+	"github.com/Masterminds/semver/v3"
 )
 
 // ImageTag is a representation of an image tag with metadata
