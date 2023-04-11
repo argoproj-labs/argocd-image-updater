@@ -123,6 +123,10 @@ func (img *ContainerImage) GetNewestVersionFromTags(vc *VersionConstraint, tagLi
 					return nil, err
 				}
 			}
+		} else if vc.Strategy == StrategySemVer {
+			// The is the special case where an empty string was passed in which
+			// is equivalent to * or >=0.0.0
+			semverConstraint, _ = semver.NewConstraint("*")
 		}
 	}
 
