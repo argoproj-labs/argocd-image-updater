@@ -165,7 +165,7 @@ func (il ImageTagList) SortBySemVer() SortableImageTagList {
 		}
 		svl = append(svl, svi)
 	}
-	sort.Sort(semver.Collection(svl))
+	sort.Sort(semverCollection(svl))
 	for _, svi := range svl {
 		sil = append(sil, NewImageTag(svi.Original(), *il.items[svi.Original()].TagDate, il.items[svi.Original()].TagDigest))
 	}
