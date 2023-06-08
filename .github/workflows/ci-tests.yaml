@@ -14,11 +14,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
       - name: Setup Golang
-        uses: actions/setup-go@v1
+        uses: actions/setup-go@v3
         with:
-          go-version: '1.18'
+          go-version: '1.20'
       - name: Download all Go modules
         run: |
           go mod download
@@ -31,7 +31,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
       - name: Install Kustomize v2
         run: |
           set -xo pipefail
@@ -53,22 +53,22 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
       - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v2
+        uses: golangci/golangci-lint-action@v3
         with:
-          version: v1.46.2
+          version: v1.52.2
           args: --timeout 5m
   test:
     name: Ensure unit tests are passing
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
       - name: Setup Golang
-        uses: actions/setup-go@v1
+        uses: actions/setup-go@v3
         with:
-          go-version: '1.18'
+          go-version: '1.20'
       - name: Run tests
         env:
           GNUPG_DISABLED: true
