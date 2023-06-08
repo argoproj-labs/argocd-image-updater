@@ -153,6 +153,10 @@ properties are optional, unless otherwise stated:
 
 The following is an example that configures two registries.
 
+```bash
+export REGISTRY_SECRET="login:password"
+```
+
 ```yaml
 registries:
 - name: Docker Hub
