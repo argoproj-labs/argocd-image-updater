@@ -1094,7 +1094,7 @@ kustomize:
 			},
 		}
 
-		yaml, err := marshalParamsOverride(&app)
+		yaml, err := marshalParamsOverride(&app, nil)
 		require.NoError(t, err)
 		assert.NotEmpty(t, yaml)
 		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(yaml)))
@@ -1120,7 +1120,7 @@ kustomize:
 			},
 		}
 
-		yaml, err := marshalParamsOverride(&app)
+		yaml, err := marshalParamsOverride(&app, nil)
 		require.NoError(t, err)
 		assert.Empty(t, yaml)
 		assert.Equal(t, "", strings.TrimSpace(string(yaml)))
@@ -1170,7 +1170,7 @@ helm:
 			},
 		}
 
-		yaml, err := marshalParamsOverride(&app)
+		yaml, err := marshalParamsOverride(&app, nil)
 		require.NoError(t, err)
 		assert.NotEmpty(t, yaml)
 		assert.Equal(t, strings.TrimSpace(strings.ReplaceAll(expected, "\t", "  ")), strings.TrimSpace(string(yaml)))
@@ -1196,7 +1196,7 @@ helm:
 			},
 		}
 
-		yaml, err := marshalParamsOverride(&app)
+		yaml, err := marshalParamsOverride(&app, nil)
 		require.NoError(t, err)
 		assert.Empty(t, yaml)
 	})
@@ -1227,7 +1227,7 @@ helm:
 			},
 		}
 
-		_, err := marshalParamsOverride(&app)
+		_, err := marshalParamsOverride(&app, nil)
 		assert.Error(t, err)
 	})
 }

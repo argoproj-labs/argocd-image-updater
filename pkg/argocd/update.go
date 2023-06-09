@@ -3,6 +3,7 @@ package argocd
 import (
 	"context"
 	"fmt"
+	"golang.org/x/exp/slices"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -375,7 +376,7 @@ func setAppImage(app *v1alpha1.Application, img *image.ContainerImage) error {
 
 // marshalParamsOverride marshals the parameter overrides of a given application
 // into YAML bytes
-func marshalParamsOverride(app *v1alpha1.Application) ([]byte, error) {
+func marshalParamsOverride(app *v1alpha1.Application, originalData []byte) ([]byte, error) {
 	var override []byte
 	var err error
 
@@ -385,21 +386,46 @@ func marshalParamsOverride(app *v1alpha1.Application) ([]byte, error) {
 		if app.Spec.Source.Kustomize == nil {
 			return []byte{}, nil
 		}
-		params := kustomizeOverride{
+
+		var params kustomizeOverride
+		newParams := kustomizeOverride{
 			Kustomize: kustomizeImages{
 				Images: &app.Spec.Source.Kustomize.Images,
 			},
 		}
+
+		if len(originalData) == 0 {
+			override, err = yaml.Marshal(newParams)
+			break
+		}
+		err := yaml.Unmarshal(originalData, &params)
+		if err != nil {
+			override, err = yaml.Marshal(newParams)
+			break
+		}
+		mergeKustomizeOverride(&params, &newParams)
 		override, err = yaml.Marshal(params)
 	case ApplicationTypeHelm:
 		if app.Spec.Source.Helm == nil {
 			return []byte{}, nil
 		}
-		params := helmOverride{
+		var params helmOverride
+		newParams := helmOverride{
 			Helm: helmParameters{
 				Parameters: app.Spec.Source.Helm.Parameters,
 			},
 		}
+
+		if len(originalData) == 0 {
+			override, err = yaml.Marshal(newParams)
+			break
+		}
+		err := yaml.Unmarshal(originalData, &params)
+		if err != nil {
+			override, err = yaml.Marshal(newParams)
+			break
+		}
+		mergeHelmOverride(&params, &newParams)
 		override, err = yaml.Marshal(params)
 	default:
 		err = fmt.Errorf("unsupported application type")
@@ -409,6 +435,28 @@ func marshalParamsOverride(app *v1alpha1.Application) ([]byte, error) {
 	}
 
 	return override, nil
+}
+
+func mergeHelmOverride(t *helmOverride, o *helmOverride) {
+	for _, param := range o.Helm.Parameters {
+		idx := slices.IndexFunc(t.Helm.Parameters, func(tp v1alpha1.HelmParameter) bool { return tp.Name == param.Name })
+		if idx != -1 {
+			t.Helm.Parameters[idx] = param
+			continue
+		}
+		t.Helm.Parameters = append(t.Helm.Parameters, param)
+	}
+}
+
+func mergeKustomizeOverride(t *kustomizeOverride, o *kustomizeOverride) {
+	for _, image := range *o.Kustomize.Images {
+		idx := t.Kustomize.Images.Find(image)
+		if idx != -1 {
+			(*t.Kustomize.Images)[idx] = image
+			continue
+		}
+		*t.Kustomize.Images = append(*t.Kustomize.Images, image)
+	}
 }
 
 func getWriteBackConfig(app *v1alpha1.Application, kubeClient *kube.KubernetesClient, argoClient ArgoCD) (*WriteBackConfig, error) {

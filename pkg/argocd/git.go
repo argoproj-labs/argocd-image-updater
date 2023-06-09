@@ -259,22 +259,28 @@ func writeOverrides(app *v1alpha1.Application, wbc *WriteBackConfig, gitC git.Cl
 		}
 	}
 
-	override, err := marshalParamsOverride(app)
-	if err != nil {
-		return
-	}
-
 	// If the target file already exist in the repository, we will check whether
 	// our generated new file is the same as the existing one, and if yes, we
 	// don't proceed further for commit.
+	var override []byte
+	var originalData []byte
 	if targetExists {
-		data, err := os.ReadFile(targetFile)
+		originalData, err = os.ReadFile(targetFile)
 		if err != nil {
 			return err, false
 		}
-		if string(data) == string(override) {
+		override, err = marshalParamsOverride(app, originalData)
+		if err != nil {
+			return
+		}
+		if string(originalData) == string(override) {
 			logCtx.Debugf("target parameter file and marshaled data are the same, skipping commit.")
 			return nil, true
+		}
+	} else {
+		override, err = marshalParamsOverride(app, nil)
+		if err != nil {
+			return
 		}
 	}
 
