@@ -1066,6 +1066,7 @@ func Test_MarshalParamsOverride(t *testing.T) {
 		expected := `
 kustomize:
   images:
+  - baz
   - foo
   - bar
 `
@@ -1093,8 +1094,12 @@ kustomize:
 				SourceType: v1alpha1.ApplicationSourceTypeKustomize,
 			},
 		}
-
-		yaml, err := marshalParamsOverride(&app, nil)
+		originalData := []byte(`
+kustomize:
+  images:
+  - baz
+`)
+		yaml, err := marshalParamsOverride(&app, originalData)
 		require.NoError(t, err)
 		assert.NotEmpty(t, yaml)
 		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(yaml)))
@@ -1130,6 +1135,9 @@ kustomize:
 		expected := `
 helm:
   parameters:
+	- name: baz
+		value: baz
+		forcestring: false
 	- name: foo
 		value: bar
 		forcestring: true
@@ -1170,7 +1178,14 @@ helm:
 			},
 		}
 
-		yaml, err := marshalParamsOverride(&app, nil)
+		originalData := []byte(`
+helm:
+  parameters:
+    - name: baz
+      value: baz
+      forcestring: false
+`)
+		yaml, err := marshalParamsOverride(&app, originalData)
 		require.NoError(t, err)
 		assert.NotEmpty(t, yaml)
 		assert.Equal(t, strings.TrimSpace(strings.ReplaceAll(expected, "\t", "  ")), strings.TrimSpace(string(yaml)))
