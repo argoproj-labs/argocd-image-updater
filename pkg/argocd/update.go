@@ -3,7 +3,6 @@ package argocd
 import (
 	"context"
 	"fmt"
-	"golang.org/x/exp/slices"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -17,6 +16,7 @@ import (
 	"github.com/argoproj-labs/argocd-image-updater/pkg/log"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/registry"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/tag"
+	"golang.org/x/exp/slices"
 
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/application"
 	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
@@ -398,7 +398,7 @@ func marshalParamsOverride(app *v1alpha1.Application, originalData []byte) ([]by
 			override, err = yaml.Marshal(newParams)
 			break
 		}
-		err := yaml.Unmarshal(originalData, &params)
+		err = yaml.Unmarshal(originalData, &params)
 		if err != nil {
 			override, err = yaml.Marshal(newParams)
 			break
