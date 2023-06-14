@@ -65,6 +65,7 @@ type Client interface {
 	VerifyCommitSignature(string) (string, error)
 	Commit(pathSpec string, opts *CommitOptions) error
 	Branch(sourceBranch string, targetBranch string) error
+	LsRemoteBranches() ([]string, error)
 	Push(remote string, branch string, force bool) error
 	Add(path string) error
 	SymRefToBranch(symRef string) (string, error)
@@ -363,6 +364,22 @@ func (m *nativeGitClient) LsLargeFiles() ([]string, error) {
 	}
 	ss := strings.Split(out, "\n")
 	return ss, nil
+}
+
+// LsRemoteBranches lists all remote branches
+func (m *nativeGitClient) LsRemoteBranches() ([]string, error) {
+	out, err := m.runCmd("branch", "-r")
+	if err != nil {
+		return nil, err
+	}
+	ss := strings.Split(out, "\n")
+
+	var trimmed []string
+	for _, s := range ss {
+		trimmed = append(trimmed, strings.TrimSpace(s))
+	}
+
+	return trimmed, nil
 }
 
 // Checkout checkout specified revision

@@ -195,8 +195,17 @@ func commitChangesGit(app *v1alpha1.Application, wbc *WriteBackConfig, changeLis
 	if wbc.GitWriteBranch != "" {
 		logCtx.Debugf("Using branch template: %s", wbc.GitWriteBranch)
 		pushBranch = TemplateBranchName(wbc.GitWriteBranch, changeList)
-		if pushBranch != "" {
+
+		remoteBranches, err := gitC.LsRemoteBranches()
+		if err != nil {
+			return err
+		}
+
+		if pushBranch != "" && hasBranchOnRemote(remoteBranches, pushBranch) {
+			// Use fetched branch.
+		} else if pushBranch != "" {
 			logCtx.Debugf("Creating branch '%s' and using that for push operations", pushBranch)
+
 			err = gitC.Branch(checkOutBranch, pushBranch)
 			if err != nil {
 				return err
@@ -396,6 +405,15 @@ func parseImageOverride(str v1alpha1.KustomizeImage) types.Image {
 		NewTag:  tagName,
 		Digest:  tagDigest,
 	}
+}
+
+func hasBranchOnRemote(remoteBranches []string, branch string) bool {
+	for _, remoteBranch := range remoteBranches {
+		if remoteBranch == "origin/"+branch {
+			return true
+		}
+	}
+	return false
 }
 
 var _ changeWriter = writeKustomization
