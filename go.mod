@@ -188,7 +188,7 @@ replace (
 	k8s.io/kubernetes => k8s.io/kubernetes v1.26.3
 	k8s.io/legacy-cloud-providers => k8s.io/legacy-cloud-providers v0.26.3
 	k8s.io/metrics => k8s.io/metrics v0.26.3
-	k8s.io/mount-utils => k8s.io/mount-utils v0.26.3
-	k8s.io/pod-security-admission => k8s.io/pod-security-admission v0.26.3
-	k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.26.3
+	k8s.io/mount-utils => k8s.io/mount-utils v0.22.4
+	k8s.io/pod-security-admission => k8s.io/pod-security-admission v0.22.4
+	k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.22.4
 )
