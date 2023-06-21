@@ -75,7 +75,7 @@ func Test_UpdateApplication(t *testing.T) {
 					},
 				},
 			},
-			Images: *parseImageList(annotations),
+			Images: parseImageList(annotations),
 		}
 		res := UpdateApplication(&UpdateConfiguration{
 			NewRegFN:   mockClientFn,
@@ -611,7 +611,7 @@ func Test_UpdateApplication(t *testing.T) {
 					},
 				},
 			},
-			Images: *parseImageList(annotations),
+			Images: parseImageList(annotations),
 		}
 		res := UpdateApplication(&UpdateConfiguration{
 			NewRegFN:   mockClientFn,
@@ -670,7 +670,7 @@ func Test_UpdateApplication(t *testing.T) {
 					},
 				},
 			},
-			Images: *parseImageList(annotations),
+			Images: parseImageList(annotations),
 		}
 		res := UpdateApplication(&UpdateConfiguration{
 			NewRegFN:   mockClientFn,

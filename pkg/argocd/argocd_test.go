@@ -829,7 +829,7 @@ func Test_parseImageList(t *testing.T) {
 		assert.Equal(t, []string{"foo", "bar", "baz=qux"}, parseImageList(map[string]string{common.ImageUpdaterAnnotation: "foo,bar,baz=qux"}).Originals())
 	})
 	t.Run("Test kustomize override", func(t *testing.T) {
-		imgs := *parseImageList(map[string]string{
+		imgs := parseImageList(map[string]string{
 			common.ImageUpdaterAnnotation:                                 "foo=bar",
 			fmt.Sprintf(common.KustomizeApplicationNameAnnotation, "foo"): "baz",
 		})

@@ -206,16 +206,16 @@ func FilterApplicationsForUpdate(apps []v1alpha1.Application, patterns []string,
 		imageList := parseImageList(annotations)
 		appImages := ApplicationImages{}
 		appImages.Application = app
-		appImages.Images = *imageList
+		appImages.Images = imageList
 		appsForUpdate[app.GetName()] = appImages
 	}
 
 	return appsForUpdate, nil
 }
 
-func parseImageList(annotations map[string]string) *image.ContainerImageList {
-	results := make(image.ContainerImageList, 0)
-	if updateImage, ok := annotations[common.ImageUpdaterAnnotation]; ok {
+func parseImageList(annotations map[string]string) image.ContainerImageList {
+	var results image.ContainerImageList
+	if updateImage, ok := annotations[common.ImageUpdaterAnnotation]; !ok {
 		splits := strings.Split(updateImage, ",")
 		for _, s := range splits {
 			img := image.NewFromIdentifier(strings.TrimSpace(s))
@@ -225,7 +225,7 @@ func parseImageList(annotations map[string]string) *image.ContainerImageList {
 			results = append(results, img)
 		}
 	}
-	return &results
+	return results
 }
 
 func parseLabel(inputLabel string) (map[string]string, error) {
@@ -486,7 +486,7 @@ func GetImagesFromApplication(app *v1alpha1.Application) image.ContainerImageLis
 	// The Application may wish to update images that don't create a container we can detect.
 	// Check the image list for images with a force-update annotation, and add them if they are not already present.
 	annotations := app.Annotations
-	for _, img := range *parseImageList(annotations) {
+	for _, img := range parseImageList(annotations) {
 		if img.HasForceUpdateOptionAnnotation(annotations) {
 			img.ImageTag = nil // the tag from the image list will be a version constraint, which isn't a valid tag
 			images = append(images, img)
