@@ -24,9 +24,9 @@ require (
 	gopkg.in/yaml.v2 v2.4.0
 	k8s.io/api v1.22.4
 	k8s.io/apimachinery v1.22.4
-	k8s.io/client-go v11.0.1-0.20190816222228-6d55c1b1f1ca+incompatible
-	sigs.k8s.io/kustomize/api v0.11.4
-	sigs.k8s.io/kustomize/kyaml v0.13.6
+	k8s.io/client-go v0.26.3
+	sigs.k8s.io/kustomize/api v0.12.1
+	sigs.k8s.io/kustomize/kyaml v0.13.9
 )
 
 require (
@@ -134,7 +134,7 @@ require (
 	github.com/vmihailenco/msgpack/v5 v5.3.4 // indirect
 	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
 	github.com/xanzy/ssh-agent v0.3.3 // indirect
-	github.com/xlab/treeprint v0.0.0-20181112141820-a009c3971eca // indirect
+	github.com/xlab/treeprint v1.1.0 // indirect
 	go.starlark.net v0.0.0-20200306205701-8dd3e2ee1dd5 // indirect
 	golang.org/x/exp v0.0.0-20210901193431-a062eea981d2 // indirect
 	golang.org/x/net v0.7.0 // indirect
