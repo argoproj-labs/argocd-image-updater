@@ -43,7 +43,7 @@ func (client *k8sClient) UpdateSpec(ctx context.Context, spec *application.Appli
 		if err != nil {
 			return nil, err
 		}
-		app.Spec = spec.Spec
+		app.Spec = *spec.Spec
 
 		updatedApp, err := client.kubeClient.ApplicationsClientset.ArgoprojV1alpha1().Applications(client.kubeClient.Namespace).Update(ctx, app, v1.UpdateOptions{})
 		if err != nil {
@@ -179,14 +179,23 @@ func FilterApplicationsForUpdate(apps []v1alpha1.Application, patterns []string,
 		logCtx := log.WithContext().AddField("application", app.GetName())
 		// Check whether application has our annotation set
 		annotations := app.GetAnnotations()
+
+		var sourceType v1alpha1.ApplicationSourceType
+
+		if len(app.Status.SourceTypes) > 0 {
+			sourceType = app.Status.SourceTypes[0]
+		} else {
+			sourceType = app.Status.SourceType
+		}
+
 		if _, ok := annotations[common.ImageUpdaterAnnotation]; !ok {
-			logCtx.Tracef("skipping app '%s' of type '%s' because required annotation is missing", app.GetName(), app.Status.SourceType)
+			logCtx.Tracef("skipping app '%s' of type '%s' because required annotation is missing", app.GetName(), sourceType)
 			continue
 		}
 
 		// Check for valid application type
 		if !IsValidApplicationType(&app) {
-			logCtx.Warnf("skipping app '%s' of type '%s' because it's not of supported source type", app.GetName(), app.Status.SourceType)
+			logCtx.Warnf("skipping app '%s' of type '%s' because it's not of supported source type", app.GetName(), sourceType)
 			continue
 		}
 
@@ -202,7 +211,7 @@ func FilterApplicationsForUpdate(apps []v1alpha1.Application, patterns []string,
 			continue
 		}
 
-		logCtx.Tracef("processing app '%s' of type '%v'", app.GetName(), app.Status.SourceType)
+		logCtx.Tracef("processing app '%s' of type '%v'", app.GetName(), sourceType)
 		imageList := parseImageList(annotations)
 		appImages := ApplicationImages{}
 		appImages.Application = app
@@ -425,15 +434,17 @@ func SetHelmImage(app *v1alpha1.Application, newImage *image.ContainerImage) err
 		}
 	}
 
-	if app.Spec.Source.Helm == nil {
-		app.Spec.Source.Helm = &v1alpha1.ApplicationSourceHelm{}
+	// This case seems not possible, but we check it anyway
+	helmSpec := app.Spec.GetSource().Helm
+	if helmSpec == nil {
+		helmSpec = &v1alpha1.ApplicationSourceHelm{}
 	}
 
-	if app.Spec.Source.Helm.Parameters == nil {
-		app.Spec.Source.Helm.Parameters = make([]v1alpha1.HelmParameter, 0)
+	if helmSpec.Parameters == nil {
+		helmSpec.Parameters = make([]v1alpha1.HelmParameter, 0)
 	}
 
-	app.Spec.Source.Helm.Parameters = mergeHelmParams(app.Spec.Source.Helm.Parameters, mergeParams)
+	helmSpec.Parameters = mergeHelmParams(helmSpec.Parameters, mergeParams)
 
 	return nil
 }
@@ -454,22 +465,24 @@ func SetKustomizeImage(app *v1alpha1.Application, newImage *image.ContainerImage
 
 	log.WithContext().AddField("application", app.GetName()).Tracef("Setting Kustomize parameter %s", ksImageParam)
 
-	if app.Spec.Source.Kustomize == nil {
-		app.Spec.Source.Kustomize = &v1alpha1.ApplicationSourceKustomize{}
+	// This case seems not possible, but we check it anyway
+	kustomizeSpec := app.Spec.GetSource().Kustomize
+	if kustomizeSpec == nil {
+		kustomizeSpec = &v1alpha1.ApplicationSourceKustomize{}
 	}
 
-	for i, kImg := range app.Spec.Source.Kustomize.Images {
+	for i, kImg := range kustomizeSpec.Images {
 		curr := image.NewFromIdentifier(string(kImg))
 		override := image.NewFromIdentifier(ksImageParam)
 
 		if curr.ImageName == override.ImageName {
 			curr.ImageAlias = override.ImageAlias
-			app.Spec.Source.Kustomize.Images[i] = v1alpha1.KustomizeImage(override.String())
+			kustomizeSpec.Images[i] = v1alpha1.KustomizeImage(override.String())
 		}
 
 	}
 
-	app.Spec.Source.Kustomize.MergeImage(v1alpha1.KustomizeImage(ksImageParam))
+	kustomizeSpec.MergeImage(v1alpha1.KustomizeImage(ksImageParam))
 
 	return nil
 }
@@ -518,7 +531,14 @@ func IsValidApplicationType(app *v1alpha1.Application) bool {
 
 // getApplicationType returns the type of the application
 func getApplicationType(app *v1alpha1.Application) ApplicationType {
-	sourceType := app.Status.SourceType
+	var sourceType v1alpha1.ApplicationSourceType
+
+	if len(app.Status.SourceTypes) > 0 {
+		sourceType = app.Status.SourceTypes[0]
+	} else {
+		sourceType = app.Status.SourceType
+	}
+
 	if st, set := app.Annotations[common.WriteBackTargetAnnotation]; set &&
 		strings.HasPrefix(st, common.KustomizationPrefix) {
 		sourceType = v1alpha1.ApplicationSourceTypeKustomize

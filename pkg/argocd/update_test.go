@@ -56,7 +56,7 @@ func Test_UpdateApplication(t *testing.T) {
 					Annotations: annotations,
 				},
 				Spec: v1alpha1.ApplicationSpec{
-					Source: v1alpha1.ApplicationSource{
+					Source: &v1alpha1.ApplicationSource{
 						Kustomize: &v1alpha1.ApplicationSourceKustomize{
 							Images: v1alpha1.KustomizeImages{
 								"jannfis/foobar:1.0.1",
@@ -84,8 +84,8 @@ func Test_UpdateApplication(t *testing.T) {
 			UpdateApp:  appImages,
 			DryRun:     false,
 		}, NewSyncIterationState())
-		assert.Equal(t, v1alpha1.KustomizeImage("gcr.io/jannfis/foobar:1.0.3"), appImages.Application.Spec.Source.Kustomize.Images[0])
-		assert.Equal(t, v1alpha1.KustomizeImage("gcr.io/jannfis/barbar:1.0.3"), appImages.Application.Spec.Source.Kustomize.Images[1])
+		assert.Equal(t, v1alpha1.KustomizeImage("gcr.io/jannfis/foobar:1.0.3"), appImages.Application.Spec.GetSource().Kustomize.Images[0])
+		assert.Equal(t, v1alpha1.KustomizeImage("gcr.io/jannfis/barbar:1.0.3"), appImages.Application.Spec.GetSource().Kustomize.Images[1])
 		assert.Equal(t, 0, res.NumErrors)
 		assert.Equal(t, 0, res.NumSkipped)
 		assert.Equal(t, 1, res.NumApplicationsProcessed)
@@ -116,7 +116,7 @@ func Test_UpdateApplication(t *testing.T) {
 					Namespace: "guestbook",
 				},
 				Spec: v1alpha1.ApplicationSpec{
-					Source: v1alpha1.ApplicationSource{
+					Source: &v1alpha1.ApplicationSource{
 						Kustomize: &v1alpha1.ApplicationSourceKustomize{
 							Images: v1alpha1.KustomizeImages{
 								"jannfis/foobar:1.0.0",
@@ -174,7 +174,7 @@ func Test_UpdateApplication(t *testing.T) {
 					Namespace: "guestbook",
 				},
 				Spec: v1alpha1.ApplicationSpec{
-					Source: v1alpha1.ApplicationSource{
+					Source: &v1alpha1.ApplicationSource{
 						Kustomize: &v1alpha1.ApplicationSourceKustomize{
 							Images: v1alpha1.KustomizeImages{
 								"jannfis/foobar:1.0.0",
@@ -241,7 +241,7 @@ func Test_UpdateApplication(t *testing.T) {
 					},
 				},
 				Spec: v1alpha1.ApplicationSpec{
-					Source: v1alpha1.ApplicationSource{
+					Source: &v1alpha1.ApplicationSource{
 						Kustomize: &v1alpha1.ApplicationSourceKustomize{
 							Images: v1alpha1.KustomizeImages{
 								"jannfis/foobar:1.0.0",
@@ -305,7 +305,7 @@ func Test_UpdateApplication(t *testing.T) {
 					},
 				},
 				Spec: v1alpha1.ApplicationSpec{
-					Source: v1alpha1.ApplicationSource{
+					Source: &v1alpha1.ApplicationSource{
 						Kustomize: &v1alpha1.ApplicationSourceKustomize{
 							Images: v1alpha1.KustomizeImages{
 								"jannfis/foobar:1.0.0",
@@ -361,7 +361,7 @@ func Test_UpdateApplication(t *testing.T) {
 					Namespace: "guestbook",
 				},
 				Spec: v1alpha1.ApplicationSpec{
-					Source: v1alpha1.ApplicationSource{
+					Source: &v1alpha1.ApplicationSource{
 						Kustomize: &v1alpha1.ApplicationSourceKustomize{
 							Images: v1alpha1.KustomizeImages{
 								"jannfis/foobar",
@@ -422,7 +422,7 @@ func Test_UpdateApplication(t *testing.T) {
 					},
 				},
 				Spec: v1alpha1.ApplicationSpec{
-					Source: v1alpha1.ApplicationSource{
+					Source: &v1alpha1.ApplicationSource{
 						Kustomize: &v1alpha1.ApplicationSourceKustomize{
 							Images: v1alpha1.KustomizeImages{
 								"jannfis/foobar:1.0.0",
@@ -477,7 +477,7 @@ func Test_UpdateApplication(t *testing.T) {
 					Namespace: "guestbook",
 				},
 				Spec: v1alpha1.ApplicationSpec{
-					Source: v1alpha1.ApplicationSource{
+					Source: &v1alpha1.ApplicationSource{
 						Kustomize: &v1alpha1.ApplicationSourceKustomize{
 							Images: v1alpha1.KustomizeImages{
 								"jannfis/foobar:1.0.0",
@@ -533,7 +533,7 @@ func Test_UpdateApplication(t *testing.T) {
 					Namespace: "guestbook",
 				},
 				Spec: v1alpha1.ApplicationSpec{
-					Source: v1alpha1.ApplicationSource{
+					Source: &v1alpha1.ApplicationSource{
 						Kustomize: &v1alpha1.ApplicationSourceKustomize{
 							Images: v1alpha1.KustomizeImages{
 								"jannfis/foobar:1.0.1",
@@ -594,7 +594,7 @@ func Test_UpdateApplication(t *testing.T) {
 					Annotations: annotations,
 				},
 				Spec: v1alpha1.ApplicationSpec{
-					Source: v1alpha1.ApplicationSource{
+					Source: &v1alpha1.ApplicationSource{
 						Kustomize: &v1alpha1.ApplicationSourceKustomize{
 							Images: v1alpha1.KustomizeImages{
 								"jannfis/foobar:1.0.1",
@@ -653,7 +653,7 @@ func Test_UpdateApplication(t *testing.T) {
 					Annotations: annotations,
 				},
 				Spec: v1alpha1.ApplicationSpec{
-					Source: v1alpha1.ApplicationSource{
+					Source: &v1alpha1.ApplicationSource{
 						Kustomize: &v1alpha1.ApplicationSourceKustomize{
 							Images: v1alpha1.KustomizeImages{
 								"jannfis/foobar:1.0.1",
@@ -727,7 +727,7 @@ func Test_UpdateApplication(t *testing.T) {
 					},
 				},
 				Spec: v1alpha1.ApplicationSpec{
-					Source: v1alpha1.ApplicationSource{
+					Source: &v1alpha1.ApplicationSource{
 						Kustomize: &v1alpha1.ApplicationSourceKustomize{
 							Images: v1alpha1.KustomizeImages{
 								"jannfis/foobar:one",
@@ -803,7 +803,7 @@ func Test_UpdateApplication(t *testing.T) {
 					},
 				},
 				Spec: v1alpha1.ApplicationSpec{
-					Source: v1alpha1.ApplicationSource{
+					Source: &v1alpha1.ApplicationSource{
 						Kustomize: &v1alpha1.ApplicationSourceKustomize{
 							Images: v1alpha1.KustomizeImages{
 								"jannfis/foobar:one",
@@ -859,7 +859,7 @@ func Test_UpdateApplication(t *testing.T) {
 					Namespace: "guestbook",
 				},
 				Spec: v1alpha1.ApplicationSpec{
-					Source: v1alpha1.ApplicationSource{
+					Source: &v1alpha1.ApplicationSource{
 						Kustomize: &v1alpha1.ApplicationSourceKustomize{
 							Images: v1alpha1.KustomizeImages{
 								"example.io/jannfis/example:1.0.1",
@@ -912,7 +912,7 @@ func Test_UpdateApplication(t *testing.T) {
 					Namespace: "guestbook",
 				},
 				Spec: v1alpha1.ApplicationSpec{
-					Source: v1alpha1.ApplicationSource{
+					Source: &v1alpha1.ApplicationSource{
 						Kustomize: &v1alpha1.ApplicationSourceKustomize{
 							Images: v1alpha1.KustomizeImages{
 								"jannfis/foobar:1.0.0",
@@ -968,7 +968,7 @@ func Test_UpdateApplication(t *testing.T) {
 					Namespace: "guestbook",
 				},
 				Spec: v1alpha1.ApplicationSpec{
-					Source: v1alpha1.ApplicationSource{
+					Source: &v1alpha1.ApplicationSource{
 						Kustomize: &v1alpha1.ApplicationSourceKustomize{
 							Images: v1alpha1.KustomizeImages{
 								"jannfis/foobar:1.0.0",
@@ -1024,7 +1024,7 @@ func Test_UpdateApplication(t *testing.T) {
 					Namespace: "guestbook",
 				},
 				Spec: v1alpha1.ApplicationSpec{
-					Source: v1alpha1.ApplicationSource{
+					Source: &v1alpha1.ApplicationSource{
 						Kustomize: &v1alpha1.ApplicationSourceKustomize{
 							Images: v1alpha1.KustomizeImages{
 								"jannfis/foobar:stable",
@@ -1078,7 +1078,7 @@ kustomize:
 				},
 			},
 			Spec: v1alpha1.ApplicationSpec{
-				Source: v1alpha1.ApplicationSource{
+				Source: &v1alpha1.ApplicationSource{
 					RepoURL:        "https://example.com/example",
 					TargetRevision: "main",
 					Kustomize: &v1alpha1.ApplicationSourceKustomize{
@@ -1110,7 +1110,7 @@ kustomize:
 				},
 			},
 			Spec: v1alpha1.ApplicationSpec{
-				Source: v1alpha1.ApplicationSource{
+				Source: &v1alpha1.ApplicationSource{
 					RepoURL:        "https://example.com/example",
 					TargetRevision: "main",
 				},
@@ -1146,7 +1146,7 @@ helm:
 				},
 			},
 			Spec: v1alpha1.ApplicationSpec{
-				Source: v1alpha1.ApplicationSource{
+				Source: &v1alpha1.ApplicationSource{
 					RepoURL:        "https://example.com/example",
 					TargetRevision: "main",
 					Helm: &v1alpha1.ApplicationSourceHelm{
@@ -1186,7 +1186,7 @@ helm:
 				},
 			},
 			Spec: v1alpha1.ApplicationSpec{
-				Source: v1alpha1.ApplicationSource{
+				Source: &v1alpha1.ApplicationSource{
 					RepoURL:        "https://example.com/example",
 					TargetRevision: "main",
 				},
@@ -1211,7 +1211,7 @@ helm:
 				},
 			},
 			Spec: v1alpha1.ApplicationSpec{
-				Source: v1alpha1.ApplicationSource{
+				Source: &v1alpha1.ApplicationSource{
 					RepoURL:        "https://example.com/example",
 					TargetRevision: "main",
 					Kustomize: &v1alpha1.ApplicationSourceKustomize{
@@ -1244,7 +1244,7 @@ func Test_GetWriteBackConfig(t *testing.T) {
 				},
 			},
 			Spec: v1alpha1.ApplicationSpec{
-				Source: v1alpha1.ApplicationSource{
+				Source: &v1alpha1.ApplicationSource{
 					RepoURL:        "https://example.com/example",
 					TargetRevision: "main",
 				},
@@ -1329,7 +1329,7 @@ func Test_GetWriteBackConfig(t *testing.T) {
 				},
 			},
 			Spec: v1alpha1.ApplicationSpec{
-				Source: v1alpha1.ApplicationSource{
+				Source: &v1alpha1.ApplicationSource{
 					RepoURL:        "https://example.com/example",
 					TargetRevision: "main",
 				},
@@ -1363,7 +1363,7 @@ func Test_GetWriteBackConfig(t *testing.T) {
 				},
 			},
 			Spec: v1alpha1.ApplicationSpec{
-				Source: v1alpha1.ApplicationSource{
+				Source: &v1alpha1.ApplicationSource{
 					RepoURL:        "https://example.com/example",
 					TargetRevision: "main",
 					Path:           "config/foo",
@@ -1397,7 +1397,7 @@ func Test_GetWriteBackConfig(t *testing.T) {
 				},
 			},
 			Spec: v1alpha1.ApplicationSpec{
-				Source: v1alpha1.ApplicationSource{
+				Source: &v1alpha1.ApplicationSource{
 					RepoURL:        "https://example.com/example",
 					TargetRevision: "main",
 				},
@@ -1430,7 +1430,7 @@ func Test_GetWriteBackConfig(t *testing.T) {
 				},
 			},
 			Spec: v1alpha1.ApplicationSpec{
-				Source: v1alpha1.ApplicationSource{
+				Source: &v1alpha1.ApplicationSource{
 					RepoURL:        "https://example.com/example",
 					TargetRevision: "main",
 				},
@@ -1475,7 +1475,7 @@ func Test_GetGitCreds(t *testing.T) {
 				},
 			},
 			Spec: v1alpha1.ApplicationSpec{
-				Source: v1alpha1.ApplicationSource{
+				Source: &v1alpha1.ApplicationSource{
 					RepoURL:        "https://example.com/example",
 					TargetRevision: "main",
 				},
@@ -1513,7 +1513,7 @@ func Test_GetGitCreds(t *testing.T) {
 				},
 			},
 			Spec: v1alpha1.ApplicationSpec{
-				Source: v1alpha1.ApplicationSource{
+				Source: &v1alpha1.ApplicationSource{
 					RepoURL:        "git@example.com:example",
 					TargetRevision: "main",
 				},
@@ -1565,7 +1565,7 @@ func Test_GetGitCreds(t *testing.T) {
 				},
 			},
 			Spec: v1alpha1.ApplicationSpec{
-				Source: v1alpha1.ApplicationSource{
+				Source: &v1alpha1.ApplicationSource{
 					RepoURL:        "https://example.com/example",
 					TargetRevision: "main",
 				},
@@ -1603,7 +1603,7 @@ func Test_GetGitCreds(t *testing.T) {
 				},
 			},
 			Spec: v1alpha1.ApplicationSpec{
-				Source: v1alpha1.ApplicationSource{
+				Source: &v1alpha1.ApplicationSource{
 					RepoURL:        "git@example.com:example",
 					TargetRevision: "main",
 				},
@@ -1639,7 +1639,7 @@ func Test_GetGitCreds(t *testing.T) {
 				},
 			},
 			Spec: v1alpha1.ApplicationSpec{
-				Source: v1alpha1.ApplicationSource{
+				Source: &v1alpha1.ApplicationSource{
 					RepoURL:        "git@example.com:example",
 					TargetRevision: "main",
 				},
@@ -1675,7 +1675,7 @@ func Test_GetGitCreds(t *testing.T) {
 				},
 			},
 			Spec: v1alpha1.ApplicationSpec{
-				Source: v1alpha1.ApplicationSource{
+				Source: &v1alpha1.ApplicationSource{
 					RepoURL:        "git@example.com:example",
 					TargetRevision: "main",
 				},
@@ -1711,7 +1711,7 @@ func Test_CommitUpdates(t *testing.T) {
 			},
 		},
 		Spec: v1alpha1.ApplicationSpec{
-			Source: v1alpha1.ApplicationSource{
+			Source: &v1alpha1.ApplicationSource{
 				RepoURL:        "git@example.com:example",
 				TargetRevision: "main",
 			},

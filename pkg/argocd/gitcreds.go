@@ -11,6 +11,8 @@ import (
 
 	"github.com/argoproj-labs/argocd-image-updater/ext/git"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/kube"
+
+	argoGit "github.com/argoproj/argo-cd/v2/util/git"
 )
 
 // getGitCredsSource returns git credentials source that loads credentials from the secret or from Argo CD settings
@@ -35,14 +37,14 @@ func getCredsFromArgoCD(app *v1alpha1.Application, kubeClient *kube.KubernetesCl
 
 	settingsMgr := settings.NewSettingsManager(ctx, kubeClient.Clientset, kubeClient.Namespace)
 	argocdDB := db.NewDB(kubeClient.Namespace, settingsMgr, kubeClient.Clientset)
-	repo, err := argocdDB.GetRepository(ctx, app.Spec.Source.RepoURL)
+	repo, err := argocdDB.GetRepository(ctx, app.Spec.GetSource().RepoURL)
 	if err != nil {
 		return nil, err
 	}
 	if !repo.HasCredentials() {
-		return nil, fmt.Errorf("credentials for '%s' are not configured in Argo CD settings", app.Spec.Source.RepoURL)
+		return nil, fmt.Errorf("credentials for '%s' are not configured in Argo CD settings", app.Spec.GetSource().RepoURL)
 	}
-	return repo.GetGitCreds(), nil
+	return repo.GetGitCreds(argoGit.NoopCredsStore{}), nil
 }
 
 // getCredsFromSecret loads repository credentials from secret
@@ -59,13 +61,13 @@ func getCredsFromSecret(app *v1alpha1.Application, credentialsSecret string, kub
 		return nil, fmt.Errorf("secret ref must be in format 'namespace/name', but is '%s'", credentialsSecret)
 	}
 
-	if ok, _ := git.IsSSHURL(app.Spec.Source.RepoURL); ok {
+	if ok, _ := git.IsSSHURL(app.Spec.GetSource().RepoURL); ok {
 		var sshPrivateKey []byte
 		if sshPrivateKey, ok = credentials["sshPrivateKey"]; !ok {
 			return nil, fmt.Errorf("invalid secret %s: does not contain field sshPrivateKey", credentialsSecret)
 		}
 		return git.NewSSHCreds(string(sshPrivateKey), "", true), nil
-	} else if git.IsHTTPSURL(app.Spec.Source.RepoURL) {
+	} else if git.IsHTTPSURL(app.Spec.GetSource().RepoURL) {
 		var username, password []byte
 		if username, ok = credentials["username"]; !ok {
 			return nil, fmt.Errorf("invalid secret %s: does not contain field username", credentialsSecret)
