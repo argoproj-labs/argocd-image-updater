@@ -5,14 +5,12 @@ bacd
 CVE
 credref
 DEBU
-DEBU
 dockerhub
 eec
 fbd
 ffb
 gitlab
 jfrog
-JFrog
 mep
 mypass
 myregistry
@@ -24,7 +22,5 @@ someimage
 somerepo
 ssw
 wildcard
-wildcards
 wohoo
 yyyy
-YYYY
