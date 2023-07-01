@@ -294,18 +294,8 @@ var _ changeWriter = writeOverrides
 // writeKustomization writes any changes required for updating one or more images to a kustomization.yml
 func writeKustomization(app *v1alpha1.Application, wbc *WriteBackConfig, gitC git.Client) (err error, skip bool) {
 	logCtx := log.WithContext().AddField("application", app.GetName())
-	if oldDir, err := os.Getwd(); err != nil {
-		return err, false
-	} else {
-		defer func() {
-			_ = os.Chdir(oldDir)
-		}()
-	}
 
 	base := filepath.Join(gitC.Root(), wbc.KustomizeBase)
-	if err := os.Chdir(base); err != nil {
-		return err, false
-	}
 
 	logCtx.Infof("updating base %s", base)
 
