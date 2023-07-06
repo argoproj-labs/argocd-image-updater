@@ -14,7 +14,7 @@ FROM alpine:latest
 
 RUN apk update && \
     apk upgrade && \
-    apk add ca-certificates git openssh-client python3 py3-pip && \
+    apk add ca-certificates git openssh-client python3 py3-pip tini && \
     pip3 install --upgrade pip && \
     pip3 install awscli && \
     rm -rf /var/cache/apk/*
@@ -28,4 +28,4 @@ COPY hack/git-ask-pass.sh /usr/local/bin/git-ask-pass.sh
 
 USER 1000
 
-ENTRYPOINT ["/usr/local/bin/argocd-image-updater"]
+ENTRYPOINT ["/sbin/tini", "--", "/usr/local/bin/argocd-image-updater"]
