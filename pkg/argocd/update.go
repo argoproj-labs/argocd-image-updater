@@ -33,16 +33,18 @@ type ImageUpdaterResult struct {
 }
 
 type UpdateConfiguration struct {
-	NewRegFN          registry.NewRegistryClient
-	ArgoClient        ArgoCD
-	KubeClient        *kube.KubernetesClient
-	UpdateApp         *ApplicationImages
-	DryRun            bool
-	GitCommitUser     string
-	GitCommitEmail    string
-	GitCommitMessage  *template.Template
-	DisableKubeEvents bool
-	IgnorePlatforms   bool
+	NewRegFN            registry.NewRegistryClient
+	ArgoClient          ArgoCD
+	KubeClient          *kube.KubernetesClient
+	UpdateApp           *ApplicationImages
+	DryRun              bool
+	GitCommitUser       string
+	GitCommitEmail      string
+	GitCommitMessage    *template.Template
+	GitCommitSigningKey string
+	GitCommitSignOff    bool
+	DisableKubeEvents   bool
+	IgnorePlatforms     bool
 }
 
 type GitCredsSource func(app *v1alpha1.Application) (git.Creds, error)
@@ -59,15 +61,17 @@ type WriteBackConfig struct {
 	Method     WriteBackMethod
 	ArgoClient ArgoCD
 	// If GitClient is not nil, the client will be used for updates. Otherwise, a new client will be created.
-	GitClient        git.Client
-	GetCreds         GitCredsSource
-	GitBranch        string
-	GitWriteBranch   string
-	GitCommitUser    string
-	GitCommitEmail   string
-	GitCommitMessage string
-	KustomizeBase    string
-	Target           string
+	GitClient           git.Client
+	GetCreds            GitCredsSource
+	GitBranch           string
+	GitWriteBranch      string
+	GitCommitUser       string
+	GitCommitEmail      string
+	GitCommitMessage    string
+	GitCommitSigningKey string
+	GitCommitSignOff    bool
+	KustomizeBase       string
+	Target              string
 }
 
 // The following are helper structs to only marshal the fields we require
@@ -319,6 +323,10 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 		if len(changeList) > 0 && updateConf.GitCommitMessage != nil {
 			wbc.GitCommitMessage = TemplateCommitMessage(updateConf.GitCommitMessage, updateConf.UpdateApp.Application.Name, changeList)
 		}
+		if updateConf.GitCommitSigningKey != "" {
+			wbc.GitCommitSigningKey = updateConf.GitCommitSigningKey
+		}
+		wbc.GitCommitSignOff = updateConf.GitCommitSignOff
 	}
 
 	if needUpdate {
