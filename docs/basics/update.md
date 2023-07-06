@@ -18,7 +18,7 @@ The workflow of Argo CD Image Updater can be described as follows:
   annotation holds a list of image names that should be updated, and is a
   mandatory annotation for Argo CD Image Updater to indicate it should
   process this `Application`. Read more about the syntax expected in this
-  annotations's value in the [marking images for update](#TODO)
+  annotation's value in the [marking images for update](#TODO)
   section in this doc.
 
 * For each image found in the list, Argo CD Image Updater will first check

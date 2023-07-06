@@ -3,7 +3,7 @@
 ## Overview
 
 Argo CD Image Updater supports several methods to propagate new versions of the
-images to Argo CD. These methods are also refered to as *write back methods*.
+images to Argo CD. These methods are also referred to as *write back methods*.
 
 Currently, the following methods are supported:
 
@@ -144,6 +144,22 @@ kubectl -n argocd-image-updater create secret generic git-creds \
   --from-file=sshPrivateKey=~/.ssh/id_rsa
 ```
 
+### <a name="method-git-repository"></a>Specifying a repository when using a Helm repository in repoURL
+
+By default, Argo CD Image Updater will use the value found in the Application
+spec at `.spec.source.repoURL` as Git repository to checkout. But when using
+a Helm repository as `.spec.source.repoURL` GIT will simply fail. To manually
+specify the repository to push the changes, specify the 
+annotation `argocd-image-updater.argoproj.io/git-repository` on the Application
+manifest.
+
+The value of this annotation will define the Git repository to use, for example the
+following would use a GitHub's repository:
+
+```yaml
+argocd-image-updater.argoproj.io/git-repository: git@github.com:example/example.git
+```
+
 ### <a name="method-git-branch"></a>Specifying a branch to commit to
 
 By default, Argo CD Image Updater will use the value found in the Application
@@ -162,7 +178,7 @@ argocd-image-updater.argoproj.io/git-branch: main
 
 ### <a name="method-git-base-commit-branch"></a>Specifying a separate base and commit branch
 
-By default, Argo CD Imager Updater will checkout, commit, and push back to the
+By default, Argo CD Image Updater will checkout, commit, and push back to the
 same branch specified above. There are many scenarios where this is not
 desired or possible, such as when the default branch is protected. You can
 add a separate write-branch by modifying `argocd-image-updater.argoproj.io/git-branch`
