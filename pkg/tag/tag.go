@@ -124,7 +124,7 @@ func (il ImageTagList) Add(tag *ImageTag) {
 
 // SortByName returns an array of ImageTag objects, sorted by the tag's name
 func (il ImageTagList) SortAlphabetically() SortableImageTagList {
-	sil := SortableImageTagList{}
+	sil := make(SortableImageTagList, 0, len(il.items))
 	for _, v := range il.items {
 		sil = append(sil, v)
 	}
@@ -136,7 +136,7 @@ func (il ImageTagList) SortAlphabetically() SortableImageTagList {
 
 // SortByDate returns a SortableImageTagList, sorted by the tag's date
 func (il ImageTagList) SortByDate() SortableImageTagList {
-	sil := SortableImageTagList{}
+	sil := make(SortableImageTagList, 0, len(il.items))
 	for _, v := range il.items {
 		sil = append(sil, v)
 	}
