@@ -131,7 +131,7 @@ func commitChangesGit(app *v1alpha1.Application, wbc *WriteBackConfig, changeLis
 	logCtx := log.WithContext().AddField("application", app.GetName())
 	creds, err := wbc.GetCreds(app)
 	if err != nil {
-		return fmt.Errorf("could not get creds for repo '%s': %v", app.Spec.Source.RepoURL, err)
+		return fmt.Errorf("could not get creds for repo '%s': %v", app.Spec.GetSource().RepoURL, err)
 	}
 	var gitC git.Client
 	if wbc.GitClient == nil {
@@ -145,7 +145,7 @@ func commitChangesGit(app *v1alpha1.Application, wbc *WriteBackConfig, changeLis
 				logCtx.Errorf("could not remove temp dir: %v", err)
 			}
 		}()
-		gitC, err = git.NewClientExt(app.Spec.Source.RepoURL, tempRoot, creds, false, false, "")
+		gitC, err = git.NewClientExt(app.Spec.GetSource().RepoURL, tempRoot, creds, false, false, "")
 		if err != nil {
 			return err
 		}
@@ -173,7 +173,7 @@ func commitChangesGit(app *v1alpha1.Application, wbc *WriteBackConfig, changeLis
 	// config, or taken from the application spec's targetRevision. If the
 	// target revision is set to the special value HEAD, or is the empty
 	// string, we'll try to resolve it to a branch name.
-	checkOutBranch := app.Spec.Source.TargetRevision
+	checkOutBranch := app.Spec.GetSource().TargetRevision
 	if wbc.GitBranch != "" {
 		checkOutBranch = wbc.GitBranch
 	}
@@ -304,7 +304,7 @@ func writeKustomization(app *v1alpha1.Application, wbc *WriteBackConfig, gitC gi
 		return fmt.Errorf("could not find kustomization in %s", base), false
 	}
 
-	filterFunc, err := imagesFilter(app.Spec.Source.Kustomize.Images)
+	filterFunc, err := imagesFilter(app.Spec.GetSource().Kustomize.Images)
 	if err != nil {
 		return err, false
 	}

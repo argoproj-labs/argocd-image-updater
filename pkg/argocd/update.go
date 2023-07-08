@@ -382,22 +382,22 @@ func marshalParamsOverride(app *v1alpha1.Application) ([]byte, error) {
 	appType := GetApplicationType(app)
 	switch appType {
 	case ApplicationTypeKustomize:
-		if app.Spec.Source.Kustomize == nil {
+		if app.Spec.GetSource().Kustomize == nil {
 			return []byte{}, nil
 		}
 		params := kustomizeOverride{
 			Kustomize: kustomizeImages{
-				Images: &app.Spec.Source.Kustomize.Images,
+				Images: &app.Spec.GetSource().Kustomize.Images,
 			},
 		}
 		override, err = yaml.Marshal(params)
 	case ApplicationTypeHelm:
-		if app.Spec.Source.Helm == nil {
+		if app.Spec.GetSource().Helm == nil {
 			return []byte{}, nil
 		}
 		params := helmOverride{
 			Helm: helmParameters{
-				Parameters: app.Spec.Source.Helm.Parameters,
+				Parameters: app.Spec.GetSource().Helm.Parameters,
 			},
 		}
 		override, err = yaml.Marshal(params)
@@ -416,7 +416,7 @@ func getWriteBackConfig(app *v1alpha1.Application, kubeClient *kube.KubernetesCl
 	// Default write-back is to use Argo CD API
 	wbc.Method = WriteBackApplication
 	wbc.ArgoClient = argoClient
-	wbc.Target = parseDefaultTarget(app.Name, app.Spec.Source.Path)
+	wbc.Target = parseDefaultTarget(app.Name, app.Spec.GetSource().Path)
 
 	// If we have no update method, just return our default
 	method, ok := app.Annotations[common.WriteBackMethodAnnotation]
@@ -436,7 +436,7 @@ func getWriteBackConfig(app *v1alpha1.Application, kubeClient *kube.KubernetesCl
 	case "git":
 		wbc.Method = WriteBackGit
 		if target, ok := app.Annotations[common.WriteBackTargetAnnotation]; ok && strings.HasPrefix(target, common.KustomizationPrefix) {
-			wbc.KustomizeBase = parseTarget(target, app.Spec.Source.Path)
+			wbc.KustomizeBase = parseTarget(target, app.Spec.GetSource().Path)
 		}
 		if err := parseGitConfig(app, kubeClient, wbc, creds); err != nil {
 			return nil, err
@@ -501,7 +501,7 @@ func commitChanges(app *v1alpha1.Application, wbc *WriteBackConfig, changeList [
 	case WriteBackApplication:
 		_, err := wbc.ArgoClient.UpdateSpec(context.TODO(), &application.ApplicationUpdateSpecRequest{
 			Name: &app.Name,
-			Spec: app.Spec,
+			Spec: &app.Spec,
 		})
 		if err != nil {
 			return err
