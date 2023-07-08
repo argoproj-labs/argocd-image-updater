@@ -3,7 +3,7 @@
 ## Overview
 
 Argo CD Image Updater supports several methods to propagate new versions of the
-images to Argo CD. These methods are also refered to as *write back methods*.
+images to Argo CD. These methods are also referred to as *write back methods*.
 
 Currently, the following methods are supported:
 
@@ -162,7 +162,7 @@ argocd-image-updater.argoproj.io/git-branch: main
 
 ### <a name="method-git-base-commit-branch"></a>Specifying a separate base and commit branch
 
-By default, Argo CD Imager Updater will checkout, commit, and push back to the
+By default, Argo CD Image Updater will checkout, commit, and push back to the
 same branch specified above. There are many scenarios where this is not
 desired or possible, such as when the default branch is protected. You can
 add a separate write-branch by modifying `argocd-image-updater.argoproj.io/git-branch`
