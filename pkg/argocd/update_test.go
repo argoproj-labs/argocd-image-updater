@@ -1066,6 +1066,7 @@ func Test_MarshalParamsOverride(t *testing.T) {
 		expected := `
 kustomize:
   images:
+  - baz
   - foo
   - bar
 `
@@ -1093,8 +1094,12 @@ kustomize:
 				SourceType: v1alpha1.ApplicationSourceTypeKustomize,
 			},
 		}
-
-		yaml, err := marshalParamsOverride(&app)
+		originalData := []byte(`
+kustomize:
+  images:
+  - baz
+`)
+		yaml, err := marshalParamsOverride(&app, originalData)
 		require.NoError(t, err)
 		assert.NotEmpty(t, yaml)
 		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(yaml)))
@@ -1120,7 +1125,7 @@ kustomize:
 			},
 		}
 
-		yaml, err := marshalParamsOverride(&app)
+		yaml, err := marshalParamsOverride(&app, nil)
 		require.NoError(t, err)
 		assert.Empty(t, yaml)
 		assert.Equal(t, "", strings.TrimSpace(string(yaml)))
@@ -1130,6 +1135,9 @@ kustomize:
 		expected := `
 helm:
   parameters:
+	- name: baz
+		value: baz
+		forcestring: false
 	- name: foo
 		value: bar
 		forcestring: true
@@ -1170,7 +1178,14 @@ helm:
 			},
 		}
 
-		yaml, err := marshalParamsOverride(&app)
+		originalData := []byte(`
+helm:
+  parameters:
+    - name: baz
+      value: baz
+      forcestring: false
+`)
+		yaml, err := marshalParamsOverride(&app, originalData)
 		require.NoError(t, err)
 		assert.NotEmpty(t, yaml)
 		assert.Equal(t, strings.TrimSpace(strings.ReplaceAll(expected, "\t", "  ")), strings.TrimSpace(string(yaml)))
@@ -1196,7 +1211,7 @@ helm:
 			},
 		}
 
-		yaml, err := marshalParamsOverride(&app)
+		yaml, err := marshalParamsOverride(&app, nil)
 		require.NoError(t, err)
 		assert.Empty(t, yaml)
 	})
@@ -1227,7 +1242,7 @@ helm:
 			},
 		}
 
-		_, err := marshalParamsOverride(&app)
+		_, err := marshalParamsOverride(&app, nil)
 		assert.Error(t, err)
 	})
 }
@@ -1806,6 +1821,56 @@ func Test_CommitUpdates(t *testing.T) {
 
 		err = commitChanges(&app, wbc, cl)
 		assert.NoError(t, err)
+	})
+
+	t.Run("Good commit to helm override", func(t *testing.T) {
+		app := app.DeepCopy()
+		app.Status.SourceType = "Helm"
+		app.Spec.Source.Helm = &v1alpha1.ApplicationSourceHelm{Parameters: []v1alpha1.HelmParameter{
+			{Name: "bar", Value: "bar", ForceString: true},
+			{Name: "baz", Value: "baz", ForceString: true},
+		}}
+		gitMock, dir, cleanup := mockGit(t)
+		defer cleanup()
+		of := filepath.Join(dir, ".argocd-source-testapp.yaml")
+		assert.NoError(t, os.WriteFile(of, []byte(`
+helm:
+  parameters:
+  - name: foo
+    value: foo
+    forcestring: true
+`), os.ModePerm))
+
+		gitMock.On("Checkout", mock.Anything).Run(func(args mock.Arguments) {
+			args.Assert(t, "mydefaultbranch")
+		}).Return(nil)
+		gitMock.On("Add", mock.Anything).Return(nil)
+		gitMock.On("Commit", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
+		gitMock.On("Push", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+		gitMock.On("SymRefToBranch", mock.Anything).Return("mydefaultbranch", nil)
+		wbc, err := getWriteBackConfig(app, &kubeClient, &argoClient)
+		require.NoError(t, err)
+		wbc.GitClient = gitMock
+		app.Spec.Source.TargetRevision = "HEAD"
+		wbc.GitBranch = ""
+
+		err = commitChanges(app, wbc, nil)
+		assert.NoError(t, err)
+		override, err := os.ReadFile(of)
+		assert.NoError(t, err)
+		assert.YAMLEq(t, `
+helm:
+  parameters:
+  - name: foo
+    value: foo
+    forcestring: true
+  - name: bar
+    value: bar
+    forcestring: true
+  - name: baz
+    value: baz
+    forcestring: true
+`, string(override))
 	})
 
 	t.Run("Good commit to kustomization", func(t *testing.T) {
