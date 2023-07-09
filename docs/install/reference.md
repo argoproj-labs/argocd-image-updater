@@ -123,7 +123,7 @@ Only process applications that have a valid annotation and match the given
 syntax of `key=value`. For e.g, `custom.label/name=xyz` would be a valid label
 that can be supplied through this parameter. Any applications carrying this 
 exact label will be considered as candidates for image updates. This parameter
-currently does not support patten matching on label values (e.g `customer.label/name=*-staging`)
+currently does not support pattern matching on label values (e.g `customer.label/name=*-staging`)
 and only accepts a single label to match applications against. 
 
 **--max-concurrency *number* **
