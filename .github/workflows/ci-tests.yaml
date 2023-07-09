@@ -35,12 +35,17 @@ jobs:
       - name: Install Kustomize v2
         run: |
           set -xo pipefail
-          KUSTOMIZE_VERSION=2.0.2
-          URL="https://github.com/kubernetes-sigs/kustomize/releases/download/v${KUSTOMIZE_VERSION}/kustomize_${KUSTOMIZE_VERSION}_linux_amd64"
-          BINNAME=kustomize2
-          curl -sLf --retry 3 -o /tmp/kustomize2 "$URL"
-          sudo mv /tmp/kustomize2 /usr/local/bin/kustomize2
-          chmod +x /usr/local/bin/kustomize2
+          URL="https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv5.1.0/kustomize_v5.1.0_linux_amd64.tar.gz"
+          BINNAME=kustomize
+          curl -sLf --retry 3 -o /tmp/kustomize.tar.gz "$URL"
+          chksum=$(sha256sum /tmp/kustomize.tar.gz | awk '{ print $1; }')
+          if test "${chksum}" != "52f4cf1ba34d38fd55a9bef819e329c9a4561f5f57f8f539346038ab5026dda8"; then
+            echo "Checksum mismatch" >&2
+            exit 1
+          fi
+          tar -C /tmp -xvzf /tmp/kustomize.tar.gz
+          sudo mv /tmp/kustomize /usr/local/bin/kustomize
+          chmod +x /usr/local/bin/kustomize
       - name: Run make manifests
         run: |
           make manifests
