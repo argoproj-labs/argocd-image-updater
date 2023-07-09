@@ -43,7 +43,7 @@ jobs:
             echo "Checksum mismatch" >&2
             exit 1
           fi
-          tar xfvz -C /tmp /tmp/kustomize.tar.gz
+          tar -C /tmp -xvzf /tmp/kustomize.tar.gz
           sudo mv /tmp/kustomize /usr/local/bin/kustomize
           chmod +x /usr/local/bin/kustomize
       - name: Run make manifests
