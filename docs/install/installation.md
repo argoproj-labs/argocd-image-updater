@@ -122,7 +122,7 @@ apps, however.
 Put the RBAC permissions to Argo CD's `argocd-rbac-cm` ConfigMap and Argo CD will
 pick them up automatically.
 
-### Configure Argo CD endpoint
+## Configure Argo CD endpoint
 
 If you run Argo CD Image Updater in another cluster than Argo CD, or if your
 Argo CD installation is not in namespace `argocd` or if you use a default or
@@ -152,7 +152,7 @@ restarted for the changes to take effect, i.e.
 kubectl -n argocd-image-updater rollout restart deployment argocd-image-updater
 ```
 
-### Configure API access token secret
+## Configure API access token secret
 
 When installed from the manifests into a Kubernetes cluster, the Argo CD Image
 Updater reads the token required for accessing Argo CD API from an environment
