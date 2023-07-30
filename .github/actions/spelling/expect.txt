@@ -12,15 +12,11 @@ ffb
 gitlab
 jfrog
 mep
-mypass
 myregistry
-myuser
-otherapp
 repocreds
 rollbacked
 someimage
 somerepo
 ssw
-wildcard
-wohoo
+wildcards
 yyyy
