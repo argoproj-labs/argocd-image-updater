@@ -550,7 +550,7 @@ func commitChanges(app *v1alpha1.Application, wbc *WriteBackConfig, changeList [
 	case WriteBackApplication:
 		_, err := wbc.ArgoClient.UpdateSpec(context.TODO(), &application.ApplicationUpdateSpecRequest{
 			Name: &app.Name,
-			Spec: app.Spec,
+			Spec: &app.Spec,
 		})
 		if err != nil {
 			return err
