@@ -43,7 +43,7 @@ func (client *k8sClient) UpdateSpec(ctx context.Context, spec *application.Appli
 		if err != nil {
 			return nil, err
 		}
-		app.Spec = spec.Spec
+		app.Spec = *spec.Spec
 
 		updatedApp, err := client.kubeClient.ApplicationsClientset.ArgoprojV1alpha1().Applications(client.kubeClient.Namespace).Update(ctx, app, v1.UpdateOptions{})
 		if err != nil {
