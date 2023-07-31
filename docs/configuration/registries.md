@@ -335,8 +335,8 @@ You can authenticate against an Azure Container Registry using Azure Managed Ide
 ```yaml
 registries:
 - name: ACR example with external script
-  api_url: https://acrexample.azurecr.io/
-  prefix: acrexample.azurecr.io
+  api_url: https://acr-example.azurecr.io/
+  prefix: acr-example.azurecr.io
   credentials: ext:/app/scripts/acr-login.sh
   credsexpire: 10h
 ```
@@ -347,7 +347,7 @@ The script should contain the name of the registry:
   acr-login.sh: |
     #!/bin/sh
     LOGIN=$(az login --identity)
-    REGISTRY="acrexample"
+    REGISTRY="acr-example"
     TOKEN=$(az acr login --name $REGISTRY --expose-token --output tsv --query accessToken)
     echo "00000000-0000-0000-0000-000000000000:$TOKEN"
 ```
