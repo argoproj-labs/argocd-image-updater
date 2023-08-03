@@ -98,6 +98,15 @@ spec:
             port: 8080
           initialDelaySeconds: 3
           periodSeconds: 30
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          seccompProfile:
+            type: RuntimeDefault
         volumeMounts:
         - mountPath: /app/config
           name: image-updater-conf
@@ -105,6 +114,8 @@ spec:
           name: ssh-known-hosts
         - mountPath: /app/.ssh
           name: ssh-config
+        - mountPath: /tmp
+          name: tmp
       serviceAccountName: argocd-image-updater
       volumes:
       - configMap:
@@ -124,3 +135,5 @@ spec:
           name: argocd-image-updater-ssh-config
           optional: true
         name: ssh-config
+      - emptyDir: {}
+        name: tmp
