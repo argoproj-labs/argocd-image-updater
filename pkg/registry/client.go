@@ -15,7 +15,7 @@ import (
 	"github.com/distribution/distribution/v3"
 	"github.com/distribution/distribution/v3/manifest/manifestlist"
 	"github.com/distribution/distribution/v3/manifest/ocischema"
-	"github.com/distribution/distribution/v3/manifest/schema1"
+	"github.com/distribution/distribution/v3/manifest/schema1" //nolint:staticcheck
 	"github.com/distribution/distribution/v3/manifest/schema2"
 	"github.com/distribution/distribution/v3/reference"
 	"github.com/distribution/distribution/v3/registry/client"
@@ -39,7 +39,7 @@ import (
 // knownMediaTypes is the list of media types we can process
 var knownMediaTypes = []string{
 	ocischema.SchemaVersion.MediaType,
-	schema1.MediaTypeSignedManifest,
+	schema1.MediaTypeSignedManifest, //nolint:staticcheck
 	schema2.SchemaVersion.MediaType,
 	manifestlist.SchemaVersion.MediaType,
 	ociv1.MediaTypeImageIndex,
@@ -214,8 +214,8 @@ func (client *registryClient) TagMetadata(manifest distribution.Manifest, opts *
 	//
 	switch deserialized := manifest.(type) {
 
-	case *schema1.SignedManifest:
-		var man schema1.Manifest = deserialized.Manifest
+	case *schema1.SignedManifest: //nolint:staticcheck
+		var man schema1.Manifest = deserialized.Manifest //nolint:staticcheck
 		if len(man.History) == 0 {
 			return nil, fmt.Errorf("no history information found in schema V1")
 		}
