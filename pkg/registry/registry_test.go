@@ -10,7 +10,7 @@ import (
 	"github.com/argoproj-labs/argocd-image-updater/pkg/registry/mocks"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/tag"
 
-	"github.com/distribution/distribution/v3/manifest/schema1"
+	"github.com/distribution/distribution/v3/manifest/schema1" //nolint:staticcheck
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -81,9 +81,9 @@ func Test_GetTags(t *testing.T) {
 
 	t.Run("Check for correctly returned tags with latest sort", func(t *testing.T) {
 		ts := "2006-01-02T15:04:05.999999999Z"
-		meta1 := &schema1.SignedManifest{
-			Manifest: schema1.Manifest{
-				History: []schema1.History{
+		meta1 := &schema1.SignedManifest{ //nolint:staticcheck
+			Manifest: schema1.Manifest{ //nolint:staticcheck
+				History: []schema1.History{ //nolint:staticcheck
 					{
 						V1Compatibility: `{"created":"` + ts + `"}`,
 					},
