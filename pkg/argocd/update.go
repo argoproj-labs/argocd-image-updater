@@ -70,6 +70,7 @@ type WriteBackConfig struct {
 	GitCommitMessage string
 	KustomizeBase    string
 	Target           string
+	GitRepo          string
 }
 
 // The following are helper structs to only marshal the fields we require
@@ -525,7 +526,12 @@ func parseGitConfig(app *v1alpha1.Application, kubeClient *kube.KubernetesClient
 			wbc.GitWriteBranch = branches[1]
 		}
 	}
-	credsSource, err := getGitCredsSource(creds, kubeClient)
+	wbc.GitRepo = app.Spec.Source.RepoURL
+	repo, ok := app.Annotations[common.GitRepositoryAnnotation]
+	if ok {
+		wbc.GitRepo = repo
+	}
+	credsSource, err := getGitCredsSource(creds, kubeClient, wbc)
 	if err != nil {
 		return fmt.Errorf("invalid git credentials source: %v", err)
 	}
@@ -535,7 +541,7 @@ func parseGitConfig(app *v1alpha1.Application, kubeClient *kube.KubernetesClient
 
 func commitChangesLocked(app *v1alpha1.Application, wbc *WriteBackConfig, state *SyncIterationState, changeList []ChangeEntry) error {
 	if wbc.RequiresLocking() {
-		lock := state.GetRepositoryLock(app.Spec.Source.RepoURL)
+		lock := state.GetRepositoryLock(wbc.GitRepo)
 		lock.Lock()
 		defer lock.Unlock()
 	}
