@@ -1739,7 +1739,7 @@ func Test_GetGitCreds(t *testing.T) {
 				},
 			},
 			Spec: v1alpha1.ApplicationSpec{
-				Source: v1alpha1.ApplicationSource{
+				Source: &v1alpha1.ApplicationSource{
 					RepoURL:        "https://example-helm-repo.com/example",
 					TargetRevision: "main",
 				},
