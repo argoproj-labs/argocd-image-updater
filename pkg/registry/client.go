@@ -320,6 +320,84 @@ func (client *registryClient) TagMetadata(manifest distribution.Manifest, opts *
 
 		return ti, nil
 
+	case *ocischema.DeserializedImageIndex:
+		var index ocischema.DeserializedImageIndex = *deserialized
+		var ml []distribution.Descriptor
+		platforms := []string{}
+
+		// Index must contain at least one image manifest
+		if len(index.Manifests) == 0 {
+			return nil, fmt.Errorf("empty manifestlist not supported")
+		}
+
+		// We use the SHA from the manifest index to let the container engine
+		// decide which image to pull, in case of multi-arch clusters.
+		_, mBytes, err := index.Payload()
+		if err != nil {
+			return nil, fmt.Errorf("could not retrieve imageindex payload: %v", err)
+		}
+		ti.Digest = sha256.Sum256(mBytes)
+
+		logCtx.Tracef("SHA256 of manifest parent is %v", ti.EncodedDigest())
+
+		for _, ref := range index.References() {
+			platforms = append(platforms, ref.Platform.OS+"/"+ref.Platform.Architecture)
+			logCtx.Tracef("Found %s", options.PlatformKey(ref.Platform.OS, ref.Platform.Architecture, ref.Platform.Variant))
+			if !opts.WantsPlatform(ref.Platform.OS, ref.Platform.Architecture, ref.Platform.Variant) {
+				logCtx.Tracef("Ignoring referenced manifest %v because platform %s does not match any of: %s",
+					ref.Digest,
+					options.PlatformKey(ref.Platform.OS, ref.Platform.Architecture, ref.Platform.Variant),
+					strings.Join(opts.Platforms(), ","))
+				continue
+			}
+			ml = append(ml, ref)
+		}
+
+		// We need at least one reference that matches requested plaforms
+		if len(ml) == 0 {
+			logCtx.Debugf("Image index did not contain any usable reference. Platforms requested: (%s), platforms included: (%s)",
+				strings.Join(opts.Platforms(), ","), strings.Join(platforms, ","))
+			return nil, nil
+		}
+
+		// For some strategies, we do not need to fetch metadata for further
+		// processing.
+		if !opts.WantsMetadata() {
+			return ti, nil
+		}
+
+		// Loop through all referenced manifests to get their metadata. We only
+		// consider manifests for platforms we are interested in.
+		for _, ref := range ml {
+			logCtx.Tracef("Inspecting metadata of reference: %v", ref.Digest)
+
+			man, err := client.ManifestForDigest(ref.Digest)
+			if err != nil {
+				return nil, fmt.Errorf("could not fetch manifest %v: %v", ref.Digest, err)
+			}
+
+			cti, err := client.TagMetadata(man, opts)
+			if err != nil {
+				return nil, fmt.Errorf("could not fetch metadata for manifest %v: %v", ref.Digest, err)
+			}
+
+			// We save the timestamp of the most recent pushed manifest for any
+			// given reference, if the metadata for the tag was correctly
+			// retrieved. This is important for the latest update strategy to
+			// be able to handle multi-arch images. The latest strategy will
+			// consider the most recent reference from an image index.
+			if cti != nil {
+				if cti.CreatedAt.After(ti.CreatedAt) {
+					ti.CreatedAt = cti.CreatedAt
+				}
+			} else {
+				logCtx.Warnf("returned metadata for manifest %v is nil, this should not happen.", ref.Digest)
+				continue
+			}
+		}
+
+		return ti, nil
+
 	case *schema2.DeserializedManifest:
 		var man schema2.Manifest = deserialized.Manifest
 
@@ -387,7 +465,7 @@ func (client *registryClient) TagMetadata(manifest distribution.Manifest, opts *
 
 		return ti, nil
 	default:
-		return nil, fmt.Errorf("invalid manifest type")
+		return nil, fmt.Errorf("invalid manifest type %T", manifest)
 	}
 }
 
