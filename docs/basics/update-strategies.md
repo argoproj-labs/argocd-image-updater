@@ -77,6 +77,10 @@ The above example would update to any new tag pushed to the registry matching
 this constraint, e.g. `1.2.5`, `1.2.12` etc, but not to a new minor version
 (e.g. `1.3`).
 
+!!!warning "A note on the current image tag"
+    For semver strategy to work, the current application tag must already follow
+    semver. Otherwise no comparison can happen by the updater. See discussion at [#270](https://github.com/argoproj-labs/argocd-image-updater/issues/270) for more details.
+
 Likewise, to allow updates to any minor release within the major version `1`,
 use
 
@@ -100,6 +104,8 @@ Image Updater will pick the highest version number found in the registry.
 
 Argo CD Image Updater will omit any tags from your registry that do not match 
 a semantic version when using the `semver` update strategy.
+
+
 
 ### <a name="strategy-latest"></a>latest/newest-build - Update to the most recently built image
 
@@ -272,7 +278,7 @@ for update, you will need additional configuration. For example,
 ```yaml
 argocd-image-updater.argoproj.io/image-list: myimage=some/image
 argocd-image-updater.argoproj.io/myimage.update-strategy: name
-argocd-image-updater.argoproj.io/myimage.allow-tags: regexp:^[0-9]{4}-[0-9]{2}[0-9]{2}$
+argocd-image-updater.argoproj.io/myimage.allow-tags: regexp:^[0-9]{4}-[0-9]{2}-[0-9]{2}$
 ```
 
 or 
@@ -280,7 +286,7 @@ or
 ```yaml
 argocd-image-updater.argoproj.io/image-list: myimage=some/image
 argocd-image-updater.argoproj.io/myimage.update-strategy: alphabetical
-argocd-image-updater.argoproj.io/myimage.allow-tags: regexp:^[0-9]{4}-[0-9]{2}[0-9]{2}$
+argocd-image-updater.argoproj.io/myimage.allow-tags: regexp:^[0-9]{4}-[0-9]{2}-[0-9]{2}$
 ```
 
 would only consider tags that match a given regular expression for update. In

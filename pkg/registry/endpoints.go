@@ -247,9 +247,9 @@ func SetRegistryEndpointCredentials(prefix, credentials string) error {
 
 // ConfiguredEndpoints returns a list of prefixes that are configured
 func ConfiguredEndpoints() []string {
-	r := []string{}
 	registryLock.RLock()
 	defer registryLock.RUnlock()
+	r := make([]string, 0, len(registries))
 	for _, v := range registries {
 		r = append(r, v.RegistryPrefix)
 	}

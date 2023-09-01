@@ -1,7 +1,7 @@
 # Authentication in Argo CD Image Updater
 
 There are several scenarios where Argo CD Image Updater needs to authenticate
-to external systems in order to fulfil its duties. 
+to external systems in order to fulfill its duties. 
 
 ## <a name="auth-kubernetes"></a>Authentication to Kubernetes
 
@@ -16,7 +16,7 @@ Role that holds the required permissions, and a RoleBinding to bind the
 Role to the ServiceAccount.
 
 In the default installation scenario, i.e. Argo CD Image Updater installed
-to the `argocd` namespace, no further configuration has to done in order
+to the `argocd` namespace, no further configuration has to be done in order
 for Argo CD Image Updater to access the Kubernetes API. If your Argo CD
 installation is in a different namespace than `argocd`, you would have
 to adapt the RoleBinding to bind to the ServiceAccount in the correct
@@ -207,7 +207,7 @@ echo "someuser:s0mep4ssw0rd"
 
 When executing on Kubernetes, the script to be executed must exist in the
 Image Updater container's file system. You can either mount the script from
-a config map, or use an init container to copy it. Make sure that the script
+a configmap, or use an init container to copy it. Make sure that the script
 is executable.
 
 For example, if above script would exist at `/usr/local/bin/creds.sh`, it

@@ -7,15 +7,13 @@ run:
 linters:
   enable:
     - vet
-    - deadcode
     - goimports
-    - varcheck
-    - structcheck
     - ineffassign
     - unconvert
     - unparam
+    - unused
 linters-settings:
   goimports:
     local-prefixes: github.com/argoproj-labs/argocd-image-updater
 service:
-  golangci-lint-version: 1.26.0
+  golangci-lint-version: 1.52.2

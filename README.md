@@ -108,3 +108,6 @@ these types of applications.
 
 In the current form, probably not. If there is community demand for it, let's
 see how we can make this happen.
+
+There is [an open proposal](https://github.com/argoproj/argo-cd/issues/7385) to migrate this project into the `argoproj` org (out
+of the `argoproj-labs` org) and include it in the installation of Argo CD.

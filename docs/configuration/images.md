@@ -126,7 +126,7 @@ You can define the update strategy for each image independently by setting the
 following annotation to an appropriate value:
 
 ```yaml
-argocd-image-updater.argoproj.io/<image_name>.update-strategy: <strategy>
+argocd-image-updater.argoproj.io/<image_alias>.update-strategy: <strategy>
 ```
 
 If no update strategy is given, or an invalid value was used, the default
@@ -151,7 +151,7 @@ only consider tags that you are generally interested in.
 You can define a tag filter by using the following annotation:
 
 ```yaml
-argocd-image-updater.argoproj.io/<image_name>.allow-tags: <match_func>
+argocd-image-updater.argoproj.io/<image_alias>.allow-tags: <match_func>
 ```
 
 The following match functions are currently available:
@@ -175,7 +175,7 @@ can define a comma separated list of glob-like patterns using the following
 annotation:
 
 ```yaml
-argocd-image-updater.argoproj.io/<image_name>.ignore-tags: <pattern1>[, <pattern2>, ...]
+argocd-image-updater.argoproj.io/<image_alias>.ignore-tags: <pattern1>[, <pattern2>, ...]
 ```
 
 You can use glob patterns as described in this
@@ -187,7 +187,7 @@ preventing the image updater to consider any of the tags returned from the
 registry:
 
 ```yaml
-argocd-image-updater.argoproj.io/<image_name>.ignore-tags: "*"
+argocd-image-updater.argoproj.io/<image_alias>.ignore-tags: "*"
 ```
 
 Please note that regular expressions are not supported to be used for patterns.
@@ -231,7 +231,7 @@ container registry (as described [here](../registries/)), or you can specify
 the pull secret to use for a given image using the annotation
 
 ```yaml
-argocd-image-updater.argoproj.io/<image_name>.pull-secret: <secret_ref>
+argocd-image-updater.argoproj.io/<image_alias>.pull-secret: <secret_ref>
 ```
 
 A configuration for an image will override what is configured for the registry,

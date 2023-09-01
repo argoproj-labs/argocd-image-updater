@@ -126,7 +126,7 @@ func Test_GetApplicationType(t *testing.T) {
 			},
 			Spec: v1alpha1.ApplicationSpec{},
 			Status: v1alpha1.ApplicationStatus{
-				SourceType: v1alpha1.ApplicationSourceTypeKsonnet,
+				SourceType: v1alpha1.ApplicationSourceTypePlugin,
 				Summary: v1alpha1.ApplicationSummary{
 					Images: []string{"nginx:1.12.2", "that/image", "quay.io/dexidp/dex:v1.23.0"},
 				},
@@ -188,7 +188,7 @@ func Test_FilterApplicationsForUpdate(t *testing.T) {
 				},
 				Spec: v1alpha1.ApplicationSpec{},
 				Status: v1alpha1.ApplicationStatus{
-					SourceType: v1alpha1.ApplicationSourceTypeKsonnet,
+					SourceType: v1alpha1.ApplicationSourceTypePlugin,
 				},
 			},
 			// Valid type, but not annotated
@@ -448,7 +448,7 @@ func Test_SetKustomizeImage(t *testing.T) {
 				Namespace: "testns",
 			},
 			Spec: v1alpha1.ApplicationSpec{
-				Source: v1alpha1.ApplicationSource{
+				Source: &v1alpha1.ApplicationSource{
 					Kustomize: &v1alpha1.ApplicationSourceKustomize{
 						Images: v1alpha1.KustomizeImages{
 							"jannfis/foobar:1.0.0",
@@ -480,7 +480,7 @@ func Test_SetKustomizeImage(t *testing.T) {
 				Namespace: "testns",
 			},
 			Spec: v1alpha1.ApplicationSpec{
-				Source: v1alpha1.ApplicationSource{},
+				Source: &v1alpha1.ApplicationSource{},
 			},
 			Status: v1alpha1.ApplicationStatus{
 				SourceType: v1alpha1.ApplicationSourceTypeKustomize,
@@ -506,7 +506,7 @@ func Test_SetKustomizeImage(t *testing.T) {
 				Namespace: "testns",
 			},
 			Spec: v1alpha1.ApplicationSpec{
-				Source: v1alpha1.ApplicationSource{
+				Source: &v1alpha1.ApplicationSource{
 					Kustomize: &v1alpha1.ApplicationSourceKustomize{
 						Images: v1alpha1.KustomizeImages{
 							"jannfis/foobar:1.0.0",
@@ -538,7 +538,7 @@ func Test_SetKustomizeImage(t *testing.T) {
 				},
 			},
 			Spec: v1alpha1.ApplicationSpec{
-				Source: v1alpha1.ApplicationSource{
+				Source: &v1alpha1.ApplicationSource{
 					Kustomize: &v1alpha1.ApplicationSourceKustomize{
 						Images: v1alpha1.KustomizeImages{
 							"jannfis/foobar:1.0.0",
@@ -577,7 +577,7 @@ func Test_SetHelmImage(t *testing.T) {
 				},
 			},
 			Spec: v1alpha1.ApplicationSpec{
-				Source: v1alpha1.ApplicationSource{
+				Source: &v1alpha1.ApplicationSource{
 					Helm: &v1alpha1.ApplicationSourceHelm{
 						Parameters: []v1alpha1.HelmParameter{
 							{
@@ -631,7 +631,7 @@ func Test_SetHelmImage(t *testing.T) {
 				},
 			},
 			Spec: v1alpha1.ApplicationSpec{
-				Source: v1alpha1.ApplicationSource{
+				Source: &v1alpha1.ApplicationSource{
 					Helm: &v1alpha1.ApplicationSourceHelm{},
 				},
 			},
@@ -674,7 +674,7 @@ func Test_SetHelmImage(t *testing.T) {
 				},
 			},
 			Spec: v1alpha1.ApplicationSpec{
-				Source: v1alpha1.ApplicationSource{
+				Source: &v1alpha1.ApplicationSource{
 					Helm: &v1alpha1.ApplicationSourceHelm{
 						Parameters: []v1alpha1.HelmParameter{
 							{
@@ -728,10 +728,10 @@ func Test_SetHelmImage(t *testing.T) {
 				},
 			},
 			Spec: v1alpha1.ApplicationSpec{
-				Source: v1alpha1.ApplicationSource{},
+				Source: &v1alpha1.ApplicationSource{},
 			},
 			Status: v1alpha1.ApplicationStatus{
-				SourceType: v1alpha1.ApplicationSourceTypeKsonnet,
+				SourceType: v1alpha1.ApplicationSourceTypeKustomize,
 				Summary: v1alpha1.ApplicationSummary{
 					Images: []string{
 						"jannfis/foobar:1.0.0",
@@ -811,7 +811,7 @@ func TestKubernetesClient_UpdateSpec_Conflict(t *testing.T) {
 
 	spec, err := client.UpdateSpec(context.TODO(), &application.ApplicationUpdateSpecRequest{
 		Name: &appName,
-		Spec: v1alpha1.ApplicationSpec{Source: v1alpha1.ApplicationSource{
+		Spec: &v1alpha1.ApplicationSpec{Source: &v1alpha1.ApplicationSource{
 			RepoURL: "https://github.com/argoproj/argocd-example-apps",
 		}},
 	})
