@@ -349,7 +349,7 @@ func (client *registryClient) TagMetadata(manifest distribution.Manifest, opts *
 
 		return ti, nil
 	default:
-		return nil, fmt.Errorf("invalid manifest type")
+		return nil, fmt.Errorf("invalid manifest type %T", manifest)
 	}
 }
 
