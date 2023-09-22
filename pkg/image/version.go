@@ -7,7 +7,7 @@ import (
 	"github.com/argoproj-labs/argocd-image-updater/pkg/options"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/tag"
 
-	"github.com/Masterminds/semver"
+	"github.com/Masterminds/semver/v3"
 )
 
 // VersionSortMode defines the method to sort a list of tags

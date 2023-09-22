@@ -1,6 +1,6 @@
 package tag
 
-import "github.com/Masterminds/semver"
+import "github.com/Masterminds/semver/v3"
 
 // semverCollection is a replacement for semver.Collection that breaks version
 // comparison ties through a lexical comparison of the original version strings.
