@@ -4,7 +4,7 @@ go 1.20
 
 require (
 	github.com/Masterminds/semver/v3 v3.2.1
-	github.com/argoproj/argo-cd/v2 v2.7.9
+	github.com/argoproj/argo-cd/v2 v2.7.14
 	github.com/argoproj/gitops-engine v0.7.1-0.20230607163028-425d65e07695
 	github.com/argoproj/pkg v0.13.7-0.20230627120311-a4dd357b057e
 	github.com/bradleyfalzon/ghinstallation v1.1.1
