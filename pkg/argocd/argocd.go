@@ -176,37 +176,38 @@ func FilterApplicationsForUpdate(apps []v1alpha1.Application, patterns []string,
 	var appsForUpdate = make(map[string]ApplicationImages)
 
 	for _, app := range apps {
-		appNSName := fmt.Sprintf("%s/%s", app.GetNamespace(), app.GetName())
 		logCtx := log.WithContext().AddField("application", app.GetName()).AddField("namespace", app.GetNamespace())
 		// Check whether application has our annotation set
 		annotations := app.GetAnnotations()
 		if _, ok := annotations[common.ImageUpdaterAnnotation]; !ok {
+			logCtx.Tracef("skipping app '%s' of type '%s' because required annotation is missing", app.QualifiedName(), app.Status.SourceType)
 			continue
 		}
 
 		// Check for valid application type
 		if !IsValidApplicationType(&app) {
+			logCtx.Warnf("skipping app '%s' of type '%s' because it's not of supported source type", app.QualifiedName(), app.Status.SourceType)
 			continue
 		}
 
 		// Check if application name matches requested patterns
 		if !nameMatchesPattern(app.GetName(), patterns) {
-			logCtx.Debugf("Skipping app '%s' because it does not match requested patterns", app.GetName())
+			logCtx.Debugf("Skipping app '%s' because it does not match requested patterns", app.QualifiedName())
 			continue
 		}
 
 		// Check if application carries requested label
 		if !matchAppLabels(app.GetName(), app.GetLabels(), appLabel) {
-			logCtx.Debugf("Skipping app '%s' because it does not carry requested label", appNSName)
+			logCtx.Debugf("Skipping app '%s' because it does not carry requested label", app.QualifiedName())
 			continue
 		}
 
-		logCtx.Tracef("processing app '%s' of type '%v'", appNSName, app.Status.SourceType)
+		logCtx.Tracef("processing app '%s' of type '%v'", app.QualifiedName(), app.Status.SourceType)
 		imageList := parseImageList(annotations)
 		appImages := ApplicationImages{}
 		appImages.Application = app
 		appImages.Images = *imageList
-		appsForUpdate[appNSName] = appImages
+		appsForUpdate[app.QualifiedName()] = appImages
 	}
 
 	return appsForUpdate, nil
