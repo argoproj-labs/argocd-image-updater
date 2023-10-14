@@ -177,16 +177,19 @@ func FilterApplicationsForUpdate(apps []v1alpha1.Application, patterns []string,
 
 	for _, app := range apps {
 		logCtx := log.WithContext().AddField("application", app.GetName())
+
+		sourceType := getApplicationSourceType(&app)
+
 		// Check whether application has our annotation set
 		annotations := app.GetAnnotations()
 		if _, ok := annotations[common.ImageUpdaterAnnotation]; !ok {
-			logCtx.Tracef("skipping app '%s' of type '%s' because required annotation is missing", app.GetName(), app.Status.SourceType)
+			logCtx.Tracef("skipping app '%s' of type '%s' because required annotation is missing", app.GetName(), sourceType)
 			continue
 		}
 
 		// Check for valid application type
 		if !IsValidApplicationType(&app) {
-			logCtx.Warnf("skipping app '%s' of type '%s' because it's not of supported source type", app.GetName(), app.Status.SourceType)
+			logCtx.Warnf("skipping app '%s' of type '%s' because it's not of supported source type", app.GetName(), sourceType)
 			continue
 		}
 
@@ -202,7 +205,7 @@ func FilterApplicationsForUpdate(apps []v1alpha1.Application, patterns []string,
 			continue
 		}
 
-		logCtx.Tracef("processing app '%s' of type '%v'", app.GetName(), app.Status.SourceType)
+		logCtx.Tracef("processing app '%s' of type '%v'", app.GetName(), sourceType)
 		imageList := parseImageList(annotations)
 		appImages := ApplicationImages{}
 		appImages.Application = app
@@ -425,15 +428,17 @@ func SetHelmImage(app *v1alpha1.Application, newImage *image.ContainerImage) err
 		}
 	}
 
-	if app.Spec.Source.Helm == nil {
-		app.Spec.Source.Helm = &v1alpha1.ApplicationSourceHelm{}
+	appSource := getApplicationSource(app)
+
+	if appSource.Helm == nil {
+		appSource.Helm = &v1alpha1.ApplicationSourceHelm{}
 	}
 
-	if app.Spec.Source.Helm.Parameters == nil {
-		app.Spec.Source.Helm.Parameters = make([]v1alpha1.HelmParameter, 0)
+	if appSource.Helm.Parameters == nil {
+		appSource.Helm.Parameters = make([]v1alpha1.HelmParameter, 0)
 	}
 
-	app.Spec.Source.Helm.Parameters = mergeHelmParams(app.Spec.Source.Helm.Parameters, mergeParams)
+	appSource.Helm.Parameters = mergeHelmParams(appSource.Helm.Parameters, mergeParams)
 
 	return nil
 }
@@ -511,6 +516,16 @@ func GetApplicationType(app *v1alpha1.Application) ApplicationType {
 	return getApplicationType(app)
 }
 
+// GetApplicationSourceType returns the source type of the ArgoCD application
+func GetApplicationSourceType(app *v1alpha1.Application) v1alpha1.ApplicationSourceType {
+	return getApplicationSourceType(app)
+}
+
+// GetApplicationSource returns the main source of a Helm or Kustomize type of the ArgoCD application
+func GetApplicationSource(app *v1alpha1.Application) v1alpha1.ApplicationSource {
+	return getApplicationSource(app)
+}
+
 // IsValidApplicationType returns true if we can update the application
 func IsValidApplicationType(app *v1alpha1.Application) bool {
 	return getApplicationType(app) != ApplicationTypeUnsupported
@@ -518,11 +533,8 @@ func IsValidApplicationType(app *v1alpha1.Application) bool {
 
 // getApplicationType returns the type of the application
 func getApplicationType(app *v1alpha1.Application) ApplicationType {
-	sourceType := app.Status.SourceType
-	if st, set := app.Annotations[common.WriteBackTargetAnnotation]; set &&
-		strings.HasPrefix(st, common.KustomizationPrefix) {
-		sourceType = v1alpha1.ApplicationSourceTypeKustomize
-	}
+	sourceType := getApplicationSourceType(app)
+
 	if sourceType == v1alpha1.ApplicationSourceTypeKustomize {
 		return ApplicationTypeKustomize
 	} else if sourceType == v1alpha1.ApplicationSourceTypeHelm {
@@ -530,6 +542,44 @@ func getApplicationType(app *v1alpha1.Application) ApplicationType {
 	} else {
 		return ApplicationTypeUnsupported
 	}
+}
+
+// getApplicationSourceType returns the source type of the application
+func getApplicationSourceType(app *v1alpha1.Application) v1alpha1.ApplicationSourceType {
+
+	if st, set := app.Annotations[common.WriteBackTargetAnnotation]; set &&
+		strings.HasPrefix(st, common.KustomizationPrefix) {
+		return v1alpha1.ApplicationSourceTypeKustomize
+	}
+
+	if app.Spec.HasMultipleSources() {
+		for _, s := range app.Status.SourceTypes {
+			if s == v1alpha1.ApplicationSourceTypeKustomize || s == v1alpha1.ApplicationSourceTypeHelm {
+				return s
+			}
+		}
+
+		log.WithContext().AddField("application", app.GetName()).Tracef("Could not determine if Source Type is Helm or Kustomize from multisource configuration. Returning first source type by default.")
+		return app.Status.SourceTypes[0]
+	}
+
+	return app.Status.SourceType
+}
+
+// getApplicationSource returns the main source of a Helm or Kustomize type of the application
+func getApplicationSource(app *v1alpha1.Application) v1alpha1.ApplicationSource {
+
+	if app.Spec.HasMultipleSources() {
+		for _, s := range app.Spec.Sources {
+			if s.Helm != nil || s.Kustomize != nil {
+				return s
+			}
+		}
+
+		log.WithContext().AddField("application", app.GetName()).Tracef("Could not determine if Source Type is Helm or Kustomize from multisource configuration. Returning first source type by default")
+	}
+
+	return app.Spec.GetSource()
 }
 
 // String returns a string representation of the application type
