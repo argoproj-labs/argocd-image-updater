@@ -487,7 +487,8 @@ func getWriteBackConfig(app *v1alpha1.Application, kubeClient *kube.KubernetesCl
 	case "git":
 		wbc.Method = WriteBackGit
 		if target, ok := app.Annotations[common.WriteBackTargetAnnotation]; ok && strings.HasPrefix(target, common.KustomizationPrefix) {
-			wbc.KustomizeBase = parseTarget(target, app.Spec.Source.Path)
+			wbc.KustomizeBase = parseTarget(target, getApplicationSource(app).Path)
+			//wbc.KustomizeBase = parseTarget(target, app.Spec.Source.Path)
 		}
 		if err := parseGitConfig(app, kubeClient, wbc, creds); err != nil {
 			return nil, err
@@ -527,7 +528,7 @@ func parseGitConfig(app *v1alpha1.Application, kubeClient *kube.KubernetesClient
 			wbc.GitWriteBranch = branches[1]
 		}
 	}
-	wbc.GitRepo = app.Spec.Source.RepoURL
+	wbc.GitRepo = getApplicationSource(app).RepoURL
 	repo, ok := app.Annotations[common.GitRepositoryAnnotation]
 	if ok {
 		wbc.GitRepo = repo
