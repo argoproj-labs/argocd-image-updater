@@ -383,16 +383,18 @@ func marshalParamsOverride(app *v1alpha1.Application, originalData []byte) ([]by
 	var err error
 
 	appType := GetApplicationType(app)
+	appSource := getApplicationSource(app)
+
 	switch appType {
 	case ApplicationTypeKustomize:
-		if app.Spec.Source.Kustomize == nil {
+		if appSource.Kustomize == nil {
 			return []byte{}, nil
 		}
 
 		var params kustomizeOverride
 		newParams := kustomizeOverride{
 			Kustomize: kustomizeImages{
-				Images: &app.Spec.Source.Kustomize.Images,
+				Images: &appSource.Kustomize.Images,
 			},
 		}
 
@@ -408,13 +410,13 @@ func marshalParamsOverride(app *v1alpha1.Application, originalData []byte) ([]by
 		mergeKustomizeOverride(&params, &newParams)
 		override, err = yaml.Marshal(params)
 	case ApplicationTypeHelm:
-		if app.Spec.Source.Helm == nil {
+		if appSource.Helm == nil {
 			return []byte{}, nil
 		}
 		var params helmOverride
 		newParams := helmOverride{
 			Helm: helmParameters{
-				Parameters: app.Spec.Source.Helm.Parameters,
+				Parameters: appSource.Helm.Parameters,
 			},
 		}
 
@@ -467,7 +469,6 @@ func getWriteBackConfig(app *v1alpha1.Application, kubeClient *kube.KubernetesCl
 	wbc.Method = WriteBackApplication
 	wbc.ArgoClient = argoClient
 	wbc.Target = parseDefaultTarget(app.Name, getApplicationSource(app).Path)
-	//wbc.Target = parseDefaultTarget(app.Name, app.Spec.Source.Path)
 
 	// If we have no update method, just return our default
 	method, ok := app.Annotations[common.WriteBackMethodAnnotation]
@@ -488,7 +489,6 @@ func getWriteBackConfig(app *v1alpha1.Application, kubeClient *kube.KubernetesCl
 		wbc.Method = WriteBackGit
 		if target, ok := app.Annotations[common.WriteBackTargetAnnotation]; ok && strings.HasPrefix(target, common.KustomizationPrefix) {
 			wbc.KustomizeBase = parseTarget(target, getApplicationSource(app).Path)
-			//wbc.KustomizeBase = parseTarget(target, app.Spec.Source.Path)
 		}
 		if err := parseGitConfig(app, kubeClient, wbc, creds); err != nil {
 			return nil, err
