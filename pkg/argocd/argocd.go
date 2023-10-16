@@ -425,15 +425,15 @@ func SetHelmImage(app *v1alpha1.Application, newImage *image.ContainerImage) err
 		}
 	}
 
-	if app.Spec.Source.Helm == nil {
-		app.Spec.Source.Helm = &v1alpha1.ApplicationSourceHelm{}
+	if app.Spec.GetSources()[0].Helm == nil {
+		app.Spec.GetSources()[0].Helm = &v1alpha1.ApplicationSourceHelm{}
 	}
 
-	if app.Spec.Source.Helm.Parameters == nil {
-		app.Spec.Source.Helm.Parameters = make([]v1alpha1.HelmParameter, 0)
+	if app.Spec.GetSources()[0].Helm.Parameters == nil {
+		app.Spec.GetSources()[0].Helm.Parameters = make([]v1alpha1.HelmParameter, 0)
 	}
 
-	app.Spec.Source.Helm.Parameters = mergeHelmParams(app.Spec.Source.Helm.Parameters, mergeParams)
+	app.Spec.GetSources()[0].Helm.Parameters = mergeHelmParams(app.Spec.GetSources()[0].Helm.Parameters, mergeParams)
 
 	return nil
 }
@@ -454,22 +454,29 @@ func SetKustomizeImage(app *v1alpha1.Application, newImage *image.ContainerImage
 
 	log.WithContext().AddField("application", app.GetName()).Tracef("Setting Kustomize parameter %s", ksImageParam)
 
-	if app.Spec.Source.Kustomize == nil {
-		app.Spec.Source.Kustomize = &v1alpha1.ApplicationSourceKustomize{}
+	var source = app.Spec.GetSources()[0]
+	if source.Kustomize == nil {
+		source.Kustomize = &v1alpha1.ApplicationSourceKustomize{}
 	}
 
-	for i, kImg := range app.Spec.Source.Kustomize.Images {
+	for i, kImg := range source.Kustomize.Images {
 		curr := image.NewFromIdentifier(string(kImg))
 		override := image.NewFromIdentifier(ksImageParam)
 
 		if curr.ImageName == override.ImageName {
 			curr.ImageAlias = override.ImageAlias
-			app.Spec.Source.Kustomize.Images[i] = v1alpha1.KustomizeImage(override.String())
+			source.Kustomize.Images[i] = v1alpha1.KustomizeImage(override.String())
 		}
 
 	}
 
-	app.Spec.Source.Kustomize.MergeImage(v1alpha1.KustomizeImage(ksImageParam))
+	source.Kustomize.MergeImage(v1alpha1.KustomizeImage(ksImageParam))
+
+	if app.Spec.HasMultipleSources() {
+		app.Spec.Sources[0] = source
+	} else {
+		app.Spec.Source = &source
+	}
 
 	return nil
 }
