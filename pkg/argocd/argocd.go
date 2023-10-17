@@ -524,7 +524,7 @@ func GetApplicationSourceType(app *v1alpha1.Application) v1alpha1.ApplicationSou
 }
 
 // GetApplicationSource returns the main source of a Helm or Kustomize type of the ArgoCD application
-func GetApplicationSource(app *v1alpha1.Application) v1alpha1.ApplicationSource {
+func GetApplicationSource(app *v1alpha1.Application) *v1alpha1.ApplicationSource {
 	return getApplicationSource(app)
 }
 
@@ -569,19 +569,20 @@ func getApplicationSourceType(app *v1alpha1.Application) v1alpha1.ApplicationSou
 }
 
 // getApplicationSource returns the main source of a Helm or Kustomize type of the application
-func getApplicationSource(app *v1alpha1.Application) v1alpha1.ApplicationSource {
+func getApplicationSource(app *v1alpha1.Application) *v1alpha1.ApplicationSource {
 
 	if app.Spec.HasMultipleSources() {
 		for _, s := range app.Spec.Sources {
 			if s.Helm != nil || s.Kustomize != nil {
-				return s
+				return &s
 			}
 		}
 
-		log.WithContext().AddField("application", app.GetName()).Tracef("Could not determine if Source Type is Helm or Kustomize from multisource configuration. Returning first source type by default")
+		log.WithContext().AddField("application", app.GetName()).Tracef("Could not get Source of type Helm or Kustomize from multisource configuration. Returning first source from the list")
+		return &app.Spec.Sources[0]
 	}
 
-	return app.Spec.GetSource()
+	return app.Spec.Source
 }
 
 // String returns a string representation of the application type
