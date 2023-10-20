@@ -79,7 +79,7 @@ func Test_GetImagesFromApplication(t *testing.T) {
 	})
 }
 
-func Test_GetApplicationType(t *testing.T) {
+func Test_GetApplicationTypeForSource(t *testing.T) {
 	t.Run("Get application of type Helm", func(t *testing.T) {
 		application := &v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
@@ -94,7 +94,7 @@ func Test_GetApplicationType(t *testing.T) {
 				},
 			},
 		}
-		appType := GetApplicationType(application)
+		appType := GetApplicationTypeForSource(application, 0)
 		assert.Equal(t, ApplicationTypeHelm, appType)
 		assert.Equal(t, "Helm", appType.String())
 	})
@@ -113,7 +113,7 @@ func Test_GetApplicationType(t *testing.T) {
 				},
 			},
 		}
-		appType := GetApplicationType(application)
+		appType := GetApplicationTypeForSource(application, 0)
 		assert.Equal(t, ApplicationTypeKustomize, appType)
 		assert.Equal(t, "Kustomize", appType.String())
 	})
@@ -132,7 +132,7 @@ func Test_GetApplicationType(t *testing.T) {
 				},
 			},
 		}
-		appType := GetApplicationType(application)
+		appType := GetApplicationTypeForSource(application, 0)
 		assert.Equal(t, ApplicationTypeUnsupported, appType)
 		assert.Equal(t, "Unsupported", appType.String())
 	})
@@ -154,7 +154,7 @@ func Test_GetApplicationType(t *testing.T) {
 				},
 			},
 		}
-		appType := GetApplicationType(application)
+		appType := GetApplicationTypeForSource(application, 0)
 		assert.Equal(t, ApplicationTypeKustomize, appType)
 	})
 
@@ -466,8 +466,8 @@ func Test_SetKustomizeImage(t *testing.T) {
 			},
 		}
 		img := image.NewFromIdentifier("jannfis/foobar:1.0.1")
-		err := SetKustomizeImage(app, img)
-		require.NoError(t, err)
+		updated := SetKustomizeImageWithIndex(app, 0, img)
+		assert.True(t, updated)
 		require.NotNil(t, app.Spec.GetSources()[0].Kustomize)
 		assert.Len(t, app.Spec.GetSources()[0].Kustomize.Images, 1)
 		assert.Equal(t, v1alpha1.KustomizeImage("jannfis/foobar:1.0.1"), app.Spec.GetSources()[0].Kustomize.Images[0])
@@ -492,8 +492,8 @@ func Test_SetKustomizeImage(t *testing.T) {
 			},
 		}
 		img := image.NewFromIdentifier("jannfis/foobar:1.0.1")
-		err := SetKustomizeImage(app, img)
-		require.NoError(t, err)
+		updated := SetKustomizeImageWithIndex(app, 0, img)
+		assert.True(t, updated)
 		require.NotNil(t, app.Spec.GetSources()[0].Kustomize)
 		assert.Len(t, app.Spec.GetSources()[0].Kustomize.Images, 1)
 		assert.Equal(t, v1alpha1.KustomizeImage("jannfis/foobar:1.0.1"), app.Spec.GetSources()[0].Kustomize.Images[0])
@@ -524,8 +524,8 @@ func Test_SetKustomizeImage(t *testing.T) {
 			},
 		}
 		img := image.NewFromIdentifier("jannfis/foobar:1.0.1")
-		err := SetKustomizeImage(app, img)
-		require.Error(t, err)
+		updated := SetKustomizeImageWithIndex(app, 0, img)
+		assert.False(t, updated)
 	})
 
 	t.Run("Test set Kustomize image parameters with alias name on Kustomize app with param already set", func(t *testing.T) {
@@ -556,8 +556,8 @@ func Test_SetKustomizeImage(t *testing.T) {
 			},
 		}
 		img := image.NewFromIdentifier("foobar=jannfis/foobar:1.0.1")
-		err := SetKustomizeImage(app, img)
-		require.NoError(t, err)
+		updated := SetKustomizeImageWithIndex(app, 0, img)
+		assert.True(t, updated)
 		require.NotNil(t, app.Spec.GetSources()[0].Kustomize)
 		assert.Len(t, app.Spec.GetSources()[0].Kustomize.Images, 1)
 		assert.Equal(t, v1alpha1.KustomizeImage("foobar=jannfis/foobar:1.0.1"), app.Spec.GetSources()[0].Kustomize.Images[0])
@@ -604,8 +604,8 @@ func Test_SetHelmImage(t *testing.T) {
 
 		img := image.NewFromIdentifier("foobar=jannfis/foobar:1.0.1")
 
-		err := SetHelmImage(app, img)
-		require.NoError(t, err)
+		updated := SetHelmImageWithIndex(app, 0, img)
+		assert.True(t, updated)
 		require.NotNil(t, app.Spec.GetSources()[0].Helm)
 		assert.Len(t, app.Spec.GetSources()[0].Helm.Parameters, 2)
 
@@ -647,63 +647,8 @@ func Test_SetHelmImage(t *testing.T) {
 
 		img := image.NewFromIdentifier("foobar=jannfis/foobar:1.0.1")
 
-		err := SetHelmImage(app, img)
-		require.NoError(t, err)
-		require.NotNil(t, app.Spec.GetSources()[0].Helm)
-		assert.Len(t, app.Spec.GetSources()[0].Helm.Parameters, 2)
-
-		// Find correct parameter
-		var tagParam v1alpha1.HelmParameter
-		for _, p := range app.Spec.GetSources()[0].Helm.Parameters {
-			if p.Name == "image.tag" {
-				tagParam = p
-				break
-			}
-		}
-		assert.Equal(t, "1.0.1", tagParam.Value)
-	})
-
-	t.Run("Test set Helm image parameters on Helm app with multiple sources but existing parameters", func(t *testing.T) {
-		app := &v1alpha1.Application{
-			ObjectMeta: v1.ObjectMeta{
-				Name:      "test-app",
-				Namespace: "testns",
-				Annotations: map[string]string{
-					fmt.Sprintf(common.HelmParamImageNameAnnotation, "foobar"): "image.name",
-					fmt.Sprintf(common.HelmParamImageTagAnnotation, "foobar"):  "image.tag",
-					fmt.Sprintf(common.HelmParamImageNameAnnotation, "baz"):    "image.name",
-					fmt.Sprintf(common.HelmParamImageTagAnnotation, "baz"):     "image.tag",
-				},
-			},
-			Spec: v1alpha1.ApplicationSpec{
-				Sources: v1alpha1.ApplicationSources{
-					v1alpha1.ApplicationSource{
-						Helm: &v1alpha1.ApplicationSourceHelm{},
-					},
-					v1alpha1.ApplicationSource{
-						Helm: &v1alpha1.ApplicationSourceHelm{},
-					},
-				},
-			},
-			Status: v1alpha1.ApplicationStatus{
-				SourceTypes: []v1alpha1.ApplicationSourceType{
-					v1alpha1.ApplicationSourceTypeHelm,
-					v1alpha1.ApplicationSourceTypeHelm,
-				},
-				SourceType: v1alpha1.ApplicationSourceTypeHelm,
-				Summary: v1alpha1.ApplicationSummary{
-					Images: []string{
-						"jannfis/foobar:1.0.0",
-						"cjm/baz:2.0.0",
-					},
-				},
-			},
-		}
-
-		img := image.NewFromIdentifier("foobar=jannfis/foobar:1.0.1")
-
-		err := SetHelmImage(app, img)
-		require.NoError(t, err)
+		updated := SetHelmImageWithIndex(app, 0, img)
+		assert.True(t, updated)
 		require.NotNil(t, app.Spec.GetSources()[0].Helm)
 		assert.Len(t, app.Spec.GetSources()[0].Helm.Parameters, 2)
 
@@ -756,8 +701,8 @@ func Test_SetHelmImage(t *testing.T) {
 
 		img := image.NewFromIdentifier("foobar=jannfis/foobar:1.0.1")
 
-		err := SetHelmImage(app, img)
-		require.NoError(t, err)
+		updated := SetHelmImageWithIndex(app, 0, img)
+		assert.True(t, updated)
 		require.NotNil(t, app.Spec.GetSources()[0].Helm)
 		assert.Len(t, app.Spec.GetSources()[0].Helm.Parameters, 4)
 
@@ -797,8 +742,8 @@ func Test_SetHelmImage(t *testing.T) {
 
 		img := image.NewFromIdentifier("foobar=jannfis/foobar:1.0.1")
 
-		err := SetHelmImage(app, img)
-		require.Error(t, err)
+		updated := SetHelmImageWithIndex(app, 0, img)
+		assert.False(t, updated)
 	})
 
 }

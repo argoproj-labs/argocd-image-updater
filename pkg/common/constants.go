@@ -56,7 +56,7 @@ const (
 )
 
 // DefaultTargetFilePattern configurations related to the write-back functionality
-const DefaultTargetFilePattern = ".argocd-source-%s.yaml"
+const DefaultTargetFilePattern = ".argocd-source-%s-%d.yaml"
 
 // The default Git commit message's template
 const DefaultGitCommitMessage = `build: automatic update of {{ .AppName }}
