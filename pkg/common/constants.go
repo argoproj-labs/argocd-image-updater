@@ -35,6 +35,7 @@ const (
 	UpdateStrategyAnnotation    = ImageUpdaterAnnotationPrefix + "/%s.update-strategy"
 	PullSecretAnnotation        = ImageUpdaterAnnotationPrefix + "/%s.pull-secret"
 	PlatformsAnnotation         = ImageUpdaterAnnotationPrefix + "/%s.platforms"
+	SourceIndexAnnotation       = ImageUpdaterAnnotationPrefix + "/%s.source-index"
 )
 
 // Application-wide update strategy related annotations

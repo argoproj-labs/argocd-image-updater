@@ -247,8 +247,7 @@ func commitChangesGit(app *v1alpha1.Application, wbc *WriteBackConfig, sourceInd
 }
 
 func writeOverrides(app *v1alpha1.Application, wbc *WriteBackConfig, sourceIndex int, gitC git.Client) (err error, skip bool) {
-	logCtx := log.WithContext().AddField("application", app.GetName())
-	logCtx = log.WithContext().AddField("source", sourceIndex)
+	logCtx := log.WithContext().AddField("application", app.GetName()).AddField("source", sourceIndex)
 	targetExists := true
 	targetFile := path.Join(gitC.Root(), wbc.Targets[sourceIndex])
 	_, err = os.Stat(targetFile)

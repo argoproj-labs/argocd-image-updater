@@ -201,6 +201,7 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 		vc.Strategy = applicationImage.GetParameterUpdateStrategy(updateConf.UpdateApp.Application.Annotations)
 		vc.MatchFunc, vc.MatchArgs = applicationImage.GetParameterMatch(updateConf.UpdateApp.Application.Annotations)
 		vc.IgnoreList = applicationImage.GetParameterIgnoreTags(updateConf.UpdateApp.Application.Annotations)
+		vc.SourceIndex = applicationImage.GetSourceIndex(updateConf.UpdateApp.Application.Annotations)
 		vc.Options = applicationImage.
 			GetPlatformOptions(updateConf.UpdateApp.Application.Annotations, updateConf.IgnorePlatforms).
 			WithMetadata(vc.Strategy.NeedsMetadata()).
@@ -378,15 +379,36 @@ func needsUpdate(updateableImage *image.ContainerImage, applicationImage *image.
 }
 
 func setAppImage(app *v1alpha1.Application, img *image.ContainerImage) error {
+	logCtx := img.LogContext()
 	imageUpdated := false
 	imageUpdatable := false
 	for i, appType := range getApplicationTypes(app) {
-		if appType == ApplicationTypeKustomize {
-			imageUpdatable = true
-			imageUpdated = SetKustomizeImageWithIndex(app, i, img) || imageUpdated
-		} else if appType == ApplicationTypeHelm {
-			imageUpdatable = true
-			imageUpdated = SetHelmImageWithIndex(app, i, img) || imageUpdated
+		logCtx.Tracef("Examining source index %d for update", i)
+		if imgSourceIndex := img.GetSourceIndex(app.Annotations); imgSourceIndex == image.SourceIndexAll || i == int(imgSourceIndex) {
+			logCtx.Debugf("Image source index %d - attempting to update source", i)
+			if appType == ApplicationTypeKustomize {
+				logCtx.Debugf("Image source index %d - attempting to update source as Kustomize application type", i)
+				imageUpdatable = true
+				if imageSourceUpdated := SetKustomizeImageWithIndex(app, i, img); imageSourceUpdated {
+					logCtx.Debugf("Image source index %d - successfully updated source as Kustomize image", i)
+					imageUpdated = true
+				} else {
+					logCtx.Debugf("Image source index %d - unable to update Kustomize images - no updatable images found", i)
+				}
+			} else if appType == ApplicationTypeHelm {
+				logCtx.Debugf("Image source index %d - attempting to update source as Helm application type", i)
+				imageUpdatable = true
+				if imageSourceUpdated := SetHelmImageWithIndex(app, i, img); imageSourceUpdated {
+					logCtx.Debugf("Image source index %d - successfully updated source as Helm parameters", i)
+					imageUpdated = true
+				} else {
+					logCtx.Debugf("Image source index %d - unable to update source as helm parameters - no updatable images found", i)
+				}
+			} else {
+				logCtx.Debugf("Image source index %d - skipping update to source due to unsupported application type", i)
+			}
+		} else {
+			logCtx.Tracef("Skipping update of source index %d due to image source index %d", i, imgSourceIndex)
 		}
 	}
 

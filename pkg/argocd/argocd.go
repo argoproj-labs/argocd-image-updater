@@ -198,11 +198,11 @@ func FilterApplicationsForUpdate(apps []v1alpha1.Application, patterns []string,
 		for sourceIndex, _ := range getApplicationTypes(&app) {
 			// Check for valid application type
 			if !IsValidApplicationTypeForSource(&app, sourceIndex) {
-				logCtx.Infof("skipping app '%s' of type '%s' because it's not of supported source type", app.GetName(), GetSourceTypes(app.Status)[sourceIndex])
+				logCtx.Infof("skipping application '%s' source index %d of type '%s' because it's not a supported source type", app.GetName(), sourceIndex, GetSourceTypes(app.Status)[sourceIndex])
 				continue
 			}
 
-			logCtx.Tracef("processing app '%s' of type '%v'", app.GetName(), app.Status.SourceType)
+			logCtx.Tracef("processing application '%s' source index %s of type '%s'", app.GetName(), sourceIndex, GetSourceTypes(app.Status)[sourceIndex])
 			imageList := parseImageList(annotations)
 			appImages := ApplicationImages{}
 			appImages.Application = app
