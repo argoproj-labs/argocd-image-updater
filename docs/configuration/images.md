@@ -353,6 +353,88 @@ If the `<image_alias>.helm.image-spec` annotation is set, the two other
 annotations `<image_alias>.helm.image-name` and `<image_alias>.helm.image-tag`
 will be ignored.
 
+## Targeting specific sources in a multi-source application
+
+!!! warning "Beta Feature" 
+    Multi-source applications are currently considered a beta feature within ArgoCD, therefore ArgoCD Image Updater's support for it should be considered beta as well.  For more information on this feature, please consult the [ArgoCD documentation](https://argo-cd.readthedocs.io/en/stable/user-guide/multiple_sources/).
+
+Typical applications only have a single source associated with them, however with ArgoCD 2.6+ multiple sources can be specified for a single application.  This can occasionally serve as an alternative to the Application of Applications pattern.  This may also require the ability to limit the scope of an image update to a single source.  Consider the following example of a multi-source application definition:
+
+```yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  annotations:
+    argocd-image-updater.argoproj.io/image-list: wordpress=bitnami/wordpress:6,nginx=bitnami/nginx:1.25
+    argocd-image-updater.argoproj.io/wordpress.helm.image-name: image.repository
+    argocd-image-updater.argoproj.io/wordpress.helm.image-tag: image.tag
+    argocd-image-updater.argoproj.io/nginx.source-index: 1
+    argocd-image-updater.argoproj.io/nginx.helm.image-name: image.repository
+    argocd-image-updater.argoproj.io/nginx.helm.source-index: image.tag
+  name: multi-source-app
+  namespace: argocd
+spec:
+  destination:
+    namespace: guestbook
+    server: https://kubernetes.default.svc
+  project: default
+  sources:
+    - chart: wordpress
+      repoURL: https://charts.bitnami.com/bitnami
+      targetRevision: ^18.0.0
+    - chart: nginx
+      repoURL: https://charts.bitnami.com/bitnami
+      targetRevision: ^15.0.0
+```
+
+*Scenario:* Both of these images are controlled by the same value file variables 
+(`image.repository` and `image.tag`) within their respective Helm charts.  In the case 
+where both the wordpress and nginx images were to be included by child applications, 
+referenced by a single parent application (Application of Applications pattern), there
+would be an opportunity to control each chart values individually with separate values
+to be applied to each chart.  This would be solved similarly in the scenario where one
+or more of the images are pulled in with sub-charts.  
+
+*Solution:* In order to properly scope the overrides for each individual helm chart in
+a multi-source application, the `source-index` annotation must be provided for each 
+image as shown below.  
+
+```yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  annotations:
+    argocd-image-updater.argoproj.io/image-list: wordpress=bitnami/wordpress:6,nginx=bitnami/nginx:1.25
+    argocd-image-updater.argoproj.io/wordpress.source-index: 0
+    argocd-image-updater.argoproj.io/wordpress.helm.image-name: image.repository
+    argocd-image-updater.argoproj.io/wordpress.helm.image-tag: image.tag
+    argocd-image-updater.argoproj.io/nginx.source-index: 1
+    argocd-image-updater.argoproj.io/nginx.helm.image-name: image.repository
+    argocd-image-updater.argoproj.io/nginx.helm.image-tag: image.tag
+  name: multi-source-app
+  namespace: argocd
+spec:
+  destination:
+    namespace: guestbook
+    server: https://kubernetes.default.svc
+  project: default
+  sources:
+    - chart: wordpress
+      repoURL: https://charts.bitnami.com/bitnami
+      targetRevision: ^18.0.0
+    - chart: nginx
+      repoURL: https://charts.bitnami.com/bitnami
+      targetRevision: ^15.0.0
+```
+
+The general syntax for the `source-index` annotation is:
+```yaml
+argocd-image-updater.argoproj.io/<image_alias>.source-index: <index of the source which the image specification should apply>
+```
+!!!note
+    The value of the `source-index` annotation is 0-based, meaning that the first source would be `0`, the second
+    would be `1`, and so on.
+
 ## Examples
 
 ### Following an image's patch branch
