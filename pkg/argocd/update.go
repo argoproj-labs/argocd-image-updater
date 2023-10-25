@@ -538,7 +538,7 @@ func getWriteBackConfig(app *v1alpha1.Application, kubeClient *kube.KubernetesCl
 				wbc.KustomizeBases[i] = ""
 			}
 		}
-		if credErrors := parseGitConfig(app, kubeClient, wbc, creds); credErrors != nil && len(credErrors) > 0 {
+		if credErrors := parseGitConfig(app, kubeClient, wbc, creds); len(credErrors) > 0 {
 			return nil, fmt.Errorf("Errors parsing git credentials: %s", method)
 		}
 	default:
