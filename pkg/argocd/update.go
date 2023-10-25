@@ -47,7 +47,7 @@ type UpdateConfiguration struct {
 	IgnorePlatforms   bool
 }
 
-type GitCredsSource func(app *v1alpha1.Application) (git.Creds, error)
+type GitCredsSource func(app *v1alpha1.Application, sourceIndex int) (git.Creds, error)
 
 type WriteBackMethod int
 
@@ -68,9 +68,9 @@ type WriteBackConfig struct {
 	GitCommitUser    string
 	GitCommitEmail   string
 	GitCommitMessage string
-	KustomizeBase    string
-	Target           string
-	GitRepo          string
+	KustomizeBases   []string
+	Targets          []string
+	GitRepos         []string
 }
 
 // The following are helper structs to only marshal the fields we require
@@ -139,7 +139,7 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 	var needUpdate bool = false
 
 	result := ImageUpdaterResult{}
-	app := updateConf.UpdateApp.Application.GetName()
+	appName := updateConf.UpdateApp.Application.GetName()
 	changeList := make([]ChangeEntry, 0)
 
 	// Get all images that are deployed with the current application
@@ -156,7 +156,7 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 	for _, applicationImage := range updateConf.UpdateApp.Images {
 		updateableImage := applicationImages.ContainsImage(applicationImage, false)
 		if updateableImage == nil {
-			log.WithContext().AddField("application", app).Debugf("Image '%s' seems not to be live in this application, skipping", applicationImage.ImageName)
+			log.WithContext().AddField("application", appName).Debugf("Image '%s' seems not to be live in this application, skipping", applicationImage.ImageName)
 			result.NumSkipped += 1
 			continue
 		}
@@ -171,7 +171,7 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 		result.NumImagesConsidered += 1
 
 		imgCtx := log.WithContext().
-			AddField("application", app).
+			AddField("application", appName).
 			AddField("registry", updateableImage.RegistryURL).
 			AddField("image_name", updateableImage.ImageName).
 			AddField("image_tag", updateableImage.ImageTag).
@@ -201,10 +201,11 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 		vc.Strategy = applicationImage.GetParameterUpdateStrategy(updateConf.UpdateApp.Application.Annotations)
 		vc.MatchFunc, vc.MatchArgs = applicationImage.GetParameterMatch(updateConf.UpdateApp.Application.Annotations)
 		vc.IgnoreList = applicationImage.GetParameterIgnoreTags(updateConf.UpdateApp.Application.Annotations)
+		vc.SourceIndex = applicationImage.GetSourceIndex(updateConf.UpdateApp.Application.Annotations)
 		vc.Options = applicationImage.
 			GetPlatformOptions(updateConf.UpdateApp.Application.Annotations, updateConf.IgnorePlatforms).
 			WithMetadata(vc.Strategy.NeedsMetadata()).
-			WithLogger(imgCtx.AddField("application", app))
+			WithLogger(imgCtx.AddField("application", appName))
 
 		// If a strategy needs meta-data and tagsortmode is set for the
 		// registry, let the user know.
@@ -325,29 +326,42 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 	}
 
 	if needUpdate {
-		logCtx := log.WithContext().AddField("application", app)
+		logCtx := log.WithContext().AddField("application", appName)
 		log.Debugf("Using commit message: %s", wbc.GitCommitMessage)
 		if !updateConf.DryRun {
-			logCtx.Infof("Committing %d parameter update(s) for application %s", result.NumImagesUpdated, app)
-			err := commitChangesLocked(&updateConf.UpdateApp.Application, wbc, state, changeList)
-			if err != nil {
-				logCtx.Errorf("Could not update application spec: %v", err)
-				result.NumErrors += 1
-				result.NumImagesUpdated = 0
+			logCtx.Infof("Committing %d parameter update(s) for application %s", result.NumImagesUpdated, appName)
+			app := &updateConf.UpdateApp.Application
+			var iterations int
+
+			// if writing back to git, each source might have its own target or kustomize base, so we have to iterate
+			// once per source.  Otherwise, we only have to writeback once.
+			if wbc.Method == WriteBackGit {
+				iterations = len(app.Spec.GetSources())
 			} else {
-				logCtx.Infof("Successfully updated the live application spec")
-				if !updateConf.DisableKubeEvents && updateConf.KubeClient != nil {
-					annotations := map[string]string{}
-					for i, c := range changeList {
-						annotations[fmt.Sprintf("argocd-image-updater.image-%d/full-image-name", i)] = c.Image.GetFullNameWithoutTag()
-						annotations[fmt.Sprintf("argocd-image-updater.image-%d/image-name", i)] = c.Image.ImageName
-						annotations[fmt.Sprintf("argocd-image-updater.image-%d/old-tag", i)] = c.OldTag.String()
-						annotations[fmt.Sprintf("argocd-image-updater.image-%d/new-tag", i)] = c.NewTag.String()
-					}
-					message := fmt.Sprintf("Successfully updated application '%s'", app)
-					_, err = updateConf.KubeClient.CreateApplicationEvent(&updateConf.UpdateApp.Application, "ImagesUpdated", message, annotations)
-					if err != nil {
-						logCtx.Warnf("Event could not be sent: %v", err)
+				iterations = 1
+			}
+
+			for sourceIndex := 0; sourceIndex < iterations; sourceIndex++ {
+				err := commitChangesLocked(app, wbc, sourceIndex, state, changeList)
+				if err != nil {
+					logCtx.Errorf("Could not update application spec: %v", err)
+					result.NumErrors += 1
+					result.NumImagesUpdated = 0
+				} else {
+					logCtx.Infof("Successfully updated the live application spec")
+					if !updateConf.DisableKubeEvents && updateConf.KubeClient != nil {
+						annotations := map[string]string{}
+						for i, c := range changeList {
+							annotations[fmt.Sprintf("argocd-image-updater.image-%d/full-image-name", i)] = c.Image.GetFullNameWithoutTag()
+							annotations[fmt.Sprintf("argocd-image-updater.image-%d/image-name", i)] = c.Image.ImageName
+							annotations[fmt.Sprintf("argocd-image-updater.image-%d/old-tag", i)] = c.OldTag.String()
+							annotations[fmt.Sprintf("argocd-image-updater.image-%d/new-tag", i)] = c.NewTag.String()
+						}
+						message := fmt.Sprintf("Successfully updated application '%s'", app)
+						_, err = updateConf.KubeClient.CreateApplicationEvent(app, "ImagesUpdated", message, annotations)
+						if err != nil {
+							logCtx.Warnf("Event could not be sent: %v", err)
+						}
 					}
 				}
 			}
@@ -365,34 +379,65 @@ func needsUpdate(updateableImage *image.ContainerImage, applicationImage *image.
 }
 
 func setAppImage(app *v1alpha1.Application, img *image.ContainerImage) error {
-	var err error
-	if appType := GetApplicationType(app); appType == ApplicationTypeKustomize {
-		err = SetKustomizeImage(app, img)
-	} else if appType == ApplicationTypeHelm {
-		err = SetHelmImage(app, img)
-	} else {
-		err = fmt.Errorf("could not update application %s - neither Helm nor Kustomize application", app)
+	logCtx := img.LogContext()
+	imageUpdated := false
+	imageUpdatable := false
+	for i, appType := range getApplicationTypes(app) {
+		logCtx.Tracef("Examining source index %d for update", i)
+		if imgSourceIndex := img.GetSourceIndex(app.Annotations); imgSourceIndex == image.SourceIndexAll || i == int(imgSourceIndex) {
+			logCtx.Debugf("Image source index %d - attempting to update source", i)
+			if appType == ApplicationTypeKustomize {
+				logCtx.Debugf("Image source index %d - attempting to update source as Kustomize application type", i)
+				imageUpdatable = true
+				if imageSourceUpdated := SetKustomizeImageWithIndex(app, i, img); imageSourceUpdated {
+					logCtx.Debugf("Image source index %d - successfully updated source as Kustomize image", i)
+					imageUpdated = true
+				} else {
+					logCtx.Debugf("Image source index %d - unable to update Kustomize images - no updatable images found", i)
+				}
+			} else if appType == ApplicationTypeHelm {
+				logCtx.Debugf("Image source index %d - attempting to update source as Helm application type", i)
+				imageUpdatable = true
+				if imageSourceUpdated := SetHelmImageWithIndex(app, i, img); imageSourceUpdated {
+					logCtx.Debugf("Image source index %d - successfully updated source as Helm parameters", i)
+					imageUpdated = true
+				} else {
+					logCtx.Debugf("Image source index %d - unable to update source as helm parameters - no updatable images found", i)
+				}
+			} else {
+				logCtx.Debugf("Image source index %d - skipping update to source due to unsupported application type", i)
+			}
+		} else {
+			logCtx.Tracef("Skipping update of source index %d due to image source index %d", i, imgSourceIndex)
+		}
 	}
-	return err
+
+	if !imageUpdatable {
+		return fmt.Errorf("could not update application %s - no Helm or Kustomize sources found", app)
+	} else if imageUpdatable && !imageUpdated {
+		return fmt.Errorf("could not update application %s - image does not appear to be used in any eligible sources", app)
+	}
+
+	return nil
 }
 
 // marshalParamsOverride marshals the parameter overrides of a given application
 // into YAML bytes
-func marshalParamsOverride(app *v1alpha1.Application, originalData []byte) ([]byte, error) {
+func marshalParamsOverride(app *v1alpha1.Application, sourceIndex int, originalData []byte) ([]byte, error) {
 	var override []byte
 	var err error
 
-	appType := GetApplicationType(app)
+	appType := getApplicationTypes(app)[sourceIndex]
 	switch appType {
 	case ApplicationTypeKustomize:
-		if app.Spec.Source.Kustomize == nil {
+		if app.Spec.GetSources()[sourceIndex].Kustomize == nil {
 			return []byte{}, nil
 		}
 
 		var params kustomizeOverride
 		newParams := kustomizeOverride{
 			Kustomize: kustomizeImages{
-				Images: &app.Spec.Source.Kustomize.Images,
+				Images: &app.Spec.GetSources()[sourceIndex].Kustomize.Images,
 			},
 		}
 
@@ -408,13 +453,13 @@ func marshalParamsOverride(app *v1alpha1.Application, originalData []byte) ([]by
 		mergeKustomizeOverride(&params, &newParams)
 		override, err = yaml.Marshal(params)
 	case ApplicationTypeHelm:
-		if app.Spec.Source.Helm == nil {
+		if app.Spec.GetSources()[sourceIndex].Helm == nil {
 			return []byte{}, nil
 		}
 		var params helmOverride
 		newParams := helmOverride{
 			Helm: helmParameters{
-				Parameters: app.Spec.Source.Helm.Parameters,
+				Parameters: app.Spec.GetSources()[sourceIndex].Helm.Parameters,
 			},
 		}
 
@@ -429,8 +474,8 @@ func marshalParamsOverride(app *v1alpha1.Application, originalData []byte) ([]by
 		}
 		mergeHelmOverride(&params, &newParams)
 		override, err = yaml.Marshal(params)
-	default:
-		err = fmt.Errorf("unsupported application type")
+		//default:
+		//	err = fmt.Errorf("unsupported application type")
 	}
 	if err != nil {
 		return nil, err
@@ -466,7 +511,7 @@ func getWriteBackConfig(app *v1alpha1.Application, kubeClient *kube.KubernetesCl
 	// Default write-back is to use Argo CD API
 	wbc.Method = WriteBackApplication
 	wbc.ArgoClient = argoClient
-	wbc.Target = parseDefaultTarget(app.Name, app.Spec.Source.Path)
+	wbc.Targets = parseDefaultTargets(app.Name, app.Spec.GetSources())
 
 	// If we have no update method, just return our default
 	method, ok := app.Annotations[common.WriteBackMethodAnnotation]
@@ -486,10 +531,15 @@ func getWriteBackConfig(app *v1alpha1.Application, kubeClient *kube.KubernetesCl
 	case "git":
 		wbc.Method = WriteBackGit
 		if target, ok := app.Annotations[common.WriteBackTargetAnnotation]; ok && strings.HasPrefix(target, common.KustomizationPrefix) {
-			wbc.KustomizeBase = parseTarget(target, app.Spec.Source.Path)
+			wbc.KustomizeBases = parseTargets(target, app.Spec.GetSources())
+		} else {
+			wbc.KustomizeBases = make([]string, len(app.Spec.GetSources()))
+			for i := 0; i < len(app.Spec.GetSources()); i++ {
+				wbc.KustomizeBases[i] = ""
+			}
 		}
-		if err := parseGitConfig(app, kubeClient, wbc, creds); err != nil {
-			return nil, err
+		if credErrors := parseGitConfig(app, kubeClient, wbc, creds); len(credErrors) > 0 {
+			return nil, fmt.Errorf("Errors parsing git credentials: %s", method)
 		}
 	default:
 		return nil, fmt.Errorf("invalid update mechanism: %s", method)
@@ -498,60 +548,76 @@ func getWriteBackConfig(app *v1alpha1.Application, kubeClient *kube.KubernetesCl
 	return wbc, nil
 }
 
-func parseDefaultTarget(appName string, path string) string {
-	defaultTargetFile := fmt.Sprintf(common.DefaultTargetFilePattern, appName)
-
-	return filepath.Join(path, defaultTargetFile)
-}
-
-func parseTarget(target string, sourcePath string) (kustomizeBase string) {
-	if target == common.KustomizationPrefix {
-		return filepath.Join(sourcePath, ".")
-	} else if base := target[len(common.KustomizationPrefix)+1:]; strings.HasPrefix(base, "/") {
-		return base[1:]
-	} else {
-		return filepath.Join(sourcePath, base)
+func parseDefaultTargets(appName string, sources v1alpha1.ApplicationSources) []string {
+	retval := make([]string, len(sources))
+	for i, source := range sources {
+		defaultTargetFile := fmt.Sprintf(common.DefaultTargetFilePattern, appName, i)
+		retval[i] = filepath.Join(source.Path, defaultTargetFile)
 	}
+	return retval
 }
 
-func parseGitConfig(app *v1alpha1.Application, kubeClient *kube.KubernetesClient, wbc *WriteBackConfig, creds string) error {
+func parseTargets(target string, sources v1alpha1.ApplicationSources) (kustomizeBases []string) {
+	retval := make([]string, len(sources))
+	for i, source := range sources {
+		if target == common.KustomizationPrefix {
+			retval[i] = filepath.Join(source.Path, ".")
+		} else if base := target[len(common.KustomizationPrefix)+1:]; strings.HasPrefix(base, "/") {
+			retval[i] = base[1:]
+		} else {
+			retval[i] = filepath.Join(source.Path, base)
+		}
+	}
+
+	return retval
+}
+
+func parseGitConfig(app *v1alpha1.Application, kubeClient *kube.KubernetesClient, wbc *WriteBackConfig, creds string) []error {
+	errors := make([]error, 0)
 	branch, ok := app.Annotations[common.GitBranchAnnotation]
 	if ok {
 		branches := strings.Split(strings.TrimSpace(branch), ":")
 		if len(branches) > 2 {
-			return fmt.Errorf("invalid format for git-branch annotation: %v", branch)
+			errors = append(errors, fmt.Errorf("invalid format for git-branch annotation: %v", branch))
 		}
 		wbc.GitBranch = branches[0]
 		if len(branches) == 2 {
 			wbc.GitWriteBranch = branches[1]
 		}
 	}
-	wbc.GitRepo = app.Spec.Source.RepoURL
-	repo, ok := app.Annotations[common.GitRepositoryAnnotation]
-	if ok {
-		wbc.GitRepo = repo
+	sources := app.Spec.GetSources()
+	wbc.GitRepos = make([]string, len(sources))
+	for i, source := range sources {
+		wbc.GitRepos[i] = source.RepoURL
+		repo, ok := app.Annotations[common.GitRepositoryAnnotation]
+		if ok {
+			wbc.GitRepos[i] = repo
+		}
+		credSource, err := getGitCredsSource(creds, kubeClient, wbc)
+		if err != nil {
+			errors = append(errors, fmt.Errorf("invalid git credentials at source %d: %v", i, err))
+			wbc.GetCreds = nil
+		} else {
+			wbc.GetCreds = credSource
+		}
+
 	}
-	credsSource, err := getGitCredsSource(creds, kubeClient, wbc)
-	if err != nil {
-		return fmt.Errorf("invalid git credentials source: %v", err)
-	}
-	wbc.GetCreds = credsSource
-	return nil
+	return errors
 }
 
-func commitChangesLocked(app *v1alpha1.Application, wbc *WriteBackConfig, state *SyncIterationState, changeList []ChangeEntry) error {
+func commitChangesLocked(app *v1alpha1.Application, wbc *WriteBackConfig, sourceIndex int, state *SyncIterationState, changeList []ChangeEntry) error {
 	if wbc.RequiresLocking() {
-		lock := state.GetRepositoryLock(wbc.GitRepo)
+		lock := state.GetRepositoryLock(wbc.GitRepos[sourceIndex])
 		lock.Lock()
 		defer lock.Unlock()
 	}
 
-	return commitChanges(app, wbc, changeList)
+	return commitChanges(app, wbc, sourceIndex, changeList)
 }
 
 // commitChanges commits any changes required for updating one or more images
 // after the UpdateApplication cycle has finished.
-func commitChanges(app *v1alpha1.Application, wbc *WriteBackConfig, changeList []ChangeEntry) error {
+func commitChanges(app *v1alpha1.Application, wbc *WriteBackConfig, sourceIndex int, changeList []ChangeEntry) error {
 	switch wbc.Method {
 	case WriteBackApplication:
 		_, err := wbc.ArgoClient.UpdateSpec(context.TODO(), &application.ApplicationUpdateSpecRequest{
@@ -563,10 +629,10 @@ func commitChanges(app *v1alpha1.Application, wbc *WriteBackConfig, changeList [
 		}
 	case WriteBackGit:
 		// if the kustomize base is set, the target is a kustomization
-		if wbc.KustomizeBase != "" {
-			return commitChangesGit(app, wbc, changeList, writeKustomization)
+		if wbc.KustomizeBases[sourceIndex] != "" {
+			return commitChangesGit(app, wbc, sourceIndex, changeList, writeKustomization)
 		}
-		return commitChangesGit(app, wbc, changeList, writeOverrides)
+		return commitChangesGit(app, wbc, sourceIndex, changeList, writeOverrides)
 	default:
 		return fmt.Errorf("unknown write back method set: %d", wbc.Method)
 	}

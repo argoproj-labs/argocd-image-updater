@@ -17,36 +17,36 @@ import (
 func getGitCredsSource(creds string, kubeClient *kube.KubernetesClient, wbc *WriteBackConfig) (GitCredsSource, error) {
 	switch {
 	case creds == "repocreds":
-		return func(app *v1alpha1.Application) (git.Creds, error) {
-			return getCredsFromArgoCD(wbc, kubeClient)
+		return func(app *v1alpha1.Application, sourceIndex int) (git.Creds, error) {
+			return getCredsFromArgoCD(wbc, sourceIndex, kubeClient)
 		}, nil
 	case strings.HasPrefix(creds, "secret:"):
-		return func(app *v1alpha1.Application) (git.Creds, error) {
-			return getCredsFromSecret(wbc, creds[len("secret:"):], kubeClient)
+		return func(app *v1alpha1.Application, sourceIndex int) (git.Creds, error) {
+			return getCredsFromSecret(wbc, creds[len("secret:"):], sourceIndex, kubeClient)
 		}, nil
 	}
 	return nil, fmt.Errorf("unexpected credentials format. Expected 'repocreds' or 'secret:<namespace>/<secret>' but got '%s'", creds)
 }
 
 // getCredsFromArgoCD loads repository credentials from Argo CD settings
-func getCredsFromArgoCD(wbc *WriteBackConfig, kubeClient *kube.KubernetesClient) (git.Creds, error) {
+func getCredsFromArgoCD(wbc *WriteBackConfig, sourceIndex int, kubeClient *kube.KubernetesClient) (git.Creds, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	settingsMgr := settings.NewSettingsManager(ctx, kubeClient.Clientset, kubeClient.Namespace)
 	argocdDB := db.NewDB(kubeClient.Namespace, settingsMgr, kubeClient.Clientset)
-	repo, err := argocdDB.GetRepository(ctx, wbc.GitRepo)
+	repo, err := argocdDB.GetRepository(ctx, wbc.GitRepos[sourceIndex])
 	if err != nil {
 		return nil, err
 	}
 	if !repo.HasCredentials() {
-		return nil, fmt.Errorf("credentials for '%s' are not configured in Argo CD settings", wbc.GitRepo)
+		return nil, fmt.Errorf("credentials for '%s' are not configured in Argo CD settings", wbc.GitRepos[sourceIndex])
 	}
 	return repo.GetGitCreds(nil), nil
 }
 
 // getCredsFromSecret loads repository credentials from secret
-func getCredsFromSecret(wbc *WriteBackConfig, credentialsSecret string, kubeClient *kube.KubernetesClient) (git.Creds, error) {
+func getCredsFromSecret(wbc *WriteBackConfig, credentialsSecret string, sourceIndex int, kubeClient *kube.KubernetesClient) (git.Creds, error) {
 	var credentials map[string][]byte
 	var err error
 	s := strings.SplitN(credentialsSecret, "/", 2)
@@ -59,13 +59,13 @@ func getCredsFromSecret(wbc *WriteBackConfig, credentialsSecret string, kubeClie
 		return nil, fmt.Errorf("secret ref must be in format 'namespace/name', but is '%s'", credentialsSecret)
 	}
 
-	if ok, _ := git.IsSSHURL(wbc.GitRepo); ok {
+	if ok, _ := git.IsSSHURL(wbc.GitRepos[sourceIndex]); ok {
 		var sshPrivateKey []byte
 		if sshPrivateKey, ok = credentials["sshPrivateKey"]; !ok {
 			return nil, fmt.Errorf("invalid secret %s: does not contain field sshPrivateKey", credentialsSecret)
 		}
 		return git.NewSSHCreds(string(sshPrivateKey), "", true), nil
-	} else if git.IsHTTPSURL(wbc.GitRepo) {
+	} else if git.IsHTTPSURL(wbc.GitRepos[sourceIndex]) {
 		var username, password []byte
 		if username, ok = credentials["username"]; !ok {
 			return nil, fmt.Errorf("invalid secret %s: does not contain field username", credentialsSecret)

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
@@ -71,7 +72,7 @@ func (img *ContainerImage) HasForceUpdateOptionAnnotation(annotations map[string
 	return forceUpdateVal == "true"
 }
 
-// GetParameterSort gets and validates the value for the sort option for the
+// GetParameterUpdateStrategy gets and validates the value for the update strategy for the
 // image from a set of annotations
 func (img *ContainerImage) GetParameterUpdateStrategy(annotations map[string]string) UpdateStrategy {
 	updateStrategyAnnotations := []string{
@@ -203,6 +204,35 @@ func (img *ContainerImage) GetParameterPullSecret(annotations map[string]string)
 		return nil
 	}
 	return credSrc
+}
+
+func (img *ContainerImage) GetSourceIndex(annotations map[string]string) SourceIndex {
+	sourceIndexAnnotation := fmt.Sprintf(common.SourceIndexAnnotation, img.normalizedSymbolicName())
+
+	var sourceIndexVal = ""
+	if val, ok := annotations[sourceIndexAnnotation]; ok {
+		sourceIndexVal = val
+	}
+
+	logCtx := img.LogContext()
+	if sourceIndexVal == "" {
+		logCtx.Tracef("No source index found. Defaulting to all.")
+		// Default is sort by version
+		return SourceIndexAll
+	}
+	logCtx.Tracef("Found source index %s", sourceIndexVal)
+	return img.ParseSourceIndex(sourceIndexVal)
+}
+
+func (img *ContainerImage) ParseSourceIndex(sourceIndexVal string) SourceIndex {
+	logCtx := img.LogContext()
+
+	if num, err := strconv.ParseInt(sourceIndexVal, 10, 0); err == nil {
+		return SourceIndex(num)
+	} else {
+		logCtx.Warnf("Invalid sourceIndex. Defaulting to all. Unexpected results may occur.")
+		return SourceIndexAll
+	}
 }
 
 // GetParameterIgnoreTags retrieves a list of tags to ignore from a comma-separated string

@@ -5,6 +5,7 @@ bacd
 CVE
 credref
 DEBU
+bitnami
 dockerhub
 eec
 fbd
@@ -19,4 +20,5 @@ someimage
 somerepo
 ssw
 wildcards
+wordpress
 yyyy

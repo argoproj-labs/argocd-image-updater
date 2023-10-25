@@ -1099,7 +1099,7 @@ kustomize:
   images:
   - baz
 `)
-		yaml, err := marshalParamsOverride(&app, originalData)
+		yaml, err := marshalParamsOverride(&app, 0, originalData)
 		require.NoError(t, err)
 		assert.NotEmpty(t, yaml)
 		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(yaml)))
@@ -1125,7 +1125,7 @@ kustomize:
 			},
 		}
 
-		yaml, err := marshalParamsOverride(&app, nil)
+		yaml, err := marshalParamsOverride(&app, 0, nil)
 		require.NoError(t, err)
 		assert.Empty(t, yaml)
 		assert.Equal(t, "", strings.TrimSpace(string(yaml)))
@@ -1185,7 +1185,7 @@ helm:
       value: baz
       forcestring: false
 `)
-		yaml, err := marshalParamsOverride(&app, originalData)
+		yaml, err := marshalParamsOverride(&app, 0, originalData)
 		require.NoError(t, err)
 		assert.NotEmpty(t, yaml)
 		assert.Equal(t, strings.TrimSpace(strings.ReplaceAll(expected, "\t", "  ")), strings.TrimSpace(string(yaml)))
@@ -1211,7 +1211,7 @@ helm:
 			},
 		}
 
-		yaml, err := marshalParamsOverride(&app, nil)
+		yaml, err := marshalParamsOverride(&app, 0, nil)
 		require.NoError(t, err)
 		assert.Empty(t, yaml)
 	})
@@ -1242,8 +1242,10 @@ helm:
 			},
 		}
 
-		_, err := marshalParamsOverride(&app, nil)
-		assert.Error(t, err)
+		_, err := marshalParamsOverride(&app, 0, nil)
+		// This condition should not result in an error because it could be possible to have multiple source types
+		// within the same applicaiton
+		assert.NoError(t, err)
 	})
 }
 
@@ -1412,7 +1414,7 @@ func Test_GetWriteBackConfig(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, wbc)
 		assert.Equal(t, wbc.Method, WriteBackGit)
-		assert.Equal(t, wbc.KustomizeBase, "config/bar")
+		assert.Equal(t, wbc.KustomizeBases[0], "config/bar")
 	})
 
 	t.Run("Default write-back config - argocd", func(t *testing.T) {
@@ -1514,7 +1516,7 @@ func Test_GetGitCreds(t *testing.T) {
 		wbc, err := getWriteBackConfig(&app, &kubeClient, &argoClient)
 		require.NoError(t, err)
 
-		creds, err := wbc.GetCreds(&app)
+		creds, err := wbc.GetCreds(&app, 0)
 		require.NoError(t, err)
 		require.NotNil(t, creds)
 		// Must have HTTPS creds
@@ -1552,7 +1554,7 @@ func Test_GetGitCreds(t *testing.T) {
 		wbc, err := getWriteBackConfig(&app, &kubeClient, &argoClient)
 		require.NoError(t, err)
 
-		creds, err := wbc.GetCreds(&app)
+		creds, err := wbc.GetCreds(&app, 0)
 		require.NoError(t, err)
 		require.NotNil(t, creds)
 		// Must have SSH creds
@@ -1604,7 +1606,7 @@ func Test_GetGitCreds(t *testing.T) {
 		wbc, err := getWriteBackConfig(&app, &kubeClient, &argoClient)
 		require.NoError(t, err)
 
-		creds, err := wbc.GetCreds(&app)
+		creds, err := wbc.GetCreds(&app, 0)
 		require.NoError(t, err)
 		require.NotNil(t, creds)
 		// Must have HTTPS creds
@@ -1642,7 +1644,7 @@ func Test_GetGitCreds(t *testing.T) {
 		wbc, err := getWriteBackConfig(&app, &kubeClient, &argoClient)
 		require.NoError(t, err)
 
-		creds, err := wbc.GetCreds(&app)
+		creds, err := wbc.GetCreds(&app, 0)
 		require.Error(t, err)
 		require.Nil(t, creds)
 	})
@@ -1678,7 +1680,7 @@ func Test_GetGitCreds(t *testing.T) {
 		wbc, err := getWriteBackConfig(&app, &kubeClient, &argoClient)
 		require.NoError(t, err)
 
-		creds, err := wbc.GetCreds(&app)
+		creds, err := wbc.GetCreds(&app, 0)
 		require.Error(t, err)
 		require.Nil(t, creds)
 	})
@@ -1714,7 +1716,7 @@ func Test_GetGitCreds(t *testing.T) {
 		wbc, err := getWriteBackConfig(&app, &kubeClient, &argoClient)
 		require.NoError(t, err)
 
-		creds, err := wbc.GetCreds(&app)
+		creds, err := wbc.GetCreds(&app, 0)
 		require.Error(t, err)
 		require.Nil(t, creds)
 	})
@@ -1751,9 +1753,9 @@ func Test_GetGitCreds(t *testing.T) {
 
 		wbc, err := getWriteBackConfig(&app, &kubeClient, &argoClient)
 		require.NoError(t, err)
-		require.Equal(t, wbc.GitRepo, "git@github.com:example/example.git")
+		require.Equal(t, wbc.GitRepos[0], "git@github.com:example/example.git")
 
-		creds, err := wbc.GetCreds(&app)
+		creds, err := wbc.GetCreds(&app, 0)
 		require.NoError(t, err)
 		require.NotNil(t, creds)
 		// Must have SSH creds
@@ -1804,7 +1806,7 @@ func Test_CommitUpdates(t *testing.T) {
 		require.NoError(t, err)
 		wbc.GitClient = gitMock
 
-		err = commitChanges(&app, wbc, nil)
+		err = commitChanges(&app, wbc, 0, nil)
 		assert.NoError(t, err)
 	})
 
@@ -1824,7 +1826,7 @@ func Test_CommitUpdates(t *testing.T) {
 		wbc.GitClient = gitMock
 		wbc.GitBranch = "mybranch"
 
-		err = commitChanges(&app, wbc, nil)
+		err = commitChanges(&app, wbc, 0, nil)
 		assert.NoError(t, err)
 	})
 
@@ -1845,7 +1847,7 @@ func Test_CommitUpdates(t *testing.T) {
 		app.Spec.Source.TargetRevision = "HEAD"
 		wbc.GitBranch = ""
 
-		err = commitChanges(app, wbc, nil)
+		err = commitChanges(app, wbc, 0, nil)
 		assert.NoError(t, err)
 	})
 
@@ -1873,7 +1875,7 @@ func Test_CommitUpdates(t *testing.T) {
 		}
 		gitMock.On("Checkout", TemplateBranchName(wbc.GitWriteBranch, cl)).Return(nil)
 
-		err = commitChanges(&app, wbc, cl)
+		err = commitChanges(&app, wbc, 0, cl)
 		assert.NoError(t, err)
 	})
 
@@ -1886,7 +1888,7 @@ func Test_CommitUpdates(t *testing.T) {
 		}}
 		gitMock, dir, cleanup := mockGit(t)
 		defer cleanup()
-		of := filepath.Join(dir, ".argocd-source-testapp.yaml")
+		of := filepath.Join(dir, ".argocd-source-testapp-0.yaml")
 		assert.NoError(t, os.WriteFile(of, []byte(`
 helm:
   parameters:
@@ -1908,7 +1910,7 @@ helm:
 		app.Spec.Source.TargetRevision = "HEAD"
 		wbc.GitBranch = ""
 
-		err = commitChanges(app, wbc, nil)
+		err = commitChanges(app, wbc, 0, nil)
 		assert.NoError(t, err)
 		override, err := os.ReadFile(of)
 		assert.NoError(t, err)
@@ -1954,7 +1956,7 @@ replacements: []
 		app.Spec.Source.TargetRevision = "HEAD"
 		wbc.GitBranch = ""
 
-		err = commitChanges(app, wbc, nil)
+		err = commitChanges(app, wbc, 0, nil)
 		assert.NoError(t, err)
 		kust, err := os.ReadFile(kf)
 		assert.NoError(t, err)
@@ -1973,7 +1975,7 @@ replacements: []
 
 		// test the merge case too
 		app.Spec.Source.Kustomize.Images = v1alpha1.KustomizeImages{"foo:123", "bar=qux"}
-		err = commitChanges(app, wbc, nil)
+		err = commitChanges(app, wbc, 0, nil)
 		assert.NoError(t, err)
 		kust, err = os.ReadFile(kf)
 		assert.NoError(t, err)
@@ -2012,7 +2014,7 @@ replacements: []
 		wbc.GitCommitUser = "someone"
 		wbc.GitCommitEmail = "someone@example.com"
 
-		err = commitChanges(app, wbc, nil)
+		err = commitChanges(app, wbc, 0, nil)
 		assert.NoError(t, err)
 	})
 
@@ -2039,7 +2041,7 @@ replacements: []
 		wbc.GitCommitUser = "someone"
 		wbc.GitCommitEmail = "someone@example.com"
 
-		err = commitChanges(app, wbc, nil)
+		err = commitChanges(app, wbc, 0, nil)
 		assert.Errorf(t, err, "could not configure git")
 	})
 
@@ -2054,7 +2056,7 @@ replacements: []
 		require.NoError(t, err)
 		wbc.GitClient = gitMock
 
-		err = commitChanges(&app, wbc, nil)
+		err = commitChanges(&app, wbc, 0, nil)
 		assert.Errorf(t, err, "cannot init")
 	})
 
@@ -2069,7 +2071,7 @@ replacements: []
 		require.NoError(t, err)
 		wbc.GitClient = gitMock
 
-		err = commitChanges(&app, wbc, nil)
+		err = commitChanges(&app, wbc, 0, nil)
 		assert.Errorf(t, err, "cannot init")
 	})
 	t.Run("Cannot checkout", func(t *testing.T) {
@@ -2083,7 +2085,7 @@ replacements: []
 		require.NoError(t, err)
 		wbc.GitClient = gitMock
 
-		err = commitChanges(&app, wbc, nil)
+		err = commitChanges(&app, wbc, 0, nil)
 		assert.Errorf(t, err, "cannot checkout")
 	})
 
@@ -2098,7 +2100,7 @@ replacements: []
 		require.NoError(t, err)
 		wbc.GitClient = gitMock
 
-		err = commitChanges(&app, wbc, nil)
+		err = commitChanges(&app, wbc, 0, nil)
 		assert.Errorf(t, err, "cannot commit")
 	})
 
@@ -2113,7 +2115,7 @@ replacements: []
 		require.NoError(t, err)
 		wbc.GitClient = gitMock
 
-		err = commitChanges(&app, wbc, nil)
+		err = commitChanges(&app, wbc, 0, nil)
 		assert.Errorf(t, err, "cannot push")
 	})
 
@@ -2132,7 +2134,7 @@ replacements: []
 		app.Spec.Source.TargetRevision = "HEAD"
 		wbc.GitBranch = ""
 
-		err = commitChanges(app, wbc, nil)
+		err = commitChanges(app, wbc, 0, nil)
 		assert.Errorf(t, err, "failed to resolve ref")
 	})
 }
@@ -2156,7 +2158,9 @@ func Test_parseTarget(t *testing.T) {
 
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.expected, parseTarget(tt.target, tt.path))
+			sources := make(v1alpha1.ApplicationSources, 1)
+			sources[0].Path = tt.path
+			assert.Equal(t, tt.expected, parseTargets(tt.target, sources)[0])
 		})
 	}
 }

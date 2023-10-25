@@ -24,6 +24,12 @@ const (
 	StrategyDigest UpdateStrategy = 3
 )
 
+type SourceIndex int
+
+const (
+	SourceIndexAll SourceIndex = -1
+)
+
 func (us UpdateStrategy) String() string {
 	switch us {
 	case StrategySemVer:
@@ -53,12 +59,13 @@ const (
 
 // VersionConstraint defines a constraint for comparing versions
 type VersionConstraint struct {
-	Constraint string
-	MatchFunc  MatchFuncFn
-	MatchArgs  interface{}
-	IgnoreList []string
-	Strategy   UpdateStrategy
-	Options    *options.ManifestOptions
+	Constraint  string
+	MatchFunc   MatchFuncFn
+	MatchArgs   interface{}
+	IgnoreList  []string
+	Strategy    UpdateStrategy
+	Options     *options.ManifestOptions
+	SourceIndex SourceIndex
 }
 
 type MatchFuncFn func(tagName string, pattern interface{}) bool
@@ -70,9 +77,10 @@ func (vc *VersionConstraint) String() string {
 
 func NewVersionConstraint() *VersionConstraint {
 	return &VersionConstraint{
-		MatchFunc: MatchFuncNone,
-		Strategy:  StrategySemVer,
-		Options:   options.NewManifestOptions(),
+		MatchFunc:   MatchFuncNone,
+		Strategy:    StrategySemVer,
+		SourceIndex: SourceIndexAll,
+		Options:     options.NewManifestOptions(),
 	}
 }
 
