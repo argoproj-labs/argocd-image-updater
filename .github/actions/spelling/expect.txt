@@ -10,6 +10,7 @@ eec
 fbd
 ffb
 gitlab
+helmvalues
 jfrog
 mep
 myregistry
