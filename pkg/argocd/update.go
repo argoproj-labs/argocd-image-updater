@@ -21,6 +21,7 @@ import (
 
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/application"
 	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
+	"github.com/miracl/conflate"
 	"gopkg.in/yaml.v2"
 )
 
@@ -413,24 +414,52 @@ func marshalParamsOverride(app *v1alpha1.Application, originalData []byte) ([]by
 		if appSource.Helm == nil {
 			return []byte{}, nil
 		}
-		var params helmOverride
-		newParams := helmOverride{
-			Helm: helmParameters{
-				Parameters: appSource.Helm.Parameters,
-			},
-		}
 
-		if len(originalData) == 0 {
-			override, err = yaml.Marshal(newParams)
-			break
+		if strings.HasPrefix(app.Annotations[common.WriteBackTargetAnnotation], common.HelmPrefix) {
+			images := GetImagesFromApplication(app)
+
+			for _, c := range images {
+				// Build string with YAML format to merge with originalData values
+				helmValues := fmt.Sprintf("%s: %s\n%s: %s",
+					app.Annotations[fmt.Sprintf(common.HelmParamImageNameAnnotation, c.ImageName)],
+					getHelmParam(appSource.Helm.Parameters, app.Annotations[fmt.Sprintf(common.HelmParamImageNameAnnotation, c.ImageName)]).Value,
+					app.Annotations[fmt.Sprintf(common.HelmParamImageTagAnnotation, c.ImageName)],
+					getHelmParam(appSource.Helm.Parameters, app.Annotations[fmt.Sprintf(common.HelmParamImageTagAnnotation, c.ImageName)]).Value,
+				)
+
+				mergedParams, err := conflate.FromData(originalData, []byte(helmValues))
+				if err != nil {
+					return nil, err
+				}
+
+				override, err = mergedParams.MarshalYAML()
+				if err != nil {
+					return nil, err
+				}
+			}
+		} else {
+			var params helmOverride
+			newParams := helmOverride{
+				Helm: helmParameters{
+					Parameters: appSource.Helm.Parameters,
+				},
+			}
+
+			outputParams := appSource.Helm.ValuesYAML()
+			log.WithContext().AddField("application", app).Debugf("values: '%s'", outputParams)
+
+			if len(originalData) == 0 {
+				override, err = yaml.Marshal(newParams)
+				break
+			}
+			err = yaml.Unmarshal(originalData, &params)
+			if err != nil {
+				override, err = yaml.Marshal(newParams)
+				break
+			}
+			mergeHelmOverride(&params, &newParams)
+			override, err = yaml.Marshal(params)
 		}
-		err = yaml.Unmarshal(originalData, &params)
-		if err != nil {
-			override, err = yaml.Marshal(newParams)
-			break
-		}
-		mergeHelmOverride(&params, &newParams)
-		override, err = yaml.Marshal(params)
 	default:
 		err = fmt.Errorf("unsupported application type")
 	}
@@ -489,7 +518,9 @@ func getWriteBackConfig(app *v1alpha1.Application, kubeClient *kube.KubernetesCl
 		wbc.Method = WriteBackGit
 		target, ok := app.Annotations[common.WriteBackTargetAnnotation]
 		if ok && strings.HasPrefix(target, common.KustomizationPrefix) {
-			wbc.KustomizeBase = parseTarget(target, getApplicationSource(app).Path)
+			wbc.KustomizeBase = parseKustomizeBase(target, getApplicationSource(app).Path)
+		} else if ok && strings.HasPrefix(target, common.HelmPrefix) { // This keeps backward compatibility
+			wbc.Target = parseTarget(target, getApplicationSource(app).Path)
 		} else if ok { // This keeps backward compatibility
 			wbc.Target = app.Annotations[common.WriteBackTargetAnnotation]
 		}
@@ -509,10 +540,21 @@ func parseDefaultTarget(appName string, path string) string {
 	return filepath.Join(path, defaultTargetFile)
 }
 
-func parseTarget(target string, sourcePath string) (kustomizeBase string) {
+func parseKustomizeBase(target string, sourcePath string) (kustomizeBase string) {
 	if target == common.KustomizationPrefix {
 		return filepath.Join(sourcePath, ".")
 	} else if base := target[len(common.KustomizationPrefix)+1:]; strings.HasPrefix(base, "/") {
+		return base[1:]
+	} else {
+		return filepath.Join(sourcePath, base)
+	}
+}
+
+// parseTarget extracts the target path to set in the writeBackConfig configuration
+func parseTarget(writeBackTarget string, sourcePath string) string {
+	if writeBackTarget == common.HelmPrefix {
+		return filepath.Join(sourcePath, "./", common.DefaultHelmValuesFilename)
+	} else if base := writeBackTarget[len(common.HelmPrefix)+1:]; strings.HasPrefix(base, "/") {
 		return base[1:]
 	} else {
 		return filepath.Join(sourcePath, base)

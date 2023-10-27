@@ -1415,6 +1415,114 @@ func Test_GetWriteBackConfig(t *testing.T) {
 		assert.Equal(t, wbc.KustomizeBase, "config/bar")
 	})
 
+	t.Run("helmvalues write-back config with relative path", func(t *testing.T) {
+		app := v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name: "testapp",
+				Annotations: map[string]string{
+					"argocd-image-updater.argoproj.io/image-list":        "nginx",
+					"argocd-image-updater.argoproj.io/write-back-method": "git",
+					"argocd-image-updater.argoproj.io/write-back-target": "helmvalues:../bar/values.yaml",
+				},
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: &v1alpha1.ApplicationSource{
+					RepoURL:        "https://example.com/example",
+					TargetRevision: "main",
+					Path:           "config/foo",
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypeHelm,
+			},
+		}
+
+		argoClient := argomock.ArgoCD{}
+		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+
+		kubeClient := kube.KubernetesClient{
+			Clientset: fake.NewFakeKubeClient(),
+		}
+
+		wbc, err := getWriteBackConfig(&app, &kubeClient, &argoClient)
+		require.NoError(t, err)
+		require.NotNil(t, wbc)
+		assert.Equal(t, wbc.Method, WriteBackGit)
+		assert.Equal(t, wbc.Target, "config/bar/values.yaml")
+	})
+
+	t.Run("helmvalues write-back config without path", func(t *testing.T) {
+		app := v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name: "testapp",
+				Annotations: map[string]string{
+					"argocd-image-updater.argoproj.io/image-list":        "nginx",
+					"argocd-image-updater.argoproj.io/write-back-method": "git",
+					"argocd-image-updater.argoproj.io/write-back-target": "helmvalues",
+				},
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: &v1alpha1.ApplicationSource{
+					RepoURL:        "https://example.com/example",
+					TargetRevision: "main",
+					Path:           "config/foo",
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypeHelm,
+			},
+		}
+
+		argoClient := argomock.ArgoCD{}
+		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+
+		kubeClient := kube.KubernetesClient{
+			Clientset: fake.NewFakeKubeClient(),
+		}
+
+		wbc, err := getWriteBackConfig(&app, &kubeClient, &argoClient)
+		require.NoError(t, err)
+		require.NotNil(t, wbc)
+		assert.Equal(t, wbc.Method, WriteBackGit)
+		assert.Equal(t, wbc.Target, "config/foo/values.yaml")
+	})
+
+	t.Run("helmvalues write-back config with absolute path", func(t *testing.T) {
+		app := v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name: "testapp",
+				Annotations: map[string]string{
+					"argocd-image-updater.argoproj.io/image-list":        "nginx",
+					"argocd-image-updater.argoproj.io/write-back-method": "git",
+					"argocd-image-updater.argoproj.io/write-back-target": "helmvalues:/helm/app/values.yaml",
+				},
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: &v1alpha1.ApplicationSource{
+					RepoURL:        "https://example.com/example",
+					TargetRevision: "main",
+					Path:           "config/foo",
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypeHelm,
+			},
+		}
+
+		argoClient := argomock.ArgoCD{}
+		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+
+		kubeClient := kube.KubernetesClient{
+			Clientset: fake.NewFakeKubeClient(),
+		}
+
+		wbc, err := getWriteBackConfig(&app, &kubeClient, &argoClient)
+		require.NoError(t, err)
+		require.NotNil(t, wbc)
+		assert.Equal(t, wbc.Method, WriteBackGit)
+		assert.Equal(t, wbc.Target, "helm/app/values.yaml")
+	})
+
 	t.Run("Default write-back config - argocd", func(t *testing.T) {
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
@@ -2137,7 +2245,7 @@ replacements: []
 	})
 }
 
-func Test_parseTarget(t *testing.T) {
+func Test_parseKustomizeBase(t *testing.T) {
 	cases := []struct {
 		name     string
 		expected string
@@ -2152,6 +2260,30 @@ func Test_parseTarget(t *testing.T) {
 		{"absolute path", "foo", "kustomization:/foo", "bar"},
 		{"relative path", "bar/foo", "kustomization:foo", "bar"},
 		{"sibling path", "bar/baz", "kustomization:../baz", "bar/foo"},
+	}
+
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, parseKustomizeBase(tt.target, tt.path))
+		})
+	}
+}
+
+func Test_parseTarget(t *testing.T) {
+	cases := []struct {
+		name     string
+		expected string
+		target   string
+		path     string
+	}{
+		{"default", "values.yaml", "helmvalues", ""},
+		{"explicit default", "values.yaml", "helmvalues:./values.yaml", "."},
+		{"default path, explicit target", "values.yaml", "helmvalues:./values.yaml", ""},
+		{"default target with path", "foo/bar/values.yaml", "helmvalues", "foo/bar"},
+		{"default both", "values.yaml", "helmvalues", ""},
+		{"absolute path", "foo/app-values.yaml", "helmvalues:/foo/app-values.yaml", "bar"},
+		{"relative path", "bar/foo/app-values.yaml", "helmvalues:foo/app-values.yaml", "bar"},
+		{"sibling path", "bar/baz/app-values.yaml", "helmvalues:../baz/app-values.yaml", "bar/foo"},
 	}
 
 	for _, tt := range cases {
