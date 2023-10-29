@@ -427,15 +427,13 @@ func marshalParamsOverride(app *v1alpha1.Application, originalData []byte) ([]by
 					getHelmParam(appSource.Helm.Parameters, app.Annotations[fmt.Sprintf(common.HelmParamImageTagAnnotation, c.ImageName)]).Value,
 				)
 
-				mergedParams, err := conflate.FromData(originalData, []byte(helmValues))
+				var mergedParams *conflate.Conflate
+				mergedParams, err = conflate.FromData(originalData, []byte(helmValues))
 				if err != nil {
 					return nil, err
 				}
 
 				override, err = mergedParams.MarshalYAML()
-				if err != nil {
-					return nil, err
-				}
 			}
 		} else {
 			var params helmOverride
