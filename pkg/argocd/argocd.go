@@ -527,6 +527,10 @@ func getApplicationType(app *v1alpha1.Application) ApplicationType {
 		return ApplicationTypeKustomize
 	} else if sourceType == v1alpha1.ApplicationSourceTypeHelm {
 		return ApplicationTypeHelm
+	} else if st, set := app.Annotations[common.WriteBackTargetAnnotation]; set &&
+		strings.HasPrefix(st, common.HelmPrefix) &&
+		sourceType == v1alpha1.ApplicationSourceTypePlugin {
+		return ApplicationTypeHelm
 	} else {
 		return ApplicationTypeUnsupported
 	}

@@ -53,10 +53,14 @@ const (
 	GitRepositoryAnnotation   = ImageUpdaterAnnotationPrefix + "/git-repository"
 	WriteBackTargetAnnotation = ImageUpdaterAnnotationPrefix + "/write-back-target"
 	KustomizationPrefix       = "kustomization"
+	HelmPrefix                = "helm"
 )
 
 // DefaultTargetFilePattern configurations related to the write-back functionality
 const DefaultTargetFilePattern = ".argocd-source-%s.yaml"
+
+// DefaultHelmTargetFile configurations related to the write-back using helm functionality
+const DefaultHelmTargetFile = "values.yaml"
 
 // The default Git commit message's template
 const DefaultGitCommitMessage = `build: automatic update of {{ .AppName }}

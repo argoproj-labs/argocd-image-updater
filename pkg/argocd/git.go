@@ -8,8 +8,10 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strings"
 	"text/template"
 
+	"helm.sh/helm/pkg/chartutil"
 	"sigs.k8s.io/kustomize/api/konfig"
 	"sigs.k8s.io/kustomize/api/types"
 	kyaml "sigs.k8s.io/kustomize/kyaml/yaml"
@@ -296,6 +298,62 @@ func writeOverrides(app *v1alpha1.Application, wbc *WriteBackConfig, gitC git.Cl
 }
 
 var _ changeWriter = writeOverrides
+
+// writeHelm writes any changes required for updating one or more images to a values.yaml
+func writeHelm(app *v1alpha1.Application, wbc *WriteBackConfig, gitC git.Client) (err error, skip bool) {
+	logCtx := log.WithContext().AddField("application", app.GetName())
+
+	fileName := filepath.Join(gitC.Root(), wbc.HelmBase)
+
+	logCtx.Infof("updating valuesfile %s", fileName)
+
+	valuesFile, err := chartutil.ReadValuesFile(fileName)
+	if err != nil {
+		panic(err)
+	}
+
+	// As we've defined the ApplicationSourceTypePlugin combined with WriteBackTargetAnnotation starting with Helm
+	// it is actually safe to use app.Spec.Source.Helm.Parameters for updating values.yaml
+	parameters := app.Spec.Source.Helm.Parameters
+
+	// Update all image tag and image repository values
+	for _, parameter := range parameters {
+		fullYamlPath := strings.Split(parameter.Name, ".")
+		yamlPath := strings.Join(fullYamlPath[0:len(fullYamlPath)-1], ".") // remove the last path to be able to update the value of it later on
+
+		image, err := valuesFile.Table(yamlPath)
+		if err != nil {
+			logCtx.Errorf("could not find path %s", yamlPath)
+		}
+
+		valuePath := fullYamlPath[len(fullYamlPath)-1]
+		image[valuePath] = parameter.Value
+	}
+
+	// Save the valuesfile back to the original file; first truncate the file and write back the content
+	newValuesFile, err := os.OpenFile(fileName, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	if err != nil {
+		logCtx.Errorf("Cannot open file %s to write values to", fileName)
+		return err, false
+	}
+	defer newValuesFile.Close()
+
+	err = newValuesFile.Truncate(0)
+	if err != nil {
+		logCtx.Errorf("Cannot truncate valuesfile %s", fileName)
+		return err, false
+	}
+
+	err = valuesFile.Encode(newValuesFile)
+	if err != nil {
+		logCtx.Errorf("Unable to write data into the valuesfile %s", fileName)
+		return err, false
+	}
+
+	return nil, false
+}
+
+var _ changeWriter = writeHelm
 
 // writeKustomization writes any changes required for updating one or more images to a kustomization.yml
 func writeKustomization(app *v1alpha1.Application, wbc *WriteBackConfig, gitC git.Client) (err error, skip bool) {
