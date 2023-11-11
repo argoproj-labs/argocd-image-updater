@@ -141,6 +141,10 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 	result := ImageUpdaterResult{}
 	app := updateConf.UpdateApp.Application.GetName()
 	changeList := make([]ChangeEntry, 0)
+	prefix := updateConf.UpdateApp.Application.ObjectMeta.Annotations[fmt.Sprintf(common.RegistryPrefixAnnotation, app)]
+	if prefix != "" {
+		prefix = "/" + prefix
+	}
 
 	// Get all images that are deployed with the current application
 	applicationImages := GetImagesFromApplication(&updateConf.UpdateApp.Application)
@@ -183,7 +187,7 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 
 		imgCtx.Debugf("Considering this image for update")
 
-		rep, err := registry.GetRegistryEndpoint(applicationImage.RegistryURL)
+		rep, err := registry.GetRegistryEndpoint(applicationImage.RegistryURL + prefix)
 		if err != nil {
 			imgCtx.Errorf("Could not get registry endpoint from configuration: %v", err)
 			result.NumErrors += 1
