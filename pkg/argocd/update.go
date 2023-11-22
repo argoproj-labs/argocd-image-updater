@@ -419,13 +419,26 @@ func marshalParamsOverride(app *v1alpha1.Application, originalData []byte) ([]by
 			images := GetImagesFromApplication(app)
 
 			for _, c := range images {
+				helmAnnotationParamName, helmAnnotationParamVersion := getHelmParamNamesFromAnnotation(app.Annotations, c.ImageName)
+				if helmAnnotationParamName == "" {
+					return nil, fmt.Errorf("could not find an image-name annotation for image %s", c.ImageName)
+				}
+				if helmAnnotationParamVersion == "" {
+					return nil, fmt.Errorf("could not find an image-tag annotation for image %s", c.ImageName)
+				}
+
+				helmParamName := getHelmParam(appSource.Helm.Parameters, helmAnnotationParamName)
+				if helmParamName == nil {
+					return nil, fmt.Errorf("%s parameter not found", helmAnnotationParamName)
+				}
+
+				helmParamVersion := getHelmParam(appSource.Helm.Parameters, helmAnnotationParamVersion)
+				if helmParamVersion == nil {
+					return nil, fmt.Errorf("%s parameter not found", helmAnnotationParamVersion)
+				}
+
 				// Build string with YAML format to merge with originalData values
-				helmValues := fmt.Sprintf("%s: %s\n%s: %s",
-					app.Annotations[fmt.Sprintf(common.HelmParamImageNameAnnotation, c.ImageName)],
-					getHelmParam(appSource.Helm.Parameters, app.Annotations[fmt.Sprintf(common.HelmParamImageNameAnnotation, c.ImageName)]).Value,
-					app.Annotations[fmt.Sprintf(common.HelmParamImageTagAnnotation, c.ImageName)],
-					getHelmParam(appSource.Helm.Parameters, app.Annotations[fmt.Sprintf(common.HelmParamImageTagAnnotation, c.ImageName)]).Value,
-				)
+				helmValues := fmt.Sprintf("%s: %s\n%s: %s", helmAnnotationParamName, helmParamName.Value, helmAnnotationParamVersion, helmParamVersion.Value)
 
 				var mergedParams *conflate.Conflate
 				mergedParams, err = conflate.FromData(originalData, []byte(helmValues))

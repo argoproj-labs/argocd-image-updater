@@ -555,14 +555,16 @@ func getApplicationSourceType(app *v1alpha1.Application) v1alpha1.ApplicationSou
 	}
 
 	if app.Spec.HasMultipleSources() {
-		for _, s := range app.Status.SourceTypes {
-			if s == v1alpha1.ApplicationSourceTypeKustomize || s == v1alpha1.ApplicationSourceTypeHelm {
-				return s
+		for _, s := range app.Spec.Sources {
+			if s.Helm != nil {
+				return v1alpha1.ApplicationSourceTypeHelm
+			} else if s.Kustomize != nil {
+				return v1alpha1.ApplicationSourceTypeKustomize
+			} else if s.Plugin != nil {
+				return v1alpha1.ApplicationSourceTypePlugin
 			}
 		}
-
-		log.WithContext().AddField("application", app.GetName()).Tracef("Could not determine if Source Type is Helm or Kustomize from multisource configuration. Returning first source type by default.")
-		return app.Status.SourceTypes[0]
+		return v1alpha1.ApplicationSourceTypeDirectory
 	}
 
 	return app.Status.SourceType
