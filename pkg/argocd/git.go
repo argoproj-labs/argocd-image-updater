@@ -173,7 +173,7 @@ func commitChangesGit(app *v1alpha1.Application, wbc *WriteBackConfig, changeLis
 	// config, or taken from the application spec's targetRevision. If the
 	// target revision is set to the special value HEAD, or is the empty
 	// string, we'll try to resolve it to a branch name.
-	checkOutBranch := app.Spec.Source.TargetRevision
+	checkOutBranch := getApplicationSource(app).TargetRevision
 	if wbc.GitBranch != "" {
 		checkOutBranch = wbc.GitBranch
 	}
@@ -310,7 +310,7 @@ func writeKustomization(app *v1alpha1.Application, wbc *WriteBackConfig, gitC gi
 		return fmt.Errorf("could not find kustomization in %s", base), false
 	}
 
-	filterFunc, err := imagesFilter(app.Spec.Source.Kustomize.Images)
+	filterFunc, err := imagesFilter(getApplicationSource(app).Kustomize.Images)
 	if err != nil {
 		return err, false
 	}

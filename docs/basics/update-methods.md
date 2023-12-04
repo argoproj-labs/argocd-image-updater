@@ -296,3 +296,29 @@ argocd-image-updater.argoproj.io/write-back-target: "kustomization:/config/overl
 ```
 
 Note that the Kustomization directory needs to be specified, not a file, like when using Kustomize.
+
+If you are using Helm and want the image updates parameters available in your values files,
+you may set the `write-back-target` to `helmvalues:<full path to your values file>`. This method commits changes to the values
+file back that is used to render the Helm template.
+
+```yaml
+argocd-image-updater.argoproj.io/write-back-method: git  # all git options are supported
+argocd-image-updater.argoproj.io/write-back-target: helmvalues
+```
+
+You may also specify which helmvalues to update with either a path relative to the project source path...
+
+```yaml
+argocd-image-updater.argoproj.io/write-back-target: "helmvalues:../../values.yaml"
+# if the Application spec.source.path = config/overlays/foo, this would update the helmvalues in config/base 
+```
+
+...or absolute with respect to the repository:
+
+```yaml
+# absolute paths start with /
+argocd-image-updater.argoproj.io/write-back-target: "helmvalues:/helm/config/test-values.yaml"
+```
+
+Note that using the helmvalues option needs the Helm values filename to be specified in the
+write-back-target annotation.
