@@ -2055,7 +2055,7 @@ func Test_GetWriteBackConfig(t *testing.T) {
 }
 
 func Test_GetGitCreds(t *testing.T) {
-	t.Run("HTTP creds from a secret", func(t *testing.T) {
+	t.Run("HTTP user creds from a secret", func(t *testing.T) {
 		argoClient := argomock.ArgoCD{}
 		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
 		secret := fixture.NewSecret("argocd-image-updater", "git-creds", map[string][]byte{
@@ -2090,8 +2090,49 @@ func Test_GetGitCreds(t *testing.T) {
 		creds, err := wbc.GetCreds(&app)
 		require.NoError(t, err)
 		require.NotNil(t, creds)
-		// Must have HTTPS creds
+		// Must have HTTPS user creds
 		_, ok := creds.(git.HTTPSCreds)
+		require.True(t, ok)
+	})
+
+	t.Run("HTTP GitHub App creds from a secret", func(t *testing.T) {
+		argoClient := argomock.ArgoCD{}
+		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+		secret := fixture.NewSecret("argocd-image-updater", "git-creds", map[string][]byte{
+			"githubAppID":             []byte("12345678"),
+			"githubAppInstallationID": []byte("87654321"),
+			"githubAppPrivateKey":     []byte("foo"),
+		})
+		kubeClient := kube.KubernetesClient{
+			Clientset: fake.NewFakeClientsetWithResources(secret),
+		}
+		app := v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name: "testapp",
+				Annotations: map[string]string{
+					"argocd-image-updater.argoproj.io/image-list":        "nginx",
+					"argocd-image-updater.argoproj.io/write-back-method": "git:secret:argocd-image-updater/git-creds",
+					"argocd-image-updater.argoproj.io/git-credentials":   "argocd-image-updater/git-creds",
+				},
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: &v1alpha1.ApplicationSource{
+					RepoURL:        "https://example.com/example",
+					TargetRevision: "main",
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypeKustomize,
+			},
+		}
+		wbc, err := getWriteBackConfig(&app, &kubeClient, &argoClient)
+		require.NoError(t, err)
+
+		creds, err := wbc.GetCreds(&app)
+		require.NoError(t, err)
+		require.NotNil(t, creds)
+		// Must have HTTPS GitHub App creds
+		_, ok := creds.(git.GitHubAppCreds)
 		require.True(t, ok)
 	})
 
