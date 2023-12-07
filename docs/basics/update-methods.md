@@ -123,7 +123,9 @@ Example:
 argocd-image-updater.argoproj.io/write-back-method: git:secret:argocd-image-updater/git-creds
 ```
 
-If the repository is accessed using HTTPS, the secret must contain two fields:
+If the repository is accessed using HTTPS, the secret must contain either user credentials or GitHub app credentials.
+
+If the repository is accessed using user credentials, the secret requires two fields
 `username` which holds the Git username, and `password` which holds the user's
 password or a private access token (PAT) with write access to the repository.
 You can generate such a secret using `kubectl`, e.g.:
@@ -132,6 +134,16 @@ You can generate such a secret using `kubectl`, e.g.:
 kubectl -n argocd-image-updater create secret generic git-creds \
   --from-literal=username=someuser \
   --from-literal=password=somepassword
+```
+
+If the repository is accessed using GitHub app credentials, the secret requires three fields `githubAppID` which holds the GitHub Application ID, `githubAppInstallationID` which holds the GitHub Organization Installation ID, and `githubAppPrivateKey` which holds the GitHub Application private key. The GitHub Application must be installed into the target repository with write access.
+You can generate such a secret using `kubectl`, e.g.:
+
+```bash
+kubectl -n argocd-image-updater create secret generic git-creds \
+  --from-literal=githubAppID=applicationid \
+  --from-literal=githubAppInstallationID=installationid \
+  --from-literal=githubAppPrivateKey='-----BEGIN RSA PRIVATE KEY-----PRIVATEKEYDATA-----END RSA PRIVATE KEY-----'
 ```
 
 If the repository is accessed using SSH, the secret must contain the field
