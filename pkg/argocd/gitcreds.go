@@ -3,6 +3,7 @@ package argocd
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
@@ -66,14 +67,25 @@ func getCredsFromSecret(wbc *WriteBackConfig, credentialsSecret string, kubeClie
 		}
 		return git.NewSSHCreds(string(sshPrivateKey), "", true), nil
 	} else if git.IsHTTPSURL(wbc.GitRepo) {
-		var username, password []byte
-		if username, ok = credentials["username"]; !ok {
-			return nil, fmt.Errorf("invalid secret %s: does not contain field username", credentialsSecret)
+		var username, password, githubAppID, githubAppInstallationID, githubAppPrivateKey []byte
+		if githubAppID, ok = credentials["githubAppID"]; ok {
+			if githubAppInstallationID, ok = credentials["githubAppInstallationID"]; !ok {
+				return nil, fmt.Errorf("invalid secret %s: does not contain field githubAppInstallationID", credentialsSecret)
+			}
+			if githubAppPrivateKey, ok = credentials["githubAppPrivateKey"]; !ok {
+				return nil, fmt.Errorf("invalid secret %s: does not contain field githubAppPrivateKey", credentialsSecret)
+			}
+			// converting byte array to string and ultimately int64 for NewGitHubAppCreds
+			intGithubAppID, _ := strconv.ParseInt(string(githubAppID), 10, 64)
+			intGithubAppInstallationID, _ := strconv.ParseInt(string(githubAppInstallationID), 10, 64)
+			return git.NewGitHubAppCreds(intGithubAppID, intGithubAppInstallationID, string(githubAppPrivateKey), "", "", "", "", true), nil
+		} else if username, ok = credentials["username"]; ok {
+			if password, ok = credentials["password"]; !ok {
+				return nil, fmt.Errorf("invalid secret %s: does not contain field password", credentialsSecret)
+			}
+			return git.NewHTTPSCreds(string(username), string(password), "", "", true, ""), nil
 		}
-		if password, ok = credentials["password"]; !ok {
-			return nil, fmt.Errorf("invalid secret %s: does not contain field password", credentialsSecret)
-		}
-		return git.NewHTTPSCreds(string(username), string(password), "", "", true, ""), nil
+		return nil, fmt.Errorf("invalid repository credentials in secret %s: does not contain githubAppID or username", credentialsSecret)
 	}
 	return nil, fmt.Errorf("unknown repository type")
 }
