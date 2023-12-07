@@ -78,11 +78,11 @@ func getCredsFromSecret(wbc *WriteBackConfig, credentialsSecret string, kubeClie
 			// converting byte array to string and ultimately int64 for NewGitHubAppCreds
 			intGithubAppID, err := strconv.ParseInt(string(githubAppID), 10, 64)
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("invalid value in field githubAppID: %w", err)
 			}
 			intGithubAppInstallationID, _ := strconv.ParseInt(string(githubAppInstallationID), 10, 64)
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("invalid value in field githubAppInstallationID: %w", err)
 			}
 			return git.NewGitHubAppCreds(intGithubAppID, intGithubAppInstallationID, string(githubAppPrivateKey), "", "", "", "", true), nil
 		} else if username, ok = credentials["username"]; ok {
