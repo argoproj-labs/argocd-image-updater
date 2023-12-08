@@ -27,6 +27,9 @@ func Test_GetImagesFromApplication(t *testing.T) {
 			ObjectMeta: v1.ObjectMeta{
 				Name:      "test-app",
 				Namespace: "argocd",
+				Annotations: map[string]string{
+					common.ImageUpdaterAnnotation: "nginx:1.12.2,that/image,quay.io/dexidp/dex:v1.23.0",
+				},
 			},
 			Spec: v1alpha1.ApplicationSpec{},
 			Status: v1alpha1.ApplicationStatus{

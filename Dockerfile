@@ -17,8 +17,7 @@ RUN apk update && \
     apk add ca-certificates git openssh-client aws-cli tini && \
     rm -rf /var/cache/apk/*
 
-RUN mkdir -p /usr/local/bin
-RUN mkdir -p /app/config
+RUN mkdir -p /usr/local/bin /app/config
 RUN adduser --home "/app" --disabled-password --uid 1000 argocd
 
 COPY --from=builder /src/argocd-image-updater/dist/argocd-image-updater /usr/local/bin/
