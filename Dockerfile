@@ -17,6 +17,8 @@ RUN apk update && \
     apk add ca-certificates git openssh-client python3 py3-pip tini && \
     pip3 install --upgrade pip && \
     pip3 install awscli && \
+    apk add gcc musl-dev python3-dev libffi-dev openssl-dev cargo make && \
+    pip3 install azure-cli && \
     rm -rf /var/cache/apk/*
 
 RUN mkdir -p /usr/local/bin
