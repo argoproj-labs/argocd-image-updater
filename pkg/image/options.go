@@ -112,6 +112,8 @@ func (img *ContainerImage) ParseUpdateStrategy(val string) UpdateStrategy {
 		return StrategyAlphabetical
 	case "digest":
 		return StrategyDigest
+	case "manual":
+		return StrategyManual
 	default:
 		logCtx.Warnf("Unknown sort option %s -- using semver", val)
 		return StrategySemVer

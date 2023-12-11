@@ -33,6 +33,7 @@ func newRunCommand() *cobra.Command {
 	var warmUpCache bool = true
 	var commitMessagePath string
 	var commitMessageTpl string
+
 	var runCmd = &cobra.Command{
 		Use:   "run",
 		Short: "Runs the argocd-image-updater with a set of options",
@@ -223,7 +224,7 @@ func newRunCommand() *cobra.Command {
 	runCmd.Flags().StringVar(&cfg.GitCommitMail, "git-commit-email", env.GetStringVal("GIT_COMMIT_EMAIL", "noreply@argoproj.io"), "E-Mail address to use for Git commits")
 	runCmd.Flags().StringVar(&commitMessagePath, "git-commit-message-path", defaultCommitTemplatePath, "Path to a template to use for Git commit messages")
 	runCmd.Flags().BoolVar(&cfg.DisableKubeEvents, "disable-kube-events", env.GetBoolVal("IMAGE_UPDATER_KUBE_EVENTS", false), "Disable kubernetes events")
-
+	runCmd.Flags().StringVar(&cfg.ManualTagValue, "manual-tag-value", "", "Defines the image tag that will be used to update the app")
 	return runCmd
 }
 
@@ -309,6 +310,7 @@ func runImageUpdater(cfg *ImageUpdaterConfig, warmUp bool) (argocd.ImageUpdaterR
 				GitCommitEmail:    cfg.GitCommitMail,
 				GitCommitMessage:  cfg.GitCommitMessage,
 				DisableKubeEvents: cfg.DisableKubeEvents,
+				ManualTagValue:    cfg.ManualTagValue,
 			}
 			res := argocd.UpdateApplication(upconf, syncState)
 			result.NumApplicationsProcessed += 1

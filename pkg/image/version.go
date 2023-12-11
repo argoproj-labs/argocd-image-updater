@@ -22,6 +22,8 @@ const (
 	StrategyAlphabetical UpdateStrategy = 2
 	// VersionSortDigest uses latest digest of an image
 	StrategyDigest UpdateStrategy = 3
+	// VersionManual uses a user provided tag for an image
+	StrategyManual UpdateStrategy = 4
 )
 
 func (us UpdateStrategy) String() string {
@@ -34,6 +36,8 @@ func (us UpdateStrategy) String() string {
 		return "alphabetical"
 	case StrategyDigest:
 		return "digest"
+	case StrategyManual:
+		return "manual"
 	}
 
 	return "unknown"
@@ -92,6 +96,8 @@ func (img *ContainerImage) GetNewestVersionFromTags(vc *VersionConstraint, tagLi
 	case StrategyNewestBuild:
 		availableTags = tagList.SortByDate()
 	case StrategyDigest:
+		availableTags = tagList.SortAlphabetically()
+	case StrategyManual:
 		availableTags = tagList.SortAlphabetically()
 	}
 
