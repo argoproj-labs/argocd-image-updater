@@ -353,7 +353,7 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 				}
 			}
 		} else {
-			logCtx.Infof("Dry run - not commiting %d changes to application", result.NumImagesUpdated)
+			logCtx.Infof("Dry run - not committing %d changes to application", result.NumImagesUpdated)
 		}
 	}
 
