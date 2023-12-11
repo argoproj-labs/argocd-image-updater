@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/argoproj-labs/argocd-image-updater/pkg/image"
 	"github.com/argoproj-labs/argocd-image-updater/test/fixture"
 
 	"github.com/stretchr/testify/assert"
@@ -81,15 +82,15 @@ func Test_LoadRegistryConfiguration(t *testing.T) {
 		err := LoadRegistryConfiguration("../../config/example-config.yaml", true)
 		require.NoError(t, err)
 		assert.Len(t, registries, 4)
-		reg, err := GetRegistryEndpoint("gcr.io")
+		reg, err := GetRegistryEndpoint(&image.ContainerImage{RegistryURL: "gcr.io"})
 		require.NoError(t, err)
 		assert.Equal(t, "pullsecret:foo/bar", reg.Credentials)
-		reg, err = GetRegistryEndpoint("ghcr.io")
+		reg, err = GetRegistryEndpoint(&image.ContainerImage{RegistryURL: "ghcr.io"})
 		require.NoError(t, err)
 		assert.Equal(t, "ext:/some/script", reg.Credentials)
 		assert.Equal(t, 5*time.Hour, reg.CredsExpire)
 		RestoreDefaultRegistryConfiguration()
-		reg, err = GetRegistryEndpoint("gcr.io")
+		reg, err = GetRegistryEndpoint(&image.ContainerImage{RegistryURL: "gcr.io"})
 		require.NoError(t, err)
 		assert.Equal(t, "", reg.Credentials)
 	})

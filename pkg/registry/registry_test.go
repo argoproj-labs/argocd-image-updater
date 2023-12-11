@@ -23,7 +23,7 @@ func Test_GetTags(t *testing.T) {
 		regClient.On("NewRepository", mock.Anything).Return(nil)
 		regClient.On("Tags", mock.Anything).Return([]string{"1.2.0", "1.2.1", "1.2.2"}, nil)
 
-		ep, err := GetRegistryEndpoint("")
+		ep, err := GetRegistryEndpoint(&image.ContainerImage{RegistryURL: ""})
 		require.NoError(t, err)
 
 		img := image.NewFromIdentifier("foo/bar:1.2.0")
@@ -42,7 +42,7 @@ func Test_GetTags(t *testing.T) {
 		regClient.On("NewRepository", mock.Anything).Return(nil)
 		regClient.On("Tags", mock.Anything).Return([]string{"1.2.0", "1.2.1", "1.2.2"}, nil)
 
-		ep, err := GetRegistryEndpoint("")
+		ep, err := GetRegistryEndpoint(&image.ContainerImage{RegistryURL: ""})
 		require.NoError(t, err)
 
 		img := image.NewFromIdentifier("foo/bar:1.2.0")
@@ -65,7 +65,7 @@ func Test_GetTags(t *testing.T) {
 		regClient.On("NewRepository", mock.Anything).Return(nil)
 		regClient.On("Tags", mock.Anything).Return([]string{"1.2.0", "1.2.1", "1.2.2"}, nil)
 
-		ep, err := GetRegistryEndpoint("")
+		ep, err := GetRegistryEndpoint(&image.ContainerImage{RegistryURL: ""})
 		require.NoError(t, err)
 
 		img := image.NewFromIdentifier("foo/bar:1.2.0")
@@ -97,7 +97,7 @@ func Test_GetTags(t *testing.T) {
 		regClient.On("ManifestForTag", mock.Anything, mock.Anything).Return(meta1, nil)
 		regClient.On("TagMetadata", mock.Anything, mock.Anything).Return(&tag.TagInfo{}, nil)
 
-		ep, err := GetRegistryEndpoint("")
+		ep, err := GetRegistryEndpoint(&image.ContainerImage{RegistryURL: ""})
 		require.NoError(t, err)
 		ep.Cache.ClearCache()
 
@@ -132,7 +132,7 @@ registries:
 		// New registry configuration
 		err = AddRegistryEndpointFromConfig(epl.Items[0])
 		require.NoError(t, err)
-		ep, err := GetRegistryEndpoint("ghcr.io")
+		ep, err := GetRegistryEndpoint(&image.ContainerImage{RegistryURL: "ghcr.io"})
 		require.NoError(t, err)
 		require.NotEqual(t, 0, ep.CredsExpire)
 

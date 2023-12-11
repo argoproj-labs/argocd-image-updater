@@ -14,6 +14,7 @@ import (
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/env"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/health"
+	"github.com/argoproj-labs/argocd-image-updater/pkg/image"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/log"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/metrics"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/registry"
@@ -343,7 +344,7 @@ func warmupImageCache(cfg *ImageUpdaterConfig) error {
 	entries := 0
 	eps := registry.ConfiguredEndpoints()
 	for _, ep := range eps {
-		r, err := registry.GetRegistryEndpoint(ep)
+		r, err := registry.GetRegistryEndpoint(&image.ContainerImage{RegistryURL: ep})
 		if err == nil {
 			entries += r.Cache.NumEntries()
 		}
