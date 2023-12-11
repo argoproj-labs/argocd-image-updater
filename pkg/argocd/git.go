@@ -314,7 +314,32 @@ func writeKustomization(app *v1alpha1.Application, wbc *WriteBackConfig, gitC gi
 	if err != nil {
 		return err, false
 	}
-	err = kyaml.UpdateFile(filterFunc, kustFile)
+
+	y, err := kyaml.ReadFile(kustFile)
+	if err != nil {
+		return err, false
+	}
+
+	originalData, err := y.String()
+	if err != nil {
+		return err, false
+	}
+
+	if err := y.PipeE(filterFunc); err != nil {
+		return err, false
+	}
+
+	override, err := y.String()
+	if err != nil {
+		return err, false
+	}
+
+	if originalData == override {
+		logCtx.Debugf("target parameter file and marshaled data are the same, skipping commit.")
+		return nil, true
+	}
+
+	err = kyaml.WriteFile(y, kustFile)
 	if err != nil {
 		return err, false
 	}
