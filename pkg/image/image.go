@@ -152,14 +152,14 @@ func (img *ContainerImage) DiffersFrom(other *ContainerImage, checkVersion bool)
 }
 
 // ContainsImage checks whether img is contained in a list of images
-func (list *ContainerImageList) ContainsImage(img *ContainerImage, checkVersion bool) *ContainerImage {
+func (list ContainerImageList) ContainsImage(img *ContainerImage, checkVersion bool) *ContainerImage {
 	// if there is a KustomizeImage override, check it for a match first
 	if img.KustomizeImage != nil {
 		if kustomizeMatch := list.ContainsImage(img.KustomizeImage, checkVersion); kustomizeMatch != nil {
 			return kustomizeMatch
 		}
 	}
-	for _, image := range *list {
+	for _, image := range list {
 		if img.ImageName == image.ImageName && image.RegistryURL == img.RegistryURL {
 			if !checkVersion || image.ImageTag.TagName == img.ImageTag.TagName {
 				return image
@@ -169,21 +169,24 @@ func (list *ContainerImageList) ContainsImage(img *ContainerImage, checkVersion 
 	return nil
 }
 
-func (list *ContainerImageList) Originals() []string {
-	results := make([]string, len(*list))
-	for i, img := range *list {
+func (list ContainerImageList) Originals() []string {
+	results := make([]string, len(list))
+	for i, img := range list {
 		results[i] = img.Original()
 	}
 	return results
 }
 
 // String Returns the name of all images as a string, separated using comma
-func (list *ContainerImageList) String() string {
-	imgNameList := make([]string, 0)
-	for _, image := range *list {
-		imgNameList = append(imgNameList, image.String())
+func (list ContainerImageList) String() string {
+	var sb strings.Builder
+	for i, image := range list {
+		sb.WriteString(image.String())
+		if i != len(list)-1 {
+			sb.WriteRune(',')
+		}
 	}
-	return strings.Join(imgNameList, ",")
+	return sb.String()
 }
 
 // Gets the registry URL from an image identifier
