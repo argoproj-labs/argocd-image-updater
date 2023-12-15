@@ -8,20 +8,28 @@ import (
 )
 
 func Test_MatchFuncAny(t *testing.T) {
-	assert.True(t, MatchFuncAny("whatever", nil))
+	result, ok := MatchFuncAny("whatever", nil)
+	assert.True(t, ok)
+	assert.Equal(t, "whatever", result)
 }
 
 func Test_MatchFuncNone(t *testing.T) {
-	assert.False(t, MatchFuncNone("whatever", nil))
+	_, ok := MatchFuncNone("whatever", nil)
+	assert.False(t, ok)
 }
 
 func Test_MatchFuncRegexp(t *testing.T) {
 	t.Run("Test with valid expression", func(t *testing.T) {
 		re := regexp.MustCompile("[a-z]+")
-		assert.True(t, MatchFuncRegexp("lemon", re))
-		assert.False(t, MatchFuncRegexp("31337", re))
+		result, ok := MatchFuncRegexp("lemon", re)
+		assert.True(t, ok)
+		assert.Equal(t, "lemon", result)
+
+		_, ok = MatchFuncRegexp("31337", re)
+		assert.False(t, ok)
 	})
 	t.Run("Test with invalid type", func(t *testing.T) {
-		assert.False(t, MatchFuncRegexp("lemon", "[a-z]+"))
+		_, ok := MatchFuncRegexp("lemon", "[a-z]+")
+		assert.False(t, ok)
 	})
 }

@@ -61,7 +61,7 @@ type VersionConstraint struct {
 	Options    *options.ManifestOptions
 }
 
-type MatchFuncFn func(tagName string, pattern interface{}) bool
+type MatchFuncFn func(tagName string, pattern interface{}) (string, bool)
 
 // String returns the string representation of VersionConstraint
 func (vc *VersionConstraint) String() string {
@@ -132,8 +132,7 @@ func (img *ContainerImage) GetNewestVersionFromTags(vc *VersionConstraint, tagLi
 
 		if vc.Strategy == StrategySemVer {
 			// Non-parseable tag does not mean error - just skip it
-			ver, err := semver.NewVersion(tag.TagName)
-			if err != nil {
+			if tag.TagVersion == nil {
 				logCtx.Tracef("Not a valid version: %s", tag.TagName)
 				continue
 			}
@@ -141,8 +140,8 @@ func (img *ContainerImage) GetNewestVersionFromTags(vc *VersionConstraint, tagLi
 			// If we have a version constraint, check image tag against it. If the
 			// constraint is not satisfied, skip tag.
 			if semverConstraint != nil {
-				if !semverConstraint.Check(ver) {
-					logCtx.Tracef("%s did not match constraint %s", ver.Original(), vc.Constraint)
+				if !semverConstraint.Check(tag.TagVersion) {
+					logCtx.Tracef("%s did not match constraint %s", tag.TagNamePart, vc.Constraint)
 					continue
 				}
 			}
