@@ -22,6 +22,12 @@ only resources of kind `application.argoproj.io`, that is, your Argo CD
 `Application` resources. Annotations on other kinds of resources will have no
 effect and will not be considered.
 
+!!!warning
+    Argo CD Image Updater is not currently compatible with the
+    [Argo CD Applications in any namespace](https://argo-cd.readthedocs.io/en/stable/operator-manual/app-any-namespace/)
+    beta feature. All `Application` resources must be declared in the `argocd`
+    namespace.
+
 As explained earlier, your Argo CD applications must be of either `Kustomize`
 or `Helm` type. Other types of applications will be ignored.
 
