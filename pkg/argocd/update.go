@@ -419,12 +419,16 @@ func marshalParamsOverride(app *v1alpha1.Application, originalData []byte) ([]by
 			images := GetImagesFromApplication(app)
 
 			for _, c := range images {
-				helmAnnotationParamName, helmAnnotationParamVersion := getHelmParamNamesFromAnnotation(app.Annotations, c.ImageName)
+				image := c.ImageAlias
+				if image == "" {
+					image = c.ImageName
+				}
+				helmAnnotationParamName, helmAnnotationParamVersion := getHelmParamNamesFromAnnotation(app.Annotations, image)
 				if helmAnnotationParamName == "" {
-					return nil, fmt.Errorf("could not find an image-name annotation for image %s", c.ImageName)
+					return nil, fmt.Errorf("could not find an image-name annotation for image %s", image)
 				}
 				if helmAnnotationParamVersion == "" {
-					return nil, fmt.Errorf("could not find an image-tag annotation for image %s", c.ImageName)
+					return nil, fmt.Errorf("could not find an image-tag annotation for image %s", image)
 				}
 
 				helmParamName := getHelmParam(appSource.Helm.Parameters, helmAnnotationParamName)
