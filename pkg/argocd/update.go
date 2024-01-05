@@ -418,6 +418,7 @@ func marshalParamsOverride(app *v1alpha1.Application, originalData []byte) ([]by
 		if strings.HasPrefix(app.Annotations[common.WriteBackTargetAnnotation], common.HelmPrefix) {
 			images := GetImagesFromApplication(app)
 
+			var helmValues string
 			for _, c := range images {
 				image := c.ImageAlias
 				if image == "" {
@@ -442,16 +443,16 @@ func marshalParamsOverride(app *v1alpha1.Application, originalData []byte) ([]by
 				}
 
 				// Build string with YAML format to merge with originalData values
-				helmValues := fmt.Sprintf("%s: %s\n%s: %s", helmAnnotationParamName, helmParamName.Value, helmAnnotationParamVersion, helmParamVersion.Value)
-
-				var mergedParams *conflate.Conflate
-				mergedParams, err = conflate.FromData(originalData, []byte(helmValues))
-				if err != nil {
-					return nil, err
-				}
-
-				override, err = mergedParams.MarshalYAML()
+				helmValues += fmt.Sprintf("%s: %s\n%s: %s\n", helmAnnotationParamName, helmParamName.Value, helmAnnotationParamVersion, helmParamVersion.Value)
 			}
+
+			var mergedParams *conflate.Conflate
+			mergedParams, err = conflate.FromData(originalData, []byte(helmValues))
+			if err != nil {
+				return nil, err
+			}
+
+			override, err = mergedParams.MarshalYAML()
 		} else {
 			var params helmOverride
 			newParams := helmOverride{
