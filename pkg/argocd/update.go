@@ -21,7 +21,6 @@ import (
 
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/application"
 	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
-	"github.com/miracl/conflate"
 	"gopkg.in/yaml.v2"
 )
 
@@ -416,9 +415,13 @@ func marshalParamsOverride(app *v1alpha1.Application, originalData []byte) ([]by
 		}
 
 		if strings.HasPrefix(app.Annotations[common.WriteBackTargetAnnotation], common.HelmPrefix) {
-			images := GetImagesAndAliasesFromApplication(app)
+			params := make(map[interface{}]interface{})
+			err = yaml.Unmarshal(originalData, &params)
+			if err != nil {
+				return nil, err
+			}
 
-			var helmValues string
+			images := GetImagesAndAliasesFromApplication(app)
 			for _, c := range images {
 				image := c.ImageAlias
 				if image == "" {
@@ -442,17 +445,11 @@ func marshalParamsOverride(app *v1alpha1.Application, originalData []byte) ([]by
 					return nil, fmt.Errorf("%s parameter not found", helmAnnotationParamVersion)
 				}
 
-				// Build string with YAML format to merge with originalData values
-				helmValues += fmt.Sprintf("%s: %s\n%s: %s\n", helmAnnotationParamName, helmParamName.Value, helmAnnotationParamVersion, helmParamVersion.Value)
+				setNestedField(params, helmAnnotationParamName, helmParamName.Value)
+				setNestedField(params, helmAnnotationParamVersion, helmParamVersion.Value)
 			}
 
-			var mergedParams *conflate.Conflate
-			mergedParams, err = conflate.FromData(originalData, []byte(helmValues))
-			if err != nil {
-				return nil, err
-			}
-
-			override, err = mergedParams.MarshalYAML()
+			override, err = yaml.Marshal(params)
 		} else {
 			var params helmOverride
 			newParams := helmOverride{
@@ -484,6 +481,18 @@ func marshalParamsOverride(app *v1alpha1.Application, originalData []byte) ([]by
 	}
 
 	return override, nil
+}
+
+func setNestedField(data map[interface{}]interface{}, fieldPath string, newValue string) {
+	fields := strings.Split(fieldPath, ".")
+	lastFieldIndex := len(fields) - 1
+	for i, name := range fields {
+		if i == lastFieldIndex {
+			data[name] = newValue
+		} else {
+			data = data[name].(map[interface{}]interface{})
+		}
+	}
 }
 
 func mergeHelmOverride(t *helmOverride, o *helmOverride) {
