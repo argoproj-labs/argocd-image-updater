@@ -481,29 +481,20 @@ func SetKustomizeImage(app *v1alpha1.Application, newImage *image.ContainerImage
 	return nil
 }
 
-// ImageIsAllowed checks whether img is declared in image-list annotation
-func ImageIsAllowed(img *image.ContainerImage, list *image.ContainerImageList) bool {
-	for _, i := range *list {
-		if i.ImageName == img.ImageName {
-			return true
-		}
-	}
-	return false
-}
-
 // GetImagesFromApplication returns the list of known images for the given application
 func GetImagesFromApplication(app *v1alpha1.Application) image.ContainerImageList {
 	images := make(image.ContainerImageList, 0)
 	annotations := app.Annotations
 	imagesFromAnnotations := parseImageList(annotations)
 
-	appImgs := make(image.ContainerImageList, 0, len(app.Status.Summary.Images))
+	appImgs := make(map[string]struct{}, len(app.Status.Summary.Images))
 	for _, imageStr := range app.Status.Summary.Images {
-		appImgs = append(appImgs, image.NewFromIdentifier(imageStr))
+		img := image.NewFromIdentifier(imageStr)
+		appImgs[img.ImageName] = struct{}{}
 	}
 
 	for _, img := range *imagesFromAnnotations {
-		if ImageIsAllowed(img, &appImgs) {
+		if _, ok := appImgs[img.ImageName]; ok {
 			images = append(images, img)
 		}
 	}
