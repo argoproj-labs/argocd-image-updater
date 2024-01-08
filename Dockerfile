@@ -14,9 +14,13 @@ FROM alpine:latest
 
 RUN apk update && \
     apk upgrade && \
-    apk add --no-cache aws-cli ca-certificates git openssh-client tini
+    apk add ca-certificates git openssh-client python3 py3-pip tini && \
+    pip3 install --upgrade pip && \
+    pip3 install awscli && \
+    rm -rf /var/cache/apk/*
 
-RUN mkdir -p /usr/local/bin /app/config
+RUN mkdir -p /usr/local/bin
+RUN mkdir -p /app/config
 RUN adduser --home "/app" --disabled-password --uid 1000 argocd
 
 COPY --from=builder /src/argocd-image-updater/dist/argocd-image-updater /usr/local/bin/
