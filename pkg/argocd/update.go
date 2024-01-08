@@ -415,12 +415,13 @@ func marshalParamsOverride(app *v1alpha1.Application, originalData []byte) ([]by
 		}
 
 		if strings.HasPrefix(app.Annotations[common.WriteBackTargetAnnotation], common.HelmPrefix) {
-			params := make(map[interface{}]interface{})
-			err = yaml.Unmarshal(originalData, &params)
+			values := make(map[interface{}]interface{})
+			err = yaml.Unmarshal(originalData, &values)
 			if err != nil {
 				return nil, err
 			}
 
+			newValues := make(map[string]string)
 			images := GetImagesAndAliasesFromApplication(app)
 			for _, c := range images {
 				image := c.ImageAlias
@@ -439,17 +440,17 @@ func marshalParamsOverride(app *v1alpha1.Application, originalData []byte) ([]by
 				if helmParamName == nil {
 					return nil, fmt.Errorf("%s parameter not found", helmAnnotationParamName)
 				}
+				newValues[helmAnnotationParamName] = helmParamName.Value
 
 				helmParamVersion := getHelmParam(appSource.Helm.Parameters, helmAnnotationParamVersion)
 				if helmParamVersion == nil {
 					return nil, fmt.Errorf("%s parameter not found", helmAnnotationParamVersion)
 				}
-
-				setNestedField(params, helmAnnotationParamName, helmParamName.Value)
-				setNestedField(params, helmAnnotationParamVersion, helmParamVersion.Value)
+				newValues[helmAnnotationParamVersion] = helmParamVersion.Value
 			}
+			mergeHelmValues(values, newValues)
 
-			override, err = yaml.Marshal(params)
+			override, err = yaml.Marshal(values)
 		} else {
 			var params helmOverride
 			newParams := helmOverride{
@@ -483,18 +484,6 @@ func marshalParamsOverride(app *v1alpha1.Application, originalData []byte) ([]by
 	return override, nil
 }
 
-func setNestedField(data map[interface{}]interface{}, fieldPath string, newValue string) {
-	fields := strings.Split(fieldPath, ".")
-	lastFieldIndex := len(fields) - 1
-	for i, name := range fields {
-		if i == lastFieldIndex {
-			data[name] = newValue
-		} else {
-			data = data[name].(map[interface{}]interface{})
-		}
-	}
-}
-
 func mergeHelmOverride(t *helmOverride, o *helmOverride) {
 	for _, param := range o.Helm.Parameters {
 		idx := slices.IndexFunc(t.Helm.Parameters, func(tp v1alpha1.HelmParameter) bool { return tp.Name == param.Name })
@@ -503,6 +492,20 @@ func mergeHelmOverride(t *helmOverride, o *helmOverride) {
 			continue
 		}
 		t.Helm.Parameters = append(t.Helm.Parameters, param)
+	}
+}
+
+func mergeHelmValues(values map[interface{}]interface{}, newValues map[string]string) {
+	for fieldPath, newValue := range newValues {
+		fields := strings.Split(fieldPath, ".")
+		lastFieldIndex := len(fields) - 1
+		for i, name := range fields {
+			if i == lastFieldIndex {
+				values[name] = newValue
+			} else {
+				values = values[name].(map[interface{}]interface{})
+			}
+		}
 	}
 }
 
