@@ -499,12 +499,16 @@ func mergeHelmValues(values map[interface{}]interface{}, newValues map[string]st
 	for fieldPath, newValue := range newValues {
 		fields := strings.Split(fieldPath, ".")
 		lastFieldIndex := len(fields) - 1
+		node := values
 		for i, name := range fields {
 			if i == lastFieldIndex {
-				values[name] = newValue
-			} else {
-				values = values[name].(map[interface{}]interface{})
+				node[name] = newValue
+
+				break
+			} else if _, ok := node[name]; !ok {
+				node[name] = make(map[interface{}]interface{})
 			}
+			node = node[name].(map[interface{}]interface{})
 		}
 	}
 }

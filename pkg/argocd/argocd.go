@@ -487,15 +487,16 @@ func GetImagesFromApplication(app *v1alpha1.Application) image.ContainerImageLis
 	annotations := app.Annotations
 	imagesFromAnnotations := parseImageList(annotations)
 
-	appImgs := make(map[string]struct{}, len(app.Status.Summary.Images))
+	appImgs := make(map[string]*image.ContainerImage, len(app.Status.Summary.Images))
 	for _, imageStr := range app.Status.Summary.Images {
 		img := image.NewFromIdentifier(imageStr)
-		appImgs[img.ImageName] = struct{}{}
+		appImgs[img.ImageName] = img
 	}
 
 	for _, img := range *imagesFromAnnotations {
-		if _, ok := appImgs[img.ImageName]; ok {
-			images = append(images, img)
+		if appImg, ok := appImgs[img.ImageName]; ok {
+			appImg.ImageAlias = img.ImageAlias
+			images = append(images, appImg)
 		}
 	}
 
