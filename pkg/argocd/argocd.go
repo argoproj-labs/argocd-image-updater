@@ -182,13 +182,13 @@ func FilterApplicationsForUpdate(apps []v1alpha1.Application, patterns []string,
 		// Check whether application has our annotation set
 		annotations := app.GetAnnotations()
 		if _, ok := annotations[common.ImageUpdaterAnnotation]; !ok {
-			logCtx.Tracef("skipping app '%s' of type '%s' because required annotation is missing", app.GetName(), sourceType)
+			logCtx.Tracef("skipping app '%s' of type '%s' because required annotation is missing", app.QualifiedName(), sourceType)
 			continue
 		}
 
 		// Check for valid application type
 		if !IsValidApplicationType(&app) {
-			logCtx.Warnf("skipping app '%s' of type '%s' because it's not of supported source type", app.GetName(), sourceType)
+			logCtx.Warnf("skipping app '%s' of type '%s' because it's not of supported source type", app.QualifiedName(), sourceType)
 			continue
 		}
 
@@ -204,7 +204,7 @@ func FilterApplicationsForUpdate(apps []v1alpha1.Application, patterns []string,
 			continue
 		}
 
-		logCtx.Tracef("processing app '%s' of type '%v'", app.GetName(), sourceType)
+		logCtx.Tracef("processing app '%s' of type '%v'", app.QualifiedName(), sourceType)
 		imageList := parseImageList(annotations)
 		appImages := ApplicationImages{}
 		appImages.Application = app
