@@ -160,6 +160,235 @@ func Test_GetApplicationType(t *testing.T) {
 
 }
 
+func Test_GetApplicationSourceType(t *testing.T) {
+	t.Run("Get application Source Type for Helm", func(t *testing.T) {
+		application := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "test-app",
+				Namespace: "argocd",
+			},
+			Spec: v1alpha1.ApplicationSpec{},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypeHelm,
+				Summary: v1alpha1.ApplicationSummary{
+					Images: []string{"nginx:1.12.2", "that/image", "quay.io/dexidp/dex:v1.23.0"},
+				},
+			},
+		}
+		appType := GetApplicationSourceType(application)
+		assert.Equal(t, v1alpha1.ApplicationSourceTypeHelm, appType)
+	})
+
+	t.Run("Get application Source type for Kustomize", func(t *testing.T) {
+		application := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "test-app",
+				Namespace: "argocd",
+			},
+			Spec: v1alpha1.ApplicationSpec{},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypeKustomize,
+				Summary: v1alpha1.ApplicationSummary{
+					Images: []string{"nginx:1.12.2", "that/image", "quay.io/dexidp/dex:v1.23.0"},
+				},
+			},
+		}
+		appType := GetApplicationSourceType(application)
+		assert.Equal(t, v1alpha1.ApplicationSourceTypeKustomize, appType)
+	})
+
+	t.Run("Get application of unknown Type", func(t *testing.T) {
+		application := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "test-app",
+				Namespace: "argocd",
+			},
+			Spec: v1alpha1.ApplicationSpec{},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypePlugin,
+				Summary: v1alpha1.ApplicationSummary{
+					Images: []string{"nginx:1.12.2", "that/image", "quay.io/dexidp/dex:v1.23.0"},
+				},
+			},
+		}
+		appType := GetApplicationType(application)
+		assert.NotEqual(t, v1alpha1.ApplicationSourceTypeHelm, appType)
+		assert.NotEqual(t, v1alpha1.ApplicationSourceTypeKustomize, appType)
+	})
+
+	t.Run("Get application Source type with kustomize target", func(t *testing.T) {
+		application := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "test-app",
+				Namespace: "argocd",
+				Annotations: map[string]string{
+					common.WriteBackTargetAnnotation: "kustomization:.",
+				},
+			},
+			Spec: v1alpha1.ApplicationSpec{},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypePlugin,
+				Summary: v1alpha1.ApplicationSummary{
+					Images: []string{"nginx:1.12.2", "that/image", "quay.io/dexidp/dex:v1.23.0"},
+				},
+			},
+		}
+		appType := GetApplicationSourceType(application)
+		assert.Equal(t, v1alpha1.ApplicationSourceTypeKustomize, appType)
+	})
+}
+
+func Test_GetApplicationSource(t *testing.T) {
+	t.Run("Get application Source for Helm from monosource application", func(t *testing.T) {
+		application := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "test-app",
+				Namespace: "testns",
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: &v1alpha1.ApplicationSource{
+					Helm: &v1alpha1.ApplicationSourceHelm{
+						Parameters: []v1alpha1.HelmParameter{
+							{
+								Name:  "image.tag",
+								Value: "1.0.0",
+							},
+						},
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{},
+		}
+
+		appSource := GetApplicationSource(application)
+		assert.NotNil(t, appSource.Helm)
+	})
+
+	t.Run("Get application Source for Kustomize from monosource application", func(t *testing.T) {
+		application := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "test-app",
+				Namespace: "testns",
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: &v1alpha1.ApplicationSource{
+					Kustomize: &v1alpha1.ApplicationSourceKustomize{
+						Images: v1alpha1.KustomizeImages{
+							"jannfis/foobar:1.0.0",
+						},
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{},
+		}
+
+		appSource := GetApplicationSource(application)
+		assert.NotNil(t, appSource.Kustomize)
+	})
+
+	t.Run("Get application of unknown Type", func(t *testing.T) {
+		application := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "test-app",
+				Namespace: "testns",
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: &v1alpha1.ApplicationSource{
+					RepoURL: "https://example.argocd",
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{},
+		}
+
+		appSource := GetApplicationSource(application)
+		assert.NotEmpty(t, appSource)
+	})
+
+	t.Run("Get application Source for Helm from multisource application", func(t *testing.T) {
+		application := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "test-app",
+				Namespace: "testns",
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Sources: v1alpha1.ApplicationSources{
+					v1alpha1.ApplicationSource{
+						Path: "sources/source1",
+						Helm: &v1alpha1.ApplicationSourceHelm{
+							Parameters: []v1alpha1.HelmParameter{
+								{
+									Name:  "image.tag",
+									Value: "1.0.0",
+								},
+							},
+						},
+					},
+					v1alpha1.ApplicationSource{
+						Path: "sources/source2",
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{},
+		}
+
+		appSource := GetApplicationSource(application)
+		assert.NotNil(t, appSource.Helm)
+	})
+
+	t.Run("Get application Source for Kustomize from multisource application", func(t *testing.T) {
+		application := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "test-app",
+				Namespace: "testns",
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Sources: v1alpha1.ApplicationSources{
+					v1alpha1.ApplicationSource{
+						Path: "sources/source1",
+						Kustomize: &v1alpha1.ApplicationSourceKustomize{
+							Images: v1alpha1.KustomizeImages{
+								"jannfis/foobar:1.0.0",
+							},
+						},
+					},
+					v1alpha1.ApplicationSource{
+						Path: "sources/source2",
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{},
+		}
+
+		appSource := GetApplicationSource(application)
+		assert.NotNil(t, appSource.Kustomize)
+	})
+
+	t.Run("Return first Source for not Kustomize neither Helm from multisource application", func(t *testing.T) {
+		application := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "test-app",
+				Namespace: "testns",
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Sources: v1alpha1.ApplicationSources{
+					v1alpha1.ApplicationSource{
+						Path: "sources/source1",
+					},
+					v1alpha1.ApplicationSource{
+						Path: "sources/source2",
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{},
+		}
+
+		appSource := GetApplicationSource(application)
+		assert.NotEmpty(t, appSource)
+		assert.Equal(t, appSource.Path, "sources/source1")
+	})
+
+}
+
 func Test_FilterApplicationsForUpdate(t *testing.T) {
 	t.Run("Filter for applications without patterns", func(t *testing.T) {
 		applicationList := []v1alpha1.Application{

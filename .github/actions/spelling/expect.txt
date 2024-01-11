@@ -1,6 +1,7 @@
 
 aeece
 Artifactory
+applicationid
 bacd
 CVE
 credref
@@ -10,9 +11,12 @@ eec
 fbd
 ffb
 gitlab
+helmvalues
+installationid
 jfrog
 mep
 myregistry
+PRIVATEKEYDATA
 repocreds
 rollbacked
 someimage

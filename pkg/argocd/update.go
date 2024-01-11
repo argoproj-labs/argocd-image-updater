@@ -21,6 +21,7 @@ import (
 
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/application"
 	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
+	"github.com/miracl/conflate"
 	"gopkg.in/yaml.v2"
 )
 
@@ -388,16 +389,18 @@ func marshalParamsOverride(app *v1alpha1.Application, originalData []byte) ([]by
 	var err error
 
 	appType := GetApplicationType(app)
+	appSource := getApplicationSource(app)
+
 	switch appType {
 	case ApplicationTypeKustomize:
-		if app.Spec.Source.Kustomize == nil {
+		if appSource.Kustomize == nil {
 			return []byte{}, nil
 		}
 
 		var params kustomizeOverride
 		newParams := kustomizeOverride{
 			Kustomize: kustomizeImages{
-				Images: &app.Spec.Source.Kustomize.Images,
+				Images: &appSource.Kustomize.Images,
 			},
 		}
 
@@ -413,27 +416,66 @@ func marshalParamsOverride(app *v1alpha1.Application, originalData []byte) ([]by
 		mergeKustomizeOverride(&params, &newParams)
 		override, err = yaml.Marshal(params)
 	case ApplicationTypeHelm:
-		if app.Spec.Source.Helm == nil {
+		if appSource.Helm == nil {
 			return []byte{}, nil
 		}
-		var params helmOverride
-		newParams := helmOverride{
-			Helm: helmParameters{
-				Parameters: app.Spec.Source.Helm.Parameters,
-			},
-		}
 
-		if len(originalData) == 0 {
-			override, err = yaml.Marshal(newParams)
-			break
+		if strings.HasPrefix(app.Annotations[common.WriteBackTargetAnnotation], common.HelmPrefix) {
+			images := GetImagesFromApplication(app)
+
+			for _, c := range images {
+				helmAnnotationParamName, helmAnnotationParamVersion := getHelmParamNamesFromAnnotation(app.Annotations, c.ImageName)
+				if helmAnnotationParamName == "" {
+					return nil, fmt.Errorf("could not find an image-name annotation for image %s", c.ImageName)
+				}
+				if helmAnnotationParamVersion == "" {
+					return nil, fmt.Errorf("could not find an image-tag annotation for image %s", c.ImageName)
+				}
+
+				helmParamName := getHelmParam(appSource.Helm.Parameters, helmAnnotationParamName)
+				if helmParamName == nil {
+					return nil, fmt.Errorf("%s parameter not found", helmAnnotationParamName)
+				}
+
+				helmParamVersion := getHelmParam(appSource.Helm.Parameters, helmAnnotationParamVersion)
+				if helmParamVersion == nil {
+					return nil, fmt.Errorf("%s parameter not found", helmAnnotationParamVersion)
+				}
+
+				// Build string with YAML format to merge with originalData values
+				helmValues := fmt.Sprintf("%s: %s\n%s: %s", helmAnnotationParamName, helmParamName.Value, helmAnnotationParamVersion, helmParamVersion.Value)
+
+				var mergedParams *conflate.Conflate
+				mergedParams, err = conflate.FromData(originalData, []byte(helmValues))
+				if err != nil {
+					return nil, err
+				}
+
+				override, err = mergedParams.MarshalYAML()
+			}
+		} else {
+			var params helmOverride
+			newParams := helmOverride{
+				Helm: helmParameters{
+					Parameters: appSource.Helm.Parameters,
+				},
+			}
+
+			outputParams := appSource.Helm.ValuesYAML()
+			log.WithContext().AddField("application", app).Debugf("values: '%s'", outputParams)
+
+			if len(originalData) == 0 {
+				override, err = yaml.Marshal(newParams)
+				break
+			}
+			err = yaml.Unmarshal(originalData, &params)
+			if err != nil {
+				override, err = yaml.Marshal(newParams)
+				break
+			}
+			mergeHelmOverride(&params, &newParams)
+			override, err = yaml.Marshal(params)
 		}
-		err = yaml.Unmarshal(originalData, &params)
-		if err != nil {
-			override, err = yaml.Marshal(newParams)
-			break
-		}
-		mergeHelmOverride(&params, &newParams)
-		override, err = yaml.Marshal(params)
 	default:
 		err = fmt.Errorf("unsupported application type")
 	}
@@ -471,7 +513,7 @@ func getWriteBackConfig(app *v1alpha1.Application, kubeClient *kube.KubernetesCl
 	// Default write-back is to use Argo CD API
 	wbc.Method = WriteBackApplication
 	wbc.ArgoClient = argoClient
-	wbc.Target = parseDefaultTarget(app.Name, app.Spec.Source.Path)
+	wbc.Target = parseDefaultTarget(app.Name, getApplicationSource(app).Path)
 
 	// If we have no update method, just return our default
 	method, ok := app.Annotations[common.WriteBackMethodAnnotation]
@@ -490,8 +532,13 @@ func getWriteBackConfig(app *v1alpha1.Application, kubeClient *kube.KubernetesCl
 	switch strings.TrimSpace(method) {
 	case "git":
 		wbc.Method = WriteBackGit
-		if target, ok := app.Annotations[common.WriteBackTargetAnnotation]; ok && strings.HasPrefix(target, common.KustomizationPrefix) {
-			wbc.KustomizeBase = parseTarget(target, app.Spec.Source.Path)
+		target, ok := app.Annotations[common.WriteBackTargetAnnotation]
+		if ok && strings.HasPrefix(target, common.KustomizationPrefix) {
+			wbc.KustomizeBase = parseKustomizeBase(target, getApplicationSource(app).Path)
+		} else if ok && strings.HasPrefix(target, common.HelmPrefix) { // This keeps backward compatibility
+			wbc.Target = parseTarget(target, getApplicationSource(app).Path)
+		} else if ok { // This keeps backward compatibility
+			wbc.Target = app.Annotations[common.WriteBackTargetAnnotation]
 		}
 		if err := parseGitConfig(app, kubeClient, wbc, creds); err != nil {
 			return nil, err
@@ -509,10 +556,21 @@ func parseDefaultTarget(appName string, path string) string {
 	return filepath.Join(path, defaultTargetFile)
 }
 
-func parseTarget(target string, sourcePath string) (kustomizeBase string) {
+func parseKustomizeBase(target string, sourcePath string) (kustomizeBase string) {
 	if target == common.KustomizationPrefix {
 		return filepath.Join(sourcePath, ".")
 	} else if base := target[len(common.KustomizationPrefix)+1:]; strings.HasPrefix(base, "/") {
+		return base[1:]
+	} else {
+		return filepath.Join(sourcePath, base)
+	}
+}
+
+// parseTarget extracts the target path to set in the writeBackConfig configuration
+func parseTarget(writeBackTarget string, sourcePath string) string {
+	if writeBackTarget == common.HelmPrefix {
+		return filepath.Join(sourcePath, "./", common.DefaultHelmValuesFilename)
+	} else if base := writeBackTarget[len(common.HelmPrefix)+1:]; strings.HasPrefix(base, "/") {
 		return base[1:]
 	} else {
 		return filepath.Join(sourcePath, base)
@@ -531,7 +589,7 @@ func parseGitConfig(app *v1alpha1.Application, kubeClient *kube.KubernetesClient
 			wbc.GitWriteBranch = branches[1]
 		}
 	}
-	wbc.GitRepo = app.Spec.Source.RepoURL
+	wbc.GitRepo = getApplicationSource(app).RepoURL
 	repo, ok := app.Annotations[common.GitRepositoryAnnotation]
 	if ok {
 		wbc.GitRepo = repo
