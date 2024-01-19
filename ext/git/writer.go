@@ -93,7 +93,7 @@ func (m *nativeGitClient) Add(path string) error {
 
 // SymRefToBranch retrieves the branch name a symbolic ref points to
 func (m *nativeGitClient) SymRefToBranch(symRef string) (string, error) {
-	output, err := m.runCmd("symbolic-ref", "refs/remotes/origin/" + symRef)
+	output, err := m.runCmd("symbolic-ref", "refs/remotes/origin/"+symRef)
 	if err != nil {
 		return "", fmt.Errorf("could not resolve symbolic ref '%s': %v", symRef, err)
 	}
