@@ -14,9 +14,7 @@ FROM alpine:latest
 
 RUN apk update && \
     apk upgrade && \
-    apk add ca-certificates git openssh-client python3 py3-pip tini && \
-    pip3 install --upgrade pip && \
-    pip3 install awscli && \
+    apk add ca-certificates git openssh-client python3 py3-pip tini aws-cli && \
     rm -rf /var/cache/apk/*
 
 RUN mkdir -p /usr/local/bin
