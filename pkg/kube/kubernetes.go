@@ -8,6 +8,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/argoproj-labs/argocd-image-updater/pkg/log"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/metrics"
 
 	appv1alpha1 "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
@@ -38,7 +39,7 @@ func NewKubernetesClient(ctx context.Context, client kubernetes.Interface, appli
 // NewKubernetesClient creates a new Kubernetes client object from given
 // configuration file. If configuration file is the empty string, in-cluster
 // client will be created.
-func NewKubernetesClientFromConfig(ctx context.Context, namespace string, kubeconfig string) (*KubernetesClient, error) {
+func NewKubernetesClientFromConfig(ctx context.Context, namespace string, namespaced bool, kubeconfig string) (*KubernetesClient, error) {
 	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
 	loadingRules.DefaultClientConfig = &clientcmd.DefaultClientConfig
 	loadingRules.ExplicitPath = kubeconfig
@@ -50,7 +51,7 @@ func NewKubernetesClientFromConfig(ctx context.Context, namespace string, kubeco
 		return nil, err
 	}
 
-	if namespace == "" {
+	if namespace == "" && namespaced {
 		namespace, _, err = clientConfig.Namespace()
 		if err != nil {
 			return nil, err
@@ -67,6 +68,7 @@ func NewKubernetesClientFromConfig(ctx context.Context, namespace string, kubeco
 		return nil, err
 	}
 
+	log.Debugf("Creating kubernetes client for ns '%s'", namespace)
 	return NewKubernetesClient(ctx, clientset, applicationsClientset, namespace), nil
 }
 

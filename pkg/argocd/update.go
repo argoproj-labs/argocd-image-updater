@@ -141,6 +141,7 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 
 	result := ImageUpdaterResult{}
 	app := updateConf.UpdateApp.Application.GetName()
+	namespace := updateConf.UpdateApp.Application.GetNamespace()
 	changeList := make([]ChangeEntry, 0)
 
 	// Get all images that are deployed with the current application
@@ -157,7 +158,10 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 	for _, applicationImage := range updateConf.UpdateApp.Images {
 		updateableImage := applicationImages.ContainsImage(applicationImage, false)
 		if updateableImage == nil {
-			log.WithContext().AddField("application", app).Debugf("Image '%s' seems not to be live in this application, skipping", applicationImage.ImageName)
+			log.WithContext().
+				AddField("application", app).
+				AddField("namespace", namespace).
+				Debugf("Image '%s' seems not to be live in this application, skipping", applicationImage.ImageName)
 			result.NumSkipped += 1
 			continue
 		}
@@ -173,6 +177,7 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 
 		imgCtx := log.WithContext().
 			AddField("application", app).
+			AddField("namespace", namespace).
 			AddField("registry", updateableImage.RegistryURL).
 			AddField("image_name", updateableImage.ImageName).
 			AddField("image_tag", updateableImage.ImageTag).

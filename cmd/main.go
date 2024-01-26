@@ -45,6 +45,7 @@ type ImageUpdaterConfig struct {
 	GitCommitMail       string
 	GitCommitMessage    *template.Template
 	DisableKubeEvents   bool
+	Namespaced          bool
 }
 
 // newRootCommand implements the root command of argocd-image-updater

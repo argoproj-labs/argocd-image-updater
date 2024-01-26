@@ -435,8 +435,8 @@ func Test_FilterApplicationsForUpdate(t *testing.T) {
 		filtered, err := FilterApplicationsForUpdate(applicationList, []string{}, "")
 		require.NoError(t, err)
 		require.Len(t, filtered, 1)
-		require.Contains(t, filtered, "app1")
-		assert.Len(t, filtered["app1"].Images, 2)
+		require.Contains(t, filtered, "argocd/app1")
+		assert.Len(t, filtered["argocd/app1"].Images, 2)
 	})
 
 	t.Run("Filter for applications with patterns", func(t *testing.T) {
@@ -487,9 +487,9 @@ func Test_FilterApplicationsForUpdate(t *testing.T) {
 		filtered, err := FilterApplicationsForUpdate(applicationList, []string{"app*"}, "")
 		require.NoError(t, err)
 		require.Len(t, filtered, 2)
-		require.Contains(t, filtered, "app1")
-		require.Contains(t, filtered, "app2")
-		assert.Len(t, filtered["app1"].Images, 2)
+		require.Contains(t, filtered, "argocd/app1")
+		require.Contains(t, filtered, "argocd/app2")
+		assert.Len(t, filtered["argocd/app1"].Images, 2)
 	})
 
 	t.Run("Filter for applications with label", func(t *testing.T) {
@@ -529,8 +529,8 @@ func Test_FilterApplicationsForUpdate(t *testing.T) {
 		filtered, err := FilterApplicationsForUpdate(applicationList, []string{}, "custom.label/name=xyz")
 		require.NoError(t, err)
 		require.Len(t, filtered, 1)
-		require.Contains(t, filtered, "app1")
-		assert.Len(t, filtered["app1"].Images, 2)
+		require.Contains(t, filtered, "argocd/app1")
+		assert.Len(t, filtered["argocd/app1"].Images, 2)
 	})
 
 }
