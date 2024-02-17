@@ -15,6 +15,7 @@ It has been successfully tested against the following popular registries:
 * GitHub Packages Registry (`docker.pkg.github.com`)
 * GitLab Container Registry (`registry.gitlab.com`)
 * Google Container Registry (`gcr.io`)
+* Azure Container Registry (`azurecr.io`)
 
 Chances are, that it will work out of the box for other registries as well.
 
@@ -326,3 +327,95 @@ two strategies to overcome this:
   i.e. for getting EKS credentials from the aws CLI. For example, if the
   token has a lifetime of 12 hours, you can set `credsexpire: 12h` and Argo
   CD Image Updater will get a new token after 12 hours.
+
+### <a name="default-registry"></a>Configuring Azure Container registry with
+Workload identity
+
+Follow the steps described below to authenticate against an Azure Container
+Registry using Azure Workload Identities with an external script.
+
+Create a script to retrieve the ACR refresh token with the Azure Identity
+token:
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-image-updater-auth
+data:
+  auth.sh: |
+    AAD_ACCESS_TOKEN=$(cat $AZURE_FEDERATED_TOKEN_FILE)
+
+    ACCESS_TOKEN=$(wget --output-document - --header "Content-Type: application/x-www-form-urlencoded" \
+    --post-data="grant_type=client_credentials&client_id=${AZURE_CLIENT_ID}&client_assertion_type=urn:ietf:params:oauth:client-assertion-type:jwt-bearer&scope=https://management.azure.com/.default&client_assertion=${AAD_ACCESS_TOKEN}" \
+    https://login.microsoftonline.com/${AZURE_TENANT_ID}/oauth2/v2.0/token \
+    | python3 -c "import sys, json; print(json.load(sys.stdin)['access_token'])")
+
+    ACR_REFRESH_TOKEN=$(wget --quiet --header="Content-Type: application/x-www-form-urlencoded" \
+    --post-data="grant_type=access_token&service=${ACR_NAME}&access_token=${ACCESS_TOKEN}" \
+    --output-document - \
+    "https://${ACR_NAME}/oauth2/exchange" |
+    python3 -c "import sys, json; print(json.load(sys.stdin)['refresh_token'])")
+
+    echo "00000000-0000-0000-0000-000000000000:$ACR_REFRESH_TOKEN"
+```
+
+Configure the Azure registry and map the authentication script:
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-image-updater-config
+data:
+  registries.conf: |
+    registries:
+      - name: acr-name
+        prefix: acr-name.azurecr.io
+        api_url: https://acr-name.azurecr.io
+        default: true
+        credentials: ext:/app/auth/auth.sh
+        credsexpire: 1h
+```
+
+Patch the service account with the appropriate Azure Workload identity labels
+and annotations:
+
+```yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: argocd-image-updater
+  labels:
+    azure.workload.identity/use: "true"
+  annotations:
+    azure.workload.identity/client-id: placeholder
+```
+
+Patch the deployment with the appropriate Azure Workload identity labels, mount
+directory and `ACR_NAME` environment variable:
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: argocd-image-updater
+spec:
+  template:
+    metadata:
+      labels:
+        azure.workload.identity/use: "true"
+    spec:
+      containers:
+        - name: argocd-image-updater
+          env:
+            - name: ACR_NAME
+              value: placeholder
+          volumeMounts:
+            - mountPath: /app/auth
+              name: auth
+      volumes:
+        - configMap:
+            name: argocd-image-updater-auth
+          name: auth
+```
