@@ -284,6 +284,12 @@ func writeOverrides(app *v1alpha1.Application, wbc *WriteBackConfig, gitC git.Cl
 		}
 	}
 
+	dir := filepath.Dir(targetFile)
+	err = os.MkdirAll(dir, 0700)
+	if err != nil {
+		return
+	}
+
 	err = os.WriteFile(targetFile, override, 0600)
 	if err != nil {
 		return
