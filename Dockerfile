@@ -1,4 +1,4 @@
-FROM golang:1.18 AS builder
+FROM golang:1.20 AS builder
 
 RUN mkdir -p /src/argocd-image-updater
 WORKDIR /src/argocd-image-updater
@@ -10,11 +10,12 @@ COPY . .
 RUN mkdir -p dist && \
 	make controller
 
-FROM alpine:latest
+# FROM alpine:latest
+FROM alpine:3.17.7
 
 RUN apk update && \
     apk upgrade && \
-    apk add ca-certificates git openssh-client python3 py3-pip && \
+    apk add ca-certificates git openssh-client python3 py3-pip tini && \
     pip3 install --upgrade pip && \
     pip3 install awscli && \
     rm -rf /var/cache/apk/*
@@ -28,4 +29,4 @@ COPY hack/git-ask-pass.sh /usr/local/bin/git-ask-pass.sh
 
 USER 1000
 
-ENTRYPOINT ["/usr/local/bin/argocd-image-updater"]
+ENTRYPOINT ["/sbin/tini", "--", "/usr/local/bin/argocd-image-updater"]

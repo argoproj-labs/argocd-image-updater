@@ -1,4 +1,4 @@
-IMAGE_NAMESPACE?=registry.********.ru/devops
+IMAGE_NAMESPACE?=registry.sima-land.ru/devops
 IMAGE_NAME=argocd-image-updater
 IMAGE_TAG?=v0.12.2--sl-devops-clean
 ifdef IMAGE_NAMESPACE
@@ -76,6 +76,7 @@ controller:
 .PHONY: image
 image: clean-image
 	docker build \
+		--platform linux/amd64 \
 		-t ${IMAGE_PREFIX}${IMAGE_NAME}:${IMAGE_TAG} \
 		--pull \
 		.
