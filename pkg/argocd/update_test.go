@@ -21,6 +21,7 @@ import (
 	"github.com/argoproj-labs/argocd-image-updater/test/fake"
 	"github.com/argoproj-labs/argocd-image-updater/test/fixture"
 
+	"github.com/argoproj/argo-cd/v2/pkg/apiclient/application"
 	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	argogit "github.com/argoproj/argo-cd/v2/util/git"
 	"github.com/distribution/distribution/v3/manifest/schema1" //nolint:staticcheck
@@ -103,9 +104,6 @@ func Test_UpdateApplication(t *testing.T) {
 			return &regMock, nil
 		}
 
-		argoClient := argomock.ArgoCD{}
-		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
-
 		kubeClient := kube.KubernetesClient{
 			Clientset: fake.NewFakeKubeClient(),
 		}
@@ -137,6 +135,14 @@ func Test_UpdateApplication(t *testing.T) {
 				image.NewFromIdentifier("jannfis/foobar:~1.0.0"),
 			},
 		}
+
+		argoClient := argomock.ArgoCD{}
+		argoClient.On("UpdateSpec", mock.Anything, &application.ApplicationUpdateSpecRequest{
+			Name:         &appImages.Application.Name,
+			AppNamespace: &appImages.Application.Namespace,
+			Spec:         &appImages.Application.Spec,
+		}).Return(nil, nil)
+
 		res := UpdateApplication(&UpdateConfiguration{
 			NewRegFN:   mockClientFn,
 			ArgoClient: &argoClient,
