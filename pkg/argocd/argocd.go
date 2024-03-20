@@ -503,6 +503,12 @@ func GetImagesFromApplication(app *v1alpha1.Application) image.ContainerImageLis
 	return images
 }
 
+func GetImagesFromImageList(app *v1alpha1.Application) image.ContainerImageList {
+	images := make(image.ContainerImageList, 0)
+	images = append(images, *parseImageList(app.Annotations)...)
+	return images
+}
+
 // GetApplicationTypeByName first retrieves application with given appName and
 // returns its application type
 func GetApplicationTypeByName(client ArgoCD, appName string) (ApplicationType, error) {
@@ -552,6 +558,9 @@ func getApplicationSourceType(app *v1alpha1.Application) v1alpha1.ApplicationSou
 	if st, set := app.Annotations[common.WriteBackTargetAnnotation]; set &&
 		strings.HasPrefix(st, common.KustomizationPrefix) {
 		return v1alpha1.ApplicationSourceTypeKustomize
+	} else if st, set := app.Annotations[common.WriteBackTargetAnnotation]; set &&
+		strings.HasPrefix(st, common.HelmPrefix) {
+		return v1alpha1.ApplicationSourceTypeHelm
 	}
 
 	if app.Spec.HasMultipleSources() {
