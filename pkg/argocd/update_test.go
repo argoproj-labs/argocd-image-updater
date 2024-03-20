@@ -1320,8 +1320,9 @@ helm:
 
 	t.Run("Valid Helm source with Helm values file", func(t *testing.T) {
 		expected := `
-image.name: nginx
-image.tag: v1.0.0
+image:
+  name: nginx
+  tag: v1.0.0
 replicas: 1
 `
 		app := v1alpha1.Application{
@@ -1366,8 +1367,9 @@ replicas: 1
 		}
 
 		originalData := []byte(`
-image.name: nginx
-image.tag: v0.0.0
+image:
+  name: nginx
+  tag: v0.0.0
 replicas: 1
 `)
 		yaml, err := marshalParamsOverride(&app, originalData)
@@ -1512,7 +1514,10 @@ replicas: 1
 			},
 		}
 
-		originalData := []byte(`random content`)
+		originalData := []byte(`
+random:
+  content: hello
+`)
 		_, err := marshalParamsOverride(&app, originalData)
 		assert.Error(t, err)
 		assert.Equal(t, "wrongimage.name parameter not found", err.Error())
@@ -1560,7 +1565,10 @@ replicas: 1
 			},
 		}
 
-		originalData := []byte(`random content`)
+		originalData := []byte(`
+random:
+  content: hello
+`)
 		_, err := marshalParamsOverride(&app, originalData)
 		assert.Error(t, err)
 		assert.Equal(t, "wrongimage.tag parameter not found", err.Error())
