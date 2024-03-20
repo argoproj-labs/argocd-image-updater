@@ -1652,6 +1652,28 @@ random:
 	})
 }
 
+func Test_DotToObj(t *testing.T) {
+	t.Run("no value", func(t *testing.T) {
+		obj := dotToObj("", "val")
+		assert.Equal(t, map[string]interface{}{}, obj)
+	})
+
+	t.Run("single value", func(t *testing.T) {
+		obj := dotToObj("a", "val")
+		assert.Equal(t, map[string]interface{}{"a": "val"}, obj)
+	})
+
+	t.Run("multiple values", func(t *testing.T) {
+		obj := dotToObj("a.b.c", "val")
+		assert.Equal(t, map[string]interface{}{"a": map[string]interface{}{
+			"b": map[string]interface{}{
+				"c": "val",
+			},
+		},
+		}, obj)
+	})
+}
+
 func Test_GetWriteBackConfig(t *testing.T) {
 	t.Run("Valid write-back config - git", func(t *testing.T) {
 		app := v1alpha1.Application{

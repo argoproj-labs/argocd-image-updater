@@ -492,8 +492,12 @@ func marshalParamsOverride(app *v1alpha1.Application, originalData []byte) ([]by
 }
 
 func dotToObj(key string, value string) map[string]interface{} {
-	keys := strings.Split(key, ".")
 	obj := make(map[string]interface{})
+	if key == "" {
+		return obj
+	}
+
+	keys := strings.Split(key, ".")
 
 	current := obj
 	for i, k := range keys {
