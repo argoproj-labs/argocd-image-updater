@@ -21,7 +21,6 @@ import (
 
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/application"
 	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
-	"github.com/miracl/conflate"
 	"gopkg.in/yaml.v2"
 )
 
@@ -416,38 +415,42 @@ func marshalParamsOverride(app *v1alpha1.Application, originalData []byte) ([]by
 		}
 
 		if strings.HasPrefix(app.Annotations[common.WriteBackTargetAnnotation], common.HelmPrefix) {
-			images := GetImagesFromApplication(app)
+			var values yaml.MapSlice
+			err = yaml.Unmarshal(originalData, &values)
+			if err != nil {
+				return nil, err
+			}
 
+			newValues := make(map[string]string)
+			images := GetImagesFromApplication(app)
 			for _, c := range images {
-				helmAnnotationParamName, helmAnnotationParamVersion := getHelmParamNamesFromAnnotation(app.Annotations, c.ImageName)
+				image := c.ImageAlias
+				if image == "" {
+					image = c.ImageName
+				}
+				helmAnnotationParamName, helmAnnotationParamVersion := getHelmParamNamesFromAnnotation(app.Annotations, image)
 				if helmAnnotationParamName == "" {
-					return nil, fmt.Errorf("could not find an image-name annotation for image %s", c.ImageName)
+					return nil, fmt.Errorf("could not find an image-name annotation for image %s", image)
 				}
 				if helmAnnotationParamVersion == "" {
-					return nil, fmt.Errorf("could not find an image-tag annotation for image %s", c.ImageName)
+					return nil, fmt.Errorf("could not find an image-tag annotation for image %s", image)
 				}
 
 				helmParamName := getHelmParam(appSource.Helm.Parameters, helmAnnotationParamName)
 				if helmParamName == nil {
 					return nil, fmt.Errorf("%s parameter not found", helmAnnotationParamName)
 				}
+				newValues[helmAnnotationParamName] = helmParamName.Value
 
 				helmParamVersion := getHelmParam(appSource.Helm.Parameters, helmAnnotationParamVersion)
 				if helmParamVersion == nil {
 					return nil, fmt.Errorf("%s parameter not found", helmAnnotationParamVersion)
 				}
-
-				// Build string with YAML format to merge with originalData values
-				helmValues := fmt.Sprintf("%s: %s\n%s: %s", helmAnnotationParamName, helmParamName.Value, helmAnnotationParamVersion, helmParamVersion.Value)
-
-				var mergedParams *conflate.Conflate
-				mergedParams, err = conflate.FromData(originalData, []byte(helmValues))
-				if err != nil {
-					return nil, err
-				}
-
-				override, err = mergedParams.MarshalYAML()
+				newValues[helmAnnotationParamVersion] = helmParamVersion.Value
 			}
+			mergeHelmValues(&values, newValues)
+
+			override, err = yaml.Marshal(values)
 		} else {
 			var params helmOverride
 			newParams := helmOverride{
@@ -489,6 +492,41 @@ func mergeHelmOverride(t *helmOverride, o *helmOverride) {
 			continue
 		}
 		t.Helm.Parameters = append(t.Helm.Parameters, param)
+	}
+}
+
+func mergeHelmValues(values *yaml.MapSlice, newValues map[string]string) {
+	var update func(values *yaml.MapSlice, path []string, newValue string)
+	update = func(values *yaml.MapSlice, path []string, newValue string) {
+		if len(path) == 0 {
+			return
+		}
+
+		for i := range *values {
+			if (*values)[i].Key == path[0] {
+				if len(path) == 1 {
+					(*values)[i].Value = newValue
+				} else if v, ok := (*values)[i].Value.(yaml.MapSlice); ok {
+					update(&v, path[1:], newValue)
+					(*values)[i].Value = v
+				}
+				return
+			}
+		}
+
+		// If the key was not found and we're not at the end of the path, insert a new MapSlice
+		if len(path) > 1 {
+			newMapSlice := yaml.MapSlice{}
+			update(&newMapSlice, path[1:], newValue)
+			*values = append(*values, yaml.MapItem{Key: path[0], Value: newMapSlice})
+		} else if len(path) == 1 {
+			// If the key was not found and we're at the end of the path, insert a new key-value pair
+			*values = append(*values, yaml.MapItem{Key: path[0], Value: newValue})
+		}
+	}
+
+	for path, newValue := range newValues {
+		update(values, strings.Split(path, "."), newValue)
 	}
 }
 

@@ -109,11 +109,15 @@ func Test_UpdateApplication(t *testing.T) {
 		kubeClient := kube.KubernetesClient{
 			Clientset: fake.NewFakeKubeClient(),
 		}
+		annotations := map[string]string{
+			common.ImageUpdaterAnnotation: "jannfis/foobar:1.0.0",
+		}
 		appImages := &ApplicationImages{
 			Application: v1alpha1.Application{
 				ObjectMeta: v1.ObjectMeta{
-					Name:      "guestbook",
-					Namespace: "guestbook",
+					Name:        "guestbook",
+					Namespace:   "guestbook",
+					Annotations: annotations,
 				},
 				Spec: v1alpha1.ApplicationSpec{
 					Source: &v1alpha1.ApplicationSource{
@@ -167,11 +171,15 @@ func Test_UpdateApplication(t *testing.T) {
 		kubeClient := kube.KubernetesClient{
 			Clientset: fake.NewFakeKubeClient(),
 		}
+		annotations := map[string]string{
+			common.ImageUpdaterAnnotation: "jannfis/foobar:1.0.0,jannfis/barbar:1.0.0",
+		}
 		appImages := &ApplicationImages{
 			Application: v1alpha1.Application{
 				ObjectMeta: v1.ObjectMeta{
-					Name:      "guestbook",
-					Namespace: "guestbook",
+					Name:        "guestbook",
+					Namespace:   "guestbook",
+					Annotations: annotations,
 				},
 				Spec: v1alpha1.ApplicationSpec{
 					Source: &v1alpha1.ApplicationSource{
@@ -354,11 +362,15 @@ func Test_UpdateApplication(t *testing.T) {
 		kubeClient := kube.KubernetesClient{
 			Clientset: fake.NewFakeKubeClient(),
 		}
+		annotations := map[string]string{
+			common.ImageUpdaterAnnotation: "jannfis/foobar:1.0.x",
+		}
 		appImages := &ApplicationImages{
 			Application: v1alpha1.Application{
 				ObjectMeta: v1.ObjectMeta{
-					Name:      "guestbook",
-					Namespace: "guestbook",
+					Name:        "guestbook",
+					Namespace:   "guestbook",
+					Annotations: annotations,
 				},
 				Spec: v1alpha1.ApplicationSpec{
 					Source: &v1alpha1.ApplicationSource{
@@ -412,14 +424,16 @@ func Test_UpdateApplication(t *testing.T) {
 		kubeClient := kube.KubernetesClient{
 			Clientset: fake.NewFakeClientsetWithResources(fixture.NewSecret("foo", "bar", map[string][]byte{"creds": []byte("myuser:mypass")})),
 		}
+		annotations := map[string]string{
+			common.ImageUpdaterAnnotation:                     "jannfis/foobar:1.0.0",
+			fmt.Sprintf(common.PullSecretAnnotation, "dummy"): "secret:foo/bar#creds",
+		}
 		appImages := &ApplicationImages{
 			Application: v1alpha1.Application{
 				ObjectMeta: v1.ObjectMeta{
-					Name:      "guestbook",
-					Namespace: "guestbook",
-					Annotations: map[string]string{
-						fmt.Sprintf(common.PullSecretAnnotation, "dummy"): "secret:foo/bar#creds",
-					},
+					Name:        "guestbook",
+					Namespace:   "guestbook",
+					Annotations: annotations,
 				},
 				Spec: v1alpha1.ApplicationSpec{
 					Source: &v1alpha1.ApplicationSource{
@@ -526,11 +540,15 @@ func Test_UpdateApplication(t *testing.T) {
 		kubeClient := kube.KubernetesClient{
 			Clientset: fake.NewFakeKubeClient(),
 		}
+		annotations := map[string]string{
+			common.ImageUpdaterAnnotation: "jannfis/foobar:1.0.1",
+		}
 		appImages := &ApplicationImages{
 			Application: v1alpha1.Application{
 				ObjectMeta: v1.ObjectMeta{
-					Name:      "guestbook",
-					Namespace: "guestbook",
+					Name:        "guestbook",
+					Namespace:   "guestbook",
+					Annotations: annotations,
 				},
 				Spec: v1alpha1.ApplicationSpec{
 					Source: &v1alpha1.ApplicationSource{
@@ -716,15 +734,17 @@ func Test_UpdateApplication(t *testing.T) {
 		kubeClient := kube.KubernetesClient{
 			Clientset: fake.NewFakeKubeClient(),
 		}
+		annotations := map[string]string{
+			common.ImageUpdaterAnnotation:                          "dummy=jannfis/foobar",
+			fmt.Sprintf(common.AllowTagsOptionAnnotation, "dummy"): "regexp:^foobar$",
+			fmt.Sprintf(common.UpdateStrategyAnnotation, "dummy"):  "name",
+		}
 		appImages := &ApplicationImages{
 			Application: v1alpha1.Application{
 				ObjectMeta: v1.ObjectMeta{
-					Name:      "guestbook",
-					Namespace: "guestbook",
-					Annotations: map[string]string{
-						fmt.Sprintf(common.AllowTagsOptionAnnotation, "dummy"): "regexp:^foobar$",
-						fmt.Sprintf(common.UpdateStrategyAnnotation, "dummy"):  "name",
-					},
+					Name:        "guestbook",
+					Namespace:   "guestbook",
+					Annotations: annotations,
 				},
 				Spec: v1alpha1.ApplicationSpec{
 					Source: &v1alpha1.ApplicationSource{
@@ -792,15 +812,17 @@ func Test_UpdateApplication(t *testing.T) {
 		kubeClient := kube.KubernetesClient{
 			Clientset: fake.NewFakeKubeClient(),
 		}
+		annotations := map[string]string{
+			common.ImageUpdaterAnnotation:                           "dummy=jannfis/foobar",
+			fmt.Sprintf(common.IgnoreTagsOptionAnnotation, "dummy"): "*",
+			fmt.Sprintf(common.UpdateStrategyAnnotation, "dummy"):   "name",
+		}
 		appImages := &ApplicationImages{
 			Application: v1alpha1.Application{
 				ObjectMeta: v1.ObjectMeta{
-					Name:      "guestbook",
-					Namespace: "guestbook",
-					Annotations: map[string]string{
-						fmt.Sprintf(common.IgnoreTagsOptionAnnotation, "dummy"): "*",
-						fmt.Sprintf(common.UpdateStrategyAnnotation, "dummy"):   "name",
-					},
+					Name:        "guestbook",
+					Namespace:   "guestbook",
+					Annotations: annotations,
 				},
 				Spec: v1alpha1.ApplicationSpec{
 					Source: &v1alpha1.ApplicationSource{
@@ -852,11 +874,15 @@ func Test_UpdateApplication(t *testing.T) {
 		kubeClient := kube.KubernetesClient{
 			Clientset: fake.NewFakeKubeClient(),
 		}
+		annotations := map[string]string{
+			common.ImageUpdaterAnnotation: "example.io/jannfis/example:1.0.x",
+		}
 		appImages := &ApplicationImages{
 			Application: v1alpha1.Application{
 				ObjectMeta: v1.ObjectMeta{
-					Name:      "guestbook",
-					Namespace: "guestbook",
+					Name:        "guestbook",
+					Namespace:   "guestbook",
+					Annotations: annotations,
 				},
 				Spec: v1alpha1.ApplicationSpec{
 					Source: &v1alpha1.ApplicationSource{
@@ -905,11 +931,15 @@ func Test_UpdateApplication(t *testing.T) {
 		kubeClient := kube.KubernetesClient{
 			Clientset: fake.NewFakeKubeClient(),
 		}
+		annotations := map[string]string{
+			common.ImageUpdaterAnnotation: "jannfis/foobar:1.0.0",
+		}
 		appImages := &ApplicationImages{
 			Application: v1alpha1.Application{
 				ObjectMeta: v1.ObjectMeta{
-					Name:      "guestbook",
-					Namespace: "guestbook",
+					Name:        "guestbook",
+					Namespace:   "guestbook",
+					Annotations: annotations,
 				},
 				Spec: v1alpha1.ApplicationSpec{
 					Source: &v1alpha1.ApplicationSource{
@@ -961,11 +991,15 @@ func Test_UpdateApplication(t *testing.T) {
 		kubeClient := kube.KubernetesClient{
 			Clientset: fake.NewFakeKubeClient(),
 		}
+		annotations := map[string]string{
+			common.ImageUpdaterAnnotation: "jannfis/foobar:1.0.0",
+		}
 		appImages := &ApplicationImages{
 			Application: v1alpha1.Application{
 				ObjectMeta: v1.ObjectMeta{
-					Name:      "guestbook",
-					Namespace: "guestbook",
+					Name:        "guestbook",
+					Namespace:   "guestbook",
+					Annotations: annotations,
 				},
 				Spec: v1alpha1.ApplicationSpec{
 					Source: &v1alpha1.ApplicationSource{
@@ -1017,11 +1051,15 @@ func Test_UpdateApplication(t *testing.T) {
 		kubeClient := kube.KubernetesClient{
 			Clientset: fake.NewFakeKubeClient(),
 		}
+		annotations := map[string]string{
+			common.ImageUpdaterAnnotation: "jannfis/foobar:stable",
+		}
 		appImages := &ApplicationImages{
 			Application: v1alpha1.Application{
 				ObjectMeta: v1.ObjectMeta{
-					Name:      "guestbook",
-					Namespace: "guestbook",
+					Name:        "guestbook",
+					Namespace:   "guestbook",
+					Annotations: annotations,
 				},
 				Spec: v1alpha1.ApplicationSpec{
 					Source: &v1alpha1.ApplicationSource{
@@ -1320,8 +1358,9 @@ helm:
 
 	t.Run("Valid Helm source with Helm values file", func(t *testing.T) {
 		expected := `
-image.name: nginx
-image.tag: v1.0.0
+image:
+  name: nginx
+  tag: v1.0.0
 replicas: 1
 `
 		app := v1alpha1.Application{
@@ -1366,8 +1405,9 @@ replicas: 1
 		}
 
 		originalData := []byte(`
-image.name: nginx
-image.tag: v0.0.0
+image:
+  name: nginx
+  tag: v0.0.0
 replicas: 1
 `)
 		yaml, err := marshalParamsOverride(&app, originalData)
@@ -1417,7 +1457,7 @@ replicas: 1
 			},
 		}
 
-		originalData := []byte(`random content`)
+		originalData := []byte(`random: content`)
 		_, err := marshalParamsOverride(&app, originalData)
 		assert.Error(t, err)
 		assert.Equal(t, "could not find an image-tag annotation for image nginx", err.Error())
@@ -1464,7 +1504,7 @@ replicas: 1
 			},
 		}
 
-		originalData := []byte(`random content`)
+		originalData := []byte(`random: content`)
 		_, err := marshalParamsOverride(&app, originalData)
 		assert.Error(t, err)
 		assert.Equal(t, "could not find an image-name annotation for image nginx", err.Error())
@@ -1512,7 +1552,7 @@ replicas: 1
 			},
 		}
 
-		originalData := []byte(`random content`)
+		originalData := []byte(`random: content`)
 		_, err := marshalParamsOverride(&app, originalData)
 		assert.Error(t, err)
 		assert.Equal(t, "wrongimage.name parameter not found", err.Error())
@@ -1560,7 +1600,7 @@ replicas: 1
 			},
 		}
 
-		originalData := []byte(`random content`)
+		originalData := []byte(`random: content`)
 		_, err := marshalParamsOverride(&app, originalData)
 		assert.Error(t, err)
 		assert.Equal(t, "wrongimage.tag parameter not found", err.Error())
