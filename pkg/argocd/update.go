@@ -415,7 +415,7 @@ func marshalParamsOverride(app *v1alpha1.Application, originalData []byte) ([]by
 		}
 
 		if strings.HasPrefix(app.Annotations[common.WriteBackTargetAnnotation], common.HelmPrefix) {
-			values := make(map[interface{}]interface{})
+			var values yaml.MapSlice
 			err = yaml.Unmarshal(originalData, &values)
 			if err != nil {
 				return nil, err
@@ -448,7 +448,7 @@ func marshalParamsOverride(app *v1alpha1.Application, originalData []byte) ([]by
 				}
 				newValues[helmAnnotationParamVersion] = helmParamVersion.Value
 			}
-			mergeHelmValues(values, newValues)
+			mergeHelmValues(&values, newValues)
 
 			override, err = yaml.Marshal(values)
 		} else {
@@ -495,21 +495,38 @@ func mergeHelmOverride(t *helmOverride, o *helmOverride) {
 	}
 }
 
-func mergeHelmValues(values map[interface{}]interface{}, newValues map[string]string) {
-	for fieldPath, newValue := range newValues {
-		fields := strings.Split(fieldPath, ".")
-		lastFieldIndex := len(fields) - 1
-		node := values
-		for i, name := range fields {
-			if i == lastFieldIndex {
-				node[name] = newValue
-
-				break
-			} else if _, ok := node[name]; !ok {
-				node[name] = make(map[interface{}]interface{})
-			}
-			node = node[name].(map[interface{}]interface{})
+func mergeHelmValues(values *yaml.MapSlice, newValues map[string]string) {
+	var update func(values *yaml.MapSlice, path []string, newValue string)
+	update = func(values *yaml.MapSlice, path []string, newValue string) {
+		if len(path) == 0 {
+			return
 		}
+
+		for i := range *values {
+			if (*values)[i].Key == path[0] {
+				if len(path) == 1 {
+					(*values)[i].Value = newValue
+				} else if v, ok := (*values)[i].Value.(yaml.MapSlice); ok {
+					update(&v, path[1:], newValue)
+					(*values)[i].Value = v
+				}
+				return
+			}
+		}
+
+		// If the key was not found and we're not at the end of the path, insert a new MapSlice
+		if len(path) > 1 {
+			newMapSlice := yaml.MapSlice{}
+			update(&newMapSlice, path[1:], newValue)
+			*values = append(*values, yaml.MapItem{Key: path[0], Value: newMapSlice})
+		} else if len(path) == 1 {
+			// If the key was not found and we're at the end of the path, insert a new key-value pair
+			*values = append(*values, yaml.MapItem{Key: path[0], Value: newValue})
+		}
+	}
+
+	for path, newValue := range newValues {
+		update(values, strings.Split(path, "."), newValue)
 	}
 }
 
