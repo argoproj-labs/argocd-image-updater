@@ -55,7 +55,7 @@ jobs:
           git diff --exit-code -- . ':!go.sum' ':!go.mod' ':!assets/swagger.json' | tee codegen.patch
   lint:
     name: Ensure code is correctly linted
-    runs-on: ubunu-latest
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
