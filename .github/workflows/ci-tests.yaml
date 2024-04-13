@@ -18,7 +18,7 @@ jobs:
       - name: Setup Golang
         uses: actions/setup-go@v3
         with:
-          go-version: '1.20'
+          go-versiotn: '1.21'
       - name: Download all Go modules
         run: |
           go mod download
@@ -55,7 +55,7 @@ jobs:
           git diff --exit-code -- . ':!go.sum' ':!go.mod' ':!assets/swagger.json' | tee codegen.patch
   lint:
     name: Ensure code is correctly linted
-    runs-on: ubuntu-latest
+    runs-on: ubunu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -63,7 +63,7 @@ jobs:
         uses: golangci/golangci-lint-action@v3
         with:
           version: v1.52.2
-          args: --timeout 5m
+          args: --timeout 5m --d
   test:
     name: Ensure unit tests are passing
     runs-on: ubuntu-latest
@@ -73,7 +73,7 @@ jobs:
       - name: Setup Golang
         uses: actions/setup-go@v3
         with:
-          go-version: '1.20'
+          go-version: '1.21'
       - name: Run tests
         env:
           GNUPG_DISABLED: true
