@@ -344,6 +344,8 @@ metadata:
   name: argocd-image-updater-auth
 data:
   auth.sh: |
+    #!/bin/sh
+
     AAD_ACCESS_TOKEN=$(cat $AZURE_FEDERATED_TOKEN_FILE)
 
     ACCESS_TOKEN=$(wget --output-document - --header "Content-Type: application/x-www-form-urlencoded" \
@@ -408,14 +410,20 @@ spec:
     spec:
       containers:
         - name: argocd-image-updater
+          command:
+            - /usr/local/bin/argocd-image-updater
+            - run
+            - --registries-conf-path
+            - /app/config/registries.conf
           env:
             - name: ACR_NAME
-              value: placeholder
+              value: placeholder.azurecr.io
           volumeMounts:
             - mountPath: /app/auth
               name: auth
       volumes:
         - configMap:
             name: argocd-image-updater-auth
+            defaultMode: 493
           name: auth
 ```
