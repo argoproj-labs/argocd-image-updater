@@ -239,21 +239,9 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 			continue
 		}
 
-		// Get list of available image tags from the repository
-		tags, err := rep.GetTags(applicationImage, regClient, &vc)
+		latest, err := getLatest(&vc, rep, regClient, updateableImage, applicationImage)
 		if err != nil {
-			imgCtx.Errorf("Could not get tags from registry: %v", err)
-			result.NumErrors += 1
-			continue
-		}
-
-		imgCtx.Tracef("List of available tags found: %v", tags.Tags())
-
-		// Get the latest available tag matching any constraint that might be set
-		// for allowed updates.
-		latest, err := updateableImage.GetNewestVersionFromTags(&vc, tags)
-		if err != nil {
-			imgCtx.Errorf("Unable to find newest version from available tags: %v", err)
+			imgCtx.Errorf("Could not get latest tag: %v", err)
 			result.NumErrors += 1
 			continue
 		}
@@ -358,6 +346,48 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 	}
 
 	return result
+}
+
+func getLatest(vc *image.VersionConstraint, rep *registry.RegistryEndpoint, regClient registry.RegistryClient, updateableImage *image.ContainerImage, applicationImage *image.ContainerImage) (*tag.ImageTag, error) {
+	if vc.Strategy == image.StrategyDigest {
+		var nameInRegistry string
+		if len := len(strings.Split(applicationImage.ImageName, "/")); len == 1 && rep.DefaultNS != "" {
+			nameInRegistry = rep.DefaultNS + "/" + applicationImage.ImageName
+		} else {
+			nameInRegistry = applicationImage.ImageName
+		}
+		err := regClient.NewRepository(nameInRegistry)
+		if err != nil {
+			return nil, err
+		}
+
+		desc, err := regClient.DescriptorForTag(vc.Constraint)
+		if err != nil {
+			return nil, err
+		}
+
+		latest := &tag.ImageTag{
+			TagName:   vc.Constraint,
+			TagDate:   nil,
+			TagDigest: desc.Digest.String(),
+		}
+		return latest, nil
+	}
+
+	// Get list of available image tags from the repository
+	tags, err := rep.GetTags(applicationImage, regClient, vc)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get the latest available tag matching any constraint that might be set
+	// for allowed updates.
+	latest, err := updateableImage.GetNewestVersionFromTags(vc, tags)
+	if err != nil {
+		return nil, err
+	}
+
+	return latest, nil
 }
 
 func needsUpdate(updateableImage *image.ContainerImage, applicationImage *image.ContainerImage, latest *tag.ImageTag) bool {

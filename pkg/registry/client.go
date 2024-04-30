@@ -52,6 +52,7 @@ type RegistryClient interface {
 	ManifestForTag(tagStr string) (distribution.Manifest, error)
 	ManifestForDigest(dgst digest.Digest) (distribution.Manifest, error)
 	TagMetadata(manifest distribution.Manifest, opts *options.ManifestOptions) (*tag.TagInfo, error)
+	DescriptorForTag(tagStr string) (distribution.Descriptor, error)
 }
 
 type NewRegistryClient func(*RegistryEndpoint, string, string) (RegistryClient, error)
@@ -351,6 +352,10 @@ func (client *registryClient) TagMetadata(manifest distribution.Manifest, opts *
 	default:
 		return nil, fmt.Errorf("invalid manifest type %T", manifest)
 	}
+}
+
+func (clt *registryClient) DescriptorForTag(tagStr string) (distribution.Descriptor, error) {
+	return clt.regClient.Tags(context.Background()).Get(context.Background(), tagStr)
 }
 
 // TagInfoFromReferences is a helper method to retrieve metadata for a given
