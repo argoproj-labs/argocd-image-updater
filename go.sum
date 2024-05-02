@@ -953,8 +953,8 @@ github.com/mindprince/gonvml v0.0.0-20190828220739-9ebdce4bb989/go.mod h1:2eu9pR
 github.com/minio/md5-simd v1.1.2/go.mod h1:MzdKDxYpY2BT9XQFocsiZf/NKVtR7nkE4RoEpN+20RM=
 github.com/minio/minio-go/v7 v7.0.58/go.mod h1:NUDy4A4oXPq1l2yK6LTSvCEzAMeIcoz9lcj5dbzSrRE=
 github.com/minio/sha256-simd v1.0.1/go.mod h1:Pz6AKMiUdngCLpeTL/RJY1M9rUuPMYujV5xJjtbRSN8=
-github.com/miracl/conflate v1.3.1 h1:9dMzG9wF5JQ1pSqrNlapYE6L30J/V0tcDqzHgzqxrCI=
-github.com/miracl/conflate v1.3.1/go.mod h1:tLhX8/nIEP/SQR6eFTtnkBRlSB1XuKLZXQufwg8EbmY=
+github.com/miracl/conflate v1.3.2 h1:ZESwG8pEfwZE9hQ5nPfG/ik+Mnl8jxCGQZSy0qV92nc=	
+github.com/miracl/conflate v1.3.2/go.mod h1:6UvcI1qeZJSdytXlb0i6bsYnXWCl1UF59DRh/jSJOy4=
 github.com/mistifyio/go-zfs v2.1.2-0.20190413222219-f784269be439+incompatible/go.mod h1:8AuVvqP/mXw1px98n46wfvcGfQ4ci2FwoAjKYxuo3Z4=
 github.com/mitchellh/cli v1.0.0/go.mod h1:hNIlj7HEI86fIcpObd7a0FcrxTWetlwJDGcceTlRvqc=
 github.com/mitchellh/go-homedir v1.0.0/go.mod h1:SfyaCUpYCn1Vlf4IUYiD9fPX4A5wJrkLzIz1N1q0pr0=
