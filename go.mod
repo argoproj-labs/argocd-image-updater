@@ -1,6 +1,6 @@
 module github.com/argoproj-labs/argocd-image-updater
 
-go 1.21
+go 1.20
 
 require (
 	github.com/Masterminds/semver/v3 v3.2.1
