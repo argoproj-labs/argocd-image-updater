@@ -2,8 +2,6 @@ module github.com/argoproj-labs/argocd-image-updater
 
 go 1.21
 
-toolchain go1.22.2
-
 require (
 	github.com/Masterminds/semver/v3 v3.2.1
 	github.com/argoproj/argo-cd/v2 v2.8.4
