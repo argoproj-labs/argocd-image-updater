@@ -82,6 +82,7 @@ type Client interface {
 	Add(path string) error
 	SymRefToBranch(symRef string) (string, error)
 	Config(username string, email string) error
+	SigningConfig(signingkey string) error
 }
 
 type EventHandlers struct {

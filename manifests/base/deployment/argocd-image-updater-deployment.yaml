@@ -77,6 +77,18 @@ spec:
               name: argocd-image-updater-config
               key: git.email
               optional: true
+        - name: GIT_COMMIT_SIGNING_KEY
+          valueFrom:
+            configMapKeyRef:
+              key: git.commit-signing-key
+              name: argocd-image-updater-config
+              optional: true
+        - name: GIT_COMMIT_SIGN_OFF
+          valueFrom:
+            configMapKeyRef:
+              key: git.commit-sign-off
+              name: argocd-image-updater-config
+              optional: true
         - name: IMAGE_UPDATER_KUBE_EVENTS
           valueFrom:
             configMapKeyRef:
@@ -116,6 +128,14 @@ spec:
           name: ssh-config
         - mountPath: /tmp
           name: tmp
+        - name: ssh-signing-key
+          mountPath: /app/.ssh/id_rsa
+          readOnly: true
+          subPath: sshPrivateKey
+        - name: ssh-signing-key
+          mountPath: /app/.ssh/id_rsa.pub
+          readOnly: true
+          subPath: sshPublicKey
       serviceAccountName: argocd-image-updater
       volumes:
       - configMap:
@@ -135,5 +155,9 @@ spec:
           name: argocd-image-updater-ssh-config
           optional: true
         name: ssh-config
+      - name: ssh-signing-key
+        secret:
+          secretName: ssh-git-creds
+        optional: true
       - emptyDir: {}
         name: tmp

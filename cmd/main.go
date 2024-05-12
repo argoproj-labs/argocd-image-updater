@@ -45,6 +45,8 @@ type ImageUpdaterConfig struct {
 	GitCommitUser       string
 	GitCommitMail       string
 	GitCommitMessage    *template.Template
+	GitCommitSigningKey string
+	GitCommitSignOff    bool
 	DisableKubeEvents   bool
 	GitCreds            git.CredsStore
 }

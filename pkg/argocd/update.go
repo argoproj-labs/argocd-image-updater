@@ -44,6 +44,8 @@ type UpdateConfiguration struct {
 	GitCommitUser     string
 	GitCommitEmail    string
 	GitCommitMessage  *template.Template
+	GitCommitSigningKey string
+	GitCommitSignOff    bool
 	DisableKubeEvents bool
 	IgnorePlatforms   bool
 	GitCreds          git.CredsStore
@@ -70,6 +72,8 @@ type WriteBackConfig struct {
 	GitCommitUser    string
 	GitCommitEmail   string
 	GitCommitMessage string
+	GitCommitSigningKey string
+	GitCommitSignOff    bool
 	KustomizeBase    string
 	Target           string
 	GitRepo          string
@@ -330,6 +334,10 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 		if len(changeList) > 0 && updateConf.GitCommitMessage != nil {
 			wbc.GitCommitMessage = TemplateCommitMessage(updateConf.GitCommitMessage, updateConf.UpdateApp.Application.Name, changeList)
 		}
+		if updateConf.GitCommitSigningKey != "" {
+			wbc.GitCommitSigningKey = updateConf.GitCommitSigningKey
+		}
+		wbc.GitCommitSignOff = updateConf.GitCommitSignOff
 	}
 
 	if needUpdate {

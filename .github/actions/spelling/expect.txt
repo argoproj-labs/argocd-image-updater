@@ -2,6 +2,9 @@
 aeece
 Artifactory
 applicationid
+atlassian
+Bitbucket
+bitbucketserver
 bacd
 CVE
 credref
@@ -11,7 +14,9 @@ eec
 fbd
 ffb
 gitlab
+GPG
 helmvalues
+html
 installationid
 jfrog
 mep
