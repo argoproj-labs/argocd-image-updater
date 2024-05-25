@@ -14,7 +14,8 @@ FROM alpine:latest
 
 RUN apk update && \
     apk upgrade && \
-    apk add --no-cache aws-cli ca-certificates git openssh-client tini
+    apk add ca-certificates git openssh-client aws-cli tini && \
+    rm -rf /var/cache/apk/*
 
 RUN mkdir -p /usr/local/bin /app/config
 RUN adduser --home "/app" --disabled-password --uid 1000 argocd

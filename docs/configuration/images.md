@@ -102,7 +102,7 @@ The alias you assign to any image will be reused as a key in the annotations
 used to define further options, so a little care should be taken when defining
 such a name. It's generally advised to use only alpha-numerical characters. The
 character `/` (forward-slash) can be used in the name, but must be referenced
-as `_` (underscore) in the annotation. This is a limit of Kubernetes. So for
+as `_` (underscore) in the annotation. This is a limitation of Kubernetes. So for
 example, if you assign the alias `argoproj/argocd` to your image, the
 appropriate key in the annotation would be referenced as `argoproj_argocd`.
 
