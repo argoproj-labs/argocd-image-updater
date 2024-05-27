@@ -503,6 +503,24 @@ func GetImagesFromApplication(app *v1alpha1.Application) image.ContainerImageLis
 	return images
 }
 
+// GetImagesFromApplicationImagesAnnotation returns the list of known images for the given application from the images annotation
+func GetImagesAndAliasesFromApplication(app *v1alpha1.Application) image.ContainerImageList {
+	images := GetImagesFromApplication(app)
+
+	// We update the ImageAlias field of the Images found in the app.Status.Summary.Images list.
+	for _, img := range *parseImageList(app.Annotations) {
+		if image := images.ContainsImage(img, false); image != nil {
+			if img.ImageAlias == "" {
+				image.ImageAlias = img.ImageName
+			} else {
+				image.ImageAlias = img.ImageAlias
+			}
+		}
+	}
+
+	return images
+}
+
 // GetApplicationTypeByName first retrieves application with given appName and
 // returns its application type
 func GetApplicationTypeByName(client ArgoCD, appName string) (ApplicationType, error) {

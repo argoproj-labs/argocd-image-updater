@@ -79,6 +79,65 @@ func Test_GetImagesFromApplication(t *testing.T) {
 	})
 }
 
+func Test_GetImagesAndAliasesFromApplication(t *testing.T) {
+	t.Run("Get list of images from application", func(t *testing.T) {
+		application := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "test-app",
+				Namespace: "argocd",
+			},
+			Spec: v1alpha1.ApplicationSpec{},
+			Status: v1alpha1.ApplicationStatus{
+				Summary: v1alpha1.ApplicationSummary{
+					Images: []string{"nginx:1.12.2", "that/image", "quay.io/dexidp/dex:v1.23.0"},
+				},
+			},
+		}
+		imageList := GetImagesAndAliasesFromApplication(application)
+		require.Len(t, imageList, 3)
+		assert.Equal(t, "nginx", imageList[0].ImageName)
+		assert.Equal(t, "that/image", imageList[1].ImageName)
+		assert.Equal(t, "dexidp/dex", imageList[2].ImageName)
+	})
+
+	t.Run("Get list of images and image aliases from application that has no images", func(t *testing.T) {
+		application := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "test-app",
+				Namespace: "argocd",
+			},
+			Spec: v1alpha1.ApplicationSpec{},
+			Status: v1alpha1.ApplicationStatus{
+				Summary: v1alpha1.ApplicationSummary{},
+			},
+		}
+		imageList := GetImagesAndAliasesFromApplication(application)
+		assert.Empty(t, imageList)
+	})
+
+	t.Run("Get list of images and aliases from application annotations", func(t *testing.T) {
+		application := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "test-app",
+				Namespace: "argocd",
+				Annotations: map[string]string{
+					common.ImageUpdaterAnnotation: "webserver=nginx",
+				},
+			},
+			Spec: v1alpha1.ApplicationSpec{},
+			Status: v1alpha1.ApplicationStatus{
+				Summary: v1alpha1.ApplicationSummary{
+					Images: []string{"nginx:1.12.2"},
+				},
+			},
+		}
+		imageList := GetImagesAndAliasesFromApplication(application)
+		require.Len(t, imageList, 1)
+		assert.Equal(t, "nginx", imageList[0].ImageName)
+		assert.Equal(t, "webserver", imageList[0].ImageAlias)
+	})
+}
+
 func Test_GetApplicationType(t *testing.T) {
 	t.Run("Get application of type Helm", func(t *testing.T) {
 		application := &v1alpha1.Application{
