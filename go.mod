@@ -192,9 +192,7 @@ require (
 
 replace (
 	github.com/docker/distribution => github.com/docker/distribution v2.8.1+incompatible
-	github.com/golang/protobuf => github.com/golang/protobuf v1.4.2
-
-	google.golang.org/grpc => google.golang.org/grpc v1.53.0
+	github.com/golang/protobuf => github.com/golang/protobuf v1.5.4
 
 	k8s.io/api => k8s.io/api v0.26.11
 	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.26.11
