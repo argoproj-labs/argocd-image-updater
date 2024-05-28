@@ -79,7 +79,7 @@ func (m *nativeGitClient) Push(remote string, branch string, force bool) error {
 		args = append(args, "-f")
 	}
 	args = append(args, remote, branch)
-	err := m.runCredentialedCmd("git", args...)
+	err := m.runCredentialedCmd(args...)
 	if err != nil {
 		return fmt.Errorf("could not push %s to %s: %v", branch, remote, err)
 	}

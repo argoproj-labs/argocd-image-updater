@@ -8,7 +8,6 @@ import (
 
 	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	"github.com/argoproj/argo-cd/v2/util/db"
-	argoGit "github.com/argoproj/argo-cd/v2/util/git"
 	"github.com/argoproj/argo-cd/v2/util/settings"
 
 	"github.com/argoproj-labs/argocd-image-updater/ext/git"
@@ -44,7 +43,7 @@ func getCredsFromArgoCD(wbc *WriteBackConfig, kubeClient *kube.KubernetesClient)
 	if !repo.HasCredentials() {
 		return nil, fmt.Errorf("credentials for '%s' are not configured in Argo CD settings", wbc.GitRepo)
 	}
-	return repo.GetGitCreds(argoGit.NoopCredsStore{}), nil
+	return repo.GetGitCreds(git.NoopCredsStore{}), nil
 }
 
 // getCredsFromSecret loads repository credentials from secret
@@ -66,7 +65,7 @@ func getCredsFromSecret(wbc *WriteBackConfig, credentialsSecret string, kubeClie
 		if sshPrivateKey, ok = credentials["sshPrivateKey"]; !ok {
 			return nil, fmt.Errorf("invalid secret %s: does not contain field sshPrivateKey", credentialsSecret)
 		}
-		return git.NewSSHCreds(string(sshPrivateKey), "", true), nil
+		return git.NewSSHCreds(string(sshPrivateKey), "", true, git.NoopCredsStore{}, ""), nil
 	} else if git.IsHTTPSURL(wbc.GitRepo) {
 		var username, password, githubAppID, githubAppInstallationID, githubAppPrivateKey []byte
 		if githubAppID, ok = credentials["githubAppID"]; ok {
@@ -85,12 +84,12 @@ func getCredsFromSecret(wbc *WriteBackConfig, credentialsSecret string, kubeClie
 			if err != nil {
 				return nil, fmt.Errorf("invalid value in field githubAppInstallationID: %w", err)
 			}
-			return git.NewGitHubAppCreds(intGithubAppID, intGithubAppInstallationID, string(githubAppPrivateKey), "", "", "", "", true), nil
+			return git.NewGitHubAppCreds(intGithubAppID, intGithubAppInstallationID, string(githubAppPrivateKey), "", "", "", "", true, "", git.NoopCredsStore{}), nil
 		} else if username, ok = credentials["username"]; ok {
 			if password, ok = credentials["password"]; !ok {
 				return nil, fmt.Errorf("invalid secret %s: does not contain field password", credentialsSecret)
 			}
-			return git.NewHTTPSCreds(string(username), string(password), "", "", true, ""), nil
+			return git.NewHTTPSCreds(string(username), string(password), "", "", true, "", git.NoopCredsStore{}, false), nil
 		}
 		return nil, fmt.Errorf("invalid repository credentials in secret %s: does not contain githubAppID or username", credentialsSecret)
 	}
