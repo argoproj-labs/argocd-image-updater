@@ -309,29 +309,29 @@ func (client *argoCD) UpdateSpec(ctx context.Context, in *application.Applicatio
 // getHelmParamNamesFromAnnotation inspects the given annotations for whether
 // the annotations for specifying Helm parameter names are being set and
 // returns their values.
-func getHelmParamNamesFromAnnotation(annotations map[string]string, symbolicName string) (string, string) {
+func getHelmParamNamesFromAnnotation(annotations map[string]string, img *image.ContainerImage) (string, string) {
 	// Return default values without symbolic name given
-	if symbolicName == "" {
+	if img.ImageAlias == "" {
 		return "image.name", "image.tag"
 	}
 
 	var annotationName, helmParamName, helmParamVersion string
 
 	// Image spec is a full-qualified specifier, if we have it, we return early
-	annotationName = fmt.Sprintf(common.HelmParamImageSpecAnnotation, symbolicName)
-	if param, ok := annotations[annotationName]; ok {
+	param := img.GetParameterHelmImageSpec(annotations)
+	if param != "" {
 		log.Tracef("found annotation %s", annotationName)
 		return strings.TrimSpace(param), ""
 	}
 
-	annotationName = fmt.Sprintf(common.HelmParamImageNameAnnotation, symbolicName)
-	if param, ok := annotations[annotationName]; ok {
+	param = img.GetParameterHelmImageName(annotations)
+	if param != "" {
 		log.Tracef("found annotation %s", annotationName)
 		helmParamName = param
 	}
 
-	annotationName = fmt.Sprintf(common.HelmParamImageTagAnnotation, symbolicName)
-	if param, ok := annotations[annotationName]; ok {
+	param = img.GetParameterHelmImageTag(annotations)
+	if param != "" {
 		log.Tracef("found annotation %s", annotationName)
 		helmParamVersion = param
 	}
