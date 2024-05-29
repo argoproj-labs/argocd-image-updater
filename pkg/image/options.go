@@ -13,7 +13,7 @@ import (
 // GetParameterHelmImageName gets the value for image-name option for the image
 // from a set of annotations
 func (img *ContainerImage) GetParameterHelmImageName(annotations map[string]string) string {
-	key := fmt.Sprintf(common.HelmParamImageNameAnnotation, img.normalizedSymbolicName())
+	key := fmt.Sprintf(common.HelmParamImageNameAnnotation, img.NormalizedSymbolicName())
 	val, ok := annotations[key]
 	if !ok {
 		return ""
@@ -24,7 +24,7 @@ func (img *ContainerImage) GetParameterHelmImageName(annotations map[string]stri
 // GetParameterHelmImageTag gets the value for image-tag option for the image
 // from a set of annotations
 func (img *ContainerImage) GetParameterHelmImageTag(annotations map[string]string) string {
-	key := fmt.Sprintf(common.HelmParamImageTagAnnotation, img.normalizedSymbolicName())
+	key := fmt.Sprintf(common.HelmParamImageTagAnnotation, img.NormalizedSymbolicName())
 	val, ok := annotations[key]
 	if !ok {
 		return ""
@@ -35,7 +35,7 @@ func (img *ContainerImage) GetParameterHelmImageTag(annotations map[string]strin
 // GetParameterHelmImageSpec gets the value for image-spec option for the image
 // from a set of annotations
 func (img *ContainerImage) GetParameterHelmImageSpec(annotations map[string]string) string {
-	key := fmt.Sprintf(common.HelmParamImageSpecAnnotation, img.normalizedSymbolicName())
+	key := fmt.Sprintf(common.HelmParamImageSpecAnnotation, img.NormalizedSymbolicName())
 	val, ok := annotations[key]
 	if !ok {
 		return ""
@@ -46,7 +46,7 @@ func (img *ContainerImage) GetParameterHelmImageSpec(annotations map[string]stri
 // GetParameterKustomizeImageName gets the value for image-spec option for the
 // image from a set of annotations
 func (img *ContainerImage) GetParameterKustomizeImageName(annotations map[string]string) string {
-	key := fmt.Sprintf(common.KustomizeApplicationNameAnnotation, img.normalizedSymbolicName())
+	key := fmt.Sprintf(common.KustomizeApplicationNameAnnotation, img.NormalizedSymbolicName())
 	val, ok := annotations[key]
 	if !ok {
 		return ""
@@ -58,7 +58,7 @@ func (img *ContainerImage) GetParameterKustomizeImageName(annotations map[string
 // image from a set of annotations
 func (img *ContainerImage) HasForceUpdateOptionAnnotation(annotations map[string]string) bool {
 	forceUpdateAnnotations := []string{
-		fmt.Sprintf(common.ForceUpdateOptionAnnotation, img.normalizedSymbolicName()),
+		fmt.Sprintf(common.ForceUpdateOptionAnnotation, img.NormalizedSymbolicName()),
 		common.ApplicationWideForceUpdateOptionAnnotation,
 	}
 	var forceUpdateVal = ""
@@ -75,7 +75,7 @@ func (img *ContainerImage) HasForceUpdateOptionAnnotation(annotations map[string
 // image from a set of annotations
 func (img *ContainerImage) GetParameterUpdateStrategy(annotations map[string]string) UpdateStrategy {
 	updateStrategyAnnotations := []string{
-		fmt.Sprintf(common.UpdateStrategyAnnotation, img.normalizedSymbolicName()),
+		fmt.Sprintf(common.UpdateStrategyAnnotation, img.NormalizedSymbolicName()),
 		common.ApplicationWideUpdateStrategyAnnotation,
 	}
 	var updateStrategyVal = ""
@@ -123,7 +123,7 @@ func (img *ContainerImage) ParseUpdateStrategy(val string) UpdateStrategy {
 // default, to prevent accidental matches.
 func (img *ContainerImage) GetParameterMatch(annotations map[string]string) (MatchFuncFn, interface{}) {
 	allowTagsAnnotations := []string{
-		fmt.Sprintf(common.AllowTagsOptionAnnotation, img.normalizedSymbolicName()),
+		fmt.Sprintf(common.AllowTagsOptionAnnotation, img.NormalizedSymbolicName()),
 		common.ApplicationWideAllowTagsOptionAnnotation,
 	}
 	var allowTagsVal = ""
@@ -137,7 +137,7 @@ func (img *ContainerImage) GetParameterMatch(annotations map[string]string) (Mat
 	if allowTagsVal == "" {
 		// The old match-tag annotation is deprecated and will be subject to removal
 		// in a future version.
-		key := fmt.Sprintf(common.OldMatchOptionAnnotation, img.normalizedSymbolicName())
+		key := fmt.Sprintf(common.OldMatchOptionAnnotation, img.NormalizedSymbolicName())
 		val, ok := annotations[key]
 		if ok {
 			logCtx.Warnf("The 'tag-match' annotation is deprecated and subject to removal. Please use 'allow-tags' annotation instead.")
@@ -182,7 +182,7 @@ func (img *ContainerImage) ParseMatchfunc(val string) (MatchFuncFn, interface{})
 // GetParameterPullSecret retrieves an image's pull secret credentials
 func (img *ContainerImage) GetParameterPullSecret(annotations map[string]string) *CredentialSource {
 	pullSecretAnnotations := []string{
-		fmt.Sprintf(common.PullSecretAnnotation, img.normalizedSymbolicName()),
+		fmt.Sprintf(common.PullSecretAnnotation, img.NormalizedSymbolicName()),
 		common.ApplicationWidePullSecretAnnotation,
 	}
 	var pullSecretVal = ""
@@ -208,7 +208,7 @@ func (img *ContainerImage) GetParameterPullSecret(annotations map[string]string)
 // GetParameterIgnoreTags retrieves a list of tags to ignore from a comma-separated string
 func (img *ContainerImage) GetParameterIgnoreTags(annotations map[string]string) []string {
 	ignoreTagsAnnotations := []string{
-		fmt.Sprintf(common.IgnoreTagsOptionAnnotation, img.normalizedSymbolicName()),
+		fmt.Sprintf(common.IgnoreTagsOptionAnnotation, img.NormalizedSymbolicName()),
 		common.ApplicationWideIgnoreTagsOptionAnnotation,
 	}
 	var ignoreTagsVal = ""
@@ -242,7 +242,7 @@ func (img *ContainerImage) GetParameterIgnoreTags(annotations map[string]string)
 func (img *ContainerImage) GetPlatformOptions(annotations map[string]string, unrestricted bool) *options.ManifestOptions {
 	logCtx := img.LogContext()
 	var opts *options.ManifestOptions = options.NewManifestOptions()
-	key := fmt.Sprintf(common.PlatformsAnnotation, img.normalizedSymbolicName())
+	key := fmt.Sprintf(common.PlatformsAnnotation, img.NormalizedSymbolicName())
 	val, ok := annotations[key]
 	if !ok {
 		if !unrestricted {
@@ -291,6 +291,6 @@ func ParsePlatform(platformID string) (string, string, string, error) {
 	return os, arch, variant, nil
 }
 
-func (img *ContainerImage) normalizedSymbolicName() string {
+func (img *ContainerImage) NormalizedSymbolicName() string {
 	return strings.ReplaceAll(img.ImageAlias, "/", "_")
 }
