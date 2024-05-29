@@ -318,20 +318,17 @@ func getHelmParamNamesFromAnnotation(annotations map[string]string, img *image.C
 	var annotationName, helmParamName, helmParamVersion string
 
 	// Image spec is a full-qualified specifier, if we have it, we return early
-	param := img.GetParameterHelmImageSpec(annotations)
-	if param != "" {
+	if param := img.GetParameterHelmImageSpec(annotations); param != "" {
 		log.Tracef("found annotation %s", annotationName)
 		return strings.TrimSpace(param), ""
 	}
 
-	param = img.GetParameterHelmImageName(annotations)
-	if param != "" {
+	if param := img.GetParameterHelmImageName(annotations); param != "" {
 		log.Tracef("found annotation %s", annotationName)
 		helmParamName = param
 	}
 
-	param = img.GetParameterHelmImageTag(annotations)
-	if param != "" {
+	if param := img.GetParameterHelmImageTag(annotations); param != "" {
 		log.Tracef("found annotation %s", annotationName)
 		helmParamVersion = param
 	}
