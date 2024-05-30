@@ -88,7 +88,7 @@ func (m *nativeGitClient) Push(remote string, branch string, force bool) error {
 
 // Add adds a path spec to the repository
 func (m *nativeGitClient) Add(path string) error {
-	return m.runCredentialedCmd("git", "add", path)
+	return m.runCredentialedCmd("add", path)
 }
 
 // SymRefToBranch retrieves the branch name a symbolic ref points to
