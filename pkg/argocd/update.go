@@ -416,10 +416,16 @@ func marshalParamsOverride(app *v1alpha1.Application, originalData []byte) ([]by
 		}
 
 		if strings.HasPrefix(app.Annotations[common.WriteBackTargetAnnotation], common.HelmPrefix) {
-			images := GetImagesFromApplication(app)
+			images := GetImagesAndAliasesFromApplication(app)
 
 			for _, c := range images {
-				helmAnnotationParamName, helmAnnotationParamVersion := getHelmParamNamesFromAnnotation(app.Annotations, c.ImageName)
+
+				if c.ImageAlias == "" {
+					continue
+				}
+
+				helmAnnotationParamName, helmAnnotationParamVersion := getHelmParamNamesFromAnnotation(app.Annotations, c)
+
 				if helmAnnotationParamName == "" {
 					return nil, fmt.Errorf("could not find an image-name annotation for image %s", c.ImageName)
 				}
