@@ -416,15 +416,20 @@ func marshalParamsOverride(app *v1alpha1.Application, originalData []byte) ([]by
 		}
 
 		if strings.HasPrefix(app.Annotations[common.WriteBackTargetAnnotation], common.HelmPrefix) {
-			images := GetImagesFromApplication(app)
+			images := GetImagesFromImageList(app)
 
 			for _, c := range images {
-				helmAnnotationParamName, helmAnnotationParamVersion := getHelmParamNamesFromAnnotation(app.Annotations, c.ImageName)
+				imageName := c.ImageAlias
+				if c.ImageAlias == "" {
+					imageName = c.ImageName
+				}
+
+				helmAnnotationParamName, helmAnnotationParamVersion := getHelmParamNamesFromAnnotation(app.Annotations, imageName)
 				if helmAnnotationParamName == "" {
-					return nil, fmt.Errorf("could not find an image-name annotation for image %s", c.ImageName)
+					return nil, fmt.Errorf("could not find an image-name annotation for image %s", imageName)
 				}
 				if helmAnnotationParamVersion == "" {
-					return nil, fmt.Errorf("could not find an image-tag annotation for image %s", c.ImageName)
+					return nil, fmt.Errorf("could not find an image-tag annotation for image %s", imageName)
 				}
 
 				helmParamName := getHelmParam(appSource.Helm.Parameters, helmAnnotationParamName)
@@ -437,11 +442,16 @@ func marshalParamsOverride(app *v1alpha1.Application, originalData []byte) ([]by
 					return nil, fmt.Errorf("%s parameter not found", helmAnnotationParamVersion)
 				}
 
-				// Build string with YAML format to merge with originalData values
-				helmValues := fmt.Sprintf("%s: %s\n%s: %s", helmAnnotationParamName, helmParamName.Value, helmAnnotationParamVersion, helmParamVersion.Value)
-
 				var mergedParams *conflate.Conflate
-				mergedParams, err = conflate.FromData(originalData, []byte(helmValues))
+				mergedParams, err = conflate.FromData(originalData)
+				if err != nil {
+					return nil, err
+				}
+
+				err = mergedParams.AddGo(
+					dotToObj(helmAnnotationParamName, helmParamName.Value),
+					dotToObj(helmAnnotationParamVersion, helmParamVersion.Value),
+				)
 				if err != nil {
 					return nil, err
 				}
@@ -479,6 +489,28 @@ func marshalParamsOverride(app *v1alpha1.Application, originalData []byte) ([]by
 	}
 
 	return override, nil
+}
+
+func dotToObj(key string, value string) map[string]interface{} {
+	obj := make(map[string]interface{})
+	if key == "" {
+		return obj
+	}
+
+	keys := strings.Split(key, ".")
+
+	current := obj
+	for i, k := range keys {
+		if i == len(keys)-1 {
+			current[k] = value
+		} else {
+			currentMap := make(map[string]interface{})
+			current[k] = currentMap
+			current = currentMap
+		}
+	}
+
+	return obj
 }
 
 func mergeHelmOverride(t *helmOverride, o *helmOverride) {
