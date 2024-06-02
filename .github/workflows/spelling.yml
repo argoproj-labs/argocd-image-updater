@@ -13,7 +13,7 @@ jobs:
     name: Spell checking
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2.0.0
+    - uses: actions/checkout@v4
       with:
         fetch-depth: 5
-    - uses: check-spelling/check-spelling@prerelease
+    - uses: check-spelling/check-spelling@v0.0.22
