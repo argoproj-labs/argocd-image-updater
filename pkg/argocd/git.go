@@ -169,14 +169,6 @@ func commitChangesGit(app *v1alpha1.Application, wbc *WriteBackConfig, changeLis
 		}
 	}
 
-	// Set commit signing configuration
-	if wbc.GitCommitSigningKey != "" {
-		err = gitC.SigningConfig(wbc.GitCommitSigningKey)
-		if err != nil {
-			return err
-		}
-	}
-
 	// The branch to checkout is either a configured branch in the write-back
 	// config, or taken from the application spec's targetRevision. If the
 	// target revision is set to the special value HEAD, or is the empty
@@ -246,6 +238,7 @@ func commitChangesGit(app *v1alpha1.Application, wbc *WriteBackConfig, changeLis
 		commitOpts.SigningKey = wbc.GitCommitSigningKey
 	}
 
+	commitOpts.SigningMethod = wbc.GitCommitSigningMethod
 	commitOpts.SignOff = wbc.GitCommitSignOff
 
 	err = gitC.Commit("", commitOpts)

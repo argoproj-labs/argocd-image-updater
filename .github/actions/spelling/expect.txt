@@ -21,6 +21,7 @@ installationid
 jfrog
 mep
 myregistry
+openpgp
 PRIVATEKEYDATA
 repocreds
 rollbacked

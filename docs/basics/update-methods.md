@@ -153,8 +153,7 @@ format. To create such a secret from an existing private key, you can use
 
 ```bash
 kubectl -n argocd-image-updater create secret generic git-creds \
-  --from-file=sshPrivateKey=~/.ssh/id_rsa \
-  --from-file=sshPublicKey=~/.ssh/id_rsa.pub \
+  --from-file=sshPrivateKey=~/.ssh/id_rsa
 ```
 
 ### <a name="method-git-repository"></a>Specifying a repository when using a Helm repository in repoURL
@@ -248,44 +247,48 @@ as the author. You can override the author using the
 `git.user` and `git.email`
 in the `argocd-image-updater-config` ConfigMap.
 
-### <a name="method-git-commit-signing"></a>Enabling commit signature verification using an SSH or GPG key
-Commit signing requires the repository be accessed using HTTPS or SSH with a user account.
+## <a name="method-git-commit-signing"></a>Enabling commit signature signing using an SSH or GPG key
+
+### 1. SCM branch protection rules require signed commits
+Commit signing for SCM branch protection rules require the repository be accessed using HTTPS or SSH with a user account.
 Repositories accessed using a GitHub App can not be verified when using the git command line at this time.
 
-Each Git commit associated with an author's name and email address can be signed via a public SSH key or GPG key.
+Each Git commit associated with an author's name and email address can be signed via a private SSH key or GPG key.
+
 Commit signing requires a bot account with a GPG or SSH key and the username and email address configured to match the bot account.
 
-Your preferred signing key must be associated with your bot account. See provider documentation for further details:
+Your preferred signing key must be associated with your bot account. See SCM provider documentation for further details:
 * [GitHub](https://docs.github.com/en/authentication/managing-commit-signature-verification/about-commit-signature-verification)
 * [GitLab](https://docs.gitlab.com/ee/user/project/repository/signed_commits/)
 * [Bitbucket](https://confluence.atlassian.com/bitbucketserver/controlling-access-to-code-776639770.html)
 
-Commit Sign Off can be enabled by setting `git.commit-sign-off: "true"`
+### 2. Signing commits for future use with ArgoCD Source Verification Policies
+Commits can also be signed for use with source verification.
+In this case signing keys do not need to be associated with an SCM user account.
 
 **SSH:**
 
-Both private and public keys must be mounted and accessible on the `argocd-image-updater` pod.
+The private key must be mounted and accessible on the `argocd-image-updater` pod.
 
-Set `git.commit-signing-key` `argocd-image-updater-config` ConfigMap to the path of your public key:
+Set `git.commit-signing-key` `argocd-image-updater-config` ConfigMap to the path of your private key:
 
 ```yaml
 data:
   git.commit-sign-off: "true"
-  git.commit-signing-key: /app/.ssh/id_rsa.pub
+  git.commit-signing-key: /app/.ssh/id_rsa
+  git.commit-signing-method: "ssh"
 ```
 
-The matching private key must be available in the same location.
-
-Create a new SSH secret or add the public key to your existing SSH secret:
+Create a new SSH secret or use your existing SSH secret:
 ```bash
 kubectl -n argocd-image-updater create secret generic ssh-git-creds \
-  --from-file=sshPrivateKey=~/.ssh/id_rsa \
-  --from-file=sshPublicKey=~/.ssh/id_rsa.pub
+  --from-file=sshPrivateKey=~/.ssh/id_rsa
 ```
 
 **GPG:**
 
 The GPG private key must be installed and available in the `argocd-image-updater` pod.
+The `git.commit-signing-method` defaults to `openpgp`.
 Set `git.commit-signing-key` in the `argocd-image-updater-config` ConfigMap to the GPG key ID you want to use:
 
 ```yaml
@@ -293,6 +296,8 @@ data:
   git.commit-sign-off: "true"
   git.commit-signing-key: 3AA5C34371567BD2
 ```
+
+#### Commit Sign Off can be enabled by setting `git.commit-sign-off: "true"`
 
 ### <a name="method-git-commit-message"></a>Changing the Git commit message
 

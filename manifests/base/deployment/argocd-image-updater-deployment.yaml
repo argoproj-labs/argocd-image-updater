@@ -83,6 +83,12 @@ spec:
               key: git.commit-signing-key
               name: argocd-image-updater-config
               optional: true
+        - name: GIT_COMMIT_SIGNING_METHOD
+          valueFrom:
+            configMapKeyRef:
+              key: git.commit-signing-key
+              name: argocd-image-updater-config
+              optional: true
         - name: GIT_COMMIT_SIGN_OFF
           valueFrom:
             configMapKeyRef:
@@ -132,10 +138,6 @@ spec:
           mountPath: /app/.ssh/id_rsa
           readOnly: true
           subPath: sshPrivateKey
-        - name: ssh-signing-key
-          mountPath: /app/.ssh/id_rsa.pub
-          readOnly: true
-          subPath: sshPublicKey
       serviceAccountName: argocd-image-updater
       volumes:
       - configMap:
