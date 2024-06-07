@@ -19,7 +19,8 @@ Argo CD is running. Don't worry, without any configuration, it will not start me
     We also provide a Kustomize base in addition to the plain Kubernetes YAML
     manifests. You can use it as remote base and create overlays with your
     configuration on top of it. The remote base's URL is
-    `https://github.com/argoproj-labs/argocd-image-updater/manifests/base`
+    `https://github.com/argoproj-labs/argocd-image-updater/manifests/base`. 
+    You can view the manifests [here](https://github.com/argoproj-labs/argocd-image-updater/tree/stable/manifests/base)
 
 ### Apply the installation manifests
 
