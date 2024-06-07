@@ -22,7 +22,6 @@ import (
 	"github.com/argoproj-labs/argocd-image-updater/test/fixture"
 
 	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
-	argogit "github.com/argoproj/argo-cd/v2/util/git"
 	"github.com/distribution/distribution/v3/manifest/schema1" //nolint:staticcheck
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -2222,7 +2221,7 @@ func Test_GetGitCreds(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, creds)
 		// Must have HTTPS creds
-		_, ok := creds.(argogit.HTTPSCreds)
+		_, ok := creds.(git.HTTPSCreds)
 		require.True(t, ok)
 	})
 

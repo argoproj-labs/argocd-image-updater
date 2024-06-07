@@ -5,6 +5,7 @@ import (
 	"text/template"
 	"time"
 
+	"github.com/argoproj-labs/argocd-image-updater/ext/git"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/argocd"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/kube"
 
@@ -45,6 +46,7 @@ type ImageUpdaterConfig struct {
 	GitCommitMail       string
 	GitCommitMessage    *template.Template
 	DisableKubeEvents   bool
+	GitCreds            git.CredsStore
 }
 
 // newRootCommand implements the root command of argocd-image-updater
@@ -62,7 +64,20 @@ func newRootCommand() error {
 }
 
 func main() {
-	err := newRootCommand()
+	var err error
+
+	// FIXME(jannfis):
+	// This is a workaround for supporting the Argo CD askpass implementation.
+	// When the environment ARGOCD_BINARY_NAME is set to argocd-git-ask-pass,
+	// we divert from the main path of execution to become a git credentials
+	// helper.
+	cmdName := os.Getenv("ARGOCD_BINARY_NAME")
+	if cmdName == "argocd-git-ask-pass" {
+		cmd := NewAskPassCommand()
+		err = cmd.Execute()
+	} else {
+		err = newRootCommand()
+	}
 	if err != nil {
 		os.Exit(1)
 	}

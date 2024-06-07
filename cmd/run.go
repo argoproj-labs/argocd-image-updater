@@ -19,6 +19,8 @@ import (
 	"github.com/argoproj-labs/argocd-image-updater/pkg/registry"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/version"
 
+	"github.com/argoproj/argo-cd/v2/reposerver/askpass"
+
 	"github.com/spf13/cobra"
 
 	"golang.org/x/sync/semaphore"
@@ -154,6 +156,23 @@ func newRunCommand() *cobra.Command {
 					return err
 				}
 			}
+
+			// Start up the credentials store server
+			cs := askpass.NewServer()
+			csErrCh := make(chan error)
+			go func() {
+				log.Debugf("Starting askpass server")
+				csErrCh <- cs.Run(askpass.SocketPath)
+			}()
+
+			// Wait for cred server to be started, just in case
+			err = <-csErrCh
+			if err != nil {
+				log.Errorf("Error running askpass server: %v", err)
+				return err
+			}
+
+			cfg.GitCreds = cs
 
 			// This is our main loop. We leave it only when our health probe server
 			// returns an error.
@@ -309,6 +328,7 @@ func runImageUpdater(cfg *ImageUpdaterConfig, warmUp bool) (argocd.ImageUpdaterR
 				GitCommitEmail:    cfg.GitCommitMail,
 				GitCommitMessage:  cfg.GitCommitMessage,
 				DisableKubeEvents: cfg.DisableKubeEvents,
+				GitCreds:          cfg.GitCreds,
 			}
 			res := argocd.UpdateApplication(upconf, syncState)
 			result.NumApplicationsProcessed += 1
