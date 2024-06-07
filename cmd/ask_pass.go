@@ -1,5 +1,8 @@
 package main
 
+// Taken from https://github.com/argoproj/argo-cd/blob/ae19965ff75fd6ba199914b258d751d6b7ea876c/cmd/argocd-git-ask-pass/commands/argocd_git_ask_pass.go
+// All courtesy to the original authors.
+
 import (
 	"fmt"
 	"os"
