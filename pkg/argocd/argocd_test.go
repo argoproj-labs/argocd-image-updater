@@ -177,7 +177,7 @@ func Test_GetApplicationType(t *testing.T) {
 		assert.Equal(t, "Kustomize", appType.String())
 	})
 
-	t.Run("Get application of unknown Type", func(t *testing.T) {
+	t.Run("Get application of plugin Type", func(t *testing.T) {
 		application := &v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
 				Name:      "test-app",
@@ -192,8 +192,8 @@ func Test_GetApplicationType(t *testing.T) {
 			},
 		}
 		appType := GetApplicationType(application)
-		assert.Equal(t, ApplicationTypeUnsupported, appType)
-		assert.Equal(t, "Unsupported", appType.String())
+		assert.Equal(t, ApplicationTypePlugin, appType)
+		assert.Equal(t, "Plugin", appType.String())
 	})
 
 	t.Run("Get application with kustomize target", func(t *testing.T) {
@@ -465,7 +465,7 @@ func Test_FilterApplicationsForUpdate(t *testing.T) {
 					SourceType: v1alpha1.ApplicationSourceTypeKustomize,
 				},
 			},
-			// Annotated, but invalid type
+			// Annotated and correct type
 			{
 				ObjectMeta: v1.ObjectMeta{
 					Name:      "app2",
@@ -493,9 +493,11 @@ func Test_FilterApplicationsForUpdate(t *testing.T) {
 		}
 		filtered, err := FilterApplicationsForUpdate(applicationList, []string{}, "")
 		require.NoError(t, err)
-		require.Len(t, filtered, 1)
+		require.Len(t, filtered, 2)
 		require.Contains(t, filtered, "app1")
+		require.Contains(t, filtered, "app2")
 		assert.Len(t, filtered["app1"].Images, 2)
+		assert.Len(t, filtered["app2"].Images, 2)
 	})
 
 	t.Run("Filter for applications with patterns", func(t *testing.T) {
@@ -1046,6 +1048,271 @@ func Test_SetHelmImage(t *testing.T) {
 		require.Error(t, err)
 	})
 
+}
+
+func Test_SetPluginImage(t *testing.T) {
+	t.Run("Test set Plugin image parameters on Plugin app with existing HELM_ARGS", func(t *testing.T) {
+		app := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "test-app",
+				Namespace: "testns",
+				Annotations: map[string]string{
+					fmt.Sprintf(common.HelmParamImageNameAnnotation, "foobar"): "image.name",
+					fmt.Sprintf(common.HelmParamImageTagAnnotation, "foobar"):  "image.tag",
+				},
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: &v1alpha1.ApplicationSource{
+					Plugin: &v1alpha1.ApplicationSourcePlugin{
+						Env: []*v1alpha1.EnvEntry{
+							{
+								Name:  "HELM_ARGS",
+								Value: "--set image.tag=1.0.0 --set image.name=jannfis/foobar",
+							},
+						},
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypePlugin,
+				Summary: v1alpha1.ApplicationSummary{
+					Images: []string{
+						"jannfis/foobar:1.0.0",
+					},
+				},
+			},
+		}
+
+		img := image.NewFromIdentifier("foobar=jannfis/foobar:1.0.1")
+
+		err := SetPluginImage(app, img)
+		require.NoError(t, err)
+		require.NotNil(t, app.Spec.Source.Plugin)
+		assert.Len(t, app.Spec.Source.Plugin.Env, 1)
+
+		// Find correct HELM_ARGS
+		var helmArgs string
+		for _, env := range app.Spec.Source.Plugin.Env {
+			if env.Name == "HELM_ARGS" {
+				helmArgs = env.Value
+				break
+			}
+		}
+		assert.Contains(t, helmArgs, "--set image.tag=1.0.1")
+	})
+
+	t.Run("Test set Plugin image parameters on Plugin app without existing HELM_ARGS", func(t *testing.T) {
+		app := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "test-app",
+				Namespace: "testns",
+				Annotations: map[string]string{
+					fmt.Sprintf(common.HelmParamImageNameAnnotation, "foobar"): "image.name",
+					fmt.Sprintf(common.HelmParamImageTagAnnotation, "foobar"):  "image.tag",
+				},
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: &v1alpha1.ApplicationSource{
+					Plugin: &v1alpha1.ApplicationSourcePlugin{},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypePlugin,
+				Summary: v1alpha1.ApplicationSummary{
+					Images: []string{
+						"jannfis/foobar:1.0.0",
+					},
+				},
+			},
+		}
+
+		img := image.NewFromIdentifier("foobar=jannfis/foobar:1.0.1")
+
+		err := SetPluginImage(app, img)
+		require.NoError(t, err)
+		require.NotNil(t, app.Spec.Source.Plugin)
+		assert.Len(t, app.Spec.Source.Plugin.Env, 1)
+
+		// Find correct HELM_ARGS
+		var helmArgs string
+		for _, env := range app.Spec.Source.Plugin.Env {
+			if env.Name == "HELM_ARGS" {
+				helmArgs = env.Value
+				break
+			}
+		}
+		assert.Contains(t, helmArgs, "--set image.tag=1.0.1")
+	})
+
+	t.Run("Test set Plugin image parameters on Plugin app with different parameters in HELM_ARGS", func(t *testing.T) {
+		app := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "test-app",
+				Namespace: "testns",
+				Annotations: map[string]string{
+					fmt.Sprintf(common.HelmParamImageNameAnnotation, "foobar"): "foobar.image.name",
+					fmt.Sprintf(common.HelmParamImageTagAnnotation, "foobar"):  "foobar.image.tag",
+				},
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: &v1alpha1.ApplicationSource{
+					Plugin: &v1alpha1.ApplicationSourcePlugin{
+						Env: []*v1alpha1.EnvEntry{
+							{
+								Name:  "HELM_ARGS",
+								Value: "--set image.tag=1.0.0 --set image.name=jannfis/dummy",
+							},
+						},
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypePlugin,
+				Summary: v1alpha1.ApplicationSummary{
+					Images: []string{
+						"jannfis/foobar:1.0.0",
+					},
+				},
+			},
+		}
+
+		img := image.NewFromIdentifier("foobar=jannfis/foobar:1.0.1")
+
+		err := SetPluginImage(app, img)
+		require.NoError(t, err)
+		require.NotNil(t, app.Spec.Source.Plugin)
+		assert.Len(t, app.Spec.Source.Plugin.Env, 1)
+
+		// Find correct HELM_ARGS
+		var helmArgs string
+		for _, env := range app.Spec.Source.Plugin.Env {
+			if env.Name == "HELM_ARGS" {
+				helmArgs = env.Value
+				break
+			}
+		}
+		assert.Contains(t, helmArgs, "--set foobar.image.tag=1.0.1")
+	})
+
+	t.Run("Test set Plugin image parameters on non Plugin app", func(t *testing.T) {
+		app := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "test-app",
+				Namespace: "testns",
+				Annotations: map[string]string{
+					fmt.Sprintf(common.HelmParamImageNameAnnotation, "foobar"): "foobar.image.name",
+					fmt.Sprintf(common.HelmParamImageTagAnnotation, "foobar"):  "foobar.image.tag",
+				},
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: &v1alpha1.ApplicationSource{},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypeKustomize,
+				Summary: v1alpha1.ApplicationSummary{
+					Images: []string{
+						"jannfis/foobar:1.0.0",
+					},
+				},
+			},
+		}
+
+		img := image.NewFromIdentifier("foobar=jannfis/foobar:1.0.1")
+
+		err := SetPluginImage(app, img)
+		require.Error(t, err)
+	})
+}
+
+func Test_parseHelmArgs(t *testing.T) {
+	t.Run("Test parse Helm arguments with mixed parameters", func(t *testing.T) {
+		helmArgs := "--set image.tag=1.0.0 --set image.name=jannfis/foobar -f values.yaml"
+		params, otherArgs := parseHelmArgs(helmArgs)
+
+		assert.Len(t, params, 2)
+		assert.Equal(t, "1.0.0", params["image.tag"])
+		assert.Equal(t, "jannfis/foobar", params["image.name"])
+		assert.Len(t, otherArgs, 2)
+		assert.Contains(t, otherArgs, "-f")
+		assert.Contains(t, otherArgs, "values.yaml")
+	})
+
+	t.Run("Test parse Helm arguments with only --set parameters", func(t *testing.T) {
+		helmArgs := "--set image.tag=1.0.0 --set image.name=jannfis/foobar"
+		params, otherArgs := parseHelmArgs(helmArgs)
+
+		assert.Len(t, params, 2)
+		assert.Equal(t, "1.0.0", params["image.tag"])
+		assert.Equal(t, "jannfis/foobar", params["image.name"])
+		assert.Len(t, otherArgs, 0)
+	})
+
+	t.Run("Test parse Helm arguments with only other parameters", func(t *testing.T) {
+		helmArgs := "-f values.yaml --debug"
+		params, otherArgs := parseHelmArgs(helmArgs)
+
+		assert.Len(t, params, 0)
+		assert.Len(t, otherArgs, 3)
+		assert.Contains(t, otherArgs, "-f")
+		assert.Contains(t, otherArgs, "values.yaml")
+		assert.Contains(t, otherArgs, "--debug")
+	})
+
+	t.Run("Test parse empty Helm arguments", func(t *testing.T) {
+		helmArgs := ""
+		params, otherArgs := parseHelmArgs(helmArgs)
+
+		assert.Len(t, params, 0)
+		assert.Len(t, otherArgs, 0)
+	})
+}
+
+func Test_buildHelmArgs(t *testing.T) {
+	t.Run("Test build Helm arguments with mixed parameters", func(t *testing.T) {
+		params := map[string]string{
+			"image.tag":  "1.0.0",
+			"image.name": "jannfis/foobar",
+		}
+		otherArgs := []string{"-f", "values.yaml"}
+
+		helmArgs := buildHelmArgs(params, otherArgs)
+
+		assert.Contains(t, helmArgs, "--set image.tag=1.0.0")
+		assert.Contains(t, helmArgs, "--set image.name=jannfis/foobar")
+		assert.Contains(t, helmArgs, "-f values.yaml")
+	})
+
+	t.Run("Test build Helm arguments with only --set parameters", func(t *testing.T) {
+		params := map[string]string{
+			"image.tag":  "1.0.0",
+			"image.name": "jannfis/foobar",
+		}
+		otherArgs := []string{}
+
+		helmArgs := buildHelmArgs(params, otherArgs)
+
+		assert.Contains(t, helmArgs, "--set image.tag=1.0.0")
+		assert.Contains(t, helmArgs, "--set image.name=jannfis/foobar")
+	})
+
+	t.Run("Test build Helm arguments with only other parameters", func(t *testing.T) {
+		params := map[string]string{}
+		otherArgs := []string{"-f", "values.yaml", "--debug"}
+
+		helmArgs := buildHelmArgs(params, otherArgs)
+
+		assert.Contains(t, helmArgs, "-f values.yaml")
+		assert.Contains(t, helmArgs, "--debug")
+	})
+
+	t.Run("Test build empty Helm arguments", func(t *testing.T) {
+		params := map[string]string{}
+		otherArgs := []string{}
+
+		helmArgs := buildHelmArgs(params, otherArgs)
+
+		assert.Equal(t, "", helmArgs)
+	})
 }
 
 func TestKubernetesClient(t *testing.T) {
