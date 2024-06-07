@@ -353,7 +353,7 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 				}
 			}
 		} else {
-			logCtx.Infof("Dry run - not commiting %d changes to application", result.NumImagesUpdated)
+			logCtx.Infof("Dry run - not committing %d changes to application", result.NumImagesUpdated)
 		}
 	}
 
@@ -416,10 +416,16 @@ func marshalParamsOverride(app *v1alpha1.Application, originalData []byte) ([]by
 		}
 
 		if strings.HasPrefix(app.Annotations[common.WriteBackTargetAnnotation], common.HelmPrefix) {
-			images := GetImagesFromApplication(app)
+			images := GetImagesAndAliasesFromApplication(app)
 
 			for _, c := range images {
-				helmAnnotationParamName, helmAnnotationParamVersion := getHelmParamNamesFromAnnotation(app.Annotations, c.ImageName)
+
+				if c.ImageAlias == "" {
+					continue
+				}
+
+				helmAnnotationParamName, helmAnnotationParamVersion := getHelmParamNamesFromAnnotation(app.Annotations, c)
+
 				if helmAnnotationParamName == "" {
 					return nil, fmt.Errorf("could not find an image-name annotation for image %s", c.ImageName)
 				}
@@ -613,8 +619,9 @@ func commitChanges(app *v1alpha1.Application, wbc *WriteBackConfig, changeList [
 	switch wbc.Method {
 	case WriteBackApplication:
 		_, err := wbc.ArgoClient.UpdateSpec(context.TODO(), &application.ApplicationUpdateSpecRequest{
-			Name: &app.Name,
-			Spec: &app.Spec,
+			Name:         &app.Name,
+			AppNamespace: &app.Namespace,
+			Spec:         &app.Spec,
 		})
 		if err != nil {
 			return err

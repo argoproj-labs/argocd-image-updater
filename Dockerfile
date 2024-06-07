@@ -1,4 +1,4 @@
-FROM golang:1.20 AS builder
+FROM golang:1.22 AS builder
 
 RUN mkdir -p /src/argocd-image-updater
 WORKDIR /src/argocd-image-updater
@@ -10,13 +10,11 @@ COPY . .
 RUN mkdir -p dist && \
 	make controller
 
-FROM alpine:latest
+FROM alpine:3.19
 
 RUN apk update && \
     apk upgrade && \
-    apk add ca-certificates git openssh-client python3 py3-pip tini && \
-    pip3 install --upgrade pip && \
-    pip3 install awscli && \
+    apk add ca-certificates git openssh-client aws-cli tini && \
     rm -rf /var/cache/apk/*
 
 RUN mkdir -p /usr/local/bin

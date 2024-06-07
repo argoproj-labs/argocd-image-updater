@@ -309,29 +309,26 @@ func (client *argoCD) UpdateSpec(ctx context.Context, in *application.Applicatio
 // getHelmParamNamesFromAnnotation inspects the given annotations for whether
 // the annotations for specifying Helm parameter names are being set and
 // returns their values.
-func getHelmParamNamesFromAnnotation(annotations map[string]string, symbolicName string) (string, string) {
+func getHelmParamNamesFromAnnotation(annotations map[string]string, img *image.ContainerImage) (string, string) {
 	// Return default values without symbolic name given
-	if symbolicName == "" {
+	if img.ImageAlias == "" {
 		return "image.name", "image.tag"
 	}
 
 	var annotationName, helmParamName, helmParamVersion string
 
 	// Image spec is a full-qualified specifier, if we have it, we return early
-	annotationName = fmt.Sprintf(common.HelmParamImageSpecAnnotation, symbolicName)
-	if param, ok := annotations[annotationName]; ok {
+	if param := img.GetParameterHelmImageSpec(annotations); param != "" {
 		log.Tracef("found annotation %s", annotationName)
 		return strings.TrimSpace(param), ""
 	}
 
-	annotationName = fmt.Sprintf(common.HelmParamImageNameAnnotation, symbolicName)
-	if param, ok := annotations[annotationName]; ok {
+	if param := img.GetParameterHelmImageName(annotations); param != "" {
 		log.Tracef("found annotation %s", annotationName)
 		helmParamName = param
 	}
 
-	annotationName = fmt.Sprintf(common.HelmParamImageTagAnnotation, symbolicName)
-	if param, ok := annotations[annotationName]; ok {
+	if param := img.GetParameterHelmImageTag(annotations); param != "" {
 		log.Tracef("found annotation %s", annotationName)
 		helmParamVersion = param
 	}
@@ -497,6 +494,24 @@ func GetImagesFromApplication(app *v1alpha1.Application) image.ContainerImageLis
 		if img.HasForceUpdateOptionAnnotation(annotations) {
 			img.ImageTag = nil // the tag from the image list will be a version constraint, which isn't a valid tag
 			images = append(images, img)
+		}
+	}
+
+	return images
+}
+
+// GetImagesFromApplicationImagesAnnotation returns the list of known images for the given application from the images annotation
+func GetImagesAndAliasesFromApplication(app *v1alpha1.Application) image.ContainerImageList {
+	images := GetImagesFromApplication(app)
+
+	// We update the ImageAlias field of the Images found in the app.Status.Summary.Images list.
+	for _, img := range *parseImageList(app.Annotations) {
+		if image := images.ContainsImage(img, false); image != nil {
+			if img.ImageAlias == "" {
+				image.ImageAlias = img.ImageName
+			} else {
+				image.ImageAlias = img.ImageAlias
+			}
 		}
 	}
 
