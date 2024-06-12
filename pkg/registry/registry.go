@@ -51,7 +51,11 @@ func (endpoint *RegistryEndpoint) GetTags(img *image.ContainerImage, regClient R
 		return nil, err
 	}
 
-	tags := []string{}
+	type tuple struct {
+		original, found string
+	}
+
+	tags := []tuple{}
 
 	// For digest strategy, we do require a version constraint
 	if vc.Strategy.NeedsVersionConstraint() && vc.Constraint == "" {
@@ -62,14 +66,32 @@ func (endpoint *RegistryEndpoint) GetTags(img *image.ContainerImage, regClient R
 	// digest, all but the constraint tag are ignored.
 	if vc.MatchFunc != nil || len(vc.IgnoreList) > 0 || vc.Strategy.WantsOnlyConstraintTag() {
 		for _, t := range tTags {
-			if (vc.MatchFunc != nil && !vc.MatchFunc(t, vc.MatchArgs)) || vc.IsTagIgnored(t) || (vc.Strategy.WantsOnlyConstraintTag() && t != vc.Constraint) {
+			var (
+				shouldRemove = false
+				item         = tuple{t, t}
+			)
+			if vc.MatchFunc != nil {
+				if found, ok := vc.MatchFunc(t, vc.MatchArgs); ok {
+					item.found = found
+				} else {
+					shouldRemove = true
+				}
+			}
+
+			if vc.IsTagIgnored(t) || (vc.Strategy.WantsOnlyConstraintTag() && t != vc.Constraint) {
+				shouldRemove = true
+			}
+
+			if shouldRemove {
 				logCtx.Tracef("Removing tag %s because it either didn't match defined pattern or is ignored", t)
 			} else {
-				tags = append(tags, t)
+				tags = append(tags, item)
 			}
 		}
 	} else {
-		tags = tTags
+		for _, t := range tTags {
+			tags = append(tags, tuple{t, t})
+		}
 	}
 
 	// In some cases, we don't need to fetch the metadata to get the creation time
@@ -88,7 +110,7 @@ func (endpoint *RegistryEndpoint) GetTags(img *image.ContainerImage, regClient R
 			} else if endpoint.TagListSort == TagListSortLatestLast {
 				ts = i
 			}
-			imgTag := tag.NewImageTag(tagStr, time.Unix(int64(ts), 0), "")
+			imgTag := tag.NewImageTagWithTagPart(tagStr.original, tagStr.found, time.Unix(int64(ts), 0), "")
 			tagList.Add(imgTag)
 		}
 		return tagList, nil
@@ -109,7 +131,7 @@ func (endpoint *RegistryEndpoint) GetTags(img *image.ContainerImage, regClient R
 		// an error, we treat it as a cache miss and just go ahead to invalidate
 		// the entry.
 		if vc.Strategy.IsCacheable() {
-			imgTag, err := endpoint.Cache.GetTag(nameInRegistry, tagStr)
+			imgTag, err := endpoint.Cache.GetTag(nameInRegistry, tagStr.original)
 			if err != nil {
 				log.Warnf("invalid entry for %s:%s in cache, invalidating.", nameInRegistry, imgTag.TagName)
 			} else if imgTag != nil {
@@ -172,7 +194,7 @@ func (endpoint *RegistryEndpoint) GetTags(img *image.ContainerImage, regClient R
 			tagList.Add(imgTag)
 			tagListLock.Unlock()
 			endpoint.Cache.SetTag(nameInRegistry, imgTag)
-		}(tagStr)
+		}(tagStr.original)
 	}
 
 	wg.Wait()
