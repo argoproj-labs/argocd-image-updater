@@ -46,6 +46,7 @@ type UpdateConfiguration struct {
 	GitCommitMessage  *template.Template
 	DisableKubeEvents bool
 	IgnorePlatforms   bool
+	ManualTagValue    string
 }
 
 type GitCredsSource func(app *v1alpha1.Application) (git.Creds, error)
@@ -200,6 +201,12 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 		}
 
 		vc.Strategy = applicationImage.GetParameterUpdateStrategy(updateConf.UpdateApp.Application.Annotations)
+		// If strategy is manual but no tag has been set, default to SemVer
+		if vc.Strategy == image.StrategyManual && updateConf.ManualTagValue == "" {
+			imgCtx.Infof("strategy is set to %s but it requires a tag defined via --manual-tag-value. Defaulting to %s strategy instead.", vc.Strategy.String(), image.StrategySemVer.String())
+			vc.Strategy = image.StrategySemVer
+		}
+
 		vc.MatchFunc, vc.MatchArgs = applicationImage.GetParameterMatch(updateConf.UpdateApp.Application.Annotations)
 		vc.IgnoreList = applicationImage.GetParameterIgnoreTags(updateConf.UpdateApp.Application.Annotations)
 		vc.Options = applicationImage.
@@ -238,13 +245,20 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 			result.NumErrors += 1
 			continue
 		}
+		var tags *tag.ImageTagList = tag.NewImageTagList()
 
-		// Get list of available image tags from the repository
-		tags, err := rep.GetTags(applicationImage, regClient, &vc)
-		if err != nil {
-			imgCtx.Errorf("Could not get tags from registry: %v", err)
-			result.NumErrors += 1
-			continue
+		if vc.Strategy != image.StrategyManual {
+			// Get list of available image tags from the repository
+			tags, err = rep.GetTags(applicationImage, regClient, &vc)
+			if err != nil {
+				imgCtx.Errorf("Could not get tags from registry: %v", err)
+				result.NumErrors += 1
+				continue
+			}
+		} else {
+			manualTag := tag.NewImageTag(updateConf.ManualTagValue, time.Unix(0, 0), "")
+
+			tags.Add(manualTag)
 		}
 
 		imgCtx.Tracef("List of available tags found: %v", tags.Tags())
