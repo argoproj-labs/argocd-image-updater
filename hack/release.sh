@@ -36,8 +36,8 @@ fi
 
 echo "${TARGET_VERSION}" > VERSION
 
-echo "*** checking for existance of git tag ${TARGET_TAG}"
-if git tag -l "${TARGET_VERSION}" | grep -q "${TARGET_TAG}"; then
+echo "*** checking for existence of git tag ${TARGET_TAG}"
+if git tag -l "${TARGET_TAG}" | grep -q "${TARGET_TAG}"; then
 	echo "Error: Tag with version ${TARGET_TAG} already exists." >&2
 	exit 1
 fi
