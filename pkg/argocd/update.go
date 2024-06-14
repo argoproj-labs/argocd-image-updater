@@ -46,6 +46,7 @@ type UpdateConfiguration struct {
 	GitCommitMessage  *template.Template
 	DisableKubeEvents bool
 	IgnorePlatforms   bool
+	GitCreds          git.CredsStore
 }
 
 type GitCredsSource func(app *v1alpha1.Application) (git.Creds, error)
@@ -72,6 +73,7 @@ type WriteBackConfig struct {
 	KustomizeBase    string
 	Target           string
 	GitRepo          string
+	GitCreds         git.CredsStore
 }
 
 // The following are helper structs to only marshal the fields we require
@@ -311,6 +313,11 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 	wbc, err := getWriteBackConfig(&updateConf.UpdateApp.Application, updateConf.KubeClient, updateConf.ArgoClient)
 	if err != nil {
 		return result
+	}
+	if updateConf.GitCreds == nil {
+		wbc.GitCreds = git.NoopCredsStore{}
+	} else {
+		wbc.GitCreds = updateConf.GitCreds
 	}
 
 	if wbc.Method == WriteBackGit {

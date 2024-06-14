@@ -3,15 +3,18 @@ package argocd
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"strconv"
 	"strings"
 
 	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
+	"github.com/argoproj/argo-cd/v2/util/cert"
 	"github.com/argoproj/argo-cd/v2/util/db"
 	"github.com/argoproj/argo-cd/v2/util/settings"
 
 	"github.com/argoproj-labs/argocd-image-updater/ext/git"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/kube"
+	"github.com/argoproj-labs/argocd-image-updater/pkg/log"
 )
 
 // getGitCredsSource returns git credentials source that loads credentials from the secret or from Argo CD settings
@@ -43,7 +46,69 @@ func getCredsFromArgoCD(wbc *WriteBackConfig, kubeClient *kube.KubernetesClient)
 	if !repo.HasCredentials() {
 		return nil, fmt.Errorf("credentials for '%s' are not configured in Argo CD settings", wbc.GitRepo)
 	}
-	return repo.GetGitCreds(git.NoopCredsStore{}), nil
+	creds := GetGitCreds(repo, wbc.GitCreds)
+	return creds, nil
+}
+
+// GetGitCreds returns the credentials from a repository configuration used to authenticate at a Git repository
+// This is a slightly modified version of upstream's Repository.GetGitCreds method. We need it so it does not return the upstream type.
+// TODO(jannfis): Can be removed once we have the change to the git client's getGitAskPassEnv upstream.
+func GetGitCreds(repo *v1alpha1.Repository, store git.CredsStore) git.Creds {
+	if repo == nil {
+		return git.NopCreds{}
+	}
+	if repo.Password != "" {
+		return git.NewHTTPSCreds(repo.Username, repo.Password, repo.TLSClientCertData, repo.TLSClientCertKey, repo.IsInsecure(), repo.Proxy, store, repo.ForceHttpBasicAuth)
+	}
+	if repo.SSHPrivateKey != "" {
+		return git.NewSSHCreds(repo.SSHPrivateKey, getCAPath(repo.Repo), repo.IsInsecure(), store, repo.Proxy)
+	}
+	if repo.GithubAppPrivateKey != "" && repo.GithubAppId != 0 && repo.GithubAppInstallationId != 0 {
+		return git.NewGitHubAppCreds(repo.GithubAppId, repo.GithubAppInstallationId, repo.GithubAppPrivateKey, repo.GitHubAppEnterpriseBaseURL, repo.Repo, repo.TLSClientCertData, repo.TLSClientCertKey, repo.IsInsecure(), repo.Proxy, store)
+	}
+	if repo.GCPServiceAccountKey != "" {
+		return git.NewGoogleCloudCreds(repo.GCPServiceAccountKey, store)
+	}
+	return git.NopCreds{}
+}
+
+// Taken from upstream Argo CD.
+// TODO(jannfis): Can be removed once we have the change to the git client's getGitAskPassEnv upstream.
+func getCAPath(repoURL string) string {
+	// For git ssh protocol url without ssh://, url.Parse() will fail to parse.
+	// However, no warn log is output since ssh scheme url is a possible format.
+	if ok, _ := git.IsSSHURL(repoURL); ok {
+		return ""
+	}
+
+	hostname := ""
+	// url.Parse() will happily parse most things thrown at it. When the URL
+	// is either https or oci, we use the parsed hostname to retrieve the cert,
+	// otherwise we'll use the parsed path (OCI repos are often specified as
+	// hostname, without protocol).
+	parsedURL, err := url.Parse(repoURL)
+	if err != nil {
+		log.Warnf("Could not parse repo URL '%s': %v", repoURL, err)
+		return ""
+	}
+	if parsedURL.Scheme == "https" || parsedURL.Scheme == "oci" {
+		hostname = parsedURL.Host
+	} else if parsedURL.Scheme == "" {
+		hostname = parsedURL.Path
+	}
+
+	if hostname == "" {
+		log.Warnf("Could not get hostname for repository '%s'", repoURL)
+		return ""
+	}
+
+	caPath, err := cert.GetCertBundlePathForRepository(hostname)
+	if err != nil {
+		log.Warnf("Could not get cert bundle path for repository '%s': %v", repoURL, err)
+		return ""
+	}
+
+	return caPath
 }
 
 // getCredsFromSecret loads repository credentials from secret
