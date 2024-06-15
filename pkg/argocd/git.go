@@ -206,7 +206,7 @@ func commitChangesGit(app *v1alpha1.Application, wbc *WriteBackConfig, changeLis
 		}
 	}
 
-	err = gitC.Checkout(pushBranch)
+	err = gitC.Checkout(pushBranch, false)
 	if err != nil {
 		return err
 	}

@@ -2,11 +2,11 @@ run:
   timeout: 2m
 linters:
   enable:
+    - gofmt
     - vet
     - goimports
     - ineffassign
     - unconvert
-    - unparam
     - unused
 linters-settings:
   goimports:
