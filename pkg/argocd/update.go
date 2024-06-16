@@ -21,7 +21,6 @@ import (
 
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/application"
 	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
-	"github.com/miracl/conflate"
 	"gopkg.in/yaml.v2"
 )
 
@@ -450,16 +449,24 @@ func marshalParamsOverride(app *v1alpha1.Application, originalData []byte) ([]by
 					return nil, fmt.Errorf("%s parameter not found", helmAnnotationParamVersion)
 				}
 
-				// Build string with YAML format to merge with originalData values
-				helmValues := fmt.Sprintf("%s: %s\n%s: %s", helmAnnotationParamName, helmParamName.Value, helmAnnotationParamVersion, helmParamVersion.Value)
-
-				var mergedParams *conflate.Conflate
-				mergedParams, err = conflate.FromData(originalData, []byte(helmValues))
+				// Create new values structure
+				//var helmNewValues map[string]interface{}
+				helmNewValues := yaml.MapSlice{}
+				err = yaml.Unmarshal(originalData, &helmNewValues)
 				if err != nil {
 					return nil, err
 				}
 
-				override, err = mergedParams.MarshalYAML()
+				err = setHelmValue(helmNewValues, helmAnnotationParamName, helmParamName.Value)
+				if err != nil {
+					return nil, fmt.Errorf("failed to set image parameter name value: %v", err)
+				}
+				err = setHelmValue(helmNewValues, helmAnnotationParamVersion, helmParamVersion.Value)
+				if err != nil {
+					return nil, fmt.Errorf("failed to set image parameter version value: %v", err)
+				}
+
+				override, err = yaml.Marshal(helmNewValues)
 			}
 		} else {
 			var params helmOverride
@@ -515,6 +522,76 @@ func mergeKustomizeOverride(t *kustomizeOverride, o *kustomizeOverride) {
 		*t.Kustomize.Images = append(*t.Kustomize.Images, image)
 	}
 }
+
+// Check if a key exists in a MapSlice and return its index and value
+func findHelmValuesKey(m yaml.MapSlice, key string) (int, bool) {
+	for i, item := range m {
+		if item.Key == key {
+			return i, true
+		}
+	}
+	return -1, false
+}
+
+// set value of the parameter passed from the annotations.
+func setHelmValue(m yaml.MapSlice, key string, value interface{}) error {
+	// Check if the full key exists
+	if idx, found := findHelmValuesKey(m, key); found {
+		m[idx].Value = value
+		return nil
+	}
+
+	keys := strings.Split(key, ".")
+	current := m
+
+	for i, k := range keys {
+		found := false
+		for j, item := range current {
+			if item.Key == k {
+				if i == len(keys)-1 {
+					// If we're at the final key, set the value
+					current[j].Value = value
+					found = true
+					break
+				} else {
+					// Navigate deeper into the map
+					if nestedMap, ok := item.Value.(yaml.MapSlice); ok {
+						current = nestedMap
+						found = true
+						break
+					} else {
+						return fmt.Errorf("unexpected type %T for key %s", item.Value, k)
+					}
+				}
+			}
+		}
+
+		if !found {
+			return fmt.Errorf("key %s not found in the map", k)
+		}
+	}
+
+	return nil
+}
+
+/*
+// set value of the parameter passed from the annotations.
+func setHelmValue(m map[string]interface{}, key string, value interface{}) error {
+	keys := strings.Split(key, ".")
+	for i, k := range keys {
+		if i == len(keys)-1 {
+			m[k] = value
+		} else {
+			if _, ok := m[k].(map[string]interface{}); ok {
+				m = m[k].(map[string]interface{})
+			} else {
+				return fmt.Errorf("key %s not found in the map", k)
+			}
+		}
+	}
+	return nil
+}
+*/
 
 func getWriteBackConfig(app *v1alpha1.Application, kubeClient *kube.KubernetesClient, argoClient ArgoCD) (*WriteBackConfig, error) {
 	wbc := &WriteBackConfig{}

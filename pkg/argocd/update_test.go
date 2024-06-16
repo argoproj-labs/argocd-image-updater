@@ -20,6 +20,7 @@ import (
 	"github.com/argoproj-labs/argocd-image-updater/pkg/tag"
 	"github.com/argoproj-labs/argocd-image-updater/test/fake"
 	"github.com/argoproj-labs/argocd-image-updater/test/fixture"
+	"gopkg.in/yaml.v2"
 
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/application"
 	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
@@ -1646,6 +1647,64 @@ replicas: 1
 
 		_, err := marshalParamsOverride(&app, nil)
 		assert.Error(t, err)
+	})
+}
+
+func Test_SetHelmValue(t *testing.T) {
+	t.Run("Update existing Key", func(t *testing.T) {
+		expected := yaml.MapSlice{
+			{Key: "image", Value: yaml.MapSlice{
+				{Key: "attributes", Value: yaml.MapSlice{
+					{Key: "name", Value: "repo-name"},
+					{Key: "tag", Value: "v2.0.0"},
+				}},
+			}},
+		}
+
+		input := yaml.MapSlice{
+			{Key: "image", Value: yaml.MapSlice{
+				{Key: "attributes", Value: yaml.MapSlice{
+					{Key: "name", Value: "repo-name"},
+					{Key: "tag", Value: "v1.0.0"},
+				}},
+			}},
+		}
+		key := "image.attributes.tag"
+		value := "v2.0.0"
+
+		err := setHelmValue(input, key, value)
+		require.NoError(t, err)
+		assert.Equal(t, expected, input)
+	})
+
+	t.Run("Update Key with dots", func(t *testing.T) {
+		expected := yaml.MapSlice{
+			{Key: "image.attributes.tag", Value: "v2.0.0"},
+		}
+
+		input := yaml.MapSlice{
+			{Key: "image.attributes.tag", Value: "v1.0.0"},
+		}
+		key := "image.attributes.tag"
+		value := "v2.0.0"
+
+		err := setHelmValue(input, key, value)
+		require.NoError(t, err)
+		assert.Equal(t, expected, input)
+	})
+
+	t.Run("Key not found", func(t *testing.T) {
+		input := yaml.MapSlice{
+			{Key: "image", Value: yaml.MapSlice{
+				{Key: "tag", Value: "v1.0.0"},
+			}},
+		}
+		key := "image.attributes.tag"
+		value := "v2.0.0"
+
+		err := setHelmValue(input, key, value)
+		assert.Error(t, err)
+		assert.Equal(t, "key attributes not found in the map", err.Error())
 	})
 }
 
