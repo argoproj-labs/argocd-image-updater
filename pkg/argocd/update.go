@@ -574,25 +574,6 @@ func setHelmValue(m yaml.MapSlice, key string, value interface{}) error {
 	return nil
 }
 
-/*
-// set value of the parameter passed from the annotations.
-func setHelmValue(m map[string]interface{}, key string, value interface{}) error {
-	keys := strings.Split(key, ".")
-	for i, k := range keys {
-		if i == len(keys)-1 {
-			m[k] = value
-		} else {
-			if _, ok := m[k].(map[string]interface{}); ok {
-				m = m[k].(map[string]interface{})
-			} else {
-				return fmt.Errorf("key %s not found in the map", k)
-			}
-		}
-	}
-	return nil
-}
-*/
-
 func getWriteBackConfig(app *v1alpha1.Application, kubeClient *kube.KubernetesClient, argoClient ArgoCD) (*WriteBackConfig, error) {
 	wbc := &WriteBackConfig{}
 	// Default write-back is to use Argo CD API
