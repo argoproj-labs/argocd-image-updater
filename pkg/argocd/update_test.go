@@ -1382,6 +1382,110 @@ replicas: 1
 		assert.Equal(t, strings.TrimSpace(strings.ReplaceAll(expected, "\t", "  ")), strings.TrimSpace(string(yaml)))
 	})
 
+	t.Run("Failed to setValue image parameter name", func(t *testing.T) {
+		app := v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name: "testapp",
+				Annotations: map[string]string{
+					"argocd-image-updater.argoproj.io/image-list":            "nginx",
+					"argocd-image-updater.argoproj.io/write-back-method":     "git",
+					"argocd-image-updater.argoproj.io/write-back-target":     "helmvalues:./test-values.yaml",
+					"argocd-image-updater.argoproj.io/nginx.helm.image-name": "image.name",
+					"argocd-image-updater.argoproj.io/nginx.helm.image-tag":  "image.tag",
+				},
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: &v1alpha1.ApplicationSource{
+					RepoURL:        "https://example.com/example",
+					TargetRevision: "main",
+					Helm: &v1alpha1.ApplicationSourceHelm{
+						Parameters: []v1alpha1.HelmParameter{
+							{
+								Name:        "image.name",
+								Value:       "nginx",
+								ForceString: true,
+							},
+							{
+								Name:        "image.tag",
+								Value:       "v1.0.0",
+								ForceString: true,
+							},
+						},
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypeHelm,
+				Summary: v1alpha1.ApplicationSummary{
+					Images: []string{
+						"nginx:v0.0.0",
+					},
+				},
+			},
+		}
+
+		originalData := []byte(`
+image_name: nginx
+image.tag: v0.0.0
+replicas: 1
+`)
+		_, err := marshalParamsOverride(&app, originalData)
+		assert.Error(t, err)
+		assert.Equal(t, "failed to set image parameter name value: key image not found in the map", err.Error())
+	})
+
+	t.Run("Failed to setValue image parameter version", func(t *testing.T) {
+		app := v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name: "testapp",
+				Annotations: map[string]string{
+					"argocd-image-updater.argoproj.io/image-list":            "nginx",
+					"argocd-image-updater.argoproj.io/write-back-method":     "git",
+					"argocd-image-updater.argoproj.io/write-back-target":     "helmvalues:./test-values.yaml",
+					"argocd-image-updater.argoproj.io/nginx.helm.image-name": "image.name",
+					"argocd-image-updater.argoproj.io/nginx.helm.image-tag":  "image.tag",
+				},
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: &v1alpha1.ApplicationSource{
+					RepoURL:        "https://example.com/example",
+					TargetRevision: "main",
+					Helm: &v1alpha1.ApplicationSourceHelm{
+						Parameters: []v1alpha1.HelmParameter{
+							{
+								Name:        "image.name",
+								Value:       "nginx",
+								ForceString: true,
+							},
+							{
+								Name:        "image.tag",
+								Value:       "v1.0.0",
+								ForceString: true,
+							},
+						},
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypeHelm,
+				Summary: v1alpha1.ApplicationSummary{
+					Images: []string{
+						"nginx:v0.0.0",
+					},
+				},
+			},
+		}
+
+		originalData := []byte(`
+image.name: nginx
+image_tag: v0.0.0
+replicas: 1
+`)
+		_, err := marshalParamsOverride(&app, originalData)
+		assert.Error(t, err)
+		assert.Equal(t, "failed to set image parameter version value: key image not found in the map", err.Error())
+	})
+
 	t.Run("Missing annotation image-tag for helmvalues write-back-target", func(t *testing.T) {
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
@@ -1705,6 +1809,20 @@ func Test_SetHelmValue(t *testing.T) {
 		err := setHelmValue(input, key, value)
 		assert.Error(t, err)
 		assert.Equal(t, "key attributes not found in the map", err.Error())
+	})
+
+	t.Run("Unexpected type for key", func(t *testing.T) {
+		input := yaml.MapSlice{
+			{Key: "image", Value: yaml.MapSlice{
+				{Key: "attributes", Value: "v1.0.0"},
+			}},
+		}
+		key := "image.attributes.tag"
+		value := "v2.0.0"
+
+		err := setHelmValue(input, key, value)
+		assert.Error(t, err)
+		assert.Equal(t, "unexpected type string for key attributes", err.Error())
 	})
 }
 
