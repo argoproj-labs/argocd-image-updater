@@ -160,6 +160,20 @@ func (_m *Client) Config(username string, email string) error {
 	return r0
 }
 
+// SigningConfig provides a mock function with given fields: signingkey
+func (_m *Client) SigningConfig(signingkey string) error {
+	ret := _m.Called(signingkey)
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(string) error); ok {
+		r0 = rf(signingkey)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
 // Fetch provides a mock function with given fields: revision
 func (_m *Client) Fetch(revision string) error {
 	ret := _m.Called(revision)

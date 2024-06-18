@@ -234,6 +234,13 @@ func commitChangesGit(app *v1alpha1.Application, wbc *WriteBackConfig, changeLis
 		defer os.Remove(cm.Name())
 	}
 
+	if wbc.GitCommitSigningKey != "" {
+		commitOpts.SigningKey = wbc.GitCommitSigningKey
+	}
+
+	commitOpts.SigningMethod = wbc.GitCommitSigningMethod
+	commitOpts.SignOff = wbc.GitCommitSignOff
+
 	err = gitC.Commit("", commitOpts)
 	if err != nil {
 		return err

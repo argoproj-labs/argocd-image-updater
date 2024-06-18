@@ -240,6 +240,9 @@ func newRunCommand() *cobra.Command {
 	runCmd.Flags().BoolVar(&warmUpCache, "warmup-cache", true, "whether to perform a cache warm-up on startup")
 	runCmd.Flags().StringVar(&cfg.GitCommitUser, "git-commit-user", env.GetStringVal("GIT_COMMIT_USER", "argocd-image-updater"), "Username to use for Git commits")
 	runCmd.Flags().StringVar(&cfg.GitCommitMail, "git-commit-email", env.GetStringVal("GIT_COMMIT_EMAIL", "noreply@argoproj.io"), "E-Mail address to use for Git commits")
+	runCmd.Flags().StringVar(&cfg.GitCommitSigningKey, "git-commit-signing-key", env.GetStringVal("GIT_COMMIT_SIGNING_KEY", ""), "GnuPG key ID or path to Private SSH Key used to sign the commits")
+	runCmd.Flags().StringVar(&cfg.GitCommitSigningMethod, "git-commit-signing-method", env.GetStringVal("GIT_COMMIT_SIGNING_METHOD", "openpgp"), "Method used to sign Git commits ('openpgp' or 'ssh')")
+	runCmd.Flags().BoolVar(&cfg.GitCommitSignOff, "git-commit-sign-off", env.GetBoolVal("GIT_COMMIT_SIGN_OFF", false), "Whether to sign-off git commits")
 	runCmd.Flags().StringVar(&commitMessagePath, "git-commit-message-path", defaultCommitTemplatePath, "Path to a template to use for Git commit messages")
 	runCmd.Flags().BoolVar(&cfg.DisableKubeEvents, "disable-kube-events", env.GetBoolVal("IMAGE_UPDATER_KUBE_EVENTS", false), "Disable kubernetes events")
 
@@ -319,16 +322,19 @@ func runImageUpdater(cfg *ImageUpdaterConfig, warmUp bool) (argocd.ImageUpdaterR
 			defer sem.Release(1)
 			log.Debugf("Processing application %s", app)
 			upconf := &argocd.UpdateConfiguration{
-				NewRegFN:          registry.NewClient,
-				ArgoClient:        cfg.ArgoClient,
-				KubeClient:        cfg.KubeClient,
-				UpdateApp:         &curApplication,
-				DryRun:            dryRun,
-				GitCommitUser:     cfg.GitCommitUser,
-				GitCommitEmail:    cfg.GitCommitMail,
-				GitCommitMessage:  cfg.GitCommitMessage,
-				DisableKubeEvents: cfg.DisableKubeEvents,
-				GitCreds:          cfg.GitCreds,
+				NewRegFN:               registry.NewClient,
+				ArgoClient:             cfg.ArgoClient,
+				KubeClient:             cfg.KubeClient,
+				UpdateApp:              &curApplication,
+				DryRun:                 dryRun,
+				GitCommitUser:          cfg.GitCommitUser,
+				GitCommitEmail:         cfg.GitCommitMail,
+				GitCommitMessage:       cfg.GitCommitMessage,
+				GitCommitSigningKey:    cfg.GitCommitSigningKey,
+				GitCommitSigningMethod: cfg.GitCommitSigningMethod,
+				GitCommitSignOff:       cfg.GitCommitSignOff,
+				DisableKubeEvents:      cfg.DisableKubeEvents,
+				GitCreds:               cfg.GitCreds,
 			}
 			res := argocd.UpdateApplication(upconf, syncState)
 			result.NumApplicationsProcessed += 1

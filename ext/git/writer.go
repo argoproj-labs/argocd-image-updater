@@ -14,8 +14,10 @@ type CommitOptions struct {
 	CommitMessageText string
 	// CommitMessagePath holds the path to a file to be used for the commit message (-F option)
 	CommitMessagePath string
-	// SigningKey holds a GnuPG key ID used to sign the commit with (-S option)
+	// SigningKey holds a GnuPG key ID or path to a Private SSH Key used to sign the commit with (-S option)
 	SigningKey string
+	// SigningMethod holds the signing method used to sign commits. (git -c gpg.format=ssh option)
+	SigningMethod string
 	// SignOff specifies whether to sign-off a commit (-s option)
 	SignOff bool
 }
@@ -25,16 +27,18 @@ type CommitOptions struct {
 // changes will be commited. If message is not the empty string, it will be
 // used as the commit message, otherwise a default commit message will be used.
 // If signingKey is not the empty string, commit will be signed with the given
-// GPG key.
+// GPG or SSH key.
 func (m *nativeGitClient) Commit(pathSpec string, opts *CommitOptions) error {
 	defaultCommitMsg := "Update parameters"
-	args := []string{"commit"}
+	// Git configuration
+	config := "gpg.format=" + opts.SigningMethod
+	args := []string{"-c", config, "commit"}
 	if pathSpec == "" || pathSpec == "*" {
 		args = append(args, "-a")
 	}
-	if opts.SigningKey != "" {
-		args = append(args, "-S", opts.SigningKey)
-	}
+	// Commit fails with a space between -S flag and path to SSH key
+	// -S/user/test/.ssh/signingKey or -SAAAAAAAA...
+	args = append(args, fmt.Sprintf("-S%s", opts.SigningKey))
 	if opts.SignOff {
 		args = append(args, "-s")
 	}
