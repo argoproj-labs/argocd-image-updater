@@ -167,7 +167,7 @@ spec:
         - name: GIT_COMMIT_SIGNING_METHOD
           valueFrom:
             configMapKeyRef:
-              key: git.commit-signing-key
+              key: git.commit-signing-method
               name: argocd-image-updater-config
               optional: true
         - name: GIT_COMMIT_SIGN_OFF
