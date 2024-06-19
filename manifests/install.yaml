@@ -241,8 +241,8 @@ spec:
           optional: true
         name: ssh-config
       - name: ssh-signing-key
-        optional: true
         secret:
+          optional: true
           secretName: ssh-git-creds
       - emptyDir: {}
         name: tmp
