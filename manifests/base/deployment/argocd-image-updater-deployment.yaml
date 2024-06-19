@@ -160,6 +160,6 @@ spec:
       - name: ssh-signing-key
         secret:
           secretName: ssh-git-creds
-        optional: true
+          optional: true
       - emptyDir: {}
         name: tmp
