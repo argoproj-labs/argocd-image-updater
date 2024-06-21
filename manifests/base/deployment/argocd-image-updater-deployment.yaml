@@ -135,7 +135,7 @@ spec:
         - mountPath: /tmp
           name: tmp
         - name: ssh-signing-key
-          mountPath: /app/.ssh/id_rsa
+          mountPath: /app/ssh-keys/id_rsa
           readOnly: true
           subPath: sshPrivateKey
       serviceAccountName: argocd-image-updater

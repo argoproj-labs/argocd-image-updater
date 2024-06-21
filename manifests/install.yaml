@@ -217,7 +217,7 @@ spec:
           name: ssh-config
         - mountPath: /tmp
           name: tmp
-        - mountPath: /app/.ssh/id_rsa
+        - mountPath: /app/ssh-keys/id_rsa
           name: ssh-signing-key
           readOnly: true
           subPath: sshPrivateKey
