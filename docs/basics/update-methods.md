@@ -275,7 +275,7 @@ Set `git.commit-signing-key` `argocd-image-updater-config` ConfigMap to the path
 ```yaml
 data:
   git.commit-sign-off: "true"
-  git.commit-signing-key: /app/.ssh/id_rsa
+  git.commit-signing-key: /app/ssh-keys/id_rsa
   git.commit-signing-method: "ssh"
 ```
 
