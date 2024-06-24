@@ -2,6 +2,7 @@ package git
 
 import (
 	"fmt"
+	"os/exec"
 	"strings"
 
 	"github.com/argoproj-labs/argocd-image-updater/pkg/log"
@@ -13,8 +14,10 @@ type CommitOptions struct {
 	CommitMessageText string
 	// CommitMessagePath holds the path to a file to be used for the commit message (-F option)
 	CommitMessagePath string
-	// SigningKey holds a GnuPG key ID used to sign the commit with (-S option)
+	// SigningKey holds a GnuPG key ID or path to a Private SSH Key used to sign the commit with (-S option)
 	SigningKey string
+	// SigningMethod holds the signing method used to sign commits. (git -c gpg.format=ssh option)
+	SigningMethod string
 	// SignOff specifies whether to sign-off a commit (-s option)
 	SignOff bool
 }
@@ -24,16 +27,18 @@ type CommitOptions struct {
 // changes will be commited. If message is not the empty string, it will be
 // used as the commit message, otherwise a default commit message will be used.
 // If signingKey is not the empty string, commit will be signed with the given
-// GPG key.
+// GPG or SSH key.
 func (m *nativeGitClient) Commit(pathSpec string, opts *CommitOptions) error {
 	defaultCommitMsg := "Update parameters"
-	args := []string{"commit"}
+	// Git configuration
+	config := "gpg.format=" + opts.SigningMethod
+	args := []string{"-c", config, "commit"}
 	if pathSpec == "" || pathSpec == "*" {
 		args = append(args, "-a")
 	}
-	if opts.SigningKey != "" {
-		args = append(args, "-S", opts.SigningKey)
-	}
+	// Commit fails with a space between -S flag and path to SSH key
+	// -S/user/test/.ssh/signingKey or -SAAAAAAAA...
+	args = append(args, fmt.Sprintf("-S%s", opts.SigningKey))
 	if opts.SignOff {
 		args = append(args, "-s")
 	}
@@ -79,7 +84,7 @@ func (m *nativeGitClient) Push(remote string, branch string, force bool) error {
 		args = append(args, "-f")
 	}
 	args = append(args, remote, branch)
-	err := m.runCredentialedCmd("git", args...)
+	err := m.runCredentialedCmd(args...)
 	if err != nil {
 		return fmt.Errorf("could not push %s to %s: %v", branch, remote, err)
 	}
@@ -88,19 +93,25 @@ func (m *nativeGitClient) Push(remote string, branch string, force bool) error {
 
 // Add adds a path spec to the repository
 func (m *nativeGitClient) Add(path string) error {
-	return m.runCredentialedCmd("git", "add", path)
+	return m.runCredentialedCmd("add", path)
 }
 
 // SymRefToBranch retrieves the branch name a symbolic ref points to
 func (m *nativeGitClient) SymRefToBranch(symRef string) (string, error) {
-	output, err := m.runCmd("symbolic-ref", symRef)
+	output, err := m.runCredentialedCmdWithOutput("remote", "show", "origin")
 	if err != nil {
-		return "", fmt.Errorf("could not resolve symbolic ref '%s': %v", symRef, err)
+		return "", fmt.Errorf("error running git: %v", err)
 	}
-	if a := strings.SplitN(output, "refs/heads/", 2); len(a) == 2 {
-		return a[1], nil
+	for _, l := range strings.Split(output, "\n") {
+		l = strings.TrimSpace(l)
+		if strings.HasPrefix(l, "HEAD branch:") {
+			b := strings.SplitN(l, ":", 2)
+			if len(b) == 2 {
+				return strings.TrimSpace(b[1]), nil
+			}
+		}
 	}
-	return "", fmt.Errorf("no symbolic ref named '%s' could be found", symRef)
+	return "", fmt.Errorf("no default branch found in remote")
 }
 
 // Config configures username and email address for the repository
@@ -115,4 +126,28 @@ func (m *nativeGitClient) Config(username string, email string) error {
 	}
 
 	return nil
+}
+
+// runCredentialedCmdWithOutput is a convenience function to run a git command
+// with username/password credentials while supplying command output to the
+// caller.
+// nolint:unparam
+func (m *nativeGitClient) runCredentialedCmdWithOutput(args ...string) (string, error) {
+	closer, environ, err := m.creds.Environ()
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = closer.Close() }()
+
+	// If a basic auth header is explicitly set, tell Git to send it to the
+	// server to force use of basic auth instead of negotiating the auth scheme
+	for _, e := range environ {
+		if strings.HasPrefix(e, fmt.Sprintf("%s=", forceBasicAuthHeaderEnv)) {
+			args = append([]string{"--config-env", fmt.Sprintf("http.extraHeader=%s", forceBasicAuthHeaderEnv)}, args...)
+		}
+	}
+
+	cmd := exec.Command("git", args...)
+	cmd.Env = append(cmd.Env, environ...)
+	return m.runCmdOutput(cmd, runOpts{})
 }

@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"gopkg.in/yaml.v2"
+
 	"github.com/argoproj-labs/argocd-image-updater/ext/git"
 	gitmock "github.com/argoproj-labs/argocd-image-updater/ext/git/mocks"
 	argomock "github.com/argoproj-labs/argocd-image-updater/pkg/argocd/mocks"
@@ -21,8 +23,8 @@ import (
 	"github.com/argoproj-labs/argocd-image-updater/test/fake"
 	"github.com/argoproj-labs/argocd-image-updater/test/fixture"
 
+	"github.com/argoproj/argo-cd/v2/pkg/apiclient/application"
 	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
-	argogit "github.com/argoproj/argo-cd/v2/util/git"
 	"github.com/distribution/distribution/v3/manifest/schema1" //nolint:staticcheck
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -103,9 +105,6 @@ func Test_UpdateApplication(t *testing.T) {
 			return &regMock, nil
 		}
 
-		argoClient := argomock.ArgoCD{}
-		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
-
 		kubeClient := kube.KubernetesClient{
 			Clientset: fake.NewFakeKubeClient(),
 		}
@@ -137,6 +136,14 @@ func Test_UpdateApplication(t *testing.T) {
 				image.NewFromIdentifier("jannfis/foobar:~1.0.0"),
 			},
 		}
+
+		argoClient := argomock.ArgoCD{}
+		argoClient.On("UpdateSpec", mock.Anything, &application.ApplicationUpdateSpecRequest{
+			Name:         &appImages.Application.Name,
+			AppNamespace: &appImages.Application.Namespace,
+			Spec:         &appImages.Application.Spec,
+		}).Return(nil, nil)
+
 		res := UpdateApplication(&UpdateConfiguration{
 			NewRegFN:   mockClientFn,
 			ArgoClient: &argoClient,
@@ -1376,6 +1383,110 @@ replicas: 1
 		assert.Equal(t, strings.TrimSpace(strings.ReplaceAll(expected, "\t", "  ")), strings.TrimSpace(string(yaml)))
 	})
 
+	t.Run("Failed to setValue image parameter name", func(t *testing.T) {
+		app := v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name: "testapp",
+				Annotations: map[string]string{
+					"argocd-image-updater.argoproj.io/image-list":            "nginx",
+					"argocd-image-updater.argoproj.io/write-back-method":     "git",
+					"argocd-image-updater.argoproj.io/write-back-target":     "helmvalues:./test-values.yaml",
+					"argocd-image-updater.argoproj.io/nginx.helm.image-name": "image.name",
+					"argocd-image-updater.argoproj.io/nginx.helm.image-tag":  "image.tag",
+				},
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: &v1alpha1.ApplicationSource{
+					RepoURL:        "https://example.com/example",
+					TargetRevision: "main",
+					Helm: &v1alpha1.ApplicationSourceHelm{
+						Parameters: []v1alpha1.HelmParameter{
+							{
+								Name:        "image.name",
+								Value:       "nginx",
+								ForceString: true,
+							},
+							{
+								Name:        "image.tag",
+								Value:       "v1.0.0",
+								ForceString: true,
+							},
+						},
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypeHelm,
+				Summary: v1alpha1.ApplicationSummary{
+					Images: []string{
+						"nginx:v0.0.0",
+					},
+				},
+			},
+		}
+
+		originalData := []byte(`
+image_name: nginx
+image.tag: v0.0.0
+replicas: 1
+`)
+		_, err := marshalParamsOverride(&app, originalData)
+		assert.Error(t, err)
+		assert.Equal(t, "failed to set image parameter name value: key image not found in the map", err.Error())
+	})
+
+	t.Run("Failed to setValue image parameter version", func(t *testing.T) {
+		app := v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name: "testapp",
+				Annotations: map[string]string{
+					"argocd-image-updater.argoproj.io/image-list":            "nginx",
+					"argocd-image-updater.argoproj.io/write-back-method":     "git",
+					"argocd-image-updater.argoproj.io/write-back-target":     "helmvalues:./test-values.yaml",
+					"argocd-image-updater.argoproj.io/nginx.helm.image-name": "image.name",
+					"argocd-image-updater.argoproj.io/nginx.helm.image-tag":  "image.tag",
+				},
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: &v1alpha1.ApplicationSource{
+					RepoURL:        "https://example.com/example",
+					TargetRevision: "main",
+					Helm: &v1alpha1.ApplicationSourceHelm{
+						Parameters: []v1alpha1.HelmParameter{
+							{
+								Name:        "image.name",
+								Value:       "nginx",
+								ForceString: true,
+							},
+							{
+								Name:        "image.tag",
+								Value:       "v1.0.0",
+								ForceString: true,
+							},
+						},
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypeHelm,
+				Summary: v1alpha1.ApplicationSummary{
+					Images: []string{
+						"nginx:v0.0.0",
+					},
+				},
+			},
+		}
+
+		originalData := []byte(`
+image.name: nginx
+image_tag: v0.0.0
+replicas: 1
+`)
+		_, err := marshalParamsOverride(&app, originalData)
+		assert.Error(t, err)
+		assert.Equal(t, "failed to set image parameter version value: key image not found in the map", err.Error())
+	})
+
 	t.Run("Missing annotation image-tag for helmvalues write-back-target", func(t *testing.T) {
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
@@ -1641,6 +1752,78 @@ replicas: 1
 
 		_, err := marshalParamsOverride(&app, nil)
 		assert.Error(t, err)
+	})
+}
+
+func Test_SetHelmValue(t *testing.T) {
+	t.Run("Update existing Key", func(t *testing.T) {
+		expected := yaml.MapSlice{
+			{Key: "image", Value: yaml.MapSlice{
+				{Key: "attributes", Value: yaml.MapSlice{
+					{Key: "name", Value: "repo-name"},
+					{Key: "tag", Value: "v2.0.0"},
+				}},
+			}},
+		}
+
+		input := yaml.MapSlice{
+			{Key: "image", Value: yaml.MapSlice{
+				{Key: "attributes", Value: yaml.MapSlice{
+					{Key: "name", Value: "repo-name"},
+					{Key: "tag", Value: "v1.0.0"},
+				}},
+			}},
+		}
+		key := "image.attributes.tag"
+		value := "v2.0.0"
+
+		err := setHelmValue(input, key, value)
+		require.NoError(t, err)
+		assert.Equal(t, expected, input)
+	})
+
+	t.Run("Update Key with dots", func(t *testing.T) {
+		expected := yaml.MapSlice{
+			{Key: "image.attributes.tag", Value: "v2.0.0"},
+		}
+
+		input := yaml.MapSlice{
+			{Key: "image.attributes.tag", Value: "v1.0.0"},
+		}
+		key := "image.attributes.tag"
+		value := "v2.0.0"
+
+		err := setHelmValue(input, key, value)
+		require.NoError(t, err)
+		assert.Equal(t, expected, input)
+	})
+
+	t.Run("Key not found", func(t *testing.T) {
+		input := yaml.MapSlice{
+			{Key: "image", Value: yaml.MapSlice{
+				{Key: "tag", Value: "v1.0.0"},
+			}},
+		}
+		key := "image.attributes.tag"
+		value := "v2.0.0"
+
+		err := setHelmValue(input, key, value)
+		assert.Error(t, err)
+		assert.Equal(t, "key attributes not found in the map", err.Error())
+	})
+
+	t.Run("Unexpected type for key", func(t *testing.T) {
+		input := yaml.MapSlice{
+			{Key: "image", Value: yaml.MapSlice{
+				{Key: "attributes", Value: "v1.0.0"},
+			}},
+		}
+		key := "image.attributes.tag"
+		value := "v2.0.0"
+
+		err := setHelmValue(input, key, value)
+		assert.Error(t, err)
+		assert.Equal(t, "unexpected type string for key attributes", err.Error())
 	})
 }
 
@@ -2222,7 +2405,7 @@ func Test_GetGitCreds(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, creds)
 		// Must have HTTPS creds
-		_, ok := creds.(argogit.HTTPSCreds)
+		_, ok := creds.(git.HTTPSCreds)
 		require.True(t, ok)
 	})
 
@@ -2407,8 +2590,8 @@ func Test_CommitUpdates(t *testing.T) {
 	t.Run("Good commit to target revision", func(t *testing.T) {
 		gitMock, _, cleanup := mockGit(t)
 		defer cleanup()
-		gitMock.On("Checkout", mock.Anything).Run(func(args mock.Arguments) {
-			args.Assert(t, "main")
+		gitMock.On("Checkout", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
+			args.Assert(t, "main", false)
 		}).Return(nil)
 		gitMock.On("Add", mock.Anything).Return(nil)
 		gitMock.On("Commit", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
@@ -2425,8 +2608,8 @@ func Test_CommitUpdates(t *testing.T) {
 	t.Run("Good commit to configured branch", func(t *testing.T) {
 		gitMock, _, cleanup := mockGit(t)
 		defer cleanup()
-		gitMock.On("Checkout", mock.Anything).Run(func(args mock.Arguments) {
-			args.Assert(t, "mybranch")
+		gitMock.On("Checkout", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
+			args.Assert(t, "mybranch", false)
 		}).Return(nil)
 		gitMock.On("Add", mock.Anything).Return(nil)
 		gitMock.On("Commit", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
@@ -2446,8 +2629,8 @@ func Test_CommitUpdates(t *testing.T) {
 		app := app.DeepCopy()
 		gitMock, _, cleanup := mockGit(t)
 		defer cleanup()
-		gitMock.On("Checkout", mock.Anything).Run(func(args mock.Arguments) {
-			args.Assert(t, "mydefaultbranch")
+		gitMock.On("Checkout", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
+			args.Assert(t, "mydefaultbranch", false)
 		}).Return(nil)
 		gitMock.On("Add", mock.Anything).Return(nil)
 		gitMock.On("Commit", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
@@ -2485,7 +2668,7 @@ func Test_CommitUpdates(t *testing.T) {
 				NewTag: tag.NewImageTag("1.1", time.Now(), ""),
 			},
 		}
-		gitMock.On("Checkout", TemplateBranchName(wbc.GitWriteBranch, cl)).Return(nil)
+		gitMock.On("Checkout", TemplateBranchName(wbc.GitWriteBranch, cl), mock.Anything).Return(nil)
 
 		err = commitChanges(&app, wbc, cl)
 		assert.NoError(t, err)
@@ -2509,8 +2692,8 @@ helm:
     forcestring: true
 `), os.ModePerm))
 
-		gitMock.On("Checkout", mock.Anything).Run(func(args mock.Arguments) {
-			args.Assert(t, "mydefaultbranch")
+		gitMock.On("Checkout", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
+			args.Assert(t, "mydefaultbranch", false)
 		}).Return(nil)
 		gitMock.On("Add", mock.Anything).Return(nil)
 		gitMock.On("Commit", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
@@ -2555,8 +2738,8 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 replacements: []
 `), os.ModePerm))
 
-		gitMock.On("Checkout", mock.Anything).Run(func(args mock.Arguments) {
-			args.Assert(t, "mydefaultbranch")
+		gitMock.On("Checkout", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
+			args.Assert(t, "mydefaultbranch", false)
 		}).Return(nil)
 		gitMock.On("Add", mock.Anything).Return(nil)
 		gitMock.On("Commit", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
@@ -2608,8 +2791,8 @@ replacements: []
 		app := app.DeepCopy()
 		gitMock, _, cleanup := mockGit(t)
 		defer cleanup()
-		gitMock.On("Checkout", mock.Anything).Run(func(args mock.Arguments) {
-			args.Assert(t, "mydefaultbranch")
+		gitMock.On("Checkout", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
+			args.Assert(t, "mydefaultbranch", false)
 		}).Return(nil)
 		gitMock.On("Add", mock.Anything).Return(nil)
 		gitMock.On("Commit", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
@@ -2635,8 +2818,8 @@ replacements: []
 		gitMock := &gitmock.Client{}
 		gitMock.On("Init").Return(nil)
 		gitMock.On("Fetch", mock.Anything).Return(nil)
-		gitMock.On("Checkout", mock.Anything).Run(func(args mock.Arguments) {
-			args.Assert(t, "mydefaultbranch")
+		gitMock.On("Checkout", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
+			args.Assert(t, "mydefaultbranch", false)
 		}).Return(nil)
 		gitMock.On("Add", mock.Anything).Return(nil)
 		gitMock.On("Commit", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
@@ -2661,7 +2844,7 @@ replacements: []
 		gitMock := &gitmock.Client{}
 		gitMock.On("Init").Return(fmt.Errorf("cannot init"))
 		gitMock.On("Fetch", mock.Anything).Return(nil)
-		gitMock.On("Checkout", mock.Anything).Return(nil)
+		gitMock.On("Checkout", mock.Anything, mock.Anything).Return(nil)
 		gitMock.On("Commit", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 		gitMock.On("Push", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 		wbc, err := getWriteBackConfig(&app, &kubeClient, &argoClient)
@@ -2676,7 +2859,7 @@ replacements: []
 		gitMock := &gitmock.Client{}
 		gitMock.On("Init").Return(nil)
 		gitMock.On("Fetch", mock.Anything).Return(fmt.Errorf("cannot fetch"))
-		gitMock.On("Checkout", mock.Anything).Return(nil)
+		gitMock.On("Checkout", mock.Anything, mock.Anything).Return(nil)
 		gitMock.On("Commit", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 		gitMock.On("Push", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 		wbc, err := getWriteBackConfig(&app, &kubeClient, &argoClient)
@@ -2690,7 +2873,7 @@ replacements: []
 		gitMock := &gitmock.Client{}
 		gitMock.On("Init").Return(nil)
 		gitMock.On("Fetch", mock.Anything).Return(nil)
-		gitMock.On("Checkout", mock.Anything).Return(fmt.Errorf("cannot checkout"))
+		gitMock.On("Checkout", mock.Anything, mock.Anything).Return(fmt.Errorf("cannot checkout"))
 		gitMock.On("Commit", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 		gitMock.On("Push", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 		wbc, err := getWriteBackConfig(&app, &kubeClient, &argoClient)
@@ -2704,7 +2887,7 @@ replacements: []
 	t.Run("Cannot commit", func(t *testing.T) {
 		gitMock, _, cleanup := mockGit(t)
 		defer cleanup()
-		gitMock.On("Checkout", mock.Anything).Return(nil)
+		gitMock.On("Checkout", mock.Anything, mock.Anything).Return(nil)
 		gitMock.On("Add", mock.Anything).Return(nil)
 		gitMock.On("Commit", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(fmt.Errorf("cannot commit"))
 		gitMock.On("Push", mock.Anything, mock.Anything, mock.Anything).Return(nil)
@@ -2719,7 +2902,7 @@ replacements: []
 	t.Run("Cannot push", func(t *testing.T) {
 		gitMock, _, cleanup := mockGit(t)
 		defer cleanup()
-		gitMock.On("Checkout", mock.Anything).Return(nil)
+		gitMock.On("Checkout", mock.Anything, mock.Anything).Return(nil)
 		gitMock.On("Add", mock.Anything).Return(nil)
 		gitMock.On("Commit", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 		gitMock.On("Push", mock.Anything, mock.Anything, mock.Anything).Return(fmt.Errorf("cannot push"))
@@ -2735,7 +2918,7 @@ replacements: []
 		app := app.DeepCopy()
 		gitMock, _, cleanup := mockGit(t)
 		defer cleanup()
-		gitMock.On("Checkout", mock.Anything).Return(nil)
+		gitMock.On("Checkout", mock.Anything, mock.Anything).Return(nil)
 		gitMock.On("Add", mock.Anything).Return(nil)
 		gitMock.On("Commit", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 		gitMock.On("Push", mock.Anything, mock.Anything, mock.Anything).Return(nil)

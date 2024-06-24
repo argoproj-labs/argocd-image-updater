@@ -206,7 +206,7 @@ func commitChangesGit(app *v1alpha1.Application, wbc *WriteBackConfig, changeLis
 		}
 	}
 
-	err = gitC.Checkout(pushBranch)
+	err = gitC.Checkout(pushBranch, false)
 	if err != nil {
 		return err
 	}
@@ -233,6 +233,13 @@ func commitChangesGit(app *v1alpha1.Application, wbc *WriteBackConfig, changeLis
 		_ = cm.Close()
 		defer os.Remove(cm.Name())
 	}
+
+	if wbc.GitCommitSigningKey != "" {
+		commitOpts.SigningKey = wbc.GitCommitSigningKey
+	}
+
+	commitOpts.SigningMethod = wbc.GitCommitSigningMethod
+	commitOpts.SignOff = wbc.GitCommitSignOff
 
 	err = gitC.Commit("", commitOpts)
 	if err != nil {
