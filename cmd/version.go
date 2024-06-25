@@ -15,15 +15,16 @@ func newVersionCommand() *cobra.Command {
 		Use:   "version",
 		Short: "Display version information",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			out := cmd.OutOrStdout()
 			if !short {
-				fmt.Printf("%s\n", version.Useragent())
-				fmt.Printf("  BuildDate: %s\n", version.BuildDate())
-				fmt.Printf("  GitCommit: %s\n", version.GitCommit())
-				fmt.Printf("  GoVersion: %s\n", version.GoVersion())
-				fmt.Printf("  GoCompiler: %s\n", version.GoCompiler())
-				fmt.Printf("  Platform: %s\n", version.GoPlatform())
+				fmt.Fprintf(out, "%s\n", version.Useragent())
+				fmt.Fprintf(out, "  BuildDate: %s\n", version.BuildDate())
+				fmt.Fprintf(out, "  GitCommit: %s\n", version.GitCommit())
+				fmt.Fprintf(out, "  GoVersion: %s\n", version.GoVersion())
+				fmt.Fprintf(out, "  GoCompiler: %s\n", version.GoCompiler())
+				fmt.Fprintf(out, "  Platform: %s\n", version.GoPlatform())
 			} else {
-				fmt.Printf("%s\n", version.Version())
+				fmt.Fprintf(out, "%s\n", version.Version())
 			}
 			return nil
 		},
