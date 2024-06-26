@@ -26,7 +26,7 @@ The workflow of Argo CD Image Updater can be described as follows:
   check for the complete image name, including the registry the image is
   pulled from. For example, `docker.io/some/image` and `quay.io/some/image`,
   while both referring to `some/image`, are not considered equal. This strict
-  behavior can be relaxed, however. See [../configuration/images.md#forcing-image-updates) for
+  behavior can be relaxed, however. See [forcing image updates](../configuration/images.md#forcing-image-updates) for
   further explanation.
 
 * If Argo CD Image Updater considers an image from the list eligible for an
