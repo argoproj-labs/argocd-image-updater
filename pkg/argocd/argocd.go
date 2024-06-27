@@ -82,6 +82,7 @@ const (
 	ApplicationTypeUnsupported ApplicationType = 0
 	ApplicationTypeHelm        ApplicationType = 1
 	ApplicationTypeKustomize   ApplicationType = 2
+	ApplicationTypePlugin      ApplicationType = 3
 )
 
 // Basic wrapper struct for ArgoCD client options
@@ -478,6 +479,139 @@ func SetKustomizeImage(app *v1alpha1.Application, newImage *image.ContainerImage
 	return nil
 }
 
+// SetPluginImage sets the image parameters for a Plugin type application
+func SetPluginImage(app *v1alpha1.Application, newImage *image.ContainerImage) error {
+	if appType := getApplicationType(app); appType != ApplicationTypePlugin {
+		return fmt.Errorf("cannot set Helm arguments on non-Plugin application")
+	}
+
+	appName := app.GetName()
+
+	var hpImageName, hpImageTag, hpImageSpec string
+
+	hpImageSpec = newImage.GetParameterHelmImageSpec(app.Annotations)
+	hpImageName = newImage.GetParameterHelmImageName(app.Annotations)
+	hpImageTag = newImage.GetParameterHelmImageTag(app.Annotations)
+
+	if hpImageSpec == "" {
+		if hpImageName == "" {
+			hpImageName = common.DefaultHelmImageName
+		}
+		if hpImageTag == "" {
+			hpImageTag = common.DefaultHelmImageTag
+		}
+	}
+
+	log.WithContext().
+		AddField("application", appName).
+		AddField("image", newImage.GetFullNameWithoutTag()).
+		Debugf("target parameters: image-spec=%s image-name=%s, image-tag=%s", hpImageSpec, hpImageName, hpImageTag)
+
+	// Initialize a map to hold the merged parameters
+	mergeParams := make(map[string]string)
+
+	// If image-spec is set, it overrides any image-name and image-tag parameters
+	if hpImageSpec != "" {
+		mergeParams[hpImageSpec] = newImage.GetFullNameWithTag()
+	} else {
+		if hpImageName != "" {
+			mergeParams[hpImageName] = newImage.GetFullNameWithoutTag()
+		}
+		if hpImageTag != "" {
+			mergeParams[hpImageTag] = newImage.GetTagWithDigest()
+		}
+	}
+
+	if app.Spec.Source.Plugin == nil {
+		app.Spec.Source.Plugin = &v1alpha1.ApplicationSourcePlugin{}
+	}
+
+	if app.Spec.Source.Plugin.Env == nil {
+		app.Spec.Source.Plugin.Env = make([]*v1alpha1.EnvEntry, 0)
+	}
+
+	// Retrieve the existing HELM_ARGS value
+	helmArgs := ""
+	for _, env := range app.Spec.Source.Plugin.Env {
+		if env.Name == common.DefaultPluginEnvVarName {
+			helmArgs = env.Value
+			break
+		}
+	}
+
+	// Parse the existing HELM_ARGS into parameters and other arguments
+	existingParams, otherArgs := parseHelmArgs(helmArgs)
+
+	// Merge the new parameters with the existing ones
+	for key, value := range mergeParams {
+		existingValue, exists := existingParams[key]
+		if !exists || existingValue != value {
+			existingParams[key] = value
+		}
+	}
+
+	// Build the new HELM_ARGS string
+	newHelmArgs := buildHelmArgs(existingParams, otherArgs)
+
+	// If there are no changes in HELM_ARGS, return early
+	if newHelmArgs == helmArgs {
+		return nil
+	}
+
+	// Update the HELM_ARGS environment variable
+	found := false
+	for _, env := range app.Spec.Source.Plugin.Env {
+		if env.Name == common.DefaultPluginEnvVarName {
+			env.Value = newHelmArgs
+			found = true
+			break
+		}
+	}
+
+	// If HELM_ARGS was not found, add it to the environment variables
+	if !found {
+		app.Spec.Source.Plugin.Env = append(app.Spec.Source.Plugin.Env, &v1alpha1.EnvEntry{Name: common.DefaultPluginEnvVarName, Value: newHelmArgs})
+	}
+
+	return nil
+}
+
+// parseHelmArgs parses a HELM_ARGS string into a map of parameters and a slice of other arguments
+func parseHelmArgs(helmArgs string) (map[string]string, []string) {
+	params := make(map[string]string) // Map to hold --set parameters
+	var otherArgs []string            // Slice to hold other arguments
+
+	// Split the HELM_ARGS string into individual arguments
+	args := strings.Fields(helmArgs)
+	for i := 0; i < len(args); i++ {
+		// Check if the argument is a --set parameter
+		if args[i] == "--set" && i+1 < len(args) {
+			// Split the --set parameter into key and value
+			parts := strings.SplitN(args[i+1], "=", 2)
+			if len(parts) == 2 {
+				// Add the key and value to the params map
+				params[parts[0]] = parts[1]
+			}
+			i++ // Skip the next argument as it has been processed
+		} else {
+			// Add non --set arguments to otherArgs slice
+			otherArgs = append(otherArgs, args[i])
+		}
+	}
+	return params, otherArgs // Return the parsed parameters and other arguments
+}
+
+// buildHelmArgs constructs a HELM_ARGS string from a map of parameters and a slice of other arguments
+func buildHelmArgs(params map[string]string, otherArgs []string) string {
+	args := otherArgs // Start with other arguments
+	for key, value := range params {
+		// Append each --set parameter to the arguments
+		args = append(args, fmt.Sprintf("--set %s=%s", key, value))
+	}
+	// Join all arguments into a single HELM_ARGS string
+	return strings.Join(args, " ")
+}
+
 // GetImagesFromApplication returns the list of known images for the given application
 func GetImagesFromApplication(app *v1alpha1.Application) image.ContainerImageList {
 	images := make(image.ContainerImageList, 0)
@@ -556,6 +690,8 @@ func getApplicationType(app *v1alpha1.Application) ApplicationType {
 		return ApplicationTypeKustomize
 	} else if sourceType == v1alpha1.ApplicationSourceTypeHelm {
 		return ApplicationTypeHelm
+	} else if sourceType == v1alpha1.ApplicationSourceTypePlugin {
+		return ApplicationTypePlugin
 	} else {
 		return ApplicationTypeUnsupported
 	}
@@ -609,6 +745,8 @@ func (a ApplicationType) String() string {
 		return "Kustomize"
 	case ApplicationTypeHelm:
 		return "Helm"
+	case ApplicationTypePlugin:
+		return "Plugin"
 	case ApplicationTypeUnsupported:
 		return "Unsupported"
 	default:

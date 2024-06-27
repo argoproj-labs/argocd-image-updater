@@ -388,6 +388,8 @@ func setAppImage(app *v1alpha1.Application, img *image.ContainerImage) error {
 		err = SetKustomizeImage(app, img)
 	} else if appType == ApplicationTypeHelm {
 		err = SetHelmImage(app, img)
+	} else if appType == ApplicationTypePlugin {
+		err = SetPluginImage(app, img)
 	} else {
 		err = fmt.Errorf("could not update application %s - neither Helm nor Kustomize application", app)
 	}
