@@ -7,7 +7,7 @@ metadata:
     app.kubernetes.io/component: controller
   name: argocd-image-updater
 spec:
-  selectorr:
+  selector:
    matchLabels:
     app.kubernetes.io/name: argocd-image-updater
   strategy:
