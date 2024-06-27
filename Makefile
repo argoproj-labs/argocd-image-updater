@@ -38,8 +38,6 @@ override LDFLAGS += \
 MKDOCS_DOCKER_IMAGE?=squidfunk/mkdocs-material:4.1.1
 MKDOCS_RUN_ARGS?=
 
-MANIFEST_TESTER_IMAGE_NAME=manifest-tester-${IMAGE_NAME}
-
 
 .PHONY: all
 all: prereq controller
