@@ -75,24 +75,9 @@ test-race:
 	go test -race -coverprofile coverage.out `go list ./... | egrep -v '(test|mocks|ext/)'`
 
 .PHONY: test-manifests
-test-manifests: build-manifest-tester
-	docker run --rm \
-		-v `pwd`/manifests:/home/manifests \
-		-v `pwd`/scripts:/home/scripts \
-		${MANIFEST_TESTER_IMAGE_NAME} \
-		scripts/test_manifests.sh
+test-manifests:
+	./scripts/test_manifests.sh
 
-.PHONY: build-manifest-tester
-build-manifest-tester:
-	docker build -t ${MANIFEST_TESTER_IMAGE_NAME} -f manifest-tester.Dockerfile .
-
-.PHONY: shell-manifest-tester
-shell-manifest-tester: build-manifest-tester
-	docker run --rm -it \
-		-v `pwd`/manifests:/home/manifests \
-		-v `pwd`/scripts:/home/scripts \
-		--entrypoint /bin/bash \
-		${MANIFEST_TESTER_IMAGE_NAME}
 
 .PHONY: prereq
 prereq:
