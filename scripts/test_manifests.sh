@@ -11,6 +11,8 @@ fi
 kubeconform \
     -schema-location default \
     -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/kustomize.toolkit.fluxcd.io/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+    -strict \
     -verbose \
+    -summary \
     ${MANIFESTS_DIRECTORY:-"manifests"}
 
