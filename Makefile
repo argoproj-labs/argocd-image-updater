@@ -38,6 +38,8 @@ override LDFLAGS += \
 MKDOCS_DOCKER_IMAGE?=squidfunk/mkdocs-material:4.1.1
 MKDOCS_RUN_ARGS?=
 
+MANIFEST_TESTER_IMAGE_NAME=manifest-tester-${IMAGE_NAME}
+
 
 .PHONY: all
 all: prereq controller
@@ -67,8 +69,30 @@ mod-vendor:
 test:
 	go test -coverprofile coverage.out `go list ./... | egrep -v '(test|mocks|ext/)'`
 
+
+.PHONY: test-race
 test-race:
 	go test -race -coverprofile coverage.out `go list ./... | egrep -v '(test|mocks|ext/)'`
+
+.PHONY: test-manifests
+test-manifests: build-manifest-tester
+	docker run --rm \
+		-v `pwd`/manifests:/home/manifests \
+		-v `pwd`/scripts:/home/scripts \
+		${MANIFEST_TESTER_IMAGE_NAME} \
+		scripts/test_manifests.sh
+
+.PHONY: build-manifest-tester
+build-manifest-tester:
+	docker build -t ${MANIFEST_TESTER_IMAGE_NAME} -f manifest-tester.Dockerfile .
+
+.PHONY: shell-manifest-tester
+shell-manifest-tester: build-manifest-tester
+	docker run --rm -it \
+		-v `pwd`/manifests:/home/manifests \
+		-v `pwd`/scripts:/home/scripts \
+		--entrypoint /bin/bash \
+		${MANIFEST_TESTER_IMAGE_NAME}
 
 .PHONY: prereq
 prereq:
@@ -143,7 +167,7 @@ run-test:
 		--argocd-server-addr $(ARGOCD_SERVER) \
 		--grpc-web
 
-
 .PHONY: serve-docs
 serve-docs:
 	docker run ${MKDOCS_RUN_ARGS} --rm -it -p 8000:8000 -v ${CURRENT_DIR}:/docs ${MKDOCS_DOCKER_IMAGE} serve -a 0.0.0.0:8000
+

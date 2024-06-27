@@ -91,3 +91,13 @@ jobs:
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           file: coverage.out
+
+  test-manifests:
+    name: Ensure kubernetes manifests conform to their schema
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      - name: Run manifest tests
+        run: |
+          make test-manifests
