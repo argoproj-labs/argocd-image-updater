@@ -23,7 +23,7 @@ func TestGetKubeConfig(t *testing.T) {
 
 	})
 
-	t.Run("valid kubeConfig with ns", func(t *testing.T) {
+	t.Run("valid kubeConfig with namespace", func(t *testing.T) {
 		client, err := getKubeConfig(context.TODO(), "argocd", "../test/testdata/kubernetes/config")
 		require.NoError(t, err)
 		assert.NotNil(t, client)
