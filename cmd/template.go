@@ -9,7 +9,6 @@ import (
 	"github.com/argoproj-labs/argocd-image-updater/pkg/argocd"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/image"
-	"github.com/argoproj-labs/argocd-image-updater/pkg/log"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/tag"
 
 	"github.com/spf13/cobra"
@@ -39,12 +38,14 @@ If PATH is not given, will show you the default message that is used.
 				commitMessageTemplatePath = args[0]
 				tplData, err := os.ReadFile(commitMessageTemplatePath)
 				if err != nil {
-					log.Fatalf("%v", err)
+					fmt.Fprintf(cmd.ErrOrStderr(), "%v", err)
+					return
 				}
 				tplStr = string(tplData)
 			}
 			if tpl, err = template.New("commitMessage").Parse(tplStr); err != nil {
-				log.Fatalf("could not parse commit message template: %v", err)
+				fmt.Fprintf(cmd.ErrOrStderr(), "could not parse commit message template: %v", err)
+				return
 			}
 			chL := []argocd.ChangeEntry{
 				{
@@ -58,7 +59,7 @@ If PATH is not given, will show you the default message that is used.
 					NewTag: tag.NewImageTag("", time.Now(), "sha256:7aa7a5359173d05b63cfd682e3c38487f3cb4f7f1d60659fe59fab1505977d4c"),
 				},
 			}
-			fmt.Printf("%s\n", argocd.TemplateCommitMessage(tpl, "example-app", chL))
+			fmt.Fprintf(cmd.OutOrStdout(), "%s\n", argocd.TemplateCommitMessage(tpl, "example-app", chL))
 		},
 	}
 	return runCmd
