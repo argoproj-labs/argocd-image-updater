@@ -621,15 +621,15 @@ func getWriteBackConfig(app *v1alpha1.Application, kubeClient *kube.KubernetesCl
 	return wbc, nil
 }
 
-func parseDefaultTarget(appNamespace string,appName string, path string) string {
+func parseDefaultTarget(appNamespace string, appName string, path string) string {
 
-    if (appNamespace == "argocd") {
-        defaultTargetFile := fmt.Sprintf(common.DefaultTargetFilePatternWithoutNamespace, appName)
-    	return filepath.Join(path, defaultTargetFile)
-    } else {
-    	defaultTargetFile := fmt.Sprintf(common.DefaultTargetFilePattern, appNamespace, appName)
-    	return filepath.Join(path, defaultTargetFile)
-    }
+	if ((appNamespace == "argocd") ||  (appNamespace == "")) {
+		defaultTargetFile := fmt.Sprintf(common.DefaultTargetFilePatternWithoutNamespace, appName)
+		return filepath.Join(path, defaultTargetFile)
+	} else {
+		defaultTargetFile := fmt.Sprintf(common.DefaultTargetFilePattern, appNamespace, appName)
+		return filepath.Join(path, defaultTargetFile)
+	}
 }
 
 func parseKustomizeBase(target string, sourcePath string) (kustomizeBase string) {
