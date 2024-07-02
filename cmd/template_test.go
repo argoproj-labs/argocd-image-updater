@@ -93,7 +93,10 @@ App: {{.AppName}}
 	args := []string{tempFile.Name()}
 	cmd.SetErr(buf)
 	cmd.SetArgs(args)
-	cmd.Execute()
+	err = cmd.Execute()
+	if err != nil {
+		t.Fatalf("could not execute command: %v", err)
+	}
 	assert.Contains(t, buf.String(), "could not parse commit message template")
 }
 
@@ -104,6 +107,9 @@ func TestNewTemplateCommandWithInvalidPath(t *testing.T) {
 	args := []string{"test-template.tmpl"}
 	cmd.SetErr(buf)
 	cmd.SetArgs(args)
-	cmd.Execute()
+	err := cmd.Execute()
+	if err != nil {
+		t.Fatalf("could not execute command: %v", err)
+	}
 	assert.Contains(t, buf.String(), "no such file or directory")
 }

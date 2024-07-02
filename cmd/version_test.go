@@ -4,8 +4,9 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/argoproj-labs/argocd-image-updater/pkg/version"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/argoproj-labs/argocd-image-updater/pkg/version"
 )
 
 // Helper function to create the expected full version output
