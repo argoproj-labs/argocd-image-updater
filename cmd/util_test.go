@@ -10,29 +10,48 @@ import (
 )
 
 func TestGetKubeConfig(t *testing.T) {
-	t.Run("valid kubeConfig", func(t *testing.T) {
-		client, err := getKubeConfig(context.TODO(), "", "../test/testdata/kubernetes/config")
-		require.NoError(t, err)
-		assert.NotNil(t, client)
-		assert.Equal(t, "default", client.Namespace)
-	})
+	tests := []struct {
+		name        string
+		namespace   string
+		configPath  string
+		expectError bool
+		expectedNS  string
+	}{
+		{
+			name:        "Valid KubeConfig",
+			namespace:   "",
+			configPath:  "../test/testdata/kubernetes/config",
+			expectError: false,
+			expectedNS:  "default",
+		},
+		{
+			name:        "Invalid KubeConfig Path",
+			namespace:   "",
+			configPath:  "invalid/kubernetes/config",
+			expectError: true,
+		},
+		{
+			name:        "Valid KubeConfig with Namespace",
+			namespace:   "argocd",
+			configPath:  "../test/testdata/kubernetes/config",
+			expectError: false,
+			expectedNS:  "argocd",
+		},
+	}
 
-	t.Run("invalid kubeConfig", func(t *testing.T) {
-		_, err := getKubeConfig(context.TODO(), "", "invalid/kubernetes/config")
-		require.Error(t, err)
-
-	})
-
-	t.Run("valid kubeConfig with namespace", func(t *testing.T) {
-		client, err := getKubeConfig(context.TODO(), "argocd", "../test/testdata/kubernetes/config")
-		require.NoError(t, err)
-		assert.NotNil(t, client)
-		assert.Equal(t, "argocd", client.Namespace)
-
-	})
-
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client, err := getKubeConfig(context.TODO(), tt.namespace, tt.configPath)
+			if tt.expectError {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				assert.NotNil(t, client)
+				assert.Equal(t, tt.expectedNS, client.Namespace)
+			}
+		})
+	}
 }
-
 func TestGetPrintableInterval(t *testing.T) {
 	tests := []struct {
 		input    time.Duration
