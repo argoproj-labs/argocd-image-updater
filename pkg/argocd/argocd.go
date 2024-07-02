@@ -176,41 +176,41 @@ func FilterApplicationsForUpdate(apps []v1alpha1.Application, patterns []string,
 	var appsForUpdate = make(map[string]ApplicationImages)
 
 	for _, app := range apps {
-		logCtx := log.WithContext().AddField("application", app.GetName())
-
+		logCtx := log.WithContext().AddField("application", app.GetName()).AddField("namespace", app.GetNamespace())
+		appNSName := fmt.Sprintf("%s/%s", app.GetNamespace(), app.GetName())
 		sourceType := getApplicationSourceType(&app)
 
 		// Check whether application has our annotation set
 		annotations := app.GetAnnotations()
 		if _, ok := annotations[common.ImageUpdaterAnnotation]; !ok {
-			logCtx.Tracef("skipping app '%s' of type '%s' because required annotation is missing", app.GetName(), sourceType)
+			logCtx.Tracef("skipping app '%s' of type '%s' because required annotation is missing", appNSName, sourceType)
 			continue
 		}
 
 		// Check for valid application type
 		if !IsValidApplicationType(&app) {
-			logCtx.Warnf("skipping app '%s' of type '%s' because it's not of supported source type", app.GetName(), sourceType)
+			logCtx.Warnf("skipping app '%s' of type '%s' because it's not of supported source type", appNSName, sourceType)
 			continue
 		}
 
 		// Check if application name matches requested patterns
 		if !nameMatchesPattern(app.GetName(), patterns) {
-			logCtx.Debugf("Skipping app '%s' because it does not match requested patterns", app.GetName())
+			logCtx.Debugf("Skipping app '%s' because it does not match requested patterns", appNSName)
 			continue
 		}
 
 		// Check if application carries requested label
 		if !matchAppLabels(app.GetName(), app.GetLabels(), appLabel) {
-			logCtx.Debugf("Skipping app '%s' because it does not carry requested label", app.GetName())
+			logCtx.Debugf("Skipping app '%s' because it does not carry requested label", appNSName)
 			continue
 		}
 
-		logCtx.Tracef("processing app '%s' of type '%v'", app.GetName(), sourceType)
+		logCtx.Tracef("processing app '%s' of type '%v'", appNSName, sourceType)
 		imageList := parseImageList(annotations)
 		appImages := ApplicationImages{}
 		appImages.Application = app
 		appImages.Images = *imageList
-		appsForUpdate[app.GetName()] = appImages
+		appsForUpdate[appNSName] = appImages
 	}
 
 	return appsForUpdate, nil
@@ -385,6 +385,7 @@ func SetHelmImage(app *v1alpha1.Application, newImage *image.ContainerImage) err
 	}
 
 	appName := app.GetName()
+	appNamespace := app.GetNamespace()
 
 	var hpImageName, hpImageTag, hpImageSpec string
 
@@ -404,6 +405,7 @@ func SetHelmImage(app *v1alpha1.Application, newImage *image.ContainerImage) err
 	log.WithContext().
 		AddField("application", appName).
 		AddField("image", newImage.GetFullNameWithoutTag()).
+		AddField("namespace", appNamespace).
 		Debugf("target parameters: image-spec=%s image-name=%s, image-tag=%s", hpImageSpec, hpImageName, hpImageTag)
 
 	mergeParams := make([]v1alpha1.HelmParameter, 0)
