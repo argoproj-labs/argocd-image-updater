@@ -2602,7 +2602,7 @@ func Test_CommitUpdates(t *testing.T) {
 		wbc.GitClient = gitMock
 
 		err = commitChanges(&app, wbc, nil)
-// 		assert.NoError(t, err)
+		assert.NoError(t, err)
 	})
 
 	t.Run("Good commit to configured branch", func(t *testing.T) {
@@ -2775,8 +2775,6 @@ helm:
 `, string(override))
 	})
 
-
-
 	t.Run("Good commit to helm override with another namespace", func(t *testing.T) {
 		app := app.DeepCopy()
 		app.Status.SourceType = "Helm"
@@ -2827,7 +2825,6 @@ helm:
     forcestring: true
 `, string(override))
 	})
-
 
 	t.Run("Good commit to kustomization", func(t *testing.T) {
 		app := app.DeepCopy()
