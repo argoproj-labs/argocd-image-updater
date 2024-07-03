@@ -67,8 +67,15 @@ mod-vendor:
 test:
 	go test -coverprofile coverage.out `go list ./... | egrep -v '(test|mocks|ext/)'`
 
+
+.PHONY: test-race
 test-race:
 	go test -race -coverprofile coverage.out `go list ./... | egrep -v '(test|mocks|ext/)'`
+
+.PHONY: test-manifests
+test-manifests:
+	./scripts/test_manifests.sh
+
 
 .PHONY: prereq
 prereq:
@@ -143,7 +150,7 @@ run-test:
 		--argocd-server-addr $(ARGOCD_SERVER) \
 		--grpc-web
 
-
 .PHONY: serve-docs
 serve-docs:
 	docker run ${MKDOCS_RUN_ARGS} --rm -it -p 8000:8000 -v ${CURRENT_DIR}:/docs ${MKDOCS_DOCKER_IMAGE} serve -a 0.0.0.0:8000
+

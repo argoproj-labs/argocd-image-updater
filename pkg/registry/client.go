@@ -361,12 +361,18 @@ func TagInfoFromReferences(client *registryClient, opts *options.ManifestOptions
 	platforms := []string{}
 
 	for _, ref := range references {
-		platforms = append(platforms, ref.Platform.OS+"/"+ref.Platform.Architecture)
-		logCtx.Tracef("Found %s", options.PlatformKey(ref.Platform.OS, ref.Platform.Architecture, ref.Platform.Variant))
-		if !opts.WantsPlatform(ref.Platform.OS, ref.Platform.Architecture, ref.Platform.Variant) {
+		var refOS, refArch, refVariant string
+		if ref.Platform != nil {
+			refOS = ref.Platform.OS
+			refArch = ref.Platform.Architecture
+			refVariant = ref.Platform.Variant
+		}
+		platforms = append(platforms, refOS+"/"+refArch)
+		logCtx.Tracef("Found %s", options.PlatformKey(refOS, refArch, refVariant))
+		if !opts.WantsPlatform(refOS, refArch, refVariant) {
 			logCtx.Tracef("Ignoring referenced manifest %v because platform %s does not match any of: %s",
 				ref.Digest,
-				options.PlatformKey(ref.Platform.OS, ref.Platform.Architecture, ref.Platform.Variant),
+				options.PlatformKey(refOS, refArch, refVariant),
 				strings.Join(opts.Platforms(), ","))
 			continue
 		}
