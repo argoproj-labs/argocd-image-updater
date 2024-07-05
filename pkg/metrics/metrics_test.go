@@ -39,4 +39,31 @@ func TestMetricsInitialization(t *testing.T) {
 		assert.NotNil(t, cpm.kubeAPIRequestsTotal)
 		assert.NotNil(t, cpm.kubeAPIRequestsErrorsTotal)
 	})
+
+	t.Run("NewApplicationsMetrics", func(t *testing.T) {
+		apm := NewApplicationsMetrics()
+		assert.NotNil(t, apm)
+		assert.NotNil(t, apm.applicationsTotal)
+		assert.NotNil(t, apm.imagesWatchedTotal)
+		assert.NotNil(t, apm.imagesUpdatedTotal)
+		assert.NotNil(t, apm.imagesUpdatedErrorsTotal)
+	})
+}
+
+func TestMetricsOperations(t *testing.T) {
+	epm := Endpoint()
+	epm.IncreaseRequest("/registry1", false)
+	epm.IncreaseRequest("/registry1", true)
+
+	cpm := Clients()
+	cpm.IncreaseArgoCDClientRequest("server1", 1)
+	cpm.IncreaseArgoCDClientError("server1", 2)
+	cpm.IncreaseK8sClientRequest(3)
+	cpm.IncreaseK8sClientError(4)
+
+	apm := Applications()
+	apm.IncreaseImageUpdate("app1", 1)
+	apm.IncreaseUpdateErrors("app1", 2)
+	apm.SetNumberOfApplications(3)
+	apm.SetNumberOfImagesWatched("app1", 4)
 }
