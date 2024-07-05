@@ -32,13 +32,21 @@ func (m *nativeGitClient) Commit(pathSpec string, opts *CommitOptions) error {
 	defaultCommitMsg := "Update parameters"
 	// Git configuration
 	config := "gpg.format=" + opts.SigningMethod
-	args := []string{"-c", config, "commit"}
+	args := []string{}
+	// -c is a global option and needs to be passed before the actual git sub
+	// command (commit).
+	if opts.SigningMethod != "" {
+		args = append(args, "-c", config)
+	}
+	args = append(args, "commit")
 	if pathSpec == "" || pathSpec == "*" {
 		args = append(args, "-a")
 	}
 	// Commit fails with a space between -S flag and path to SSH key
 	// -S/user/test/.ssh/signingKey or -SAAAAAAAA...
-	args = append(args, fmt.Sprintf("-S%s", opts.SigningKey))
+	if opts.SigningKey != "" {
+		args = append(args, fmt.Sprintf("-S%s", opts.SigningKey))
+	}
 	if opts.SignOff {
 		args = append(args, "-s")
 	}
