@@ -14,7 +14,7 @@ FROM alpine:3.19
 
 RUN apk update && \
     apk upgrade && \
-    apk add ca-certificates git openssh-client aws-cli tini && \
+    apk add ca-certificates git openssh-client aws-cli tini gpg && \
     rm -rf /var/cache/apk/*
 
 RUN mkdir -p /usr/local/bin
