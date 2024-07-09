@@ -72,3 +72,11 @@ func Test_Platforms(t *testing.T) {
 		assert.Equal(t, ps[1], PlatformKey("linux", "arm", "v8"))
 	})
 }
+
+func Test_WithLogger(t *testing.T) {
+	opts := NewManifestOptions()
+	logger := opts.Logger()
+	assert.NotNil(t, logger)
+	opts = opts.WithLogger(logger)
+	assert.Equal(t, logger, opts.Logger())
+}
