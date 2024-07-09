@@ -622,7 +622,6 @@ func getWriteBackConfig(app *v1alpha1.Application, kubeClient *kube.KubernetesCl
 }
 
 func parseDefaultTarget(appNamespace string, appName string, path string, kubeClient *kube.KubernetesClient) string {
-    log.Warnf("Namspace : %v", kubeClient)
 	if (appNamespace == kubeClient.Namespace) || (appNamespace == "") {
 		defaultTargetFile := fmt.Sprintf(common.DefaultTargetFilePatternWithoutNamespace, appName)
 		return filepath.Join(path, defaultTargetFile)
