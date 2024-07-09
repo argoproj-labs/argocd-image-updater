@@ -2725,7 +2725,7 @@ helm:
 	})
 
 	t.Run("Good commit to helm override with argocd namespace", func(t *testing.T) {
-	    kubeClient.Namespace = "argocd"
+		kubeClient.Namespace = "argocd"
 		app := app.DeepCopy()
 		app.Status.SourceType = "Helm"
 		app.ObjectMeta.Namespace = "argocd"
@@ -2777,7 +2777,7 @@ helm:
 	})
 
 	t.Run("Good commit to helm override with another namespace", func(t *testing.T) {
-	    kubeClient.Namespace = "argocd"
+		kubeClient.Namespace = "argocd"
 		app := app.DeepCopy()
 		app.Status.SourceType = "Helm"
 		app.ObjectMeta.Namespace = "testNS"
