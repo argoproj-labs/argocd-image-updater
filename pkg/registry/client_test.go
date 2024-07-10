@@ -9,16 +9,17 @@ import (
 	"testing"
 	"time"
 
-	"github.com/argoproj-labs/argocd-image-updater/pkg/log"
-	"github.com/argoproj-labs/argocd-image-updater/pkg/options"
-	"github.com/argoproj-labs/argocd-image-updater/pkg/registry/mocks"
-	"github.com/argoproj-labs/argocd-image-updater/pkg/tag"
 	"github.com/distribution/distribution/v3"
 	"github.com/distribution/distribution/v3/manifest/schema1" //nolint:staticcheck
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+
+	"github.com/argoproj-labs/argocd-image-updater/pkg/log"
+	"github.com/argoproj-labs/argocd-image-updater/pkg/options"
+	"github.com/argoproj-labs/argocd-image-updater/pkg/registry/mocks"
+	"github.com/argoproj-labs/argocd-image-updater/pkg/tag"
 )
 
 func TestBasic(t *testing.T) {
