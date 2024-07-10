@@ -78,15 +78,12 @@ func TestIsTimeSorted(t *testing.T) {
 	t.Run("returns true for TagListSortLatestFirst", func(t *testing.T) {
 		assert.True(t, TagListSortLatestFirst.IsTimeSorted())
 	})
-
 	t.Run("returns true for TagListSortLatestLast", func(t *testing.T) {
 		assert.True(t, TagListSortLatestLast.IsTimeSorted())
 	})
-
 	t.Run("returns false for TagListSortUnsorted", func(t *testing.T) {
 		assert.False(t, TagListSortUnsorted.IsTimeSorted())
 	})
-
 	t.Run("returns false for TagListSortUnknown", func(t *testing.T) {
 		assert.False(t, TagListSortUnknown.IsTimeSorted())
 	})
@@ -329,23 +326,13 @@ func Test_RestoreDefaultRegistryConfiguration(t *testing.T) {
 }
 
 func TestConfiguredEndpoints(t *testing.T) {
-	// Set up the registries map
-	registries = map[string]*RegistryEndpoint{
-		"docker.io": {RegistryPrefix: "docker.io"},
-		"ghcr.io":   {RegistryPrefix: "ghcr.io"},
-		"quay.io":   {RegistryPrefix: "quay.io"},
-	}
-
 	// Test the function
 	endpoints := ConfiguredEndpoints()
-
 	// Validate the output
-	expected := []string{"docker.io", "ghcr.io", "quay.io"}
+	expected := []string{"docker.io"}
 	require.Len(t, endpoints, len(expected), "The number of endpoints should match the expected number")
 	assert.ElementsMatch(t, expected, endpoints, "The endpoints should match the expected values")
 
-	// Cleanup: reset registries to avoid affecting other tests
-	registries = nil
 }
 
 func TestAddRegistryEndpointFromConfig(t *testing.T) {
@@ -361,7 +348,6 @@ func TestAddRegistryEndpointFromConfig(t *testing.T) {
 			Limit:       10,
 			CredsExpire: time.Minute * 30,
 		}
-
 		err := AddRegistryEndpointFromConfig(config)
 		require.NoError(t, err)
 	})

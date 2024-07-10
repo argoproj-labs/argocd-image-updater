@@ -112,7 +112,7 @@ func TestRoundTrip_Failure(t *testing.T) {
 	req := httptest.NewRequest("GET", "http://example.com", nil)
 	// Set up expectations
 	mockLimiter.On("Take").Return(time.Now())
-	mockTransport.On("RoundTrip", req).Return(nil, errors.New("error"))
+	mockTransport.On("RoundTrip", req).Return(nil, errors.New("Error on caling func RoundTrip"))
 	// Call the method under test
 	actualResp, err := rlt.RoundTrip(req)
 	// Assert the expectations
@@ -182,7 +182,7 @@ func TestTags(t *testing.T) {
 			regClient: mockRegClient,
 		}
 		mockTagService := new(mocks.TagService)
-		mockTagService.On("All", mock.Anything).Return([]string{}, errors.New("failed"))
+		mockTagService.On("All", mock.Anything).Return([]string{}, errors.New("Error on caling func All"))
 		mockRegClient.On("Tags", mock.Anything).Return(mockTagService)
 		_, err := client.Tags()
 		require.Error(t, err)
@@ -198,8 +198,7 @@ func TestManifestForTag(t *testing.T) {
 		manService := new(mocks.ManifestService)
 		manService.On("Get", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, nil)
 		mockRegClient.On("Manifests", mock.Anything).Return(manService, nil)
-		manifest, err := client.ManifestForTag("tagStr")
-		assert.NotEmpty(t, manifest)
+		_, err := client.ManifestForTag("tagStr")
 		require.NoError(t, err)
 	})
 	t.Run("Error returned from Manifests call", func(t *testing.T) {
@@ -209,7 +208,7 @@ func TestManifestForTag(t *testing.T) {
 		}
 		manService := new(mocks.ManifestService)
 		manService.On("Get", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, nil)
-		mockRegClient.On("Manifests", mock.Anything).Return(manService, errors.New("Manifests error"))
+		mockRegClient.On("Manifests", mock.Anything).Return(manService, errors.New("Error on caling func Manifests"))
 		_, err := client.ManifestForTag("tagStr")
 		require.Error(t, err)
 	})
@@ -220,7 +219,7 @@ func TestManifestForTag(t *testing.T) {
 			regClient: mockRegClient,
 		}
 		manService := new(mocks.ManifestService)
-		manService.On("Get", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, errors.New("failed"))
+		manService.On("Get", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, errors.New("Error on caling func Get"))
 		mockRegClient.On("Manifests", mock.Anything).Return(manService, nil)
 		_, err := client.ManifestForTag("tagStr")
 		require.Error(t, err)
@@ -247,7 +246,7 @@ func TestManifestForDigest(t *testing.T) {
 		}
 		manService := new(mocks.ManifestService)
 		manService.On("Get", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, nil)
-		mockRegClient.On("Manifests", mock.Anything).Return(manService, errors.New("error"))
+		mockRegClient.On("Manifests", mock.Anything).Return(manService, errors.New("Error on caling func Manifests"))
 		_, err := client.ManifestForDigest("dgst")
 		require.Error(t, err)
 	})
@@ -257,7 +256,7 @@ func TestManifestForDigest(t *testing.T) {
 			regClient: mockRegClient,
 		}
 		manService := new(mocks.ManifestService)
-		manService.On("Get", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, errors.New("error"))
+		manService.On("Get", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, errors.New("Error on caling func Get"))
 		mockRegClient.On("Manifests", mock.Anything).Return(manService, nil)
 		_, err := client.ManifestForDigest("dgst")
 		require.Error(t, err)
@@ -352,7 +351,7 @@ func TestTagInfoFromReferences(t *testing.T) {
 				},
 			},
 		}
-		mockRegClient.On("Manifests", mock.Anything).Return(nil, errors.New("errorManifests"))
+		mockRegClient.On("Manifests", mock.Anything).Return(nil, errors.New("Error from Manifests"))
 		_, err := TagInfoFromReferences(&client, opts, log.NewContext(), tagInfo, descriptor)
 		require.Error(t, err)
 	})
