@@ -2,6 +2,7 @@ package health
 
 import (
 	"net/http"
+	"net/http/httptest"
 	"testing"
 )
 
@@ -21,5 +22,30 @@ func TestStartHealthServer(t *testing.T) {
 	// Check if the response status code is 200 OK
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("Expected status code %d, got %d", http.StatusOK, resp.StatusCode)
+	}
+}
+
+func TestHealthProbe(t *testing.T) {
+	// Create a mock HTTP request
+	req, err := http.NewRequest("GET", "/healthz", nil)
+	if err != nil {
+		t.Fatalf("Failed to create request: %v", err)
+	}
+
+	// Create a mock HTTP response recorder
+	w := httptest.NewRecorder()
+
+	// Call the HealthProbe function directly
+	HealthProbe(w, req)
+
+	// Check the response status code
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status OK; got %d", w.Code)
+	}
+
+	// Check the response body
+	expectedBody := "OK\n"
+	if body := w.Body.String(); body != expectedBody {
+		t.Errorf("Expected body %q; got %q", expectedBody, body)
 	}
 }
