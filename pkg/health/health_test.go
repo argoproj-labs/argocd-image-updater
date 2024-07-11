@@ -1,27 +1,28 @@
 package health
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 )
 
 // Unit test function
-func TestStartHealthServer(t *testing.T) {
-	port := 8080
+func TestStartHealthServer_InvalidPort(t *testing.T) {
+	// Use an invalid port number
+	port := -1
 	errCh := StartHealthServer(port)
 	defer close(errCh) // Close the error channel after the test completes
-
-	// Make a request to the health endpoint
-	resp, err := http.Get("http://localhost:8080/healthz")
-	if err != nil {
-		t.Fatalf("Failed to send GET request: %v", err)
-	}
-	defer resp.Body.Close()
-
-	// Check if the response status code is 200 OK
-	if resp.StatusCode != http.StatusOK {
-		t.Errorf("Expected status code %d, got %d", http.StatusOK, resp.StatusCode)
+	select {
+	case err := <-errCh:
+		if err == nil {
+			t.Error("Expected error, got nil")
+		} else if err.Error() != fmt.Sprintf("listen tcp: address %d: invalid port", port) {
+			t.Errorf("Expected error message about invalid port, got %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Error("Timed out waiting for error")
 	}
 }
 
