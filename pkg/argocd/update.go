@@ -584,7 +584,7 @@ func getWriteBackConfig(app *v1alpha1.Application, kubeClient *kube.KubernetesCl
 	// Default write-back is to use Argo CD API
 	wbc.Method = WriteBackApplication
 	wbc.ArgoClient = argoClient
-	wbc.Target = parseDefaultTarget(app.Name, getApplicationSource(app).Path)
+	wbc.Target = parseDefaultTarget(app.GetNamespace(), app.Name, getApplicationSource(app).Path, kubeClient)
 
 	// If we have no update method, just return our default
 	method, ok := app.Annotations[common.WriteBackMethodAnnotation]
@@ -621,10 +621,14 @@ func getWriteBackConfig(app *v1alpha1.Application, kubeClient *kube.KubernetesCl
 	return wbc, nil
 }
 
-func parseDefaultTarget(appName string, path string) string {
-	defaultTargetFile := fmt.Sprintf(common.DefaultTargetFilePattern, appName)
-
-	return filepath.Join(path, defaultTargetFile)
+func parseDefaultTarget(appNamespace string, appName string, path string, kubeClient *kube.KubernetesClient) string {
+	if (appNamespace == kubeClient.Namespace) || (appNamespace == "") {
+		defaultTargetFile := fmt.Sprintf(common.DefaultTargetFilePatternWithoutNamespace, appName)
+		return filepath.Join(path, defaultTargetFile)
+	} else {
+		defaultTargetFile := fmt.Sprintf(common.DefaultTargetFilePattern, appNamespace, appName)
+		return filepath.Join(path, defaultTargetFile)
+	}
 }
 
 func parseKustomizeBase(target string, sourcePath string) (kustomizeBase string) {
