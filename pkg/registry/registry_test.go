@@ -158,4 +158,5 @@ registries:
 		assert.Equal(t, "bar", ep.Username)
 		assert.Equal(t, "foo", ep.Password)
 	})
+
 }
