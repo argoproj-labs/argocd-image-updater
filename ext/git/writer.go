@@ -24,7 +24,7 @@ type CommitOptions struct {
 
 // Commit perfoms a git commit for the given pathSpec to the currently checked
 // out branch. If pathSpec is empty, or the special value "*", all pending
-// changes will be commited. If message is not the empty string, it will be
+// changes will be committed. If message is not the empty string, it will be
 // used as the commit message, otherwise a default commit message will be used.
 // If signingKey is not the empty string, commit will be signed with the given
 // GPG or SSH key.

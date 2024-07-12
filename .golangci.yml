@@ -6,6 +6,7 @@ linters:
     - vet
     - goimports
     - ineffassign
+    - misspell
     - unconvert
     - unused
 linters-settings:
