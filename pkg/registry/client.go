@@ -425,7 +425,7 @@ func TagInfoFromReferences(client *registryClient, opts *options.ManifestOptions
 	return ti, nil
 }
 
-// Implementation of ping method to intialize the challenge list
+// Implementation of ping method to initialize the challenge list
 // Without this, tokenHandler and AuthorizationHandler won't work
 func ping(manager challenge.Manager, endpoint *RegistryEndpoint, versionHeader string) ([]auth.APIVersion, error) {
 	httpc := &http.Client{Transport: endpoint.GetTransport()}
@@ -435,7 +435,7 @@ func ping(manager challenge.Manager, endpoint *RegistryEndpoint, versionHeader s
 		return nil, err
 	}
 	defer resp.Body.Close()
-	// Let's consider only HTTP 200 and 401 valid responses for the inital request
+	// Let's consider only HTTP 200 and 401 valid responses for the initial request
 	if resp.StatusCode != 200 && resp.StatusCode != 401 {
 		return nil, fmt.Errorf("endpoint %s does not seem to be a valid v2 Docker Registry API (received HTTP code %d for GET %s)", endpoint.RegistryAPI, resp.StatusCode, url)
 	}
