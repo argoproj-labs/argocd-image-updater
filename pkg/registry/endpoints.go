@@ -91,8 +91,8 @@ type RegistryEndpoint struct {
 }
 
 // registryTweaks should contain a list of registries whose settings cannot be
-// infered by just looking at the image prefix. Prominent example here is the
-// Docker Hub registry, which is refered to as docker.io from the image, but
+// inferred by just looking at the image prefix. Prominent example here is the
+// Docker Hub registry, which is referred to as docker.io from the image, but
 // its API endpoint is https://registry-1.docker.io (and not https://docker.io)
 var registryTweaks map[string]*RegistryEndpoint = map[string]*RegistryEndpoint{
 	"docker.io": {
@@ -172,7 +172,7 @@ func AddRegistryEndpoint(ep *RegistryEndpoint) error {
 }
 
 // inferRegistryEndpointFromPrefix returns a registry endpoint with the API
-// URL infered from the prefix and adds it to the list of the configured
+// URL inferred from the prefix and adds it to the list of the configured
 // registries.
 func inferRegistryEndpointFromPrefix(prefix string) *RegistryEndpoint {
 	apiURL := "https://" + prefix
