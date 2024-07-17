@@ -15,12 +15,10 @@ FROM alpine:3.19
 RUN apk update && \
     apk upgrade && \
     apk add ca-certificates git openssh-client aws-cli tini gpg && \
-    apk add python3 py3-pip && \
-    pip3 install --upgrade pip && \
-    pip3 install awscli && \
-    apk add gcc musl-dev python3-dev libffi-dev openssl-dev cargo make && \
-    pip3 install azure-cli && \
     rm -rf /var/cache/apk/*
+
+RUN apk add gcc musl-dev python3-dev libffi-dev openssl-dev cargo make py3-pip && \
+    pip3 install --break-system-packages azure-cli-acr azure-identity
 
 RUN mkdir -p /usr/local/bin
 RUN mkdir -p /app/config
