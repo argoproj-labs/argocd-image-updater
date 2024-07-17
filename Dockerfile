@@ -18,7 +18,7 @@ RUN apk update && \
     rm -rf /var/cache/apk/*
 
 RUN apk add gcc musl-dev python3-dev libffi-dev openssl-dev cargo make py3-pip && \
-    pip3 install --break-system-packages azure-cli-acr azure-identity
+    pip3 install --break-system-packages azure-cli
 
 RUN mkdir -p /usr/local/bin
 RUN mkdir -p /app/config
