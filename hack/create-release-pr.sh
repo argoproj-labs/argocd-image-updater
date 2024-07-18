@@ -1,5 +1,13 @@
 #!/bin/bash
 
+### This script creates a new release PR
+# - install gh cli and semver-cli (go install github.com/davidrjonas/semver-cli@latest)
+# - create and push "release-X.Y" branch
+# - checkout this branch locally
+# - run this script from repo root: ./hack/create-release-pr.sh
+# - merge the PR
+# It will trigger the release workflow that would create release draft on github
+
 RELEASE_BRANCH="$(git rev-parse --abbrev-ref HEAD || true)"
 set -eux
 set -o pipefail
@@ -20,7 +28,7 @@ make manifests
 
 git checkout -b "feat/new-version-${NEW_VERSION}"
 git commit -m "Release ${NEW_VERSION}" VERSION manifests/
-git push
+git push --set-upstream origin "feat/new-version-${NEW_VERSION}"
 gh label --repo $(git remote get-url origin) create --force release
 gh pr --repo $(git remote get-url origin) \
     create \

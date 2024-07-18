@@ -2,11 +2,14 @@ name: Create release draft
 on:
   workflow_dispatch:
   pull_request:
+    types:
+    - closed
     branches:
     - 'release-*'
 
 jobs:
   create-draft:
+    if: github.event.pull_request.merged == true && contains(github.event.pull_request.labels.*.name, 'release')
     name: Create release draft
     runs-on: ubuntu-latest
     steps:
@@ -35,6 +38,7 @@ jobs:
         run: |
           gh release create "v${{ steps.version.outputs.version }}" \
             --title "v${{ steps.version.outputs.version }}" \
+            --target "${{ github.base_ref }}" \
             --generate-notes \
             --draft \
             dist/release/*
