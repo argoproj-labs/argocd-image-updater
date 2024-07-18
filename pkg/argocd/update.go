@@ -435,8 +435,13 @@ func marshalParamsOverride(app *v1alpha1.Application, originalData []byte) ([]by
 		if strings.HasPrefix(app.Annotations[common.WriteBackTargetAnnotation], common.HelmPrefix) {
 			images := GetImagesAndAliasesFromApplication(app)
 
-			for _, c := range images {
+			helmNewValues := yaml.MapSlice{}
+			err = yaml.Unmarshal(originalData, &helmNewValues)
+			if err != nil {
+				return nil, err
+			}
 
+			for _, c := range images {
 				if c.ImageAlias == "" {
 					continue
 				}
@@ -460,14 +465,6 @@ func marshalParamsOverride(app *v1alpha1.Application, originalData []byte) ([]by
 					return nil, fmt.Errorf("%s parameter not found", helmAnnotationParamVersion)
 				}
 
-				// Create new values structure
-				//var helmNewValues map[string]interface{}
-				helmNewValues := yaml.MapSlice{}
-				err = yaml.Unmarshal(originalData, &helmNewValues)
-				if err != nil {
-					return nil, err
-				}
-
 				err = setHelmValue(helmNewValues, helmAnnotationParamName, helmParamName.Value)
 				if err != nil {
 					return nil, fmt.Errorf("failed to set image parameter name value: %v", err)
@@ -476,9 +473,9 @@ func marshalParamsOverride(app *v1alpha1.Application, originalData []byte) ([]by
 				if err != nil {
 					return nil, fmt.Errorf("failed to set image parameter version value: %v", err)
 				}
-
-				override, err = yaml.Marshal(helmNewValues)
 			}
+
+			override, err = yaml.Marshal(helmNewValues)
 		} else {
 			var params helmOverride
 			newParams := helmOverride{
