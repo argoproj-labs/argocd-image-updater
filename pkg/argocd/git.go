@@ -12,6 +12,7 @@ import (
 
 	"sigs.k8s.io/kustomize/api/konfig"
 	"sigs.k8s.io/kustomize/api/types"
+	"sigs.k8s.io/kustomize/kyaml/order"
 	kyaml "sigs.k8s.io/kustomize/kyaml/yaml"
 
 	"github.com/argoproj-labs/argocd-image-updater/pkg/image"
@@ -327,12 +328,41 @@ func writeKustomization(app *v1alpha1.Application, wbc *WriteBackConfig, gitC gi
 	if err != nil {
 		return err, false
 	}
-	err = kyaml.UpdateFile(filterFunc, kustFile)
-	if err != nil {
+
+	if err = updateKustomizeFile(filterFunc, kustFile); err != nil {
 		return err, false
 	}
 
 	return nil, false
+}
+
+// updateKustomizeFile reads the kustomization file at path, applies the filter to it, and writes the result back
+// to the file. This is the same behavior as kyaml.UpdateFile, but it preserves the original order
+// of YAML fields to minimize git diffs.
+func updateKustomizeFile(filter kyaml.Filter, path string) error {
+	// Read the yaml
+	y, err := kyaml.ReadFile(path)
+	if err != nil {
+		return err
+	}
+
+	// Update the yaml
+	yCpy := y.Copy()
+	if err := yCpy.PipeE(filter); err != nil {
+		return err
+	}
+
+	// Preserve the original order of fields
+	if err := order.SyncOrder(y, yCpy); err != nil {
+		return err
+	}
+
+	// Write the yaml
+	if err := kyaml.WriteFile(yCpy, path); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func imagesFilter(images v1alpha1.KustomizeImages) (kyaml.Filter, error) {

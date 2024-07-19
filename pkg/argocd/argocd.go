@@ -572,12 +572,12 @@ func getApplicationSourceType(app *v1alpha1.Application) v1alpha1.ApplicationSou
 	}
 
 	if app.Spec.HasMultipleSources() {
-		for _, s := range app.Spec.Sources {
-			if s.Helm != nil {
+		for _, st := range app.Status.SourceTypes {
+			if st == v1alpha1.ApplicationSourceTypeHelm {
 				return v1alpha1.ApplicationSourceTypeHelm
-			} else if s.Kustomize != nil {
+			} else if st == v1alpha1.ApplicationSourceTypeKustomize {
 				return v1alpha1.ApplicationSourceTypeKustomize
-			} else if s.Plugin != nil {
+			} else if st == v1alpha1.ApplicationSourceTypePlugin {
 				return v1alpha1.ApplicationSourceTypePlugin
 			}
 		}
