@@ -1061,7 +1061,7 @@ func Test_SetHelmImage(t *testing.T) {
 		// Find second correct parameter
 		var tagParamTwo v1alpha1.HelmParameter
 		for _, p := range app.Spec.Source.Helm.Parameters {
-			if p.Name == "foobar.image.tag" {
+			if p.Name == "foobar2.image.tag" {
 				tagParamTwo = p
 				break
 			}
