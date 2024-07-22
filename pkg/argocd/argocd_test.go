@@ -1012,7 +1012,7 @@ func Test_SetHelmImage(t *testing.T) {
 				Namespace: "testns",
 				Annotations: map[string]string{
 					fmt.Sprintf(common.HelmParamImageNameAnnotation, "foobar"): "foobar.image.name,foobar2.image.name",
-					fmt.Sprintf(common.HelmParamImageTagAnnotation, "foobar"):  "foobar.image.tag, foobar2.image.tag",
+					fmt.Sprintf(common.HelmParamImageTagAnnotation, "foobar"):  "foobar.image.tag, foobar2.image.tag", // Space is expected
 				},
 			},
 			Spec: v1alpha1.ApplicationSpec{
