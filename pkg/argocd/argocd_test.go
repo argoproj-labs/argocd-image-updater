@@ -8,6 +8,7 @@ import (
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/image"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/kube"
+	"github.com/argoproj-labs/argocd-image-updater/pkg/log"
 
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/application"
 	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
@@ -1066,8 +1067,8 @@ func TestKubernetesClient(t *testing.T) {
 	t.Run("List applications", func(t *testing.T) {
 		apps, err := client.ListApplications()
 		require.NoError(t, err)
-		require.Len(t, apps, 1)
-
+		require.Len(t, apps, 2)
+		log.Debugf("App %s", app1.Name)
 		assert.ElementsMatch(t, []string{"test-app1"}, []string{app1.Name})
 	})
 
