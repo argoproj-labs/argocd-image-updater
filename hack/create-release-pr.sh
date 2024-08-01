@@ -4,7 +4,7 @@
 # - install gh cli and semver-cli (go install github.com/davidrjonas/semver-cli@latest)
 # - create and push "release-X.Y" branch
 # - checkout this branch locally
-# - run this script from repo root: ./hack/create-release-pr.sh
+# - run this script from repo root: ./hack/create-release-pr.sh [REMOTE]
 # - merge the PR
 # It will trigger the release workflow that would create release draft on github
 
@@ -35,11 +35,14 @@ echo $NEW_VERSION > VERSION
 IMAGE_TAG="v${NEW_VERSION}"
 make manifests
 
+REMOTE=${1:-origin}
+REMOTE_URL=$(git remote get-url ${REMOTE})
+
 git checkout -b "feat/new-version-${NEW_VERSION}"
 git commit -m "Release ${NEW_VERSION}" VERSION manifests/
-git push --set-upstream origin "feat/new-version-${NEW_VERSION}"
-gh label --repo $(git remote get-url origin) create --force release
-gh pr --repo $(git remote get-url origin) \
+git push --set-upstream ${REMOTE} "feat/new-version-${NEW_VERSION}"
+gh label --repo ${REMOTE_URL} create --force release
+gh pr --repo ${REMOTE_URL} \
     create \
     --base ${RELEASE_BRANCH} \
     --title "Release ${NEW_VERSION}" \
