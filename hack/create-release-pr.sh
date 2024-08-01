@@ -13,7 +13,6 @@ set -o pipefail
 
 
 CURRENT_BRANCH="$(git branch --show-current)"
-# CURRENT_BRANCH="release-0.14"
 
 if [[ ! "$CURRENT_BRANCH" == release-* ]]; then
 	echo "!! Please checkout branch 'release-X.Y' (currently in branch: '${CURRENT_BRANCH}')" >&2
