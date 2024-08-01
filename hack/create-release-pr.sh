@@ -8,9 +8,19 @@
 # - merge the PR
 # It will trigger the release workflow that would create release draft on github
 
-RELEASE_BRANCH="$(git rev-parse --abbrev-ref HEAD || true)"
 set -eux
 set -o pipefail
+
+
+CURRENT_BRANCH="$(git branch --show-current)"
+# CURRENT_BRANCH="release-0.14"
+
+if [[ ! "$CURRENT_BRANCH" == release-* ]]; then
+	echo "!! Please checkout branch 'release-X.Y' (currently in branch: '${CURRENT_BRANCH}')" >&2
+	exit 1
+fi
+
+RELEASE_BRANCH="${CURRENT_BRANCH}"
 
 ### look for latest on-branch tag
 PREVIOUS_TAG=$(git describe --tags --abbrev=0 --match "*${RELEASE_BRANCH##release-}*" 2>/dev/null || true)
