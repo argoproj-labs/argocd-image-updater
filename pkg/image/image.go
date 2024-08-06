@@ -4,10 +4,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/distribution/distribution/v3/reference"
+
 	"github.com/argoproj-labs/argocd-image-updater/pkg/log"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/tag"
-
-	"github.com/distribution/distribution/v3/reference"
 )
 
 type ContainerImage struct {
@@ -95,12 +95,13 @@ func (img *ContainerImage) GetFullNameWithTag() string {
 	}
 	str += img.ImageName
 	if img.ImageTag != nil {
+		if img.ImageTag.TagName != "" {
+			str += ":"
+			str += img.ImageTag.TagName
+		}
 		if img.ImageTag.TagDigest != "" {
 			str += "@"
 			str += img.ImageTag.TagDigest
-		} else if img.ImageTag.TagName != "" {
-			str += ":"
-			str += img.ImageTag.TagName
 		}
 	}
 	return str
@@ -223,10 +224,22 @@ func getImageTagFromIdentifier(identifier string) (string, string, *tag.ImageTag
 		imageString = strings.Join(comp[1:], "/")
 	}
 
-	// We can either have a tag name or a digest reference
+	// We can either have a tag name or a digest reference, or both
+	// jannfis/test-image:0.1
+	// gcr.io/jannfis/test-image:0.1
+	// gcr.io/jannfis/test-image@sha256:abcde
+	// gcr.io/jannfis/test-image:test-tag@sha256:abcde
 	if strings.Contains(imageString, "@") {
 		comp = strings.SplitN(imageString, "@", 2)
-		return sourceName, comp[0], tag.NewImageTag("", time.Unix(0, 0), comp[1])
+		colonPos := strings.LastIndex(comp[0], ":")
+		slashPos := strings.LastIndex(comp[0], "/")
+		if colonPos > slashPos {
+			// first half (before @) contains image and tag name
+			return sourceName, comp[0][:colonPos], tag.NewImageTag(comp[0][colonPos+1:], time.Unix(0, 0), comp[1])
+		} else {
+			// first half contains image name without tag name
+			return sourceName, comp[0], tag.NewImageTag("", time.Unix(0, 0), comp[1])
+		}
 	} else {
 		comp = strings.SplitN(imageString, ":", 2)
 		if len(comp) != 2 {
