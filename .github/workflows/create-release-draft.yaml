@@ -42,7 +42,6 @@ jobs:
           set -ex
           docker login --username "${DOCKER_USERNAME}" --password "${DOCKER_PASSWORD}" quay.io
           IMAGE_PUSH=yes make multiarch-image
-        working-directory: argocd-image-updater
         env:
           DOCKER_USERNAME: ${{ secrets.QUAY_USERNAME }}
           DOCKER_PASSWORD: ${{ secrets.QUAY_TOKEN }}
