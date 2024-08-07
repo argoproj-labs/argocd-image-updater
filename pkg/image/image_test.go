@@ -4,10 +4,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/argoproj-labs/argocd-image-updater/pkg/tag"
-
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/exp/slices"
+
+	"github.com/argoproj-labs/argocd-image-updater/pkg/tag"
 )
 
 func Test_ParseImageTags(t *testing.T) {
@@ -160,9 +161,65 @@ func Test_ContainerList(t *testing.T) {
 		for _, n := range image_names {
 			images = append(images, NewFromIdentifier(n))
 		}
+		withKustomizeOverride := NewFromIdentifier("k1/k2:k3")
+		withKustomizeOverride.KustomizeImage = images[0]
+		images = append(images, withKustomizeOverride)
+
 		assert.NotNil(t, images.ContainsImage(NewFromIdentifier(image_names[0]), false))
 		assert.NotNil(t, images.ContainsImage(NewFromIdentifier(image_names[1]), false))
 		assert.NotNil(t, images.ContainsImage(NewFromIdentifier(image_names[2]), false))
 		assert.Nil(t, images.ContainsImage(NewFromIdentifier("foo/bar"), false))
+
+		imageMatch := images.ContainsImage(withKustomizeOverride, false)
+		assert.Equal(t, images[0], imageMatch)
 	})
+}
+
+func Test_getImageDigestFromTag(t *testing.T) {
+	tagAndDigest := "test-tag@sha256:abcde"
+	tagName, tagDigest := getImageDigestFromTag(tagAndDigest)
+	assert.Equal(t, "test-tag", tagName)
+	assert.Equal(t, "sha256:abcde", tagDigest)
+
+	tagAndDigest = "test-tag"
+	tagName, tagDigest = getImageDigestFromTag(tagAndDigest)
+	assert.Equal(t, "test-tag", tagName)
+	assert.Empty(t, tagDigest)
+}
+
+func Test_ContainerImageList_String_Originals(t *testing.T) {
+	images := make(ContainerImageList, 0)
+	originals := []string{}
+
+	assert.Equal(t, "", images.String())
+	assert.True(t, slices.Equal(originals, images.Originals()))
+
+	images = append(images, NewFromIdentifier("foo/bar:0.1"))
+	originals = append(originals, "foo/bar:0.1")
+	assert.Equal(t, "foo/bar:0.1", images.String())
+	assert.True(t, slices.Equal(originals, images.Originals()))
+
+	images = append(images, NewFromIdentifier("alias=foo/bar:0.2"))
+	originals = append(originals, "alias=foo/bar:0.2")
+	assert.Equal(t, "foo/bar:0.1,alias=foo/bar:0.2", images.String())
+	assert.True(t, slices.Equal(originals, images.Originals()))
+}
+
+func TestContainerImage_DiffersFrom(t *testing.T) {
+	foo1 := NewFromIdentifier("x/foo:1")
+	foo2 := NewFromIdentifier("x/foo:2")
+	bar1 := NewFromIdentifier("x/bar:1")
+	bar1WithRegistry := NewFromIdentifier("docker.io/x/bar:1")
+
+	assert.False(t, foo1.DiffersFrom(foo1, true))
+	assert.False(t, foo1.DiffersFrom(foo2, false))
+	assert.True(t, foo1.DiffersFrom(foo2, true))
+
+	assert.True(t, foo1.DiffersFrom(bar1, false))
+	assert.True(t, bar1.DiffersFrom(foo1, false))
+	assert.True(t, foo1.DiffersFrom(bar1, true))
+	assert.True(t, bar1.DiffersFrom(foo1, true))
+	assert.True(t, bar1.DiffersFrom(bar1WithRegistry, false))
+
+	assert.False(t, foo1.IsUpdatable("0.1", "^1.0"))
 }

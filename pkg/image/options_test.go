@@ -6,11 +6,11 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
-	"github.com/argoproj-labs/argocd-image-updater/pkg/options"
-
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
+	"github.com/argoproj-labs/argocd-image-updater/pkg/options"
 )
 
 func Test_GetHelmOptions(t *testing.T) {
@@ -64,7 +64,7 @@ func Test_GetHelmOptions(t *testing.T) {
 }
 
 func Test_GetKustomizeOptions(t *testing.T) {
-	t.Run("Get Helm parameter for configured application", func(t *testing.T) {
+	t.Run("Get Kustomize parameter for configured application", func(t *testing.T) {
 		annotations := map[string]string{
 			fmt.Sprintf(common.KustomizeApplicationNameAnnotation, "dummy"): "argoproj/argo-cd",
 		}
@@ -72,6 +72,10 @@ func Test_GetKustomizeOptions(t *testing.T) {
 		img := NewFromIdentifier("dummy=foo/bar:1.12")
 		paramName := img.GetParameterKustomizeImageName(annotations)
 		assert.Equal(t, "argoproj/argo-cd", paramName)
+
+		img = NewFromIdentifier("dummy2=foo2/bar2:1.12")
+		paramName = img.GetParameterKustomizeImageName(annotations)
+		assert.Equal(t, "", paramName)
 	})
 }
 
@@ -155,6 +159,15 @@ func Test_GetSortOption(t *testing.T) {
 		sortMode := img.GetParameterUpdateStrategy(annotations)
 		assert.Equal(t, StrategyNewestBuild, sortMode)
 	})
+
+	t.Run("Get update strategy option digest from application-wide annotation", func(t *testing.T) {
+		annotations := map[string]string{
+			common.ApplicationWideUpdateStrategyAnnotation: "digest",
+		}
+		img := NewFromIdentifier("dummy=foo/bar:1.12")
+		sortMode := img.GetParameterUpdateStrategy(annotations)
+		assert.Equal(t, StrategyDigest, sortMode)
+	})
 }
 
 func Test_GetMatchOption(t *testing.T) {
@@ -188,6 +201,15 @@ func Test_GetMatchOption(t *testing.T) {
 		require.NotNil(t, matchFunc)
 		require.Equal(t, false, matchFunc("", nil))
 		assert.Nil(t, matchArgs)
+	})
+
+	t.Run("No match option for configured application", func(t *testing.T) {
+		annotations := map[string]string{}
+		img := NewFromIdentifier("dummy=foo/bar:1.12")
+		matchFunc, matchArgs := img.GetParameterMatch(annotations)
+		require.NotNil(t, matchFunc)
+		require.Equal(t, true, matchFunc("", nil))
+		assert.Equal(t, "", matchArgs)
 	})
 
 	t.Run("Prefer match option from image-specific annotation", func(t *testing.T) {
@@ -241,6 +263,13 @@ func Test_GetSecretOption(t *testing.T) {
 		require.Nil(t, credSrc)
 	})
 
+	t.Run("Missing pull secret in annotation", func(t *testing.T) {
+		annotations := map[string]string{}
+		img := NewFromIdentifier("dummy=foo/bar:1.12")
+		credSrc := img.GetParameterPullSecret(annotations)
+		require.Nil(t, credSrc)
+	})
+
 	t.Run("Prefer cred source from image-specific annotation", func(t *testing.T) {
 		annotations := map[string]string{
 			fmt.Sprintf(common.PullSecretAnnotation, "dummy"): "pullsecret:image/specific",
@@ -281,6 +310,13 @@ func Test_GetIgnoreTags(t *testing.T) {
 		assert.Equal(t, "tag2", tags[1])
 		assert.Equal(t, "tag3", tags[2])
 		assert.Equal(t, "tag4", tags[3])
+	})
+
+	t.Run("No tags to ignore from image-specific annotation", func(t *testing.T) {
+		annotations := map[string]string{}
+		img := NewFromIdentifier("dummy=foo/bar:1.12")
+		tags := img.GetParameterIgnoreTags(annotations)
+		require.Nil(t, tags)
 	})
 
 	t.Run("Prefer list of tags to ignore from image-specific annotation", func(t *testing.T) {
@@ -411,4 +447,37 @@ func Test_GetPlatformOptions(t *testing.T) {
 		assert.False(t, opts.WantsPlatform(os, arch, ""))
 		assert.False(t, opts.WantsPlatform(runtime.GOOS, runtime.GOARCH, variant))
 	})
+}
+
+func Test_ContainerImage_ParseMatchfunc(t *testing.T) {
+	img := NewFromIdentifier("dummy=foo/bar:1.12")
+	matchFunc, pattern := img.ParseMatchfunc("any")
+	assert.True(t, matchFunc("MatchFuncAny any tag name", pattern))
+	assert.Nil(t, pattern)
+
+	matchFunc, pattern = img.ParseMatchfunc("ANY")
+	assert.True(t, matchFunc("MatchFuncAny any tag name", pattern))
+	assert.Nil(t, pattern)
+
+	matchFunc, pattern = img.ParseMatchfunc("other")
+	assert.False(t, matchFunc("MatchFuncNone any tag name", pattern))
+	assert.Nil(t, pattern)
+
+	matchFunc, pattern = img.ParseMatchfunc("not-regexp:a-z")
+	assert.False(t, matchFunc("MatchFuncNone any tag name", pattern))
+	assert.Nil(t, pattern)
+
+	matchFunc, pattern = img.ParseMatchfunc("regexp:[aA-zZ]")
+	assert.True(t, matchFunc("MatchFuncRegexp-tag-name", pattern))
+	compiledRegexp, _ := regexp.Compile("[aA-zZ]")
+	assert.Equal(t, compiledRegexp, pattern)
+
+	matchFunc, pattern = img.ParseMatchfunc("RegExp:[aA-zZ]")
+	assert.True(t, matchFunc("MatchFuncRegexp-tag-name", pattern))
+	compiledRegexp, _ = regexp.Compile("[aA-zZ]")
+	assert.Equal(t, compiledRegexp, pattern)
+
+	matchFunc, pattern = img.ParseMatchfunc("regexp:[aA-zZ") //invalid regexp: missing end ]
+	assert.False(t, matchFunc("MatchFuncNone-tag-name", pattern))
+	assert.Nil(t, pattern)
 }

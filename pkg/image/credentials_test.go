@@ -1,17 +1,18 @@
 package image
 
 import (
+	"fmt"
 	"os"
 	"path"
+	"strings"
 	"testing"
-
-	"github.com/argoproj-labs/argocd-image-updater/pkg/kube"
-
-	"github.com/argoproj-labs/argocd-image-updater/test/fake"
-	"github.com/argoproj-labs/argocd-image-updater/test/fixture"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/argoproj-labs/argocd-image-updater/pkg/kube"
+	"github.com/argoproj-labs/argocd-image-updater/test/fake"
+	"github.com/argoproj-labs/argocd-image-updater/test/fixture"
 )
 
 func Test_ParseCredentialAnnotation(t *testing.T) {
@@ -101,6 +102,12 @@ func Test_ParseCredentialAnnotation(t *testing.T) {
 		assert.Equal(t, "DUMMY_SECRET", src.EnvName)
 	})
 
+	t.Run("Parse external script credentials", func(t *testing.T) {
+		src, err := ParseCredentialSource("ext:/tmp/a.sh", false)
+		require.NoError(t, err)
+		assert.Equal(t, CredentialSourceExt, src.Type)
+		assert.Equal(t, "/tmp/a.sh", src.ScriptPath)
+	})
 }
 
 func Test_ParseCredentialReference(t *testing.T) {
@@ -130,6 +137,53 @@ func Test_ParseCredentialReference(t *testing.T) {
 
 }
 
+func Test_FetchCredentialsFromSecret(t *testing.T) {
+	t.Run("Fetch credentials from secret", func(t *testing.T) {
+		secretData := make(map[string][]byte)
+		secretData["username_password"] = []byte(fmt.Sprintf("%s:%s", "foo", "bar"))
+		secret := fixture.NewSecret("test", "test", secretData)
+		clientset := fake.NewFakeClientsetWithResources(secret)
+		credSrc := &CredentialSource{
+			Type:            CredentialSourceSecret,
+			SecretNamespace: "test",
+			SecretName:      "test",
+			SecretField:     "username_password",
+		}
+		creds, err := credSrc.FetchCredentials("NA", &kube.KubernetesClient{Clientset: clientset})
+		require.NoError(t, err)
+		require.NotNil(t, creds)
+		assert.Equal(t, "foo", creds.Username)
+		assert.Equal(t, "bar", creds.Password)
+
+		credSrc.SecretNamespace = "test1" // test with a wrong SecretNamespace
+		creds, err = credSrc.FetchCredentials("NA", &kube.KubernetesClient{Clientset: clientset})
+		require.Error(t, err)
+		require.Nil(t, creds)
+	})
+
+	t.Run("Fetch credentials from secret with invalid config", func(t *testing.T) {
+		secretData := make(map[string][]byte)
+		secretData["username_password"] = []byte(fmt.Sprintf("%s:%s", "foo", "bar"))
+		secret := fixture.NewSecret("test", "test", secretData)
+		clientset := fake.NewFakeClientsetWithResources(secret)
+		credSrc := &CredentialSource{
+			Type:            CredentialSourceSecret,
+			SecretNamespace: "test",
+			SecretName:      "test",
+			SecretField:     "username_password",
+		}
+		creds, err := credSrc.FetchCredentials("NA", nil)
+		require.Error(t, err) // should fail with "could not fetch credentials: no Kubernetes client given"
+		require.Nil(t, creds)
+
+		credSrc.SecretField = "BAD" // test with a wrong SecretField
+		creds, err = credSrc.FetchCredentials("NA", &kube.KubernetesClient{Clientset: clientset})
+		require.Error(t, err)
+		require.Nil(t, creds)
+
+	})
+}
+
 func Test_FetchCredentialsFromPullSecret(t *testing.T) {
 	t.Run("Fetch credentials from pull secret", func(t *testing.T) {
 		dockerJson := fixture.MustReadFile("../../test/testdata/docker/valid-config.json")
@@ -148,6 +202,33 @@ func Test_FetchCredentialsFromPullSecret(t *testing.T) {
 		require.NotNil(t, creds)
 		assert.Equal(t, "foo", creds.Username)
 		assert.Equal(t, "bar", creds.Password)
+
+		credSrc.SecretNamespace = "test1" // test with a wrong SecretNamespace
+		creds, err = credSrc.FetchCredentials("https://registry-1.docker.io", &kube.KubernetesClient{Clientset: clientset})
+		require.Error(t, err)
+		require.Nil(t, creds)
+	})
+
+	t.Run("Fetch credentials from pull secret with invalid config", func(t *testing.T) {
+		dockerJson := fixture.MustReadFile("../../test/testdata/docker/valid-config.json")
+		dockerJson = strings.ReplaceAll(dockerJson, "auths", "BAD-KEY")
+		secretData := make(map[string][]byte)
+		secretData[pullSecretField] = []byte(dockerJson)
+		pullSecret := fixture.NewSecret("test", "test", secretData)
+		clientset := fake.NewFakeClientsetWithResources(pullSecret)
+		credSrc := &CredentialSource{
+			Type:            CredentialSourcePullSecret,
+			Registry:        "https://registry-1.docker.io/v2",
+			SecretNamespace: "test",
+			SecretName:      "test",
+		}
+		creds, err := credSrc.FetchCredentials("https://registry-1.docker.io", &kube.KubernetesClient{Clientset: clientset})
+		require.Error(t, err) // should fail with "no credentials in image pull secret"
+		require.Nil(t, creds)
+
+		creds, err = credSrc.FetchCredentials("https://registry-1.docker.io", nil)
+		require.Error(t, err) // should fail with "could not fetch credentials: no Kubernetes client given"
+		require.Nil(t, creds)
 	})
 
 	t.Run("Fetch credentials from pull secret with protocol stripped", func(t *testing.T) {
@@ -266,6 +347,18 @@ func Test_FetchCredentialsFromExt(t *testing.T) {
 	})
 }
 
+func Test_FetchCredentialsFromUnknown(t *testing.T) {
+	t.Run("Fetch credentials from unknown type", func(t *testing.T) {
+		credSrc := &CredentialSource{
+			Type:     CredentialSourceType(-1),
+			Registry: "https://registry-1.docker.io/v2",
+		}
+		creds, err := credSrc.FetchCredentials("https://registry-1.docker.io", nil)
+		require.Error(t, err) // should fail with "unknown credential type"
+		require.Nil(t, creds)
+	})
+}
+
 func Test_ParseDockerConfig(t *testing.T) {
 	t.Run("Parse valid Docker configuration with matching registry", func(t *testing.T) {
 		config := fixture.MustReadFile("../../test/testdata/docker/valid-config.json")
@@ -278,6 +371,22 @@ func Test_ParseDockerConfig(t *testing.T) {
 	t.Run("Parse valid Docker configuration with matching registry as prefix", func(t *testing.T) {
 		config := fixture.MustReadFile("../../test/testdata/docker/valid-config-noproto.json")
 		username, password, err := parseDockerConfigJson("https://registry-1.docker.io", config)
+		require.NoError(t, err)
+		assert.Equal(t, "foo", username)
+		assert.Equal(t, "bar", password)
+	})
+
+	t.Run("Parse valid Docker configuration with matching http registry as prefix", func(t *testing.T) {
+		config := fixture.MustReadFile("../../test/testdata/docker/valid-config-noproto.json")
+		username, password, err := parseDockerConfigJson("http://registry-1.docker.io", config)
+		require.NoError(t, err)
+		assert.Equal(t, "foo", username)
+		assert.Equal(t, "bar", password)
+	})
+
+	t.Run("Parse valid Docker configuration with matching no-protocol registry as prefix", func(t *testing.T) {
+		config := fixture.MustReadFile("../../test/testdata/docker/valid-config-noproto.json")
+		username, password, err := parseDockerConfigJson("registry-1.docker.io", config)
 		require.NoError(t, err)
 		assert.Equal(t, "foo", username)
 		assert.Equal(t, "bar", password)
