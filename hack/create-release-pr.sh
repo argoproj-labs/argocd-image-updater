@@ -21,6 +21,14 @@ fi
 
 RELEASE_BRANCH="${CURRENT_BRANCH}"
 
+REMOTE=${1:-origin}
+REMOTE_URL=$(git remote get-url ${REMOTE})
+
+if [[ ! $(git ls-remote --exit-code ${REMOTE_URL} ${RELEASE_BRANCH}) ]]; then
+    echo "!! Please make sure '${RELEASE_BRANCH}' exists in remote '${REMOTE}'" >&2
+    exit 1
+fi
+
 ### look for latest on-branch tag
 PREVIOUS_TAG=$(git describe --tags --abbrev=0 --match "*${RELEASE_BRANCH##release-}*" 2>/dev/null || true)
 
@@ -31,12 +39,8 @@ else
 fi
 
 echo $NEW_VERSION > VERSION
-
 IMAGE_TAG="v${NEW_VERSION}"
 make manifests
-
-REMOTE=${1:-origin}
-REMOTE_URL=$(git remote get-url ${REMOTE})
 
 git checkout -b "feat/new-version-${NEW_VERSION}"
 git commit -m "Release ${NEW_VERSION}" VERSION manifests/
