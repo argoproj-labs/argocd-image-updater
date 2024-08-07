@@ -7,6 +7,7 @@ import (
 	"github.com/argoproj-labs/argocd-image-updater/pkg/kube"
 	"github.com/argoproj-labs/argocd-image-updater/test/fake"
 	"github.com/argoproj-labs/argocd-image-updater/test/fixture"
+
 	"github.com/stretchr/testify/assert"
 )
 
