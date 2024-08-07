@@ -3185,3 +3185,24 @@ func mockGit(t *testing.T) (gitMock *gitmock.Client, dir string, cleanup func())
 		_ = os.RemoveAll(dir)
 	}
 }
+
+func Test_GetRepositoryLock(t *testing.T) {
+	state := NewSyncIterationState()
+
+	// Test case 1: Get lock for a repository that doesn't exist in the state
+	repo1 := "repo1"
+	lock1 := state.GetRepositoryLock(repo1)
+	require.NotNil(t, lock1)
+	require.Equal(t, lock1, state.repositoryLocks[repo1])
+
+	// Test case 2: Get lock for the same repository again, should return the same lock
+	lock2 := state.GetRepositoryLock(repo1)
+	require.Equal(t, lock1, lock2)
+
+	// Test case 3: Get lock for a different repository, should return a different lock
+	repo2 := "repo2"
+	lock3 := state.GetRepositoryLock(repo2)
+	require.NotNil(t, lock3)
+	require.NotNil(t, state.repositoryLocks[repo2])
+	require.Equal(t, lock3, state.repositoryLocks[repo2])
+}
