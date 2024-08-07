@@ -3,7 +3,7 @@ run:
 linters:
   enable:
     - gofmt
-    - vet
+    - govet
     - goimports
     - ineffassign
     - misspell
