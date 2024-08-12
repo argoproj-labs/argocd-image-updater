@@ -1,6 +1,7 @@
 package image
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -13,6 +14,9 @@ import (
 
 	"github.com/argoproj-labs/argocd-image-updater/pkg/kube"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/log"
+
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/ecr"
 )
 
 type CredentialSourceType int
@@ -23,6 +27,7 @@ const (
 	CredentialSourceSecret     CredentialSourceType = 2
 	CredentialSourceEnv        CredentialSourceType = 3
 	CredentialSourceExt        CredentialSourceType = 4
+	CredentialSourceAws        CredentialSourceType = 5
 )
 
 type CredentialSource struct {
@@ -61,7 +66,7 @@ func ParseCredentialSource(credentialSource string, requirePrefix bool) (*Creden
 	}
 
 	tokens = strings.Split(secretDef, ":")
-	if len(tokens) != 2 || tokens[0] == "" || tokens[1] == "" {
+	if tokens[0] != "aws" && (len(tokens) != 2 || tokens[1] == "") {
 		return nil, fmt.Errorf("invalid credential spec: %s", credentialSource)
 	}
 
@@ -79,6 +84,8 @@ func ParseCredentialSource(credentialSource string, requirePrefix bool) (*Creden
 	case "ext":
 		err = src.parseExtDefinition(tokens[1])
 		src.Type = CredentialSourceExt
+	case "aws":
+		src.Type = CredentialSourceAws
 	default:
 		err = fmt.Errorf("unknown credential source: %s", tokens[0])
 	}
@@ -156,6 +163,24 @@ func (src *CredentialSource) FetchCredentials(registryURL string, kubeclient *ku
 		}
 		creds.Username = tokens[0]
 		creds.Password = tokens[1]
+		return &creds, nil
+	case CredentialSourceAws:
+		cfg, err := config.LoadDefaultConfig(context.TODO())
+		if err != nil {
+			log.Fatalf("failed to load configuration, %v", err)
+		}
+		client := ecr.NewFromConfig(cfg)
+		awsCreds, err := client.GetAuthorizationToken(context.TODO(), &ecr.GetAuthorizationTokenInput{})
+		if err != nil {
+			log.Fatalf("failed to get authorization token, %v", err)
+		}
+		awsCredsDecoded, err := base64.StdEncoding.DecodeString(*awsCreds.AuthorizationData[0].AuthorizationToken)
+		if err != nil {
+			log.Fatalf("failed to decode base64 string, %v", err)
+		}
+		password := string(awsCredsDecoded)
+		creds.Username = strings.Split(password, ":")[0]
+		creds.Password = strings.Split(password, ":")[1]
 		return &creds, nil
 
 	default:
