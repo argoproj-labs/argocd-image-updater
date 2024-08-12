@@ -54,6 +54,5 @@ jobs:
           gh release create "v${{ steps.version.outputs.version }}" \
             --title "v${{ steps.version.outputs.version }}" \
             --target "${{ github.base_ref }}" \
-            --generate-notes \
             --draft \
             dist/release/*
