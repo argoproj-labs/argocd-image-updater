@@ -3009,7 +3009,7 @@ replacements: []
 		app := app.DeepCopy()
 		gitMock := &gitmock.Client{}
 		gitMock.On("Init").Return(nil)
-		gitMock.On("Fetch", mock.Anything).Return(nil)
+		gitMock.On("ShallowFetch", mock.Anything, mock.Anything).Return(nil)
 		gitMock.On("Checkout", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
 			args.Assert(t, "mydefaultbranch", false)
 		}).Return(nil)
@@ -3035,7 +3035,7 @@ replacements: []
 	t.Run("Cannot init", func(t *testing.T) {
 		gitMock := &gitmock.Client{}
 		gitMock.On("Init").Return(fmt.Errorf("cannot init"))
-		gitMock.On("Fetch", mock.Anything).Return(nil)
+		gitMock.On("ShallowFetch", mock.Anything, mock.Anything).Return(nil)
 		gitMock.On("Checkout", mock.Anything, mock.Anything).Return(nil)
 		gitMock.On("Commit", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 		gitMock.On("Push", mock.Anything, mock.Anything, mock.Anything).Return(nil)
@@ -3050,7 +3050,7 @@ replacements: []
 	t.Run("Cannot fetch", func(t *testing.T) {
 		gitMock := &gitmock.Client{}
 		gitMock.On("Init").Return(nil)
-		gitMock.On("Fetch", mock.Anything).Return(fmt.Errorf("cannot fetch"))
+		gitMock.On("ShallowFetch", mock.Anything, mock.Anything).Return(fmt.Errorf("cannot fetch"))
 		gitMock.On("Checkout", mock.Anything, mock.Anything).Return(nil)
 		gitMock.On("Commit", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 		gitMock.On("Push", mock.Anything, mock.Anything, mock.Anything).Return(nil)
@@ -3064,7 +3064,7 @@ replacements: []
 	t.Run("Cannot checkout", func(t *testing.T) {
 		gitMock := &gitmock.Client{}
 		gitMock.On("Init").Return(nil)
-		gitMock.On("Fetch", mock.Anything).Return(nil)
+		gitMock.On("ShallowFetch", mock.Anything, mock.Anything).Return(nil)
 		gitMock.On("Checkout", mock.Anything, mock.Anything).Return(fmt.Errorf("cannot checkout"))
 		gitMock.On("Commit", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 		gitMock.On("Push", mock.Anything, mock.Anything, mock.Anything).Return(nil)
@@ -3180,7 +3180,7 @@ func mockGit(t *testing.T) (gitMock *gitmock.Client, dir string, cleanup func())
 	gitMock = &gitmock.Client{}
 	gitMock.On("Root").Return(dir)
 	gitMock.On("Init").Return(nil)
-	gitMock.On("Fetch", mock.Anything).Return(nil)
+	gitMock.On("ShallowFetch", mock.Anything, mock.Anything).Return(nil)
 	return gitMock, dir, func() {
 		_ = os.RemoveAll(dir)
 	}

@@ -322,6 +322,25 @@ func TestVerifyCommitSignature(t *testing.T) {
 	}
 }
 
+func TestVerifyShallowFetchCheckout(t *testing.T) {
+	p := t.TempDir()
+
+	client, err := NewClientExt("https://github.com/argoproj/argo-cd.git", p, NopCreds{}, false, false, "")
+	assert.NoError(t, err)
+
+	err = client.Init()
+	assert.NoError(t, err)
+
+	err = client.ShallowFetch("HEAD", 1)
+	assert.NoError(t, err)
+
+	commitSHA, err := client.LsRemote("HEAD")
+	assert.NoError(t, err)
+
+	err = client.Checkout(commitSHA, true)
+	assert.NoError(t, err)
+}
+
 func TestNewFactory(t *testing.T) {
 	addBinDirToPath := path.NewBinDirToPath()
 	defer addBinDirToPath.Close()
