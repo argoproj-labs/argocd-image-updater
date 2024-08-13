@@ -1066,7 +1066,7 @@ func TestKubernetesClient(t *testing.T) {
 	t.Run("List applications", func(t *testing.T) {
 		apps, err := client.ListApplications()
 		require.NoError(t, err)
-		require.Len(t, apps, 2)
+		require.Len(t, apps, 1)
 
 		assert.ElementsMatch(t, []string{"test-app1"}, []string{app1.Name})
 	})

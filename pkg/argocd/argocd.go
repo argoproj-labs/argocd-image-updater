@@ -30,7 +30,7 @@ func (client *k8sClient) GetApplication(ctx context.Context, appName string) (*v
 }
 
 func (client *k8sClient) ListApplications() ([]v1alpha1.Application, error) {
-	list, err := client.kubeClient.ApplicationsClientset.ArgoprojV1alpha1().Applications(v1.NamespaceAll).List(context.TODO(), v1.ListOptions{})
+	list, err := client.kubeClient.ApplicationsClientset.ArgoprojV1alpha1().Applications(client.kubeClient.Namespace).List(context.TODO(), v1.ListOptions{})
 	if err != nil {
 		return nil, err
 	}
