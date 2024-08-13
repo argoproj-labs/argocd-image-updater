@@ -29,8 +29,8 @@ func (client *k8sClient) GetApplication(ctx context.Context, appName string) (*v
 	return client.kubeClient.ApplicationsClientset.ArgoprojV1alpha1().Applications(client.kubeClient.Namespace).Get(ctx, appName, v1.GetOptions{})
 }
 
-func (client *k8sClient) ListApplications() ([]v1alpha1.Application, error) {
-	list, err := client.kubeClient.ApplicationsClientset.ArgoprojV1alpha1().Applications(client.kubeClient.Namespace).List(context.TODO(), v1.ListOptions{})
+func (client *k8sClient) ListApplications(labelSelector string) ([]v1alpha1.Application, error) {
+	list, err := client.kubeClient.ApplicationsClientset.ArgoprojV1alpha1().Applications(client.kubeClient.Namespace).List(context.TODO(), v1.ListOptions{LabelSelector: labelSelector})
 	if err != nil {
 		return nil, err
 	}
@@ -71,7 +71,7 @@ type argoCD struct {
 // ArgoCD is the interface for accessing Argo CD functions we need
 type ArgoCD interface {
 	GetApplication(ctx context.Context, appName string) (*v1alpha1.Application, error)
-	ListApplications() ([]v1alpha1.Application, error)
+	ListApplications(labelSelector string) ([]v1alpha1.Application, error)
 	UpdateSpec(ctx context.Context, spec *application.ApplicationUpdateSpecRequest) (*v1alpha1.ApplicationSpec, error)
 }
 
@@ -145,34 +145,10 @@ func nameMatchesPattern(name string, patterns []string) bool {
 	return false
 }
 
-// Match app labels against provided filter label
-func matchAppLabels(appName string, appLabels map[string]string, filterLabel string) bool {
-
-	if filterLabel == "" {
-		return true
-	}
-
-	filterLabelMap, err := parseLabel(filterLabel)
-	if err != nil {
-		log.Errorf("Unable match app labels against %s: %s", filterLabel, err)
-		return false
-	}
-
-	for filterLabelKey, filterLabelValue := range filterLabelMap {
-		log.Tracef("Matching application name %s against label %s", appName, filterLabel)
-		if appLabelValue, ok := appLabels[filterLabelKey]; ok {
-			if appLabelValue == filterLabelValue {
-				return true
-			}
-		}
-	}
-	return false
-}
-
 // Retrieve a list of applications from ArgoCD that qualify for image updates
 // Application needs either to be of type Kustomize or Helm and must have the
 // correct annotation in order to be considered.
-func FilterApplicationsForUpdate(apps []v1alpha1.Application, patterns []string, appLabel string) (map[string]ApplicationImages, error) {
+func FilterApplicationsForUpdate(apps []v1alpha1.Application, patterns []string) (map[string]ApplicationImages, error) {
 	var appsForUpdate = make(map[string]ApplicationImages)
 
 	for _, app := range apps {
@@ -196,12 +172,6 @@ func FilterApplicationsForUpdate(apps []v1alpha1.Application, patterns []string,
 		// Check if application name matches requested patterns
 		if !nameMatchesPattern(app.GetName(), patterns) {
 			logCtx.Debugf("Skipping app '%s' because it does not match requested patterns", appNSName)
-			continue
-		}
-
-		// Check if application carries requested label
-		if !matchAppLabels(app.GetName(), app.GetLabels(), appLabel) {
-			logCtx.Debugf("Skipping app '%s' because it does not carry requested label", appNSName)
 			continue
 		}
 
@@ -231,20 +201,6 @@ func parseImageList(annotations map[string]string) *image.ContainerImageList {
 	return &results
 }
 
-func parseLabel(inputLabel string) (map[string]string, error) {
-	var selectedLabels map[string]string
-	const labelFieldDelimiter = "="
-	if inputLabel != "" {
-		selectedLabels = map[string]string{}
-		fields := strings.Split(inputLabel, labelFieldDelimiter)
-		if len(fields) != 2 {
-			return nil, fmt.Errorf("labels should have key%svalue, but instead got: %s", labelFieldDelimiter, inputLabel)
-		}
-		selectedLabels[fields[0]] = fields[1]
-	}
-	return selectedLabels, nil
-}
-
 // GetApplication gets the application named appName from Argo CD API
 func (client *argoCD) GetApplication(ctx context.Context, appName string) (*v1alpha1.Application, error) {
 	conn, appClient, err := client.Client.NewApplicationClient()
@@ -267,7 +223,7 @@ func (client *argoCD) GetApplication(ctx context.Context, appName string) (*v1al
 
 // ListApplications returns a list of all application names that the API user
 // has access to.
-func (client *argoCD) ListApplications() ([]v1alpha1.Application, error) {
+func (client *argoCD) ListApplications(labelSelector string) ([]v1alpha1.Application, error) {
 	conn, appClient, err := client.Client.NewApplicationClient()
 	metrics.Clients().IncreaseArgoCDClientRequest(client.Client.ClientOptions().ServerAddr, 1)
 	if err != nil {
@@ -277,7 +233,7 @@ func (client *argoCD) ListApplications() ([]v1alpha1.Application, error) {
 	defer conn.Close()
 
 	metrics.Clients().IncreaseArgoCDClientRequest(client.Client.ClientOptions().ServerAddr, 1)
-	apps, err := appClient.List(context.TODO(), &application.ApplicationQuery{})
+	apps, err := appClient.List(context.TODO(), &application.ApplicationQuery{Selector: &labelSelector})
 	if err != nil {
 		metrics.Clients().IncreaseArgoCDClientError(client.Client.ClientOptions().ServerAddr, 1)
 		return nil, err
