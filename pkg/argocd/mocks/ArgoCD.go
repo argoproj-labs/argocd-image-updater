@@ -48,7 +48,7 @@ func (_m *ArgoCD) GetApplication(ctx context.Context, appName string) (*v1alpha1
 }
 
 // ListApplications provides a mock function with given fields:
-func (_m *ArgoCD) ListApplications() ([]v1alpha1.Application, error) {
+func (_m *ArgoCD) ListApplications(labelSelector string) ([]v1alpha1.Application, error) {
 	ret := _m.Called()
 
 	if len(ret) == 0 {
