@@ -243,7 +243,7 @@ func newRunCommand() *cobra.Command {
 	runCmd.Flags().IntVar(&cfg.MaxConcurrency, "max-concurrency", 10, "maximum number of update threads to run concurrently")
 	runCmd.Flags().StringVar(&cfg.ArgocdNamespace, "argocd-namespace", "", "namespace where ArgoCD runs in (current namespace by default)")
 	runCmd.Flags().StringSliceVar(&cfg.AppNamePatterns, "match-application-name", nil, "patterns to match application name against")
-	runCmd.Flags().StringVar(&cfg.AppLabel, "match-application-label", "", "label to match application labels against")
+	runCmd.Flags().StringVar(&cfg.AppLabel, "match-application-label", "", "label selector to match application labels against")
 	runCmd.Flags().BoolVar(&warmUpCache, "warmup-cache", true, "whether to perform a cache warm-up on startup")
 	runCmd.Flags().StringVar(&cfg.GitCommitUser, "git-commit-user", env.GetStringVal("GIT_COMMIT_USER", "argocd-image-updater"), "Username to use for Git commits")
 	runCmd.Flags().StringVar(&cfg.GitCommitMail, "git-commit-email", env.GetStringVal("GIT_COMMIT_EMAIL", "noreply@argoproj.io"), "E-Mail address to use for Git commits")
@@ -275,7 +275,7 @@ func runImageUpdater(cfg *ImageUpdaterConfig, warmUp bool) (argocd.ImageUpdaterR
 	}
 	cfg.ArgoClient = argoClient
 
-	apps, err := cfg.ArgoClient.ListApplications()
+	apps, err := cfg.ArgoClient.ListApplications(cfg.AppLabel)
 	if err != nil {
 		log.WithContext().
 			AddField("argocd_server", cfg.ClientOpts.ServerAddr).
@@ -289,7 +289,7 @@ func runImageUpdater(cfg *ImageUpdaterConfig, warmUp bool) (argocd.ImageUpdaterR
 
 	// Get the list of applications that are allowed for updates, that is, those
 	// applications which have correct annotation.
-	appList, err := argocd.FilterApplicationsForUpdate(apps, cfg.AppNamePatterns, cfg.AppLabel)
+	appList, err := argocd.FilterApplicationsForUpdate(apps, cfg.AppNamePatterns)
 	if err != nil {
 		return result, err
 	}

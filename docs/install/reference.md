@@ -116,15 +116,16 @@ style wildcards, i.e. `*-staging` would match any application name with a
 suffix of `-staging`. Can be specified multiple times to define more than
 one pattern, from which at least one has to match.
 
-**--match-application-label *label* **
+**--match-application-label *selector* **
 
 Only process applications that have a valid annotation and match the given
-*label*. The *label* is a string that matches the standard kubernetes label 
-syntax of `key=value`. For e.g, `custom.label/name=xyz` would be a valid label
-that can be supplied through this parameter. Any applications carrying this 
+*label* selector. The *selector* is a string that matches the standard kubernetes label
+[label selector syntax][]. For e.g, `custom.label/name=xyz` would be a valid label
+that can be supplied through this parameter. Any applications carrying this
 exact label will be considered as candidates for image updates. This parameter
-currently does not support pattern matching on label values (e.g `customer.label/name=*-staging`)
-and only accepts a single label to match applications against. 
+currently does not support pattern matching on label values (e.g `customer.label/name=*-staging`).
+You can specify equality, inequality, or set based requirements or a combination.
+For e.g., `app,app!=foo,custom.label/name=xyz,customer in (a,b,c)`
 
 **--max-concurrency *number* **
 
@@ -142,3 +143,5 @@ Load the registry configuration from file at *path*. Defaults to the path
 `/app/config/registries.conf`. If no configuration should be loaded, and the
 default configuration should be used instead, specify the empty string, i.e.
 `--registries-conf-path=""`.
+
+[label selector syntax]: https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/#label-selectors
