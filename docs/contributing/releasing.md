@@ -6,7 +6,14 @@ Releases can only be done  by people that have write/commit access on the Argo I
 
 ## Introduction
 
-First install GoLang and Git locally on your workstation. Then create a release branch:
+First install on your workstation the following:
+
+1. GoLang 
+1. The `git` executable
+1. The [GitHub CLI](https://cli.github.com/)
+1. The `semver` cli with `go install github.com/davidrjonas/semver-cli@latest`
+
+Then create a release branch:
 
 ```
 git clone git@github.com:argoproj-labs/argocd-image-updater.git
