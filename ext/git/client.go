@@ -65,6 +65,7 @@ type Client interface {
 	Root() string
 	Init() error
 	Fetch(revision string) error
+	ShallowFetch(revision string, depth int) error
 	Submodule() error
 	Checkout(revision string, submoduleEnabled bool) error
 	LsRefs() (*Refs, error)

@@ -157,10 +157,6 @@ func commitChangesGit(app *v1alpha1.Application, wbc *WriteBackConfig, changeLis
 	if err != nil {
 		return err
 	}
-	err = gitC.Fetch("")
-	if err != nil {
-		return err
-	}
 
 	// Set username and e-mail address used to identify the commiter
 	if wbc.GitCommitUser != "" && wbc.GitCommitEmail != "" {
@@ -185,6 +181,10 @@ func commitChangesGit(app *v1alpha1.Application, wbc *WriteBackConfig, changeLis
 		if err != nil {
 			return err
 		}
+	}
+	err = gitC.ShallowFetch(checkOutBranch, 1)
+	if err != nil {
+		return err
 	}
 
 	// The push branch is by default the same as the checkout branch, unless
