@@ -40,6 +40,7 @@ nav:
   - Contributing:
     - Overview: contributing/start.md
     - Developing: contributing/development.md
+    - Releasing: contributing/releasing.md    
   - Examples: examples/index.md
   - Releases ⧉: https://github.com/argoproj-labs/argocd-image-updater/releases
   - Roadmap ⧉: https://github.com/argoproj-labs/argocd-image-updater/milestones
