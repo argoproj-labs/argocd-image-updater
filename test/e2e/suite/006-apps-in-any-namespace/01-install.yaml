@@ -1,0 +1,58 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: image-updater-e2e-006
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: image-updater-e2e-006-01
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cmd-params-cm
+  namespace: argocd-image-updater-e2e
+  labels:
+    app.kubernetes.io/name: argocd-cmd-params-cm
+    app.kubernetes.io/part-of: argocd
+data:
+  application.namespaces: image-updater-e2e-006-01
+---
+kind: AppProject
+apiVersion: argoproj.io/v1alpha1
+metadata:
+  name: project-one
+  namespace: argocd-image-updater-e2e
+spec:
+  sourceNamespaces:
+  - image-updater-e2e-test
+---
+apiVersion: kuttl.dev/v1beta1
+kind: TestStep
+commands:
+- script: |
+    kubectl rollout restart -n argocd-image-updater-e2e deployment argocd-server
+    kubectl rollout restart -n argocd-image-updater-e2e statefulset argocd-application-controller
+    sleep 30
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: image-updater-006
+  annotations:
+    argocd-image-updater.argoproj.io/image-list: guestbook=gcr.io/heptio-images/ks-guestbook-demo:~0
+    argocd-image-updater.argoproj.io/guestbook.update-strategy: semver
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/argoproj/argocd-example-apps.git
+    path: kustomize-guestbook
+    targetRevision: HEAD
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: image-updater-e2e-006-01
+  syncPolicy:
+    automated: {}
+    retry:
+      limit: 2
