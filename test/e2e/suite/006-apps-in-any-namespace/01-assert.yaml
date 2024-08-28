@@ -6,7 +6,7 @@ metadata:
     argocd-image-updater.argoproj.io/guestbook.update-strategy: semver
   name: image-updater-006
 spec:
-  project: default
+  project: project-one
   source:
     repoURL: https://github.com/argoproj/argocd-example-apps.git
     path: kustomize-guestbook
