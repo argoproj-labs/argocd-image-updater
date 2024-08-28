@@ -4,3 +4,7 @@ timeout: 120
 delete:
 - apiVersion: v1
   kind: Namespace
+  name: image-updater-005-01
+- apiVersion: v1
+  kind: Namespace
+  name: image-updater-005-02

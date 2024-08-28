@@ -1,15 +1,15 @@
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: image-updater-e2e-005-0
+  name: image-updater-e2e-005-01
 ---
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: image-updater-005-0
+  name: image-updater-005-01
   annotations:
     argocd-image-updater.argoproj.io/image-list: guestbook=gcr.io/heptio-images/ks-guestbook-demo:~0
-    argocd-image-updater.argoproj.io/test.update-strategy: semver
+    argocd-image-updater.argoproj.io/guestbook.update-strategy: semver
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
@@ -20,7 +20,7 @@ spec:
     targetRevision: HEAD
   destination:
     server: https://kubernetes.default.svc
-    namespace: image-updater-e2e-005-0
+    namespace: image-updater-e2e-005-01
   syncPolicy:
     automated: {}
     retry:
@@ -29,15 +29,15 @@ spec:
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: image-updater-e2e-005-1
+  name: image-updater-e2e-005-02
 ---
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: image-updater-005-1
+  name: image-updater-005-02
   annotations:
     argocd-image-updater.argoproj.io/image-list: guestbook=gcr.io/heptio-images/ks-guestbook-demo:latest
-    argocd-image-updater.argoproj.io/test.update-strategy: latest
+    argocd-image-updater.argoproj.io/guestbook.update-strategy: latest
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
@@ -48,7 +48,7 @@ spec:
     targetRevision: HEAD
   destination:
     server: https://kubernetes.default.svc
-    namespace: image-updater-e2e-005-1
+    namespace: image-updater-e2e-005-02
   syncPolicy:
     automated: {}
     retry:
