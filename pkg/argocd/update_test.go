@@ -1472,6 +1472,13 @@ replicas: 1
 	})
 
 	t.Run("Failed to setValue image parameter name", func(t *testing.T) {
+		expected := `
+image:
+  name: nginx
+  tag: v1.0.0
+replicas: 1
+`
+
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
 				Name: "testapp",
@@ -1514,16 +1521,24 @@ replicas: 1
 		}
 
 		originalData := []byte(`
-image_name: nginx
-image.tag: v0.0.0
+image:
+  name: nginx
 replicas: 1
 `)
-		_, err := marshalParamsOverride(&app, originalData)
-		assert.Error(t, err)
-		assert.Equal(t, "failed to set image parameter name value: key image not found in the map", err.Error())
+
+		yaml, err := marshalParamsOverride(&app, originalData)
+		require.NoError(t, err)
+		assert.NotEmpty(t, yaml)
+		assert.Equal(t, strings.TrimSpace(strings.ReplaceAll(expected, "\t", "  ")), strings.TrimSpace(string(yaml)))
 	})
 
 	t.Run("Failed to setValue image parameter version", func(t *testing.T) {
+		expected := `
+image:
+  tag: v1.0.0
+  name: nginx
+replicas: 1
+`
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
 				Name: "testapp",
@@ -1566,13 +1581,15 @@ replicas: 1
 		}
 
 		originalData := []byte(`
-image.name: nginx
-image_tag: v0.0.0
+image:
+  tag: v0.0.0
 replicas: 1
 `)
-		_, err := marshalParamsOverride(&app, originalData)
-		assert.Error(t, err)
-		assert.Equal(t, "failed to set image parameter version value: key image not found in the map", err.Error())
+
+		yaml, err := marshalParamsOverride(&app, originalData)
+		require.NoError(t, err)
+		assert.NotEmpty(t, yaml)
+		assert.Equal(t, strings.TrimSpace(strings.ReplaceAll(expected, "\t", "  ")), strings.TrimSpace(string(yaml)))
 	})
 
 	t.Run("Missing annotation image-tag for helmvalues write-back-target", func(t *testing.T) {
@@ -1865,7 +1882,7 @@ func Test_SetHelmValue(t *testing.T) {
 		key := "image.attributes.tag"
 		value := "v2.0.0"
 
-		err := setHelmValue(input, key, value)
+		err := setHelmValue(&input, key, value)
 		require.NoError(t, err)
 		assert.Equal(t, expected, input)
 	})
@@ -1881,23 +1898,72 @@ func Test_SetHelmValue(t *testing.T) {
 		key := "image.attributes.tag"
 		value := "v2.0.0"
 
-		err := setHelmValue(input, key, value)
+		err := setHelmValue(&input, key, value)
 		require.NoError(t, err)
 		assert.Equal(t, expected, input)
 	})
 
 	t.Run("Key not found", func(t *testing.T) {
-		input := yaml.MapSlice{
+		expected := yaml.MapSlice{
 			{Key: "image", Value: yaml.MapSlice{
-				{Key: "tag", Value: "v1.0.0"},
+				{Key: "attributes", Value: yaml.MapSlice{
+					{Key: "name", Value: "repo-name"},
+					{Key: "tag", Value: "v2.0.0"},
+				}},
 			}},
 		}
+
+		input := yaml.MapSlice{
+			{Key: "image", Value: yaml.MapSlice{
+				{Key: "attributes", Value: yaml.MapSlice{
+					{Key: "name", Value: "repo-name"},
+				}},
+			}},
+		}
+
 		key := "image.attributes.tag"
 		value := "v2.0.0"
 
-		err := setHelmValue(input, key, value)
-		assert.Error(t, err)
-		assert.Equal(t, "key attributes not found in the map", err.Error())
+		err := setHelmValue(&input, key, value)
+		require.NoError(t, err)
+		assert.Equal(t, expected, input)
+	})
+
+	t.Run("Root key not found", func(t *testing.T) {
+		expected := yaml.MapSlice{
+			{Key: "name", Value: "repo-name"},
+			{Key: "tag", Value: "v2.0.0"},
+		}
+
+		input := yaml.MapSlice{
+			{Key: "name", Value: "repo-name"},
+		}
+
+		key := "tag"
+		value := "v2.0.0"
+
+		err := setHelmValue(&input, key, value)
+		require.NoError(t, err)
+		assert.Equal(t, expected, input)
+	})
+
+	t.Run("Empty values with deep key", func(t *testing.T) {
+		expected := yaml.MapSlice{
+			{Key: "image", Value: yaml.MapSlice{
+				{Key: "attributes", Value: yaml.MapSlice{
+					{Key: "tag", Value: "v2.0.0"},
+				}},
+			}},
+		}
+
+		input := yaml.MapSlice{}
+
+		key := "image.attributes.tag"
+		value := "v2.0.0"
+
+		err := setHelmValue(&input, key, value)
+		require.NoError(t, err)
+		assert.Equal(t, expected, input)
 	})
 
 	t.Run("Unexpected type for key", func(t *testing.T) {
@@ -1909,7 +1975,7 @@ func Test_SetHelmValue(t *testing.T) {
 		key := "image.attributes.tag"
 		value := "v2.0.0"
 
-		err := setHelmValue(input, key, value)
+		err := setHelmValue(&input, key, value)
 		assert.Error(t, err)
 		assert.Equal(t, "unexpected type string for key attributes", err.Error())
 	})
