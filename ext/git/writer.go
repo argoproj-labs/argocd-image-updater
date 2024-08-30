@@ -61,7 +61,7 @@ func (m *nativeGitClient) Commit(pathSpec string, opts *CommitOptions) error {
 
 	out, err := m.runCmd(args...)
 	if err != nil {
-		log.Errorf(out)
+		log.Errorf("%s %v", out, err)
 		return err
 	}
 
