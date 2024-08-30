@@ -465,10 +465,22 @@ func GetImagesAndAliasesFromApplication(app *v1alpha1.Application) image.Contain
 	// We update the ImageAlias field of the Images found in the app.Status.Summary.Images list.
 	for _, img := range *parseImageList(app.Annotations) {
 		if image := images.ContainsImage(img, false); image != nil {
-			if img.ImageAlias == "" {
-				image.ImageAlias = img.ImageName
+			if image.ImageAlias != "" {
+				// this image has already been matched to an alias, so create a copy
+				// and assign this alias to the image copy to avoid overwriting the existing alias association
+				imageCopy := *image
+				if img.ImageAlias == "" {
+					imageCopy.ImageAlias = img.ImageName
+				} else {
+					imageCopy.ImageAlias = img.ImageAlias
+				}
+				images = append(images, &imageCopy)
 			} else {
-				image.ImageAlias = img.ImageAlias
+				if img.ImageAlias == "" {
+					image.ImageAlias = img.ImageName
+				} else {
+					image.ImageAlias = img.ImageAlias
+				}
 			}
 		}
 	}
