@@ -108,6 +108,12 @@ func Test_ParseCredentialAnnotation(t *testing.T) {
 		assert.Equal(t, CredentialSourceExt, src.Type)
 		assert.Equal(t, "/tmp/a.sh", src.ScriptPath)
 	})
+
+	t.Run("Parse AWS credentials", func(t *testing.T) {
+		src, err := ParseCredentialSource("aws", false)
+		require.NoError(t, err)
+		assert.Equal(t, CredentialSourceAws, src.Type)
+	})
 }
 
 func Test_ParseCredentialReference(t *testing.T) {
