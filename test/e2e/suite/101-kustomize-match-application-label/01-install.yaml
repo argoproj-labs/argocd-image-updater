@@ -1,0 +1,87 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: image-updater-e2e-101-0
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: image-updater-101-0
+  labels:
+    app.index: "0"
+  annotations:
+    argocd-image-updater.argoproj.io/image-list: guestbook=gcr.io/heptio-images/ks-guestbook-demo:~0
+    argocd-image-updater.argoproj.io/test.update-strategy: semver
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/argoproj/argocd-example-apps.git
+    path: kustomize-guestbook
+    targetRevision: HEAD
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: image-updater-e2e-101-0
+  syncPolicy:
+    automated: {}
+    retry:
+      limit: 2
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: image-updater-e2e-101-1
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: image-updater-101-1
+  labels:
+    app.index: "1"
+  annotations:
+    argocd-image-updater.argoproj.io/image-list: guestbook=gcr.io/heptio-images/ks-guestbook-demo:~0
+    argocd-image-updater.argoproj.io/test.update-strategy: semver
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/argoproj/argocd-example-apps.git
+    path: kustomize-guestbook
+    targetRevision: HEAD
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: image-updater-e2e-101-1
+  syncPolicy:
+    automated: {}
+    retry:
+      limit: 2
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: image-updater-e2e-101-2
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: image-updater-101-2
+  annotations:
+    argocd-image-updater.argoproj.io/image-list: guestbook=gcr.io/heptio-images/ks-guestbook-demo:~0
+    argocd-image-updater.argoproj.io/test.update-strategy: semver
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/argoproj/argocd-example-apps.git
+    path: kustomize-guestbook
+    targetRevision: HEAD
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: image-updater-e2e-101-2
+  syncPolicy:
+    automated: {}
+    retry:
+      limit: 2
