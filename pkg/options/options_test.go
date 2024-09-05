@@ -26,10 +26,28 @@ func Test_WantsPlatform(t *testing.T) {
 		opts = opts.WithPlatform("linux", "arm", "v7")
 		assert.True(t, opts.WantsPlatform("linux", "arm", "v7"))
 	})
-	t.Run("Platform appended", func(t *testing.T) {
+	t.Run("Platform appended and non-match", func(t *testing.T) {
 		opts = opts.WithPlatform("linux", "arm", "v8")
 		assert.True(t, opts.WantsPlatform("linux", "arm", "v7"))
 		assert.True(t, opts.WantsPlatform("linux", "arm", "v8"))
+
+		assert.False(t, opts.WantsPlatform("linux", "arm", "v6"))
+		assert.False(t, opts.WantsPlatform("linux", "arm", ""))
+		assert.False(t, opts.WantsPlatform("linux", "", ""))
+
+		assert.False(t, opts.WantsPlatform("linux", "amd64", "v7"))
+		assert.False(t, opts.WantsPlatform("linux", "amd64", ""))
+
+		assert.False(t, opts.WantsPlatform("darwin", "arm", "v7"))
+		assert.False(t, opts.WantsPlatform("darwin", "arm", ""))
+	})
+	t.Run("Platform lenient match", func(t *testing.T) {
+		opts := &ManifestOptions{}
+		opts = opts.WithPlatform("linux", "arm", "")
+		opts = opts.WithPlatform("linux", "arm", "v7")
+		assert.True(t, opts.WantsPlatform("linux", "arm", "v8"))
+		assert.True(t, opts.WantsPlatform("linux", "arm", "v7"))
+		assert.True(t, opts.WantsPlatform("linux", "arm", ""))
 	})
 	t.Run("Uninitialized options", func(t *testing.T) {
 		opts := &ManifestOptions{}

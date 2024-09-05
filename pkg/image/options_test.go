@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"regexp"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -380,8 +381,17 @@ func Test_GetPlatformOptions(t *testing.T) {
 		opts := img.GetPlatformOptions(annotations, false)
 		os := runtime.GOOS
 		arch := runtime.GOARCH
-		assert.True(t, opts.WantsPlatform(os, arch, ""))
-		assert.False(t, opts.WantsPlatform(os, arch, "invalid"))
+		platform := opts.Platforms()[0]
+		slashCount := strings.Count(platform, "/")
+		if slashCount == 1 {
+			assert.True(t, opts.WantsPlatform(os, arch, ""))
+			assert.True(t, opts.WantsPlatform(os, arch, "invalid"))
+		} else if slashCount == 2 {
+			assert.False(t, opts.WantsPlatform(os, arch, ""))
+			assert.False(t, opts.WantsPlatform(os, arch, "invalid"))
+		} else {
+			t.Fatal("invalid platform options ", platform)
+		}
 	})
 	t.Run("Empty platform options without restriction", func(t *testing.T) {
 		annotations := map[string]string{}
@@ -396,7 +406,7 @@ func Test_GetPlatformOptions(t *testing.T) {
 	t.Run("Single platform without variant requested", func(t *testing.T) {
 		os := "linux"
 		arch := "arm64"
-		variant := ""
+		variant := "v8"
 		annotations := map[string]string{
 			fmt.Sprintf(common.PlatformsAnnotation, "dummy"): options.PlatformKey(os, arch, variant),
 		}
@@ -431,7 +441,7 @@ func Test_GetPlatformOptions(t *testing.T) {
 		assert.True(t, opts.WantsPlatform(os, arch, variant))
 		assert.True(t, opts.WantsPlatform(runtime.GOOS, runtime.GOARCH, ""))
 		assert.False(t, opts.WantsPlatform(os, arch, ""))
-		assert.False(t, opts.WantsPlatform(runtime.GOOS, runtime.GOARCH, variant))
+		assert.True(t, opts.WantsPlatform(runtime.GOOS, runtime.GOARCH, variant))
 	})
 	t.Run("Invalid platform requested", func(t *testing.T) {
 		os := "linux"
