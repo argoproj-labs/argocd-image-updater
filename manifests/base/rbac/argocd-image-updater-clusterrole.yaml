@@ -1,5 +1,5 @@
 apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
+kind: ClusterRole
 metadata:
   labels:
     app.kubernetes.io/name: argocd-image-updater
@@ -8,20 +8,8 @@ metadata:
   name: argocd-image-updater
 rules:
   - apiGroups:
-      - ''
+      - ""
     resources:
-      - secrets
-      - configmaps
+      - events
     verbs:
-      - get
-      - list
-      - watch
-  - apiGroups:
-      - argoproj.io
-    resources:
-      - applications
-    verbs:
-      - get
-      - list
-      - update
-      - patch
+      - create

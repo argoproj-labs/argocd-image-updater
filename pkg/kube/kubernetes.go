@@ -96,14 +96,14 @@ func (client *KubernetesClient) GetSecretField(namespace string, secretName stri
 	}
 }
 
-// CreateApplicationevent creates a kubernetes event with a custom reason and message for an application.
+// CreateApplicationEvent creates a kubernetes event with a custom reason and message for an application.
 func (client *KubernetesClient) CreateApplicationEvent(app *appv1alpha1.Application, reason string, message string, annotations map[string]string) (*v1.Event, error) {
 	t := metav1.Time{Time: time.Now()}
 
 	event := v1.Event{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        fmt.Sprintf("%v.%x", app.ObjectMeta.Name, t.UnixNano()),
-			Namespace:   client.Namespace,
+			Namespace:   app.ObjectMeta.Namespace,
 			Annotations: annotations,
 		},
 		Source: v1.EventSource{
@@ -125,7 +125,7 @@ func (client *KubernetesClient) CreateApplicationEvent(app *appv1alpha1.Applicat
 		Reason:         reason,
 	}
 
-	result, err := client.Clientset.CoreV1().Events(client.Namespace).Create(client.Context, &event, metav1.CreateOptions{})
+	result, err := client.Clientset.CoreV1().Events(app.ObjectMeta.Namespace).Create(client.Context, &event, metav1.CreateOptions{})
 	if err != nil {
 		return nil, err
 	}
