@@ -5,6 +5,7 @@ delete:
 - apiVersion: argoproj.io/v1alpha1
   kind: Application
   name: image-updater-006
+  namespace: image-updater-e2e-006-01
 - apiVersion: argoproj.io/v1alpha1
   kind: AppProject
   name: project-one
@@ -14,6 +15,14 @@ delete:
 - apiVersion: v1
   kind: Namespace
   name: image-updater-e2e-006
+- apiVersion: rbac.authorization.k8s.io/v1
+  kind: Role
+  name: argocd-application-controller
+  namespace: image-updater-e2e-006-01
+- apiVersion: rbac.authorization.k8s.io/v1
+  kind: RoleBinding
+  name: argocd-application-controller-binding
+  namespace: image-updater-e2e-006-01
 script: |
   kubectl patch configmap argocd-cmd-params-cm -n argocd-image-updater-e2e --type=json -p='[{"op": "remove", "path": "/data/application.namespaces"}]'
   kubectl rollout restart -n argocd-image-updater-e2e deployment argocd-server
