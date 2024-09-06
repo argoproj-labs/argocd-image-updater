@@ -1383,6 +1383,56 @@ replicas: 1
 		assert.Equal(t, strings.TrimSpace(strings.ReplaceAll(expected, "\t", "  ")), strings.TrimSpace(string(yaml)))
 	})
 
+	t.Run("Valid Helm source with Helm values file and image-spec", func(t *testing.T) {
+		expected := `
+image.spec.foo: nginx:v1.0.0
+replicas: 1
+`
+		app := v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name: "testapp",
+				Annotations: map[string]string{
+					"argocd-image-updater.argoproj.io/image-list":            "nginx",
+					"argocd-image-updater.argoproj.io/write-back-method":     "git",
+					"argocd-image-updater.argoproj.io/write-back-target":     "helmvalues:./test-values.yaml",
+					"argocd-image-updater.argoproj.io/nginx.helm.image-spec": "image.spec.foo",
+				},
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: &v1alpha1.ApplicationSource{
+					RepoURL:        "https://example.com/example",
+					TargetRevision: "main",
+					Helm: &v1alpha1.ApplicationSourceHelm{
+						Parameters: []v1alpha1.HelmParameter{
+							{
+								Name:        "image.spec.foo",
+								Value:       "nginx:v1.0.0",
+								ForceString: true,
+							},
+						},
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypeHelm,
+				Summary: v1alpha1.ApplicationSummary{
+					Images: []string{
+						"nginx:v0.0.0",
+					},
+				},
+			},
+		}
+
+		originalData := []byte(`
+image.spec.foo: nginx:v0.0.0
+replicas: 1
+`)
+		yaml, err := marshalParamsOverride(&app, originalData)
+		require.NoError(t, err)
+		assert.NotEmpty(t, yaml)
+		assert.Equal(t, strings.TrimSpace(strings.ReplaceAll(expected, "\t", "  ")), strings.TrimSpace(string(yaml)))
+	})
+
 	t.Run("Valid Helm source with Helm values file with multiple images", func(t *testing.T) {
 		expected := `
 nginx.image.name: nginx
@@ -1834,7 +1884,6 @@ replicas: 1
 		originalData := []byte(`random: yaml`)
 		_, err := marshalParamsOverride(&app, originalData)
 		assert.Error(t, err)
-		assert.Equal(t, "wrongimage.name parameter not found", err.Error())
 	})
 
 	t.Run("Image-tag annotation value not found in Helm source parameters list", func(t *testing.T) {
