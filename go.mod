@@ -7,7 +7,7 @@ toolchain go1.22.3
 require (
 	github.com/Masterminds/semver/v3 v3.2.1
 	github.com/argoproj/argo-cd/v2 v2.11.7
-	github.com/argoproj/gitops-engine v0.7.1-0.20240715141605-18ba62e1f1fb
+	github.com/argoproj/gitops-engine v0.7.3
 	github.com/argoproj/pkg v0.13.7-0.20230627120311-a4dd357b057e
 	github.com/bmatcuk/doublestar/v4 v4.6.1
 	github.com/bradleyfalzon/ghinstallation/v2 v2.6.0
