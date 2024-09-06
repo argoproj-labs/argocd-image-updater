@@ -227,7 +227,7 @@ The correct image to execute will be chosen by Kubernetes.
 
 There are generally two ways on how to specify pull secrets for Argo CD Image
 Updater to use. Either you configure a secret reference globally for the
-container registry (as described [here](../registries/)), or you can specify
+container registry (as described [here](registries.md)), or you can specify
 the pull secret to use for a given image using the annotation
 
 ```yaml
@@ -456,7 +456,7 @@ must be prefixed with `argocd-image-updater.argoproj.io/`.
 |`<image_alias>.allow-tags`|*any*|A function to match tag names from the registry against to be considered for update|
 |`<image_alias>.ignore-tags`|*none*|A comma-separated list of glob patterns that when matched, ignore a certain tag from the registry|
 |`<image_alias>.pull-secret`|*none*|A reference to a secret to be used as registry credentials for this image|
-|`<image_alias>.platform`|*none*|Only update to images for given platform(s). Comma-separated list, e.g. `linux/amd64,linux/arm64`|
+|`<image_alias>.platforms`|*none*|Only update to images for given platform(s). Comma-separated list, e.g. `linux/amd64,linux/arm64`|
 |`<image_alias>.helm.image-spec`|*none*|Name of the Helm parameter to specify the canonical name of the image, i.e. holds `image/name:1.0`. If this is set, other Helm parameter-related options will be ignored.|
 |`<image_alias>.helm.image-name`|`image.name`|Name of the Helm parameter used for specifying the image name, i.e. holds `image/name`|
 |`<image_alias>.helm.image-tag`|`image.tag`|Name of the Helm parameter used for specifying the image tag, i.e. holds `1.0`|
