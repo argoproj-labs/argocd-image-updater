@@ -13,3 +13,4 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: argocd-image-updater
+    namespace: argocd
