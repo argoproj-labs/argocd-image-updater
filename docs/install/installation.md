@@ -29,7 +29,7 @@ kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj-labs/argoc
 ```
 
 !!! warning
-The installation manifests include `ClusterRoleBinding` resources that reference `argocd` namespace. If you are installing Argo CD into a different
+     The installation manifests include `ClusterRoleBinding` resources that reference `argocd` namespace. If you are installing Argo CD into a different
 namespace then make sure to update the namespace reference.
 
 !!!note "A word on high availability"
@@ -75,7 +75,7 @@ kubectl apply -n argocd-image-updater -f https://raw.githubusercontent.com/argop
 ```
 
 !!! warning
-The installation manifests include `ClusterRoleBinding` resources that reference `argocd` namespace. If you are installing Argo CD into a different
+     The installation manifests include `ClusterRoleBinding` resources that reference `argocd` namespace. If you are installing Argo CD into a different
 namespace then make sure to update the namespace reference.
 
 !!!note "A word on high availability"
