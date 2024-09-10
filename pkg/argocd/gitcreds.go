@@ -145,7 +145,7 @@ func getCredsFromSecret(wbc *WriteBackConfig, credentialsSecret string, kubeClie
 			if err != nil {
 				return nil, fmt.Errorf("invalid value in field githubAppID: %w", err)
 			}
-			intGithubAppInstallationID, _ := strconv.ParseInt(string(githubAppInstallationID), 10, 64)
+			intGithubAppInstallationID, err := strconv.ParseInt(string(githubAppInstallationID), 10, 64)
 			if err != nil {
 				return nil, fmt.Errorf("invalid value in field githubAppInstallationID: %w", err)
 			}
