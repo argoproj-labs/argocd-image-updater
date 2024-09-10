@@ -95,6 +95,75 @@ func Test_UpdateApplication(t *testing.T) {
 		assert.Equal(t, 2, res.NumImagesUpdated)
 	})
 
+	t.Run("Update app w/ GitHub App creds", func(t *testing.T) {
+		mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
+			regMock := regmock.RegistryClient{}
+			regMock.On("NewRepository", mock.Anything).Return(nil)
+			regMock.On("Tags", mock.Anything).Return([]string{"1.0.2", "1.0.3"}, nil)
+			return &regMock, nil
+		}
+
+		argoClient := argomock.ArgoCD{}
+		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+
+		secret := fixture.NewSecret("argocd-image-updater", "git-creds", map[string][]byte{
+			"githubAppID":             []byte("12345678"),
+			"githubAppInstallationID": []byte("87654321"),
+			"githubAppPrivateKey":     []byte("foo"),
+		})
+		kubeClient := kube.KubernetesClient{
+			Clientset: fake.NewFakeClientsetWithResources(secret),
+		}
+
+		annotations := map[string]string{
+			common.ImageUpdaterAnnotation:    "foo=gcr.io/jannfis/foobar:>=1.0.1",
+			common.WriteBackMethodAnnotation: "git:secret:argocd-image-updater/git-creds",
+		}
+		appImages := &ApplicationImages{
+			Application: v1alpha1.Application{
+				ObjectMeta: v1.ObjectMeta{
+					Name:        "guestbook",
+					Namespace:   "guestbook",
+					Annotations: annotations,
+				},
+				Spec: v1alpha1.ApplicationSpec{
+					Source: &v1alpha1.ApplicationSource{
+						RepoURL:        "https://example.com/example",
+						TargetRevision: "main",
+						Kustomize: &v1alpha1.ApplicationSourceKustomize{
+							Images: v1alpha1.KustomizeImages{
+								"jannfis/foobar:1.0.1",
+							},
+						},
+					},
+				},
+				Status: v1alpha1.ApplicationStatus{
+					SourceType: v1alpha1.ApplicationSourceTypeKustomize,
+					Summary: v1alpha1.ApplicationSummary{
+						Images: []string{
+							"gcr.io/jannfis/foobar:1.0.1",
+						},
+					},
+				},
+			},
+			Images: *parseImageList(annotations),
+		}
+		res := UpdateApplication(&UpdateConfiguration{
+			NewRegFN:   mockClientFn,
+			ArgoClient: &argoClient,
+			KubeClient: &kubeClient,
+			UpdateApp:  appImages,
+			DryRun:     false,
+		}, NewSyncIterationState())
+		assert.Equal(t, v1alpha1.KustomizeImage("gcr.io/jannfis/foobar:1.0.3"), appImages.Application.Spec.Source.Kustomize.Images[0])
+		assert.Equal(t, 0, res.NumSkipped)
+		assert.Equal(t, 1, res.NumApplicationsProcessed)
+		assert.Equal(t, 1, res.NumImagesConsidered)
+		// configured githubApp creds will take effect and git client will catch the invalid GithubAppPrivateKey "foo":
+		// "Could not update application spec: could not parse private key: invalid key: Key must be a PEM encoded PKCS1 or PKCS8 key"
+		assert.Equal(t, 1, res.NumErrors)
+	})
+
 	t.Run("Test successful update", func(t *testing.T) {
 		mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
 			regMock := regmock.RegistryClient{}
@@ -2623,6 +2692,38 @@ func Test_GetGitCreds(t *testing.T) {
 		// Must have HTTPS GitHub App creds
 		_, ok := creds.(git.GitHubAppCreds)
 		require.True(t, ok)
+
+		// invalid secrete data in GitHub App creds
+		invalidSecretEntries := []map[string][]byte{
+			{ // missing githubAppPrivateKey
+				"githubAppID":             []byte("12345678"),
+				"githubAppInstallationID": []byte("87654321"),
+			}, { // missing githubAppInstallationID
+				"githubAppID":         []byte("12345678"),
+				"githubAppPrivateKey": []byte("foo"),
+			}, { // missing githubAppID
+				"githubAppInstallationID": []byte("87654321"),
+				"githubAppPrivateKey":     []byte("foo"),
+			}, { // ID should be a number
+				"githubAppID":             []byte("NaN"),
+				"githubAppInstallationID": []byte("87654321"),
+				"githubAppPrivateKey":     []byte("foo"),
+			}, {
+				"githubAppID":             []byte("12345678"),
+				"githubAppInstallationID": []byte("NaN"),
+				"githubAppPrivateKey":     []byte("foo"),
+			},
+		}
+		for _, secretEntry := range invalidSecretEntries {
+			secret = fixture.NewSecret("argocd-image-updater", "git-creds", secretEntry)
+			kubeClient = kube.KubernetesClient{
+				Clientset: fake.NewFakeClientsetWithResources(secret),
+			}
+			wbc, err = getWriteBackConfig(&app, &kubeClient, &argoClient)
+			require.NoError(t, err)
+			_, err = wbc.GetCreds(&app)
+			require.Error(t, err)
+		}
 	})
 
 	t.Run("SSH creds from a secret", func(t *testing.T) {
