@@ -1,0 +1,19 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: image-updater-005-01
+status:
+  health:
+    status: Healthy
+  sync:
+    status: Synced
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: image-updater-005-02
+status:
+  health:
+    status: Healthy
+  sync:
+    status: Synced
