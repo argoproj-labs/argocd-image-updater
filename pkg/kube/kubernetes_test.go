@@ -93,6 +93,6 @@ func Test_CreateApplicationEvent(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, event)
 		assert.Equal(t, "ArgocdImageUpdater", event.Source.Component)
-		assert.Equal(t, "default", client.Namespace)
+		assert.Equal(t, "argocd", event.Namespace)
 	})
 }

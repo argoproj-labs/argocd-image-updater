@@ -1383,6 +1383,56 @@ replicas: 1
 		assert.Equal(t, strings.TrimSpace(strings.ReplaceAll(expected, "\t", "  ")), strings.TrimSpace(string(yaml)))
 	})
 
+	t.Run("Valid Helm source with Helm values file and image-spec", func(t *testing.T) {
+		expected := `
+image.spec.foo: nginx:v1.0.0
+replicas: 1
+`
+		app := v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name: "testapp",
+				Annotations: map[string]string{
+					"argocd-image-updater.argoproj.io/image-list":            "nginx",
+					"argocd-image-updater.argoproj.io/write-back-method":     "git",
+					"argocd-image-updater.argoproj.io/write-back-target":     "helmvalues:./test-values.yaml",
+					"argocd-image-updater.argoproj.io/nginx.helm.image-spec": "image.spec.foo",
+				},
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: &v1alpha1.ApplicationSource{
+					RepoURL:        "https://example.com/example",
+					TargetRevision: "main",
+					Helm: &v1alpha1.ApplicationSourceHelm{
+						Parameters: []v1alpha1.HelmParameter{
+							{
+								Name:        "image.spec.foo",
+								Value:       "nginx:v1.0.0",
+								ForceString: true,
+							},
+						},
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypeHelm,
+				Summary: v1alpha1.ApplicationSummary{
+					Images: []string{
+						"nginx:v0.0.0",
+					},
+				},
+			},
+		}
+
+		originalData := []byte(`
+image.spec.foo: nginx:v0.0.0
+replicas: 1
+`)
+		yaml, err := marshalParamsOverride(&app, originalData)
+		require.NoError(t, err)
+		assert.NotEmpty(t, yaml)
+		assert.Equal(t, strings.TrimSpace(strings.ReplaceAll(expected, "\t", "  ")), strings.TrimSpace(string(yaml)))
+	})
+
 	t.Run("Valid Helm source with Helm values file with multiple images", func(t *testing.T) {
 		expected := `
 nginx.image.name: nginx
@@ -1471,7 +1521,117 @@ replicas: 1
 		assert.Equal(t, strings.TrimSpace(strings.ReplaceAll(expected, "\t", "  ")), strings.TrimSpace(string(yaml)))
 	})
 
+	t.Run("Valid Helm source with Helm values file with multiple aliases", func(t *testing.T) {
+		expected := `
+foo.image.name: nginx
+foo.image.tag: v1.0.0
+bar.image.name: nginx
+bar.image.tag: v1.0.0
+bbb.image.name: nginx
+bbb.image.tag: v1.0.0
+replicas: 1
+`
+		app := v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name: "testapp",
+				Annotations: map[string]string{
+					"argocd-image-updater.argoproj.io/image-list":          "foo=nginx, bar=nginx, bbb=nginx",
+					"argocd-image-updater.argoproj.io/write-back-method":   "git",
+					"argocd-image-updater.argoproj.io/write-back-target":   "helmvalues:./test-values.yaml",
+					"argocd-image-updater.argoproj.io/foo.helm.image-name": "foo.image.name",
+					"argocd-image-updater.argoproj.io/foo.helm.image-tag":  "foo.image.tag",
+					"argocd-image-updater.argoproj.io/bar.helm.image-name": "bar.image.name",
+					"argocd-image-updater.argoproj.io/bar.helm.image-tag":  "bar.image.tag",
+					"argocd-image-updater.argoproj.io/bbb.helm.image-name": "bbb.image.name",
+					"argocd-image-updater.argoproj.io/bbb.helm.image-tag":  "bbb.image.tag",
+				},
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Sources: []v1alpha1.ApplicationSource{
+					{
+						Chart: "my-app",
+						Helm: &v1alpha1.ApplicationSourceHelm{
+							ReleaseName: "my-app",
+							ValueFiles:  []string{"$values/some/dir/values.yaml"},
+							Parameters: []v1alpha1.HelmParameter{
+								{
+									Name:        "foo.image.name",
+									Value:       "nginx",
+									ForceString: true,
+								},
+								{
+									Name:        "foo.image.tag",
+									Value:       "v1.0.0",
+									ForceString: true,
+								},
+								{
+									Name:        "bar.image.name",
+									Value:       "nginx",
+									ForceString: true,
+								},
+								{
+									Name:        "bar.image.tag",
+									Value:       "v1.0.0",
+									ForceString: true,
+								},
+								{
+									Name:        "bbb.image.name",
+									Value:       "nginx",
+									ForceString: true,
+								},
+								{
+									Name:        "bbb.image.tag",
+									Value:       "v1.0.0",
+									ForceString: true,
+								},
+							},
+						},
+						RepoURL:        "https://example.com/example",
+						TargetRevision: "main",
+					},
+					{
+						Ref:            "values",
+						RepoURL:        "https://example.com/example2",
+						TargetRevision: "main",
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceTypes: []v1alpha1.ApplicationSourceType{
+					v1alpha1.ApplicationSourceTypeHelm,
+					"",
+				},
+				Summary: v1alpha1.ApplicationSummary{
+					Images: []string{
+						"nginx:v0.0.0",
+					},
+				},
+			},
+		}
+
+		originalData := []byte(`
+foo.image.name: nginx
+foo.image.tag: v0.0.0
+bar.image.name: nginx
+bar.image.tag: v0.0.0
+bbb.image.name: nginx
+bbb.image.tag: v0.0.0
+replicas: 1
+`)
+		yaml, err := marshalParamsOverride(&app, originalData)
+		require.NoError(t, err)
+		assert.NotEmpty(t, yaml)
+		assert.Equal(t, strings.TrimSpace(strings.ReplaceAll(expected, "\t", "  ")), strings.TrimSpace(string(yaml)))
+	})
+
 	t.Run("Failed to setValue image parameter name", func(t *testing.T) {
+		expected := `
+image:
+  name: nginx
+  tag: v1.0.0
+replicas: 1
+`
+
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
 				Name: "testapp",
@@ -1514,16 +1674,24 @@ replicas: 1
 		}
 
 		originalData := []byte(`
-image_name: nginx
-image.tag: v0.0.0
+image:
+  name: nginx
 replicas: 1
 `)
-		_, err := marshalParamsOverride(&app, originalData)
-		assert.Error(t, err)
-		assert.Equal(t, "failed to set image parameter name value: key image not found in the map", err.Error())
+
+		yaml, err := marshalParamsOverride(&app, originalData)
+		require.NoError(t, err)
+		assert.NotEmpty(t, yaml)
+		assert.Equal(t, strings.TrimSpace(strings.ReplaceAll(expected, "\t", "  ")), strings.TrimSpace(string(yaml)))
 	})
 
 	t.Run("Failed to setValue image parameter version", func(t *testing.T) {
+		expected := `
+image:
+  tag: v1.0.0
+  name: nginx
+replicas: 1
+`
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
 				Name: "testapp",
@@ -1566,13 +1734,15 @@ replicas: 1
 		}
 
 		originalData := []byte(`
-image.name: nginx
-image_tag: v0.0.0
+image:
+  tag: v0.0.0
 replicas: 1
 `)
-		_, err := marshalParamsOverride(&app, originalData)
-		assert.Error(t, err)
-		assert.Equal(t, "failed to set image parameter version value: key image not found in the map", err.Error())
+
+		yaml, err := marshalParamsOverride(&app, originalData)
+		require.NoError(t, err)
+		assert.NotEmpty(t, yaml)
+		assert.Equal(t, strings.TrimSpace(strings.ReplaceAll(expected, "\t", "  ")), strings.TrimSpace(string(yaml)))
 	})
 
 	t.Run("Missing annotation image-tag for helmvalues write-back-target", func(t *testing.T) {
@@ -1714,7 +1884,6 @@ replicas: 1
 		originalData := []byte(`random: yaml`)
 		_, err := marshalParamsOverride(&app, originalData)
 		assert.Error(t, err)
-		assert.Equal(t, "wrongimage.name parameter not found", err.Error())
 	})
 
 	t.Run("Image-tag annotation value not found in Helm source parameters list", func(t *testing.T) {
@@ -1865,7 +2034,7 @@ func Test_SetHelmValue(t *testing.T) {
 		key := "image.attributes.tag"
 		value := "v2.0.0"
 
-		err := setHelmValue(input, key, value)
+		err := setHelmValue(&input, key, value)
 		require.NoError(t, err)
 		assert.Equal(t, expected, input)
 	})
@@ -1881,23 +2050,72 @@ func Test_SetHelmValue(t *testing.T) {
 		key := "image.attributes.tag"
 		value := "v2.0.0"
 
-		err := setHelmValue(input, key, value)
+		err := setHelmValue(&input, key, value)
 		require.NoError(t, err)
 		assert.Equal(t, expected, input)
 	})
 
 	t.Run("Key not found", func(t *testing.T) {
-		input := yaml.MapSlice{
+		expected := yaml.MapSlice{
 			{Key: "image", Value: yaml.MapSlice{
-				{Key: "tag", Value: "v1.0.0"},
+				{Key: "attributes", Value: yaml.MapSlice{
+					{Key: "name", Value: "repo-name"},
+					{Key: "tag", Value: "v2.0.0"},
+				}},
 			}},
 		}
+
+		input := yaml.MapSlice{
+			{Key: "image", Value: yaml.MapSlice{
+				{Key: "attributes", Value: yaml.MapSlice{
+					{Key: "name", Value: "repo-name"},
+				}},
+			}},
+		}
+
 		key := "image.attributes.tag"
 		value := "v2.0.0"
 
-		err := setHelmValue(input, key, value)
-		assert.Error(t, err)
-		assert.Equal(t, "key attributes not found in the map", err.Error())
+		err := setHelmValue(&input, key, value)
+		require.NoError(t, err)
+		assert.Equal(t, expected, input)
+	})
+
+	t.Run("Root key not found", func(t *testing.T) {
+		expected := yaml.MapSlice{
+			{Key: "name", Value: "repo-name"},
+			{Key: "tag", Value: "v2.0.0"},
+		}
+
+		input := yaml.MapSlice{
+			{Key: "name", Value: "repo-name"},
+		}
+
+		key := "tag"
+		value := "v2.0.0"
+
+		err := setHelmValue(&input, key, value)
+		require.NoError(t, err)
+		assert.Equal(t, expected, input)
+	})
+
+	t.Run("Empty values with deep key", func(t *testing.T) {
+		expected := yaml.MapSlice{
+			{Key: "image", Value: yaml.MapSlice{
+				{Key: "attributes", Value: yaml.MapSlice{
+					{Key: "tag", Value: "v2.0.0"},
+				}},
+			}},
+		}
+
+		input := yaml.MapSlice{}
+
+		key := "image.attributes.tag"
+		value := "v2.0.0"
+
+		err := setHelmValue(&input, key, value)
+		require.NoError(t, err)
+		assert.Equal(t, expected, input)
 	})
 
 	t.Run("Unexpected type for key", func(t *testing.T) {
@@ -1909,7 +2127,7 @@ func Test_SetHelmValue(t *testing.T) {
 		key := "image.attributes.tag"
 		value := "v2.0.0"
 
-		err := setHelmValue(input, key, value)
+		err := setHelmValue(&input, key, value)
 		assert.Error(t, err)
 		assert.Equal(t, "unexpected type string for key attributes", err.Error())
 	})

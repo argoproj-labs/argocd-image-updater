@@ -32,7 +32,7 @@ func PlatformKey(os string, arch string, variant string) string {
 	return key
 }
 
-// MatchesPlatform returns true if given OS name matches the OS set in options
+// WantsPlatform returns true if given platform matches the platform set in options
 func (o *ManifestOptions) WantsPlatform(os string, arch string, variant string) bool {
 	o.mutex.RLock()
 	defer o.mutex.RUnlock()
@@ -40,7 +40,17 @@ func (o *ManifestOptions) WantsPlatform(os string, arch string, variant string) 
 		return true
 	}
 	_, ok := o.platforms[PlatformKey(os, arch, variant)]
-	return ok
+	if ok {
+		return true
+	}
+
+	// if no exact match, and the passed platform has variant, it may be a more
+	// specific variant of the platform specified in options. So compare os/arch only
+	if variant != "" {
+		_, ok = o.platforms[PlatformKey(os, arch, "")]
+		return ok
+	}
+	return false
 }
 
 // WithPlatform sets a platform filter for options o

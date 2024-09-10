@@ -451,8 +451,23 @@ func marshalParamsOverride(app *v1alpha1.Application, originalData []byte) ([]by
 				if helmAnnotationParamName == "" {
 					return nil, fmt.Errorf("could not find an image-name annotation for image %s", c.ImageName)
 				}
+				// for image-spec annotation, helmAnnotationParamName holds image-spec annotation value,
+				// and helmAnnotationParamVersion is empty
 				if helmAnnotationParamVersion == "" {
-					return nil, fmt.Errorf("could not find an image-tag annotation for image %s", c.ImageName)
+					if c.GetParameterHelmImageSpec(app.Annotations) == "" {
+						// not a full image-spec, so image-tag is required
+						return nil, fmt.Errorf("could not find an image-tag annotation for image %s", c.ImageName)
+					}
+				} else {
+					// image-tag annotation is present, so continue to process image-tag
+					helmParamVersion := getHelmParam(appSource.Helm.Parameters, helmAnnotationParamVersion)
+					if helmParamVersion == nil {
+						return nil, fmt.Errorf("%s parameter not found", helmAnnotationParamVersion)
+					}
+					err = setHelmValue(&helmNewValues, helmAnnotationParamVersion, helmParamVersion.Value)
+					if err != nil {
+						return nil, fmt.Errorf("failed to set image parameter version value: %v", err)
+					}
 				}
 
 				helmParamName := getHelmParam(appSource.Helm.Parameters, helmAnnotationParamName)
@@ -460,18 +475,9 @@ func marshalParamsOverride(app *v1alpha1.Application, originalData []byte) ([]by
 					return nil, fmt.Errorf("%s parameter not found", helmAnnotationParamName)
 				}
 
-				helmParamVersion := getHelmParam(appSource.Helm.Parameters, helmAnnotationParamVersion)
-				if helmParamVersion == nil {
-					return nil, fmt.Errorf("%s parameter not found", helmAnnotationParamVersion)
-				}
-
-				err = setHelmValue(helmNewValues, helmAnnotationParamName, helmParamName.Value)
+				err = setHelmValue(&helmNewValues, helmAnnotationParamName, helmParamName.Value)
 				if err != nil {
 					return nil, fmt.Errorf("failed to set image parameter name value: %v", err)
-				}
-				err = setHelmValue(helmNewValues, helmAnnotationParamVersion, helmParamVersion.Value)
-				if err != nil {
-					return nil, fmt.Errorf("failed to set image parameter version value: %v", err)
 				}
 			}
 
@@ -542,34 +548,53 @@ func findHelmValuesKey(m yaml.MapSlice, key string) (int, bool) {
 }
 
 // set value of the parameter passed from the annotations.
-func setHelmValue(m yaml.MapSlice, key string, value interface{}) error {
+func setHelmValue(currentValues *yaml.MapSlice, key string, value interface{}) error {
 	// Check if the full key exists
-	if idx, found := findHelmValuesKey(m, key); found {
-		m[idx].Value = value
+	if idx, found := findHelmValuesKey(*currentValues, key); found {
+		(*currentValues)[idx].Value = value
 		return nil
 	}
 
 	var err error
 	keys := strings.Split(key, ".")
-	current := m
+	current := currentValues
+	var parent *yaml.MapSlice
+	var parentIdx int
 
 	for i, k := range keys {
-		if idx, found := findHelmValuesKey(current, k); found {
+		if idx, found := findHelmValuesKey(*current, k); found {
 			if i == len(keys)-1 {
 				// If we're at the final key, set the value and return
-				current[idx].Value = value
+				(*current)[idx].Value = value
 				return nil
 			} else {
 				// Navigate deeper into the map
-				if nestedMap, ok := current[idx].Value.(yaml.MapSlice); ok {
-					current = nestedMap
+				if nestedMap, ok := (*current)[idx].Value.(yaml.MapSlice); ok {
+					parent = current
+					parentIdx = idx
+					current = &nestedMap
 				} else {
-					return fmt.Errorf("unexpected type %T for key %s", current[idx].Value, k)
+					return fmt.Errorf("unexpected type %T for key %s", (*current)[idx].Value, k)
 				}
 			}
 		} else {
-			err = fmt.Errorf("key %s not found in the map", k)
-			break
+			newCurrent := yaml.MapSlice{}
+			var newParent yaml.MapSlice
+
+			if i == len(keys)-1 {
+				newParent = append(*current, yaml.MapItem{Key: k, Value: value})
+			} else {
+				newParent = append(*current, yaml.MapItem{Key: k, Value: newCurrent})
+			}
+
+			if parent == nil {
+				*currentValues = newParent
+			} else {
+				(*parent)[parentIdx].Value = newParent
+			}
+
+			parent = &newParent
+			current = &newCurrent
 		}
 	}
 
