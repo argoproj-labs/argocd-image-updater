@@ -451,8 +451,23 @@ func marshalParamsOverride(app *v1alpha1.Application, originalData []byte) ([]by
 				if helmAnnotationParamName == "" {
 					return nil, fmt.Errorf("could not find an image-name annotation for image %s", c.ImageName)
 				}
+				// for image-spec annotation, helmAnnotationParamName holds image-spec annotation value,
+				// and helmAnnotationParamVersion is empty
 				if helmAnnotationParamVersion == "" {
-					return nil, fmt.Errorf("could not find an image-tag annotation for image %s", c.ImageName)
+					if c.GetParameterHelmImageSpec(app.Annotations) == "" {
+						// not a full image-spec, so image-tag is required
+						return nil, fmt.Errorf("could not find an image-tag annotation for image %s", c.ImageName)
+					}
+				} else {
+					// image-tag annotation is present, so continue to process image-tag
+					helmParamVersion := getHelmParam(appSource.Helm.Parameters, helmAnnotationParamVersion)
+					if helmParamVersion == nil {
+						return nil, fmt.Errorf("%s parameter not found", helmAnnotationParamVersion)
+					}
+					err = setHelmValue(&helmNewValues, helmAnnotationParamVersion, helmParamVersion.Value)
+					if err != nil {
+						return nil, fmt.Errorf("failed to set image parameter version value: %v", err)
+					}
 				}
 
 				helmParamName := getHelmParam(appSource.Helm.Parameters, helmAnnotationParamName)
@@ -460,18 +475,9 @@ func marshalParamsOverride(app *v1alpha1.Application, originalData []byte) ([]by
 					return nil, fmt.Errorf("%s parameter not found", helmAnnotationParamName)
 				}
 
-				helmParamVersion := getHelmParam(appSource.Helm.Parameters, helmAnnotationParamVersion)
-				if helmParamVersion == nil {
-					return nil, fmt.Errorf("%s parameter not found", helmAnnotationParamVersion)
-				}
-
 				err = setHelmValue(&helmNewValues, helmAnnotationParamName, helmParamName.Value)
 				if err != nil {
 					return nil, fmt.Errorf("failed to set image parameter name value: %v", err)
-				}
-				err = setHelmValue(&helmNewValues, helmAnnotationParamVersion, helmParamVersion.Value)
-				if err != nil {
-					return nil, fmt.Errorf("failed to set image parameter version value: %v", err)
 				}
 			}
 

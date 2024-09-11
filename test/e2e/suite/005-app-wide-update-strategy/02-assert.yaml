@@ -1,0 +1,40 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: image-updater-005-01
+spec:
+  source:
+    kustomize:
+      images:
+      - gcr.io/heptio-images/ks-guestbook-demo:0.2
+status:
+  health:
+    status: Healthy
+  sync:
+    status: Synced
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  namespace: image-updater-e2e-005-01
+spec:
+  containers:
+  - image: gcr.io/heptio-images/ks-guestbook-demo:0.2
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: image-updater-005-02
+status:
+  health:
+    status: Healthy
+  sync:
+    status: Synced
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  namespace: image-updater-e2e-005-02
+spec:
+  containers:
+  - image: gcr.io/heptio-images/ks-guestbook-demo:0.1

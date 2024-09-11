@@ -64,7 +64,7 @@ type registryClient struct {
 }
 
 // credentials is an implementation of distribution/V3/session struct
-// to mangage registry credentials and token
+// to manage registry credentials and token
 type credentials struct {
 	username      string
 	password      string
@@ -306,8 +306,8 @@ func (client *registryClient) TagMetadata(manifest distribution.Manifest, opts *
 		}
 
 		if !opts.WantsPlatform(info.OS, info.Arch, info.Variant) {
-			logCtx.Debugf("ignoring v2 manifest %v. Manifest platform: %s/%s, requested: %s",
-				ti.EncodedDigest(), info.OS, info.Arch, strings.Join(opts.Platforms(), ","))
+			logCtx.Debugf("ignoring v2 manifest %v. Manifest platform: %s, requested: %s",
+				ti.EncodedDigest(), options.PlatformKey(info.OS, info.Arch, info.Variant), strings.Join(opts.Platforms(), ","))
 			return nil, nil
 		}
 
@@ -338,8 +338,8 @@ func (client *registryClient) TagMetadata(manifest distribution.Manifest, opts *
 		}
 
 		if !opts.WantsPlatform(info.OS, info.Arch, info.Variant) {
-			logCtx.Debugf("ignoring OCI manifest %v. Manifest platform: %s/%s, requested: %s",
-				ti.EncodedDigest(), info.OS, info.Arch, strings.Join(opts.Platforms(), ","))
+			logCtx.Debugf("ignoring OCI manifest %v. Manifest platform: %s, requested: %s",
+				ti.EncodedDigest(), options.PlatformKey(info.OS, info.Arch, info.Variant), strings.Join(opts.Platforms(), ","))
 			return nil, nil
 		}
 
@@ -367,19 +367,20 @@ func TagInfoFromReferences(client *registryClient, opts *options.ManifestOptions
 			refArch = ref.Platform.Architecture
 			refVariant = ref.Platform.Variant
 		}
-		platforms = append(platforms, refOS+"/"+refArch)
-		logCtx.Tracef("Found %s", options.PlatformKey(refOS, refArch, refVariant))
+		platform1 := options.PlatformKey(refOS, refArch, refVariant)
+		platforms = append(platforms, platform1)
+		logCtx.Tracef("Found %s", platform1)
 		if !opts.WantsPlatform(refOS, refArch, refVariant) {
 			logCtx.Tracef("Ignoring referenced manifest %v because platform %s does not match any of: %s",
 				ref.Digest,
-				options.PlatformKey(refOS, refArch, refVariant),
+				platform1,
 				strings.Join(opts.Platforms(), ","))
 			continue
 		}
 		ml = append(ml, ref)
 	}
 
-	// We need at least one reference that matches requested plaforms
+	// We need at least one reference that matches requested platforms
 	if len(ml) == 0 {
 		logCtx.Debugf("Manifest list did not contain any usable reference. Platforms requested: (%s), platforms included: (%s)",
 			strings.Join(opts.Platforms(), ","), strings.Join(platforms, ","))
