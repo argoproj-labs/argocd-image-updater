@@ -9,6 +9,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/distribution/distribution/v3/manifest"
+	"github.com/distribution/distribution/v3/manifest/manifestlist"
+	"github.com/distribution/distribution/v3/manifest/ocischema"
+	"github.com/distribution/distribution/v3/manifest/schema2"
+
 	"github.com/distribution/distribution/v3"
 	"github.com/distribution/distribution/v3/manifest/schema1" //nolint:staticcheck
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
@@ -444,7 +449,7 @@ func Test_TagMetadata(t *testing.T) {
 
 	})
 
-	t.Run("Check for correct error handling when time stamp cannot be parsed", func(t *testing.T) {
+	t.Run("Check for invalid/valid timestamp and non-match platforms", func(t *testing.T) {
 		ts := "invalid"
 		meta1 := &schema1.SignedManifest{ //nolint:staticcheck
 			Manifest: schema1.Manifest{ //nolint:staticcheck
@@ -461,6 +466,103 @@ func Test_TagMetadata(t *testing.T) {
 		require.NoError(t, err)
 		_, err = client.TagMetadata(meta1, &options.ManifestOptions{})
 		require.Error(t, err)
+
+		ts = time.Now().Format(time.RFC3339Nano)
+		opts := &options.ManifestOptions{}
+		meta1.Manifest.History[0].V1Compatibility = `{"created":"` + ts + `"}`
+		tagInfo, _ := client.TagMetadata(meta1, opts)
+		assert.Equal(t, ts, tagInfo.CreatedAt.Format(time.RFC3339Nano))
+
+		opts.WithPlatform("testOS", "testArch", "testVariant")
+		tagInfo, err = client.TagMetadata(meta1, opts)
+		assert.Nil(t, tagInfo)
+		assert.Nil(t, err)
+	})
+}
+
+func Test_TagMetadata_2(t *testing.T) {
+	t.Run("ocischema DeserializedManifest invalid digest format", func(t *testing.T) {
+		meta1 := &ocischema.DeserializedManifest{
+			Manifest: ocischema.Manifest{
+				Versioned: manifest.Versioned{
+					SchemaVersion: 1,
+					MediaType:     "",
+				},
+			},
+		}
+		ep, err := GetRegistryEndpoint("")
+		require.NoError(t, err)
+		client, err := NewClient(ep, "", "")
+
+		require.NoError(t, err)
+		err = client.NewRepository("test/test")
+		require.NoError(t, err)
+		_, err = client.TagMetadata(meta1, &options.ManifestOptions{})
+		require.Error(t, err) // invalid digest format
+	})
+	t.Run("schema2 DeserializedManifest invalid digest format", func(t *testing.T) {
+		meta1 := &schema2.DeserializedManifest{
+			Manifest: schema2.Manifest{
+				Versioned: manifest.Versioned{
+					SchemaVersion: 1,
+					MediaType:     "",
+				},
+				Config: distribution.Descriptor{
+					MediaType: "",
+					Digest:    "sha256:abc",
+				},
+			},
+		}
+		ep, err := GetRegistryEndpoint("")
+		require.NoError(t, err)
+		client, err := NewClient(ep, "", "")
+
+		require.NoError(t, err)
+		err = client.NewRepository("test/test")
+		require.NoError(t, err)
+		_, err = client.TagMetadata(meta1, &options.ManifestOptions{})
+		require.Error(t, err) // invalid digest format
+	})
+	t.Run("ocischema DeserializedImageIndex empty index not supported", func(t *testing.T) {
+		meta1 := &ocischema.DeserializedImageIndex{
+			ImageIndex: ocischema.ImageIndex{
+				Versioned: manifest.Versioned{
+					SchemaVersion: 1,
+					MediaType:     "",
+				},
+				Manifests:   nil,
+				Annotations: nil,
+			},
+		}
+		ep, err := GetRegistryEndpoint("")
+		require.NoError(t, err)
+		client, err := NewClient(ep, "", "")
+
+		require.NoError(t, err)
+		err = client.NewRepository("test/test")
+		require.NoError(t, err)
+		_, err = client.TagMetadata(meta1, &options.ManifestOptions{})
+		require.Error(t, err) // empty index not supported
+	})
+	t.Run("ocischema DeserializedImageIndex empty manifestlist not supported", func(t *testing.T) {
+		meta1 := &manifestlist.DeserializedManifestList{
+			ManifestList: manifestlist.ManifestList{
+				Versioned: manifest.Versioned{
+					SchemaVersion: 1,
+					MediaType:     "",
+				},
+				Manifests: nil,
+			},
+		}
+		ep, err := GetRegistryEndpoint("")
+		require.NoError(t, err)
+		client, err := NewClient(ep, "", "")
+
+		require.NoError(t, err)
+		err = client.NewRepository("test/test")
+		require.NoError(t, err)
+		_, err = client.TagMetadata(meta1, &options.ManifestOptions{})
+		require.Error(t, err) // empty manifestlist not supported
 	})
 }
 
@@ -493,6 +595,15 @@ func TestPing(t *testing.T) {
 		_, err := ping(mockManager, ep, "")
 		require.Error(t, err)
 		assert.ErrorContains(t, err, "does not seem to be a valid v2 Docker Registry API")
+	})
+
+	t.Run("Empty Registry API", func(t *testing.T) {
+		mockManager := new(mocks.Manager)
+		ep := &RegistryEndpoint{RegistryAPI: ""}
+		mockManager.On("AddResponse", mock.Anything).Return(nil)
+		_, err := ping(mockManager, ep, "")
+		require.Error(t, err)
+		assert.ErrorContains(t, err, "unsupported protocol scheme")
 	})
 
 }
