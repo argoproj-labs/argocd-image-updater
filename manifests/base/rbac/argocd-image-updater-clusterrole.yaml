@@ -13,3 +13,12 @@ rules:
       - events
     verbs:
       - create
+  - apiGroups:
+      - argoproj.io
+    resources:
+      - applications
+    verbs:
+      - get
+      - list
+      - update
+      - patch

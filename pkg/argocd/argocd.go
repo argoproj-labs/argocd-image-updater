@@ -26,11 +26,11 @@ type k8sClient struct {
 }
 
 func (client *k8sClient) GetApplication(ctx context.Context, appName string) (*v1alpha1.Application, error) {
-	return client.kubeClient.ApplicationsClientset.ArgoprojV1alpha1().Applications(client.kubeClient.Namespace).Get(ctx, appName, v1.GetOptions{})
+	return client.kubeClient.ApplicationsClientset.ArgoprojV1alpha1().Applications("").Get(ctx, appName, v1.GetOptions{})
 }
 
 func (client *k8sClient) ListApplications(labelSelector string) ([]v1alpha1.Application, error) {
-	list, err := client.kubeClient.ApplicationsClientset.ArgoprojV1alpha1().Applications(client.kubeClient.Namespace).List(context.TODO(), v1.ListOptions{LabelSelector: labelSelector})
+	list, err := client.kubeClient.ApplicationsClientset.ArgoprojV1alpha1().Applications("").List(context.TODO(), v1.ListOptions{LabelSelector: labelSelector})
 	if err != nil {
 		return nil, err
 	}
@@ -39,13 +39,13 @@ func (client *k8sClient) ListApplications(labelSelector string) ([]v1alpha1.Appl
 
 func (client *k8sClient) UpdateSpec(ctx context.Context, spec *application.ApplicationUpdateSpecRequest) (*v1alpha1.ApplicationSpec, error) {
 	for {
-		app, err := client.kubeClient.ApplicationsClientset.ArgoprojV1alpha1().Applications(client.kubeClient.Namespace).Get(ctx, spec.GetName(), v1.GetOptions{})
+		app, err := client.kubeClient.ApplicationsClientset.ArgoprojV1alpha1().Applications(spec.GetAppNamespace()).Get(ctx, spec.GetName(), v1.GetOptions{})
 		if err != nil {
 			return nil, err
 		}
 		app.Spec = *spec.Spec
 
-		updatedApp, err := client.kubeClient.ApplicationsClientset.ArgoprojV1alpha1().Applications(client.kubeClient.Namespace).Update(ctx, app, v1.UpdateOptions{})
+		updatedApp, err := client.kubeClient.ApplicationsClientset.ArgoprojV1alpha1().Applications(spec.GetAppNamespace()).Update(ctx, app, v1.UpdateOptions{})
 		if err != nil {
 			if errors.IsConflict(err) {
 				continue
@@ -54,11 +54,9 @@ func (client *k8sClient) UpdateSpec(ctx context.Context, spec *application.Appli
 		}
 		return &updatedApp.Spec, nil
 	}
-
 }
 
-// NewAPIClient creates a new API client for ArgoCD and connects to the ArgoCD
-// API server.
+// NewK8SClient creates a new kubernetes client to interact with kubernetes api-server.
 func NewK8SClient(kubeClient *kube.KubernetesClient) (ArgoCD, error) {
 	return &k8sClient{kubeClient: kubeClient}, nil
 }
