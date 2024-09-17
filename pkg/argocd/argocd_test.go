@@ -1024,19 +1024,24 @@ func TestKubernetesClient(t *testing.T) {
 	t.Run("List applications", func(t *testing.T) {
 		apps, err := client.ListApplications("")
 		require.NoError(t, err)
-		require.Len(t, apps, 1)
-
-		assert.ElementsMatch(t, []string{"test-app1"}, []string{app1.Name})
+		require.Len(t, apps, 2)
+		assert.ElementsMatch(t, []string{"test-app1", "test-app2"}, []string{app1.Name, app2.Name})
 	})
 
-	t.Run("Get application successful", func(t *testing.T) {
+	t.Run("Get application test-app1 successful", func(t *testing.T) {
 		app, err := client.GetApplication(context.TODO(), "test-app1")
 		require.NoError(t, err)
 		assert.Equal(t, "test-app1", app.GetName())
 	})
 
+	t.Run("Get application test-app2 successful", func(t *testing.T) {
+		app, err := client.GetApplication(context.TODO(), "test-app2")
+		require.NoError(t, err)
+		assert.Equal(t, "test-app2", app.GetName())
+	})
+
 	t.Run("Get application not found", func(t *testing.T) {
-		_, err := client.GetApplication(context.TODO(), "test-app2")
+		_, err := client.GetApplication(context.TODO(), "test-app-non-existent")
 		require.Error(t, err)
 		assert.True(t, errors.IsNotFound(err))
 	})
@@ -1060,7 +1065,6 @@ func TestKubernetesClient_UpdateSpec_Conflict(t *testing.T) {
 	})
 
 	client, err := NewK8SClient(&kube.KubernetesClient{
-		Namespace:             "testns",
 		ApplicationsClientset: clientset,
 	})
 	require.NoError(t, err)

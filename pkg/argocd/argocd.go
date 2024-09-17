@@ -25,27 +25,66 @@ type k8sClient struct {
 	kubeClient *kube.KubernetesClient
 }
 
+// GetApplication retrieves an application by name across all namespaces.
 func (client *k8sClient) GetApplication(ctx context.Context, appName string) (*v1alpha1.Application, error) {
-	return client.kubeClient.ApplicationsClientset.ArgoprojV1alpha1().Applications("").Get(ctx, appName, v1.GetOptions{})
-}
+	log.Debugf("Getting application %s across all namespaces", appName)
 
-func (client *k8sClient) ListApplications(labelSelector string) ([]v1alpha1.Application, error) {
-	list, err := client.kubeClient.ApplicationsClientset.ArgoprojV1alpha1().Applications("").List(context.TODO(), v1.ListOptions{LabelSelector: labelSelector})
+	// List all applications across all namespaces (using empty labelSelector)
+	appList, err := client.ListApplications("")
 	if err != nil {
+		log.Errorf("Error listing applications: %v", err)
 		return nil, err
 	}
+
+	// Filter applications by name using nameMatchesPattern
+	app, err := findApplicationByName(appList, appName)
+	if err != nil {
+		log.Errorf("Error getting application: %v", err)
+		return nil, err
+	}
+
+	// Retrieve the application in the specified namespace
+	return client.kubeClient.ApplicationsClientset.ArgoprojV1alpha1().Applications(app.Namespace).Get(ctx, appName, v1.GetOptions{})
+}
+
+// ListApplications lists all applications across all namespaces.
+func (client *k8sClient) ListApplications(labelSelector string) ([]v1alpha1.Application, error) {
+
+	list, err := client.kubeClient.ApplicationsClientset.ArgoprojV1alpha1().Applications(v1.NamespaceAll).List(context.TODO(), v1.ListOptions{LabelSelector: labelSelector})
+	if err != nil {
+		log.Errorf("Error listing applications: %v", err)
+		return nil, err
+	}
+
+	log.Debugf("Applications listed: %d", len(list.Items))
 	return list.Items, nil
+}
+
+// findApplicationByName filters the list of applications by name using nameMatchesPattern.
+func findApplicationByName(appList []v1alpha1.Application, appName string) (*v1alpha1.Application, error) {
+	for _, app := range appList {
+		log.Debugf("Found application: %s in namespace %s", app.Name, app.Namespace)
+		if nameMatchesPattern(app.Name, []string{appName}) {
+			log.Debugf("Successfully found application: %s", app.Name)
+			return &app, nil
+		}
+	}
+
+	// If the application is not found, return an error
+	err := errors.NewNotFound(v1alpha1.Resource("application"), appName)
+	return nil, err
 }
 
 func (client *k8sClient) UpdateSpec(ctx context.Context, spec *application.ApplicationUpdateSpecRequest) (*v1alpha1.ApplicationSpec, error) {
 	for {
-		app, err := client.kubeClient.ApplicationsClientset.ArgoprojV1alpha1().Applications(spec.GetAppNamespace()).Get(ctx, spec.GetName(), v1.GetOptions{})
+		app, err := client.GetApplication(ctx, spec.GetName())
 		if err != nil {
+			log.Errorf("Could not get Application: %s", spec.GetName())
 			return nil, err
 		}
 		app.Spec = *spec.Spec
 
-		updatedApp, err := client.kubeClient.ApplicationsClientset.ArgoprojV1alpha1().Applications(spec.GetAppNamespace()).Update(ctx, app, v1.UpdateOptions{})
+		updatedApp, err := client.kubeClient.ApplicationsClientset.ArgoprojV1alpha1().Applications(app.Namespace).Update(ctx, app, v1.UpdateOptions{})
 		if err != nil {
 			if errors.IsConflict(err) {
 				continue
