@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/image"
@@ -32,67 +33,87 @@ func (client *k8sClient) GetApplication(ctx context.Context, appName string) (*v
 	// List all applications across all namespaces (using empty labelSelector)
 	appList, err := client.ListApplications("")
 	if err != nil {
-		log.Errorf("Error listing applications: %v", err)
-		return nil, err
+		return nil, fmt.Errorf("error listing applications: %w", err)
 	}
 
 	// Filter applications by name using nameMatchesPattern
 	app, err := findApplicationByName(appList, appName)
 	if err != nil {
-		log.Errorf("Error getting application: %v", err)
-		return nil, err
+		log.Errorf("error getting application: %v", err)
+		return nil, fmt.Errorf("error getting application: %w", err)
 	}
 
 	// Retrieve the application in the specified namespace
-	return client.kubeClient.ApplicationsClientset.ArgoprojV1alpha1().Applications(app.Namespace).Get(ctx, appName, v1.GetOptions{})
+	return client.kubeClient.ApplicationsClientset.ArgoprojV1alpha1().Applications(app.Namespace).Get(ctx, app.Name, v1.GetOptions{})
 }
 
 // ListApplications lists all applications across all namespaces.
 func (client *k8sClient) ListApplications(labelSelector string) ([]v1alpha1.Application, error) {
-
 	list, err := client.kubeClient.ApplicationsClientset.ArgoprojV1alpha1().Applications(v1.NamespaceAll).List(context.TODO(), v1.ListOptions{LabelSelector: labelSelector})
 	if err != nil {
-		log.Errorf("Error listing applications: %v", err)
-		return nil, err
+		return nil, fmt.Errorf("error listing applications: %w", err)
 	}
-
 	log.Debugf("Applications listed: %d", len(list.Items))
 	return list.Items, nil
 }
 
 // findApplicationByName filters the list of applications by name using nameMatchesPattern.
 func findApplicationByName(appList []v1alpha1.Application, appName string) (*v1alpha1.Application, error) {
+	var matchedApps []*v1alpha1.Application
+
 	for _, app := range appList {
 		log.Debugf("Found application: %s in namespace %s", app.Name, app.Namespace)
 		if nameMatchesPattern(app.Name, []string{appName}) {
-			log.Debugf("Successfully found application: %s", app.Name)
-			return &app, nil
+			log.Debugf("Application %s matches the pattern", app.Name)
+			matchedApps = append(matchedApps, &app)
 		}
 	}
 
-	// If the application is not found, return an error
-	err := errors.NewNotFound(v1alpha1.Resource("application"), appName)
-	return nil, err
+	if len(matchedApps) == 0 {
+		return nil, fmt.Errorf("application %s not found", appName)
+	}
+
+	if len(matchedApps) > 1 {
+		return nil, fmt.Errorf("multiple applications found matching %s", appName)
+	}
+
+	return matchedApps[0], nil
 }
 
 func (client *k8sClient) UpdateSpec(ctx context.Context, spec *application.ApplicationUpdateSpecRequest) (*v1alpha1.ApplicationSpec, error) {
-	for {
+	const defaultMaxRetries = 7
+	const baseDelay = 100 * time.Millisecond // Initial delay before retrying
+
+	// Allow overriding max retries for testing purposes
+	maxRetries := defaultMaxRetries
+	if overrideRetries, ok := os.LookupEnv("OVERRIDE_MAX_RETRIES"); ok {
+		var retries int
+		if _, err := fmt.Sscanf(overrideRetries, "%d", &retries); err == nil {
+			maxRetries = retries
+		}
+	}
+
+	for attempts := 0; attempts < maxRetries; attempts++ {
 		app, err := client.GetApplication(ctx, spec.GetName())
 		if err != nil {
-			log.Errorf("Could not get Application: %s", spec.GetName())
-			return nil, err
+			log.Errorf("could not get application: %s, error: %v", spec.GetName(), err)
+			return nil, fmt.Errorf("error getting application: %w", err)
 		}
 		app.Spec = *spec.Spec
 
 		updatedApp, err := client.kubeClient.ApplicationsClientset.ArgoprojV1alpha1().Applications(app.Namespace).Update(ctx, app, v1.UpdateOptions{})
 		if err != nil {
 			if errors.IsConflict(err) {
+				log.Warnf("conflict occurred while updating application: %s, retrying... (%d/%d)", spec.GetName(), attempts+1, maxRetries)
+				time.Sleep(baseDelay * (1 << attempts)) // Exponential backoff, multiply baseDelay by 2^attempts
 				continue
 			}
-			return nil, err
+			log.Errorf("could not update application: %s, error: %v", spec.GetName(), err)
+			return nil, fmt.Errorf("error updating application: %w", err)
 		}
 		return &updatedApp.Spec, nil
 	}
+	return nil, fmt.Errorf("max retries(%d) reached while updating application: %s", maxRetries, spec.GetName())
 }
 
 // NewK8SClient creates a new kubernetes client to interact with kubernetes api-server.
