@@ -1,0 +1,16 @@
+resources:
+  - https://github.com/argoproj-labs/argocd-image-updater/manifests/base?ref=stable
+
+configMapGenerator:
+  - name: argocd-image-updater-ssh-config
+    behavior: merge
+    files:
+      - config
+
+patches:
+  - path: clusterrolebinding.json
+    target:
+      group: rbac.authorization.k8s.io
+      version: v1
+      kind: ClusterRoleBinding
+      name: argocd-image-updater
