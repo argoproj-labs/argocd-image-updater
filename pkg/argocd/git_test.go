@@ -270,19 +270,49 @@ func Test_updateKustomizeFile(t *testing.T) {
 `,
 			filter: filter,
 		},
+		{
+			name: "no-change",
+			content: `images:
+- name: foo
+  digest: sha23456
+`,
+			wantContent: "",
+			filter:      filter,
+		},
+		{
+			name: "invalid-path",
+			content: `images:
+- name: foo
+  digest: sha12345
+`,
+			wantContent: "",
+			filter:      filter,
+			wantErr:     true,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			path := makeTmpKustomization(t, []byte(tt.content))
-			err := updateKustomizeFile(tt.filter, path)
+			var path string
+			if tt.wantErr {
+				path = "/invalid-path"
+			} else {
+				path = makeTmpKustomization(t, []byte(tt.content))
+			}
+
+			err, skip := updateKustomizeFile(tt.filter, path)
 			if tt.wantErr {
 				assert.Error(t, err)
+				assert.False(t, skip)
+			} else if tt.name == "no-change" {
+				assert.Nil(t, err)
+				assert.True(t, skip)
 			} else {
 				got, err := os.ReadFile(path)
 				if err != nil {
 					t.Fatal(err)
 				}
 				assert.Equal(t, tt.wantContent, string(got))
+				assert.False(t, skip)
 			}
 		})
 	}
