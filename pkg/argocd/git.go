@@ -246,7 +246,7 @@ func commitChangesGit(app *v1alpha1.Application, wbc *WriteBackConfig, changeLis
 	if err != nil {
 		return err
 	}
-	err = gitC.Push("origin", pushBranch, false)
+	err = gitC.Push("origin", pushBranch, pushBranch != checkOutBranch)
 	if err != nil {
 		return err
 	}
