@@ -56,6 +56,7 @@ func NewTestCommand() *cobra.Command {
 			fmt.Fprintf(c.ErrOrStderr(), "%s is not set\n", git.ASKPASS_NONCE_ENV)
 			return
 		}
+		// nolint:staticcheck
 		conn, err := grpc.DialContext(ctx, "bufnet", grpc.WithContextDialer(bufDialer), grpc.WithTransportCredentials(insecure.NewCredentials()))
 		if err != nil {
 			fmt.Fprintf(c.ErrOrStderr(), "failed to connect: %v\n", err)
