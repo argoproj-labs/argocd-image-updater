@@ -1,0 +1,90 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: image-updater-e2e-006-01
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: argocd-application-controller
+  namespace: image-updater-e2e-006-01  # Target namespace where the app will be deployed
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "services", "replicationcontrollers"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "daemonsets", "replicasets", "statefulsets"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["extensions"]
+    resources: ["ingresses"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: argocd-application-controller-binding
+  namespace: image-updater-e2e-006-01  # Namespace where the Argo CD application is managed
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: argocd-application-controller
+  namespace: argocd-image-updater-e2e  # Namespace where the Argo CD application controller is running
+subjects:
+  - kind: ServiceAccount
+    name: argocd-application-controller
+    namespace: argocd-image-updater-e2e  # Namespace where the Argo CD application controller is running
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cmd-params-cm
+  namespace: argocd-image-updater-e2e
+  labels:
+    app.kubernetes.io/name: argocd-cmd-params-cm
+    app.kubernetes.io/part-of: argocd
+data:
+  application.namespaces: '*'
+---
+kind: AppProject
+apiVersion: argoproj.io/v1alpha1
+metadata:
+  name: project-one
+  namespace: argocd-image-updater-e2e
+spec:
+  sourceRepos:
+    - '*'
+  destinations:
+    - namespace: '*'
+      server: '*'
+  sourceNamespaces:
+  - image-updater-e2e-006-01
+---
+apiVersion: kuttl.dev/v1beta1
+kind: TestStep
+commands:
+- script: |
+    kubectl rollout restart -n argocd-image-updater-e2e deployment argocd-server
+    kubectl rollout restart -n argocd-image-updater-e2e statefulset argocd-application-controller
+    sleep 30
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: image-updater-006
+  namespace: image-updater-e2e-006-01
+  annotations:
+    argocd-image-updater.argoproj.io/image-list: guestbook=gcr.io/heptio-images/ks-guestbook-demo:~0
+    argocd-image-updater.argoproj.io/guestbook.update-strategy: semver
+spec:
+  project: project-one
+  source:
+    repoURL: https://github.com/argoproj/argocd-example-apps.git
+    path: kustomize-guestbook
+    targetRevision: HEAD
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: image-updater-e2e-006-01
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
