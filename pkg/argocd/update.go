@@ -559,7 +559,7 @@ func setHelmValue(currentValues *yaml.MapSlice, key string, value interface{}) e
 	keys := strings.Split(key, ".")
 	current := currentValues
 	var parent *yaml.MapSlice
-	var parentIdx int
+	parentIdx := -1
 
 	for i, k := range keys {
 		if idx, found := findHelmValuesKey(*current, k); found {
@@ -590,11 +590,19 @@ func setHelmValue(currentValues *yaml.MapSlice, key string, value interface{}) e
 			if parent == nil {
 				*currentValues = newParent
 			} else {
+				// if parentIdx has not been set (parent element is also new), set it to the last element
+				if parentIdx == -1 {
+					parentIdx = len(*parent) - 1
+					if parentIdx < 0 {
+						parentIdx = 0
+					}
+				}
 				(*parent)[parentIdx].Value = newParent
 			}
 
 			parent = &newParent
 			current = &newCurrent
+			parentIdx = -1
 		}
 	}
 
