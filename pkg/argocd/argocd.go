@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
+	"github.com/argoproj-labs/argocd-image-updater/pkg/env"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/image"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/kube"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/log"
@@ -31,7 +32,7 @@ func (client *k8sClient) GetApplication(ctx context.Context, appName string) (*v
 	log.Debugf("Getting application %s across all namespaces", appName)
 
 	// List all applications across all namespaces (using empty labelSelector)
-	appList, err := client.ListApplications("")
+	appList, err := client.ListApplications(v1.NamespaceAll)
 	if err != nil {
 		return nil, fmt.Errorf("error listing applications: %w", err)
 	}
@@ -44,7 +45,7 @@ func (client *k8sClient) GetApplication(ctx context.Context, appName string) (*v
 	}
 
 	// Retrieve the application in the specified namespace
-	return client.kubeClient.ApplicationsClientset.ArgoprojV1alpha1().Applications(app.Namespace).Get(ctx, app.Name, v1.GetOptions{})
+	return app, nil
 }
 
 // ListApplications lists all applications across all namespaces.
@@ -85,13 +86,7 @@ func (client *k8sClient) UpdateSpec(ctx context.Context, spec *application.Appli
 	const baseDelay = 100 * time.Millisecond // Initial delay before retrying
 
 	// Allow overriding max retries for testing purposes
-	maxRetries := defaultMaxRetries
-	if overrideRetries, ok := os.LookupEnv("OVERRIDE_MAX_RETRIES"); ok {
-		var retries int
-		if _, err := fmt.Sscanf(overrideRetries, "%d", &retries); err == nil {
-			maxRetries = retries
-		}
-	}
+	maxRetries := env.ParseNumFromEnv("OVERRIDE_MAX_RETRIES", defaultMaxRetries, 0, 100)
 
 	for attempts := 0; attempts < maxRetries; attempts++ {
 		app, err := client.GetApplication(ctx, spec.GetName())
