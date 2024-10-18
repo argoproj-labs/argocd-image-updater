@@ -1500,6 +1500,20 @@ replicas: 1
 		require.NoError(t, err)
 		assert.NotEmpty(t, yaml)
 		assert.Equal(t, strings.TrimSpace(strings.ReplaceAll(expected, "\t", "  ")), strings.TrimSpace(string(yaml)))
+
+		// when image.spec.foo fields are missing in the target helm value file,
+		// they should be auto created without corrupting any other pre-existing elements.
+		originalData = []byte("test-value1: one")
+		expected = `
+test-value1: one
+image:
+  spec:
+    foo: nginx:v1.0.0
+`
+		yaml, err = marshalParamsOverride(&app, originalData)
+		require.NoError(t, err)
+		assert.NotEmpty(t, yaml)
+		assert.Equal(t, strings.TrimSpace(strings.ReplaceAll(expected, "\t", "  ")), strings.TrimSpace(string(yaml)))
 	})
 
 	t.Run("Valid Helm source with Helm values file with multiple images", func(t *testing.T) {
@@ -1585,6 +1599,25 @@ redis.image.tag: v0.0.0
 replicas: 1
 `)
 		yaml, err := marshalParamsOverride(&app, originalData)
+		require.NoError(t, err)
+		assert.NotEmpty(t, yaml)
+		assert.Equal(t, strings.TrimSpace(strings.ReplaceAll(expected, "\t", "  ")), strings.TrimSpace(string(yaml)))
+
+		// when nginx.* and redis.* fields are missing in the target helm value file,
+		// they should be auto created without corrupting any other pre-existing elements.
+		originalData = []byte("test-value1: one")
+		expected = `
+test-value1: one
+nginx:
+  image:
+    tag: v1.0.0
+    name: nginx
+redis:
+  image:
+    tag: v1.0.0
+    name: redis
+`
+		yaml, err = marshalParamsOverride(&app, originalData)
 		require.NoError(t, err)
 		assert.NotEmpty(t, yaml)
 		assert.Equal(t, strings.TrimSpace(strings.ReplaceAll(expected, "\t", "  ")), strings.TrimSpace(string(yaml)))
@@ -1695,6 +1728,7 @@ replicas: 1
 
 	t.Run("Failed to setValue image parameter name", func(t *testing.T) {
 		expected := `
+test-value1: one
 image:
   name: nginx
   tag: v1.0.0
@@ -1743,6 +1777,7 @@ replicas: 1
 		}
 
 		originalData := []byte(`
+test-value1: one
 image:
   name: nginx
 replicas: 1
