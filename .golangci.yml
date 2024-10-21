@@ -17,4 +17,3 @@ issues:
     - ".*\\.pb\\.go"
   exclude-dirs:
     - vendor/
-    - registry-scanner/
