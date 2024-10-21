@@ -30,8 +30,4 @@ test:
 lint:
 	golangci-lint run
 
-.PHONY: registry-scanner-image
-registry-scanner-image:
-	docker build -t $(IMAGE_PREFIX)registry-scanner . -f Dockerfile
-	@if [ "$(DOCKER_PUSH)" = "true" ] ; then docker push $(IMAGE_PREFIX)registry-scanner:$(IMAGE_TAG) ; fi
 

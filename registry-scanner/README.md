@@ -9,16 +9,8 @@ The registry-scanner is a reusable library for registry inspections and fetching
 
 ## Current status
 
-Registry Scanner is under active development. We would not recommend it
-yet for *critical* production workloads, but feel free to give it a spin.
+Registry Scanner is currently in active development and not yet ready for public use. We're working on preparing the first release, which will be suitable for public availability.
 
-We're very interested in feedback on usability and the user experience as well
-as in bug discoveries and enhancement requests.
-
-**Important note:** Until the first stable version (i.e. `v1.0`) is released,
-breaking changes between the releases must be expected. We will do our best
-to indicate all breaking changes (and how to un-break them) in the
-[Changelog](CHANGELOG.md)
 
 ## Contributing
 
