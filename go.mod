@@ -204,3 +204,5 @@ replace (
 	k8s.io/sample-controller => k8s.io/sample-controller v0.26.11
 
 )
+
+replace github.com/argoproj-labs/argocd-image-updater/registry-scanner => ../registry-scanner
