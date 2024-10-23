@@ -423,8 +423,19 @@ func SetHelmImage(app *v1alpha1.Application, newImage *image.ContainerImage) err
 	// we simply ignore any image-name and image-tag parameters that might be
 	// there.
 	if hpImageSpec != "" {
-		p := v1alpha1.HelmParameter{Name: hpImageSpec, Value: newImage.GetFullNameWithTag(), ForceString: true}
-		mergeParams = append(mergeParams, p)
+		// Here is the case value1,value2
+		if strings.Contains(hpImageSpec, ",") {
+			var parameters = strings.Split(strings.ReplaceAll(hpImageSpec, " ", ""), ",")
+			for _, parameterName := range parameters {
+				if parameterName != "" {
+					p := v1alpha1.HelmParameter{Name: parameterName, Value: newImage.GetFullNameWithTag(), ForceString: true}
+					mergeParams = append(mergeParams, p)
+				}
+			}
+		} else {
+			p := v1alpha1.HelmParameter{Name: hpImageSpec, Value: newImage.GetFullNameWithTag(), ForceString: true}
+			mergeParams = append(mergeParams, p)
+		}
 	} else {
 		if hpImageName != "" {
 			// Here is the case value1,value2
