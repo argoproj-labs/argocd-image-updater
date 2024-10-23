@@ -431,8 +431,10 @@ func SetHelmImage(app *v1alpha1.Application, newImage *image.ContainerImage) err
 			if strings.Contains(hpImageName, ",") {
 				var parameters = strings.Split(strings.ReplaceAll(hpImageName, " ", ""), ",")
 				for _, parameterName := range parameters {
-					p := v1alpha1.HelmParameter{Name: parameterName, Value: newImage.GetFullNameWithoutTag(), ForceString: true}
-					mergeParams = append(mergeParams, p)
+					if parameterName != "" {
+						p := v1alpha1.HelmParameter{Name: parameterName, Value: newImage.GetFullNameWithoutTag(), ForceString: true}
+						mergeParams = append(mergeParams, p)
+					}
 				}
 			} else {
 				p := v1alpha1.HelmParameter{Name: hpImageName, Value: newImage.GetFullNameWithoutTag(), ForceString: true}
@@ -444,8 +446,10 @@ func SetHelmImage(app *v1alpha1.Application, newImage *image.ContainerImage) err
 			if strings.Contains(hpImageTag, ",") {
 				var parameters = strings.Split(strings.ReplaceAll(hpImageTag, " ", ""), ",")
 				for _, parameterName := range parameters {
-					p := v1alpha1.HelmParameter{Name: parameterName, Value: newImage.GetTagWithDigest(), ForceString: true}
-					mergeParams = append(mergeParams, p)
+					if parameterName != "" {
+						p := v1alpha1.HelmParameter{Name: parameterName, Value: newImage.GetTagWithDigest(), ForceString: true}
+						mergeParams = append(mergeParams, p)
+					}
 				}
 			} else {
 				p := v1alpha1.HelmParameter{Name: hpImageTag, Value: newImage.GetTagWithDigest(), ForceString: true}
