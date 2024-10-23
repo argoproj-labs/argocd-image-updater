@@ -41,7 +41,7 @@ jobs:
         run: |
           set -ex
           docker login --username "${DOCKER_USERNAME}" --password "${DOCKER_PASSWORD}" quay.io
-          IMAGE_PUSH=yes make multiarch-image
+          IMAGE_PUSH=yes IMAGE_TAG=v${{ steps.version.outputs.version }} make multiarch-image
         env:
           DOCKER_USERNAME: ${{ secrets.QUAY_USERNAME }}
           DOCKER_PASSWORD: ${{ secrets.QUAY_TOKEN }}
