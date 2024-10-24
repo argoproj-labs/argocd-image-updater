@@ -68,7 +68,7 @@ argocd-image-updater test nginx --allow-tags '^1.19.\d+(\-.*)*$' --update-strate
 			var err error
 			if !disableKubernetes {
 				ctx := context.Background()
-				kubeClient, err = getKubeConfig(ctx, "", kubeConfig)
+				kubeClient, err = getKubeConfig(ctx, "", true, kubeConfig)
 				if err != nil {
 					log.Fatalf("could not create K8s client: %v", err)
 				}

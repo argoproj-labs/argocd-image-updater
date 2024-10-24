@@ -26,7 +26,7 @@ func getPrintableHealthPort(port int) string {
 	}
 }
 
-func getKubeConfig(ctx context.Context, namespace string, kubeConfig string) (*kube.KubernetesClient, error) {
+func getKubeConfig(ctx context.Context, namespace string, namespaced bool, kubeConfig string) (*kube.KubernetesClient, error) {
 	var fullKubeConfigPath string
 	var kubeClient *kube.KubernetesClient
 	var err error
@@ -39,12 +39,12 @@ func getKubeConfig(ctx context.Context, namespace string, kubeConfig string) (*k
 	}
 
 	if fullKubeConfigPath != "" {
-		log.Debugf("Creating Kubernetes client from %s", fullKubeConfigPath)
+		log.Debugf("Creating Kubernetes client from %s for namespace '%s'", fullKubeConfigPath, namespace)
 	} else {
-		log.Debugf("Creating in-cluster Kubernetes client")
+		log.Debugf("Creating in-cluster Kubernetes client for namespace '%s'", namespace)
 	}
 
-	kubeClient, err = kube.NewKubernetesClientFromConfig(ctx, namespace, fullKubeConfigPath)
+	kubeClient, err = kube.NewKubernetesClientFromConfig(ctx, namespace, namespaced, fullKubeConfigPath)
 	if err != nil {
 		return nil, err
 	}
