@@ -309,31 +309,34 @@ func (client *argoCD) UpdateSpec(ctx context.Context, in *application.Applicatio
 // getHelmParamNamesFromAnnotation inspects the given annotations for whether
 // the annotations for specifying Helm parameter names are being set and
 // returns their values.
-func getHelmParamNamesFromAnnotation(annotations map[string]string, img *image.ContainerImage) (string, string) {
+func getHelmParamNamesFromAnnotation(annotations map[string]string, img *image.ContainerImage) ([]string, error) {
 	// Return default values without symbolic name given
 	if img.ImageAlias == "" {
-		return "image.name", "image.tag"
+		return []string{"image.name", "image.tag"}, nil
 	}
-
-	var annotationName, helmParamName, helmParamVersion string
 
 	// Image spec is a full-qualified specifier, if we have it, we return early
 	if param := img.GetParameterHelmImageSpec(annotations); param != "" {
-		log.Tracef("found annotation %s", annotationName)
-		return strings.TrimSpace(param), ""
-	}
+		log.Tracef("found image-spec annotation %s", param)
+		return []string{strings.TrimSpace(param)}, nil
+	} else {
+		var helmParamName, helmParamVersion string
+		if param := img.GetParameterHelmImageName(annotations); param != "" {
+			log.Tracef("found image-name annotation %s", param)
+			helmParamName = param
+		} else {
+			return nil, fmt.Errorf("could not find an image-spec or image-name annotation for image %s", img.ImageAlias)
+		}
 
-	if param := img.GetParameterHelmImageName(annotations); param != "" {
-		log.Tracef("found annotation %s", annotationName)
-		helmParamName = param
-	}
+		if param := img.GetParameterHelmImageTag(annotations); param != "" {
+			log.Tracef("found image-tag annotation %s", param)
+			helmParamVersion = param
+		} else {
+			return nil, fmt.Errorf("could not find an image-tag annotation for image %s", img.ImageAlias)
+		}
 
-	if param := img.GetParameterHelmImageTag(annotations); param != "" {
-		log.Tracef("found annotation %s", annotationName)
-		helmParamVersion = param
+		return []string{helmParamName, helmParamVersion}, nil
 	}
-
-	return helmParamName, helmParamVersion
 }
 
 // Get a named helm parameter from a list of parameters

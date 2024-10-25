@@ -1383,6 +1383,56 @@ replicas: 1
 		assert.Equal(t, strings.TrimSpace(strings.ReplaceAll(expected, "\t", "  ")), strings.TrimSpace(string(yaml)))
 	})
 
+	t.Run("Valid Helm source with Helm values file and image-spec annotation", func(t *testing.T) {
+		expected := `
+image.spec: nginx:v1.0.0
+replicas: 1
+`
+		app := v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name: "testapp",
+				Annotations: map[string]string{
+					"argocd-image-updater.argoproj.io/image-list":            "nginx",
+					"argocd-image-updater.argoproj.io/write-back-method":     "git",
+					"argocd-image-updater.argoproj.io/write-back-target":     "helmvalues:./test-values.yaml",
+					"argocd-image-updater.argoproj.io/nginx.helm.image-spec": "image.spec",
+				},
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: &v1alpha1.ApplicationSource{
+					RepoURL:        "https://example.com/example",
+					TargetRevision: "main",
+					Helm: &v1alpha1.ApplicationSourceHelm{
+						Parameters: []v1alpha1.HelmParameter{
+							{
+								Name:        "image.spec",
+								Value:       "nginx:v1.0.0",
+								ForceString: true,
+							},
+						},
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypeHelm,
+				Summary: v1alpha1.ApplicationSummary{
+					Images: []string{
+						"nginx:v0.0.0",
+					},
+				},
+			},
+		}
+
+		originalData := []byte(`
+image.spec: nginx:v0.0.0
+replicas: 1
+`)
+		yaml, err := marshalParamsOverride(&app, originalData)
+		require.NoError(t, err)
+		assert.NotEmpty(t, yaml)
+		assert.Equal(t, strings.TrimSpace(strings.ReplaceAll(expected, "\t", "  ")), strings.TrimSpace(string(yaml)))
+	})
+
 	t.Run("Valid Helm source with Helm values file with multiple images", func(t *testing.T) {
 		expected := `
 nginx.image.name: nginx
@@ -1520,7 +1570,7 @@ replicas: 1
 `)
 		_, err := marshalParamsOverride(&app, originalData)
 		assert.Error(t, err)
-		assert.Equal(t, "failed to set image parameter name value: key image not found in the map", err.Error())
+		assert.Equal(t, "failed to set image.name parameter value: key image not found in the map", err.Error())
 	})
 
 	t.Run("Failed to setValue image parameter version", func(t *testing.T) {
@@ -1572,7 +1622,7 @@ replicas: 1
 `)
 		_, err := marshalParamsOverride(&app, originalData)
 		assert.Error(t, err)
-		assert.Equal(t, "failed to set image parameter version value: key image not found in the map", err.Error())
+		assert.Equal(t, "failed to set image.tag parameter value: key image not found in the map", err.Error())
 	})
 
 	t.Run("Missing annotation image-tag for helmvalues write-back-target", func(t *testing.T) {
@@ -1666,7 +1716,7 @@ replicas: 1
 		originalData := []byte(`random: yaml`)
 		_, err := marshalParamsOverride(&app, originalData)
 		assert.Error(t, err)
-		assert.Equal(t, "could not find an image-name annotation for image nginx", err.Error())
+		assert.Equal(t, "could not find an image-spec or image-name annotation for image nginx", err.Error())
 	})
 
 	t.Run("Image-name annotation value not found in Helm source parameters list", func(t *testing.T) {
@@ -1759,7 +1809,11 @@ replicas: 1
 			},
 		}
 
-		originalData := []byte(`random: yaml`)
+		originalData := []byte(`
+image.name: nginx
+image.tag: v0.0.0
+replicas: 1
+`)
 		_, err := marshalParamsOverride(&app, originalData)
 		assert.Error(t, err)
 		assert.Equal(t, "wrongimage.tag parameter not found", err.Error())

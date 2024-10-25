@@ -600,11 +600,10 @@ func Test_GetHelmParamAnnotations(t *testing.T) {
 			fmt.Sprintf(common.HelmParamImageSpecAnnotation, "myimg"): "image.blub",
 			fmt.Sprintf(common.HelmParamImageTagAnnotation, "myimg"):  "image.blab",
 		}
-		name, tag := getHelmParamNamesFromAnnotation(annotations, &image.ContainerImage{
+		names, _ := getHelmParamNamesFromAnnotation(annotations, &image.ContainerImage{
 			ImageAlias: "",
 		})
-		assert.Equal(t, "image.name", name)
-		assert.Equal(t, "image.tag", tag)
+		assert.Equal(t, []string{"image.name", "image.tag"}, names)
 	})
 
 	t.Run("Find existing image spec annotation", func(t *testing.T) {
@@ -612,11 +611,10 @@ func Test_GetHelmParamAnnotations(t *testing.T) {
 			fmt.Sprintf(common.HelmParamImageSpecAnnotation, "myimg"): "image.path",
 			fmt.Sprintf(common.HelmParamImageTagAnnotation, "myimg"):  "image.tag",
 		}
-		name, tag := getHelmParamNamesFromAnnotation(annotations, &image.ContainerImage{
+		names, _ := getHelmParamNamesFromAnnotation(annotations, &image.ContainerImage{
 			ImageAlias: "myimg",
 		})
-		assert.Equal(t, "image.path", name)
-		assert.Empty(t, tag)
+		assert.Equal(t, []string{"image.path"}, names)
 	})
 
 	t.Run("Find existing image name and image tag annotations", func(t *testing.T) {
@@ -624,11 +622,10 @@ func Test_GetHelmParamAnnotations(t *testing.T) {
 			fmt.Sprintf(common.HelmParamImageNameAnnotation, "myimg"): "image.name",
 			fmt.Sprintf(common.HelmParamImageTagAnnotation, "myimg"):  "image.tag",
 		}
-		name, tag := getHelmParamNamesFromAnnotation(annotations, &image.ContainerImage{
+		names, _ := getHelmParamNamesFromAnnotation(annotations, &image.ContainerImage{
 			ImageAlias: "myimg",
 		})
-		assert.Equal(t, "image.name", name)
-		assert.Equal(t, "image.tag", tag)
+		assert.Equal(t, []string{"image.name", "image.tag"}, names)
 	})
 
 	t.Run("Find non-existing image name and image tag annotations", func(t *testing.T) {
@@ -636,31 +633,32 @@ func Test_GetHelmParamAnnotations(t *testing.T) {
 			fmt.Sprintf(common.HelmParamImageNameAnnotation, "otherimg"): "image.name",
 			fmt.Sprintf(common.HelmParamImageTagAnnotation, "otherimg"):  "image.tag",
 		}
-		name, tag := getHelmParamNamesFromAnnotation(annotations, &image.ContainerImage{
+		_, err := getHelmParamNamesFromAnnotation(annotations, &image.ContainerImage{
 			ImageAlias: "myimg",
 		})
-		assert.Empty(t, name)
-		assert.Empty(t, tag)
+		assert.Error(t, err)
+		assert.Equal(t, "could not find an image-spec or image-name annotation for image myimg", err.Error())
 	})
 
 	t.Run("Find existing image tag annotations", func(t *testing.T) {
 		annotations := map[string]string{
-			fmt.Sprintf(common.HelmParamImageTagAnnotation, "myimg"): "image.tag",
+			fmt.Sprintf(common.HelmParamImageNameAnnotation, "otherimg"): "image.name",
+			fmt.Sprintf(common.HelmParamImageTagAnnotation, "myimg"):     "image.tag",
 		}
-		name, tag := getHelmParamNamesFromAnnotation(annotations, &image.ContainerImage{
+		_, err := getHelmParamNamesFromAnnotation(annotations, &image.ContainerImage{
 			ImageAlias: "myimg",
 		})
-		assert.Empty(t, name)
-		assert.Equal(t, "image.tag", tag)
+		assert.Error(t, err)
+		assert.Equal(t, "could not find an image-spec or image-name annotation for image myimg", err.Error())
 	})
 
 	t.Run("No suitable annotations found", func(t *testing.T) {
 		annotations := map[string]string{}
-		name, tag := getHelmParamNamesFromAnnotation(annotations, &image.ContainerImage{
+		_, err := getHelmParamNamesFromAnnotation(annotations, &image.ContainerImage{
 			ImageAlias: "myimg",
 		})
-		assert.Empty(t, name)
-		assert.Empty(t, tag)
+		assert.Error(t, err)
+		assert.Equal(t, "could not find an image-spec or image-name annotation for image myimg", err.Error())
 	})
 
 }
