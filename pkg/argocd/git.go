@@ -182,10 +182,6 @@ func commitChangesGit(app *v1alpha1.Application, wbc *WriteBackConfig, changeLis
 			return err
 		}
 	}
-	err = gitC.ShallowFetch(checkOutBranch, 1)
-	if err != nil {
-		return err
-	}
 
 	// The push branch is by default the same as the checkout branch, unless
 	// specified after a : separator git-branch annotation, in which case a
@@ -196,14 +192,30 @@ func commitChangesGit(app *v1alpha1.Application, wbc *WriteBackConfig, changeLis
 	if wbc.GitWriteBranch != "" {
 		logCtx.Debugf("Using branch template: %s", wbc.GitWriteBranch)
 		pushBranch = TemplateBranchName(wbc.GitWriteBranch, changeList)
-		if pushBranch != "" {
+		if pushBranch == "" {
+			return fmt.Errorf("Git branch name could not be created from the template: %s", wbc.GitWriteBranch)
+		}
+	}
+
+	// If the pushBranch already exists in the remote origin, directly use it.
+	// Otherwise, create the new pushBranch from checkoutBranch
+	if checkOutBranch != pushBranch {
+		fetchErr := gitC.ShallowFetch(pushBranch, 1)
+		if fetchErr != nil {
+			err = gitC.ShallowFetch(checkOutBranch, 1)
+			if err != nil {
+				return err
+			}
 			logCtx.Debugf("Creating branch '%s' and using that for push operations", pushBranch)
 			err = gitC.Branch(checkOutBranch, pushBranch)
 			if err != nil {
 				return err
 			}
-		} else {
-			return fmt.Errorf("Git branch name could not be created from the template: %s", wbc.GitWriteBranch)
+		}
+	} else {
+		err = gitC.ShallowFetch(checkOutBranch, 1)
+		if err != nil {
+			return err
 		}
 	}
 
