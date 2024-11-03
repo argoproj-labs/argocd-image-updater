@@ -3363,6 +3363,7 @@ replacements: []
 		app := app.DeepCopy()
 		gitMock := &gitmock.Client{}
 		gitMock.On("Init").Return(nil)
+		gitMock.On("Root").Return(t.TempDir())
 		gitMock.On("ShallowFetch", mock.Anything, mock.Anything).Return(nil)
 		gitMock.On("Checkout", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
 			args.Assert(t, "mydefaultbranch", false)
