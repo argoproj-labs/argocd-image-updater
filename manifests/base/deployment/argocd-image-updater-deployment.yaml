@@ -101,6 +101,12 @@ spec:
               name: argocd-image-updater-config
               key: kube.events
               optional: true
+        - name: ARGOCD_LOGLEVEL
+          valueFrom:
+            configMapKeyRef:
+              name: argocd-image-updater-config
+              key: log.level
+              optional: true
         livenessProbe:
           httpGet:
             path: /healthz
