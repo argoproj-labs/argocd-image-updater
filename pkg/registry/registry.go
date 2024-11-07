@@ -75,7 +75,10 @@ func (endpoint *RegistryEndpoint) GetTags(img *image.ContainerImage, regClient R
 	// To give a raw unsorted tag list from the registry we want to append a dummy date to each
 	// tag in the order we got them from.
 	//
-	// This will allow us to later do a sort by date to keep them in the correct order
+	// This will allow us to later do a sort by date to keep them in the correct order.
+	//
+	// An alternative approach to this would be to order the reponse from the registry by tag
+	// added date.
 	if vc.Strategy == image.StrategyRaw {
 		for i, tagStr := range tags {
 			imgTag := tag.NewImageTag(tagStr, time.Unix(int64(i), 0), "")
