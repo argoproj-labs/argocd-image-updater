@@ -172,19 +172,29 @@ func (il ImageTagList) SortBySemVer() SortableImageTagList {
 	return sil
 }
 
-// SortByDate returns a SortableImageTagList, sorted by the tag's date
-func (il ImageTagList) Raw() SortableImageTagList {
-	sil := make(SortableImageTagList, 0, len(il.items))
+func (il ImageTagList) SortByModifiedSemVer() SortableImageTagList {
+	// We need a read lock, because we access the items hash after sorting
+	il.lock.RLock()
+	defer il.lock.RUnlock()
+
+	sil := SortableImageTagList{}
+	svl := make([]*semver.Version, 0)
 	for _, v := range il.items {
-		sil = append(sil, v)
-	}
-	sort.Slice(sil, func(i, j int) bool {
-		if sil[i].TagDate.Equal(*sil[j].TagDate) {
-			// if an image has two tags, return the same consistently
-			return sil[i].TagName < sil[j].TagName
+		svi, err := semver.NewVersion(v.TagName)
+		if err != nil {
+			log.Debugf("could not parse input tag %s as semver: %v", v.TagName, err)
+			continue
 		}
-		return sil[i].TagDate.Before(*sil[j].TagDate)
-	})
+		svl = append(svl, svi)
+	}
+
+	sort.Sort(modifiedSemverCollection(svl))
+
+	log.Debugf("SORTED ====  %s", svl)
+
+	for _, svi := range svl {
+		sil = append(sil, NewImageTag(svi.Original(), *il.items[svi.Original()].TagDate, il.items[svi.Original()].TagDigest))
+	}
 	return sil
 }
 
