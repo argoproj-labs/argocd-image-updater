@@ -72,6 +72,14 @@ func (endpoint *RegistryEndpoint) GetTags(img *image.ContainerImage, regClient R
 		tags = tTags
 	}
 
+	if vc.Strategy == image.StrategyRaw {
+		for i, tagStr := range tags {
+			imgTag := tag.NewImageTag(tagStr, time.Unix(int64(i), 0), "")
+			tagList.Add(imgTag)
+		}
+		return tagList, nil
+	}
+
 	// In some cases, we don't need to fetch the metadata to get the creation time
 	// stamp of from the image's meta data:
 	//

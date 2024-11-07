@@ -22,6 +22,8 @@ const (
 	StrategyAlphabetical UpdateStrategy = 2
 	// VersionSortDigest uses latest digest of an image
 	StrategyDigest UpdateStrategy = 3
+	// VersionSortRaw uses raw list from registry
+	StrategyRaw UpdateStrategy = 4
 )
 
 func (us UpdateStrategy) String() string {
@@ -93,6 +95,8 @@ func (img *ContainerImage) GetNewestVersionFromTags(vc *VersionConstraint, tagLi
 		availableTags = tagList.SortByDate()
 	case StrategyDigest:
 		availableTags = tagList.SortAlphabetically()
+	case StrategyRaw:
+		availableTags = tagList.Raw()
 	}
 
 	considerTags := tag.SortableImageTagList{}

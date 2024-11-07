@@ -172,6 +172,23 @@ func (il ImageTagList) SortBySemVer() SortableImageTagList {
 	return sil
 }
 
+// SortByDate returns a SortableImageTagList, sorted by the tag's date
+func (il ImageTagList) Raw() SortableImageTagList {
+	sil := make(SortableImageTagList, 0, len(il.items))
+	for _, v := range il.items {
+		sil = append(sil, v)
+	}
+	sort.Slice(sil, func(i, j int) bool {
+
+		if sil[i].TagDate.Equal(*sil[j].TagDate) {
+			// if an image has two tags, return the same consistently
+			return sil[i].TagName < sil[j].TagName
+		}
+		return sil[i].TagDate.Before(*sil[j].TagDate)
+	})
+	return sil
+}
+
 // Should only be used in a method that holds a lock on the ImageTagList
 func (il ImageTagList) unlockedContains(tag *ImageTag) bool {
 	if _, ok := il.items[tag.TagName]; ok {
