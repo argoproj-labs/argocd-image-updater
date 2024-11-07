@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/Masterminds/semver/v3"
-	"github.com/argoproj-labs/argocd-image-updater/pkg/log"
 )
 
 // semverCollection is a replacement for semver.Collection that breaks version
@@ -26,8 +25,6 @@ func (s modifiedSemverCollection) Len() int {
 func (s modifiedSemverCollection) Less(i, j int) bool {
 	baseI, suffixNumI := extractBaseAndSuffix(s[i].Original())
 	baseJ, suffixNumJ := extractBaseAndSuffix(s[j].Original())
-
-	log.Debugf("Base I %s | Base J %s", baseI, baseJ)
 
 	// Compare base versions without suffixes
 	baseVersionI, _ := semver.NewVersion(baseI)
