@@ -1095,7 +1095,7 @@ func TestKubernetesClient(t *testing.T) {
 		// Test GetApplication with multiple matching applications
 		_, err = client.GetApplication(context.TODO(), "test-app")
 		assert.Error(t, err)
-		assert.EqualError(t, err, "error getting application: multiple applications found matching test-app")
+		assert.EqualError(t, err, "multiple applications found matching test-app")
 	})
 }
 
