@@ -158,14 +158,6 @@ func commitChangesGit(app *v1alpha1.Application, wbc *WriteBackConfig, changeLis
 		return err
 	}
 
-	// Set username and e-mail address used to identify the commiter
-	if wbc.GitCommitUser != "" && wbc.GitCommitEmail != "" {
-		err = gitC.Config(wbc.GitCommitUser, wbc.GitCommitEmail)
-		if err != nil {
-			return err
-		}
-	}
-
 	// The branch to checkout is either a configured branch in the write-back
 	// config, or taken from the application spec's targetRevision. If the
 	// target revision is set to the special value HEAD, or is the empty
@@ -245,6 +237,14 @@ func commitChangesGit(app *v1alpha1.Application, wbc *WriteBackConfig, changeLis
 		commitOpts.CommitMessagePath = cm.Name()
 		_ = cm.Close()
 		defer os.Remove(cm.Name())
+	}
+
+	// Set username and e-mail address used to identify the commiter
+	if wbc.GitCommitUser != "" && wbc.GitCommitEmail != "" {
+		err = gitC.Config(wbc.GitCommitUser, wbc.GitCommitEmail)
+		if err != nil {
+			return err
+		}
 	}
 
 	if wbc.GitCommitSigningKey != "" {
