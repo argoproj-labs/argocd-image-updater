@@ -3,7 +3,7 @@ kind: Kustomization
 
 images:
 - name: quay.io/argoprojlabs/argocd-image-updater
-  newTag: v0.15.1
+  newTag: v0.15.0
 
 resources:
 - ./config
