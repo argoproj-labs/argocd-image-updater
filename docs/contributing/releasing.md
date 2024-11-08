@@ -17,7 +17,7 @@ Then create a release branch:
 
 ```
 git clone git@github.com:argoproj-labs/argocd-image-updater.git
-git branch -b release-0.13
+git checkout -b release-0.13
 git push origin release-0.13
 ```
 
