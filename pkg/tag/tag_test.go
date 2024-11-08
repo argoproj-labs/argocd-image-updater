@@ -1,9 +1,11 @@
 package tag
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
+	"github.com/Masterminds/semver/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -54,7 +56,6 @@ func Test_ImageTagEqual(t *testing.T) {
 		tag2 := NewImageTag("v1.0.0", time.Now(), "")
 		assert.False(t, tag1.Equals(tag2))
 	})
-
 }
 
 func Test_AppendToImageTagList(t *testing.T) {
@@ -181,4 +182,139 @@ func Test_TagsFromTagList(t *testing.T) {
 		assert.NotEmpty(t, tl)
 		assert.Len(t, tl, len(names))
 	})
+}
+
+func Test_modifiedSemverCollection_Less(t *testing.T) {
+	tests := []struct {
+		name string
+		s    modifiedSemverCollection
+		want bool
+	}{
+		{
+			name: "hf/hf",
+			s:    newTestCollection(t, "hfHF"),
+			want: true,
+		}, {
+			name: "hf/rc",
+			s:    newTestCollection(t, "hfRC"),
+			want: false,
+		}, {
+			name: "hf/pr",
+			s:    newTestCollection(t, "hfpr"),
+			want: false,
+		}, {
+			name: "pr/pr",
+			s:    newTestCollection(t, "prPR"),
+			want: true,
+		}, {
+			name: "pr/hf",
+			s:    newTestCollection(t, "prhf"),
+			want: true,
+		}, {
+			name: "pr/rc",
+			s:    newTestCollection(t, "prrc"),
+			want: true,
+		}, {
+			name: "rc/hf",
+			s:    newTestCollection(t, "RChf"),
+			want: true,
+		}, {
+			name: "rc/pr",
+			s:    newTestCollection(t, "rcpr"),
+			want: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.s.Less(0, 1); got != tt.want {
+				t.Errorf("modifiedSemverCollection.Less() %v should be less than, %v but got result %v", tt.s[0].Original(), tt.s[0].Original(), got)
+			}
+		})
+	}
+}
+
+func Test_extractBaseAndSuffix(t *testing.T) {
+	tests := []struct {
+		name     string
+		version  string
+		wantBase string
+		wantEnv  string
+		wantSuf  int
+	}{
+		{
+			name:     "prod",
+			version:  "1.2.3-prod",
+			wantBase: "1.2.3",
+			wantEnv:  "prod",
+			wantSuf:  0,
+		}, {
+			name:     "hotfix",
+			version:  "1.2.3-hotfix.123",
+			wantBase: "1.2.3",
+			wantEnv:  "hotfix",
+			wantSuf:  123,
+		}, {
+			name:     "release-candidate",
+			version:  "1.2.3-release-candidate.123",
+			wantBase: "1.2.3",
+			wantEnv:  "release-candidate",
+			wantSuf:  123,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			base, env, suf := extractBaseAndSuffix(tt.version)
+			if base != tt.wantBase {
+				t.Errorf("extractBaseAndSuffix() got = %v, want %v", base, tt.wantBase)
+			}
+			if env != tt.wantEnv {
+				t.Errorf("extractBaseAndSuffix() got = %v, want %v", env, tt.wantEnv)
+			}
+			if suf != tt.wantSuf {
+				t.Errorf("extractBaseAndSuffix() got1 = %v, want %v", suf, tt.wantSuf)
+			}
+		})
+	}
+}
+
+func newTestCollection(t *testing.T, kind string) modifiedSemverCollection {
+	t.Helper()
+	prdH, _ := semver.NewVersion("1.2.5-prod")
+	prdL, _ := semver.NewVersion("1.2.3-prod")
+	hfH, _ := semver.NewVersion("1.2.3-hotfix.2")
+	hfL, _ := semver.NewVersion("1.2.3-hotfix.1")
+	rcH, _ := semver.NewVersion("1.2.3-release-candidate.3")
+	rcL, _ := semver.NewVersion("1.2.3-release-candidate.1")
+
+	fmt.Printf("creating kind: %v\n", kind)
+	switch kind {
+	case "hfHF":
+		return modifiedSemverCollection{hfL, hfH}
+	case "HFhf":
+		return modifiedSemverCollection{hfH, hfL}
+	case "rcRC":
+		return modifiedSemverCollection{rcL, hfH}
+	case "RCrc":
+		return modifiedSemverCollection{rcH, hfL}
+	case "PRpr":
+		return modifiedSemverCollection{prdH, prdL}
+	case "prPR":
+		return modifiedSemverCollection{prdL, prdH}
+	case "prhf":
+		return modifiedSemverCollection{prdL, hfL}
+	case "prrc":
+		return modifiedSemverCollection{prdL, rcL}
+	case "rcpr":
+		return modifiedSemverCollection{rcL, prdL}
+	case "RCpr":
+		return modifiedSemverCollection{rcH, prdL}
+	case "RChf":
+		return modifiedSemverCollection{rcH, hfL}
+	case "hfRC":
+		return modifiedSemverCollection{hfL, rcH}
+	case "hfpr":
+		return modifiedSemverCollection{hfL, prdL}
+	default:
+		return nil
+	}
 }
