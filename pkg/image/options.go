@@ -98,6 +98,8 @@ func (img *ContainerImage) GetParameterUpdateStrategy(annotations map[string]str
 func (img *ContainerImage) ParseUpdateStrategy(val string) UpdateStrategy {
 	logCtx := img.LogContext()
 	switch strings.ToLower(val) {
+	case "modified_semver":
+		return StrategyModifiedSemVer
 	case "semver":
 		return StrategySemVer
 	case "latest":

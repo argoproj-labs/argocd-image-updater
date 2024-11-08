@@ -172,6 +172,32 @@ func (il ImageTagList) SortBySemVer() SortableImageTagList {
 	return sil
 }
 
+func (il ImageTagList) SortByModifiedSemVer() SortableImageTagList {
+	// We need a read lock, because we access the items hash after sorting
+	il.lock.RLock()
+	defer il.lock.RUnlock()
+
+	sil := SortableImageTagList{}
+	svl := make([]*semver.Version, 0)
+	for _, v := range il.items {
+		svi, err := semver.NewVersion(v.TagName)
+		if err != nil {
+			log.Debugf("could not parse input tag %s as semver: %v", v.TagName, err)
+			continue
+		}
+		svl = append(svl, svi)
+	}
+
+	sort.Sort(modifiedSemverCollection(svl))
+
+	log.Debugf("SORTED ====  %s", svl)
+
+	for _, svi := range svl {
+		sil = append(sil, NewImageTag(svi.Original(), *il.items[svi.Original()].TagDate, il.items[svi.Original()].TagDigest))
+	}
+	return sil
+}
+
 // Should only be used in a method that holds a lock on the ImageTagList
 func (il ImageTagList) unlockedContains(tag *ImageTag) bool {
 	if _, ok := il.items[tag.TagName]; ok {

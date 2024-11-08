@@ -14,18 +14,22 @@ import (
 type UpdateStrategy int
 
 const (
+	// VersionModifiedSemVer does custom sorting based on prizeicks tags
+	StrategyModifiedSemVer UpdateStrategy = 0
 	// VersionSortSemVer sorts tags using semver sorting (the default)
-	StrategySemVer UpdateStrategy = 0
+	StrategySemVer UpdateStrategy = 1
 	// VersionSortLatest sorts tags after their creation date
-	StrategyNewestBuild UpdateStrategy = 1
+	StrategyNewestBuild UpdateStrategy = 2
 	// VersionSortName sorts tags alphabetically by name
-	StrategyAlphabetical UpdateStrategy = 2
+	StrategyAlphabetical UpdateStrategy = 3
 	// VersionSortDigest uses latest digest of an image
-	StrategyDigest UpdateStrategy = 3
+	StrategyDigest UpdateStrategy = 4
 )
 
 func (us UpdateStrategy) String() string {
 	switch us {
+	case StrategyModifiedSemVer:
+		return "modified_semver"
 	case StrategySemVer:
 		return "semver"
 	case StrategyNewestBuild:
@@ -85,6 +89,8 @@ func (img *ContainerImage) GetNewestVersionFromTags(vc *VersionConstraint, tagLi
 
 	var availableTags tag.SortableImageTagList
 	switch vc.Strategy {
+	case StrategyModifiedSemVer:
+		availableTags = tagList.SortByModifiedSemVer()
 	case StrategySemVer:
 		availableTags = tagList.SortBySemVer()
 	case StrategyAlphabetical:
