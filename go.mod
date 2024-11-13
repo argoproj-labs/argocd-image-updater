@@ -10,7 +10,7 @@ require (
 	github.com/argoproj/gitops-engine v0.7.1-0.20240715141605-18ba62e1f1fb
 	github.com/argoproj/pkg v0.13.7-0.20230627120311-a4dd357b057e
 	github.com/bmatcuk/doublestar/v4 v4.6.1
-	github.com/bradleyfalzon/ghinstallation/v2 v2.6.0
+	github.com/bradleyfalzon/ghinstallation/v2 v2.11.0
 	github.com/distribution/distribution/v3 v3.0.0-20230722181636-7b502560cad4
 	github.com/go-git/go-git/v5 v5.11.0
 	github.com/google/uuid v1.6.0
@@ -87,7 +87,7 @@ require (
 	github.com/google/btree v1.1.2 // indirect
 	github.com/google/gnostic v0.6.9 // indirect
 	github.com/google/go-cmp v0.6.0 // indirect
-	github.com/google/go-github/v53 v53.2.0 // indirect
+	github.com/google/go-github/v62 v62.0.0 // indirect
 	github.com/google/go-querystring v1.1.0 // indirect
 	github.com/google/gofuzz v1.2.0 // indirect
 	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510 // indirect
