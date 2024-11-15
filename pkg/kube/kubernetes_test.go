@@ -16,14 +16,14 @@ import (
 
 func Test_NewKubernetesClient(t *testing.T) {
 	t.Run("Get new K8s client for remote cluster instance", func(t *testing.T) {
-		client, err := NewKubernetesClientFromConfig(context.TODO(), "", "../../test/testdata/kubernetes/config")
+		client, err := NewKubernetesClientFromConfig(context.TODO(), "", true, "../../test/testdata/kubernetes/config")
 		require.NoError(t, err)
 		assert.NotNil(t, client)
 		assert.Equal(t, "default", client.Namespace)
 	})
 
 	t.Run("Get new K8s client for remote cluster instance specified namespace", func(t *testing.T) {
-		client, err := NewKubernetesClientFromConfig(context.TODO(), "argocd", "../../test/testdata/kubernetes/config")
+		client, err := NewKubernetesClientFromConfig(context.TODO(), "argocd", true, "../../test/testdata/kubernetes/config")
 		require.NoError(t, err)
 		assert.NotNil(t, client)
 		assert.Equal(t, "argocd", client.Namespace)
