@@ -158,11 +158,11 @@ func newRunCommand() *cobra.Command {
 			}
 
 			// Start up the credentials store server
-			cs := askpass.NewServer()
+			cs := askpass.NewServer(askpass.SocketPath)
 			csErrCh := make(chan error)
 			go func() {
 				log.Debugf("Starting askpass server")
-				csErrCh <- cs.Run(askpass.SocketPath)
+				csErrCh <- cs.Run()
 			}()
 
 			// Wait for cred server to be started, just in case

@@ -22,7 +22,7 @@ func getGitCredsSource(creds string, kubeClient *kube.KubernetesClient, wbc *Wri
 	switch {
 	case creds == "repocreds":
 		return func(app *v1alpha1.Application) (git.Creds, error) {
-			return getCredsFromArgoCD(wbc, kubeClient)
+			return getCredsFromArgoCD(wbc, kubeClient, app.Spec.Project)
 		}, nil
 	case strings.HasPrefix(creds, "secret:"):
 		return func(app *v1alpha1.Application) (git.Creds, error) {
@@ -33,13 +33,13 @@ func getGitCredsSource(creds string, kubeClient *kube.KubernetesClient, wbc *Wri
 }
 
 // getCredsFromArgoCD loads repository credentials from Argo CD settings
-func getCredsFromArgoCD(wbc *WriteBackConfig, kubeClient *kube.KubernetesClient) (git.Creds, error) {
+func getCredsFromArgoCD(wbc *WriteBackConfig, kubeClient *kube.KubernetesClient, project string) (git.Creds, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	settingsMgr := settings.NewSettingsManager(ctx, kubeClient.Clientset, kubeClient.Namespace)
 	argocdDB := db.NewDB(kubeClient.Namespace, settingsMgr, kubeClient.Clientset)
-	repo, err := argocdDB.GetRepository(ctx, wbc.GitRepo)
+	repo, err := argocdDB.GetRepository(ctx, wbc.GitRepo, project)
 	if err != nil {
 		return nil, err
 	}
