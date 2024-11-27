@@ -1,0 +1,9 @@
+apiVersion: kuttl.dev/v1beta1
+kind: TestStep
+commands:
+- script: |
+    ${SRC_DIR}/dist/argocd-image-updater run --once \
+      --argocd-namespace argocd-image-updater-e2e \
+      --match-application-name no-match* \
+      --registries-conf-path="" \
+      --loglevel info

@@ -1,0 +1,8 @@
+apiVersion: kuttl.dev/v1beta1
+kind: TestStep
+commands:
+- script: |
+    ${SRC_DIR}/dist/argocd-image-updater run --once \
+      --argocd-namespace argocd-image-updater-e2e \
+      --loglevel trace
+    sleep 30

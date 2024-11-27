@@ -28,6 +28,10 @@ Argo CD is running. Don't worry, without any configuration, it will not start me
 kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj-labs/argocd-image-updater/stable/manifests/install.yaml
 ```
 
+!!! warning
+     The installation manifests include `ClusterRoleBinding` resources that reference `argocd` namespace. If you are installing Argo CD into a different
+namespace then make sure to update the namespace reference.
+
 !!!note "A word on high availability"
     It is not advised to run multiple replicas of the same Argo CD Image Updater
     instance. Just leave the number of replicas at 1, otherwise weird side
@@ -69,6 +73,10 @@ First, create a namespace and apply the manifests to your cluster
 kubectl create namespace argocd-image-updater
 kubectl apply -n argocd-image-updater -f https://raw.githubusercontent.com/argoproj-labs/argocd-image-updater/stable/manifests/install.yaml
 ```
+
+!!! warning
+     The installation manifests include `ClusterRoleBinding` resources that reference `argocd` namespace. If you are installing Argo CD into a different
+namespace then make sure to update the namespace reference.
 
 !!!note "A word on high availability"
     It is not advised to run multiple replicas of the same Argo CD Image Updater

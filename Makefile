@@ -67,8 +67,15 @@ mod-vendor:
 test:
 	go test -coverprofile coverage.out `go list ./... | egrep -v '(test|mocks|ext/)'`
 
+
+.PHONY: test-race
 test-race:
 	go test -race -coverprofile coverage.out `go list ./... | egrep -v '(test|mocks|ext/)'`
+
+.PHONY: test-manifests
+test-manifests:
+	./scripts/test_manifests.sh
+
 
 .PHONY: prereq
 prereq:
@@ -115,6 +122,10 @@ release-binaries:
 	BINNAME=argocd-image-updater-darwin_amd64 OUTDIR=dist/release OS=darwin ARCH=amd64 make controller
 	BINNAME=argocd-image-updater-darwin_arm64 OUTDIR=dist/release OS=darwin ARCH=arm64 make controller
 	BINNAME=argocd-image-updater-win64.exe OUTDIR=dist/release OS=windows ARCH=amd64 make controller
+	rm -f dist/release/release-v${VERSION}.sha256 dist/release/release-v${VERSION}.sha256.asc
+	for bin in dist/release/argocd-image-updater-*; do sha256sum "$$bin" >> dist/release/release-v${VERSION}.sha256; done
+	gpg -a --detach-sign dist/release/release-v${VERSION}.sha256
+	gpg -a --verify dist/release/release-v${VERSION}.sha256.asc
 
 .PHONY: extract-binary
 extract-binary:
@@ -143,7 +154,7 @@ run-test:
 		--argocd-server-addr $(ARGOCD_SERVER) \
 		--grpc-web
 
-
 .PHONY: serve-docs
 serve-docs:
 	docker run ${MKDOCS_RUN_ARGS} --rm -it -p 8000:8000 -v ${CURRENT_DIR}:/docs ${MKDOCS_DOCKER_IMAGE} serve -a 0.0.0.0:8000
+

@@ -40,20 +40,23 @@ func NewContext() *LogContext {
 
 // SetLogLevel sets the log level to use for the logger
 func SetLogLevel(logLevel string) error {
+	var level logrus.Level
 	switch strings.ToLower(logLevel) {
 	case "trace":
-		logger.SetLevel(logrus.TraceLevel)
+		level = logrus.TraceLevel
 	case "debug":
-		logger.SetLevel(logrus.DebugLevel)
+		level = logrus.DebugLevel
 	case "info":
-		logger.SetLevel(logrus.InfoLevel)
+		level = logrus.InfoLevel
 	case "warn":
-		logger.SetLevel(logrus.WarnLevel)
+		level = logrus.WarnLevel
 	case "error":
-		logger.SetLevel(logrus.ErrorLevel)
+		level = logrus.ErrorLevel
 	default:
 		return fmt.Errorf("invalid loglevel: %s", logLevel)
 	}
+	logger.SetLevel(level)
+	logrus.SetLevel(level) // set loglevel for the default logrus.logger
 	return nil
 }
 
@@ -70,7 +73,7 @@ func (logctx *LogContext) AddField(key string, value interface{}) *LogContext {
 	return logctx
 }
 
-// Logger retrieves the native logger interface. Use with care.
+// Log retrieves the native logger interface. Use with care.
 func Log() *logrus.Logger {
 	return logger
 }
@@ -78,7 +81,7 @@ func Log() *logrus.Logger {
 // Tracef logs a debug message for logctx to stdout
 func (logctx *LogContext) Tracef(format string, args ...interface{}) {
 	logger.SetOutput(logctx.normalOut)
-	if logctx.fields != nil && len(logctx.fields) > 0 {
+	if len(logctx.fields) > 0 {
 		logger.WithFields(logctx.fields).Tracef(format, args...)
 	} else {
 		logger.Tracef(format, args...)
@@ -88,7 +91,7 @@ func (logctx *LogContext) Tracef(format string, args ...interface{}) {
 // Debugf logs a debug message for logctx to stdout
 func (logctx *LogContext) Debugf(format string, args ...interface{}) {
 	logger.SetOutput(logctx.normalOut)
-	if logctx.fields != nil && len(logctx.fields) > 0 {
+	if len(logctx.fields) > 0 {
 		logger.WithFields(logctx.fields).Debugf(format, args...)
 	} else {
 		logger.Debugf(format, args...)
@@ -98,7 +101,7 @@ func (logctx *LogContext) Debugf(format string, args ...interface{}) {
 // Infof logs an informational message for logctx to stdout
 func (logctx *LogContext) Infof(format string, args ...interface{}) {
 	logger.SetOutput(logctx.normalOut)
-	if logctx.fields != nil && len(logctx.fields) > 0 {
+	if len(logctx.fields) > 0 {
 		logger.WithFields(logctx.fields).Infof(format, args...)
 	} else {
 		logger.Infof(format, args...)
@@ -108,7 +111,7 @@ func (logctx *LogContext) Infof(format string, args ...interface{}) {
 // Warnf logs a warning message for logctx to stdout
 func (logctx *LogContext) Warnf(format string, args ...interface{}) {
 	logger.SetOutput(logctx.normalOut)
-	if logctx.fields != nil && len(logctx.fields) > 0 {
+	if len(logctx.fields) > 0 {
 		logger.WithFields(logctx.fields).Warnf(format, args...)
 	} else {
 		logger.Warnf(format, args...)
@@ -118,7 +121,7 @@ func (logctx *LogContext) Warnf(format string, args ...interface{}) {
 // Errorf logs a non-fatal error message for logctx to stdout
 func (logctx *LogContext) Errorf(format string, args ...interface{}) {
 	logger.SetOutput(logctx.errorOut)
-	if logctx.fields != nil && len(logctx.fields) > 0 {
+	if len(logctx.fields) > 0 {
 		logger.WithFields(logctx.fields).Errorf(format, args...)
 	} else {
 		logger.Errorf(format, args...)
@@ -128,14 +131,14 @@ func (logctx *LogContext) Errorf(format string, args ...interface{}) {
 // Fatalf logs a fatal error message for logctx to stdout
 func (logctx *LogContext) Fatalf(format string, args ...interface{}) {
 	logger.SetOutput(logctx.errorOut)
-	if logctx.fields != nil && len(logctx.fields) > 0 {
+	if len(logctx.fields) > 0 {
 		logger.WithFields(logctx.fields).Fatalf(format, args...)
 	} else {
 		logger.Fatalf(format, args...)
 	}
 }
 
-// Debugf logs a warning message without context to stdout
+// Tracef logs a warning message without context to stdout
 func Tracef(format string, args ...interface{}) {
 	logCtx := NewContext()
 	logCtx.Tracef(format, args...)

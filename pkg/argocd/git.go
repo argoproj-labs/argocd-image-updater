@@ -12,6 +12,7 @@ import (
 
 	"sigs.k8s.io/kustomize/api/konfig"
 	"sigs.k8s.io/kustomize/api/types"
+	"sigs.k8s.io/kustomize/kyaml/order"
 	kyaml "sigs.k8s.io/kustomize/kyaml/yaml"
 
 	"github.com/argoproj-labs/argocd-image-updater/pkg/image"
@@ -156,18 +157,6 @@ func commitChangesGit(app *v1alpha1.Application, wbc *WriteBackConfig, changeLis
 	if err != nil {
 		return err
 	}
-	err = gitC.Fetch("")
-	if err != nil {
-		return err
-	}
-
-	// Set username and e-mail address used to identify the commiter
-	if wbc.GitCommitUser != "" && wbc.GitCommitEmail != "" {
-		err = gitC.Config(wbc.GitCommitUser, wbc.GitCommitEmail)
-		if err != nil {
-			return err
-		}
-	}
 
 	// The branch to checkout is either a configured branch in the write-back
 	// config, or taken from the application spec's targetRevision. If the
@@ -195,14 +184,30 @@ func commitChangesGit(app *v1alpha1.Application, wbc *WriteBackConfig, changeLis
 	if wbc.GitWriteBranch != "" {
 		logCtx.Debugf("Using branch template: %s", wbc.GitWriteBranch)
 		pushBranch = TemplateBranchName(wbc.GitWriteBranch, changeList)
-		if pushBranch != "" {
+		if pushBranch == "" {
+			return fmt.Errorf("Git branch name could not be created from the template: %s", wbc.GitWriteBranch)
+		}
+	}
+
+	// If the pushBranch already exists in the remote origin, directly use it.
+	// Otherwise, create the new pushBranch from checkoutBranch
+	if checkOutBranch != pushBranch {
+		fetchErr := gitC.ShallowFetch(pushBranch, 1)
+		if fetchErr != nil {
+			err = gitC.ShallowFetch(checkOutBranch, 1)
+			if err != nil {
+				return err
+			}
 			logCtx.Debugf("Creating branch '%s' and using that for push operations", pushBranch)
 			err = gitC.Branch(checkOutBranch, pushBranch)
 			if err != nil {
 				return err
 			}
-		} else {
-			return fmt.Errorf("Git branch name could not be created from the template: %s", wbc.GitWriteBranch)
+		}
+	} else {
+		err = gitC.ShallowFetch(checkOutBranch, 1)
+		if err != nil {
+			return err
 		}
 	}
 
@@ -234,11 +239,26 @@ func commitChangesGit(app *v1alpha1.Application, wbc *WriteBackConfig, changeLis
 		defer os.Remove(cm.Name())
 	}
 
+	// Set username and e-mail address used to identify the commiter
+	if wbc.GitCommitUser != "" && wbc.GitCommitEmail != "" {
+		err = gitC.Config(wbc.GitCommitUser, wbc.GitCommitEmail)
+		if err != nil {
+			return err
+		}
+	}
+
+	if wbc.GitCommitSigningKey != "" {
+		commitOpts.SigningKey = wbc.GitCommitSigningKey
+	}
+
+	commitOpts.SigningMethod = wbc.GitCommitSigningMethod
+	commitOpts.SignOff = wbc.GitCommitSignOff
+
 	err = gitC.Commit("", commitOpts)
 	if err != nil {
 		return err
 	}
-	err = gitC.Push("origin", pushBranch, false)
+	err = gitC.Push("origin", pushBranch, pushBranch != checkOutBranch)
 	if err != nil {
 		return err
 	}
@@ -284,6 +304,12 @@ func writeOverrides(app *v1alpha1.Application, wbc *WriteBackConfig, gitC git.Cl
 		}
 	}
 
+	dir := filepath.Dir(targetFile)
+	err = os.MkdirAll(dir, 0700)
+	if err != nil {
+		return
+	}
+
 	err = os.WriteFile(targetFile, override, 0600)
 	if err != nil {
 		return
@@ -314,8 +340,48 @@ func writeKustomization(app *v1alpha1.Application, wbc *WriteBackConfig, gitC gi
 	if err != nil {
 		return err, false
 	}
-	err = kyaml.UpdateFile(filterFunc, kustFile)
+
+	return updateKustomizeFile(filterFunc, kustFile)
+}
+
+// updateKustomizeFile reads the kustomization file at path, applies the filter to it, and writes the result back
+// to the file. This is the same behavior as kyaml.UpdateFile, but it preserves the original order
+// of YAML fields to minimize git diffs.
+func updateKustomizeFile(filter kyaml.Filter, path string) (error, bool) {
+	// Read the yaml
+	y, err := kyaml.ReadFile(path)
 	if err != nil {
+		return err, false
+	}
+
+	originalData, err := y.String()
+	if err != nil {
+		return err, false
+	}
+
+	// Update the yaml
+	yCpy := y.Copy()
+	if err := yCpy.PipeE(filter); err != nil {
+		return err, false
+	}
+
+	// Preserve the original order of fields
+	if err := order.SyncOrder(y, yCpy); err != nil {
+		return err, false
+	}
+
+	override, err := yCpy.String()
+	if err != nil {
+		return err, false
+	}
+
+	if originalData == override {
+		log.Debugf("target parameter file and marshaled data are the same, skipping commit.")
+		return nil, true
+	}
+
+	// Write the yaml
+	if err := os.WriteFile(path, []byte(override), 0600); err != nil {
 		return err, false
 	}
 

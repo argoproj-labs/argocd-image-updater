@@ -1,6 +1,7 @@
 package argocd
 
 import (
+	"os"
 	"testing"
 	"text/template"
 	"time"
@@ -212,6 +213,107 @@ images:
 			node, err = filter.Filter(node)
 			assert.NoError(t, err)
 			assert.YAMLEq(t, tt.expected, node.MustString())
+		})
+	}
+}
+
+func Test_updateKustomizeFile(t *testing.T) {
+	makeTmpKustomization := func(t *testing.T, content []byte) string {
+		f, err := os.CreateTemp("", "kustomization-*.yaml")
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = f.Write(content)
+		if err != nil {
+			t.Fatal(err)
+		}
+		f.Close()
+		t.Cleanup(func() {
+			os.Remove(f.Name())
+		})
+		return f.Name()
+	}
+
+	filter, err := imagesFilter(v1alpha1.KustomizeImages{"foo@sha23456"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		name        string
+		content     string
+		wantContent string
+		filter      kyaml.Filter
+		wantErr     bool
+	}{
+		{
+			name: "sorted",
+			content: `images:
+- digest: sha12345
+  name: foo
+`,
+			wantContent: `images:
+- digest: sha23456
+  name: foo
+`,
+			filter: filter,
+		},
+		{
+			name: "not-sorted",
+			content: `images:
+- name: foo
+  digest: sha12345
+`,
+			wantContent: `images:
+- name: foo
+  digest: sha23456
+`,
+			filter: filter,
+		},
+		{
+			name: "no-change",
+			content: `images:
+- name: foo
+  digest: sha23456
+`,
+			wantContent: "",
+			filter:      filter,
+		},
+		{
+			name: "invalid-path",
+			content: `images:
+- name: foo
+  digest: sha12345
+`,
+			wantContent: "",
+			filter:      filter,
+			wantErr:     true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var path string
+			if tt.wantErr {
+				path = "/invalid-path"
+			} else {
+				path = makeTmpKustomization(t, []byte(tt.content))
+			}
+
+			err, skip := updateKustomizeFile(tt.filter, path)
+			if tt.wantErr {
+				assert.Error(t, err)
+				assert.False(t, skip)
+			} else if tt.name == "no-change" {
+				assert.Nil(t, err)
+				assert.True(t, skip)
+			} else {
+				got, err := os.ReadFile(path)
+				if err != nil {
+					t.Fatal(err)
+				}
+				assert.Equal(t, tt.wantContent, string(got))
+				assert.False(t, skip)
+			}
 		})
 	}
 }

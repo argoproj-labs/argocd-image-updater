@@ -21,7 +21,6 @@ import (
 
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/application"
 	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
-	"github.com/miracl/conflate"
 	"gopkg.in/yaml.v2"
 )
 
@@ -36,16 +35,20 @@ type ImageUpdaterResult struct {
 }
 
 type UpdateConfiguration struct {
-	NewRegFN          registry.NewRegistryClient
-	ArgoClient        ArgoCD
-	KubeClient        *kube.KubernetesClient
-	UpdateApp         *ApplicationImages
-	DryRun            bool
-	GitCommitUser     string
-	GitCommitEmail    string
-	GitCommitMessage  *template.Template
-	DisableKubeEvents bool
-	IgnorePlatforms   bool
+	NewRegFN               registry.NewRegistryClient
+	ArgoClient             ArgoCD
+	KubeClient             *kube.KubernetesClient
+	UpdateApp              *ApplicationImages
+	DryRun                 bool
+	GitCommitUser          string
+	GitCommitEmail         string
+	GitCommitMessage       *template.Template
+	GitCommitSigningKey    string
+	GitCommitSigningMethod string
+	GitCommitSignOff       bool
+	DisableKubeEvents      bool
+	IgnorePlatforms        bool
+	GitCreds               git.CredsStore
 }
 
 type GitCredsSource func(app *v1alpha1.Application) (git.Creds, error)
@@ -62,16 +65,20 @@ type WriteBackConfig struct {
 	Method     WriteBackMethod
 	ArgoClient ArgoCD
 	// If GitClient is not nil, the client will be used for updates. Otherwise, a new client will be created.
-	GitClient        git.Client
-	GetCreds         GitCredsSource
-	GitBranch        string
-	GitWriteBranch   string
-	GitCommitUser    string
-	GitCommitEmail   string
-	GitCommitMessage string
-	KustomizeBase    string
-	Target           string
-	GitRepo          string
+	GitClient              git.Client
+	GetCreds               GitCredsSource
+	GitBranch              string
+	GitWriteBranch         string
+	GitCommitUser          string
+	GitCommitEmail         string
+	GitCommitMessage       string
+	GitCommitSigningKey    string
+	GitCommitSigningMethod string
+	GitCommitSignOff       bool
+	KustomizeBase          string
+	Target                 string
+	GitRepo                string
+	GitCreds               git.CredsStore
 }
 
 // The following are helper structs to only marshal the fields we require
@@ -312,6 +319,11 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 	if err != nil {
 		return result
 	}
+	if updateConf.GitCreds == nil {
+		wbc.GitCreds = git.NoopCredsStore{}
+	} else {
+		wbc.GitCreds = updateConf.GitCreds
+	}
 
 	if wbc.Method == WriteBackGit {
 		if updateConf.GitCommitUser != "" {
@@ -323,6 +335,11 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 		if len(changeList) > 0 && updateConf.GitCommitMessage != nil {
 			wbc.GitCommitMessage = TemplateCommitMessage(updateConf.GitCommitMessage, updateConf.UpdateApp.Application.Name, changeList)
 		}
+		if updateConf.GitCommitSigningKey != "" {
+			wbc.GitCommitSigningKey = updateConf.GitCommitSigningKey
+		}
+		wbc.GitCommitSigningMethod = updateConf.GitCommitSigningMethod
+		wbc.GitCommitSignOff = updateConf.GitCommitSignOff
 	}
 
 	if needUpdate {
@@ -418,8 +435,13 @@ func marshalParamsOverride(app *v1alpha1.Application, originalData []byte) ([]by
 		if strings.HasPrefix(app.Annotations[common.WriteBackTargetAnnotation], common.HelmPrefix) {
 			images := GetImagesAndAliasesFromApplication(app)
 
-			for _, c := range images {
+			helmNewValues := yaml.MapSlice{}
+			err = yaml.Unmarshal(originalData, &helmNewValues)
+			if err != nil {
+				return nil, err
+			}
 
+			for _, c := range images {
 				if c.ImageAlias == "" {
 					continue
 				}
@@ -429,8 +451,23 @@ func marshalParamsOverride(app *v1alpha1.Application, originalData []byte) ([]by
 				if helmAnnotationParamName == "" {
 					return nil, fmt.Errorf("could not find an image-name annotation for image %s", c.ImageName)
 				}
+				// for image-spec annotation, helmAnnotationParamName holds image-spec annotation value,
+				// and helmAnnotationParamVersion is empty
 				if helmAnnotationParamVersion == "" {
-					return nil, fmt.Errorf("could not find an image-tag annotation for image %s", c.ImageName)
+					if c.GetParameterHelmImageSpec(app.Annotations) == "" {
+						// not a full image-spec, so image-tag is required
+						return nil, fmt.Errorf("could not find an image-tag annotation for image %s", c.ImageName)
+					}
+				} else {
+					// image-tag annotation is present, so continue to process image-tag
+					helmParamVersion := getHelmParam(appSource.Helm.Parameters, helmAnnotationParamVersion)
+					if helmParamVersion == nil {
+						return nil, fmt.Errorf("%s parameter not found", helmAnnotationParamVersion)
+					}
+					err = setHelmValue(&helmNewValues, helmAnnotationParamVersion, helmParamVersion.Value)
+					if err != nil {
+						return nil, fmt.Errorf("failed to set image parameter version value: %v", err)
+					}
 				}
 
 				helmParamName := getHelmParam(appSource.Helm.Parameters, helmAnnotationParamName)
@@ -438,22 +475,13 @@ func marshalParamsOverride(app *v1alpha1.Application, originalData []byte) ([]by
 					return nil, fmt.Errorf("%s parameter not found", helmAnnotationParamName)
 				}
 
-				helmParamVersion := getHelmParam(appSource.Helm.Parameters, helmAnnotationParamVersion)
-				if helmParamVersion == nil {
-					return nil, fmt.Errorf("%s parameter not found", helmAnnotationParamVersion)
-				}
-
-				// Build string with YAML format to merge with originalData values
-				helmValues := fmt.Sprintf("%s: %s\n%s: %s", helmAnnotationParamName, helmParamName.Value, helmAnnotationParamVersion, helmParamVersion.Value)
-
-				var mergedParams *conflate.Conflate
-				mergedParams, err = conflate.FromData(originalData, []byte(helmValues))
+				err = setHelmValue(&helmNewValues, helmAnnotationParamName, helmParamName.Value)
 				if err != nil {
-					return nil, err
+					return nil, fmt.Errorf("failed to set image parameter name value: %v", err)
 				}
-
-				override, err = mergedParams.MarshalYAML()
 			}
+
+			override, err = yaml.Marshal(helmNewValues)
 		} else {
 			var params helmOverride
 			newParams := helmOverride{
@@ -509,12 +537,84 @@ func mergeKustomizeOverride(t *kustomizeOverride, o *kustomizeOverride) {
 	}
 }
 
+// Check if a key exists in a MapSlice and return its index and value
+func findHelmValuesKey(m yaml.MapSlice, key string) (int, bool) {
+	for i, item := range m {
+		if item.Key == key {
+			return i, true
+		}
+	}
+	return -1, false
+}
+
+// set value of the parameter passed from the annotations.
+func setHelmValue(currentValues *yaml.MapSlice, key string, value interface{}) error {
+	// Check if the full key exists
+	if idx, found := findHelmValuesKey(*currentValues, key); found {
+		(*currentValues)[idx].Value = value
+		return nil
+	}
+
+	var err error
+	keys := strings.Split(key, ".")
+	current := currentValues
+	var parent *yaml.MapSlice
+	parentIdx := -1
+
+	for i, k := range keys {
+		if idx, found := findHelmValuesKey(*current, k); found {
+			if i == len(keys)-1 {
+				// If we're at the final key, set the value and return
+				(*current)[idx].Value = value
+				return nil
+			} else {
+				// Navigate deeper into the map
+				if nestedMap, ok := (*current)[idx].Value.(yaml.MapSlice); ok {
+					parent = current
+					parentIdx = idx
+					current = &nestedMap
+				} else {
+					return fmt.Errorf("unexpected type %T for key %s", (*current)[idx].Value, k)
+				}
+			}
+		} else {
+			newCurrent := yaml.MapSlice{}
+			var newParent yaml.MapSlice
+
+			if i == len(keys)-1 {
+				newParent = append(*current, yaml.MapItem{Key: k, Value: value})
+			} else {
+				newParent = append(*current, yaml.MapItem{Key: k, Value: newCurrent})
+			}
+
+			if parent == nil {
+				*currentValues = newParent
+			} else {
+				// if parentIdx has not been set (parent element is also new), set it to the last element
+				if parentIdx == -1 {
+					parentIdx = len(*parent) - 1
+					if parentIdx < 0 {
+						parentIdx = 0
+					}
+				}
+				(*parent)[parentIdx].Value = newParent
+			}
+
+			parent = &newParent
+			current = &newCurrent
+			parentIdx = -1
+		}
+	}
+
+	return err
+}
+
 func getWriteBackConfig(app *v1alpha1.Application, kubeClient *kube.KubernetesClient, argoClient ArgoCD) (*WriteBackConfig, error) {
 	wbc := &WriteBackConfig{}
 	// Default write-back is to use Argo CD API
 	wbc.Method = WriteBackApplication
 	wbc.ArgoClient = argoClient
-	wbc.Target = parseDefaultTarget(app.Name, getApplicationSource(app).Path)
+	wbc.Target = parseDefaultTarget(app.GetNamespace(), app.Name, getApplicationSource(app).Path, kubeClient)
 
 	// If we have no update method, just return our default
 	method, ok := app.Annotations[common.WriteBackMethodAnnotation]
@@ -551,10 +651,14 @@ func getWriteBackConfig(app *v1alpha1.Application, kubeClient *kube.KubernetesCl
 	return wbc, nil
 }
 
-func parseDefaultTarget(appName string, path string) string {
-	defaultTargetFile := fmt.Sprintf(common.DefaultTargetFilePattern, appName)
-
-	return filepath.Join(path, defaultTargetFile)
+func parseDefaultTarget(appNamespace string, appName string, path string, kubeClient *kube.KubernetesClient) string {
+	if (appNamespace == kubeClient.Namespace) || (appNamespace == "") {
+		defaultTargetFile := fmt.Sprintf(common.DefaultTargetFilePatternWithoutNamespace, appName)
+		return filepath.Join(path, defaultTargetFile)
+	} else {
+		defaultTargetFile := fmt.Sprintf(common.DefaultTargetFilePattern, appNamespace, appName)
+		return filepath.Join(path, defaultTargetFile)
+	}
 }
 
 func parseKustomizeBase(target string, sourcePath string) (kustomizeBase string) {

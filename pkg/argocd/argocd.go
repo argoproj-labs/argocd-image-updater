@@ -6,8 +6,10 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
+	"github.com/argoproj-labs/argocd-image-updater/pkg/env"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/image"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/kube"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/log"
@@ -25,40 +27,78 @@ type k8sClient struct {
 	kubeClient *kube.KubernetesClient
 }
 
+// GetApplication retrieves an application by name across all namespaces.
 func (client *k8sClient) GetApplication(ctx context.Context, appName string) (*v1alpha1.Application, error) {
-	return client.kubeClient.ApplicationsClientset.ArgoprojV1alpha1().Applications(client.kubeClient.Namespace).Get(ctx, appName, v1.GetOptions{})
+	// List all applications across all namespaces (using empty labelSelector)
+	appList, err := client.ListApplications(v1.NamespaceAll)
+	if err != nil {
+		return nil, fmt.Errorf("error listing applications: %w", err)
+	}
+
+	// Filter applications by name using nameMatchesPattern
+	var matchedApps []v1alpha1.Application
+
+	for _, app := range appList {
+		log.Debugf("Found application: %s in namespace %s", app.Name, app.Namespace)
+		if nameMatchesPattern(app.Name, []string{appName}) {
+			log.Debugf("Application %s matches the pattern", app.Name)
+			matchedApps = append(matchedApps, app)
+		}
+	}
+
+	if len(matchedApps) == 0 {
+		return nil, fmt.Errorf("application %s not found", appName)
+	}
+
+	if len(matchedApps) > 1 {
+		return nil, fmt.Errorf("multiple applications found matching %s", appName)
+	}
+
+	// Retrieve the application in the specified namespace
+	return &matchedApps[0], nil
 }
 
-func (client *k8sClient) ListApplications() ([]v1alpha1.Application, error) {
-	list, err := client.kubeClient.ApplicationsClientset.ArgoprojV1alpha1().Applications(client.kubeClient.Namespace).List(context.TODO(), v1.ListOptions{})
+// ListApplications lists all applications across all namespaces.
+func (client *k8sClient) ListApplications(labelSelector string) ([]v1alpha1.Application, error) {
+	list, err := client.kubeClient.ApplicationsClientset.ArgoprojV1alpha1().Applications(v1.NamespaceAll).List(context.TODO(), v1.ListOptions{LabelSelector: labelSelector})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error listing applications: %w", err)
 	}
+	log.Debugf("Applications listed: %d", len(list.Items))
 	return list.Items, nil
 }
 
 func (client *k8sClient) UpdateSpec(ctx context.Context, spec *application.ApplicationUpdateSpecRequest) (*v1alpha1.ApplicationSpec, error) {
-	for {
-		app, err := client.kubeClient.ApplicationsClientset.ArgoprojV1alpha1().Applications(client.kubeClient.Namespace).Get(ctx, spec.GetName(), v1.GetOptions{})
+	const defaultMaxRetries = 7
+	const baseDelay = 100 * time.Millisecond // Initial delay before retrying
+
+	// Allow overriding max retries for testing purposes
+	maxRetries := env.ParseNumFromEnv("OVERRIDE_MAX_RETRIES", defaultMaxRetries, 0, 100)
+
+	for attempts := 0; attempts < maxRetries; attempts++ {
+		app, err := client.GetApplication(ctx, spec.GetName())
 		if err != nil {
-			return nil, err
+			log.Errorf("could not get application: %s, error: %v", spec.GetName(), err)
+			return nil, fmt.Errorf("error getting application: %w", err)
 		}
 		app.Spec = *spec.Spec
 
-		updatedApp, err := client.kubeClient.ApplicationsClientset.ArgoprojV1alpha1().Applications(client.kubeClient.Namespace).Update(ctx, app, v1.UpdateOptions{})
+		updatedApp, err := client.kubeClient.ApplicationsClientset.ArgoprojV1alpha1().Applications(app.Namespace).Update(ctx, app, v1.UpdateOptions{})
 		if err != nil {
 			if errors.IsConflict(err) {
+				log.Warnf("conflict occurred while updating application: %s, retrying... (%d/%d)", spec.GetName(), attempts+1, maxRetries)
+				time.Sleep(baseDelay * (1 << attempts)) // Exponential backoff, multiply baseDelay by 2^attempts
 				continue
 			}
-			return nil, err
+			log.Errorf("could not update application: %s, error: %v", spec.GetName(), err)
+			return nil, fmt.Errorf("error updating application: %w", err)
 		}
 		return &updatedApp.Spec, nil
 	}
-
+	return nil, fmt.Errorf("max retries(%d) reached while updating application: %s", maxRetries, spec.GetName())
 }
 
-// NewAPIClient creates a new API client for ArgoCD and connects to the ArgoCD
-// API server.
+// NewK8SClient creates a new kubernetes client to interact with kubernetes api-server.
 func NewK8SClient(kubeClient *kube.KubernetesClient) (ArgoCD, error) {
 	return &k8sClient{kubeClient: kubeClient}, nil
 }
@@ -71,7 +111,7 @@ type argoCD struct {
 // ArgoCD is the interface for accessing Argo CD functions we need
 type ArgoCD interface {
 	GetApplication(ctx context.Context, appName string) (*v1alpha1.Application, error)
-	ListApplications() ([]v1alpha1.Application, error)
+	ListApplications(labelSelector string) ([]v1alpha1.Application, error)
 	UpdateSpec(ctx context.Context, spec *application.ApplicationUpdateSpecRequest) (*v1alpha1.ApplicationSpec, error)
 }
 
@@ -145,72 +185,42 @@ func nameMatchesPattern(name string, patterns []string) bool {
 	return false
 }
 
-// Match app labels against provided filter label
-func matchAppLabels(appName string, appLabels map[string]string, filterLabel string) bool {
-
-	if filterLabel == "" {
-		return true
-	}
-
-	filterLabelMap, err := parseLabel(filterLabel)
-	if err != nil {
-		log.Errorf("Unable match app labels against %s: %s", filterLabel, err)
-		return false
-	}
-
-	for filterLabelKey, filterLabelValue := range filterLabelMap {
-		log.Tracef("Matching application name %s against label %s", appName, filterLabel)
-		if appLabelValue, ok := appLabels[filterLabelKey]; ok {
-			if appLabelValue == filterLabelValue {
-				return true
-			}
-		}
-	}
-	return false
-}
-
 // Retrieve a list of applications from ArgoCD that qualify for image updates
 // Application needs either to be of type Kustomize or Helm and must have the
 // correct annotation in order to be considered.
-func FilterApplicationsForUpdate(apps []v1alpha1.Application, patterns []string, appLabel string) (map[string]ApplicationImages, error) {
+func FilterApplicationsForUpdate(apps []v1alpha1.Application, patterns []string) (map[string]ApplicationImages, error) {
 	var appsForUpdate = make(map[string]ApplicationImages)
 
 	for _, app := range apps {
-		logCtx := log.WithContext().AddField("application", app.GetName())
-
+		logCtx := log.WithContext().AddField("application", app.GetName()).AddField("namespace", app.GetNamespace())
+		appNSName := fmt.Sprintf("%s/%s", app.GetNamespace(), app.GetName())
 		sourceType := getApplicationSourceType(&app)
 
 		// Check whether application has our annotation set
 		annotations := app.GetAnnotations()
 		if _, ok := annotations[common.ImageUpdaterAnnotation]; !ok {
-			logCtx.Tracef("skipping app '%s' of type '%s' because required annotation is missing", app.GetName(), sourceType)
+			logCtx.Tracef("skipping app '%s' of type '%s' because required annotation is missing", appNSName, sourceType)
 			continue
 		}
 
 		// Check for valid application type
 		if !IsValidApplicationType(&app) {
-			logCtx.Warnf("skipping app '%s' of type '%s' because it's not of supported source type", app.GetName(), sourceType)
+			logCtx.Warnf("skipping app '%s' of type '%s' because it's not of supported source type", appNSName, sourceType)
 			continue
 		}
 
 		// Check if application name matches requested patterns
 		if !nameMatchesPattern(app.GetName(), patterns) {
-			logCtx.Debugf("Skipping app '%s' because it does not match requested patterns", app.GetName())
+			logCtx.Debugf("Skipping app '%s' because it does not match requested patterns", appNSName)
 			continue
 		}
 
-		// Check if application carries requested label
-		if !matchAppLabels(app.GetName(), app.GetLabels(), appLabel) {
-			logCtx.Debugf("Skipping app '%s' because it does not carry requested label", app.GetName())
-			continue
-		}
-
-		logCtx.Tracef("processing app '%s' of type '%v'", app.GetName(), sourceType)
+		logCtx.Tracef("processing app '%s' of type '%v'", appNSName, sourceType)
 		imageList := parseImageList(annotations)
 		appImages := ApplicationImages{}
 		appImages.Application = app
 		appImages.Images = *imageList
-		appsForUpdate[app.GetName()] = appImages
+		appsForUpdate[appNSName] = appImages
 	}
 
 	return appsForUpdate, nil
@@ -229,20 +239,6 @@ func parseImageList(annotations map[string]string) *image.ContainerImageList {
 		}
 	}
 	return &results
-}
-
-func parseLabel(inputLabel string) (map[string]string, error) {
-	var selectedLabels map[string]string
-	const labelFieldDelimiter = "="
-	if inputLabel != "" {
-		selectedLabels = map[string]string{}
-		fields := strings.Split(inputLabel, labelFieldDelimiter)
-		if len(fields) != 2 {
-			return nil, fmt.Errorf("labels should have key%svalue, but instead got: %s", labelFieldDelimiter, inputLabel)
-		}
-		selectedLabels[fields[0]] = fields[1]
-	}
-	return selectedLabels, nil
 }
 
 // GetApplication gets the application named appName from Argo CD API
@@ -267,7 +263,7 @@ func (client *argoCD) GetApplication(ctx context.Context, appName string) (*v1al
 
 // ListApplications returns a list of all application names that the API user
 // has access to.
-func (client *argoCD) ListApplications() ([]v1alpha1.Application, error) {
+func (client *argoCD) ListApplications(labelSelector string) ([]v1alpha1.Application, error) {
 	conn, appClient, err := client.Client.NewApplicationClient()
 	metrics.Clients().IncreaseArgoCDClientRequest(client.Client.ClientOptions().ServerAddr, 1)
 	if err != nil {
@@ -277,7 +273,7 @@ func (client *argoCD) ListApplications() ([]v1alpha1.Application, error) {
 	defer conn.Close()
 
 	metrics.Clients().IncreaseArgoCDClientRequest(client.Client.ClientOptions().ServerAddr, 1)
-	apps, err := appClient.List(context.TODO(), &application.ApplicationQuery{})
+	apps, err := appClient.List(context.TODO(), &application.ApplicationQuery{Selector: &labelSelector})
 	if err != nil {
 		metrics.Clients().IncreaseArgoCDClientError(client.Client.ClientOptions().ServerAddr, 1)
 		return nil, err
@@ -385,6 +381,7 @@ func SetHelmImage(app *v1alpha1.Application, newImage *image.ContainerImage) err
 	}
 
 	appName := app.GetName()
+	appNamespace := app.GetNamespace()
 
 	var hpImageName, hpImageTag, hpImageSpec string
 
@@ -404,6 +401,7 @@ func SetHelmImage(app *v1alpha1.Application, newImage *image.ContainerImage) err
 	log.WithContext().
 		AddField("application", appName).
 		AddField("image", newImage.GetFullNameWithoutTag()).
+		AddField("namespace", appNamespace).
 		Debugf("target parameters: image-spec=%s image-name=%s, image-tag=%s", hpImageSpec, hpImageName, hpImageTag)
 
 	mergeParams := make([]v1alpha1.HelmParameter, 0)
@@ -507,10 +505,22 @@ func GetImagesAndAliasesFromApplication(app *v1alpha1.Application) image.Contain
 	// We update the ImageAlias field of the Images found in the app.Status.Summary.Images list.
 	for _, img := range *parseImageList(app.Annotations) {
 		if image := images.ContainsImage(img, false); image != nil {
-			if img.ImageAlias == "" {
-				image.ImageAlias = img.ImageName
+			if image.ImageAlias != "" {
+				// this image has already been matched to an alias, so create a copy
+				// and assign this alias to the image copy to avoid overwriting the existing alias association
+				imageCopy := *image
+				if img.ImageAlias == "" {
+					imageCopy.ImageAlias = img.ImageName
+				} else {
+					imageCopy.ImageAlias = img.ImageAlias
+				}
+				images = append(images, &imageCopy)
 			} else {
-				image.ImageAlias = img.ImageAlias
+				if img.ImageAlias == "" {
+					image.ImageAlias = img.ImageName
+				} else {
+					image.ImageAlias = img.ImageAlias
+				}
 			}
 		}
 	}
@@ -570,12 +580,12 @@ func getApplicationSourceType(app *v1alpha1.Application) v1alpha1.ApplicationSou
 	}
 
 	if app.Spec.HasMultipleSources() {
-		for _, s := range app.Spec.Sources {
-			if s.Helm != nil {
+		for _, st := range app.Status.SourceTypes {
+			if st == v1alpha1.ApplicationSourceTypeHelm {
 				return v1alpha1.ApplicationSourceTypeHelm
-			} else if s.Kustomize != nil {
+			} else if st == v1alpha1.ApplicationSourceTypeKustomize {
 				return v1alpha1.ApplicationSourceTypeKustomize
-			} else if s.Plugin != nil {
+			} else if st == v1alpha1.ApplicationSourceTypePlugin {
 				return v1alpha1.ApplicationSourceTypePlugin
 			}
 		}

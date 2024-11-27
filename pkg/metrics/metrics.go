@@ -155,7 +155,7 @@ func (apm *ApplicationMetrics) IncreaseImageUpdate(application string, by int) {
 	apm.imagesUpdatedTotal.WithLabelValues(application).Add(float64(by))
 }
 
-// IncreaseUpdateErrors increases the number of errors for given application occured during update process
+// IncreaseUpdateErrors increases the number of errors for given application occurred during update process
 func (apm *ApplicationMetrics) IncreaseUpdateErrors(application string, by int) {
 	apm.imagesUpdatedErrorsTotal.WithLabelValues(application).Add(float64(by))
 }

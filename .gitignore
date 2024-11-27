@@ -1,14 +1,14 @@
 .vscode/
 .idea/
 .DS_Store
-vendor/
+**/vendor/
 dist/
 site/
 *.iml
 # delve debug binaries
 cmd/**/debug
 debug.test
-coverage.out
+**/coverage.out
 test-results
 .scannerwork
 .scratch

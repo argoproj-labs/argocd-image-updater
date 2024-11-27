@@ -77,8 +77,15 @@ type Creds interface {
 }
 
 func getGitAskPassEnv(id string) []string {
+	// TODO(jannfis): This change should go upstream into Argo CD. Calling the
+	// full path to currently executing binary instead of relying on a binary
+	// named "argocd" in the PATH has only benefits.
+	cmd, err := os.Executable()
+	if err != nil {
+		return []string{}
+	}
 	return []string{
-		fmt.Sprintf("GIT_ASKPASS=%s", "argocd"),
+		fmt.Sprintf("GIT_ASKPASS=%s", cmd),
 		fmt.Sprintf("%s=%s", ASKPASS_NONCE_ENV, id),
 		"GIT_TERMINAL_PROMPT=0",
 		"ARGOCD_BINARY_NAME=argocd-git-ask-pass",

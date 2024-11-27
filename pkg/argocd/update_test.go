@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"gopkg.in/yaml.v2"
+
 	"github.com/argoproj-labs/argocd-image-updater/ext/git"
 	gitmock "github.com/argoproj-labs/argocd-image-updater/ext/git/mocks"
 	argomock "github.com/argoproj-labs/argocd-image-updater/pkg/argocd/mocks"
@@ -23,7 +25,6 @@ import (
 
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/application"
 	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
-	argogit "github.com/argoproj/argo-cd/v2/util/git"
 	"github.com/distribution/distribution/v3/manifest/schema1" //nolint:staticcheck
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -92,6 +93,75 @@ func Test_UpdateApplication(t *testing.T) {
 		assert.Equal(t, 1, res.NumApplicationsProcessed)
 		assert.Equal(t, 2, res.NumImagesConsidered)
 		assert.Equal(t, 2, res.NumImagesUpdated)
+	})
+
+	t.Run("Update app w/ GitHub App creds", func(t *testing.T) {
+		mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
+			regMock := regmock.RegistryClient{}
+			regMock.On("NewRepository", mock.Anything).Return(nil)
+			regMock.On("Tags", mock.Anything).Return([]string{"1.0.2", "1.0.3"}, nil)
+			return &regMock, nil
+		}
+
+		argoClient := argomock.ArgoCD{}
+		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+
+		secret := fixture.NewSecret("argocd-image-updater", "git-creds", map[string][]byte{
+			"githubAppID":             []byte("12345678"),
+			"githubAppInstallationID": []byte("87654321"),
+			"githubAppPrivateKey":     []byte("foo"),
+		})
+		kubeClient := kube.KubernetesClient{
+			Clientset: fake.NewFakeClientsetWithResources(secret),
+		}
+
+		annotations := map[string]string{
+			common.ImageUpdaterAnnotation:    "foo=gcr.io/jannfis/foobar:>=1.0.1",
+			common.WriteBackMethodAnnotation: "git:secret:argocd-image-updater/git-creds",
+		}
+		appImages := &ApplicationImages{
+			Application: v1alpha1.Application{
+				ObjectMeta: v1.ObjectMeta{
+					Name:        "guestbook",
+					Namespace:   "guestbook",
+					Annotations: annotations,
+				},
+				Spec: v1alpha1.ApplicationSpec{
+					Source: &v1alpha1.ApplicationSource{
+						RepoURL:        "https://example.com/example",
+						TargetRevision: "main",
+						Kustomize: &v1alpha1.ApplicationSourceKustomize{
+							Images: v1alpha1.KustomizeImages{
+								"jannfis/foobar:1.0.1",
+							},
+						},
+					},
+				},
+				Status: v1alpha1.ApplicationStatus{
+					SourceType: v1alpha1.ApplicationSourceTypeKustomize,
+					Summary: v1alpha1.ApplicationSummary{
+						Images: []string{
+							"gcr.io/jannfis/foobar:1.0.1",
+						},
+					},
+				},
+			},
+			Images: *parseImageList(annotations),
+		}
+		res := UpdateApplication(&UpdateConfiguration{
+			NewRegFN:   mockClientFn,
+			ArgoClient: &argoClient,
+			KubeClient: &kubeClient,
+			UpdateApp:  appImages,
+			DryRun:     false,
+		}, NewSyncIterationState())
+		assert.Equal(t, v1alpha1.KustomizeImage("gcr.io/jannfis/foobar:1.0.3"), appImages.Application.Spec.Source.Kustomize.Images[0])
+		assert.Equal(t, 0, res.NumSkipped)
+		assert.Equal(t, 1, res.NumApplicationsProcessed)
+		assert.Equal(t, 1, res.NumImagesConsidered)
+		// configured githubApp creds will take effect and git client will catch the invalid GithubAppPrivateKey "foo":
+		// "Could not update application spec: could not parse private key: invalid key: Key must be a PEM encoded PKCS1 or PKCS8 key"
+		assert.Equal(t, 1, res.NumErrors)
 	})
 
 	t.Run("Test successful update", func(t *testing.T) {
@@ -844,7 +914,7 @@ func Test_UpdateApplication(t *testing.T) {
 		assert.Equal(t, 0, res.NumImagesUpdated)
 	})
 
-	t.Run("Update from infered registry", func(t *testing.T) {
+	t.Run("Update from inferred registry", func(t *testing.T) {
 		mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
 			regMock := regmock.RegistryClient{}
 			regMock.On("NewRepository", mock.Anything).Return(nil)
@@ -1382,6 +1452,403 @@ replicas: 1
 		assert.Equal(t, strings.TrimSpace(strings.ReplaceAll(expected, "\t", "  ")), strings.TrimSpace(string(yaml)))
 	})
 
+	t.Run("Valid Helm source with Helm values file and image-spec", func(t *testing.T) {
+		expected := `
+image.spec.foo: nginx:v1.0.0
+replicas: 1
+`
+		app := v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name: "testapp",
+				Annotations: map[string]string{
+					"argocd-image-updater.argoproj.io/image-list":            "nginx",
+					"argocd-image-updater.argoproj.io/write-back-method":     "git",
+					"argocd-image-updater.argoproj.io/write-back-target":     "helmvalues:./test-values.yaml",
+					"argocd-image-updater.argoproj.io/nginx.helm.image-spec": "image.spec.foo",
+				},
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: &v1alpha1.ApplicationSource{
+					RepoURL:        "https://example.com/example",
+					TargetRevision: "main",
+					Helm: &v1alpha1.ApplicationSourceHelm{
+						Parameters: []v1alpha1.HelmParameter{
+							{
+								Name:        "image.spec.foo",
+								Value:       "nginx:v1.0.0",
+								ForceString: true,
+							},
+						},
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypeHelm,
+				Summary: v1alpha1.ApplicationSummary{
+					Images: []string{
+						"nginx:v0.0.0",
+					},
+				},
+			},
+		}
+
+		originalData := []byte(`
+image.spec.foo: nginx:v0.0.0
+replicas: 1
+`)
+		yaml, err := marshalParamsOverride(&app, originalData)
+		require.NoError(t, err)
+		assert.NotEmpty(t, yaml)
+		assert.Equal(t, strings.TrimSpace(strings.ReplaceAll(expected, "\t", "  ")), strings.TrimSpace(string(yaml)))
+
+		// when image.spec.foo fields are missing in the target helm value file,
+		// they should be auto created without corrupting any other pre-existing elements.
+		originalData = []byte("test-value1: one")
+		expected = `
+test-value1: one
+image:
+  spec:
+    foo: nginx:v1.0.0
+`
+		yaml, err = marshalParamsOverride(&app, originalData)
+		require.NoError(t, err)
+		assert.NotEmpty(t, yaml)
+		assert.Equal(t, strings.TrimSpace(strings.ReplaceAll(expected, "\t", "  ")), strings.TrimSpace(string(yaml)))
+	})
+
+	t.Run("Valid Helm source with Helm values file with multiple images", func(t *testing.T) {
+		expected := `
+nginx.image.name: nginx
+nginx.image.tag: v1.0.0
+redis.image.name: redis
+redis.image.tag: v1.0.0
+replicas: 1
+`
+		app := v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name: "testapp",
+				Annotations: map[string]string{
+					"argocd-image-updater.argoproj.io/image-list":            "nginx=nginx, redis=redis",
+					"argocd-image-updater.argoproj.io/write-back-method":     "git",
+					"argocd-image-updater.argoproj.io/write-back-target":     "helmvalues:./test-values.yaml",
+					"argocd-image-updater.argoproj.io/nginx.helm.image-name": "nginx.image.name",
+					"argocd-image-updater.argoproj.io/nginx.helm.image-tag":  "nginx.image.tag",
+					"argocd-image-updater.argoproj.io/redis.helm.image-name": "redis.image.name",
+					"argocd-image-updater.argoproj.io/redis.helm.image-tag":  "redis.image.tag",
+				},
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Sources: []v1alpha1.ApplicationSource{
+					{
+						Chart: "my-app",
+						Helm: &v1alpha1.ApplicationSourceHelm{
+							ReleaseName: "my-app",
+							ValueFiles:  []string{"$values/some/dir/values.yaml"},
+							Parameters: []v1alpha1.HelmParameter{
+								{
+									Name:        "nginx.image.name",
+									Value:       "nginx",
+									ForceString: true,
+								},
+								{
+									Name:        "nginx.image.tag",
+									Value:       "v1.0.0",
+									ForceString: true,
+								},
+								{
+									Name:        "redis.image.name",
+									Value:       "redis",
+									ForceString: true,
+								},
+								{
+									Name:        "redis.image.tag",
+									Value:       "v1.0.0",
+									ForceString: true,
+								},
+							},
+						},
+						RepoURL:        "https://example.com/example",
+						TargetRevision: "main",
+					},
+					{
+						Ref:            "values",
+						RepoURL:        "https://example.com/example2",
+						TargetRevision: "main",
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceTypes: []v1alpha1.ApplicationSourceType{
+					v1alpha1.ApplicationSourceTypeHelm,
+					"",
+				},
+				Summary: v1alpha1.ApplicationSummary{
+					Images: []string{
+						"nginx:v0.0.0",
+						"redis:v0.0.0",
+					},
+				},
+			},
+		}
+
+		originalData := []byte(`
+nginx.image.name: nginx
+nginx.image.tag: v0.0.0
+redis.image.name: redis
+redis.image.tag: v0.0.0
+replicas: 1
+`)
+		yaml, err := marshalParamsOverride(&app, originalData)
+		require.NoError(t, err)
+		assert.NotEmpty(t, yaml)
+		assert.Equal(t, strings.TrimSpace(strings.ReplaceAll(expected, "\t", "  ")), strings.TrimSpace(string(yaml)))
+
+		// when nginx.* and redis.* fields are missing in the target helm value file,
+		// they should be auto created without corrupting any other pre-existing elements.
+		originalData = []byte("test-value1: one")
+		expected = `
+test-value1: one
+nginx:
+  image:
+    tag: v1.0.0
+    name: nginx
+redis:
+  image:
+    tag: v1.0.0
+    name: redis
+`
+		yaml, err = marshalParamsOverride(&app, originalData)
+		require.NoError(t, err)
+		assert.NotEmpty(t, yaml)
+		assert.Equal(t, strings.TrimSpace(strings.ReplaceAll(expected, "\t", "  ")), strings.TrimSpace(string(yaml)))
+	})
+
+	t.Run("Valid Helm source with Helm values file with multiple aliases", func(t *testing.T) {
+		expected := `
+foo.image.name: nginx
+foo.image.tag: v1.0.0
+bar.image.name: nginx
+bar.image.tag: v1.0.0
+bbb.image.name: nginx
+bbb.image.tag: v1.0.0
+replicas: 1
+`
+		app := v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name: "testapp",
+				Annotations: map[string]string{
+					"argocd-image-updater.argoproj.io/image-list":          "foo=nginx, bar=nginx, bbb=nginx",
+					"argocd-image-updater.argoproj.io/write-back-method":   "git",
+					"argocd-image-updater.argoproj.io/write-back-target":   "helmvalues:./test-values.yaml",
+					"argocd-image-updater.argoproj.io/foo.helm.image-name": "foo.image.name",
+					"argocd-image-updater.argoproj.io/foo.helm.image-tag":  "foo.image.tag",
+					"argocd-image-updater.argoproj.io/bar.helm.image-name": "bar.image.name",
+					"argocd-image-updater.argoproj.io/bar.helm.image-tag":  "bar.image.tag",
+					"argocd-image-updater.argoproj.io/bbb.helm.image-name": "bbb.image.name",
+					"argocd-image-updater.argoproj.io/bbb.helm.image-tag":  "bbb.image.tag",
+				},
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Sources: []v1alpha1.ApplicationSource{
+					{
+						Chart: "my-app",
+						Helm: &v1alpha1.ApplicationSourceHelm{
+							ReleaseName: "my-app",
+							ValueFiles:  []string{"$values/some/dir/values.yaml"},
+							Parameters: []v1alpha1.HelmParameter{
+								{
+									Name:        "foo.image.name",
+									Value:       "nginx",
+									ForceString: true,
+								},
+								{
+									Name:        "foo.image.tag",
+									Value:       "v1.0.0",
+									ForceString: true,
+								},
+								{
+									Name:        "bar.image.name",
+									Value:       "nginx",
+									ForceString: true,
+								},
+								{
+									Name:        "bar.image.tag",
+									Value:       "v1.0.0",
+									ForceString: true,
+								},
+								{
+									Name:        "bbb.image.name",
+									Value:       "nginx",
+									ForceString: true,
+								},
+								{
+									Name:        "bbb.image.tag",
+									Value:       "v1.0.0",
+									ForceString: true,
+								},
+							},
+						},
+						RepoURL:        "https://example.com/example",
+						TargetRevision: "main",
+					},
+					{
+						Ref:            "values",
+						RepoURL:        "https://example.com/example2",
+						TargetRevision: "main",
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceTypes: []v1alpha1.ApplicationSourceType{
+					v1alpha1.ApplicationSourceTypeHelm,
+					"",
+				},
+				Summary: v1alpha1.ApplicationSummary{
+					Images: []string{
+						"nginx:v0.0.0",
+					},
+				},
+			},
+		}
+
+		originalData := []byte(`
+foo.image.name: nginx
+foo.image.tag: v0.0.0
+bar.image.name: nginx
+bar.image.tag: v0.0.0
+bbb.image.name: nginx
+bbb.image.tag: v0.0.0
+replicas: 1
+`)
+		yaml, err := marshalParamsOverride(&app, originalData)
+		require.NoError(t, err)
+		assert.NotEmpty(t, yaml)
+		assert.Equal(t, strings.TrimSpace(strings.ReplaceAll(expected, "\t", "  ")), strings.TrimSpace(string(yaml)))
+	})
+
+	t.Run("Failed to setValue image parameter name", func(t *testing.T) {
+		expected := `
+test-value1: one
+image:
+  name: nginx
+  tag: v1.0.0
+replicas: 1
+`
+
+		app := v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name: "testapp",
+				Annotations: map[string]string{
+					"argocd-image-updater.argoproj.io/image-list":            "nginx",
+					"argocd-image-updater.argoproj.io/write-back-method":     "git",
+					"argocd-image-updater.argoproj.io/write-back-target":     "helmvalues:./test-values.yaml",
+					"argocd-image-updater.argoproj.io/nginx.helm.image-name": "image.name",
+					"argocd-image-updater.argoproj.io/nginx.helm.image-tag":  "image.tag",
+				},
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: &v1alpha1.ApplicationSource{
+					RepoURL:        "https://example.com/example",
+					TargetRevision: "main",
+					Helm: &v1alpha1.ApplicationSourceHelm{
+						Parameters: []v1alpha1.HelmParameter{
+							{
+								Name:        "image.name",
+								Value:       "nginx",
+								ForceString: true,
+							},
+							{
+								Name:        "image.tag",
+								Value:       "v1.0.0",
+								ForceString: true,
+							},
+						},
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypeHelm,
+				Summary: v1alpha1.ApplicationSummary{
+					Images: []string{
+						"nginx:v0.0.0",
+					},
+				},
+			},
+		}
+
+		originalData := []byte(`
+test-value1: one
+image:
+  name: nginx
+replicas: 1
+`)
+
+		yaml, err := marshalParamsOverride(&app, originalData)
+		require.NoError(t, err)
+		assert.NotEmpty(t, yaml)
+		assert.Equal(t, strings.TrimSpace(strings.ReplaceAll(expected, "\t", "  ")), strings.TrimSpace(string(yaml)))
+	})
+
+	t.Run("Failed to setValue image parameter version", func(t *testing.T) {
+		expected := `
+image:
+  tag: v1.0.0
+  name: nginx
+replicas: 1
+`
+		app := v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name: "testapp",
+				Annotations: map[string]string{
+					"argocd-image-updater.argoproj.io/image-list":            "nginx",
+					"argocd-image-updater.argoproj.io/write-back-method":     "git",
+					"argocd-image-updater.argoproj.io/write-back-target":     "helmvalues:./test-values.yaml",
+					"argocd-image-updater.argoproj.io/nginx.helm.image-name": "image.name",
+					"argocd-image-updater.argoproj.io/nginx.helm.image-tag":  "image.tag",
+				},
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: &v1alpha1.ApplicationSource{
+					RepoURL:        "https://example.com/example",
+					TargetRevision: "main",
+					Helm: &v1alpha1.ApplicationSourceHelm{
+						Parameters: []v1alpha1.HelmParameter{
+							{
+								Name:        "image.name",
+								Value:       "nginx",
+								ForceString: true,
+							},
+							{
+								Name:        "image.tag",
+								Value:       "v1.0.0",
+								ForceString: true,
+							},
+						},
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypeHelm,
+				Summary: v1alpha1.ApplicationSummary{
+					Images: []string{
+						"nginx:v0.0.0",
+					},
+				},
+			},
+		}
+
+		originalData := []byte(`
+image:
+  tag: v0.0.0
+replicas: 1
+`)
+
+		yaml, err := marshalParamsOverride(&app, originalData)
+		require.NoError(t, err)
+		assert.NotEmpty(t, yaml)
+		assert.Equal(t, strings.TrimSpace(strings.ReplaceAll(expected, "\t", "  ")), strings.TrimSpace(string(yaml)))
+	})
+
 	t.Run("Missing annotation image-tag for helmvalues write-back-target", func(t *testing.T) {
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
@@ -1423,7 +1890,7 @@ replicas: 1
 			},
 		}
 
-		originalData := []byte(`random content`)
+		originalData := []byte(`random: yaml`)
 		_, err := marshalParamsOverride(&app, originalData)
 		assert.Error(t, err)
 		assert.Equal(t, "could not find an image-tag annotation for image nginx", err.Error())
@@ -1470,7 +1937,7 @@ replicas: 1
 			},
 		}
 
-		originalData := []byte(`random content`)
+		originalData := []byte(`random: yaml`)
 		_, err := marshalParamsOverride(&app, originalData)
 		assert.Error(t, err)
 		assert.Equal(t, "could not find an image-name annotation for image nginx", err.Error())
@@ -1518,10 +1985,9 @@ replicas: 1
 			},
 		}
 
-		originalData := []byte(`random content`)
+		originalData := []byte(`random: yaml`)
 		_, err := marshalParamsOverride(&app, originalData)
 		assert.Error(t, err)
-		assert.Equal(t, "wrongimage.name parameter not found", err.Error())
 	})
 
 	t.Run("Image-tag annotation value not found in Helm source parameters list", func(t *testing.T) {
@@ -1566,7 +2032,7 @@ replicas: 1
 			},
 		}
 
-		originalData := []byte(`random content`)
+		originalData := []byte(`random: yaml`)
 		_, err := marshalParamsOverride(&app, originalData)
 		assert.Error(t, err)
 		assert.Equal(t, "wrongimage.tag parameter not found", err.Error())
@@ -1647,6 +2113,127 @@ replicas: 1
 
 		_, err := marshalParamsOverride(&app, nil)
 		assert.Error(t, err)
+	})
+}
+
+func Test_SetHelmValue(t *testing.T) {
+	t.Run("Update existing Key", func(t *testing.T) {
+		expected := yaml.MapSlice{
+			{Key: "image", Value: yaml.MapSlice{
+				{Key: "attributes", Value: yaml.MapSlice{
+					{Key: "name", Value: "repo-name"},
+					{Key: "tag", Value: "v2.0.0"},
+				}},
+			}},
+		}
+
+		input := yaml.MapSlice{
+			{Key: "image", Value: yaml.MapSlice{
+				{Key: "attributes", Value: yaml.MapSlice{
+					{Key: "name", Value: "repo-name"},
+					{Key: "tag", Value: "v1.0.0"},
+				}},
+			}},
+		}
+		key := "image.attributes.tag"
+		value := "v2.0.0"
+
+		err := setHelmValue(&input, key, value)
+		require.NoError(t, err)
+		assert.Equal(t, expected, input)
+	})
+
+	t.Run("Update Key with dots", func(t *testing.T) {
+		expected := yaml.MapSlice{
+			{Key: "image.attributes.tag", Value: "v2.0.0"},
+		}
+
+		input := yaml.MapSlice{
+			{Key: "image.attributes.tag", Value: "v1.0.0"},
+		}
+		key := "image.attributes.tag"
+		value := "v2.0.0"
+
+		err := setHelmValue(&input, key, value)
+		require.NoError(t, err)
+		assert.Equal(t, expected, input)
+	})
+
+	t.Run("Key not found", func(t *testing.T) {
+		expected := yaml.MapSlice{
+			{Key: "image", Value: yaml.MapSlice{
+				{Key: "attributes", Value: yaml.MapSlice{
+					{Key: "name", Value: "repo-name"},
+					{Key: "tag", Value: "v2.0.0"},
+				}},
+			}},
+		}
+
+		input := yaml.MapSlice{
+			{Key: "image", Value: yaml.MapSlice{
+				{Key: "attributes", Value: yaml.MapSlice{
+					{Key: "name", Value: "repo-name"},
+				}},
+			}},
+		}
+
+		key := "image.attributes.tag"
+		value := "v2.0.0"
+
+		err := setHelmValue(&input, key, value)
+		require.NoError(t, err)
+		assert.Equal(t, expected, input)
+	})
+
+	t.Run("Root key not found", func(t *testing.T) {
+		expected := yaml.MapSlice{
+			{Key: "name", Value: "repo-name"},
+			{Key: "tag", Value: "v2.0.0"},
+		}
+
+		input := yaml.MapSlice{
+			{Key: "name", Value: "repo-name"},
+		}
+
+		key := "tag"
+		value := "v2.0.0"
+
+		err := setHelmValue(&input, key, value)
+		require.NoError(t, err)
+		assert.Equal(t, expected, input)
+	})
+
+	t.Run("Empty values with deep key", func(t *testing.T) {
+		expected := yaml.MapSlice{
+			{Key: "image", Value: yaml.MapSlice{
+				{Key: "attributes", Value: yaml.MapSlice{
+					{Key: "tag", Value: "v2.0.0"},
+				}},
+			}},
+		}
+
+		input := yaml.MapSlice{}
+
+		key := "image.attributes.tag"
+		value := "v2.0.0"
+
+		err := setHelmValue(&input, key, value)
+		require.NoError(t, err)
+		assert.Equal(t, expected, input)
+	})
+
+	t.Run("Unexpected type for key", func(t *testing.T) {
+		input := yaml.MapSlice{
+			{Key: "image", Value: yaml.MapSlice{
+				{Key: "attributes", Value: "v1.0.0"},
+			}},
+		}
+		key := "image.attributes.tag"
+		value := "v2.0.0"
+
+		err := setHelmValue(&input, key, value)
+		assert.Error(t, err)
+		assert.Equal(t, "unexpected type string for key attributes", err.Error())
 	})
 }
 
@@ -2140,6 +2727,38 @@ func Test_GetGitCreds(t *testing.T) {
 		// Must have HTTPS GitHub App creds
 		_, ok := creds.(git.GitHubAppCreds)
 		require.True(t, ok)
+
+		// invalid secrete data in GitHub App creds
+		invalidSecretEntries := []map[string][]byte{
+			{ // missing githubAppPrivateKey
+				"githubAppID":             []byte("12345678"),
+				"githubAppInstallationID": []byte("87654321"),
+			}, { // missing githubAppInstallationID
+				"githubAppID":         []byte("12345678"),
+				"githubAppPrivateKey": []byte("foo"),
+			}, { // missing githubAppID
+				"githubAppInstallationID": []byte("87654321"),
+				"githubAppPrivateKey":     []byte("foo"),
+			}, { // ID should be a number
+				"githubAppID":             []byte("NaN"),
+				"githubAppInstallationID": []byte("87654321"),
+				"githubAppPrivateKey":     []byte("foo"),
+			}, {
+				"githubAppID":             []byte("12345678"),
+				"githubAppInstallationID": []byte("NaN"),
+				"githubAppPrivateKey":     []byte("foo"),
+			},
+		}
+		for _, secretEntry := range invalidSecretEntries {
+			secret = fixture.NewSecret("argocd-image-updater", "git-creds", secretEntry)
+			kubeClient = kube.KubernetesClient{
+				Clientset: fake.NewFakeClientsetWithResources(secret),
+			}
+			wbc, err = getWriteBackConfig(&app, &kubeClient, &argoClient)
+			require.NoError(t, err)
+			_, err = wbc.GetCreds(&app)
+			require.Error(t, err)
+		}
 	})
 
 	t.Run("SSH creds from a secret", func(t *testing.T) {
@@ -2228,7 +2847,7 @@ func Test_GetGitCreds(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, creds)
 		// Must have HTTPS creds
-		_, ok := creds.(argogit.HTTPSCreds)
+		_, ok := creds.(git.HTTPSCreds)
 		require.True(t, ok)
 	})
 
@@ -2547,6 +3166,110 @@ helm:
 `, string(override))
 	})
 
+	t.Run("Good commit to helm override with argocd namespace", func(t *testing.T) {
+		kubeClient.Namespace = "argocd"
+		app := app.DeepCopy()
+		app.Status.SourceType = "Helm"
+		app.ObjectMeta.Namespace = "argocd"
+		app.Spec.Source.Helm = &v1alpha1.ApplicationSourceHelm{Parameters: []v1alpha1.HelmParameter{
+			{Name: "bar", Value: "bar", ForceString: true},
+			{Name: "baz", Value: "baz", ForceString: true},
+		}}
+		gitMock, dir, cleanup := mockGit(t)
+		defer cleanup()
+		of := filepath.Join(dir, ".argocd-source-testapp.yaml")
+		assert.NoError(t, os.WriteFile(of, []byte(`
+helm:
+  parameters:
+  - name: foo
+    value: foo
+    forcestring: true
+`), os.ModePerm))
+
+		gitMock.On("Checkout", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
+			args.Assert(t, "mydefaultbranch", false)
+		}).Return(nil)
+		gitMock.On("Add", mock.Anything).Return(nil)
+		gitMock.On("Commit", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
+		gitMock.On("Push", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+		gitMock.On("SymRefToBranch", mock.Anything).Return("mydefaultbranch", nil)
+		wbc, err := getWriteBackConfig(app, &kubeClient, &argoClient)
+		require.NoError(t, err)
+		wbc.GitClient = gitMock
+		app.Spec.Source.TargetRevision = "HEAD"
+		wbc.GitBranch = ""
+
+		err = commitChanges(app, wbc, nil)
+		assert.NoError(t, err)
+		override, err := os.ReadFile(of)
+		assert.NoError(t, err)
+		assert.YAMLEq(t, `
+helm:
+  parameters:
+  - name: foo
+    value: foo
+    forcestring: true
+  - name: bar
+    value: bar
+    forcestring: true
+  - name: baz
+    value: baz
+    forcestring: true
+`, string(override))
+	})
+
+	t.Run("Good commit to helm override with another namespace", func(t *testing.T) {
+		kubeClient.Namespace = "argocd"
+		app := app.DeepCopy()
+		app.Status.SourceType = "Helm"
+		app.ObjectMeta.Namespace = "testNS"
+		app.Spec.Source.Helm = &v1alpha1.ApplicationSourceHelm{Parameters: []v1alpha1.HelmParameter{
+			{Name: "bar", Value: "bar", ForceString: true},
+			{Name: "baz", Value: "baz", ForceString: true},
+		}}
+		gitMock, dir, cleanup := mockGit(t)
+		defer cleanup()
+		of := filepath.Join(dir, ".argocd-source-testNS_testapp.yaml")
+		assert.NoError(t, os.WriteFile(of, []byte(`
+helm:
+  parameters:
+  - name: foo
+    value: foo
+    forcestring: true
+`), os.ModePerm))
+
+		gitMock.On("Checkout", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
+			args.Assert(t, "mydefaultbranch", false)
+		}).Return(nil)
+		gitMock.On("Add", mock.Anything).Return(nil)
+		gitMock.On("Commit", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
+		gitMock.On("Push", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+		gitMock.On("SymRefToBranch", mock.Anything).Return("mydefaultbranch", nil)
+		wbc, err := getWriteBackConfig(app, &kubeClient, &argoClient)
+		require.NoError(t, err)
+		wbc.GitClient = gitMock
+		app.Spec.Source.TargetRevision = "HEAD"
+		wbc.GitBranch = ""
+
+		err = commitChanges(app, wbc, nil)
+		assert.NoError(t, err)
+		override, err := os.ReadFile(of)
+		assert.NoError(t, err)
+		assert.YAMLEq(t, `
+helm:
+  parameters:
+  - name: foo
+    value: foo
+    forcestring: true
+  - name: bar
+    value: bar
+    forcestring: true
+  - name: baz
+    value: baz
+    forcestring: true
+`, string(override))
+	})
+
 	t.Run("Good commit to kustomization", func(t *testing.T) {
 		app := app.DeepCopy()
 		app.Annotations[common.WriteBackTargetAnnotation] = "kustomization"
@@ -2640,7 +3363,8 @@ replacements: []
 		app := app.DeepCopy()
 		gitMock := &gitmock.Client{}
 		gitMock.On("Init").Return(nil)
-		gitMock.On("Fetch", mock.Anything).Return(nil)
+		gitMock.On("Root").Return(t.TempDir())
+		gitMock.On("ShallowFetch", mock.Anything, mock.Anything).Return(nil)
 		gitMock.On("Checkout", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
 			args.Assert(t, "mydefaultbranch", false)
 		}).Return(nil)
@@ -2666,7 +3390,7 @@ replacements: []
 	t.Run("Cannot init", func(t *testing.T) {
 		gitMock := &gitmock.Client{}
 		gitMock.On("Init").Return(fmt.Errorf("cannot init"))
-		gitMock.On("Fetch", mock.Anything).Return(nil)
+		gitMock.On("ShallowFetch", mock.Anything, mock.Anything).Return(nil)
 		gitMock.On("Checkout", mock.Anything, mock.Anything).Return(nil)
 		gitMock.On("Commit", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 		gitMock.On("Push", mock.Anything, mock.Anything, mock.Anything).Return(nil)
@@ -2681,7 +3405,7 @@ replacements: []
 	t.Run("Cannot fetch", func(t *testing.T) {
 		gitMock := &gitmock.Client{}
 		gitMock.On("Init").Return(nil)
-		gitMock.On("Fetch", mock.Anything).Return(fmt.Errorf("cannot fetch"))
+		gitMock.On("ShallowFetch", mock.Anything, mock.Anything).Return(fmt.Errorf("cannot fetch"))
 		gitMock.On("Checkout", mock.Anything, mock.Anything).Return(nil)
 		gitMock.On("Commit", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 		gitMock.On("Push", mock.Anything, mock.Anything, mock.Anything).Return(nil)
@@ -2695,7 +3419,7 @@ replacements: []
 	t.Run("Cannot checkout", func(t *testing.T) {
 		gitMock := &gitmock.Client{}
 		gitMock.On("Init").Return(nil)
-		gitMock.On("Fetch", mock.Anything).Return(nil)
+		gitMock.On("ShallowFetch", mock.Anything, mock.Anything).Return(nil)
 		gitMock.On("Checkout", mock.Anything, mock.Anything).Return(fmt.Errorf("cannot checkout"))
 		gitMock.On("Commit", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 		gitMock.On("Push", mock.Anything, mock.Anything, mock.Anything).Return(nil)
@@ -2811,8 +3535,29 @@ func mockGit(t *testing.T) (gitMock *gitmock.Client, dir string, cleanup func())
 	gitMock = &gitmock.Client{}
 	gitMock.On("Root").Return(dir)
 	gitMock.On("Init").Return(nil)
-	gitMock.On("Fetch", mock.Anything).Return(nil)
+	gitMock.On("ShallowFetch", mock.Anything, mock.Anything).Return(nil)
 	return gitMock, dir, func() {
 		_ = os.RemoveAll(dir)
 	}
+}
+
+func Test_GetRepositoryLock(t *testing.T) {
+	state := NewSyncIterationState()
+
+	// Test case 1: Get lock for a repository that doesn't exist in the state
+	repo1 := "repo1"
+	lock1 := state.GetRepositoryLock(repo1)
+	require.NotNil(t, lock1)
+	require.Equal(t, lock1, state.repositoryLocks[repo1])
+
+	// Test case 2: Get lock for the same repository again, should return the same lock
+	lock2 := state.GetRepositoryLock(repo1)
+	require.Equal(t, lock1, lock2)
+
+	// Test case 3: Get lock for a different repository, should return a different lock
+	repo2 := "repo2"
+	lock3 := state.GetRepositoryLock(repo2)
+	require.NotNil(t, lock3)
+	require.NotNil(t, state.repositoryLocks[repo2])
+	require.Equal(t, lock3, state.repositoryLocks[repo2])
 }

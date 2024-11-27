@@ -64,7 +64,7 @@ type registryClient struct {
 }
 
 // credentials is an implementation of distribution/V3/session struct
-// to mangage registry credentials and token
+// to manage registry credentials and token
 type credentials struct {
 	username      string
 	password      string
@@ -306,8 +306,8 @@ func (client *registryClient) TagMetadata(manifest distribution.Manifest, opts *
 		}
 
 		if !opts.WantsPlatform(info.OS, info.Arch, info.Variant) {
-			logCtx.Debugf("ignoring v2 manifest %v. Manifest platform: %s/%s, requested: %s",
-				ti.EncodedDigest(), info.OS, info.Arch, strings.Join(opts.Platforms(), ","))
+			logCtx.Debugf("ignoring v2 manifest %v. Manifest platform: %s, requested: %s",
+				ti.EncodedDigest(), options.PlatformKey(info.OS, info.Arch, info.Variant), strings.Join(opts.Platforms(), ","))
 			return nil, nil
 		}
 
@@ -338,8 +338,8 @@ func (client *registryClient) TagMetadata(manifest distribution.Manifest, opts *
 		}
 
 		if !opts.WantsPlatform(info.OS, info.Arch, info.Variant) {
-			logCtx.Debugf("ignoring OCI manifest %v. Manifest platform: %s/%s, requested: %s",
-				ti.EncodedDigest(), info.OS, info.Arch, strings.Join(opts.Platforms(), ","))
+			logCtx.Debugf("ignoring OCI manifest %v. Manifest platform: %s, requested: %s",
+				ti.EncodedDigest(), options.PlatformKey(info.OS, info.Arch, info.Variant), strings.Join(opts.Platforms(), ","))
 			return nil, nil
 		}
 
@@ -361,19 +361,26 @@ func TagInfoFromReferences(client *registryClient, opts *options.ManifestOptions
 	platforms := []string{}
 
 	for _, ref := range references {
-		platforms = append(platforms, ref.Platform.OS+"/"+ref.Platform.Architecture)
-		logCtx.Tracef("Found %s", options.PlatformKey(ref.Platform.OS, ref.Platform.Architecture, ref.Platform.Variant))
-		if !opts.WantsPlatform(ref.Platform.OS, ref.Platform.Architecture, ref.Platform.Variant) {
+		var refOS, refArch, refVariant string
+		if ref.Platform != nil {
+			refOS = ref.Platform.OS
+			refArch = ref.Platform.Architecture
+			refVariant = ref.Platform.Variant
+		}
+		platform1 := options.PlatformKey(refOS, refArch, refVariant)
+		platforms = append(platforms, platform1)
+		logCtx.Tracef("Found %s", platform1)
+		if !opts.WantsPlatform(refOS, refArch, refVariant) {
 			logCtx.Tracef("Ignoring referenced manifest %v because platform %s does not match any of: %s",
 				ref.Digest,
-				options.PlatformKey(ref.Platform.OS, ref.Platform.Architecture, ref.Platform.Variant),
+				platform1,
 				strings.Join(opts.Platforms(), ","))
 			continue
 		}
 		ml = append(ml, ref)
 	}
 
-	// We need at least one reference that matches requested plaforms
+	// We need at least one reference that matches requested platforms
 	if len(ml) == 0 {
 		logCtx.Debugf("Manifest list did not contain any usable reference. Platforms requested: (%s), platforms included: (%s)",
 			strings.Join(opts.Platforms(), ","), strings.Join(platforms, ","))
@@ -419,7 +426,7 @@ func TagInfoFromReferences(client *registryClient, opts *options.ManifestOptions
 	return ti, nil
 }
 
-// Implementation of ping method to intialize the challenge list
+// Implementation of ping method to initialize the challenge list
 // Without this, tokenHandler and AuthorizationHandler won't work
 func ping(manager challenge.Manager, endpoint *RegistryEndpoint, versionHeader string) ([]auth.APIVersion, error) {
 	httpc := &http.Client{Transport: endpoint.GetTransport()}
@@ -429,7 +436,7 @@ func ping(manager challenge.Manager, endpoint *RegistryEndpoint, versionHeader s
 		return nil, err
 	}
 	defer resp.Body.Close()
-	// Let's consider only HTTP 200 and 401 valid responses for the inital request
+	// Let's consider only HTTP 200 and 401 valid responses for the initial request
 	if resp.StatusCode != 200 && resp.StatusCode != 401 {
 		return nil, fmt.Errorf("endpoint %s does not seem to be a valid v2 Docker Registry API (received HTTP code %d for GET %s)", endpoint.RegistryAPI, resp.StatusCode, url)
 	}

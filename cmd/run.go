@@ -19,6 +19,8 @@ import (
 	"github.com/argoproj-labs/argocd-image-updater/pkg/registry"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/version"
 
+	"github.com/argoproj/argo-cd/v2/reposerver/askpass"
+
 	"github.com/spf13/cobra"
 
 	"golang.org/x/sync/semaphore"
@@ -155,6 +157,23 @@ func newRunCommand() *cobra.Command {
 				}
 			}
 
+			// Start up the credentials store server
+			cs := askpass.NewServer(askpass.SocketPath)
+			csErrCh := make(chan error)
+			go func() {
+				log.Debugf("Starting askpass server")
+				csErrCh <- cs.Run()
+			}()
+
+			// Wait for cred server to be started, just in case
+			err = <-csErrCh
+			if err != nil {
+				log.Errorf("Error running askpass server: %v", err)
+				return err
+			}
+
+			cfg.GitCreds = cs
+
 			// This is our main loop. We leave it only when our health probe server
 			// returns an error.
 			for {
@@ -217,10 +236,13 @@ func newRunCommand() *cobra.Command {
 	runCmd.Flags().IntVar(&cfg.MaxConcurrency, "max-concurrency", 10, "maximum number of update threads to run concurrently")
 	runCmd.Flags().StringVar(&cfg.ArgocdNamespace, "argocd-namespace", "", "namespace where ArgoCD runs in (current namespace by default)")
 	runCmd.Flags().StringSliceVar(&cfg.AppNamePatterns, "match-application-name", nil, "patterns to match application name against")
-	runCmd.Flags().StringVar(&cfg.AppLabel, "match-application-label", "", "label to match application labels against")
+	runCmd.Flags().StringVar(&cfg.AppLabel, "match-application-label", "", "label selector to match application labels against")
 	runCmd.Flags().BoolVar(&warmUpCache, "warmup-cache", true, "whether to perform a cache warm-up on startup")
 	runCmd.Flags().StringVar(&cfg.GitCommitUser, "git-commit-user", env.GetStringVal("GIT_COMMIT_USER", "argocd-image-updater"), "Username to use for Git commits")
 	runCmd.Flags().StringVar(&cfg.GitCommitMail, "git-commit-email", env.GetStringVal("GIT_COMMIT_EMAIL", "noreply@argoproj.io"), "E-Mail address to use for Git commits")
+	runCmd.Flags().StringVar(&cfg.GitCommitSigningKey, "git-commit-signing-key", env.GetStringVal("GIT_COMMIT_SIGNING_KEY", ""), "GnuPG key ID or path to Private SSH Key used to sign the commits")
+	runCmd.Flags().StringVar(&cfg.GitCommitSigningMethod, "git-commit-signing-method", env.GetStringVal("GIT_COMMIT_SIGNING_METHOD", "openpgp"), "Method used to sign Git commits ('openpgp' or 'ssh')")
+	runCmd.Flags().BoolVar(&cfg.GitCommitSignOff, "git-commit-sign-off", env.GetBoolVal("GIT_COMMIT_SIGN_OFF", false), "Whether to sign-off git commits")
 	runCmd.Flags().StringVar(&commitMessagePath, "git-commit-message-path", defaultCommitTemplatePath, "Path to a template to use for Git commit messages")
 	runCmd.Flags().BoolVar(&cfg.DisableKubeEvents, "disable-kube-events", env.GetBoolVal("IMAGE_UPDATER_KUBE_EVENTS", false), "Disable kubernetes events")
 
@@ -245,7 +267,7 @@ func runImageUpdater(cfg *ImageUpdaterConfig, warmUp bool) (argocd.ImageUpdaterR
 	}
 	cfg.ArgoClient = argoClient
 
-	apps, err := cfg.ArgoClient.ListApplications()
+	apps, err := cfg.ArgoClient.ListApplications(cfg.AppLabel)
 	if err != nil {
 		log.WithContext().
 			AddField("argocd_server", cfg.ClientOpts.ServerAddr).
@@ -259,7 +281,7 @@ func runImageUpdater(cfg *ImageUpdaterConfig, warmUp bool) (argocd.ImageUpdaterR
 
 	// Get the list of applications that are allowed for updates, that is, those
 	// applications which have correct annotation.
-	appList, err := argocd.FilterApplicationsForUpdate(apps, cfg.AppNamePatterns, cfg.AppLabel)
+	appList, err := argocd.FilterApplicationsForUpdate(apps, cfg.AppNamePatterns)
 	if err != nil {
 		return result, err
 	}
@@ -300,15 +322,19 @@ func runImageUpdater(cfg *ImageUpdaterConfig, warmUp bool) (argocd.ImageUpdaterR
 			defer sem.Release(1)
 			log.Debugf("Processing application %s", app)
 			upconf := &argocd.UpdateConfiguration{
-				NewRegFN:          registry.NewClient,
-				ArgoClient:        cfg.ArgoClient,
-				KubeClient:        cfg.KubeClient,
-				UpdateApp:         &curApplication,
-				DryRun:            dryRun,
-				GitCommitUser:     cfg.GitCommitUser,
-				GitCommitEmail:    cfg.GitCommitMail,
-				GitCommitMessage:  cfg.GitCommitMessage,
-				DisableKubeEvents: cfg.DisableKubeEvents,
+				NewRegFN:               registry.NewClient,
+				ArgoClient:             cfg.ArgoClient,
+				KubeClient:             cfg.KubeClient,
+				UpdateApp:              &curApplication,
+				DryRun:                 dryRun,
+				GitCommitUser:          cfg.GitCommitUser,
+				GitCommitEmail:         cfg.GitCommitMail,
+				GitCommitMessage:       cfg.GitCommitMessage,
+				GitCommitSigningKey:    cfg.GitCommitSigningKey,
+				GitCommitSigningMethod: cfg.GitCommitSigningMethod,
+				GitCommitSignOff:       cfg.GitCommitSignOff,
+				DisableKubeEvents:      cfg.DisableKubeEvents,
+				GitCreds:               cfg.GitCreds,
 			}
 			res := argocd.UpdateApplication(upconf, syncState)
 			result.NumApplicationsProcessed += 1

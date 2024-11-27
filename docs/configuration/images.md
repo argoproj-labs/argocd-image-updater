@@ -10,9 +10,9 @@ is used:
 argocd-image-updater.argoproj.io/image-list: <image_spec_list>
 ```
 
-The `<image_spec_list>` is a comma separated list of image specifications. Each
+The `<image_spec_list>` is a comma-separated list of image specifications. Each
 image specification is composed of mandatory and optional information, and is
-used to specify the image, its version constraint and a few meta data.
+used to specify the image, its version constraint, and a few metadata.
 
 An image specification could be formally described as:
 
@@ -55,7 +55,7 @@ of the [Semver library](https://github.com/Masterminds/semver) we're using.
 !!!note
     If you use an
     [update strategy](#update-strategies)
-    other than `semver` or `digest`, the `version_constraint` will not be have any effect
+    other than `semver` or `digest`, the `version_constraint` will not have any effect
     and all tags returned from the registry will be considered for update. If
     you need to further restrict the list of tags to consider, see
     [filtering tags](#filtering-tags)
@@ -82,7 +82,7 @@ be unique within the same application. Re-using an alias name across different
 applications is allowed.
 
 An alias name is assigned during image specification in the `image-list`
-annotation, for example the following would assign the alias `myalias` to the
+annotation, for example, the following would assign the alias `myalias` to the
 image `some/image`:
 
 ```yaml
@@ -129,7 +129,7 @@ following annotation to an appropriate value:
 argocd-image-updater.argoproj.io/<image_alias>.update-strategy: <strategy>
 ```
 
-If no update strategy is given, or an invalid value was used, the default
+If no update strategy is given, or an invalid value is used, the default
 strategy `semver` will be used.
 
 !!!warning
@@ -171,7 +171,7 @@ the tag names, effectively performing no filtering at all.
 ## Ignoring certain tags
 
 If you want to ignore certain tags from the registry for any given image, you
-can define a comma separated list of glob-like patterns using the following
+can define a comma-separated list of glob-like patterns using the following
 annotation:
 
 ```yaml
@@ -183,7 +183,7 @@ You can use glob patterns as described in this
 
 If you want to disable updating an image temporarily, without removing all of
 the configuration, you can do so by just ignoring all tags, effectively
-preventing the image updater to consider any of the tags returned from the
+preventing the image updater from considering any of the tags returned from the
 registry:
 
 ```yaml
@@ -208,7 +208,7 @@ need to let Argo CD Image Updater know:
 argocd-image-updater.argoproj.io/<image_alias>.platforms: linux/arm64
 ```
 
-You can specify multiple allowed platforms as a comma separated list of allowed
+You can specify multiple allowed platforms as a comma-separated list of allowed
 platforms:
 
 ```yaml
@@ -219,7 +219,7 @@ The correct image to execute will be chosen by Kubernetes.
 
 !!!note
     The `platforms` annotation only has effect for images that use an update
-    strategy which fetches meta-data. Currently, these are the `latest` and
+    strategy that fetches meta-data. Currently, these are the `latest` and
     `digest` strategies. For `semver` and `name` strategies, the `platforms`
     setting has no effect.
 
@@ -227,7 +227,7 @@ The correct image to execute will be chosen by Kubernetes.
 
 There are generally two ways on how to specify pull secrets for Argo CD Image
 Updater to use. Either you configure a secret reference globally for the
-container registry (as described [here](../registries/)), or you can specify
+container registry (as described [here](registries.md)), or you can specify
 the pull secret to use for a given image using the annotation
 
 ```yaml
@@ -239,7 +239,7 @@ for that certain image.
 
 The `secret_ref` can either be a reference to a secret or a reference to an
 environment variable. If a secret is referenced, the secret must exist in the
-cluster where Argo CD Image Updater is running in (or has access to).
+cluster where Argo CD Image Updater is running (or has access to).
 
 Valid values for `secret_ref` are:
 
@@ -247,7 +247,7 @@ Valid values for `secret_ref` are:
   field `field` from secret `secret_name` in namespace `namespace`.
 
 * `pullsecret:<namespace>/<secret_name>` - Use credentials stored in the secret
-  `secret_name` in namespace `namespace`. The secret is treated as Docker pull
+  `secret_name` in namespace `namespace`. The secret is treated as a Docker pull
   secret, that is, it must have a valid Docker config in JSON format in the
   field `.dockerconfigjson`.
 
@@ -259,7 +259,7 @@ Valid values for `secret_ref` are:
   to execute must be specified using an absolute path, and must have the
   executable bit set. The script is supposed to output the credentials to be
   used as a single line to stdout, in the format `<username>:<password>`.
-  Please note that the script will be executed every time Argo CD Image
+  Please note that the script will be executed every time the Argo CD Image
   Updater goes to find a new version, and credentials will not be cached. If
   you want it to execute only once and cache credentials, you should configure
   this secret on the registry level instead.
@@ -284,7 +284,7 @@ In this case, `image_name` should be the name of the image that you want to
 update to, rather than the currently running image.
 
 To provide the original image name, you need to set the `kustomize.image-name`
-annotation to the original image's name, like follows:
+annotation to the original image's name, as follows:
 
 ```yaml
 argocd-image-updater.argoproj.io/<image_alias>.kustomize.image-name: <original_image_name>
@@ -308,7 +308,7 @@ kustomize edit set image quay.io/argoproj/argocd=ghcr.io/argoproj/argocd
 
 Finally, if you have not yet overridden the image name in your manifests (i.e.
 there's no image `ghcr.io/argoproj/argocd` running in your application, you
-may need to tell Image Updater to force the update despite no image is running:
+may need to tell Image Updater to force the update despite no image running:
 
 ```yaml
 argocd-image-updater.argoproj.io/argocd.force-update: true
@@ -316,7 +316,7 @@ argocd-image-updater.argoproj.io/argocd.force-update: true
 
 ## Specifying Helm parameter names
 
-In case of Helm applications which contain more than one image in the manifests
+In the case of Helm applications that contain more than one image in the manifests
 or use another set of parameters than `image.name` and `image.tag` to define
 which image to render in the manifests, you need to set an `<image_alias>`
 in the image specification to define an alias for that image, and then
@@ -335,7 +335,7 @@ argocd-image-updater.argoproj.io/dex.helm.image-tag: dex.image.tag
 
 ```
 
-The general syntax for the two Helm specific annotations is:
+The general syntax for the two Helm-specific annotations is:
 
 ```yaml
 argocd-image-updater.argoproj.io/<image_alias>.helm.image-name: <name of helm parameter to set for the image name>
@@ -346,7 +346,7 @@ If the chart uses a parameter for the canonical name of the image (i.e. image
 name and tag combined), a third option can be used:
 
 ```yaml
-argocd-image-updater.argoproj.io/<image_alias>.helm.image-spec: <name of helm parameter to set for canonical name of image>
+argocd-image-updater.argoproj.io/<image_alias>.helm.image-spec: <name of helm parameter to set for the canonical name of image>
 ```
 
 If the `<image_alias>.helm.image-spec` annotation is set, the two other
@@ -453,11 +453,11 @@ must be prefixed with `argocd-image-updater.argoproj.io/`.
 |`image-list`|*none*|Comma separated list of images to consider for update|
 |`<image_alias>.update-strategy`|`semver`|The update strategy to be used for the image|
 |`<image_alias>.force-update`|`"false"`|If set to "true" (with quotes), even images that are not currently deployed will be updated|
-|`<image_alias>.allow-tags`|*any*|A function to match tag names from registry against to be considered for update|
-|`<image_alias>.ignore-tags`|*none*|A comma-separated list of glob patterns that when match ignore a certain tag from the registry|
+|`<image_alias>.allow-tags`|*any*|A function to match tag names from the registry against to be considered for update|
+|`<image_alias>.ignore-tags`|*none*|A comma-separated list of glob patterns that when matched, ignore a certain tag from the registry|
 |`<image_alias>.pull-secret`|*none*|A reference to a secret to be used as registry credentials for this image|
-|`<image_alias>.platform`|*none*|Only update to images for given platform(s). Comma separated list, e.g. `linux/amd64,linux/arm64`|
-|`<image_alias>.helm.image-spec`|*none*|Name of the Helm parameter to specify the canonical name of the image, i.e. holds `image/name:1.0`. If this is set, other Helm parameter related options will be ignored.|
+|`<image_alias>.platforms`|*none*|Only update to images for given platform(s). Comma-separated list, e.g. `linux/amd64,linux/arm64`|
+|`<image_alias>.helm.image-spec`|*none*|Name of the Helm parameter to specify the canonical name of the image, i.e. holds `image/name:1.0`. If this is set, other Helm parameter-related options will be ignored.|
 |`<image_alias>.helm.image-name`|`image.name`|Name of the Helm parameter used for specifying the image name, i.e. holds `image/name`|
 |`<image_alias>.helm.image-tag`|`image.tag`|Name of the Helm parameter used for specifying the image tag, i.e. holds `1.0`|
 |`<image_alias>.kustomize.image-name`|*original name of image*|Name of Kustomize image parameter to set during updates|
@@ -465,17 +465,17 @@ must be prefixed with `argocd-image-updater.argoproj.io/`.
 ### <a name="appendix-defaults"></a>Application-wide defaults
 
 If you want to update multiple images in an Application, that all share common
-settings (such as, update strategy, allowed tags, etc), you can define common
+settings (such as update strategy, allowed tags, etc), you can define common
 options. These options are valid for all images, unless an image overrides it
-with specific configuration.
+with a specific configuration.
 
-The following annotations are available. Please note, all annotations must be
+The following annotations are available. Please note that all annotations must be
 prefixed with `argocd-image-updater.argoproj.io/`.
 
 |Annotation name|Description|
 |---------------|-----------|
 |`update-strategy`|The update strategy to be used for all images|
 |`force-update`|If set to "true" (with quotes), even images that are not currently deployed will be updated|
-|`allow-tags`|A function to match tag names from registry against to be considered for update|
-|`ignore-tags`|A comma-separated list of glob patterns that when match ignore a certain tag from the registry|
+|`allow-tags`|A function to match tag names from the registry against to be considered for update|
+|`ignore-tags`|A comma-separated list of glob patterns that when matched, ignore a certain tag from the registry|
 |`pull-secret`|A reference to a secret to be used as registry credentials for this image|

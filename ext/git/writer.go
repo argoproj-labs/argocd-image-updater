@@ -2,6 +2,8 @@ package git
 
 import (
 	"fmt"
+	"os/exec"
+	"strconv"
 	"strings"
 
 	"github.com/argoproj-labs/argocd-image-updater/pkg/log"
@@ -13,26 +15,38 @@ type CommitOptions struct {
 	CommitMessageText string
 	// CommitMessagePath holds the path to a file to be used for the commit message (-F option)
 	CommitMessagePath string
-	// SigningKey holds a GnuPG key ID used to sign the commit with (-S option)
+	// SigningKey holds a GnuPG key ID or path to a Private SSH Key used to sign the commit with (-S option)
 	SigningKey string
+	// SigningMethod holds the signing method used to sign commits. (git -c gpg.format=ssh option)
+	SigningMethod string
 	// SignOff specifies whether to sign-off a commit (-s option)
 	SignOff bool
 }
 
 // Commit perfoms a git commit for the given pathSpec to the currently checked
 // out branch. If pathSpec is empty, or the special value "*", all pending
-// changes will be commited. If message is not the empty string, it will be
+// changes will be committed. If message is not the empty string, it will be
 // used as the commit message, otherwise a default commit message will be used.
 // If signingKey is not the empty string, commit will be signed with the given
-// GPG key.
+// GPG or SSH key.
 func (m *nativeGitClient) Commit(pathSpec string, opts *CommitOptions) error {
 	defaultCommitMsg := "Update parameters"
-	args := []string{"commit"}
+	// Git configuration
+	config := "gpg.format=" + opts.SigningMethod
+	args := []string{}
+	// -c is a global option and needs to be passed before the actual git sub
+	// command (commit).
+	if opts.SigningMethod != "" {
+		args = append(args, "-c", config)
+	}
+	args = append(args, "commit")
 	if pathSpec == "" || pathSpec == "*" {
 		args = append(args, "-a")
 	}
+	// Commit fails with a space between -S flag and path to SSH key
+	// -S/user/test/.ssh/signingKey or -SAAAAAAAA...
 	if opts.SigningKey != "" {
-		args = append(args, "-S", opts.SigningKey)
+		args = append(args, fmt.Sprintf("-S%s", opts.SigningKey))
 	}
 	if opts.SignOff {
 		args = append(args, "-s")
@@ -47,7 +61,7 @@ func (m *nativeGitClient) Commit(pathSpec string, opts *CommitOptions) error {
 
 	out, err := m.runCmd(args...)
 	if err != nil {
-		log.Errorf(out)
+		log.Errorf("%s %v", out, err)
 		return err
 	}
 
@@ -93,14 +107,20 @@ func (m *nativeGitClient) Add(path string) error {
 
 // SymRefToBranch retrieves the branch name a symbolic ref points to
 func (m *nativeGitClient) SymRefToBranch(symRef string) (string, error) {
-	output, err := m.runCmd("symbolic-ref", symRef)
+	output, err := m.runCredentialedCmdWithOutput("remote", "show", "origin")
 	if err != nil {
-		return "", fmt.Errorf("could not resolve symbolic ref '%s': %v", symRef, err)
+		return "", fmt.Errorf("error running git: %v", err)
 	}
-	if a := strings.SplitN(output, "refs/heads/", 2); len(a) == 2 {
-		return a[1], nil
+	for _, l := range strings.Split(output, "\n") {
+		l = strings.TrimSpace(l)
+		if strings.HasPrefix(l, "HEAD branch:") {
+			b := strings.SplitN(l, ":", 2)
+			if len(b) == 2 {
+				return strings.TrimSpace(b[1]), nil
+			}
+		}
 	}
-	return "", fmt.Errorf("no symbolic ref named '%s' could be found", symRef)
+	return "", fmt.Errorf("no default branch found in remote")
 }
 
 // Config configures username and email address for the repository
@@ -115,4 +135,62 @@ func (m *nativeGitClient) Config(username string, email string) error {
 	}
 
 	return nil
+}
+
+// runCredentialedCmdWithOutput is a convenience function to run a git command
+// with username/password credentials while supplying command output to the
+// caller.
+// nolint:unparam
+func (m *nativeGitClient) runCredentialedCmdWithOutput(args ...string) (string, error) {
+	closer, environ, err := m.creds.Environ()
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = closer.Close() }()
+
+	// If a basic auth header is explicitly set, tell Git to send it to the
+	// server to force use of basic auth instead of negotiating the auth scheme
+	for _, e := range environ {
+		if strings.HasPrefix(e, fmt.Sprintf("%s=", forceBasicAuthHeaderEnv)) {
+			args = append([]string{"--config-env", fmt.Sprintf("http.extraHeader=%s", forceBasicAuthHeaderEnv)}, args...)
+		}
+	}
+
+	cmd := exec.Command("git", args...)
+	cmd.Env = append(cmd.Env, environ...)
+	return m.runCmdOutput(cmd, runOpts{})
+}
+
+func (m *nativeGitClient) shallowFetch(revision string, depth int) error {
+	var err error
+	if revision != "" {
+		err = m.runCredentialedCmd("fetch", "origin", revision, "--force", "--prune", "--depth", strconv.Itoa(depth))
+	} else {
+		err = m.runCredentialedCmd("fetch", "origin", "--force", "--prune", "--depth", strconv.Itoa(depth))
+	}
+	return err
+}
+
+// Fetch fetches latest updates from origin
+func (m *nativeGitClient) ShallowFetch(revision string, depth int) error {
+	if m.OnFetch != nil {
+		done := m.OnFetch(m.repoURL)
+		defer done()
+	}
+
+	err := m.shallowFetch(revision, depth)
+
+	// When we have LFS support enabled, check for large files and fetch them too.
+	// No shallow fetch is possible here
+	if err == nil && m.IsLFSEnabled() {
+		largeFiles, err := m.LsLargeFiles()
+		if err == nil && len(largeFiles) > 0 {
+			err = m.runCredentialedCmd("lfs", "fetch", "--all")
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	return err
 }

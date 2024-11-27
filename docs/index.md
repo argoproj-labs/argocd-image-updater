@@ -8,14 +8,18 @@ that are managed by
     Argo CD Image Updater is under active development.
 
     You are welcome to test it out on non-critical environments, and of
-    course to 
+    course to
     [contribute](./contributing/start.md) by many means.
 
     There will be (probably a lot of) breaking changes from release to
     release as development progresses until version 1.0. We will do our
     best to indicate any breaking change and how to un-break it in the
     respective
-    [release notes](https://github.com/argoproj-labs/argocd-image-updater/releases)
+    [release notes](https://github.com/argoproj-labs/argocd-image-updater/releases).
+
+    Argo CD Image Updater is not currently compatible with
+    [Argo CD Applications in any namespace](https://argo-cd.readthedocs.io/en/stable/operator-manual/app-any-namespace/).
+
 
 ## Overview
 

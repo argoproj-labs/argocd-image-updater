@@ -16,7 +16,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
       - name: Setup Golang
-        uses: actions/setup-go@v4
+        uses: actions/setup-go@v5
         with:
           go-version: '1.22'
       - name: Download all Go modules
@@ -60,25 +60,25 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
       - name: Setup Golang
-        uses: actions/setup-go@v4
+        uses: actions/setup-go@v5
         with:
           go-version: '1.22'
           cache: false
         env:
           GO111MODULE: off
       - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v5
+        uses: golangci/golangci-lint-action@v6
         with:
-          version: v1.57.2
+          version: v1.61.0
           args: --timeout 5m
   test:
     name: Ensure unit tests are passing
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       - name: Setup Golang
-        uses: actions/setup-go@v3
+        uses: actions/setup-go@v5
         with:
           go-version: '1.22'
       - name: Run tests
@@ -87,6 +87,33 @@ jobs:
         run: |
           make test
       - name: Upload code coverage information to codecov.io
-        uses: codecov/codecov-action@v1
+        uses: codecov/codecov-action@v4
         with:
+          token: ${{ secrets.CODECOV_TOKEN }}
           file: coverage.out
+
+  test-manifests:
+    name: Ensure kubernetes manifests conform to their schema
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Install Kubeconform
+        run: |
+          set -xo pipefail
+
+          curl -sLf --retry 3 \
+            -o /tmp/kubeconform.tar.gz \
+            "https://github.com/yannh/kubeconform/releases/download/v0.6.6/kubeconform-linux-amd64.tar.gz" 
+          chksum=$(sha256sum /tmp/kubeconform.tar.gz | awk '{ print $1; }')
+          if test "${chksum}" != "2ff56999a6ed9e96fe5ab9ee52271f2db5335baf7f17789035b9561970cdd3eb"; then
+            echo "Checksum mismatch" >&2
+            exit 1
+          fi
+
+          tar -C /tmp -xvzf /tmp/kubeconform.tar.gz
+          sudo mv /tmp/kubeconform /usr/local/bin/kubeconform
+          chmod +x /usr/local/bin/kubeconform
+      - name: Run manifest tests
+        run: |
+          make test-manifests
