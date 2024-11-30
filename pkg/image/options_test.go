@@ -199,8 +199,9 @@ func Test_GetMatchOption(t *testing.T) {
 		}
 		img := NewFromIdentifier("dummy=foo/bar:1.12")
 		matchFunc, matchArgs := img.GetParameterMatch(annotations)
+		_, ok := matchFunc("", nil)
 		require.NotNil(t, matchFunc)
-		require.Equal(t, false, matchFunc("", nil))
+		require.Equal(t, false, ok)
 		assert.Nil(t, matchArgs)
 	})
 
@@ -223,8 +224,13 @@ func Test_GetMatchOption(t *testing.T) {
 		require.NotNil(t, matchFunc)
 		require.NotNil(t, matchArgs)
 		assert.IsType(t, &regexp.Regexp{}, matchArgs)
-		assert.True(t, matchFunc("0.0.1", matchArgs))
-		assert.False(t, matchFunc("v0.0.1", matchArgs))
+
+		result, ok := matchFunc("0.0.1", matchArgs)
+		assert.True(t, ok)
+		assert.Equal(t, "0.0.1", result)
+
+		_, ok = matchFunc("v0.0.1", matchArgs)
+		assert.False(t, ok)
 	})
 
 	t.Run("Get match option from application-wide annotation", func(t *testing.T) {
@@ -236,8 +242,13 @@ func Test_GetMatchOption(t *testing.T) {
 		require.NotNil(t, matchFunc)
 		require.NotNil(t, matchArgs)
 		assert.IsType(t, &regexp.Regexp{}, matchArgs)
-		assert.False(t, matchFunc("0.0.1", matchArgs))
-		assert.True(t, matchFunc("v0.0.1", matchArgs))
+
+		_, ok := matchFunc("0.0.1", matchArgs)
+		assert.False(t, ok)
+
+		result, ok := matchFunc("v0.0.1", matchArgs)
+		assert.True(t, ok)
+		assert.Equal(t, "v0.0.1", result)
 	})
 }
 
