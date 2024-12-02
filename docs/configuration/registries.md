@@ -346,6 +346,8 @@ data:
   auth.sh: |
     #!/bin/sh
 
+    set -eo pipefail
+
     AAD_ACCESS_TOKEN=$(cat $AZURE_FEDERATED_TOKEN_FILE)
 
     ACCESS_TOKEN=$(wget --output-document - --header "Content-Type: application/x-www-form-urlencoded" \
