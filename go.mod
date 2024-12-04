@@ -175,6 +175,7 @@ require (
 )
 
 replace (
+	github.com/argoproj-labs/argocd-image-updater/registry-scanner => ../registry-scanner
 	github.com/docker/distribution => github.com/docker/distribution v2.8.1+incompatible
 	github.com/golang/protobuf => github.com/golang/protobuf v1.5.4
 
@@ -209,7 +210,4 @@ replace (
 	k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.31.0
 	k8s.io/sample-cli-plugin => k8s.io/sample-cli-plugin v0.31.0
 	k8s.io/sample-controller => k8s.io/sample-controller v0.31.0
-
 )
-
-replace github.com/argoproj-labs/argocd-image-updater/registry-scanner => ../registry-scanner
