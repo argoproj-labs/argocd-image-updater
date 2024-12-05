@@ -90,6 +90,7 @@ image: clean-image
 	docker build \
 		-t ${IMAGE_PREFIX}${IMAGE_NAME}:${IMAGE_TAG} \
 		--pull \
+		-f Dockerfile \
 		.
 
 .PHONY: multiarch-image
@@ -97,6 +98,7 @@ multiarch-image:
 	docker buildx build \
 		-t ${IMAGE_PREFIX}${IMAGE_NAME}:${IMAGE_TAG} \
 		--progress plain \
+		-f Dockerfile \
 		--pull \
 		--platform ${RELEASE_IMAGE_PLATFORMS} ${DOCKERX_PUSH} \
 		.
@@ -106,8 +108,9 @@ multiarch-image-push:
 	docker buildx build \
 		-t ${IMAGE_PREFIX}${IMAGE_NAME}:${IMAGE_TAG} \
 		--progress plain \
+		-f Dockerfile \
 		--pull \
-		--push \
+		# --push \
 		--platform ${RELEASE_IMAGE_PLATFORMS} ${DOCKERX_PUSH} \
 		.
 
