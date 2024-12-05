@@ -6,7 +6,7 @@ toolchain go1.23.0
 
 require (
 	github.com/Masterminds/semver/v3 v3.3.1
-	github.com/argoproj-labs/argocd-image-updater/registry-scanner v0.0.0-00010101000000-000000000000
+	github.com/argoproj-labs/argocd-image-updater/registry-scanner v0.0.0-20241204160458-8076d2005ea6
 	github.com/argoproj/argo-cd/v2 v2.13.1
 	github.com/argoproj/gitops-engine v0.7.1-0.20240905010810-bd7681ae3f8b
 	github.com/argoproj/pkg v0.13.7-0.20230627120311-a4dd357b057e
@@ -32,7 +32,7 @@ require (
 	gopkg.in/yaml.v2 v2.4.0
 	k8s.io/api v0.31.0
 	k8s.io/apimachinery v0.31.0
-	k8s.io/client-go v0.31.0
+	k8s.io/client-go v1.5.2
 	sigs.k8s.io/kustomize/api v0.17.2
 	sigs.k8s.io/kustomize/kyaml v0.17.1
 )
@@ -176,7 +176,7 @@ require (
 )
 
 replace (
-	github.com/argoproj-labs/argocd-image-updater/registry-scanner => ./registry-scanner
+	// github.com/argoproj-labs/argocd-image-updater/registry-scanner => ./registry-scanner
 	github.com/docker/distribution => github.com/docker/distribution v2.8.1+incompatible
 	github.com/golang/protobuf => github.com/golang/protobuf v1.5.4
 
