@@ -6,6 +6,7 @@ toolchain go1.23.0
 
 require (
 	github.com/Masterminds/semver/v3 v3.3.1
+	github.com/argoproj-labs/argocd-image-updater/registry-scanner v0.0.0-00010101000000-000000000000
 	github.com/argoproj/argo-cd/v2 v2.13.1
 	github.com/argoproj/gitops-engine v0.7.1-0.20240905010810-bd7681ae3f8b
 	github.com/argoproj/pkg v0.13.7-0.20230627120311-a4dd357b057e
@@ -175,7 +176,7 @@ require (
 )
 
 replace (
-	github.com/argoproj-labs/argocd-image-updater/registry-scanner => ../registry-scanner
+	github.com/argoproj-labs/argocd-image-updater/registry-scanner => ./registry-scanner
 	github.com/docker/distribution => github.com/docker/distribution v2.8.1+incompatible
 	github.com/golang/protobuf => github.com/golang/protobuf v1.5.4
 

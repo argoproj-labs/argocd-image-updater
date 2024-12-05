@@ -1,7 +1,7 @@
 package cache
 
 import (
-	"github.com/argoproj-labs/argocd-image-updater/pkg/tag"
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/tag"
 )
 
 type ImageTagCache interface {
