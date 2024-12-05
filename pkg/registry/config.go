@@ -5,7 +5,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/argoproj-labs/argocd-image-updater/pkg/log"
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
 
 	"gopkg.in/yaml.v2"
 )

@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/argoproj-labs/argocd-image-updater/pkg/tag"
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/tag"
 )
 
 func Test_MemCache(t *testing.T) {

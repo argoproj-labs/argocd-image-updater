@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
-	"github.com/argoproj-labs/argocd-image-updater/pkg/options"
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/options"
 )
 
 func Test_GetHelmOptions(t *testing.T) {

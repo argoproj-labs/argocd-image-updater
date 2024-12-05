@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
-	"github.com/argoproj-labs/argocd-image-updater/pkg/options"
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/options"
 )
 
 // GetParameterHelmImageName gets the value for image-name option for the image

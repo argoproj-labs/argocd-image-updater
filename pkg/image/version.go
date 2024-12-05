@@ -3,9 +3,9 @@ package image
 import (
 	"path/filepath"
 
-	"github.com/argoproj-labs/argocd-image-updater/pkg/log"
-	"github.com/argoproj-labs/argocd-image-updater/pkg/options"
-	"github.com/argoproj-labs/argocd-image-updater/pkg/tag"
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/options"
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/tag"
 
 	"github.com/Masterminds/semver/v3"
 )
