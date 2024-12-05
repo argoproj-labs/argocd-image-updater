@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/argoproj-labs/argocd-image-updater/pkg/log"
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
 )
 
 // Package env provides some utility functions to interact with the environment

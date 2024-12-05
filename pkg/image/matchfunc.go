@@ -3,7 +3,7 @@ package image
 import (
 	"regexp"
 
-	"github.com/argoproj-labs/argocd-image-updater/pkg/log"
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
 )
 
 // MatchFuncAny matches any pattern, i.e. always returns true
