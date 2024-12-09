@@ -288,6 +288,18 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 		if needsUpdate(updateableImage, applicationImage, latest) {
 
 			imgCtx.Infof("Setting new image to %s", applicationImage.WithTag(latest).GetFullNameWithTag())
+
+			// Check if new image is alredy set in Application Spec when write back is set to argocd
+			// and compare with new image
+			appImage, err := getAppImage(&updateConf.UpdateApp.Application, applicationImage.WithTag(latest))
+			if err != nil {
+				continue
+			}
+			if appImage == applicationImage.WithTag(latest).GetFullNameWithTag() {
+				imgCtx.Infof("New image %s already set in spec", applicationImage.WithTag(latest).GetFullNameWithTag())
+				continue
+			}
+
 			needUpdate = true
 
 			err = setAppImage(&updateConf.UpdateApp.Application, applicationImage.WithTag(latest))
@@ -380,6 +392,18 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 func needsUpdate(updateableImage *image.ContainerImage, applicationImage *image.ContainerImage, latest *tag.ImageTag) bool {
 	// If the latest tag does not match image's current tag or the kustomize image is different, it means we have an update candidate.
 	return !updateableImage.ImageTag.Equals(latest) || applicationImage.KustomizeImage != nil && applicationImage.DiffersFrom(updateableImage, false)
+}
+
+func getAppImage(app *v1alpha1.Application, img *image.ContainerImage) (string, error) {
+	var err error
+	if appType := GetApplicationType(app); appType == ApplicationTypeKustomize {
+		return GetKustomizeImage(app, img)
+	} else if appType == ApplicationTypeHelm {
+		return GetHelmImage(app, img)
+	} else {
+		err = fmt.Errorf("could not update application %s - neither Helm nor Kustomize application", app)
+		return "", err
+	}
 }
 
 func setAppImage(app *v1alpha1.Application, img *image.ContainerImage) error {
