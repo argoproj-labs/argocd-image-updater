@@ -286,32 +286,32 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 		}
 
 		if needsUpdate(updateableImage, applicationImage, latest) {
+			appImageWithTag := applicationImage.WithTag(latest)
+			appImageWithTagFull := appImageWithTag.GetFullNameWithTag()
 
-			imgCtx.Infof("Setting new image to %s", applicationImage.WithTag(latest).GetFullNameWithTag())
-
-			// Check if new image is alredy set in Application Spec when write back is set to argocd
+			// Check if new image is already set in Application Spec when write back is set to argocd
 			// and compare with new image
-			appImage, err := getAppImage(&updateConf.UpdateApp.Application, applicationImage.WithTag(latest))
+			appImageSpec, err := getAppImage(&updateConf.UpdateApp.Application, appImageWithTag)
 			if err != nil {
 				continue
 			}
-			if appImage == applicationImage.WithTag(latest).GetFullNameWithTag() {
-				imgCtx.Infof("New image %s already set in spec", applicationImage.WithTag(latest).GetFullNameWithTag())
+			if appImageSpec == appImageWithTagFull {
+				imgCtx.Infof("New image %s already set in spec", appImageWithTagFull)
 				continue
 			}
 
 			needUpdate = true
+			imgCtx.Infof("Setting new image to %s", appImageWithTagFull)
 
-			err = setAppImage(&updateConf.UpdateApp.Application, applicationImage.WithTag(latest))
+			err = setAppImage(&updateConf.UpdateApp.Application, appImageWithTag)
 
 			if err != nil {
 				imgCtx.Errorf("Error while trying to update image: %v", err)
 				result.NumErrors += 1
 				continue
 			} else {
-				containerImageNew := applicationImage.WithTag(latest)
-				imgCtx.Infof("Successfully updated image '%s' to '%s', but pending spec update (dry run=%v)", updateableImage.GetFullNameWithTag(), containerImageNew.GetFullNameWithTag(), updateConf.DryRun)
-				changeList = append(changeList, ChangeEntry{containerImageNew, updateableImage.ImageTag, containerImageNew.ImageTag})
+				imgCtx.Infof("Successfully updated image '%s' to '%s', but pending spec update (dry run=%v)", updateableImage.GetFullNameWithTag(), appImageWithTag.GetFullNameWithTag(), updateConf.DryRun)
+				changeList = append(changeList, ChangeEntry{appImageWithTag, updateableImage.ImageTag, appImageWithTag.ImageTag})
 				result.NumImagesUpdated += 1
 			}
 		} else {
