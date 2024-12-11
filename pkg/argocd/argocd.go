@@ -374,6 +374,55 @@ func mergeHelmParams(src []v1alpha1.HelmParameter, merge []v1alpha1.HelmParamete
 	return retParams
 }
 
+// GetHelmImage gets the image set in Application source matching new image
+// or an empty string if match is not found
+func GetHelmImage(app *v1alpha1.Application, newImage *image.ContainerImage) (string, error) {
+
+	if appType := getApplicationType(app); appType != ApplicationTypeHelm {
+		return "", fmt.Errorf("cannot set Helm params on non-Helm application")
+	}
+
+	var hpImageName, hpImageTag, hpImageSpec string
+
+	hpImageSpec = newImage.GetParameterHelmImageSpec(app.Annotations)
+	hpImageName = newImage.GetParameterHelmImageName(app.Annotations)
+	hpImageTag = newImage.GetParameterHelmImageTag(app.Annotations)
+
+	if hpImageSpec == "" {
+		if hpImageName == "" {
+			hpImageName = common.DefaultHelmImageName
+		}
+		if hpImageTag == "" {
+			hpImageTag = common.DefaultHelmImageTag
+		}
+	}
+
+	appSource := getApplicationSource(app)
+
+	if appSource.Helm == nil {
+		return "", nil
+	}
+
+	if appSource.Helm.Parameters == nil {
+		return "", nil
+	}
+
+	if hpImageSpec != "" {
+		if p := getHelmParam(appSource.Helm.Parameters, hpImageSpec); p != nil {
+			return p.Value, nil
+		}
+	} else {
+		imageName := getHelmParam(appSource.Helm.Parameters, hpImageName)
+		imageTag := getHelmParam(appSource.Helm.Parameters, hpImageTag)
+		if imageName == nil || imageTag == nil {
+			return "", nil
+		}
+		return imageName.Value + ":" + imageTag.Value, nil
+	}
+
+	return "", nil
+}
+
 // SetHelmImage sets image parameters for a Helm application
 func SetHelmImage(app *v1alpha1.Application, newImage *image.ContainerImage) error {
 	if appType := getApplicationType(app); appType != ApplicationTypeHelm {
@@ -436,6 +485,36 @@ func SetHelmImage(app *v1alpha1.Application, newImage *image.ContainerImage) err
 	appSource.Helm.Parameters = mergeHelmParams(appSource.Helm.Parameters, mergeParams)
 
 	return nil
+}
+
+// GetKustomizeImage gets the image set in Application source matching new image
+// or an empty string if match is not found
+func GetKustomizeImage(app *v1alpha1.Application, newImage *image.ContainerImage) (string, error) {
+	if appType := getApplicationType(app); appType != ApplicationTypeKustomize {
+		return "", fmt.Errorf("cannot set Kustomize image on non-Kustomize application")
+	}
+
+	ksImageName := newImage.GetParameterKustomizeImageName(app.Annotations)
+
+	appSource := getApplicationSource(app)
+
+	if appSource.Kustomize == nil {
+		return "", nil
+	}
+
+	ksImages := appSource.Kustomize.Images
+
+	if ksImages == nil {
+		return "", nil
+	}
+
+	for _, a := range ksImages {
+		if a.Match(v1alpha1.KustomizeImage(ksImageName)) {
+			return string(a), nil
+		}
+	}
+
+	return "", nil
 }
 
 // SetKustomizeImage sets a Kustomize image for given application
