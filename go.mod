@@ -5,7 +5,7 @@ go 1.22.0
 toolchain go1.23.0
 
 require (
-	github.com/Masterminds/semver/v3 v3.3.0
+	github.com/Masterminds/semver/v3 v3.3.1
 	github.com/argoproj/argo-cd/v2 v2.13.1
 	github.com/argoproj/gitops-engine v0.7.1-0.20240905010810-bd7681ae3f8b
 	github.com/argoproj/pkg v0.13.7-0.20230627120311-a4dd357b057e
