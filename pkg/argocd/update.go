@@ -287,7 +287,7 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 
 		if needsUpdate(updateableImage, applicationImage, latest) {
 			appImageWithTag := applicationImage.WithTag(latest)
-			appImageWithTagFull := appImageWithTag.GetFullNameWithTag()
+			appImageFullNameWithTag := appImageWithTag.GetFullNameWithTag()
 
 			// Check if new image is already set in Application Spec when write back is set to argocd
 			// and compare with new image
@@ -295,13 +295,13 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 			if err != nil {
 				continue
 			}
-			if appImageSpec == appImageWithTagFull {
-				imgCtx.Infof("New image %s already set in spec", appImageWithTagFull)
+			if appImageSpec == appImageFullNameWithTag {
+				imgCtx.Infof("New image %s already set in spec", appImageFullNameWithTag)
 				continue
 			}
 
 			needUpdate = true
-			imgCtx.Infof("Setting new image to %s", appImageWithTagFull)
+			imgCtx.Infof("Setting new image to %s", appImageFullNameWithTag)
 
 			err = setAppImage(&updateConf.UpdateApp.Application, appImageWithTag)
 
@@ -310,7 +310,7 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 				result.NumErrors += 1
 				continue
 			} else {
-				imgCtx.Infof("Successfully updated image '%s' to '%s', but pending spec update (dry run=%v)", updateableImage.GetFullNameWithTag(), appImageWithTag.GetFullNameWithTag(), updateConf.DryRun)
+				imgCtx.Infof("Successfully updated image '%s' to '%s', but pending spec update (dry run=%v)", updateableImage.GetFullNameWithTag(), appImageFullNameWithTag, updateConf.DryRun)
 				changeList = append(changeList, ChangeEntry{appImageWithTag, updateableImage.ImageTag, appImageWithTag.ImageTag})
 				result.NumImagesUpdated += 1
 			}
