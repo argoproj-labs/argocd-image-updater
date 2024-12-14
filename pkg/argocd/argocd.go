@@ -555,19 +555,32 @@ func SetKustomizeImage(app *v1alpha1.Application, newImage *image.ContainerImage
 	return nil
 }
 
+// ImageIsAllowed checks whether img is declared in image-list annotation
+func ImageIsAllowed(img *image.ContainerImage, list *image.ContainerImageList) bool {
+	for _, i := range *list {
+		if i.ImageName == img.ImageName {
+			return true
+		}
+	}
+	return false
+}
+
 // GetImagesFromApplication returns the list of known images for the given application
 func GetImagesFromApplication(app *v1alpha1.Application) image.ContainerImageList {
 	images := make(image.ContainerImageList, 0)
+	annotations := app.Annotations
+	imagesFromAnnotations := parseImageList(annotations)
 
 	for _, imageStr := range app.Status.Summary.Images {
-		image := image.NewFromIdentifier(imageStr)
-		images = append(images, image)
+		img := image.NewFromIdentifier(imageStr)
+		if ImageIsAllowed(img, imagesFromAnnotations) {
+			images = append(images, img)
+		}
 	}
 
 	// The Application may wish to update images that don't create a container we can detect.
 	// Check the image list for images with a force-update annotation, and add them if they are not already present.
-	annotations := app.Annotations
-	for _, img := range *parseImageList(annotations) {
+	for _, img := range *imagesFromAnnotations {
 		if img.HasForceUpdateOptionAnnotation(annotations) {
 			img.ImageTag = nil // the tag from the image list will be a version constraint, which isn't a valid tag
 			images = append(images, img)
