@@ -6,9 +6,9 @@ import (
 	"time"
 
 	"github.com/argoproj-labs/argocd-image-updater/pkg/image"
-	"github.com/argoproj-labs/argocd-image-updater/pkg/options"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/registry/mocks"
-	"github.com/argoproj-labs/argocd-image-updater/pkg/tag"
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/options"
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/tag"
 
 	"github.com/distribution/distribution/v3/manifest/schema1" //nolint:staticcheck
 	"github.com/stretchr/testify/assert"

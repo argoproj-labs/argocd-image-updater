@@ -12,7 +12,7 @@ import (
 	argoexec "github.com/argoproj/pkg/exec"
 
 	"github.com/argoproj-labs/argocd-image-updater/pkg/kube"
-	"github.com/argoproj-labs/argocd-image-updater/pkg/log"
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
 )
 
 type CredentialSourceType int

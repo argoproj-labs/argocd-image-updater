@@ -6,6 +6,7 @@ toolchain go1.23.0
 
 require (
 	github.com/Masterminds/semver/v3 v3.3.1
+	github.com/argoproj-labs/argocd-image-updater/registry-scanner v0.0.0-20241213191436-f55eeef5df63
 	github.com/argoproj/argo-cd/v2 v2.13.1
 	github.com/argoproj/gitops-engine v0.7.1-0.20240905010810-bd7681ae3f8b
 	github.com/argoproj/pkg v0.13.7-0.20230627120311-a4dd357b057e
@@ -34,11 +35,6 @@ require (
 	k8s.io/client-go v0.31.0
 	sigs.k8s.io/kustomize/api v0.17.2
 	sigs.k8s.io/kustomize/kyaml v0.17.1
-)
-
-require (
-	google.golang.org/genproto/googleapis/api v0.0.0-20240903143218-8af14fe29dc1 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20240903143218-8af14fe29dc1 // indirect
 )
 
 require (
@@ -152,6 +148,8 @@ require (
 	golang.org/x/time v0.6.0 // indirect
 	golang.org/x/tools v0.21.1-0.20240508182429-e35e4ccd0d2d // indirect
 	google.golang.org/genproto v0.0.0-20230822172742-b8732ec3820d // indirect
+	google.golang.org/genproto/googleapis/api v0.0.0-20240903143218-8af14fe29dc1 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20240903143218-8af14fe29dc1 // indirect
 	google.golang.org/protobuf v1.34.2 // indirect
 	gopkg.in/evanphx/json-patch.v4 v4.12.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
@@ -175,7 +173,8 @@ require (
 )
 
 replace (
-	github.com/argoproj-labs/argocd-image-updater/registry-scanner => ../registry-scanner
+	// Uncomment for local testing
+	// github.com/argoproj-labs/argocd-image-updater/registry-scanner => ./registry-scanner/
 	github.com/docker/distribution => github.com/docker/distribution v2.8.1+incompatible
 	github.com/golang/protobuf => github.com/golang/protobuf v1.5.4
 

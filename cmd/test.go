@@ -7,9 +7,9 @@ import (
 
 	"github.com/argoproj-labs/argocd-image-updater/pkg/image"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/kube"
-	"github.com/argoproj-labs/argocd-image-updater/pkg/log"
-	"github.com/argoproj-labs/argocd-image-updater/pkg/options"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/registry"
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/options"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
