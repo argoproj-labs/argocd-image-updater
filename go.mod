@@ -173,7 +173,8 @@ require (
 )
 
 replace (
-	github.com/argoproj-labs/argocd-image-updater/registry-scanner => ./registry-scanner/
+	// Uncomment for local testing
+	// github.com/argoproj-labs/argocd-image-updater/registry-scanner => ./registry-scanner/
 	github.com/docker/distribution => github.com/docker/distribution v2.8.1+incompatible
 	github.com/golang/protobuf => github.com/golang/protobuf v1.5.4
 
