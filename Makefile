@@ -110,7 +110,7 @@ multiarch-image-push:
 		--progress plain \
 		-f Dockerfile \
 		--pull \
-		# --push \
+		--push \
 		--platform ${RELEASE_IMAGE_PLATFORMS} ${DOCKERX_PUSH} \
 		.
 
