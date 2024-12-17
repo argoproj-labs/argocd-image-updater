@@ -50,6 +50,7 @@ type ImageUpdaterConfig struct {
 	GitCommitSignOff       bool
 	DisableKubeEvents      bool
 	GitCreds               git.CredsStore
+	Namespaced             bool
 }
 
 // newRootCommand implements the root command of argocd-image-updater
