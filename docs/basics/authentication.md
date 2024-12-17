@@ -210,6 +210,16 @@ Image Updater container's file system. You can either mount the script from
 a configmap, or use an init container to copy it. Make sure that the script
 is executable.
 
+!!!note
+    If your authentication script writes to the disk, such as when the AWS CLI 
+    caches credentials in the `~/.aws` directory, you need to allow the 
+    filesystem to be writable. Otherwise, you will encounter errors like 
+    `[Errno 30] Read-only file system: '/app/.aws'`. You can solve this issue by 
+    setting ArgoCD Image Updater's deployment property 
+    `spec.containers[0].securityContext.readOnlyRootFilesystem` to `false` (or 
+    if you're installing it via Helm, change `securityContext.readOnlyRootFilesystem` 
+    value to `false`).
+
 For example, if above script would exist at `/usr/local/bin/creds.sh`, it
 would be referenced as
 
