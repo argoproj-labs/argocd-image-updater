@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/argoproj-labs/argocd-image-updater/pkg/env"
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/env"
 )
 
 // TestNewRunCommand tests various flags and their default values.

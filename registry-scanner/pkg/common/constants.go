@@ -56,6 +56,11 @@ const (
 	HelmPrefix                = "helmvalues"
 )
 
+// DefaultTargetFilePattern configurations related to the write-back functionality
+const DefaultTargetFilePattern = ".argocd-source-%s_%s.yaml"
+const DefaultTargetFilePatternWithoutNamespace = ".argocd-source-%s.yaml"
+const DefaultHelmValuesFilename = "values.yaml"
+
 // The default Git commit message's template
 const DefaultGitCommitMessage = `build: automatic update of {{ .AppName }}
 
