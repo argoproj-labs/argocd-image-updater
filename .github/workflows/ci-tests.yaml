@@ -117,3 +117,27 @@ jobs:
       - name: Run manifest tests
         run: |
           make test-manifests
+
+  registry-scanner:
+    name: Ensure registry-scanner Go modules synchronicity and run tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Setup Golang
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+      - name: Download all Go modules
+        run: |
+          cd registry-scanner
+          go mod download
+      - name: Check for tidyness of go.mod and go.sum
+        run: |
+          go mod tidy
+          git diff --exit-code -- .
+      - name: Run tests
+        env:
+          GNUPG_DISABLED: true
+        run: |
+          make test
