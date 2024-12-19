@@ -90,7 +90,7 @@ jobs:
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          file: coverage.out
+          files: coverage.out
 
   test-manifests:
     name: Ensure kubernetes manifests conform to their schema
