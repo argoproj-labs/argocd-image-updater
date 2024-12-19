@@ -12,11 +12,11 @@ import (
 
 	"github.com/argoproj-labs/argocd-image-updater/pkg/argocd"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
-	"github.com/argoproj-labs/argocd-image-updater/pkg/env"
-	"github.com/argoproj-labs/argocd-image-updater/pkg/health"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/metrics"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/registry"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/version"
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/env"
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/health"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
 
 	"github.com/argoproj/argo-cd/v2/reposerver/askpass"
