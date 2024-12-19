@@ -130,6 +130,7 @@ jobs:
           go-version: '1.22'
       - name: Download all Go modules
         run: |
+          cd registry-scanner
           go mod download
       - name: Check for tidyness of go.mod and go.sum
         run: |
@@ -139,5 +140,4 @@ jobs:
         env:
           GNUPG_DISABLED: true
         run: |
-          cd registry-scanner
           make test
