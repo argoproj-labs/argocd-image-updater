@@ -652,7 +652,9 @@ func getWriteBackConfig(app *v1alpha1.Application, kubeClient *kube.KubernetesCl
 }
 
 func parseDefaultTarget(appNamespace string, appName string, path string, kubeClient *kube.KubernetesClient) string {
-	if (appNamespace == kubeClient.Namespace) || (appNamespace == "") {
+	// when running from command line and argocd-namespace is not set, e.g., via --argocd-namespace option,
+	// kubeClient.Namespace may be resolved to "default". In this case, also use the file name without namespace
+	if appNamespace == kubeClient.Namespace || kubeClient.Namespace == "default" || appNamespace == "" {
 		defaultTargetFile := fmt.Sprintf(common.DefaultTargetFilePatternWithoutNamespace, appName)
 		return filepath.Join(path, defaultTargetFile)
 	} else {
