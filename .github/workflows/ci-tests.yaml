@@ -141,3 +141,8 @@ jobs:
           GNUPG_DISABLED: true
         run: |
           make test
+      - name: Upload code coverage information to codecov.io
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: coverage.out
