@@ -7,6 +7,7 @@ import (
 	appv1alpha1 "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	registryKube "github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/kube"
 	"github.com/argoproj-labs/argocd-image-updater/test/fake"
 	"github.com/argoproj-labs/argocd-image-updater/test/fixture"
 
@@ -16,14 +17,14 @@ import (
 
 func Test_NewKubernetesClient(t *testing.T) {
 	t.Run("Get new K8s client for remote cluster instance", func(t *testing.T) {
-		client, err := NewKubernetesClientFromConfig(context.TODO(), "", "../../test/testdata/kubernetes/config")
+		client, err := registryKube.NewKubernetesClientFromConfig(context.TODO(), "", "../../test/testdata/kubernetes/config")
 		require.NoError(t, err)
 		assert.NotNil(t, client)
 		assert.Equal(t, "default", client.Namespace)
 	})
 
 	t.Run("Get new K8s client for remote cluster instance specified namespace", func(t *testing.T) {
-		client, err := NewKubernetesClientFromConfig(context.TODO(), "argocd", "../../test/testdata/kubernetes/config")
+		client, err := registryKube.NewKubernetesClientFromConfig(context.TODO(), "argocd", "../../test/testdata/kubernetes/config")
 		require.NoError(t, err)
 		assert.NotNil(t, client)
 		assert.Equal(t, "argocd", client.Namespace)
@@ -34,8 +35,8 @@ func Test_GetDataFromSecrets(t *testing.T) {
 	t.Run("Get all data from dummy secret", func(t *testing.T) {
 		secret := fixture.MustCreateSecretFromFile("../../test/testdata/resources/dummy-secret.json")
 		clientset := fake.NewFakeClientsetWithResources(secret)
-		client := &KubernetesClient{Clientset: clientset}
-		data, err := client.GetSecretData("test-namespace", "test-secret")
+		client := &ImageUpdaterKubernetesClient{KubeClient: &registryKube.KubernetesClient{Clientset: clientset}}
+		data, err := client.KubeClient.GetSecretData("test-namespace", "test-secret")
 		require.NoError(t, err)
 		require.NotNil(t, data)
 		assert.Len(t, data, 1)
@@ -45,8 +46,8 @@ func Test_GetDataFromSecrets(t *testing.T) {
 	t.Run("Get string data from dummy secret existing field", func(t *testing.T) {
 		secret := fixture.MustCreateSecretFromFile("../../test/testdata/resources/dummy-secret.json")
 		clientset := fake.NewFakeClientsetWithResources(secret)
-		client := &KubernetesClient{Clientset: clientset}
-		data, err := client.GetSecretField("test-namespace", "test-secret", "namespace")
+		client := &ImageUpdaterKubernetesClient{KubeClient: &registryKube.KubernetesClient{Clientset: clientset}}
+		data, err := client.KubeClient.GetSecretField("test-namespace", "test-secret", "namespace")
 		require.NoError(t, err)
 		assert.Equal(t, "argocd", data)
 	})
@@ -54,8 +55,8 @@ func Test_GetDataFromSecrets(t *testing.T) {
 	t.Run("Get string data from dummy secret non-existing field", func(t *testing.T) {
 		secret := fixture.MustCreateSecretFromFile("../../test/testdata/resources/dummy-secret.json")
 		clientset := fake.NewFakeClientsetWithResources(secret)
-		client := &KubernetesClient{Clientset: clientset}
-		data, err := client.GetSecretField("test-namespace", "test-secret", "nonexisting")
+		client := &ImageUpdaterKubernetesClient{KubeClient: &registryKube.KubernetesClient{Clientset: clientset}}
+		data, err := client.KubeClient.GetSecretField("test-namespace", "test-secret", "nonexisting")
 		require.Error(t, err)
 		require.Empty(t, data)
 	})
@@ -63,8 +64,8 @@ func Test_GetDataFromSecrets(t *testing.T) {
 	t.Run("Get string data from non-existing secret non-existing field", func(t *testing.T) {
 		secret := fixture.MustCreateSecretFromFile("../../test/testdata/resources/dummy-secret.json")
 		clientset := fake.NewFakeClientsetWithResources(secret)
-		client := &KubernetesClient{Clientset: clientset}
-		data, err := client.GetSecretField("test-namespace", "test", "namespace")
+		client := &ImageUpdaterKubernetesClient{KubeClient: &registryKube.KubernetesClient{Clientset: clientset}}
+		data, err := client.KubeClient.GetSecretField("test-namespace", "test", "namespace")
 		require.Error(t, err)
 		require.Empty(t, data)
 	})
@@ -88,7 +89,7 @@ func Test_CreateApplicationEvent(t *testing.T) {
 			"origin": "nginx:1.12.2",
 		}
 		clientset := fake.NewFakeClientsetWithResources()
-		client := &KubernetesClient{Clientset: clientset, Namespace: "default"}
+		client := &ImageUpdaterKubernetesClient{KubeClient: &registryKube.KubernetesClient{Clientset: clientset, Namespace: "default"}}
 		event, err := client.CreateApplicationEvent(application, "TestEvent", "test-message", annotations)
 		require.NoError(t, err)
 		require.NotNil(t, event)

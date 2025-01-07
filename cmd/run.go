@@ -14,10 +14,10 @@ import (
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/health"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/metrics"
-	"github.com/argoproj-labs/argocd-image-updater/pkg/registry"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/version"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/env"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/registry"
 
 	"github.com/argoproj/argo-cd/v2/reposerver/askpass"
 
@@ -115,7 +115,7 @@ func newRunCommand() *cobra.Command {
 					log.Fatalf("could not create K8s client: %v", err)
 				}
 				if cfg.ClientOpts.ServerAddr == "" {
-					cfg.ClientOpts.ServerAddr = fmt.Sprintf("argocd-server.%s", cfg.KubeClient.Namespace)
+					cfg.ClientOpts.ServerAddr = fmt.Sprintf("argocd-server.%s", cfg.KubeClient.KubeClient.Namespace)
 				}
 			}
 			if cfg.ClientOpts.ServerAddr == "" {

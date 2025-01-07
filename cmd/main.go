@@ -35,7 +35,7 @@ type ImageUpdaterConfig struct {
 	CheckInterval          time.Duration
 	ArgoClient             argocd.ArgoCD
 	LogLevel               string
-	KubeClient             *kube.KubernetesClient
+	KubeClient             *kube.ImageUpdaterKubernetesClient
 	MaxConcurrency         int
 	HealthPort             int
 	MetricsPort            int

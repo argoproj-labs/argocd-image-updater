@@ -9,10 +9,10 @@ import (
 	"time"
 
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
-	"github.com/argoproj-labs/argocd-image-updater/pkg/image"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/kube"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/metrics"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/env"
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/image"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
 
 	argocdclient "github.com/argoproj/argo-cd/v2/pkg/apiclient"
@@ -24,7 +24,7 @@ import (
 
 // Kubernetes based client
 type k8sClient struct {
-	kubeClient *kube.KubernetesClient
+	kubeClient *kube.ImageUpdaterKubernetesClient
 }
 
 // GetApplication retrieves an application by name across all namespaces.
@@ -99,7 +99,7 @@ func (client *k8sClient) UpdateSpec(ctx context.Context, spec *application.Appli
 }
 
 // NewK8SClient creates a new kubernetes client to interact with kubernetes api-server.
-func NewK8SClient(kubeClient *kube.KubernetesClient) (ArgoCD, error) {
+func NewK8SClient(kubeClient *kube.ImageUpdaterKubernetesClient) (ArgoCD, error) {
 	return &k8sClient{kubeClient: kubeClient}, nil
 }
 

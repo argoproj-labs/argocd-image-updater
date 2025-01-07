@@ -18,7 +18,7 @@ import (
 )
 
 // getGitCredsSource returns git credentials source that loads credentials from the secret or from Argo CD settings
-func getGitCredsSource(creds string, kubeClient *kube.KubernetesClient, wbc *WriteBackConfig) (GitCredsSource, error) {
+func getGitCredsSource(creds string, kubeClient *kube.ImageUpdaterKubernetesClient, wbc *WriteBackConfig) (GitCredsSource, error) {
 	switch {
 	case creds == "repocreds":
 		return func(app *v1alpha1.Application) (git.Creds, error) {
@@ -33,12 +33,12 @@ func getGitCredsSource(creds string, kubeClient *kube.KubernetesClient, wbc *Wri
 }
 
 // getCredsFromArgoCD loads repository credentials from Argo CD settings
-func getCredsFromArgoCD(wbc *WriteBackConfig, kubeClient *kube.KubernetesClient, project string) (git.Creds, error) {
+func getCredsFromArgoCD(wbc *WriteBackConfig, kubeClient *kube.ImageUpdaterKubernetesClient, project string) (git.Creds, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	settingsMgr := settings.NewSettingsManager(ctx, kubeClient.Clientset, kubeClient.Namespace)
-	argocdDB := db.NewDB(kubeClient.Namespace, settingsMgr, kubeClient.Clientset)
+	settingsMgr := settings.NewSettingsManager(ctx, kubeClient.KubeClient.Clientset, kubeClient.KubeClient.Namespace)
+	argocdDB := db.NewDB(kubeClient.KubeClient.Namespace, settingsMgr, kubeClient.KubeClient.Clientset)
 	repo, err := argocdDB.GetRepository(ctx, wbc.GitRepo, project)
 	if err != nil {
 		return nil, err
@@ -112,12 +112,12 @@ func getCAPath(repoURL string) string {
 }
 
 // getCredsFromSecret loads repository credentials from secret
-func getCredsFromSecret(wbc *WriteBackConfig, credentialsSecret string, kubeClient *kube.KubernetesClient) (git.Creds, error) {
+func getCredsFromSecret(wbc *WriteBackConfig, credentialsSecret string, kubeClient *kube.ImageUpdaterKubernetesClient) (git.Creds, error) {
 	var credentials map[string][]byte
 	var err error
 	s := strings.SplitN(credentialsSecret, "/", 2)
 	if len(s) == 2 {
-		credentials, err = kubeClient.GetSecretData(s[0], s[1])
+		credentials, err = kubeClient.KubeClient.GetSecretData(s[0], s[1])
 		if err != nil {
 			return nil, err
 		}

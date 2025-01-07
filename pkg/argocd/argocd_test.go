@@ -7,8 +7,9 @@ import (
 	"testing"
 
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
-	"github.com/argoproj-labs/argocd-image-updater/pkg/image"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/kube"
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/image"
+	registryKube "github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/kube"
 
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/application"
 	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
@@ -1015,8 +1016,10 @@ func TestKubernetesClient(t *testing.T) {
 		ObjectMeta: v1.ObjectMeta{Name: "test-app2", Namespace: "testns2"},
 	}
 
-	client, err := NewK8SClient(&kube.KubernetesClient{
-		Namespace:             "testns1",
+	client, err := NewK8SClient(&kube.ImageUpdaterKubernetesClient{
+		KubeClient: &registryKube.KubernetesClient{
+			Namespace: "testns1",
+		},
 		ApplicationsClientset: fake.NewSimpleClientset(app1, app2),
 	})
 
@@ -1057,7 +1060,7 @@ func TestKubernetesClient(t *testing.T) {
 		})
 
 		// Create the Kubernetes client
-		client, err := NewK8SClient(&kube.KubernetesClient{
+		client, err := NewK8SClient(&kube.ImageUpdaterKubernetesClient{
 			ApplicationsClientset: clientset,
 		})
 		require.NoError(t, err)
@@ -1087,7 +1090,7 @@ func TestKubernetesClient(t *testing.T) {
 		)
 
 		// Create the Kubernetes client
-		client, err := NewK8SClient(&kube.KubernetesClient{
+		client, err := NewK8SClient(&kube.ImageUpdaterKubernetesClient{
 			ApplicationsClientset: clientset,
 		})
 		require.NoError(t, err)
@@ -1117,7 +1120,7 @@ func TestKubernetesClientUpdateSpec(t *testing.T) {
 			}
 		})
 
-		client, err := NewK8SClient(&kube.KubernetesClient{
+		client, err := NewK8SClient(&kube.ImageUpdaterKubernetesClient{
 			ApplicationsClientset: clientset,
 		})
 		require.NoError(t, err)
@@ -1138,7 +1141,7 @@ func TestKubernetesClientUpdateSpec(t *testing.T) {
 		// Create a fake empty clientset
 		clientset := fake.NewSimpleClientset()
 
-		client, err := NewK8SClient(&kube.KubernetesClient{
+		client, err := NewK8SClient(&kube.ImageUpdaterKubernetesClient{
 			ApplicationsClientset: clientset,
 		})
 		require.NoError(t, err)
@@ -1162,7 +1165,7 @@ func TestKubernetesClientUpdateSpec(t *testing.T) {
 			Spec:       v1alpha1.ApplicationSpec{},
 		})
 
-		client, err := NewK8SClient(&kube.KubernetesClient{
+		client, err := NewK8SClient(&kube.ImageUpdaterKubernetesClient{
 			ApplicationsClientset: clientset,
 		})
 		require.NoError(t, err)
@@ -1191,7 +1194,7 @@ func TestKubernetesClientUpdateSpec(t *testing.T) {
 			Spec:       v1alpha1.ApplicationSpec{},
 		})
 
-		client, err := NewK8SClient(&kube.KubernetesClient{
+		client, err := NewK8SClient(&kube.ImageUpdaterKubernetesClient{
 			ApplicationsClientset: clientset,
 		})
 		require.NoError(t, err)

@@ -13,10 +13,10 @@ import (
 
 	"github.com/argoproj-labs/argocd-image-updater/ext/git"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
-	"github.com/argoproj-labs/argocd-image-updater/pkg/image"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/kube"
-	"github.com/argoproj-labs/argocd-image-updater/pkg/registry"
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/image"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/registry"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/tag"
 
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/application"
@@ -37,7 +37,7 @@ type ImageUpdaterResult struct {
 type UpdateConfiguration struct {
 	NewRegFN               registry.NewRegistryClient
 	ArgoClient             ArgoCD
-	KubeClient             *kube.KubernetesClient
+	KubeClient             *kube.ImageUpdaterKubernetesClient
 	UpdateApp              *ApplicationImages
 	DryRun                 bool
 	GitCommitUser          string
@@ -221,7 +221,7 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 		}
 
 		// The endpoint can provide default credentials for pulling images
-		err = rep.SetEndpointCredentials(updateConf.KubeClient)
+		err = rep.SetEndpointCredentials(updateConf.KubeClient.KubeClient)
 		if err != nil {
 			imgCtx.Errorf("Could not set registry endpoint credentials: %v", err)
 			result.NumErrors += 1
@@ -231,7 +231,7 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 		imgCredSrc := applicationImage.GetParameterPullSecret(updateConf.UpdateApp.Application.Annotations)
 		var creds *image.Credential = &image.Credential{}
 		if imgCredSrc != nil {
-			creds, err = imgCredSrc.FetchCredentials(rep.RegistryAPI, updateConf.KubeClient)
+			creds, err = imgCredSrc.FetchCredentials(rep.RegistryAPI, updateConf.KubeClient.KubeClient)
 			if err != nil {
 				imgCtx.Warnf("Could not fetch credentials: %v", err)
 				result.NumErrors += 1
@@ -633,7 +633,7 @@ func setHelmValue(currentValues *yaml.MapSlice, key string, value interface{}) e
 	return err
 }
 
-func getWriteBackConfig(app *v1alpha1.Application, kubeClient *kube.KubernetesClient, argoClient ArgoCD) (*WriteBackConfig, error) {
+func getWriteBackConfig(app *v1alpha1.Application, kubeClient *kube.ImageUpdaterKubernetesClient, argoClient ArgoCD) (*WriteBackConfig, error) {
 	wbc := &WriteBackConfig{}
 	// Default write-back is to use Argo CD API
 	wbc.Method = WriteBackApplication
@@ -675,10 +675,10 @@ func getWriteBackConfig(app *v1alpha1.Application, kubeClient *kube.KubernetesCl
 	return wbc, nil
 }
 
-func parseDefaultTarget(appNamespace string, appName string, path string, kubeClient *kube.KubernetesClient) string {
+func parseDefaultTarget(appNamespace string, appName string, path string, kubeClient *kube.ImageUpdaterKubernetesClient) string {
 	// when running from command line and argocd-namespace is not set, e.g., via --argocd-namespace option,
 	// kubeClient.Namespace may be resolved to "default". In this case, also use the file name without namespace
-	if appNamespace == kubeClient.Namespace || kubeClient.Namespace == "default" || appNamespace == "" {
+	if appNamespace == kubeClient.KubeClient.Namespace || kubeClient.KubeClient.Namespace == "default" || appNamespace == "" {
 		defaultTargetFile := fmt.Sprintf(common.DefaultTargetFilePatternWithoutNamespace, appName)
 		return filepath.Join(path, defaultTargetFile)
 	} else {
@@ -708,7 +708,7 @@ func parseTarget(writeBackTarget string, sourcePath string) string {
 	}
 }
 
-func parseGitConfig(app *v1alpha1.Application, kubeClient *kube.KubernetesClient, wbc *WriteBackConfig, creds string) error {
+func parseGitConfig(app *v1alpha1.Application, kubeClient *kube.ImageUpdaterKubernetesClient, wbc *WriteBackConfig, creds string) error {
 	branch, ok := app.Annotations[common.GitBranchAnnotation]
 	if ok {
 		branches := strings.Split(strings.TrimSpace(branch), ":")
