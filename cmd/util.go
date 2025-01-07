@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/argoproj-labs/argocd-image-updater/pkg/kube"
+	registryKube "github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/kube"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
 )
 
@@ -26,9 +27,9 @@ func getPrintableHealthPort(port int) string {
 	}
 }
 
-func getKubeConfig(ctx context.Context, namespace string, kubeConfig string) (*kube.KubernetesClient, error) {
+func getKubeConfig(ctx context.Context, namespace string, kubeConfig string) (*kube.ImageUpdaterKubernetesClient, error) {
 	var fullKubeConfigPath string
-	var kubeClient *kube.KubernetesClient
+	var kubeClient *kube.ImageUpdaterKubernetesClient
 	var err error
 
 	if kubeConfig != "" {
@@ -44,9 +45,12 @@ func getKubeConfig(ctx context.Context, namespace string, kubeConfig string) (*k
 		log.Debugf("Creating in-cluster Kubernetes client")
 	}
 
-	kubeClient, err = kube.NewKubernetesClientFromConfig(ctx, namespace, fullKubeConfigPath)
+	kubernetesClient, err := registryKube.NewKubernetesClientFromConfig(ctx, namespace, fullKubeConfigPath)
 	if err != nil {
 		return nil, err
+	}
+	kubeClient = &kube.ImageUpdaterKubernetesClient{
+		KubeClient: kubernetesClient,
 	}
 
 	return kubeClient, nil

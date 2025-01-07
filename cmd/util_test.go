@@ -47,7 +47,7 @@ func TestGetKubeConfig(t *testing.T) {
 			} else {
 				require.NoError(t, err)
 				assert.NotNil(t, client)
-				assert.Equal(t, tt.expectedNS, client.Namespace)
+				assert.Equal(t, tt.expectedNS, client.KubeClient.Namespace)
 			}
 		})
 	}
