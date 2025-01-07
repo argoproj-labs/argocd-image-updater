@@ -29,8 +29,8 @@ github.com/anmitsu/go-shlex v0.0.0-20200514113438-38f4b401e2be/go.mod h1:ySMOLuW
 github.com/antihax/optional v1.0.0/go.mod h1:uupD/76wgC+ih3iEmQUL+0Ugr19nfwCT1kdvxnR2qWY=
 github.com/argoproj-labs/argocd-image-updater/registry-scanner v0.0.0-20250106213822-5ae9a451b57d h1:Ut4/EiaiTDeuchus+bgq3pYu5nIgqMwpBI3+2Znw/VA=
 github.com/argoproj-labs/argocd-image-updater/registry-scanner v0.0.0-20250106213822-5ae9a451b57d/go.mod h1:GJD+hNHt9KbYFo1+OddD3vvqys7ct5ZIOx5yHFCBAXg=
-github.com/argoproj/argo-cd/v2 v2.13.1 h1:qoa8LD5suPCAYtoDNHp+BuqODf46hl5gCuXNj2oiAy0=
-github.com/argoproj/argo-cd/v2 v2.13.1/go.mod h1:RC23V2744nhZstZVpLCWTQLT2gR0+IXGC3GTBCI6M+I=
+github.com/argoproj/argo-cd/v2 v2.13.2 h1:eLar0aAqz7AgJiYncRzkPkqEbIxiXl+pUzOuSi47tA0=
+github.com/argoproj/argo-cd/v2 v2.13.2/go.mod h1:RC23V2744nhZstZVpLCWTQLT2gR0+IXGC3GTBCI6M+I=
 github.com/argoproj/gitops-engine v0.7.1-0.20240905010810-bd7681ae3f8b h1:wOPWJ5MBScQO767WpU55oUJDXObfvPL0EfAYWxogbSw=
 github.com/argoproj/gitops-engine v0.7.1-0.20240905010810-bd7681ae3f8b/go.mod h1:b1vuwkyMUszyUK+USUJqC8vJijnQsEPNDpC+sDdDLtM=
 github.com/argoproj/pkg v0.13.7-0.20230627120311-a4dd357b057e h1:kuLQvJqwwRMQTheT4MFyKVM8Txncu21CHT4yBWUl1Mk=
