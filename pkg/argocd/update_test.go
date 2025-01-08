@@ -184,11 +184,15 @@ func Test_UpdateApplication(t *testing.T) {
 				Clientset: fake.NewFakeKubeClient(),
 			},
 		}
+		annotations := map[string]string{
+			common.ImageUpdaterAnnotation: "jannfis/foobar:1.0.0",
+		}
 		appImages := &ApplicationImages{
 			Application: v1alpha1.Application{
 				ObjectMeta: v1.ObjectMeta{
-					Name:      "guestbook",
-					Namespace: "guestbook",
+					Name:        "guestbook",
+					Namespace:   "guestbook",
+					Annotations: annotations,
 				},
 				Spec: v1alpha1.ApplicationSpec{
 					Source: &v1alpha1.ApplicationSource{
@@ -252,11 +256,15 @@ func Test_UpdateApplication(t *testing.T) {
 				Clientset: fake.NewFakeKubeClient(),
 			},
 		}
+		annotations := map[string]string{
+			common.ImageUpdaterAnnotation: "jannfis/foobar:1.0.0,jannfis/barbar:1.0.0",
+		}
 		appImages := &ApplicationImages{
 			Application: v1alpha1.Application{
 				ObjectMeta: v1.ObjectMeta{
-					Name:      "guestbook",
-					Namespace: "guestbook",
+					Name:        "guestbook",
+					Namespace:   "guestbook",
+					Annotations: annotations,
 				},
 				Spec: v1alpha1.ApplicationSpec{
 					Source: &v1alpha1.ApplicationSource{
@@ -445,11 +453,15 @@ func Test_UpdateApplication(t *testing.T) {
 				Clientset: fake.NewFakeKubeClient(),
 			},
 		}
+		annotations := map[string]string{
+			common.ImageUpdaterAnnotation: "jannfis/foobar:1.0.x",
+		}
 		appImages := &ApplicationImages{
 			Application: v1alpha1.Application{
 				ObjectMeta: v1.ObjectMeta{
-					Name:      "guestbook",
-					Namespace: "guestbook",
+					Name:        "guestbook",
+					Namespace:   "guestbook",
+					Annotations: annotations,
 				},
 				Spec: v1alpha1.ApplicationSpec{
 					Source: &v1alpha1.ApplicationSource{
@@ -505,14 +517,16 @@ func Test_UpdateApplication(t *testing.T) {
 				Clientset: fake.NewFakeClientsetWithResources(fixture.NewSecret("foo", "bar", map[string][]byte{"creds": []byte("myuser:mypass")})),
 			},
 		}
+		annotations := map[string]string{
+			common.ImageUpdaterAnnotation:                     "jannfis/foobar:1.0.0",
+			fmt.Sprintf(common.PullSecretAnnotation, "dummy"): "secret:foo/bar#creds",
+		}
 		appImages := &ApplicationImages{
 			Application: v1alpha1.Application{
 				ObjectMeta: v1.ObjectMeta{
-					Name:      "guestbook",
-					Namespace: "guestbook",
-					Annotations: map[string]string{
-						fmt.Sprintf(common.PullSecretAnnotation, "dummy"): "secret:foo/bar#creds",
-					},
+					Name:        "guestbook",
+					Namespace:   "guestbook",
+					Annotations: annotations,
 				},
 				Spec: v1alpha1.ApplicationSpec{
 					Source: &v1alpha1.ApplicationSource{
@@ -623,11 +637,15 @@ func Test_UpdateApplication(t *testing.T) {
 				Clientset: fake.NewFakeKubeClient(),
 			},
 		}
+		annotations := map[string]string{
+			common.ImageUpdaterAnnotation: "jannfis/foobar:1.0.1",
+		}
 		appImages := &ApplicationImages{
 			Application: v1alpha1.Application{
 				ObjectMeta: v1.ObjectMeta{
-					Name:      "guestbook",
-					Namespace: "guestbook",
+					Name:        "guestbook",
+					Namespace:   "guestbook",
+					Annotations: annotations,
 				},
 				Spec: v1alpha1.ApplicationSpec{
 					Source: &v1alpha1.ApplicationSource{
@@ -819,15 +837,17 @@ func Test_UpdateApplication(t *testing.T) {
 				Clientset: fake.NewFakeKubeClient(),
 			},
 		}
+		annotations := map[string]string{
+			common.ImageUpdaterAnnotation:                          "dummy=jannfis/foobar",
+			fmt.Sprintf(common.AllowTagsOptionAnnotation, "dummy"): "regexp:^foobar$",
+			fmt.Sprintf(common.UpdateStrategyAnnotation, "dummy"):  "name",
+		}
 		appImages := &ApplicationImages{
 			Application: v1alpha1.Application{
 				ObjectMeta: v1.ObjectMeta{
-					Name:      "guestbook",
-					Namespace: "guestbook",
-					Annotations: map[string]string{
-						fmt.Sprintf(common.AllowTagsOptionAnnotation, "dummy"): "regexp:^foobar$",
-						fmt.Sprintf(common.UpdateStrategyAnnotation, "dummy"):  "name",
-					},
+					Name:        "guestbook",
+					Namespace:   "guestbook",
+					Annotations: annotations,
 				},
 				Spec: v1alpha1.ApplicationSpec{
 					Source: &v1alpha1.ApplicationSource{
@@ -897,15 +917,17 @@ func Test_UpdateApplication(t *testing.T) {
 				Clientset: fake.NewFakeKubeClient(),
 			},
 		}
+		annotations := map[string]string{
+			common.ImageUpdaterAnnotation:                           "dummy=jannfis/foobar",
+			fmt.Sprintf(common.IgnoreTagsOptionAnnotation, "dummy"): "*",
+			fmt.Sprintf(common.UpdateStrategyAnnotation, "dummy"):   "name",
+		}
 		appImages := &ApplicationImages{
 			Application: v1alpha1.Application{
 				ObjectMeta: v1.ObjectMeta{
-					Name:      "guestbook",
-					Namespace: "guestbook",
-					Annotations: map[string]string{
-						fmt.Sprintf(common.IgnoreTagsOptionAnnotation, "dummy"): "*",
-						fmt.Sprintf(common.UpdateStrategyAnnotation, "dummy"):   "name",
-					},
+					Name:        "guestbook",
+					Namespace:   "guestbook",
+					Annotations: annotations,
 				},
 				Spec: v1alpha1.ApplicationSpec{
 					Source: &v1alpha1.ApplicationSource{
@@ -959,11 +981,15 @@ func Test_UpdateApplication(t *testing.T) {
 				Clientset: fake.NewFakeKubeClient(),
 			},
 		}
+		annotations := map[string]string{
+			common.ImageUpdaterAnnotation: "example.io/jannfis/example:1.0.x",
+		}
 		appImages := &ApplicationImages{
 			Application: v1alpha1.Application{
 				ObjectMeta: v1.ObjectMeta{
-					Name:      "guestbook",
-					Namespace: "guestbook",
+					Name:        "guestbook",
+					Namespace:   "guestbook",
+					Annotations: annotations,
 				},
 				Spec: v1alpha1.ApplicationSpec{
 					Source: &v1alpha1.ApplicationSource{
@@ -1014,11 +1040,15 @@ func Test_UpdateApplication(t *testing.T) {
 				Clientset: fake.NewFakeKubeClient(),
 			},
 		}
+		annotations := map[string]string{
+			common.ImageUpdaterAnnotation: "jannfis/foobar:1.0.0",
+		}
 		appImages := &ApplicationImages{
 			Application: v1alpha1.Application{
 				ObjectMeta: v1.ObjectMeta{
-					Name:      "guestbook",
-					Namespace: "guestbook",
+					Name:        "guestbook",
+					Namespace:   "guestbook",
+					Annotations: annotations,
 				},
 				Spec: v1alpha1.ApplicationSpec{
 					Source: &v1alpha1.ApplicationSource{
@@ -1072,11 +1102,15 @@ func Test_UpdateApplication(t *testing.T) {
 				Clientset: fake.NewFakeKubeClient(),
 			},
 		}
+		annotations := map[string]string{
+			common.ImageUpdaterAnnotation: "jannfis/foobar:1.0.0",
+		}
 		appImages := &ApplicationImages{
 			Application: v1alpha1.Application{
 				ObjectMeta: v1.ObjectMeta{
-					Name:      "guestbook",
-					Namespace: "guestbook",
+					Name:        "guestbook",
+					Namespace:   "guestbook",
+					Annotations: annotations,
 				},
 				Spec: v1alpha1.ApplicationSpec{
 					Source: &v1alpha1.ApplicationSource{
@@ -1130,11 +1164,15 @@ func Test_UpdateApplication(t *testing.T) {
 				Clientset: fake.NewFakeKubeClient(),
 			},
 		}
+		annotations := map[string]string{
+			common.ImageUpdaterAnnotation: "jannfis/foobar:stable",
+		}
 		appImages := &ApplicationImages{
 			Application: v1alpha1.Application{
 				ObjectMeta: v1.ObjectMeta{
-					Name:      "guestbook",
-					Namespace: "guestbook",
+					Name:        "guestbook",
+					Namespace:   "guestbook",
+					Annotations: annotations,
 				},
 				Spec: v1alpha1.ApplicationSpec{
 					Source: &v1alpha1.ApplicationSource{
