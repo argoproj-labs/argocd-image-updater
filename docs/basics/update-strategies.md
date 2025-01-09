@@ -19,7 +19,7 @@ The following update strategies are currently supported:
 * [digest](#strategy-digest) - Update to the latest version of a given version (tag), using the tag's SHA digest
 * [name/alphabetical](#strategy-name) - Sorts tags alphabetically and update to the one with the highest cardinality
 
-!!!warning "Renamed image update strategies
+!!!warning "Renamed image update strategies"
     The `latest` strategy has been renamed to `newest-build`, and `name` strategy has been renamed to `alphabetical`. 
     Please switch to the new convention as support for the old naming convention will be removed in future releases.
 
