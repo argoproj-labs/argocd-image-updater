@@ -134,7 +134,7 @@ application processing, specify a number of `1`.
 
 **--once**
 
-A shortcut for specifying `--check-interval 0 --health-port 0`. If given,
+A shortcut for specifying `--interval 0 --health-port 0`. If given,
 Argo CD Image Updater will exit after the first update cycle.
 
 **--registries-conf-path *path* **
