@@ -350,72 +350,74 @@ func writeKustomization(app *v1alpha1.Application, wbc *WriteBackConfig, gitC gi
 // to the file. This is the same behavior as kyaml.UpdateFile, but it preserves the original order of YAML fields
 // and indentation of YAML sequences to minimize git diffs.
 func updateKustomizeFile(filter kyaml.Filter, path string) (error, bool) {
-	// Read the yaml
-	y, err := kyaml.ReadFile(path)
-	if err != nil {
-		return err, false
-	}
-
-	originalData, err := y.String()
-	if err != nil {
-		return err, false
-	}
-
 	// Open the input file for read
-	in, err := os.Open(path)
+	yRaw, err := os.ReadFile(path)
 	if err != nil {
 		return err, false
 	}
-	defer in.Close()
+
+	// Read the yaml document from bytes
+	originalYSlice, err := kio.FromBytes(yRaw)
+	if err != nil {
+		return err, false
+	}
+
+	// Check that we are dealing with a single document
+	if len(originalYSlice) != 1 {
+		return errors.New("target parameter file should contain a single YAML document"), false
+	}
+	originalY := originalYSlice[0]
+
+	// Get the (parsed) original document
+	originalData, err := originalY.String()
+	if err != nil {
+		return err, false
+	}
 
 	// Create a reader, preserving indentation of sequences
 	var out bytes.Buffer
 	rw := &kio.ByteReadWriter{
-		Reader:            in,
+		Reader:            bytes.NewBuffer(yRaw),
 		Writer:            &out,
 		PreserveSeqIndent: true,
 	}
 
 	// Read input file
-	yCpySlice, err := rw.Read()
+	newYSlice, err := rw.Read()
 	if err != nil {
 		return err, false
 	}
-
-	// We expect a single yaml
-	if len(yCpySlice) != 1 {
-		return errors.New("target parameter file should contain a single YAML document"), false
-	}
-	yCpy := yCpySlice[0]
+	// We can safely assume we have a single document from the previous check
+	newY := newYSlice[0]
 
 	// Update the yaml
-	if err := yCpy.PipeE(filter); err != nil {
+	if err := newY.PipeE(filter); err != nil {
 		return err, false
 	}
 
 	// Preserve the original order of fields
-	if err := order.SyncOrder(y, yCpy); err != nil {
+	if err := order.SyncOrder(originalY, newY); err != nil {
 		return err, false
 	}
 
 	// Write the yaml document to the output buffer
-	if err = rw.Write([]*kyaml.RNode{yCpy}); err != nil {
+	if err = rw.Write([]*kyaml.RNode{newY}); err != nil {
 		return err, false
 	}
 
 	// yCpy contains metadata used by kio to preserve sequence indentation,
 	// hence we need to parse the output buffer instead
-	parsed, err := kyaml.Parse(out.String())
+	newParsedY, err := kyaml.Parse(out.String())
 	if err != nil {
 		return err, false
 	}
-	override, err := parsed.String()
+	newData, err := newParsedY.String()
 	if err != nil {
 		return err, false
 	}
 
 	// Diff the updated document with the original
-	if originalData == override {
+	if originalData == newData {
 		log.Debugf("target parameter file and marshaled data are the same, skipping commit.")
 		return nil, true
 	}
