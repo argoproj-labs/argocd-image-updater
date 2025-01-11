@@ -35,6 +35,7 @@ const (
 	UpdateStrategyAnnotation    = ImageUpdaterAnnotationPrefix + "/%s.update-strategy"
 	PullSecretAnnotation        = ImageUpdaterAnnotationPrefix + "/%s.pull-secret"
 	PlatformsAnnotation         = ImageUpdaterAnnotationPrefix + "/%s.platforms"
+	RegistryPrefixAnnotation    = ImageUpdaterAnnotationPrefix + "/%s.registry-prefix"
 )
 
 // Application-wide update strategy related annotations
