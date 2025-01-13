@@ -8,7 +8,7 @@ import (
 
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/kube"
-	registryCommon "github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/common"
+
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/image"
 	registryKube "github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/kube"
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/application"
@@ -65,7 +65,7 @@ func Test_GetImagesFromApplication(t *testing.T) {
 				Name:      "test-app",
 				Namespace: "argocd",
 				Annotations: map[string]string{
-					fmt.Sprintf(registryCommon.Prefixed(common.ImageUpdaterAnnotationPrefix, registryCommon.ForceUpdateOptionAnnotationSuffix), "nginx"): "true",
+					fmt.Sprintf(common.ForceUpdateOptionAnnotationSuffix), "nginx"): "true",
 					common.ImageUpdaterAnnotation: "nginx=nginx",
 				},
 			},
@@ -557,8 +557,8 @@ func Test_FilterApplicationsForUpdate(t *testing.T) {
 func Test_GetHelmParamAnnotations(t *testing.T) {
 	t.Run("Get parameter names without symbolic names", func(t *testing.T) {
 		annotations := map[string]string{
-			fmt.Sprintf(registryCommon.Prefixed(common.ImageUpdaterAnnotationPrefix, registryCommon.HelmParamImageSpecAnnotationSuffix), "myimg"): "image.blub",
-			fmt.Sprintf(registryCommon.Prefixed(common.ImageUpdaterAnnotationPrefix, registryCommon.HelmParamImageTagAnnotationSuffix), "myimg"):  "image.blab",
+			fmt.Sprintf(common.HelmParamImageSpecAnnotationSuffix), "myimg"): "image.blub",
+			fmt.Sprintf(common.HelmParamImageTagAnnotationSuffix), "myimg"):  "image.blab",
 		}
 		name, tag := getHelmParamNamesFromAnnotation(annotations, &image.ContainerImage{
 			ImageAlias: "",
@@ -569,8 +569,8 @@ func Test_GetHelmParamAnnotations(t *testing.T) {
 
 	t.Run("Find existing image spec annotation", func(t *testing.T) {
 		annotations := map[string]string{
-			fmt.Sprintf(registryCommon.Prefixed(common.ImageUpdaterAnnotationPrefix, registryCommon.HelmParamImageSpecAnnotationSuffix), "myimg"): "image.path",
-			fmt.Sprintf(registryCommon.Prefixed(common.ImageUpdaterAnnotationPrefix, registryCommon.HelmParamImageTagAnnotationSuffix), "myimg"):  "image.tag",
+			fmt.Sprintf(common.HelmParamImageSpecAnnotationSuffix), "myimg"): "image.path",
+			fmt.Sprintf(common.HelmParamImageTagAnnotationSuffix), "myimg"):  "image.tag",
 		}
 		name, tag := getHelmParamNamesFromAnnotation(annotations, &image.ContainerImage{
 			ImageAlias: "myimg",
@@ -581,8 +581,8 @@ func Test_GetHelmParamAnnotations(t *testing.T) {
 
 	t.Run("Find existing image name and image tag annotations", func(t *testing.T) {
 		annotations := map[string]string{
-			fmt.Sprintf(registryCommon.Prefixed(common.ImageUpdaterAnnotationPrefix, registryCommon.HelmParamImageNameAnnotationSuffix), "myimg"): "image.name",
-			fmt.Sprintf(registryCommon.Prefixed(common.ImageUpdaterAnnotationPrefix, registryCommon.HelmParamImageTagAnnotationSuffix), "myimg"):  "image.tag",
+			fmt.Sprintf(common.HelmParamImageNameAnnotationSuffix), "myimg"): "image.name",
+			fmt.Sprintf(common.HelmParamImageTagAnnotationSuffix), "myimg"):  "image.tag",
 		}
 		name, tag := getHelmParamNamesFromAnnotation(annotations, &image.ContainerImage{
 			ImageAlias: "myimg",
@@ -593,8 +593,8 @@ func Test_GetHelmParamAnnotations(t *testing.T) {
 
 	t.Run("Find non-existing image name and image tag annotations", func(t *testing.T) {
 		annotations := map[string]string{
-			fmt.Sprintf(registryCommon.Prefixed(common.ImageUpdaterAnnotationPrefix, registryCommon.HelmParamImageNameAnnotationSuffix), "otherimg"): "image.name",
-			fmt.Sprintf(registryCommon.Prefixed(common.ImageUpdaterAnnotationPrefix, registryCommon.HelmParamImageTagAnnotationSuffix), "otherimg"):  "image.tag",
+			fmt.Sprintf(common.HelmParamImageNameAnnotationSuffix), "otherimg"): "image.name",
+			fmt.Sprintf(common.HelmParamImageTagAnnotationSuffix), "otherimg"):  "image.tag",
 		}
 		name, tag := getHelmParamNamesFromAnnotation(annotations, &image.ContainerImage{
 			ImageAlias: "myimg",
@@ -605,7 +605,7 @@ func Test_GetHelmParamAnnotations(t *testing.T) {
 
 	t.Run("Find existing image tag annotations", func(t *testing.T) {
 		annotations := map[string]string{
-			fmt.Sprintf(registryCommon.Prefixed(common.ImageUpdaterAnnotationPrefix, registryCommon.HelmParamImageTagAnnotationSuffix), "myimg"): "image.tag",
+			fmt.Sprintf(common.HelmParamImageTagAnnotationSuffix), "myimg"): "image.tag",
 		}
 		name, tag := getHelmParamNamesFromAnnotation(annotations, &image.ContainerImage{
 			ImageAlias: "myimg",
@@ -794,7 +794,7 @@ func Test_SetKustomizeImage(t *testing.T) {
 				Name:      "test-app",
 				Namespace: "testns",
 				Annotations: map[string]string{
-					fmt.Sprintf(registryCommon.Prefixed(common.ImageUpdaterAnnotationPrefix, registryCommon.KustomizeApplicationNameAnnotationSuffix), "foobar"): "foobar",
+					fmt.Sprintf(common.KustomizeApplicationNameAnnotationSuffix), "foobar"): "foobar",
 				},
 			},
 			Spec: v1alpha1.ApplicationSpec{
@@ -832,8 +832,8 @@ func Test_SetHelmImage(t *testing.T) {
 				Name:      "test-app",
 				Namespace: "testns",
 				Annotations: map[string]string{
-					fmt.Sprintf(registryCommon.Prefixed(common.ImageUpdaterAnnotationPrefix, registryCommon.HelmParamImageNameAnnotationSuffix), "foobar"): "image.name",
-					fmt.Sprintf(registryCommon.Prefixed(common.ImageUpdaterAnnotationPrefix, registryCommon.HelmParamImageTagAnnotationSuffix), "foobar"):  "image.tag",
+					fmt.Sprintf(common.HelmParamImageNameAnnotationSuffix), "foobar"): "image.name",
+					fmt.Sprintf(common.HelmParamImageTagAnnotationSuffix), "foobar"):  "image.tag",
 				},
 			},
 			Spec: v1alpha1.ApplicationSpec{
@@ -886,8 +886,8 @@ func Test_SetHelmImage(t *testing.T) {
 				Name:      "test-app",
 				Namespace: "testns",
 				Annotations: map[string]string{
-					fmt.Sprintf(registryCommon.Prefixed(common.ImageUpdaterAnnotationPrefix, registryCommon.HelmParamImageNameAnnotationSuffix), "foobar"): "image.name",
-					fmt.Sprintf(registryCommon.Prefixed(common.ImageUpdaterAnnotationPrefix, registryCommon.HelmParamImageTagAnnotationSuffix), "foobar"):  "image.tag",
+					fmt.Sprintf(common.HelmParamImageNameAnnotationSuffix), "foobar"): "image.name",
+					fmt.Sprintf(common.HelmParamImageTagAnnotationSuffix), "foobar"):  "image.tag",
 				},
 			},
 			Spec: v1alpha1.ApplicationSpec{
@@ -929,8 +929,8 @@ func Test_SetHelmImage(t *testing.T) {
 				Name:      "test-app",
 				Namespace: "testns",
 				Annotations: map[string]string{
-					fmt.Sprintf(registryCommon.Prefixed(common.ImageUpdaterAnnotationPrefix, registryCommon.HelmParamImageNameAnnotationSuffix), "foobar"): "foobar.image.name",
-					fmt.Sprintf(registryCommon.Prefixed(common.ImageUpdaterAnnotationPrefix, registryCommon.HelmParamImageTagAnnotationSuffix), "foobar"):  "foobar.image.tag",
+					fmt.Sprintf(common.HelmParamImageNameAnnotationSuffix), "foobar"): "foobar.image.name",
+					fmt.Sprintf(common.HelmParamImageTagAnnotationSuffix), "foobar"):  "foobar.image.tag",
 				},
 			},
 			Spec: v1alpha1.ApplicationSpec{
@@ -983,8 +983,8 @@ func Test_SetHelmImage(t *testing.T) {
 				Name:      "test-app",
 				Namespace: "testns",
 				Annotations: map[string]string{
-					fmt.Sprintf(registryCommon.Prefixed(common.ImageUpdaterAnnotationPrefix, registryCommon.HelmParamImageNameAnnotationSuffix), "foobar"): "foobar.image.name",
-					fmt.Sprintf(registryCommon.Prefixed(common.ImageUpdaterAnnotationPrefix, registryCommon.HelmParamImageTagAnnotationSuffix), "foobar"):  "foobar.image.tag",
+					fmt.Sprintf(common.HelmParamImageNameAnnotationSuffix), "foobar"): "foobar.image.name",
+					fmt.Sprintf(common.HelmParamImageTagAnnotationSuffix), "foobar"):  "foobar.image.tag",
 				},
 			},
 			Spec: v1alpha1.ApplicationSpec{
@@ -1227,7 +1227,7 @@ func Test_parseImageList(t *testing.T) {
 	t.Run("Test kustomize override", func(t *testing.T) {
 		imgs := *parseImageList(map[string]string{
 			common.ImageUpdaterAnnotation: "foo=bar",
-			fmt.Sprintf(registryCommon.Prefixed(common.ImageUpdaterAnnotationPrefix, registryCommon.KustomizeApplicationNameAnnotationSuffix), "foo"): "baz",
+			fmt.Sprintf(common.KustomizeApplicationNameAnnotationSuffix), "foo"): "baz",
 		})
 		assert.Equal(t, "bar", imgs[0].ImageName)
 		assert.Equal(t, "baz", imgs[0].KustomizeImage.ImageName)

@@ -206,11 +206,11 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 			imgCtx.Debugf("Using no version constraint when looking for a new tag")
 		}
 
-		vc.Strategy = applicationImage.GetParameterUpdateStrategy(updateConf.UpdateApp.Application.Annotations, common.ImageUpdaterAnnotationPrefix)
-		vc.MatchFunc, vc.MatchArgs = applicationImage.GetParameterMatch(updateConf.UpdateApp.Application.Annotations, common.ImageUpdaterAnnotationPrefix)
-		vc.IgnoreList = applicationImage.GetParameterIgnoreTags(updateConf.UpdateApp.Application.Annotations, common.ImageUpdaterAnnotationPrefix)
+		vc.Strategy = applicationImage.GetParameterUpdateStrategy(updateConf.UpdateApp.Application.Annotations)
+		vc.MatchFunc, vc.MatchArgs = applicationImage.GetParameterMatch(updateConf.UpdateApp.Application.Annotations)
+		vc.IgnoreList = applicationImage.GetParameterIgnoreTags(updateConf.UpdateApp.Application.Annotations)
 		vc.Options = applicationImage.
-			GetPlatformOptions(updateConf.UpdateApp.Application.Annotations, updateConf.IgnorePlatforms, common.ImageUpdaterAnnotationPrefix).
+			GetPlatformOptions(updateConf.UpdateApp.Application.Annotations, updateConf.IgnorePlatforms).
 			WithMetadata(vc.Strategy.NeedsMetadata()).
 			WithLogger(imgCtx.AddField("application", app))
 
@@ -228,7 +228,7 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 			continue
 		}
 
-		imgCredSrc := applicationImage.GetParameterPullSecret(updateConf.UpdateApp.Application.Annotations, common.ImageUpdaterAnnotationPrefix)
+		imgCredSrc := applicationImage.GetParameterPullSecret(updateConf.UpdateApp.Application.Annotations)
 		var creds *image.Credential = &image.Credential{}
 		if imgCredSrc != nil {
 			creds, err = imgCredSrc.FetchCredentials(rep.RegistryAPI, updateConf.KubeClient.KubeClient)
@@ -478,7 +478,7 @@ func marshalParamsOverride(app *v1alpha1.Application, originalData []byte) ([]by
 				// for image-spec annotation, helmAnnotationParamName holds image-spec annotation value,
 				// and helmAnnotationParamVersion is empty
 				if helmAnnotationParamVersion == "" {
-					if c.GetParameterHelmImageSpec(app.Annotations, common.ImageUpdaterAnnotationPrefix) == "" {
+					if c.GetParameterHelmImageSpec(app.Annotations) == "" {
 						// not a full image-spec, so image-tag is required
 						return nil, fmt.Errorf("could not find an image-tag annotation for image %s", c.ImageName)
 					}

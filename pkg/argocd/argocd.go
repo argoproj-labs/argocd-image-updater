@@ -11,7 +11,6 @@ import (
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/kube"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/metrics"
-	registryCommon "github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/common"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/env"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/image"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
@@ -233,7 +232,7 @@ func parseImageList(annotations map[string]string) *image.ContainerImageList {
 		splits := strings.Split(updateImage, ",")
 		for _, s := range splits {
 			img := image.NewFromIdentifier(strings.TrimSpace(s))
-			if kustomizeImage := img.GetParameterKustomizeImageName(annotations, common.ImageUpdaterAnnotationPrefix); kustomizeImage != "" {
+			if kustomizeImage := img.GetParameterKustomizeImageName(annotations); kustomizeImage != "" {
 				img.KustomizeImage = image.NewFromIdentifier(kustomizeImage)
 			}
 			results = append(results, img)
@@ -315,17 +314,17 @@ func getHelmParamNamesFromAnnotation(annotations map[string]string, img *image.C
 	var annotationName, helmParamName, helmParamVersion string
 
 	// Image spec is a full-qualified specifier, if we have it, we return early
-	if param := img.GetParameterHelmImageSpec(annotations, common.ImageUpdaterAnnotationPrefix); param != "" {
+	if param := img.GetParameterHelmImageSpec(annotations); param != "" {
 		log.Tracef("found annotation %s", annotationName)
 		return strings.TrimSpace(param), ""
 	}
 
-	if param := img.GetParameterHelmImageName(annotations, common.ImageUpdaterAnnotationPrefix); param != "" {
+	if param := img.GetParameterHelmImageName(annotations); param != "" {
 		log.Tracef("found annotation %s", annotationName)
 		helmParamName = param
 	}
 
-	if param := img.GetParameterHelmImageTag(annotations, common.ImageUpdaterAnnotationPrefix); param != "" {
+	if param := img.GetParameterHelmImageTag(annotations); param != "" {
 		log.Tracef("found annotation %s", annotationName)
 		helmParamVersion = param
 	}
@@ -385,16 +384,16 @@ func GetHelmImage(app *v1alpha1.Application, newImage *image.ContainerImage) (st
 
 	var hpImageName, hpImageTag, hpImageSpec string
 
-	hpImageSpec = newImage.GetParameterHelmImageSpec(app.Annotations, common.ImageUpdaterAnnotationPrefix)
-	hpImageName = newImage.GetParameterHelmImageName(app.Annotations, common.ImageUpdaterAnnotationPrefix)
-	hpImageTag = newImage.GetParameterHelmImageTag(app.Annotations, common.ImageUpdaterAnnotationPrefix)
+	hpImageSpec = newImage.GetParameterHelmImageSpec(app.Annotations)
+	hpImageName = newImage.GetParameterHelmImageName(app.Annotations)
+	hpImageTag = newImage.GetParameterHelmImageTag(app.Annotations)
 
 	if hpImageSpec == "" {
 		if hpImageName == "" {
-			hpImageName = registryCommon.DefaultHelmImageName
+			hpImageName = common.DefaultHelmImageName
 		}
 		if hpImageTag == "" {
-			hpImageTag = registryCommon.DefaultHelmImageTag
+			hpImageTag = common.DefaultHelmImageTag
 		}
 	}
 
@@ -435,16 +434,16 @@ func SetHelmImage(app *v1alpha1.Application, newImage *image.ContainerImage) err
 
 	var hpImageName, hpImageTag, hpImageSpec string
 
-	hpImageSpec = newImage.GetParameterHelmImageSpec(app.Annotations, common.ImageUpdaterAnnotationPrefix)
-	hpImageName = newImage.GetParameterHelmImageName(app.Annotations, common.ImageUpdaterAnnotationPrefix)
-	hpImageTag = newImage.GetParameterHelmImageTag(app.Annotations, common.ImageUpdaterAnnotationPrefix)
+	hpImageSpec = newImage.GetParameterHelmImageSpec(app.Annotations)
+	hpImageName = newImage.GetParameterHelmImageName(app.Annotations)
+	hpImageTag = newImage.GetParameterHelmImageTag(app.Annotations)
 
 	if hpImageSpec == "" {
 		if hpImageName == "" {
-			hpImageName = registryCommon.DefaultHelmImageName
+			hpImageName = common.DefaultHelmImageName
 		}
 		if hpImageTag == "" {
-			hpImageTag = registryCommon.DefaultHelmImageTag
+			hpImageTag = common.DefaultHelmImageTag
 		}
 	}
 
@@ -495,7 +494,7 @@ func GetKustomizeImage(app *v1alpha1.Application, newImage *image.ContainerImage
 		return "", fmt.Errorf("cannot set Kustomize image on non-Kustomize application")
 	}
 
-	ksImageName := newImage.GetParameterKustomizeImageName(app.Annotations, common.ImageUpdaterAnnotationPrefix)
+	ksImageName := newImage.GetParameterKustomizeImageName(app.Annotations)
 
 	appSource := getApplicationSource(app)
 
@@ -525,7 +524,7 @@ func SetKustomizeImage(app *v1alpha1.Application, newImage *image.ContainerImage
 	}
 
 	var ksImageParam string
-	ksImageName := newImage.GetParameterKustomizeImageName(app.Annotations, common.ImageUpdaterAnnotationPrefix)
+	ksImageName := newImage.GetParameterKustomizeImageName(app.Annotations)
 	if ksImageName != "" {
 		ksImageParam = fmt.Sprintf("%s=%s", ksImageName, newImage.GetFullNameWithTag())
 	} else {
@@ -569,7 +568,7 @@ func GetImagesFromApplication(app *v1alpha1.Application) image.ContainerImageLis
 	// Check the image list for images with a force-update annotation, and add them if they are not already present.
 	annotations := app.Annotations
 	for _, img := range *parseImageList(annotations) {
-		if img.HasForceUpdateOptionAnnotation(annotations, common.ImageUpdaterAnnotationPrefix) {
+		if img.HasForceUpdateOptionAnnotation(annotations) {
 			img.ImageTag = nil // the tag from the image list will be a version constraint, which isn't a valid tag
 			images = append(images, img)
 		}
