@@ -174,7 +174,7 @@ require (
 
 replace (
 	// Uncomment for local testing
-	// github.com/argoproj-labs/argocd-image-updater/registry-scanner => ./registry-scanner/
+	github.com/argoproj-labs/argocd-image-updater/registry-scanner => ./registry-scanner/
 	github.com/golang/protobuf => github.com/golang/protobuf v1.5.4
 
 	k8s.io/api => k8s.io/api v0.31.0
