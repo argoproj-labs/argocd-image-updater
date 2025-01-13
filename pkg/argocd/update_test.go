@@ -512,7 +512,7 @@ func Test_UpdateApplication(t *testing.T) {
 					Name:      "guestbook",
 					Namespace: "guestbook",
 					Annotations: map[string]string{
-						fmt.Sprintf(common.PullSecretAnnotationSuffix), "dummy"): "secret:foo/bar#creds",
+						fmt.Sprintf(common.PullSecretAnnotation, "dummy"): "secret:foo/bar#creds",
 					},
 				},
 				Spec: v1alpha1.ApplicationSpec{
@@ -683,8 +683,8 @@ func Test_UpdateApplication(t *testing.T) {
 			},
 		}
 		annotations := map[string]string{
-			common.ImageUpdaterAnnotation: "foobar=gcr.io/jannfis/foobar:>=1.0.1",
-			fmt.Sprintf(common.KustomizeApplicationNameAnnotationSuffix), "foobar"): "jannfis/foobar",
+			common.ImageUpdaterAnnotation:                                    "foobar=gcr.io/jannfis/foobar:>=1.0.1",
+			fmt.Sprintf(common.KustomizeApplicationNameAnnotation, "foobar"): "jannfis/foobar",
 		}
 		appImages := &ApplicationImages{
 			Application: v1alpha1.Application{
@@ -744,8 +744,8 @@ func Test_UpdateApplication(t *testing.T) {
 			},
 		}
 		annotations := map[string]string{
-			common.ImageUpdaterAnnotation: "foobar=gcr.io/jannfis/foobar:>=1.0.1",
-			fmt.Sprintf(common.KustomizeApplicationNameAnnotationSuffix), "foobar"): "jannfis/foobar",
+			common.ImageUpdaterAnnotation:                                    "foobar=gcr.io/jannfis/foobar:>=1.0.1",
+			fmt.Sprintf(common.KustomizeApplicationNameAnnotation, "foobar"): "jannfis/foobar",
 		}
 		appImages := &ApplicationImages{
 			Application: v1alpha1.Application{
@@ -826,8 +826,8 @@ func Test_UpdateApplication(t *testing.T) {
 					Name:      "guestbook",
 					Namespace: "guestbook",
 					Annotations: map[string]string{
-						fmt.Sprintf(common.AllowTagsOptionAnnotationSuffix), "dummy"): "regexp:^foobar$",
-						fmt.Sprintf(common.UpdateStrategyAnnotationSuffix), "dummy"):  "name",
+						fmt.Sprintf(common.AllowTagsOptionAnnotation, "dummy"): "regexp:^foobar$",
+						fmt.Sprintf(common.UpdateStrategyAnnotation, "dummy"):  "name",
 					},
 				},
 				Spec: v1alpha1.ApplicationSpec{
@@ -904,8 +904,8 @@ func Test_UpdateApplication(t *testing.T) {
 					Name:      "guestbook",
 					Namespace: "guestbook",
 					Annotations: map[string]string{
-						fmt.Sprintf(common.IgnoreTagsOptionAnnotationSuffix), "dummy"): "*",
-						fmt.Sprintf(registryCommon.UpdateStrategyAnnotationSuffix, "dummy"):                                                                 "name",
+						fmt.Sprintf(common.IgnoreTagsOptionAnnotation, "dummy"): "*",
+						fmt.Sprintf(common.UpdateStrategyAnnotation, "dummy"):   "name",
 					},
 				},
 				Spec: v1alpha1.ApplicationSpec{
