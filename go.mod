@@ -11,6 +11,7 @@ require (
 	github.com/argoproj/pkg v0.13.7-0.20230627120311-a4dd357b057e
 	github.com/bmatcuk/doublestar/v4 v4.7.1
 	github.com/bradleyfalzon/ghinstallation/v2 v2.12.0
+	github.com/distribution/distribution/v3 v3.0.0-20230722181636-7b502560cad4
 	github.com/go-git/go-git/v5 v5.13.0
 	github.com/google/uuid v1.6.0
 	github.com/patrickmn/go-cache v2.1.0+incompatible
@@ -52,7 +53,6 @@ require (
 	github.com/cyphar/filepath-securejoin v0.3.2 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
-	github.com/distribution/distribution/v3 v3.0.0-20230722181636-7b502560cad4 // indirect
 	github.com/distribution/reference v0.5.0 // indirect
 	github.com/dlclark/regexp2 v1.11.4 // indirect
 	github.com/docker/go-metrics v0.0.1 // indirect
@@ -174,7 +174,7 @@ require (
 
 replace (
 	// Uncomment for local testing
-	github.com/argoproj-labs/argocd-image-updater/registry-scanner => ./registry-scanner/
+	// github.com/argoproj-labs/argocd-image-updater/registry-scanner => ./registry-scanner/
 	github.com/golang/protobuf => github.com/golang/protobuf v1.5.4
 
 	k8s.io/api => k8s.io/api v0.31.0
