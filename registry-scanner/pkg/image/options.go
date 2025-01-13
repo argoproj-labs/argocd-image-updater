@@ -12,8 +12,8 @@ import (
 
 // GetParameterHelmImageName gets the value for image-name option for the image
 // from a set of annotations
-func (img *ContainerImage) GetParameterHelmImageName(annotations map[string]string) string {
-	key := fmt.Sprintf(common.HelmParamImageNameAnnotation, img.normalizedSymbolicName())
+func (img *ContainerImage) GetParameterHelmImageName(annotations map[string]string, annotationPrefix string) string {
+	key := fmt.Sprintf(common.Prefixed(annotationPrefix, common.HelmParamImageNameAnnotationSuffix), img.normalizedSymbolicName())
 	val, ok := annotations[key]
 	if !ok {
 		return ""
@@ -23,8 +23,8 @@ func (img *ContainerImage) GetParameterHelmImageName(annotations map[string]stri
 
 // GetParameterHelmImageTag gets the value for image-tag option for the image
 // from a set of annotations
-func (img *ContainerImage) GetParameterHelmImageTag(annotations map[string]string) string {
-	key := fmt.Sprintf(common.HelmParamImageTagAnnotation, img.normalizedSymbolicName())
+func (img *ContainerImage) GetParameterHelmImageTag(annotations map[string]string, annotationPrefix string) string {
+	key := fmt.Sprintf(common.Prefixed(annotationPrefix, common.HelmParamImageTagAnnotationSuffix), img.normalizedSymbolicName())
 	val, ok := annotations[key]
 	if !ok {
 		return ""
@@ -34,8 +34,8 @@ func (img *ContainerImage) GetParameterHelmImageTag(annotations map[string]strin
 
 // GetParameterHelmImageSpec gets the value for image-spec option for the image
 // from a set of annotations
-func (img *ContainerImage) GetParameterHelmImageSpec(annotations map[string]string) string {
-	key := fmt.Sprintf(common.HelmParamImageSpecAnnotation, img.normalizedSymbolicName())
+func (img *ContainerImage) GetParameterHelmImageSpec(annotations map[string]string, annotationPrefix string) string {
+	key := fmt.Sprintf(common.Prefixed(annotationPrefix, common.HelmParamImageSpecAnnotationSuffix), img.normalizedSymbolicName())
 	val, ok := annotations[key]
 	if !ok {
 		return ""
@@ -45,8 +45,8 @@ func (img *ContainerImage) GetParameterHelmImageSpec(annotations map[string]stri
 
 // GetParameterKustomizeImageName gets the value for image-spec option for the
 // image from a set of annotations
-func (img *ContainerImage) GetParameterKustomizeImageName(annotations map[string]string) string {
-	key := fmt.Sprintf(common.KustomizeApplicationNameAnnotation, img.normalizedSymbolicName())
+func (img *ContainerImage) GetParameterKustomizeImageName(annotations map[string]string, annotationPrefix string) string {
+	key := fmt.Sprintf(common.Prefixed(annotationPrefix, common.KustomizeApplicationNameAnnotationSuffix), img.normalizedSymbolicName())
 	val, ok := annotations[key]
 	if !ok {
 		return ""
@@ -56,10 +56,10 @@ func (img *ContainerImage) GetParameterKustomizeImageName(annotations map[string
 
 // HasForceUpdateOptionAnnotation gets the value for force-update option for the
 // image from a set of annotations
-func (img *ContainerImage) HasForceUpdateOptionAnnotation(annotations map[string]string) bool {
+func (img *ContainerImage) HasForceUpdateOptionAnnotation(annotations map[string]string, annotationPrefix string) bool {
 	forceUpdateAnnotations := []string{
-		fmt.Sprintf(common.ForceUpdateOptionAnnotation, img.normalizedSymbolicName()),
-		common.ApplicationWideForceUpdateOptionAnnotation,
+		fmt.Sprintf(common.Prefixed(annotationPrefix, common.ForceUpdateOptionAnnotationSuffix), img.normalizedSymbolicName()),
+		common.Prefixed(annotationPrefix, common.ApplicationWideForceUpdateOptionAnnotationSuffix),
 	}
 	var forceUpdateVal = ""
 	for _, key := range forceUpdateAnnotations {
@@ -73,10 +73,10 @@ func (img *ContainerImage) HasForceUpdateOptionAnnotation(annotations map[string
 
 // GetParameterSort gets and validates the value for the sort option for the
 // image from a set of annotations
-func (img *ContainerImage) GetParameterUpdateStrategy(annotations map[string]string) UpdateStrategy {
+func (img *ContainerImage) GetParameterUpdateStrategy(annotations map[string]string, annotationPrefix string) UpdateStrategy {
 	updateStrategyAnnotations := []string{
-		fmt.Sprintf(common.UpdateStrategyAnnotation, img.normalizedSymbolicName()),
-		common.ApplicationWideUpdateStrategyAnnotation,
+		fmt.Sprintf(common.Prefixed(annotationPrefix, common.UpdateStrategyAnnotationSuffix), img.normalizedSymbolicName()),
+		common.Prefixed(annotationPrefix, common.ApplicationWideUpdateStrategyAnnotationSuffix),
 	}
 	var updateStrategyVal = ""
 	for _, key := range updateStrategyAnnotations {
@@ -121,10 +121,10 @@ func (img *ContainerImage) ParseUpdateStrategy(val string) UpdateStrategy {
 // GetParameterMatch returns the match function and pattern to use for matching
 // tag names. If an invalid option is found, it returns MatchFuncNone as the
 // default, to prevent accidental matches.
-func (img *ContainerImage) GetParameterMatch(annotations map[string]string) (MatchFuncFn, interface{}) {
+func (img *ContainerImage) GetParameterMatch(annotations map[string]string, annotationPrefix string) (MatchFuncFn, interface{}) {
 	allowTagsAnnotations := []string{
-		fmt.Sprintf(common.AllowTagsOptionAnnotation, img.normalizedSymbolicName()),
-		common.ApplicationWideAllowTagsOptionAnnotation,
+		fmt.Sprintf(common.Prefixed(annotationPrefix, common.AllowTagsOptionAnnotationSuffix), img.normalizedSymbolicName()),
+		common.Prefixed(annotationPrefix, common.ApplicationWideAllowTagsOptionAnnotationSuffix),
 	}
 	var allowTagsVal = ""
 	for _, key := range allowTagsAnnotations {
@@ -137,7 +137,7 @@ func (img *ContainerImage) GetParameterMatch(annotations map[string]string) (Mat
 	if allowTagsVal == "" {
 		// The old match-tag annotation is deprecated and will be subject to removal
 		// in a future version.
-		key := fmt.Sprintf(common.OldMatchOptionAnnotation, img.normalizedSymbolicName())
+		key := fmt.Sprintf(common.Prefixed(annotationPrefix, common.OldMatchOptionAnnotationSuffix), img.normalizedSymbolicName())
 		val, ok := annotations[key]
 		if ok {
 			logCtx.Warnf("The 'tag-match' annotation is deprecated and subject to removal. Please use 'allow-tags' annotation instead.")
@@ -180,10 +180,10 @@ func (img *ContainerImage) ParseMatchfunc(val string) (MatchFuncFn, interface{})
 }
 
 // GetParameterPullSecret retrieves an image's pull secret credentials
-func (img *ContainerImage) GetParameterPullSecret(annotations map[string]string) *CredentialSource {
+func (img *ContainerImage) GetParameterPullSecret(annotations map[string]string, annotationPrefix string) *CredentialSource {
 	pullSecretAnnotations := []string{
-		fmt.Sprintf(common.PullSecretAnnotation, img.normalizedSymbolicName()),
-		common.ApplicationWidePullSecretAnnotation,
+		fmt.Sprintf(common.Prefixed(annotationPrefix, common.PullSecretAnnotationSuffix), img.normalizedSymbolicName()),
+		common.Prefixed(annotationPrefix, common.ApplicationWidePullSecretAnnotationSuffix),
 	}
 	var pullSecretVal = ""
 	for _, key := range pullSecretAnnotations {
@@ -206,10 +206,10 @@ func (img *ContainerImage) GetParameterPullSecret(annotations map[string]string)
 }
 
 // GetParameterIgnoreTags retrieves a list of tags to ignore from a comma-separated string
-func (img *ContainerImage) GetParameterIgnoreTags(annotations map[string]string) []string {
+func (img *ContainerImage) GetParameterIgnoreTags(annotations map[string]string, annotationPrefix string) []string {
 	ignoreTagsAnnotations := []string{
-		fmt.Sprintf(common.IgnoreTagsOptionAnnotation, img.normalizedSymbolicName()),
-		common.ApplicationWideIgnoreTagsOptionAnnotation,
+		fmt.Sprintf(common.Prefixed(annotationPrefix, common.IgnoreTagsOptionAnnotationSuffix), img.normalizedSymbolicName()),
+		common.Prefixed(annotationPrefix, common.ApplicationWideIgnoreTagsOptionAnnotationSuffix),
 	}
 	var ignoreTagsVal = ""
 	for _, key := range ignoreTagsAnnotations {
@@ -239,10 +239,10 @@ func (img *ContainerImage) GetParameterIgnoreTags(annotations map[string]string)
 // is specified in the annotations, we restrict the platform for images to the
 // platform we're executed on unless unrestricted is set to true, in which case
 // we do not setup a platform restriction if no platform annotation is found.
-func (img *ContainerImage) GetPlatformOptions(annotations map[string]string, unrestricted bool) *options.ManifestOptions {
+func (img *ContainerImage) GetPlatformOptions(annotations map[string]string, unrestricted bool, annotationPrefix string) *options.ManifestOptions {
 	logCtx := img.LogContext()
 	var opts *options.ManifestOptions = options.NewManifestOptions()
-	key := fmt.Sprintf(common.PlatformsAnnotation, img.normalizedSymbolicName())
+	key := fmt.Sprintf(common.Prefixed(annotationPrefix, common.PlatformsAnnotationSuffix), img.normalizedSymbolicName())
 	val, ok := annotations[key]
 	if !ok {
 		if !unrestricted {
