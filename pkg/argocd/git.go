@@ -382,7 +382,7 @@ func updateKustomizeFile(filter kyaml.Filter, path string) (error, bool) {
 		PreserveSeqIndent: true,
 	}
 
-	// Read input file
+	// Read from input buffer
 	newYSlice, err := rw.Read()
 	if err != nil {
 		return err, false
@@ -405,7 +405,7 @@ func updateKustomizeFile(filter kyaml.Filter, path string) (error, bool) {
 		return err, false
 	}
 
-	// yCpy contains metadata used by kio to preserve sequence indentation,
+	// newY contains metadata used by kio to preserve sequence indentation,
 	// hence we need to parse the output buffer instead
 	newParsedY, err := kyaml.Parse(out.String())
 	if err != nil {
@@ -416,12 +416,13 @@ func updateKustomizeFile(filter kyaml.Filter, path string) (error, bool) {
 		return err, false
 	}
 
-	// Diff the updated document with the original
+	// Compare the updated document with the original document
 	if originalData == newData {
 		log.Debugf("target parameter file and marshaled data are the same, skipping commit.")
 		return nil, true
 	}
 
+	// Write to file the changes
 	if err := os.WriteFile(path, out.Bytes(), 0600); err != nil {
 		return err, false
 	}
