@@ -8,8 +8,10 @@ import (
 
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/kube"
+
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/image"
 	registryKube "github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/kube"
+
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/application"
 	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	"github.com/argoproj/argo-cd/v2/pkg/client/clientset/versioned/fake"
