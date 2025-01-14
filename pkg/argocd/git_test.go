@@ -271,6 +271,18 @@ func Test_updateKustomizeFile(t *testing.T) {
 			filter: filter,
 		},
 		{
+			name: "indented",
+			content: `images:
+  - name: foo
+    digest: sha12345
+`,
+			wantContent: `images:
+  - name: foo
+    digest: sha23456
+`,
+			filter: filter,
+		},
+		{
 			name: "no-change",
 			content: `images:
 - name: foo
