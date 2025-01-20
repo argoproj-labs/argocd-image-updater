@@ -22,6 +22,8 @@ const (
 	StrategyAlphabetical UpdateStrategy = 2
 	// VersionSortDigest uses latest digest of an image
 	StrategyDigest UpdateStrategy = 3
+	// VersionSortCalVer sorts tags using calendar versioning
+	StrategyCalVer UpdateStrategy = 4
 )
 
 func (us UpdateStrategy) String() string {
@@ -34,6 +36,8 @@ func (us UpdateStrategy) String() string {
 		return "alphabetical"
 	case StrategyDigest:
 		return "digest"
+	case StrategyCalVer:
+		return "calver"
 	}
 
 	return "unknown"
@@ -93,6 +97,8 @@ func (img *ContainerImage) GetNewestVersionFromTags(vc *VersionConstraint, tagLi
 		availableTags = tagList.SortByDate()
 	case StrategyDigest:
 		availableTags = tagList.SortAlphabetically()
+	case StrategyCalVer:
+		availableTags = tagList.SortByCalVer()
 	}
 
 	considerTags := tag.SortableImageTagList{}
