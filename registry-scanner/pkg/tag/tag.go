@@ -177,7 +177,8 @@ func (il ImageTagList) SortByCalVer() SortableImageTagList {
 	il.lock.RLock()
 	defer il.lock.RUnlock()
 	sil := make(SortableImageTagList, 0, len(il.items))
-	calvers := make([]calver.Calver, 0, len(il.items))
+	calvers := make(calver.Calvers, 0, len(il.items))
+
 	for _, v := range il.items {
 		cv, err := calver.Parse(v.TagName)
 		if err != nil {
@@ -187,9 +188,7 @@ func (il ImageTagList) SortByCalVer() SortableImageTagList {
 			calvers = append(calvers, cv)
 		}
 	}
-	sort.Slice(calvers, func(i, j int) bool {
-		return calvers[i].String() < calvers[j].String()
-	})
+	calvers.Sort()
 	for _, cv := range calvers {
 		sil = append(sil, il.items[cv.String()])
 	}
