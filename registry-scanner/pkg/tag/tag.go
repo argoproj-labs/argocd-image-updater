@@ -9,6 +9,7 @@ import (
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
 
 	"github.com/Masterminds/semver/v3"
+	"github.com/k1LoW/calver"
 )
 
 // ImageTag is a representation of an image tag with metadata
@@ -168,6 +169,29 @@ func (il ImageTagList) SortBySemVer() SortableImageTagList {
 	sort.Sort(semverCollection(svl))
 	for _, svi := range svl {
 		sil = append(sil, NewImageTag(svi.Original(), *il.items[svi.Original()].TagDate, il.items[svi.Original()].TagDigest))
+	}
+	return sil
+}
+
+func (il ImageTagList) SortByCalVer() SortableImageTagList {
+	il.lock.RLock()
+	defer il.lock.RUnlock()
+	sil := make(SortableImageTagList, 0, len(il.items))
+	calvers := make([]calver.Calver, 0, len(il.items))
+	for _, v := range il.items {
+		cv, err := calver.Parse(v.TagName)
+		if err != nil {
+			// Fallback to alphabetical order if parsing fails
+			sil = append(sil, v)
+		} else {
+			calvers = append(calvers, cv)
+		}
+	}
+	sort.Slice(calvers, func(i, j int) bool {
+		return calvers[i].String() < calvers[j].String()
+	})
+	for _, cv := range calvers {
+		sil = append(sil, il.items[cv.String()])
 	}
 	return sil
 }
