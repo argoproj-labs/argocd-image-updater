@@ -175,6 +175,8 @@ func (img *ContainerImage) ParseMatchfunc(val string) (MatchFuncFn, interface{})
 			return MatchFuncNone, nil
 		}
 		return MatchFuncRegexp, re
+	case "calver":
+		return MatchFuncCalVer, opt[1]
 	default:
 		logCtx.Warnf("Unknown match function: %s", opt[0])
 		return MatchFuncNone, nil

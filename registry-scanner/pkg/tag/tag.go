@@ -173,14 +173,14 @@ func (il ImageTagList) SortBySemVer() SortableImageTagList {
 	return sil
 }
 
-func (il ImageTagList) SortByCalVer() SortableImageTagList {
+func (il ImageTagList) SortByCalVer(layout string) SortableImageTagList {
 	il.lock.RLock()
 	defer il.lock.RUnlock()
 	sil := make(SortableImageTagList, 0, len(il.items))
 	calvers := make(calver.Calvers, 0, len(il.items))
 
 	for _, v := range il.items {
-		cv, err := calver.Parse(v.TagName)
+		cv, err := calver.Parse(layout, v.TagName)
 		if err != nil {
 			// Fallback to alphabetical order if parsing fails
 			sil = append(sil, v)

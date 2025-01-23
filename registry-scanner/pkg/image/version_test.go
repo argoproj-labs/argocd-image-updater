@@ -76,6 +76,15 @@ func Test_LatestVersion(t *testing.T) {
 		assert.Nil(t, newTag)
 	})
 
+	t.Run("Find the latest version with a calver constraint that is valid", func(t *testing.T) {
+		tagList := newImageTagList([]string{"2021.01.01", "2022.02.02", "2023.05.01", "2025.01.25"})
+		img := NewFromIdentifier("jannfis/test:2021.01.01")
+		vc := VersionConstraint{Constraint: "2022.01.01", Strategy: StrategyCalVer, MatchArgs: "YYYY.MM.DD"}
+		newTag, err := img.GetNewestVersionFromTags(&vc, tagList)
+		assert.NoError(t, err)
+		assert.NotNil(t, newTag)
+	})
+
 	t.Run("Find the latest version with no tags", func(t *testing.T) {
 		tagList := newImageTagList([]string{})
 		img := NewFromIdentifier("jannfis/test:1.0")
