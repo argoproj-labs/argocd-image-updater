@@ -303,7 +303,14 @@ Basic configuration:
 ```yaml
 argocd-image-updater.argoproj.io/image-list: some/image[:<version_constraint>]
 argocd-image-updater.argoproj.io/<image>.update-strategy: calver
+argocd-image-updater.argoproj.io/<image>.allow-tags: calver:YYYY.0M.MICRO
 ```
+
+!!! note "CalVer Format Specification"
+    The `calver` strategy requires defining the version format using the [calver layout syntax](https://github.com/k1LoW/calver). Common patterns include:
+    - `YYYY.0M.MICRO` for year.month.counter (e.g. 2023.08.1)
+    - `YY.MM.MICRO` for 2-digit year.month.counter (e.g. 23.8.5)
+    - `YYYY.MM.DD` for date-based versions (e.g. 2023.08.15)
 
 The `calver` strategy allows you to track & update images which use tags that
 follow the
