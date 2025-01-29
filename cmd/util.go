@@ -3,12 +3,13 @@ package main
 import (
 	"context"
 	"fmt"
-	"path/filepath"
+	"os"
 	"time"
 
 	"github.com/argoproj-labs/argocd-image-updater/pkg/kube"
-	registryKube "github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/kube"
-	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
+	"github.com/argoproj/argo-cd/v2/pkg/client/clientset/versioned"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/tools/clientcmd"
 )
 
 func getPrintableInterval(interval time.Duration) string {
@@ -28,30 +29,37 @@ func getPrintableHealthPort(port int) string {
 }
 
 func getKubeConfig(ctx context.Context, namespace string, kubeConfig string) (*kube.ImageUpdaterKubernetesClient, error) {
-	var fullKubeConfigPath string
 	var kubeClient *kube.ImageUpdaterKubernetesClient
-	var err error
 
-	if kubeConfig != "" {
-		fullKubeConfigPath, err = filepath.Abs(kubeConfig)
-		if err != nil {
-			return nil, fmt.Errorf("cannot expand path %s: %v", kubeConfig, err)
-		}
-	}
+	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
+	loadingRules.DefaultClientConfig = &clientcmd.DefaultClientConfig
+	loadingRules.ExplicitPath = kubeConfig
+	overrides := clientcmd.ConfigOverrides{}
+	clientConfig := clientcmd.NewInteractiveDeferredLoadingClientConfig(loadingRules, &overrides, os.Stdin)
 
-	if fullKubeConfigPath != "" {
-		log.Debugf("Creating Kubernetes client from %s", fullKubeConfigPath)
-	} else {
-		log.Debugf("Creating in-cluster Kubernetes client")
-	}
-
-	kubernetesClient, err := registryKube.NewKubernetesClientFromConfig(ctx, namespace, fullKubeConfigPath)
+	config, err := clientConfig.ClientConfig()
 	if err != nil {
 		return nil, err
 	}
-	kubeClient = &kube.ImageUpdaterKubernetesClient{
-		KubeClient: kubernetesClient,
+
+	if namespace == "" {
+		namespace, _, err = clientConfig.Namespace()
+		if err != nil {
+			return nil, err
+		}
 	}
+
+	clientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		return nil, err
+	}
+
+	applicationsClientset, err := versioned.NewForConfig(config)
+	if err != nil {
+		return nil, err
+	}
+
+	kubeClient = kube.NewKubernetesClient(ctx, clientset, applicationsClientset, namespace)
 
 	return kubeClient, nil
 }
