@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/argoproj-labs/argocd-image-updater/pkg/kube"
+
 	"github.com/argoproj/argo-cd/v2/pkg/client/clientset/versioned"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
