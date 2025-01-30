@@ -47,7 +47,7 @@ make manifests
 git checkout -b "feat/new-version-${NEW_VERSION}"
 
 # Commit and push the changes
-git commit -m "Release ${NEW_VERSION}" VERSION go.mod go.sum manifests/
+git commit -m "Release ${NEW_VERSION}" VERSION manifests/
 git push --set-upstream ${REMOTE} "feat/new-version-${NEW_VERSION}"
 gh label --repo ${REMOTE_URL} create --force release
 gh pr --repo ${REMOTE_URL} \
