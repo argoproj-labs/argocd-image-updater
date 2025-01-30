@@ -6,8 +6,8 @@ toolchain go1.23.0
 
 require (
 	github.com/argoproj-labs/argocd-image-updater/registry-scanner v0.0.0-20250114144021-10a01f381aa7
-	github.com/argoproj/argo-cd/v2 v2.13.2
-	github.com/argoproj/gitops-engine v0.7.1-0.20240905010810-bd7681ae3f8b
+	github.com/argoproj/argo-cd/v2 v2.13.4
+	github.com/argoproj/gitops-engine v0.7.1-0.20250129155113-4c6e03c46314
 	github.com/argoproj/pkg v0.13.7-0.20230627120311-a4dd357b057e
 	github.com/bmatcuk/doublestar/v4 v4.7.1
 	github.com/bradleyfalzon/ghinstallation/v2 v2.12.0
