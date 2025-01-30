@@ -46,14 +46,6 @@ make manifests
 # Create PR for the release
 git checkout -b "feat/new-version-${NEW_VERSION}"
 
-# Create tag for registry-scanner
-git tag -a ${IMAGE_TAG} -m "Registry-Scanner Release ${IMAGE_TAG}"
-git push ${REMOTE} "v${NEW_VERSION}"
-
-# Update registry-scanner version in go.mod
-go mod edit -require github.com/argoproj-labs/argocd-image-updater/registry-scanner@${IMAGE_TAG}
-go mod download && go mod tidy
-
 # Commit and push the changes
 git commit -m "Release ${NEW_VERSION}" VERSION go.mod go.sum manifests/
 git push --set-upstream ${REMOTE} "feat/new-version-${NEW_VERSION}"
