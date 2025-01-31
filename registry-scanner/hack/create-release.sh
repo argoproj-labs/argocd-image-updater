@@ -12,7 +12,7 @@ set -eu
 set -o pipefail
 
 if test "${TARGET_VERSION}" = ""; then
-	echo "USAGE: $0 <version>" >&2
+	echo "USAGE: $0 <version> <remote>" >&2
 	exit 1
 fi
 
