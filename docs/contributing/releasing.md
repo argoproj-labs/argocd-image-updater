@@ -2,7 +2,7 @@
 
 Argo Image Updater is released in a 2 step automated fashion using GitHub actions. The release process takes about 20 minutes, sometimes a little less, depending on the performance of GitHub Actions runners.
 
-Releases can only be done  by people that have write/commit access on the Argo Image Updater GitHub repository.
+Releases can only be done by people that have write/commit access on the Argo Image Updater GitHub repository.
 
 ## Introduction
 
