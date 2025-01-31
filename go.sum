@@ -29,10 +29,10 @@ github.com/anmitsu/go-shlex v0.0.0-20200514113438-38f4b401e2be/go.mod h1:ySMOLuW
 github.com/antihax/optional v1.0.0/go.mod h1:uupD/76wgC+ih3iEmQUL+0Ugr19nfwCT1kdvxnR2qWY=
 github.com/argoproj-labs/argocd-image-updater/registry-scanner v0.0.0-20250114144021-10a01f381aa7 h1:5sujDhwNOHW3X3WMzfamC4e9H52z2LboabQ+WLvDQ14=
 github.com/argoproj-labs/argocd-image-updater/registry-scanner v0.0.0-20250114144021-10a01f381aa7/go.mod h1:gTR08JBkPgrrEJ06a5J6H97EWllbgCNs2nbDSPMKHDo=
-github.com/argoproj/argo-cd/v2 v2.13.2 h1:eLar0aAqz7AgJiYncRzkPkqEbIxiXl+pUzOuSi47tA0=
-github.com/argoproj/argo-cd/v2 v2.13.2/go.mod h1:RC23V2744nhZstZVpLCWTQLT2gR0+IXGC3GTBCI6M+I=
-github.com/argoproj/gitops-engine v0.7.1-0.20240905010810-bd7681ae3f8b h1:wOPWJ5MBScQO767WpU55oUJDXObfvPL0EfAYWxogbSw=
-github.com/argoproj/gitops-engine v0.7.1-0.20240905010810-bd7681ae3f8b/go.mod h1:b1vuwkyMUszyUK+USUJqC8vJijnQsEPNDpC+sDdDLtM=
+github.com/argoproj/argo-cd/v2 v2.13.4 h1:YAj2J2RUq+gMaG2vmtQ+qyUxlbrAzk3P6SwYHXlkUPw=
+github.com/argoproj/argo-cd/v2 v2.13.4/go.mod h1:1xggXUniuSkUtcBu0EWl45k1BTuYSASd0bn6WOma4vA=
+github.com/argoproj/gitops-engine v0.7.1-0.20250129155113-4c6e03c46314 h1:UIM6b4b/eNmWLwnsaJNmLzcm0qjHCuyHTuJKeIq2WeE=
+github.com/argoproj/gitops-engine v0.7.1-0.20250129155113-4c6e03c46314/go.mod h1:b1vuwkyMUszyUK+USUJqC8vJijnQsEPNDpC+sDdDLtM=
 github.com/argoproj/pkg v0.13.7-0.20230627120311-a4dd357b057e h1:kuLQvJqwwRMQTheT4MFyKVM8Txncu21CHT4yBWUl1Mk=
 github.com/argoproj/pkg v0.13.7-0.20230627120311-a4dd357b057e/go.mod h1:xBN5PLx2MoK63dmPfMo/PGBvd77K1Y0m/rzZOe4cs1s=
 github.com/armon/go-socks5 v0.0.0-20160902184237-e75332964ef5 h1:0CwZNZbxp69SHPdPJAN/hZIm0C4OItdklCFmMRWYpio=
