@@ -120,6 +120,18 @@ func Test_ParseImageTags(t *testing.T) {
 		assert.Equal(t, "classic-web", image.ImageName)
 		assert.Nil(t, image.ImageTag)
 	})
+	t.Run("#1012 Parse docker.io image and keep library if present", func(t *testing.T) {
+		image := NewFromIdentifier("docker.io/library/postgres")
+		assert.Equal(t, "docker.io", image.RegistryURL)
+		assert.Equal(t, "library/postgres", image.ImageName)
+		assert.Nil(t, image.ImageTag)
+	})
+	t.Run("#1012 Parse docker.io image and do not keep library if absent", func(t *testing.T) {
+		image := NewFromIdentifier("docker.io/postgres")
+		assert.Equal(t, "docker.io", image.RegistryURL)
+		assert.Equal(t, "postgres", image.ImageName)
+		assert.Nil(t, image.ImageTag)
+	})
 }
 
 func Test_ImageToString(t *testing.T) {
