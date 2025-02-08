@@ -337,8 +337,18 @@ func writeKustomization(app *v1alpha1.Application, wbc *WriteBackConfig, gitC gi
 	if kustFile == "" {
 		return fmt.Errorf("could not find kustomization in %s", base), false
 	}
+	source := getApplicationSource(app)
+	if source == nil {
+		return fmt.Errorf("failed to find source for kustomization in %s", base), false
+	}
 
-	filterFunc, err := imagesFilter(getApplicationSource(app).Kustomize.Images)
+	kustomize := source.Kustomize
+	images := v1alpha1.KustomizeImages{}
+	if kustomize != nil {
+		images = kustomize.Images
+	}
+
+	filterFunc, err := imagesFilter(images)
 	if err != nil {
 		return err, false
 	}
