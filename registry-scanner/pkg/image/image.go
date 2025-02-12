@@ -41,8 +41,9 @@ func NewFromIdentifier(identifier string) *ContainerImage {
 		}
 		img.ImageAlias = alias
 		img.ImageName = reference.Path(parsed)
-		// if library/ was added to the image name, remove it
-		if !strings.HasPrefix(imgRef, "library/") {
+		// if library/ was added to the image name,
+		// but the original identifier did not have it, remove it
+		if !strings.Contains(imgRef, "library/") {
 			img.ImageName = strings.TrimPrefix(img.ImageName, "library/")
 		}
 		if digested, ok := parsed.(reference.Digested); ok {
