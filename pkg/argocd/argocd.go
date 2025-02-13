@@ -336,7 +336,7 @@ func getHelmParamNamesFromAnnotation(annotations map[string]string, img *image.C
 // Get a named helm parameter from a list of parameters
 func getHelmParam(params []v1alpha1.HelmParameter, name string) *v1alpha1.HelmParameter {
 	for _, param := range params {
-		if param.Name == name {
+		if param.Name == strings.Trim(name, "'\"") {
 			return &param
 		}
 	}
