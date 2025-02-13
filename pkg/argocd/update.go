@@ -551,13 +551,24 @@ func mergeHelmOverride(t *helmOverride, o *helmOverride) {
 }
 
 func mergeKustomizeOverride(t *kustomizeOverride, o *kustomizeOverride) {
-	for _, image := range *o.Kustomize.Images {
-		idx := t.Kustomize.Images.Find(image)
-		if idx != -1 {
-			(*t.Kustomize.Images)[idx] = image
-			continue
+	for _, newImage := range *o.Kustomize.Images {
+		found := false
+		newContainerImage := image.NewFromIdentifier(string(newImage))
+		for idx, existingImage := range *t.Kustomize.Images {
+			existingContainerImage := image.NewFromIdentifier(string(existingImage))
+			if newContainerImage.ImageName == existingContainerImage.ImageName &&
+				newContainerImage.RegistryURL == existingContainerImage.RegistryURL {
+				found = true
+				if existingContainerImage.ImageTag == nil ||
+					(newContainerImage.ImageTag != nil && !(existingContainerImage.ImageTag).Equals(newContainerImage.ImageTag)) {
+					(*t.Kustomize.Images)[idx] = newImage
+				}
+				break
+			}
 		}
-		*t.Kustomize.Images = append(*t.Kustomize.Images, image)
+		if !found {
+			*t.Kustomize.Images = append(*t.Kustomize.Images, newImage)
+		}
 	}
 }
 
