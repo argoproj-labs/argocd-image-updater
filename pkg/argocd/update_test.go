@@ -1219,6 +1219,49 @@ kustomize:
 		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(yaml)))
 	})
 
+	t.Run("Merge images param", func(t *testing.T) {
+		expected := `
+kustomize:
+  images:
+  - existing:latest
+  - updated:latest
+  - new
+`
+		app := v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name: "testapp",
+				Annotations: map[string]string{
+					"argocd-image-updater.argoproj.io/image-list": "nginx",
+				},
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: &v1alpha1.ApplicationSource{
+					RepoURL:        "https://example.com/example",
+					TargetRevision: "main",
+					Kustomize: &v1alpha1.ApplicationSourceKustomize{
+						Images: v1alpha1.KustomizeImages{
+							"new",
+							"updated:latest",
+						},
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypeKustomize,
+			},
+		}
+		originalData := []byte(`
+kustomize:
+  images:
+  - existing:latest
+  - updated:old
+`)
+		yaml, err := marshalParamsOverride(&app, originalData)
+		require.NoError(t, err)
+		assert.NotEmpty(t, yaml)
+		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(yaml)))
+	})
+
 	t.Run("Empty Kustomize source", func(t *testing.T) {
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
@@ -3642,4 +3685,62 @@ func Test_GetRepositoryLock(t *testing.T) {
 	require.NotNil(t, lock3)
 	require.NotNil(t, state.repositoryLocks[repo2])
 	require.Equal(t, lock3, state.repositoryLocks[repo2])
+}
+
+func Test_mergeKustomizeOverride(t *testing.T) {
+	tests := []struct {
+		name     string
+		existing v1alpha1.KustomizeImages
+		new      v1alpha1.KustomizeImages
+		expected v1alpha1.KustomizeImages
+	}{
+		{"with-tag", []v1alpha1.KustomizeImage{"nginx:foo"},
+			[]v1alpha1.KustomizeImage{"nginx:foo"},
+			[]v1alpha1.KustomizeImage{"nginx:foo"}},
+		{"no-tag", []v1alpha1.KustomizeImage{"nginx:foo"},
+			[]v1alpha1.KustomizeImage{"nginx"},
+			[]v1alpha1.KustomizeImage{"nginx:foo"}},
+		{"with-tag-1", []v1alpha1.KustomizeImage{"nginx"},
+			[]v1alpha1.KustomizeImage{"nginx:latest"},
+			[]v1alpha1.KustomizeImage{"nginx:latest"}},
+		{"with-tag-sha", []v1alpha1.KustomizeImage{"nginx:latest"},
+			[]v1alpha1.KustomizeImage{"nginx:latest@sha256:91734281c0ebfc6f1aea979cffeed5079cfe786228a71cc6f1f46a228cde6e34"},
+			[]v1alpha1.KustomizeImage{"nginx:latest@sha256:91734281c0ebfc6f1aea979cffeed5079cfe786228a71cc6f1f46a228cde6e34"}},
+
+		{"2-images", []v1alpha1.KustomizeImage{"nginx:latest",
+			"bitnami/nginx:latest@sha256:1a2fe3f9f6d1d38d5a7ee35af732fdb7d15266ec3dbc79bbc0355742cd24d3ec"},
+			[]v1alpha1.KustomizeImage{"nginx:latest@sha256:91734281c0ebfc6f1aea979cffeed5079cfe786228a71cc6f1f46a228cde6e34",
+				"bitnami/nginx@sha256:1a2fe3f9f6d1d38d5a7ee35af732fdb7d15266ec3dbc79bbc0355742cd24d3ec"},
+			[]v1alpha1.KustomizeImage{"nginx:latest@sha256:91734281c0ebfc6f1aea979cffeed5079cfe786228a71cc6f1f46a228cde6e34",
+				"bitnami/nginx:latest@sha256:1a2fe3f9f6d1d38d5a7ee35af732fdb7d15266ec3dbc79bbc0355742cd24d3ec"}},
+
+		{"with-registry", []v1alpha1.KustomizeImage{"quay.io/nginx:latest"},
+			[]v1alpha1.KustomizeImage{"quay.io/nginx:latest"},
+			[]v1alpha1.KustomizeImage{"quay.io/nginx:latest"}},
+		{"with-registry-1", []v1alpha1.KustomizeImage{"quay.io/nginx:latest"},
+			[]v1alpha1.KustomizeImage{"docker.io/nginx:latest"},
+			[]v1alpha1.KustomizeImage{"docker.io/nginx:latest", "quay.io/nginx:latest"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			existingImages := kustomizeOverride{
+				Kustomize: kustomizeImages{
+					Images: &tt.existing,
+				},
+			}
+			newImages := kustomizeOverride{
+				Kustomize: kustomizeImages{
+					Images: &tt.new,
+				},
+			}
+			expectedImages := kustomizeOverride{
+				Kustomize: kustomizeImages{
+					Images: &tt.expected,
+				},
+			}
+
+			mergeKustomizeOverride(&existingImages, &newImages)
+			assert.ElementsMatch(t, *expectedImages.Kustomize.Images, *existingImages.Kustomize.Images)
+		})
+	}
 }
