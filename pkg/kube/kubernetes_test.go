@@ -1,7 +1,6 @@
 package kube
 
 import (
-	"context"
 	"testing"
 
 	appv1alpha1 "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
@@ -14,22 +13,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-func Test_NewKubernetesClient(t *testing.T) {
-	t.Run("Get new K8s client for remote cluster instance", func(t *testing.T) {
-		client, err := registryKube.NewKubernetesClientFromConfig(context.TODO(), "", "../../test/testdata/kubernetes/config")
-		require.NoError(t, err)
-		assert.NotNil(t, client)
-		assert.Equal(t, "default", client.Namespace)
-	})
-
-	t.Run("Get new K8s client for remote cluster instance specified namespace", func(t *testing.T) {
-		client, err := registryKube.NewKubernetesClientFromConfig(context.TODO(), "argocd", "../../test/testdata/kubernetes/config")
-		require.NoError(t, err)
-		assert.NotNil(t, client)
-		assert.Equal(t, "argocd", client.Namespace)
-	})
-}
 
 func Test_GetDataFromSecrets(t *testing.T) {
 	t.Run("Get all data from dummy secret", func(t *testing.T) {

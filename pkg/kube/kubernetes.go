@@ -5,6 +5,7 @@ package kube
 import (
 	"context"
 	"fmt"
+	"os"
 	"time"
 
 	kube "github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/kube"
@@ -15,6 +16,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
+	"k8s.io/client-go/tools/clientcmd"
 )
 
 type ImageUpdaterKubernetesClient struct {
@@ -22,11 +24,40 @@ type ImageUpdaterKubernetesClient struct {
 	KubeClient            *kube.KubernetesClient
 }
 
-func NewKubernetesClient(ctx context.Context, client kubernetes.Interface, applicationsClientset versioned.Interface, namespace string) *ImageUpdaterKubernetesClient {
+func NewKubernetesClient(ctx context.Context, kubeConfig, namespace string) (*ImageUpdaterKubernetesClient, error) {
+
+	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
+	loadingRules.DefaultClientConfig = &clientcmd.DefaultClientConfig
+	loadingRules.ExplicitPath = kubeConfig
+	overrides := clientcmd.ConfigOverrides{}
+	clientConfig := clientcmd.NewInteractiveDeferredLoadingClientConfig(loadingRules, &overrides, os.Stdin)
+
+	config, err := clientConfig.ClientConfig()
+	if err != nil {
+		return nil, err
+	}
+
+	if namespace == "" {
+		namespace, _, err = clientConfig.Namespace()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	clientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		return nil, err
+	}
+
+	applicationsClientset, err := versioned.NewForConfig(config)
+	if err != nil {
+		return nil, err
+	}
+
 	kc := &ImageUpdaterKubernetesClient{}
-	kc.KubeClient = kube.NewKubernetesClient(ctx, client, namespace)
+	kc.KubeClient = kube.NewKubernetesClient(ctx, clientset, namespace)
 	kc.ApplicationsClientset = applicationsClientset
-	return kc
+	return kc, nil
 }
 
 // CreateApplicationEvent creates a kubernetes event with a custom reason and message for an application.
