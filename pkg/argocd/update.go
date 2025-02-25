@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"text/template"
@@ -21,7 +22,11 @@ import (
 
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/application"
 	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
-	"gopkg.in/yaml.v2"
+
+	"github.com/goccy/go-yaml"
+	"github.com/goccy/go-yaml/ast"
+	"github.com/goccy/go-yaml/parser"
+	"github.com/goccy/go-yaml/token"
 )
 
 // Stores some statistics about the results of a run
@@ -459,8 +464,7 @@ func marshalParamsOverride(app *v1alpha1.Application, originalData []byte) ([]by
 		if strings.HasPrefix(app.Annotations[common.WriteBackTargetAnnotation], common.HelmPrefix) {
 			images := GetImagesAndAliasesFromApplication(app)
 
-			helmNewValues := yaml.MapSlice{}
-			err = yaml.Unmarshal(originalData, &helmNewValues)
+			helmNewValues, err := parser.ParseBytes(originalData, parser.ParseComments)
 			if err != nil {
 				return nil, err
 			}
@@ -488,7 +492,7 @@ func marshalParamsOverride(app *v1alpha1.Application, originalData []byte) ([]by
 					if helmParamVersion == nil {
 						return nil, fmt.Errorf("%s parameter not found", helmAnnotationParamVersion)
 					}
-					err = setHelmValue(&helmNewValues, helmAnnotationParamVersion, helmParamVersion.Value)
+					err = setHelmValue(helmNewValues, helmAnnotationParamVersion, helmParamVersion.Value)
 					if err != nil {
 						return nil, fmt.Errorf("failed to set image parameter version value: %v", err)
 					}
@@ -499,13 +503,13 @@ func marshalParamsOverride(app *v1alpha1.Application, originalData []byte) ([]by
 					return nil, fmt.Errorf("%s parameter not found", helmAnnotationParamName)
 				}
 
-				err = setHelmValue(&helmNewValues, helmAnnotationParamName, helmParamName.Value)
+				err = setHelmValue(helmNewValues, helmAnnotationParamName, helmParamName.Value)
 				if err != nil {
 					return nil, fmt.Errorf("failed to set image parameter name value: %v", err)
 				}
 			}
 
-			override, err = yaml.Marshal(helmNewValues)
+			override = []byte(helmNewValues.String())
 		} else {
 			var params helmOverride
 			newParams := helmOverride{
@@ -561,76 +565,118 @@ func mergeKustomizeOverride(t *kustomizeOverride, o *kustomizeOverride) {
 	}
 }
 
-// Check if a key exists in a MapSlice and return its index and value
-func findHelmValuesKey(m yaml.MapSlice, key string) (int, bool) {
-	for i, item := range m {
-		if item.Key == key {
-			return i, true
+func splitKeys(input string) []string {
+	// Regular expression to match quoted and unquoted segments
+	re := regexp.MustCompile(`'([^']*)'|"([^"]*)"|([^.".]+)`)
+	matches := re.FindAllStringSubmatch(input, -1)
+
+	var result []string
+	for _, match := range matches {
+		if match[1] != "" { // Single-quoted string
+			result = append(result, match[1])
+		} else if match[2] != "" { // Double-quoted string
+			result = append(result, match[2])
+		} else if match[3] != "" { // Unquoted segment
+			result = append(result, match[3])
 		}
 	}
-	return -1, false
+
+	return result
 }
 
 // set value of the parameter passed from the annotations.
-func setHelmValue(currentValues *yaml.MapSlice, key string, value interface{}) error {
-	// Check if the full key exists
-	if idx, found := findHelmValuesKey(*currentValues, key); found {
-		(*currentValues)[idx].Value = value
-		return nil
+func setHelmValue(file *ast.File, keyPath, value string) error {
+	path := splitKeys(keyPath)
+	if len(path) == 0 {
+		return fmt.Errorf("empty key provided")
 	}
 
-	var err error
-	keys := strings.Split(key, ".")
-	current := currentValues
-	var parent *yaml.MapSlice
-	parentIdx := -1
-
-	for i, k := range keys {
-		if idx, found := findHelmValuesKey(*current, k); found {
-			if i == len(keys)-1 {
-				// If we're at the final key, set the value and return
-				(*current)[idx].Value = value
-				return nil
-			} else {
-				// Navigate deeper into the map
-				if nestedMap, ok := (*current)[idx].Value.(yaml.MapSlice); ok {
-					parent = current
-					parentIdx = idx
-					current = &nestedMap
-				} else {
-					return fmt.Errorf("unexpected type %T for key %s", (*current)[idx].Value, k)
-				}
-			}
-		} else {
-			newCurrent := yaml.MapSlice{}
-			var newParent yaml.MapSlice
-
-			if i == len(keys)-1 {
-				newParent = append(*current, yaml.MapItem{Key: k, Value: value})
-			} else {
-				newParent = append(*current, yaml.MapItem{Key: k, Value: newCurrent})
-			}
-
-			if parent == nil {
-				*currentValues = newParent
-			} else {
-				// if parentIdx has not been set (parent element is also new), set it to the last element
-				if parentIdx == -1 {
-					parentIdx = len(*parent) - 1
-					if parentIdx < 0 {
-						parentIdx = 0
-					}
-				}
-				(*parent)[parentIdx].Value = newParent
-			}
-
-			parent = &newParent
-			current = &newCurrent
-			parentIdx = -1
+	var mapping *ast.MappingNode
+	if file.Docs[0].Body == nil {
+		tk := token.New("$", "$", &token.Position{})
+		mapping = ast.Mapping(tk, false)
+		file.Docs[0].Body = mapping
+	} else {
+		mapping, _ = file.Docs[0].Body.(*ast.MappingNode)
+		if mapping == nil {
+			return fmt.Errorf("yaml is invalid")
 		}
 	}
 
-	return err
+	// Traverse the path
+	var lastNode *ast.MappingValueNode
+	for index, key := range path {
+		found := false
+		var currentNode *ast.MappingValueNode
+
+		for _, v := range mapping.Values {
+			if v.Key.GetToken().Value == key {
+				currentNode = v
+				if index == len(path)-1 {
+					lastNode = currentNode
+					found = true
+					break
+				}
+				// Move deeper into the structure
+				if nextMapping, ok := v.Value.(*ast.MappingNode); ok {
+					mapping = nextMapping
+					found = true
+					break
+				}
+			}
+		}
+
+		// If key does not exist, create it
+		if !found {
+			// Create a token with proper position (assuming default line/column)
+			keyToken := token.New(key, key, &token.Position{Column: index*2 + 1})
+			newKey := ast.String(keyToken) // Create key node
+			mappingToken := token.New(key, key, &token.Position{})
+			newMapping := ast.Mapping(mappingToken, false) // Create empty mapping
+
+			if currentNode != nil {
+				comment := currentNode.Value.GetComment()
+				currentNode.Value = newMapping
+				err := currentNode.Value.SetComment(comment)
+				if err != nil {
+					return err
+				}
+				lastNode = currentNode
+			} else {
+				// Add the new mapping to the parent mapping
+				lastNode = ast.MappingValue(mappingToken, newKey, newMapping)
+				mapping.Values = append(mapping.Values, lastNode)
+			}
+			mapping = newMapping
+		}
+	}
+
+	if lastNode == nil {
+		return fmt.Errorf("key not found")
+	}
+
+	var valueToken *token.Token
+	if token.IsNeedQuoted(value) {
+		valueToken = token.SingleQuote(value, value, &token.Position{})
+	} else {
+		valueToken = token.New(value, value, &token.Position{})
+	}
+	newValue := ast.String(valueToken)
+	comment := lastNode.Value.GetComment()
+	if comment == nil {
+		comment = lastNode.Key.GetComment()
+	}
+	lastNode.Value = newValue
+	err := lastNode.Key.SetComment(nil)
+	if err != nil {
+		return err
+	}
+	err = lastNode.Value.SetComment(comment)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func getWriteBackConfig(app *v1alpha1.Application, kubeClient *kube.ImageUpdaterKubernetesClient, argoClient ArgoCD) (*WriteBackConfig, error) {

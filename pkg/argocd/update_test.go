@@ -9,8 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"gopkg.in/yaml.v2"
-
 	"github.com/argoproj-labs/argocd-image-updater/ext/git"
 	gitmock "github.com/argoproj-labs/argocd-image-updater/ext/git/mocks"
 	argomock "github.com/argoproj-labs/argocd-image-updater/pkg/argocd/mocks"
@@ -28,6 +26,7 @@ import (
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/application"
 	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	"github.com/distribution/distribution/v3/manifest/schema1" //nolint:staticcheck
+	"github.com/goccy/go-yaml/parser"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -1251,13 +1250,12 @@ helm:
   parameters:
 	- name: baz
 		value: baz
-		forcestring: false
 	- name: foo
 		value: bar
-		forcestring: true
+		forceString: true
 	- name: bar
 		value: foo
-		forcestring: true
+		forceString: true
 `
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
@@ -1297,7 +1295,7 @@ helm:
   parameters:
     - name: baz
       value: baz
-      forcestring: false
+      forceString: false
 `)
 		yaml, err := marshalParamsOverride(&app, originalData)
 		require.NoError(t, err)
@@ -1311,10 +1309,10 @@ helm:
   parameters:
 	- name: foo
 		value: bar
-		forcestring: true
+		forceString: true
 	- name: bar
 		value: foo
-		forcestring: true
+		forceString: true
 `
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
@@ -1362,10 +1360,10 @@ helm:
   parameters:
 	- name: foo
 		value: bar
-		forcestring: true
+		forceString: true
 	- name: bar
 		value: foo
-		forcestring: true
+		forceString: true
 `
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
@@ -1445,8 +1443,8 @@ replicas: 1
 					"argocd-image-updater.argoproj.io/image-list":            "nginx",
 					"argocd-image-updater.argoproj.io/write-back-method":     "git",
 					"argocd-image-updater.argoproj.io/write-back-target":     "helmvalues:./test-values.yaml",
-					"argocd-image-updater.argoproj.io/nginx.helm.image-name": "image.name",
-					"argocd-image-updater.argoproj.io/nginx.helm.image-tag":  "image.tag",
+					"argocd-image-updater.argoproj.io/nginx.helm.image-name": "'image.name'",
+					"argocd-image-updater.argoproj.io/nginx.helm.image-tag":  "'image.tag'",
 				},
 			},
 			Spec: v1alpha1.ApplicationSpec{
@@ -1502,7 +1500,7 @@ replicas: 1
 					"argocd-image-updater.argoproj.io/image-list":            "nginx",
 					"argocd-image-updater.argoproj.io/write-back-method":     "git",
 					"argocd-image-updater.argoproj.io/write-back-target":     "helmvalues:./test-values.yaml",
-					"argocd-image-updater.argoproj.io/nginx.helm.image-spec": "image.spec.foo",
+					"argocd-image-updater.argoproj.io/nginx.helm.image-spec": "'image.spec.foo'",
 				},
 			},
 			Spec: v1alpha1.ApplicationSpec{
@@ -1538,20 +1536,6 @@ replicas: 1
 		require.NoError(t, err)
 		assert.NotEmpty(t, yaml)
 		assert.Equal(t, strings.TrimSpace(strings.ReplaceAll(expected, "\t", "  ")), strings.TrimSpace(string(yaml)))
-
-		// when image.spec.foo fields are missing in the target helm value file,
-		// they should be auto created without corrupting any other pre-existing elements.
-		originalData = []byte("test-value1: one")
-		expected = `
-test-value1: one
-image:
-  spec:
-    foo: nginx:v1.0.0
-`
-		yaml, err = marshalParamsOverride(&app, originalData)
-		require.NoError(t, err)
-		assert.NotEmpty(t, yaml)
-		assert.Equal(t, strings.TrimSpace(strings.ReplaceAll(expected, "\t", "  ")), strings.TrimSpace(string(yaml)))
 	})
 
 	t.Run("Valid Helm source with Helm values file with multiple images", func(t *testing.T) {
@@ -1569,10 +1553,10 @@ replicas: 1
 					"argocd-image-updater.argoproj.io/image-list":            "nginx=nginx, redis=redis",
 					"argocd-image-updater.argoproj.io/write-back-method":     "git",
 					"argocd-image-updater.argoproj.io/write-back-target":     "helmvalues:./test-values.yaml",
-					"argocd-image-updater.argoproj.io/nginx.helm.image-name": "nginx.image.name",
-					"argocd-image-updater.argoproj.io/nginx.helm.image-tag":  "nginx.image.tag",
-					"argocd-image-updater.argoproj.io/redis.helm.image-name": "redis.image.name",
-					"argocd-image-updater.argoproj.io/redis.helm.image-tag":  "redis.image.tag",
+					"argocd-image-updater.argoproj.io/nginx.helm.image-name": "'nginx.image.name'",
+					"argocd-image-updater.argoproj.io/nginx.helm.image-tag":  "'nginx.image.tag'",
+					"argocd-image-updater.argoproj.io/redis.helm.image-name": "'redis.image.name'",
+					"argocd-image-updater.argoproj.io/redis.helm.image-tag":  "'redis.image.tag'",
 				},
 			},
 			Spec: v1alpha1.ApplicationSpec{
@@ -1640,25 +1624,6 @@ replicas: 1
 		require.NoError(t, err)
 		assert.NotEmpty(t, yaml)
 		assert.Equal(t, strings.TrimSpace(strings.ReplaceAll(expected, "\t", "  ")), strings.TrimSpace(string(yaml)))
-
-		// when nginx.* and redis.* fields are missing in the target helm value file,
-		// they should be auto created without corrupting any other pre-existing elements.
-		originalData = []byte("test-value1: one")
-		expected = `
-test-value1: one
-nginx:
-  image:
-    tag: v1.0.0
-    name: nginx
-redis:
-  image:
-    tag: v1.0.0
-    name: redis
-`
-		yaml, err = marshalParamsOverride(&app, originalData)
-		require.NoError(t, err)
-		assert.NotEmpty(t, yaml)
-		assert.Equal(t, strings.TrimSpace(strings.ReplaceAll(expected, "\t", "  ")), strings.TrimSpace(string(yaml)))
 	})
 
 	t.Run("Valid Helm source with Helm values file with multiple aliases", func(t *testing.T) {
@@ -1678,12 +1643,12 @@ replicas: 1
 					"argocd-image-updater.argoproj.io/image-list":          "foo=nginx, bar=nginx, bbb=nginx",
 					"argocd-image-updater.argoproj.io/write-back-method":   "git",
 					"argocd-image-updater.argoproj.io/write-back-target":   "helmvalues:./test-values.yaml",
-					"argocd-image-updater.argoproj.io/foo.helm.image-name": "foo.image.name",
-					"argocd-image-updater.argoproj.io/foo.helm.image-tag":  "foo.image.tag",
-					"argocd-image-updater.argoproj.io/bar.helm.image-name": "bar.image.name",
-					"argocd-image-updater.argoproj.io/bar.helm.image-tag":  "bar.image.tag",
-					"argocd-image-updater.argoproj.io/bbb.helm.image-name": "bbb.image.name",
-					"argocd-image-updater.argoproj.io/bbb.helm.image-tag":  "bbb.image.tag",
+					"argocd-image-updater.argoproj.io/foo.helm.image-name": "'foo.image.name'",
+					"argocd-image-updater.argoproj.io/foo.helm.image-tag":  "'foo.image.tag'",
+					"argocd-image-updater.argoproj.io/bar.helm.image-name": "'bar.image.name'",
+					"argocd-image-updater.argoproj.io/bar.helm.image-tag":  "'bar.image.tag'",
+					"argocd-image-updater.argoproj.io/bbb.helm.image-name": "'bbb.image.name'",
+					"argocd-image-updater.argoproj.io/bbb.helm.image-tag":  "'bbb.image.tag'",
 				},
 			},
 			Spec: v1alpha1.ApplicationSpec{
@@ -2156,122 +2121,156 @@ replicas: 1
 
 func Test_SetHelmValue(t *testing.T) {
 	t.Run("Update existing Key", func(t *testing.T) {
-		expected := yaml.MapSlice{
-			{Key: "image", Value: yaml.MapSlice{
-				{Key: "attributes", Value: yaml.MapSlice{
-					{Key: "name", Value: "repo-name"},
-					{Key: "tag", Value: "v2.0.0"},
-				}},
-			}},
-		}
+		expected := `
+image:
+  name: repo-name
+  tag: v2.0.0
+`
 
-		input := yaml.MapSlice{
-			{Key: "image", Value: yaml.MapSlice{
-				{Key: "attributes", Value: yaml.MapSlice{
-					{Key: "name", Value: "repo-name"},
-					{Key: "tag", Value: "v1.0.0"},
-				}},
-			}},
-		}
-		key := "image.attributes.tag"
+		input := `
+image:
+  name: repo-name
+  tag: v1.0.0
+`
+
+		key := "image.tag"
 		value := "v2.0.0"
 
-		err := setHelmValue(&input, key, value)
+		file, err := parser.ParseBytes([]byte(input), parser.ParseComments)
 		require.NoError(t, err)
-		assert.Equal(t, expected, input)
+		err = setHelmValue(file, key, value)
+		require.NoError(t, err)
+		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(file.String()))
 	})
 
 	t.Run("Update Key with dots", func(t *testing.T) {
-		expected := yaml.MapSlice{
-			{Key: "image.attributes.tag", Value: "v2.0.0"},
-		}
-
-		input := yaml.MapSlice{
-			{Key: "image.attributes.tag", Value: "v1.0.0"},
-		}
-		key := "image.attributes.tag"
+		expected := `image.tag: v2.0.0`
+		input := `image.tag: v1.0.0`
+		key := "'image.tag'"
 		value := "v2.0.0"
 
-		err := setHelmValue(&input, key, value)
+		file, err := parser.ParseBytes([]byte(input), parser.ParseComments)
 		require.NoError(t, err)
-		assert.Equal(t, expected, input)
+		err = setHelmValue(file, key, value)
+		require.NoError(t, err)
+		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(file.String()))
 	})
 
 	t.Run("Key not found", func(t *testing.T) {
-		expected := yaml.MapSlice{
-			{Key: "image", Value: yaml.MapSlice{
-				{Key: "attributes", Value: yaml.MapSlice{
-					{Key: "name", Value: "repo-name"},
-					{Key: "tag", Value: "v2.0.0"},
-				}},
-			}},
-		}
+		expected := `
+image:
+  name: repo-name
+  tag: v2.0.0
+`
 
-		input := yaml.MapSlice{
-			{Key: "image", Value: yaml.MapSlice{
-				{Key: "attributes", Value: yaml.MapSlice{
-					{Key: "name", Value: "repo-name"},
-				}},
-			}},
-		}
+		input := `
+image:
+  name: repo-name
+`
 
-		key := "image.attributes.tag"
+		key := "image.tag"
 		value := "v2.0.0"
 
-		err := setHelmValue(&input, key, value)
+		file, err := parser.ParseBytes([]byte(input), parser.ParseComments)
 		require.NoError(t, err)
-		assert.Equal(t, expected, input)
+		err = setHelmValue(file, key, value)
+		require.NoError(t, err)
+		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(file.String()))
 	})
 
 	t.Run("Root key not found", func(t *testing.T) {
-		expected := yaml.MapSlice{
-			{Key: "name", Value: "repo-name"},
-			{Key: "tag", Value: "v2.0.0"},
-		}
+		expected := `
+name: repo-name
+tag: v2.0.0
+`
 
-		input := yaml.MapSlice{
-			{Key: "name", Value: "repo-name"},
-		}
+		input := `name: repo-name`
 
 		key := "tag"
 		value := "v2.0.0"
 
-		err := setHelmValue(&input, key, value)
+		file, err := parser.ParseBytes([]byte(input), parser.ParseComments)
 		require.NoError(t, err)
-		assert.Equal(t, expected, input)
+		err = setHelmValue(file, key, value)
+		require.NoError(t, err)
+		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(file.String()))
 	})
 
 	t.Run("Empty values with deep key", func(t *testing.T) {
-		expected := yaml.MapSlice{
-			{Key: "image", Value: yaml.MapSlice{
-				{Key: "attributes", Value: yaml.MapSlice{
-					{Key: "tag", Value: "v2.0.0"},
-				}},
-			}},
-		}
+		expected := `
+image:
+  tag: v2.0.0
+`
 
-		input := yaml.MapSlice{}
+		input := ""
 
-		key := "image.attributes.tag"
+		key := "image.tag"
 		value := "v2.0.0"
 
-		err := setHelmValue(&input, key, value)
+		file, err := parser.ParseBytes([]byte(input), parser.ParseComments)
 		require.NoError(t, err)
-		assert.Equal(t, expected, input)
+		err = setHelmValue(file, key, value)
+		require.NoError(t, err)
+		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(file.String()))
 	})
 
-	t.Run("Unexpected type for key", func(t *testing.T) {
-		input := yaml.MapSlice{
-			{Key: "image", Value: yaml.MapSlice{
-				{Key: "attributes", Value: "v1.0.0"},
-			}},
-		}
-		key := "image.attributes.tag"
+	t.Run("Override key type", func(t *testing.T) {
+		expected := `
+image:
+  tag: v2.0.0
+`
+		input := `
+image: v1.0.0
+`
+
+		key := "image.tag"
 		value := "v2.0.0"
 
-		err := setHelmValue(&input, key, value)
-		assert.Error(t, err)
-		assert.Equal(t, "unexpected type string for key attributes", err.Error())
+		file, err := parser.ParseBytes([]byte(input), parser.ParseComments)
+		require.NoError(t, err)
+		err = setHelmValue(file, key, value)
+		require.NoError(t, err)
+		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(file.String()))
+	})
+
+	t.Run("Preserve comments and formatting", func(t *testing.T) {
+		expected := `
+# top comment
+k: 111
+a:
+  m: # m key comment
+    g1: g value
+  b: # another comment
+    c: "existing value" # comment
+    d: new value
+  ver1: 2.0.0 # image version 1
+  ver2: '2.0' # image version 2
+# bottom comment
+`
+		input := `
+# top comment
+k: 111
+a:
+  m: # m key comment
+  b: # another comment
+    c: "existing value" # comment
+  ver1: 1.0.0 # image version 1
+  ver2: '1.0' # image version 2
+# bottom comment
+`
+
+		file, err := parser.ParseBytes([]byte(input), parser.ParseComments)
+		require.NoError(t, err)
+		err = setHelmValue(file, "a.b.d", "new value")
+		require.NoError(t, err)
+		err = setHelmValue(file, "a.m.g1", "g value")
+		require.NoError(t, err)
+		err = setHelmValue(file, "a.ver1", "2.0.0")
+		require.NoError(t, err)
+		err = setHelmValue(file, "a.ver2", "2.0")
+		require.NoError(t, err)
+
+		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(file.String()))
 	})
 }
 
@@ -3213,7 +3212,7 @@ helm:
   parameters:
   - name: foo
     value: foo
-    forcestring: true
+    forceString: true
 `), os.ModePerm))
 
 		gitMock.On("Checkout", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
@@ -3238,13 +3237,13 @@ helm:
   parameters:
   - name: foo
     value: foo
-    forcestring: true
+    forceString: true
   - name: bar
     value: bar
-    forcestring: true
+    forceString: true
   - name: baz
     value: baz
-    forcestring: true
+    forceString: true
 `, string(override))
 	})
 
@@ -3265,7 +3264,7 @@ helm:
   parameters:
   - name: foo
     value: foo
-    forcestring: true
+    forceString: true
 `), os.ModePerm))
 
 		gitMock.On("Checkout", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
@@ -3290,13 +3289,13 @@ helm:
   parameters:
   - name: foo
     value: foo
-    forcestring: true
+    forceString: true
   - name: bar
     value: bar
-    forcestring: true
+    forceString: true
   - name: baz
     value: baz
-    forcestring: true
+    forceString: true
 `, string(override))
 	})
 
@@ -3317,7 +3316,7 @@ helm:
   parameters:
   - name: foo
     value: foo
-    forcestring: true
+    forceString: true
 `), os.ModePerm))
 
 		gitMock.On("Checkout", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
@@ -3342,13 +3341,13 @@ helm:
   parameters:
   - name: foo
     value: foo
-    forcestring: true
+    forceString: true
   - name: bar
     value: bar
-    forcestring: true
+    forceString: true
   - name: baz
     value: baz
-    forcestring: true
+    forceString: true
 `, string(override))
 	})
 
