@@ -6,6 +6,21 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func TestKustomizeImage_Match(t *testing.T) {
+	// no prefix
+	assert.False(t, KustomizeImage("foo=1").Match("bar=1"))
+	// mismatched delimiter
+	assert.False(t, KustomizeImage("foo=1").Match("bar:1"))
+	assert.False(t, KustomizeImage("foo:1").Match("bar=1"))
+	assert.False(t, KustomizeImage("foobar:2").Match("foo:2"))
+	assert.False(t, KustomizeImage("foobar@2").Match("foo@2"))
+	// matches
+	assert.True(t, KustomizeImage("foo=1").Match("foo=2"))
+	assert.True(t, KustomizeImage("foo:1").Match("foo:2"))
+	assert.True(t, KustomizeImage("foo@1").Match("foo@2"))
+	assert.True(t, KustomizeImage("nginx").Match("nginx"))
+}
+
 func Test_KustomizeImages_Find(t *testing.T) {
 	images := KustomizeImages{
 		"a/b:1.0",
@@ -17,10 +32,10 @@ func Test_KustomizeImages_Find(t *testing.T) {
 	for _, image := range images {
 		assert.True(t, images.Find(image) >= 0)
 	}
-	for _, image := range []string{"a/b:2", "x/y=foo.bar"} {
+	for _, image := range []string{"a/b", "a/b:2", "x/y=foo.bar"} {
 		assert.True(t, images.Find(KustomizeImage(image)) >= 0)
 	}
-	for _, image := range []string{"a/b", "x", "x/y"} {
+	for _, image := range []string{"x", "x/y"} {
 		assert.Equal(t, -1, images.Find(KustomizeImage(image)))
 	}
 }
