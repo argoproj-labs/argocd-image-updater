@@ -1,3 +1,6 @@
+AAD
+ACR
+acr
 aic
 amd
 anyfield
@@ -14,6 +17,7 @@ argoprojlabs
 args
 auths
 aws
+azurecr
 babayaga
 baralias
 baz
@@ -92,6 +96,7 @@ heptio
 hsla
 http
 https
+ietf
 ifdef
 img
 ineffassign
@@ -100,6 +105,7 @@ ioutil
 itl
 jannfis
 json
+jwt
 JWT
 ks
 Ksonnet
@@ -127,6 +133,7 @@ matchfunc
 Matchfunc
 memcache
 metadata
+microsoftonline
 misconfigured
 mkdir
 mkdocs
@@ -148,6 +155,7 @@ noproto
 noreply
 notastring
 notexist
+oauth
 omitempty
 otherimg
 otherparam
@@ -196,12 +204,14 @@ src
 SRCROOT
 ssh
 stderr
+stdin
 stdout
 stretchr
 structcheck
 svg
 svi
 svl
+sys
 SZ
 taglist
 tagsortmode
@@ -223,6 +233,7 @@ unmarshals
 unparam
 updateable
 url
+urlencoded
 Useragent
 username
 usr
@@ -233,6 +244,7 @@ waitgroup
 Warnf
 webkit
 webroot
+wget
 WORKDIR
 workflow
 workflows
