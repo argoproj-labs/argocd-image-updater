@@ -15,6 +15,7 @@ It has been successfully tested against the following popular registries:
 * GitHub Packages Registry (`docker.pkg.github.com`)
 * GitLab Container Registry (`registry.gitlab.com`)
 * Google Container Registry (`gcr.io`)
+* Azure Container Registry (`azurecr.io`)
 
 Chances are, that it will work out of the box for other registries as well.
 
@@ -326,3 +327,29 @@ two strategies to overcome this:
   i.e. for getting EKS credentials from the aws CLI. For example, if the
   token has a lifetime of 12 hours, you can set `credsexpire: 12h` and Argo
   CD Image Updater will get a new token after 12 hours.
+
+### <a name="external-script-azure"></a>Configuring a script to authenticate against an Azure Container Registry
+
+You can authenticate against an Azure Container Registry using Azure Managed Identities with an external script:
+
+```yaml
+registries:
+- name: ACR example with external script
+  api_url: https://acr-example.azurecr.io/
+  prefix: acr-example.azurecr.io
+  credentials: ext:/app/scripts/acr-login.sh
+  credsexpire: 10h
+```
+
+The script should contain the name of the registry:
+
+```bash
+  acr-login.sh: |
+    #!/bin/sh
+    LOGIN=$(az login --identity)
+    REGISTRY="acr-example"
+    TOKEN=$(az acr login --name $REGISTRY --expose-token --output tsv --query accessToken)
+    echo "00000000-0000-0000-0000-000000000000:$TOKEN"
+```
+
+And the image used for `argocd-image-updater` should contain the Azure CLI.

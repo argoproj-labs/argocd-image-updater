@@ -17,6 +17,10 @@ RUN apk update && \
     apk add ca-certificates git openssh-client aws-cli tini gpg gpg-agent && \
     rm -rf /var/cache/apk/*
 
+RUN apk add gcc musl-dev python3-dev libffi-dev openssl-dev cargo make py3-pip && \
+    pip3 install --break-system-packages azure-cli && \
+    rm -rf /var/cache/apk/*
+
 RUN mkdir -p /usr/local/bin
 RUN mkdir -p /app/config
 RUN adduser --home "/app" --disabled-password --uid 1000 argocd
