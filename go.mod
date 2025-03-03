@@ -1,9 +1,6 @@
 module github.com/argoproj-labs/argocd-image-updater
 
 go 1.22.0
-
-toolchain go1.23.0
-
 require (
 	github.com/argoproj-labs/argocd-image-updater/registry-scanner v0.0.0-20250114144021-10a01f381aa7
 	github.com/argoproj/argo-cd/v2 v2.13.5
@@ -23,7 +20,7 @@ require (
 	go.uber.org/ratelimit v0.3.1
 	golang.org/x/crypto v0.32.0
 	golang.org/x/exp v0.0.0-20240719175910-8a7402abbf56
-	golang.org/x/oauth2 v0.25.0
+	golang.org/x/oauth2 v0.27.0
 	golang.org/x/sync v0.11.0
 	google.golang.org/grpc v1.70.0
 	gopkg.in/yaml.v2 v2.4.0
