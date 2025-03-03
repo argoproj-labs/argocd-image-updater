@@ -43,6 +43,17 @@ func (img *ContainerImage) GetParameterHelmImageSpec(annotations map[string]stri
 	return val
 }
 
+// GetParameterHelmReleaseName gets the value for release-name option for the
+// image from a set of annotations
+func (img *ContainerImage) GetParameterHelmReleaseName(annotations map[string]string, annotationPrefix string) string {
+	key := fmt.Sprintf(common.Prefixed(annotationPrefix, common.HelmParamReleaseNameAnnotationSuffix), img.normalizedSymbolicName())
+	val, ok := annotations[key]
+	if !ok {
+		return ""
+	}
+	return val
+}
+
 // GetParameterKustomizeImageName gets the value for image-spec option for the
 // image from a set of annotations
 func (img *ContainerImage) GetParameterKustomizeImageName(annotations map[string]string, annotationPrefix string) string {
