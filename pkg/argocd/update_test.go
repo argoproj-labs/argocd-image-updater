@@ -2335,6 +2335,112 @@ image:
 		assert.Error(t, err)
 		assert.Equal(t, "unexpected type ScalarNode for key attributes", err.Error())
 	})
+
+	t.Run("Aliases, comments, and multiline strings are preserved", func(t *testing.T) {
+		expected := `
+image:
+    attributes:
+        name: &repo repo-name
+        tag: v2.0.0
+        # this is a comment
+        multiline: |
+            one
+            two
+            three
+        alias: *repo
+`
+
+		inputData := []byte(`
+image:
+    attributes:
+        name: &repo repo-name
+        tag: v1.0.0
+        # this is a comment
+        multiline: |
+            one
+            two
+            three
+        alias: *repo
+`)
+		input := yaml.Node{}
+		err := yaml.Unmarshal(inputData, &input)
+		require.NoError(t, err)
+
+		key := "image.attributes.tag"
+		value := "v2.0.0"
+
+		err = setHelmValue(&input, key, value)
+		require.NoError(t, err)
+
+		output, err := yaml.Marshal(&input)
+		require.NoError(t, err)
+		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
+	})
+
+	t.Run("Aliases to mappings are followed", func(t *testing.T) {
+		expected := `
+global:
+    attributes: &attrs
+        name: &repo repo-name
+        tag: v2.0.0
+image:
+    attributes: *attrs
+`
+
+		inputData := []byte(`
+global:
+    attributes: &attrs
+        name: &repo repo-name
+        tag: v1.0.0
+image:
+    attributes: *attrs
+`)
+		input := yaml.Node{}
+		err := yaml.Unmarshal(inputData, &input)
+		require.NoError(t, err)
+
+		key := "image.attributes.tag"
+		value := "v2.0.0"
+
+		err = setHelmValue(&input, key, value)
+		require.NoError(t, err)
+
+		output, err := yaml.Marshal(&input)
+		require.NoError(t, err)
+		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
+	})
+
+	t.Run("Aliases to scalars are followed", func(t *testing.T) {
+		expected := `
+image:
+    attributes:
+        name: repo-name
+        version: &ver v2.0.0
+        tag: *ver
+`
+
+		inputData := []byte(`
+image:
+    attributes:
+        name: repo-name
+        version: &ver v1.0.0
+        tag: *ver
+`)
+		input := yaml.Node{}
+		err := yaml.Unmarshal(inputData, &input)
+		require.NoError(t, err)
+
+		key := "image.attributes.tag"
+		value := "v2.0.0"
+
+		err = setHelmValue(&input, key, value)
+		require.NoError(t, err)
+
+		output, err := yaml.Marshal(&input)
+		require.NoError(t, err)
+		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
+	})
+
 }
 
 func Test_GetWriteBackConfig(t *testing.T) {
