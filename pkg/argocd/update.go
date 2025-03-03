@@ -627,6 +627,7 @@ func setHelmValue(currentValues *yaml.Node, key string, value interface{}) error
 				// If we're at the final key, set the value and return
 				if current.Kind == yaml.ScalarNode {
 					current.Value = value.(string)
+					current.Tag = "!!str"
 				} else {
 					return fmt.Errorf("unexpected type %s for key %s", nodeKindString(current.Kind), k)
 				}
@@ -640,10 +641,12 @@ func setHelmValue(currentValues *yaml.Node, key string, value interface{}) error
 					&yaml.Node{
 						Kind:  yaml.ScalarNode,
 						Value: k,
+						Tag:   "!!str",
 					},
 					&yaml.Node{
 						Kind:  yaml.ScalarNode,
 						Value: value.(string),
+						Tag:   "!!str",
 					},
 				)
 				return nil
@@ -652,6 +655,7 @@ func setHelmValue(currentValues *yaml.Node, key string, value interface{}) error
 					&yaml.Node{
 						Kind:  yaml.ScalarNode,
 						Value: k,
+						Tag:   "!!str",
 					},
 					&yaml.Node{
 						Kind:    yaml.MappingNode,
