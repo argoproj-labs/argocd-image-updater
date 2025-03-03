@@ -2199,331 +2199,139 @@ replicas: 1
 
 func Test_SetHelmValue(t *testing.T) {
 	t.Run("Update existing Key", func(t *testing.T) {
-		expected := yaml.Node{
-			Kind: yaml.MappingNode,
-			Content: []*yaml.Node{
-				{
-					Kind:  yaml.ScalarNode,
-					Value: "image",
-				},
-				{
-					Kind: yaml.MappingNode,
-					Content: []*yaml.Node{
-						{
-							Kind:  yaml.ScalarNode,
-							Value: "attributes",
-						},
-						{
-							Kind: yaml.MappingNode,
-							Content: []*yaml.Node{
-								{
-									Kind:  yaml.ScalarNode,
-									Value: "name",
-								},
-								{
-									Kind:  yaml.ScalarNode,
-									Value: "repo-name",
-								},
-								{
-									Kind:  yaml.ScalarNode,
-									Value: "tag",
-								},
-								{
-									Kind:  yaml.ScalarNode,
-									Value: "v2.0.0",
-								},
-							},
-						},
-					},
-				},
-			},
-		}
+		expected := `
+image:
+    attributes:
+        name: repo-name
+        tag: v2.0.0
+`
 
-		input := yaml.Node{
-			Kind: yaml.MappingNode,
-			Content: []*yaml.Node{
-				{
-					Kind:  yaml.ScalarNode,
-					Value: "image",
-				},
-				{
-					Kind: yaml.MappingNode,
-					Content: []*yaml.Node{
-						{
-							Kind:  yaml.ScalarNode,
-							Value: "attributes",
-						},
-						{
-							Kind: yaml.MappingNode,
-							Content: []*yaml.Node{
-								{
-									Kind:  yaml.ScalarNode,
-									Value: "name",
-								},
-								{
-									Kind:  yaml.ScalarNode,
-									Value: "repo-name",
-								},
-								{
-									Kind:  yaml.ScalarNode,
-									Value: "tag",
-								},
-								{
-									Kind:  yaml.ScalarNode,
-									Value: "v1.0.0",
-								},
-							},
-						},
-					},
-				},
-			},
-		}
+		inputData := []byte(`
+image:
+    attributes:
+        name: repo-name
+        tag: v1.0.0
+`)
+		input := yaml.Node{}
+		err := yaml.Unmarshal(inputData, &input)
+		require.NoError(t, err)
 
 		key := "image.attributes.tag"
 		value := "v2.0.0"
 
-		err := setHelmValue(&input, key, value)
+		err = setHelmValue(&input, key, value)
 		require.NoError(t, err)
-		assert.Equal(t, expected, input)
+
+		output, err := yaml.Marshal(&input)
+		require.NoError(t, err)
+		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
 	})
 
 	t.Run("Update Key with dots", func(t *testing.T) {
-		expected := yaml.Node{
-			Kind: yaml.MappingNode,
-			Content: []*yaml.Node{
-				{
-					Kind:  yaml.ScalarNode,
-					Value: "image.attributes.tag",
-				},
-				{
-					Kind:  yaml.ScalarNode,
-					Value: "v2.0.0",
-				},
-			},
-		}
+		expected := `image.attributes.tag: v2.0.0`
 
-		input := yaml.Node{
-			Kind: yaml.MappingNode,
-			Content: []*yaml.Node{
-				{
-					Kind:  yaml.ScalarNode,
-					Value: "image.attributes.tag",
-				},
-				{
-					Kind:  yaml.ScalarNode,
-					Value: "v1.0.0",
-				},
-			},
-		}
+		inputData := []byte(`image.attributes.tag: v1.0.0`)
+		input := yaml.Node{}
+		err := yaml.Unmarshal(inputData, &input)
+		require.NoError(t, err)
 
 		key := "image.attributes.tag"
 		value := "v2.0.0"
 
-		err := setHelmValue(&input, key, value)
+		err = setHelmValue(&input, key, value)
 		require.NoError(t, err)
-		assert.Equal(t, expected, input)
+
+		output, err := yaml.Marshal(&input)
+		require.NoError(t, err)
+		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
 	})
 
 	t.Run("Key not found", func(t *testing.T) {
-		expected := yaml.Node{
-			Kind: yaml.MappingNode,
-			Content: []*yaml.Node{
-				{
-					Kind:  yaml.ScalarNode,
-					Value: "image",
-				},
-				{
-					Kind: yaml.MappingNode,
-					Content: []*yaml.Node{
-						{
-							Kind:  yaml.ScalarNode,
-							Value: "attributes",
-						},
-						{
-							Kind: yaml.MappingNode,
-							Content: []*yaml.Node{
-								{
-									Kind:  yaml.ScalarNode,
-									Value: "name",
-								},
-								{
-									Kind:  yaml.ScalarNode,
-									Value: "repo-name",
-								},
-								{
-									Kind:  yaml.ScalarNode,
-									Value: "tag",
-								},
-								{
-									Kind:  yaml.ScalarNode,
-									Value: "v2.0.0",
-								},
-							},
-						},
-					},
-				},
-			},
-		}
+		expected := `
+image:
+    attributes:
+        name: repo-name
+        tag: v2.0.0
+`
 
-		input := yaml.Node{
-			Kind: yaml.MappingNode,
-			Content: []*yaml.Node{
-				{
-					Kind:  yaml.ScalarNode,
-					Value: "image",
-				},
-				{
-					Kind: yaml.MappingNode,
-					Content: []*yaml.Node{
-						{
-							Kind:  yaml.ScalarNode,
-							Value: "attributes",
-						},
-						{
-							Kind: yaml.MappingNode,
-							Content: []*yaml.Node{
-								{
-									Kind:  yaml.ScalarNode,
-									Value: "name",
-								},
-								{
-									Kind:  yaml.ScalarNode,
-									Value: "repo-name",
-								},
-							},
-						},
-					},
-				},
-			},
-		}
+		inputData := []byte(`
+image:
+    attributes:
+        name: repo-name
+`)
+		input := yaml.Node{}
+		err := yaml.Unmarshal(inputData, &input)
+		require.NoError(t, err)
 
 		key := "image.attributes.tag"
 		value := "v2.0.0"
 
-		err := setHelmValue(&input, key, value)
+		err = setHelmValue(&input, key, value)
 		require.NoError(t, err)
-		assert.Equal(t, expected, input)
+
+		output, err := yaml.Marshal(&input)
+		require.NoError(t, err)
+		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
 	})
 
 	t.Run("Root key not found", func(t *testing.T) {
-		expected := yaml.Node{
-			Kind: yaml.MappingNode,
-			Content: []*yaml.Node{
-				{
-					Kind:  yaml.ScalarNode,
-					Value: "name",
-				},
-				{
-					Kind:  yaml.ScalarNode,
-					Value: "repo-name",
-				},
-				{
-					Kind:  yaml.ScalarNode,
-					Value: "tag",
-				},
-				{
-					Kind:  yaml.ScalarNode,
-					Value: "v2.0.0",
-				},
-			},
-		}
+		expected := `
+name: repo-name
+tag: v2.0.0
+`
 
-		input := yaml.Node{
-			Kind: yaml.MappingNode,
-			Content: []*yaml.Node{
-				{
-					Kind:  yaml.ScalarNode,
-					Value: "name",
-				},
-				{
-					Kind:  yaml.ScalarNode,
-					Value: "repo-name",
-				},
-			},
-		}
+		inputData := []byte(`
+name: repo-name
+`)
+		input := yaml.Node{}
+		err := yaml.Unmarshal(inputData, &input)
+		require.NoError(t, err)
 
 		key := "tag"
 		value := "v2.0.0"
 
-		err := setHelmValue(&input, key, value)
+		err = setHelmValue(&input, key, value)
 		require.NoError(t, err)
-		assert.Equal(t, expected, input)
+
+		output, err := yaml.Marshal(&input)
+		require.NoError(t, err)
+		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
 	})
 
 	t.Run("Empty values with deep key", func(t *testing.T) {
-		expected := yaml.Node{
-			Kind: yaml.MappingNode,
-			Content: []*yaml.Node{
-				{
-					Kind:  yaml.ScalarNode,
-					Value: "image",
-				},
-				{
-					Kind: yaml.MappingNode,
-					Content: []*yaml.Node{
-						{
-							Kind:  yaml.ScalarNode,
-							Value: "attributes",
-						},
-						{
-							Kind: yaml.MappingNode,
-							Content: []*yaml.Node{
-								{
-									Kind:  yaml.ScalarNode,
-									Value: "tag",
-								},
-								{
-									Kind:  yaml.ScalarNode,
-									Value: "v2.0.0",
-								},
-							},
-						},
-					},
-				},
-			},
-		}
+		// this uses inline syntax because the input data
+		// needed is an empty map, which can only be expressed as {}.
+		expected := `{image: {attributes: {tag: v2.0.0}}}`
 
-		input := yaml.Node{
-			Kind:    yaml.MappingNode,
-			Content: []*yaml.Node{},
-		}
+		inputData := []byte(`{}`)
+		input := yaml.Node{}
+		err := yaml.Unmarshal(inputData, &input)
+		require.NoError(t, err)
 
 		key := "image.attributes.tag"
 		value := "v2.0.0"
 
-		err := setHelmValue(&input, key, value)
+		err = setHelmValue(&input, key, value)
 		require.NoError(t, err)
-		assert.Equal(t, expected, input)
+
+		output, err := yaml.Marshal(&input)
+		require.NoError(t, err)
+		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
 	})
 
 	t.Run("Unexpected type for key", func(t *testing.T) {
-		input := yaml.Node{
-			Kind: yaml.MappingNode,
-			Content: []*yaml.Node{
-				{
-					Kind:  yaml.ScalarNode,
-					Value: "image",
-				},
-				{
-					Kind: yaml.MappingNode,
-					Content: []*yaml.Node{
-						{
-							Kind:  yaml.ScalarNode,
-							Value: "attributes",
-						},
-						{
-							Kind:  yaml.ScalarNode,
-							Value: "v1.0.0",
-						},
-					},
-				},
-			},
-		}
+		inputData := []byte(`
+image:
+    attributes: v1.0.0
+`)
+		input := yaml.Node{}
+		err := yaml.Unmarshal(inputData, &input)
+		require.NoError(t, err)
 
 		key := "image.attributes.tag"
 		value := "v2.0.0"
 
-		err := setHelmValue(&input, key, value)
+		err = setHelmValue(&input, key, value)
 		assert.Error(t, err)
 		assert.Equal(t, "unexpected type ScalarNode for key attributes", err.Error())
 	})
