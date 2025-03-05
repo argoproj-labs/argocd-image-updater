@@ -1,0 +1,10 @@
+apiVersion: kuttl.dev/v1beta1
+kind: TestStep
+delete:
+- apiVersion: argoproj.io/v1alpha1
+  kind: Application
+  name: write-helmvalues
+  namespace: argocd
+- apiVersion: v1
+  kind: Namespace
+  name: image-updater-e2e-104
