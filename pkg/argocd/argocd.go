@@ -675,34 +675,17 @@ func getApplicationSourceType(app *v1alpha1.Application) v1alpha1.ApplicationSou
 	return app.Status.SourceType
 }
 
-// getApplicationSource returns the source matching git-repository annotation
-// or the Helm/Kustomize source, or the primary source if no match is found
+// getApplicationSource returns the main source of a Helm or Kustomize type of the application
 func getApplicationSource(app *v1alpha1.Application) *v1alpha1.ApplicationSource {
-	// Get the git repository from annotations for write-back
-	gitRepo := app.Annotations["argocd-image-updater.argoproj.io/git-repository"]
-	logCtx := log.WithContext().AddField("application", app.GetName())
 
 	if app.Spec.HasMultipleSources() {
-		// If we have a specific git repo configured for write-back
-		if gitRepo != "" {
-			// Try to find the source matching the write-back git repository
-			for _, s := range app.Spec.Sources {
-				if s.RepoURL == gitRepo {
-					logCtx.Debugf("Found matching source for git repository %s", gitRepo)
-					return &s
-				}
-			}
-			logCtx.Debugf("No matching source found for git repository %s", gitRepo)
-		}
-
-		// If no git repo match, check for Helm/Kustomize sources
 		for _, s := range app.Spec.Sources {
 			if s.Helm != nil || s.Kustomize != nil {
 				return &s
 			}
 		}
 
-		logCtx.Tracef("Could not get Source of type Helm or Kustomize from multisource configuration. Returning first source from the list")
+		log.WithContext().AddField("application", app.GetName()).Tracef("Could not get Source of type Helm or Kustomize from multisource configuration. Returning first source from the list")
 		return &app.Spec.Sources[0]
 	}
 

@@ -17,6 +17,7 @@ import (
 	"sigs.k8s.io/kustomize/kyaml/order"
 	kyaml "sigs.k8s.io/kustomize/kyaml/yaml"
 
+	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/image"
 
 	"github.com/argoproj-labs/argocd-image-updater/ext/git"
@@ -128,6 +129,36 @@ func TemplateBranchName(branchName string, changeList []ChangeEntry) string {
 
 type changeWriter func(app *v1alpha1.Application, wbc *WriteBackConfig, gitC git.Client) (err error, skip bool)
 
+// getWriteBackBranch returns the branch to use for write-back operations.
+// It first checks for a branch specified in annotations, then uses the
+// targetRevision from the matching git source, falling back to getApplicationSource.
+func getWriteBackBranch(app *v1alpha1.Application) string {
+	// First check if branch is explicitly set in annotations
+	annotations := app.GetAnnotations()
+	if branch, ok := annotations[common.GitBranchAnnotation]; ok {
+		return branch
+	}
+
+	logCtx := log.WithContext().AddField("application", app.GetName())
+
+	// If git repository is specified, find matching source
+	if gitRepo, ok := annotations[common.GitRepositoryAnnotation]; ok {
+		if app.Spec.HasMultipleSources() {
+			for _, s := range app.Spec.Sources {
+				if s.RepoURL == gitRepo {
+					logCtx.Debugf("Found matching source for git repository %s", gitRepo)
+					return s.TargetRevision
+				}
+			}
+			logCtx.Debugf("No matching source found for git repository %s, falling back to getApplicationSource", gitRepo)
+		}
+	}
+
+	// Fall back to getApplicationSource's targetRevision
+	// This maintains consistency with how other parts of the code select the source
+	return getApplicationSource(app).TargetRevision
+}
+
 // commitChanges commits any changes required for updating one or more images
 // after the UpdateApplication cycle has finished.
 func commitChangesGit(app *v1alpha1.Application, wbc *WriteBackConfig, changeList []ChangeEntry, write changeWriter) error {
@@ -164,7 +195,7 @@ func commitChangesGit(app *v1alpha1.Application, wbc *WriteBackConfig, changeLis
 	// config, or taken from the application spec's targetRevision. If the
 	// target revision is set to the special value HEAD, or is the empty
 	// string, we'll try to resolve it to a branch name.
-	checkOutBranch := getApplicationSource(app).TargetRevision
+	checkOutBranch := getWriteBackBranch(app)
 	if wbc.GitBranch != "" {
 		checkOutBranch = wbc.GitBranch
 	}

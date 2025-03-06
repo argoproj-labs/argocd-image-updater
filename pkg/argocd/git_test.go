@@ -333,34 +333,6 @@ func Test_updateKustomizeFile(t *testing.T) {
 }
 
 func Test_getApplicationSource(t *testing.T) {
-	t.Run("multi-source with matching git repo", func(t *testing.T) {
-		app := &v1alpha1.Application{
-			ObjectMeta: v1.ObjectMeta{
-				Name: "test-app",
-				Annotations: map[string]string{
-					"argocd-image-updater.argoproj.io/git-repository": "https://github.com/chengfang/image-updater-examples.git",
-				},
-			},
-			Spec: v1alpha1.ApplicationSpec{
-				Sources: v1alpha1.ApplicationSources{
-					{
-						RepoURL:        "https://charts.bitnami.com/bitnami",
-						TargetRevision: "18.2.3",
-						Chart:          "nginx",
-					},
-					{
-						RepoURL:        "https://github.com/chengfang/image-updater-examples.git",
-						TargetRevision: "main",
-					},
-				},
-			},
-		}
-
-		source := getApplicationSource(app)
-		assert.Equal(t, "main", source.TargetRevision)
-		assert.Equal(t, "https://github.com/chengfang/image-updater-examples.git", source.RepoURL)
-	})
-
 	t.Run("multi-source without git repo annotation", func(t *testing.T) {
 		app := &v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
@@ -403,5 +375,97 @@ func Test_getApplicationSource(t *testing.T) {
 		source := getApplicationSource(app)
 		assert.Equal(t, "main", source.TargetRevision)
 		assert.Equal(t, "https://github.com/example/repo.git", source.RepoURL)
+	})
+}
+
+func Test_getWriteBackBranch(t *testing.T) {
+	t.Run("explicit branch in annotations", func(t *testing.T) {
+		app := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name: "test-app",
+				Annotations: map[string]string{
+					"argocd-image-updater.argoproj.io/git-branch": "custom-branch",
+				},
+			},
+		}
+
+		branch := getWriteBackBranch(app)
+		assert.Equal(t, "custom-branch", branch)
+	})
+
+	t.Run("matching git-repository annotation", func(t *testing.T) {
+		app := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name: "test-app",
+				Annotations: map[string]string{
+					"argocd-image-updater.argoproj.io/git-repository": "https://github.com/chengfang/image-updater-examples.git",
+				},
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Sources: v1alpha1.ApplicationSources{
+					{
+						RepoURL:        "https://charts.bitnami.com/bitnami",
+						TargetRevision: "18.2.3",
+						Chart:          "nginx",
+					},
+					{
+						RepoURL:        "https://github.com/chengfang/image-updater-examples.git",
+						TargetRevision: "main",
+					},
+				},
+			},
+		}
+
+		branch := getWriteBackBranch(app)
+		assert.Equal(t, "main", branch)
+	})
+
+	t.Run("fallback to primary source when no match", func(t *testing.T) {
+		app := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name: "test-app",
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Sources: v1alpha1.ApplicationSources{
+					{
+						RepoURL:        "https://charts.bitnami.com/bitnami",
+						TargetRevision: "18.2.3",
+						Chart:          "nginx",
+						Helm:           &v1alpha1.ApplicationSourceHelm{},
+					},
+					{
+						RepoURL:        "https://github.com/chengfang/image-updater-examples.git",
+						TargetRevision: "main",
+					},
+				},
+			},
+		}
+
+		branch := getWriteBackBranch(app)
+		assert.Equal(t, "18.2.3", branch)
+	})
+
+	t.Run("git-repository annotation with non-matching URL", func(t *testing.T) {
+		app := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name: "test-app",
+				Annotations: map[string]string{
+					"argocd-image-updater.argoproj.io/git-repository": "https://github.com/different/repo.git",
+				},
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Sources: v1alpha1.ApplicationSources{
+					{
+						RepoURL:        "https://charts.bitnami.com/bitnami",
+						TargetRevision: "18.2.3",
+						Chart:          "nginx",
+						Helm:           &v1alpha1.ApplicationSourceHelm{},
+					},
+				},
+			},
+		}
+
+		branch := getWriteBackBranch(app)
+		assert.Equal(t, "18.2.3", branch)
 	})
 }
