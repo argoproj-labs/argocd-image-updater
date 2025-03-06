@@ -423,6 +423,7 @@ func marshalWithIndent(in interface{}, indent int) (out []byte, err error) {
 	var b bytes.Buffer
 	encoder := yaml.NewEncoder(&b)
 	defer encoder.Close()
+	// note: yaml.v3 will only respect indents from 1 to 9 inclusive.
 	encoder.SetIndent(indent)
 	if err = encoder.Encode(in); err != nil {
 		return nil, err
@@ -431,6 +432,30 @@ func marshalWithIndent(in interface{}, indent int) (out []byte, err error) {
 		return nil, err
 	}
 	return b.Bytes(), nil
+}
+
+func guessIndent(root *yaml.Node) int {
+	node := root
+	if root.Kind == yaml.DocumentNode {
+		if len(node.Content) == 0 {
+			return 2
+		}
+		node = root.Content[0]
+	}
+	// anything other than a map at the root makes guessing difficult
+	if node.Kind != yaml.MappingNode || len(node.Content) == 0 {
+		return 2
+	}
+	// first level map entries that are themselves mappings or sequences,
+	// in block style, and are indented, allow guessing the preferred indent.
+	for i, child := range node.Content {
+		if i%2 == 1 && child.Column > 1 && child.Column < 10 && child.Style != yaml.FlowStyle {
+			if child.Kind == yaml.MappingNode || child.Kind == yaml.SequenceNode {
+				return child.Column - 1
+			}
+		}
+	}
+	return 2
 }
 
 // marshalParamsOverride marshals the parameter overrides of a given application
@@ -479,6 +504,7 @@ func marshalParamsOverride(app *v1alpha1.Application, originalData []byte) ([]by
 			if err != nil {
 				return nil, err
 			}
+			indent := guessIndent(&helmNewValues)
 
 			for _, c := range images {
 				if c.ImageAlias == "" {
@@ -520,7 +546,7 @@ func marshalParamsOverride(app *v1alpha1.Application, originalData []byte) ([]by
 				}
 			}
 
-			override, err = marshalWithIndent(&helmNewValues, 2)
+			override, err = marshalWithIndent(&helmNewValues, indent)
 		} else {
 			var params helmOverride
 			newParams := helmOverride{

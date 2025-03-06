@@ -2439,6 +2439,68 @@ image:
 		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
 	})
 
+	t.Run("Indentation is guessed from nested mappings", func(t *testing.T) {
+		expected := `
+unguessable:
+   - unguessable
+image:
+   attributes:
+      tag: v2.0.0
+`
+
+		inputData := []byte(`
+unguessable:
+- unguessable
+image:
+   attributes:
+      tag: v1.0.0
+`)
+		input := yaml.Node{}
+		err := yaml.Unmarshal(inputData, &input)
+		require.NoError(t, err)
+		indent := guessIndent(&input)
+
+		key := "image.attributes.tag"
+		value := "v2.0.0"
+
+		err = setHelmValue(&input, key, value)
+		require.NoError(t, err)
+
+		output, err := marshalWithIndent(&input, indent)
+		require.NoError(t, err)
+		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
+	})
+
+	t.Run("Indentation is guessed from indented lists", func(t *testing.T) {
+		expected := `
+unguessable: [unguessable]
+guessable:
+   - guessable
+image:
+   attributes:
+      tag: v2.0.0
+`
+
+		inputData := []byte(`
+unguessable: [unguessable]
+guessable:
+   - guessable
+`)
+		input := yaml.Node{}
+		err := yaml.Unmarshal(inputData, &input)
+		require.NoError(t, err)
+		indent := guessIndent(&input)
+
+		key := "image.attributes.tag"
+		value := "v2.0.0"
+
+		err = setHelmValue(&input, key, value)
+		require.NoError(t, err)
+
+		output, err := marshalWithIndent(&input, indent)
+		require.NoError(t, err)
+		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
+	})
 }
 
 func Test_GetWriteBackConfig(t *testing.T) {
