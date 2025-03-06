@@ -1179,10 +1179,10 @@ func Test_MarshalParamsOverride(t *testing.T) {
 	t.Run("Valid Kustomize source", func(t *testing.T) {
 		expected := `
 kustomize:
-    images:
-        - baz
-        - foo
-        - bar
+  images:
+    - baz
+    - foo
+    - bar
 `
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
@@ -1210,8 +1210,8 @@ kustomize:
 		}
 		originalData := []byte(`
 kustomize:
-    images:
-        - baz
+  images:
+    - baz
 `)
 		yaml, err := marshalParamsOverride(&app, originalData)
 		require.NoError(t, err)
@@ -1222,10 +1222,10 @@ kustomize:
 	t.Run("Merge images param", func(t *testing.T) {
 		expected := `
 kustomize:
-    images:
-        - existing:latest
-        - updated:latest
-        - new
+  images:
+    - existing:latest
+    - updated:latest
+    - new
 `
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
@@ -1252,9 +1252,9 @@ kustomize:
 		}
 		originalData := []byte(`
 kustomize:
-    images:
-        - existing:latest
-        - updated:old
+  images:
+    - existing:latest
+    - updated:old
 `)
 		yaml, err := marshalParamsOverride(&app, originalData)
 		require.NoError(t, err)
@@ -1291,16 +1291,16 @@ kustomize:
 	t.Run("Valid Helm source", func(t *testing.T) {
 		expected := `
 helm:
-    parameters:
-        - name: baz
-          value: baz
-          forcestring: false
-        - name: foo
-          value: bar
-          forcestring: true
-        - name: bar
-          value: foo
-          forcestring: true
+  parameters:
+    - name: baz
+      value: baz
+      forcestring: false
+    - name: foo
+      value: bar
+      forcestring: true
+    - name: bar
+      value: foo
+      forcestring: true
 `
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
@@ -1351,13 +1351,13 @@ helm:
 	t.Run("Empty originalData error with valid Helm source", func(t *testing.T) {
 		expected := `
 helm:
-    parameters:
-        - name: foo
-          value: bar
-          forcestring: true
-        - name: bar
-          value: foo
-          forcestring: true
+  parameters:
+    - name: foo
+      value: bar
+      forcestring: true
+    - name: bar
+      value: foo
+      forcestring: true
 `
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
@@ -1402,13 +1402,13 @@ helm:
 	t.Run("Invalid unmarshal originalData error with valid Helm source", func(t *testing.T) {
 		expected := `
 helm:
-    parameters:
-        - name: foo
-          value: bar
-          forcestring: true
-        - name: bar
-          value: foo
-          forcestring: true
+  parameters:
+    - name: foo
+      value: bar
+      forcestring: true
+    - name: bar
+      value: foo
+      forcestring: true
 `
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
@@ -1588,8 +1588,8 @@ replicas: 1
 		expected = `
 test-value1: one
 image:
-    spec:
-        foo: nginx:v1.0.0
+  spec:
+    foo: nginx:v1.0.0
 `
 		yaml, err = marshalParamsOverride(&app, originalData)
 		require.NoError(t, err)
@@ -1690,13 +1690,13 @@ replicas: 1
 		expected = `
 test-value1: one
 nginx:
-    image:
-        tag: v1.0.0
-        name: nginx
+  image:
+    tag: v1.0.0
+    name: nginx
 redis:
-    image:
-        tag: v1.0.0
-        name: redis
+  image:
+    tag: v1.0.0
+    name: redis
 `
 		yaml, err = marshalParamsOverride(&app, originalData)
 		require.NoError(t, err)
@@ -1811,8 +1811,8 @@ replicas: 1
 		expected := `
 test-value1: one
 image:
-    name: nginx
-    tag: v1.0.0
+  name: nginx
+  tag: v1.0.0
 replicas: 1
 `
 
@@ -1860,7 +1860,7 @@ replicas: 1
 		originalData := []byte(`
 test-value1: one
 image:
-    name: nginx
+  name: nginx
 replicas: 1
 `)
 
@@ -1873,8 +1873,8 @@ replicas: 1
 	t.Run("Failed to setValue image parameter version", func(t *testing.T) {
 		expected := `
 image:
-    tag: v1.0.0
-    name: nginx
+  tag: v1.0.0
+  name: nginx
 replicas: 1
 `
 		app := v1alpha1.Application{
@@ -2201,16 +2201,16 @@ func Test_SetHelmValue(t *testing.T) {
 	t.Run("Update existing Key", func(t *testing.T) {
 		expected := `
 image:
-    attributes:
-        name: repo-name
-        tag: v2.0.0
+  attributes:
+    name: repo-name
+    tag: v2.0.0
 `
 
 		inputData := []byte(`
 image:
-    attributes:
-        name: repo-name
-        tag: v1.0.0
+  attributes:
+    name: repo-name
+    tag: v1.0.0
 `)
 		input := yaml.Node{}
 		err := yaml.Unmarshal(inputData, &input)
@@ -2222,7 +2222,7 @@ image:
 		err = setHelmValue(&input, key, value)
 		require.NoError(t, err)
 
-		output, err := yaml.Marshal(&input)
+		output, err := marshalWithIndent(&input, 2)
 		require.NoError(t, err)
 		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
 	})
@@ -2241,7 +2241,7 @@ image:
 		err = setHelmValue(&input, key, value)
 		require.NoError(t, err)
 
-		output, err := yaml.Marshal(&input)
+		output, err := marshalWithIndent(&input, 2)
 		require.NoError(t, err)
 		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
 	})
@@ -2249,15 +2249,15 @@ image:
 	t.Run("Key not found", func(t *testing.T) {
 		expected := `
 image:
-    attributes:
-        name: repo-name
-        tag: v2.0.0
+  attributes:
+    name: repo-name
+    tag: v2.0.0
 `
 
 		inputData := []byte(`
 image:
-    attributes:
-        name: repo-name
+  attributes:
+    name: repo-name
 `)
 		input := yaml.Node{}
 		err := yaml.Unmarshal(inputData, &input)
@@ -2269,7 +2269,7 @@ image:
 		err = setHelmValue(&input, key, value)
 		require.NoError(t, err)
 
-		output, err := yaml.Marshal(&input)
+		output, err := marshalWithIndent(&input, 2)
 		require.NoError(t, err)
 		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
 	})
@@ -2280,9 +2280,7 @@ name: repo-name
 tag: v2.0.0
 `
 
-		inputData := []byte(`
-name: repo-name
-`)
+		inputData := []byte(`name: repo-name`)
 		input := yaml.Node{}
 		err := yaml.Unmarshal(inputData, &input)
 		require.NoError(t, err)
@@ -2293,7 +2291,7 @@ name: repo-name
 		err = setHelmValue(&input, key, value)
 		require.NoError(t, err)
 
-		output, err := yaml.Marshal(&input)
+		output, err := marshalWithIndent(&input, 2)
 		require.NoError(t, err)
 		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
 	})
@@ -2314,7 +2312,7 @@ name: repo-name
 		err = setHelmValue(&input, key, value)
 		require.NoError(t, err)
 
-		output, err := yaml.Marshal(&input)
+		output, err := marshalWithIndent(&input, 2)
 		require.NoError(t, err)
 		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
 	})
@@ -2322,7 +2320,7 @@ name: repo-name
 	t.Run("Unexpected type for key", func(t *testing.T) {
 		inputData := []byte(`
 image:
-    attributes: v1.0.0
+  attributes: v1.0.0
 `)
 		input := yaml.Node{}
 		err := yaml.Unmarshal(inputData, &input)
@@ -2339,28 +2337,28 @@ image:
 	t.Run("Aliases, comments, and multiline strings are preserved", func(t *testing.T) {
 		expected := `
 image:
-    attributes:
-        name: &repo repo-name
-        tag: v2.0.0
-        # this is a comment
-        multiline: |
-            one
-            two
-            three
-        alias: *repo
+  attributes:
+    name: &repo repo-name
+    tag: v2.0.0
+    # this is a comment
+    multiline: |
+      one
+      two
+      three
+    alias: *repo
 `
 
 		inputData := []byte(`
 image:
-    attributes:
-        name: &repo repo-name
-        tag: v1.0.0
-        # this is a comment
-        multiline: |
-            one
-            two
-            three
-        alias: *repo
+  attributes:
+    name: &repo repo-name
+    tag: v1.0.0
+    # this is a comment
+    multiline: |
+      one
+      two
+      three
+    alias: *repo
 `)
 		input := yaml.Node{}
 		err := yaml.Unmarshal(inputData, &input)
@@ -2372,7 +2370,7 @@ image:
 		err = setHelmValue(&input, key, value)
 		require.NoError(t, err)
 
-		output, err := yaml.Marshal(&input)
+		output, err := marshalWithIndent(&input, 2)
 		require.NoError(t, err)
 		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
 	})
@@ -2380,20 +2378,20 @@ image:
 	t.Run("Aliases to mappings are followed", func(t *testing.T) {
 		expected := `
 global:
-    attributes: &attrs
-        name: &repo repo-name
-        tag: v2.0.0
+  attributes: &attrs
+    name: &repo repo-name
+    tag: v2.0.0
 image:
-    attributes: *attrs
+  attributes: *attrs
 `
 
 		inputData := []byte(`
 global:
-    attributes: &attrs
-        name: &repo repo-name
-        tag: v1.0.0
+  attributes: &attrs
+    name: &repo repo-name
+    tag: v1.0.0
 image:
-    attributes: *attrs
+  attributes: *attrs
 `)
 		input := yaml.Node{}
 		err := yaml.Unmarshal(inputData, &input)
@@ -2405,7 +2403,7 @@ image:
 		err = setHelmValue(&input, key, value)
 		require.NoError(t, err)
 
-		output, err := yaml.Marshal(&input)
+		output, err := marshalWithIndent(&input, 2)
 		require.NoError(t, err)
 		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
 	})
@@ -2413,18 +2411,18 @@ image:
 	t.Run("Aliases to scalars are followed", func(t *testing.T) {
 		expected := `
 image:
-    attributes:
-        name: repo-name
-        version: &ver v2.0.0
-        tag: *ver
+  attributes:
+    name: repo-name
+    version: &ver v2.0.0
+    tag: *ver
 `
 
 		inputData := []byte(`
 image:
-    attributes:
-        name: repo-name
-        version: &ver v1.0.0
-        tag: *ver
+  attributes:
+    name: repo-name
+    version: &ver v1.0.0
+    tag: *ver
 `)
 		input := yaml.Node{}
 		err := yaml.Unmarshal(inputData, &input)
@@ -2436,7 +2434,7 @@ image:
 		err = setHelmValue(&input, key, value)
 		require.NoError(t, err)
 
-		output, err := yaml.Marshal(&input)
+		output, err := marshalWithIndent(&input, 2)
 		require.NoError(t, err)
 		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
 	})

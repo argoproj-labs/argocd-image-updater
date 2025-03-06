@@ -1,6 +1,7 @@
 package argocd
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"path/filepath"
@@ -418,6 +419,20 @@ func setAppImage(app *v1alpha1.Application, img *image.ContainerImage) error {
 	return err
 }
 
+func marshalWithIndent(in interface{}, indent int) (out []byte, err error) {
+	var b bytes.Buffer
+	encoder := yaml.NewEncoder(&b)
+	defer encoder.Close()
+	encoder.SetIndent(indent)
+	if err = encoder.Encode(in); err != nil {
+		return nil, err
+	}
+	if err = encoder.Close(); err != nil {
+		return nil, err
+	}
+	return b.Bytes(), nil
+}
+
 // marshalParamsOverride marshals the parameter overrides of a given application
 // into YAML bytes
 func marshalParamsOverride(app *v1alpha1.Application, originalData []byte) ([]byte, error) {
@@ -441,16 +456,16 @@ func marshalParamsOverride(app *v1alpha1.Application, originalData []byte) ([]by
 		}
 
 		if len(originalData) == 0 {
-			override, err = yaml.Marshal(newParams)
+			override, err = marshalWithIndent(newParams, 2)
 			break
 		}
 		err = yaml.Unmarshal(originalData, &params)
 		if err != nil {
-			override, err = yaml.Marshal(newParams)
+			override, err = marshalWithIndent(newParams, 2)
 			break
 		}
 		mergeKustomizeOverride(&params, &newParams)
-		override, err = yaml.Marshal(params)
+		override, err = marshalWithIndent(params, 2)
 	case ApplicationTypeHelm:
 		if appSource.Helm == nil {
 			return []byte{}, nil
@@ -505,7 +520,7 @@ func marshalParamsOverride(app *v1alpha1.Application, originalData []byte) ([]by
 				}
 			}
 
-			override, err = yaml.Marshal(&helmNewValues)
+			override, err = marshalWithIndent(&helmNewValues, 2)
 		} else {
 			var params helmOverride
 			newParams := helmOverride{
@@ -518,16 +533,16 @@ func marshalParamsOverride(app *v1alpha1.Application, originalData []byte) ([]by
 			log.WithContext().AddField("application", app).Debugf("values: '%s'", outputParams)
 
 			if len(originalData) == 0 {
-				override, err = yaml.Marshal(newParams)
+				override, err = marshalWithIndent(newParams, 2)
 				break
 			}
 			err = yaml.Unmarshal(originalData, &params)
 			if err != nil {
-				override, err = yaml.Marshal(newParams)
+				override, err = marshalWithIndent(newParams, 2)
 				break
 			}
 			mergeHelmOverride(&params, &newParams)
-			override, err = yaml.Marshal(params)
+			override, err = marshalWithIndent(params, 2)
 		}
 	default:
 		err = fmt.Errorf("unsupported application type")
