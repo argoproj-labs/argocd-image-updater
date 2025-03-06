@@ -42,6 +42,7 @@ const (
 	// githubAccessTokenUsername is a username that is used to with the github access token
 	githubAccessTokenUsername = "x-access-token"
 	forceBasicAuthHeaderEnv   = "ARGOCD_GIT_AUTH_HEADER"
+	defaultGithubApiUrl       = "https://api.github.com"
 )
 
 func init() {
@@ -443,12 +444,7 @@ func (g GitHubAppCreds) getAccessToken() (string, error) {
 		return itr.Token(ctx)
 	}
 
-	// GitHub API url
-	baseUrl := "https://api.github.com"
-	if g.baseURL != "" {
-		baseUrl = strings.TrimSuffix(g.baseURL, "/")
-	}
-
+	baseUrl := g.getBaseURL()
 	// Create a new GitHub transport
 	c := GetRepoHTTPClient(baseUrl, g.insecure, g, g.proxy)
 	itr, err := ghinstallation.New(c.Transport,
@@ -466,6 +462,27 @@ func (g GitHubAppCreds) getAccessToken() (string, error) {
 	githubAppTokenCache.Set(key, itr, time.Minute*60)
 
 	return itr.Token(ctx)
+}
+
+func (g GitHubAppCreds) getBaseURL() string {
+	if g.baseURL != "" {
+		return strings.TrimSuffix(g.baseURL, "/")
+	}
+	if g.repoURL == "" {
+		return defaultGithubApiUrl
+	}
+
+	repoUrl, err := url.Parse(g.repoURL)
+	if err != nil || repoUrl.Hostname() == "github.com" {
+		return defaultGithubApiUrl
+	}
+
+	// GitHub Enterprise
+	scheme := repoUrl.Scheme
+	if scheme == "" {
+		scheme = "https"
+	}
+	return fmt.Sprintf("%s://%s/api/v3", scheme, repoUrl.Host)
 }
 
 func (g GitHubAppCreds) HasClientCert() bool {
