@@ -133,24 +133,18 @@ type changeWriter func(app *v1alpha1.Application, wbc *WriteBackConfig, gitC git
 // It first checks for a branch specified in annotations, then uses the
 // targetRevision from the matching git source, falling back to getApplicationSource.
 func getWriteBackBranch(app *v1alpha1.Application) string {
-	// First check if branch is explicitly set in annotations
-	annotations := app.GetAnnotations()
-	if branch, ok := annotations[common.GitBranchAnnotation]; ok {
-		return branch
-	}
-
-	logCtx := log.WithContext().AddField("application", app.GetName())
-
 	// If git repository is specified, find matching source
-	if gitRepo, ok := annotations[common.GitRepositoryAnnotation]; ok {
+	if gitRepo, ok := app.GetAnnotations()[common.GitRepositoryAnnotation]; ok {
 		if app.Spec.HasMultipleSources() {
 			for _, s := range app.Spec.Sources {
 				if s.RepoURL == gitRepo {
-					logCtx.Debugf("Found matching source for git repository %s", gitRepo)
+					log.WithContext().AddField("application", app.GetName()).
+						Debugf("Using target revision '%s' from matching source '%s'", s.TargetRevision, gitRepo)
 					return s.TargetRevision
 				}
 			}
-			logCtx.Debugf("No matching source found for git repository %s, falling back to getApplicationSource", gitRepo)
+			log.WithContext().AddField("application", app.GetName()).
+				Debugf("No matching source found for git repository %s, falling back to primary source", gitRepo)
 		}
 	}
 
@@ -195,9 +189,11 @@ func commitChangesGit(app *v1alpha1.Application, wbc *WriteBackConfig, changeLis
 	// config, or taken from the application spec's targetRevision. If the
 	// target revision is set to the special value HEAD, or is the empty
 	// string, we'll try to resolve it to a branch name.
-	checkOutBranch := getWriteBackBranch(app)
+	var checkOutBranch string
 	if wbc.GitBranch != "" {
 		checkOutBranch = wbc.GitBranch
+	} else {
+		checkOutBranch = getWriteBackBranch(app)
 	}
 	logCtx.Tracef("targetRevision for update is '%s'", checkOutBranch)
 	if checkOutBranch == "" || checkOutBranch == "HEAD" {
