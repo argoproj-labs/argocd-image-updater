@@ -1,6 +1,7 @@
 package argocd
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"path/filepath"
@@ -21,7 +22,7 @@ import (
 
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/application"
 	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
-	"gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 )
 
 // Stores some statistics about the results of a run
@@ -418,6 +419,45 @@ func setAppImage(app *v1alpha1.Application, img *image.ContainerImage) error {
 	return err
 }
 
+func marshalWithIndent(in interface{}, indent int) (out []byte, err error) {
+	var b bytes.Buffer
+	encoder := yaml.NewEncoder(&b)
+	defer encoder.Close()
+	// note: yaml.v3 will only respect indents from 1 to 9 inclusive.
+	encoder.SetIndent(indent)
+	if err = encoder.Encode(in); err != nil {
+		return nil, err
+	}
+	if err = encoder.Close(); err != nil {
+		return nil, err
+	}
+	return b.Bytes(), nil
+}
+
+func guessIndent(root *yaml.Node) int {
+	node := root
+	if root.Kind == yaml.DocumentNode {
+		if len(node.Content) == 0 {
+			return 2
+		}
+		node = root.Content[0]
+	}
+	// anything other than a map at the root makes guessing difficult
+	if node.Kind != yaml.MappingNode || len(node.Content) == 0 {
+		return 2
+	}
+	// first level map entries that are themselves mappings or sequences,
+	// in block style, and are indented, allow guessing the preferred indent.
+	for i, child := range node.Content {
+		if i%2 == 1 && child.Column > 1 && child.Column < 10 && child.Style != yaml.FlowStyle {
+			if child.Kind == yaml.MappingNode || child.Kind == yaml.SequenceNode {
+				return child.Column - 1
+			}
+		}
+	}
+	return 2
+}
+
 // marshalParamsOverride marshals the parameter overrides of a given application
 // into YAML bytes
 func marshalParamsOverride(app *v1alpha1.Application, originalData []byte) ([]byte, error) {
@@ -441,16 +481,16 @@ func marshalParamsOverride(app *v1alpha1.Application, originalData []byte) ([]by
 		}
 
 		if len(originalData) == 0 {
-			override, err = yaml.Marshal(newParams)
+			override, err = marshalWithIndent(newParams, 2)
 			break
 		}
 		err = yaml.Unmarshal(originalData, &params)
 		if err != nil {
-			override, err = yaml.Marshal(newParams)
+			override, err = marshalWithIndent(newParams, 2)
 			break
 		}
 		mergeKustomizeOverride(&params, &newParams)
-		override, err = yaml.Marshal(params)
+		override, err = marshalWithIndent(params, 2)
 	case ApplicationTypeHelm:
 		if appSource.Helm == nil {
 			return []byte{}, nil
@@ -459,11 +499,12 @@ func marshalParamsOverride(app *v1alpha1.Application, originalData []byte) ([]by
 		if strings.HasPrefix(app.Annotations[common.WriteBackTargetAnnotation], common.HelmPrefix) {
 			images := GetImagesAndAliasesFromApplication(app)
 
-			helmNewValues := yaml.MapSlice{}
+			helmNewValues := yaml.Node{}
 			err = yaml.Unmarshal(originalData, &helmNewValues)
 			if err != nil {
 				return nil, err
 			}
+			indent := guessIndent(&helmNewValues)
 
 			for _, c := range images {
 				if c.ImageAlias == "" {
@@ -505,7 +546,7 @@ func marshalParamsOverride(app *v1alpha1.Application, originalData []byte) ([]by
 				}
 			}
 
-			override, err = yaml.Marshal(helmNewValues)
+			override, err = marshalWithIndent(&helmNewValues, indent)
 		} else {
 			var params helmOverride
 			newParams := helmOverride{
@@ -518,16 +559,16 @@ func marshalParamsOverride(app *v1alpha1.Application, originalData []byte) ([]by
 			log.WithContext().AddField("application", app).Debugf("values: '%s'", outputParams)
 
 			if len(originalData) == 0 {
-				override, err = yaml.Marshal(newParams)
+				override, err = marshalWithIndent(newParams, 2)
 				break
 			}
 			err = yaml.Unmarshal(originalData, &params)
 			if err != nil {
-				override, err = yaml.Marshal(newParams)
+				override, err = marshalWithIndent(newParams, 2)
 				break
 			}
 			mergeHelmOverride(&params, &newParams)
-			override, err = yaml.Marshal(params)
+			override, err = marshalWithIndent(params, 2)
 		}
 	default:
 		err = fmt.Errorf("unsupported application type")
@@ -572,72 +613,98 @@ func mergeKustomizeOverride(t *kustomizeOverride, o *kustomizeOverride) {
 	}
 }
 
-// Check if a key exists in a MapSlice and return its index and value
-func findHelmValuesKey(m yaml.MapSlice, key string) (int, bool) {
-	for i, item := range m {
-		if item.Key == key {
-			return i, true
+// Check if a key exists in a MappingNode and return the index of its value
+func findHelmValuesKey(m *yaml.Node, key string) (int, bool) {
+	for i, item := range m.Content {
+		if i%2 == 0 && item.Value == key {
+			return i + 1, true
 		}
 	}
 	return -1, false
 }
 
+func nodeKindString(k yaml.Kind) string {
+	return map[yaml.Kind]string{
+		yaml.DocumentNode: "DocumentNode",
+		yaml.SequenceNode: "SequenceNode",
+		yaml.MappingNode:  "MappingNode",
+		yaml.ScalarNode:   "ScalarNode",
+		yaml.AliasNode:    "AliasNode",
+	}[k]
+}
+
 // set value of the parameter passed from the annotations.
-func setHelmValue(currentValues *yaml.MapSlice, key string, value interface{}) error {
+func setHelmValue(currentValues *yaml.Node, key string, value interface{}) error {
+	current := currentValues
+
+	// an unmarshalled document has a DocumentNode at the root, but
+	// we navigate from a MappingNode.
+	if current.Kind == yaml.DocumentNode {
+		current = current.Content[0]
+	}
+
+	if current.Kind != yaml.MappingNode {
+		return fmt.Errorf("unexpected type %s for root", nodeKindString(current.Kind))
+	}
+
 	// Check if the full key exists
-	if idx, found := findHelmValuesKey(*currentValues, key); found {
-		(*currentValues)[idx].Value = value
+	if idx, found := findHelmValuesKey(current, key); found {
+		(*current).Content[idx].Value = value.(string)
 		return nil
 	}
 
 	var err error
 	keys := strings.Split(key, ".")
-	current := currentValues
-	var parent *yaml.MapSlice
-	parentIdx := -1
 
 	for i, k := range keys {
-		if idx, found := findHelmValuesKey(*current, k); found {
+		if idx, found := findHelmValuesKey(current, k); found {
+			// Navigate deeper into the map
+			current = (*current).Content[idx]
+			// unpack one level of alias; an alias of an alias is not supported
+			if current.Kind == yaml.AliasNode {
+				current = current.Alias
+			}
 			if i == len(keys)-1 {
 				// If we're at the final key, set the value and return
-				(*current)[idx].Value = value
-				return nil
-			} else {
-				// Navigate deeper into the map
-				if nestedMap, ok := (*current)[idx].Value.(yaml.MapSlice); ok {
-					parent = current
-					parentIdx = idx
-					current = &nestedMap
+				if current.Kind == yaml.ScalarNode {
+					current.Value = value.(string)
+					current.Tag = "!!str"
 				} else {
-					return fmt.Errorf("unexpected type %T for key %s", (*current)[idx].Value, k)
+					return fmt.Errorf("unexpected type %s for key %s", nodeKindString(current.Kind), k)
 				}
+				return nil
+			} else if current.Kind != yaml.MappingNode {
+				return fmt.Errorf("unexpected type %s for key %s", nodeKindString(current.Kind), k)
 			}
 		} else {
-			newCurrent := yaml.MapSlice{}
-			var newParent yaml.MapSlice
-
 			if i == len(keys)-1 {
-				newParent = append(*current, yaml.MapItem{Key: k, Value: value})
+				current.Content = append(current.Content,
+					&yaml.Node{
+						Kind:  yaml.ScalarNode,
+						Value: k,
+						Tag:   "!!str",
+					},
+					&yaml.Node{
+						Kind:  yaml.ScalarNode,
+						Value: value.(string),
+						Tag:   "!!str",
+					},
+				)
+				return nil
 			} else {
-				newParent = append(*current, yaml.MapItem{Key: k, Value: newCurrent})
+				current.Content = append(current.Content,
+					&yaml.Node{
+						Kind:  yaml.ScalarNode,
+						Value: k,
+						Tag:   "!!str",
+					},
+					&yaml.Node{
+						Kind:    yaml.MappingNode,
+						Content: []*yaml.Node{},
+					},
+				)
+				current = current.Content[len(current.Content)-1]
 			}
-
-			if parent == nil {
-				*currentValues = newParent
-			} else {
-				// if parentIdx has not been set (parent element is also new), set it to the last element
-				if parentIdx == -1 {
-					parentIdx = len(*parent) - 1
-					if parentIdx < 0 {
-						parentIdx = 0
-					}
-				}
-				(*parent)[parentIdx].Value = newParent
-			}
-
-			parent = &newParent
-			current = &newCurrent
-			parentIdx = -1
 		}
 	}
 

@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 
 	"github.com/argoproj-labs/argocd-image-updater/ext/git"
 	gitmock "github.com/argoproj-labs/argocd-image-updater/ext/git/mocks"
@@ -1180,9 +1180,9 @@ func Test_MarshalParamsOverride(t *testing.T) {
 		expected := `
 kustomize:
   images:
-  - baz
-  - foo
-  - bar
+    - baz
+    - foo
+    - bar
 `
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
@@ -1211,7 +1211,7 @@ kustomize:
 		originalData := []byte(`
 kustomize:
   images:
-  - baz
+    - baz
 `)
 		yaml, err := marshalParamsOverride(&app, originalData)
 		require.NoError(t, err)
@@ -1223,9 +1223,9 @@ kustomize:
 		expected := `
 kustomize:
   images:
-  - existing:latest
-  - updated:latest
-  - new
+    - existing:latest
+    - updated:latest
+    - new
 `
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
@@ -1253,8 +1253,8 @@ kustomize:
 		originalData := []byte(`
 kustomize:
   images:
-  - existing:latest
-  - updated:old
+    - existing:latest
+    - updated:old
 `)
 		yaml, err := marshalParamsOverride(&app, originalData)
 		require.NoError(t, err)
@@ -1292,15 +1292,15 @@ kustomize:
 		expected := `
 helm:
   parameters:
-	- name: baz
-		value: baz
-		forcestring: false
-	- name: foo
-		value: bar
-		forcestring: true
-	- name: bar
-		value: foo
-		forcestring: true
+    - name: baz
+      value: baz
+      forcestring: false
+    - name: foo
+      value: bar
+      forcestring: true
+    - name: bar
+      value: foo
+      forcestring: true
 `
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
@@ -1352,12 +1352,12 @@ helm:
 		expected := `
 helm:
   parameters:
-	- name: foo
-		value: bar
-		forcestring: true
-	- name: bar
-		value: foo
-		forcestring: true
+    - name: foo
+      value: bar
+      forcestring: true
+    - name: bar
+      value: foo
+      forcestring: true
 `
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
@@ -1403,12 +1403,12 @@ helm:
 		expected := `
 helm:
   parameters:
-	- name: foo
-		value: bar
-		forcestring: true
-	- name: bar
-		value: foo
-		forcestring: true
+    - name: foo
+      value: bar
+      forcestring: true
+    - name: bar
+      value: foo
+      forcestring: true
 `
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
@@ -2199,122 +2199,307 @@ replicas: 1
 
 func Test_SetHelmValue(t *testing.T) {
 	t.Run("Update existing Key", func(t *testing.T) {
-		expected := yaml.MapSlice{
-			{Key: "image", Value: yaml.MapSlice{
-				{Key: "attributes", Value: yaml.MapSlice{
-					{Key: "name", Value: "repo-name"},
-					{Key: "tag", Value: "v2.0.0"},
-				}},
-			}},
-		}
+		expected := `
+image:
+  attributes:
+    name: repo-name
+    tag: v2.0.0
+`
 
-		input := yaml.MapSlice{
-			{Key: "image", Value: yaml.MapSlice{
-				{Key: "attributes", Value: yaml.MapSlice{
-					{Key: "name", Value: "repo-name"},
-					{Key: "tag", Value: "v1.0.0"},
-				}},
-			}},
-		}
+		inputData := []byte(`
+image:
+  attributes:
+    name: repo-name
+    tag: v1.0.0
+`)
+		input := yaml.Node{}
+		err := yaml.Unmarshal(inputData, &input)
+		require.NoError(t, err)
+
 		key := "image.attributes.tag"
 		value := "v2.0.0"
 
-		err := setHelmValue(&input, key, value)
+		err = setHelmValue(&input, key, value)
 		require.NoError(t, err)
-		assert.Equal(t, expected, input)
+
+		output, err := marshalWithIndent(&input, 2)
+		require.NoError(t, err)
+		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
 	})
 
 	t.Run("Update Key with dots", func(t *testing.T) {
-		expected := yaml.MapSlice{
-			{Key: "image.attributes.tag", Value: "v2.0.0"},
-		}
+		expected := `image.attributes.tag: v2.0.0`
 
-		input := yaml.MapSlice{
-			{Key: "image.attributes.tag", Value: "v1.0.0"},
-		}
+		inputData := []byte(`image.attributes.tag: v1.0.0`)
+		input := yaml.Node{}
+		err := yaml.Unmarshal(inputData, &input)
+		require.NoError(t, err)
+
 		key := "image.attributes.tag"
 		value := "v2.0.0"
 
-		err := setHelmValue(&input, key, value)
+		err = setHelmValue(&input, key, value)
 		require.NoError(t, err)
-		assert.Equal(t, expected, input)
+
+		output, err := marshalWithIndent(&input, 2)
+		require.NoError(t, err)
+		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
 	})
 
 	t.Run("Key not found", func(t *testing.T) {
-		expected := yaml.MapSlice{
-			{Key: "image", Value: yaml.MapSlice{
-				{Key: "attributes", Value: yaml.MapSlice{
-					{Key: "name", Value: "repo-name"},
-					{Key: "tag", Value: "v2.0.0"},
-				}},
-			}},
-		}
+		expected := `
+image:
+  attributes:
+    name: repo-name
+    tag: v2.0.0
+`
 
-		input := yaml.MapSlice{
-			{Key: "image", Value: yaml.MapSlice{
-				{Key: "attributes", Value: yaml.MapSlice{
-					{Key: "name", Value: "repo-name"},
-				}},
-			}},
-		}
+		inputData := []byte(`
+image:
+  attributes:
+    name: repo-name
+`)
+		input := yaml.Node{}
+		err := yaml.Unmarshal(inputData, &input)
+		require.NoError(t, err)
 
 		key := "image.attributes.tag"
 		value := "v2.0.0"
 
-		err := setHelmValue(&input, key, value)
+		err = setHelmValue(&input, key, value)
 		require.NoError(t, err)
-		assert.Equal(t, expected, input)
+
+		output, err := marshalWithIndent(&input, 2)
+		require.NoError(t, err)
+		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
 	})
 
 	t.Run("Root key not found", func(t *testing.T) {
-		expected := yaml.MapSlice{
-			{Key: "name", Value: "repo-name"},
-			{Key: "tag", Value: "v2.0.0"},
-		}
+		expected := `
+name: repo-name
+tag: v2.0.0
+`
 
-		input := yaml.MapSlice{
-			{Key: "name", Value: "repo-name"},
-		}
+		inputData := []byte(`name: repo-name`)
+		input := yaml.Node{}
+		err := yaml.Unmarshal(inputData, &input)
+		require.NoError(t, err)
 
 		key := "tag"
 		value := "v2.0.0"
 
-		err := setHelmValue(&input, key, value)
+		err = setHelmValue(&input, key, value)
 		require.NoError(t, err)
-		assert.Equal(t, expected, input)
+
+		output, err := marshalWithIndent(&input, 2)
+		require.NoError(t, err)
+		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
 	})
 
 	t.Run("Empty values with deep key", func(t *testing.T) {
-		expected := yaml.MapSlice{
-			{Key: "image", Value: yaml.MapSlice{
-				{Key: "attributes", Value: yaml.MapSlice{
-					{Key: "tag", Value: "v2.0.0"},
-				}},
-			}},
-		}
+		// this uses inline syntax because the input data
+		// needed is an empty map, which can only be expressed as {}.
+		expected := `{image: {attributes: {tag: v2.0.0}}}`
 
-		input := yaml.MapSlice{}
+		inputData := []byte(`{}`)
+		input := yaml.Node{}
+		err := yaml.Unmarshal(inputData, &input)
+		require.NoError(t, err)
 
 		key := "image.attributes.tag"
 		value := "v2.0.0"
 
-		err := setHelmValue(&input, key, value)
+		err = setHelmValue(&input, key, value)
 		require.NoError(t, err)
-		assert.Equal(t, expected, input)
+
+		output, err := marshalWithIndent(&input, 2)
+		require.NoError(t, err)
+		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
 	})
 
 	t.Run("Unexpected type for key", func(t *testing.T) {
-		input := yaml.MapSlice{
-			{Key: "image", Value: yaml.MapSlice{
-				{Key: "attributes", Value: "v1.0.0"},
-			}},
-		}
+		inputData := []byte(`
+image:
+  attributes: v1.0.0
+`)
+		input := yaml.Node{}
+		err := yaml.Unmarshal(inputData, &input)
+		require.NoError(t, err)
+
 		key := "image.attributes.tag"
 		value := "v2.0.0"
 
-		err := setHelmValue(&input, key, value)
+		err = setHelmValue(&input, key, value)
 		assert.Error(t, err)
-		assert.Equal(t, "unexpected type string for key attributes", err.Error())
+		assert.Equal(t, "unexpected type ScalarNode for key attributes", err.Error())
+	})
+
+	t.Run("Aliases, comments, and multiline strings are preserved", func(t *testing.T) {
+		expected := `
+image:
+  attributes:
+    name: &repo repo-name
+    tag: v2.0.0
+    # this is a comment
+    multiline: |
+      one
+      two
+      three
+    alias: *repo
+`
+
+		inputData := []byte(`
+image:
+  attributes:
+    name: &repo repo-name
+    tag: v1.0.0
+    # this is a comment
+    multiline: |
+      one
+      two
+      three
+    alias: *repo
+`)
+		input := yaml.Node{}
+		err := yaml.Unmarshal(inputData, &input)
+		require.NoError(t, err)
+
+		key := "image.attributes.tag"
+		value := "v2.0.0"
+
+		err = setHelmValue(&input, key, value)
+		require.NoError(t, err)
+
+		output, err := marshalWithIndent(&input, 2)
+		require.NoError(t, err)
+		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
+	})
+
+	t.Run("Aliases to mappings are followed", func(t *testing.T) {
+		expected := `
+global:
+  attributes: &attrs
+    name: &repo repo-name
+    tag: v2.0.0
+image:
+  attributes: *attrs
+`
+
+		inputData := []byte(`
+global:
+  attributes: &attrs
+    name: &repo repo-name
+    tag: v1.0.0
+image:
+  attributes: *attrs
+`)
+		input := yaml.Node{}
+		err := yaml.Unmarshal(inputData, &input)
+		require.NoError(t, err)
+
+		key := "image.attributes.tag"
+		value := "v2.0.0"
+
+		err = setHelmValue(&input, key, value)
+		require.NoError(t, err)
+
+		output, err := marshalWithIndent(&input, 2)
+		require.NoError(t, err)
+		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
+	})
+
+	t.Run("Aliases to scalars are followed", func(t *testing.T) {
+		expected := `
+image:
+  attributes:
+    name: repo-name
+    version: &ver v2.0.0
+    tag: *ver
+`
+
+		inputData := []byte(`
+image:
+  attributes:
+    name: repo-name
+    version: &ver v1.0.0
+    tag: *ver
+`)
+		input := yaml.Node{}
+		err := yaml.Unmarshal(inputData, &input)
+		require.NoError(t, err)
+
+		key := "image.attributes.tag"
+		value := "v2.0.0"
+
+		err = setHelmValue(&input, key, value)
+		require.NoError(t, err)
+
+		output, err := marshalWithIndent(&input, 2)
+		require.NoError(t, err)
+		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
+	})
+
+	t.Run("Indentation is guessed from nested mappings", func(t *testing.T) {
+		expected := `
+unguessable:
+   - unguessable
+image:
+   attributes:
+      tag: v2.0.0
+`
+
+		inputData := []byte(`
+unguessable:
+- unguessable
+image:
+   attributes:
+      tag: v1.0.0
+`)
+		input := yaml.Node{}
+		err := yaml.Unmarshal(inputData, &input)
+		require.NoError(t, err)
+		indent := guessIndent(&input)
+
+		key := "image.attributes.tag"
+		value := "v2.0.0"
+
+		err = setHelmValue(&input, key, value)
+		require.NoError(t, err)
+
+		output, err := marshalWithIndent(&input, indent)
+		require.NoError(t, err)
+		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
+	})
+
+	t.Run("Indentation is guessed from indented lists", func(t *testing.T) {
+		expected := `
+unguessable: [unguessable]
+guessable:
+   - guessable
+image:
+   attributes:
+      tag: v2.0.0
+`
+
+		inputData := []byte(`
+unguessable: [unguessable]
+guessable:
+   - guessable
+`)
+		input := yaml.Node{}
+		err := yaml.Unmarshal(inputData, &input)
+		require.NoError(t, err)
+		indent := guessIndent(&input)
+
+		key := "image.attributes.tag"
+		value := "v2.0.0"
+
+		err = setHelmValue(&input, key, value)
+		require.NoError(t, err)
+
+		output, err := marshalWithIndent(&input, indent)
+		require.NoError(t, err)
+		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
 	})
 }
 
