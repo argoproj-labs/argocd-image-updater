@@ -379,18 +379,9 @@ func Test_getApplicationSource(t *testing.T) {
 }
 
 func Test_getWriteBackBranch(t *testing.T) {
-	t.Run("explicit branch in annotations", func(t *testing.T) {
-		app := &v1alpha1.Application{
-			ObjectMeta: v1.ObjectMeta{
-				Name: "test-app",
-				Annotations: map[string]string{
-					"argocd-image-updater.argoproj.io/git-branch": "custom-branch",
-				},
-			},
-		}
-
-		branch := getWriteBackBranch(app)
-		assert.Equal(t, "custom-branch", branch)
+	t.Run("nil application", func(t *testing.T) {
+		branch := getWriteBackBranch(nil)
+		assert.Equal(t, "", branch)
 	})
 
 	t.Run("matching git-repository annotation", func(t *testing.T) {

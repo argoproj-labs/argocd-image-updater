@@ -133,6 +133,9 @@ type changeWriter func(app *v1alpha1.Application, wbc *WriteBackConfig, gitC git
 // It first checks for a branch specified in annotations, then uses the
 // targetRevision from the matching git source, falling back to getApplicationSource.
 func getWriteBackBranch(app *v1alpha1.Application) string {
+	if app == nil {
+		return ""
+	}
 	// If git repository is specified, find matching source
 	if gitRepo, ok := app.GetAnnotations()[common.GitRepositoryAnnotation]; ok {
 		if app.Spec.HasMultipleSources() {
