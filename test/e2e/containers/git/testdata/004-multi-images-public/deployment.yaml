@@ -1,0 +1,21 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: e2e-registry
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: test-app-001
+      component: argocd-image-updater-e2e
+  template:
+    metadata:
+      labels:
+        app: test-app-001
+        component: argocd-image-updater-e2e
+    spec:
+      containers:
+      - name: test-nginx
+        image: nginx:1.17.0
+      - name: test-memcached
+        image: memcached:1.6.0
