@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"gopkg.in/yaml.v3"
+	yaml "sigs.k8s.io/yaml/goyaml.v3"
 
 	"github.com/argoproj-labs/argocd-image-updater/ext/git"
 	gitmock "github.com/argoproj-labs/argocd-image-updater/ext/git/mocks"
@@ -1180,9 +1180,9 @@ func Test_MarshalParamsOverride(t *testing.T) {
 		expected := `
 kustomize:
   images:
-    - baz
-    - foo
-    - bar
+  - baz
+  - foo
+  - bar
 `
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
@@ -1211,7 +1211,7 @@ kustomize:
 		originalData := []byte(`
 kustomize:
   images:
-    - baz
+  - baz
 `)
 		yaml, err := marshalParamsOverride(&app, originalData)
 		require.NoError(t, err)
@@ -1223,9 +1223,9 @@ kustomize:
 		expected := `
 kustomize:
   images:
-    - existing:latest
-    - updated:latest
-    - new
+  - existing:latest
+  - updated:latest
+  - new
 `
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
@@ -1253,8 +1253,8 @@ kustomize:
 		originalData := []byte(`
 kustomize:
   images:
-    - existing:latest
-    - updated:old
+  - existing:latest
+  - updated:old
 `)
 		yaml, err := marshalParamsOverride(&app, originalData)
 		require.NoError(t, err)
@@ -1292,15 +1292,15 @@ kustomize:
 		expected := `
 helm:
   parameters:
-    - name: baz
-      value: baz
-      forcestring: false
-    - name: foo
-      value: bar
-      forcestring: true
-    - name: bar
-      value: foo
-      forcestring: true
+  - name: baz
+    value: baz
+    forcestring: false
+  - name: foo
+    value: bar
+    forcestring: true
+  - name: bar
+    value: foo
+    forcestring: true
 `
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
@@ -1338,9 +1338,9 @@ helm:
 		originalData := []byte(`
 helm:
   parameters:
-    - name: baz
-      value: baz
-      forcestring: false
+  - name: baz
+    value: baz
+    forcestring: false
 `)
 		yaml, err := marshalParamsOverride(&app, originalData)
 		require.NoError(t, err)
@@ -1352,12 +1352,12 @@ helm:
 		expected := `
 helm:
   parameters:
-    - name: foo
-      value: bar
-      forcestring: true
-    - name: bar
-      value: foo
-      forcestring: true
+  - name: foo
+    value: bar
+    forcestring: true
+  - name: bar
+    value: foo
+    forcestring: true
 `
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
@@ -1403,12 +1403,12 @@ helm:
 		expected := `
 helm:
   parameters:
-    - name: foo
-      value: bar
-      forcestring: true
-    - name: bar
-      value: foo
-      forcestring: true
+  - name: foo
+    value: bar
+    forcestring: true
+  - name: bar
+    value: foo
+    forcestring: true
 `
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
@@ -2222,7 +2222,7 @@ image:
 		err = setHelmValue(&input, key, value)
 		require.NoError(t, err)
 
-		output, err := marshalWithIndent(&input, 2)
+		output, err := marshalWithIndent(&input, defaultIndent)
 		require.NoError(t, err)
 		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
 	})
@@ -2241,7 +2241,7 @@ image:
 		err = setHelmValue(&input, key, value)
 		require.NoError(t, err)
 
-		output, err := marshalWithIndent(&input, 2)
+		output, err := marshalWithIndent(&input, defaultIndent)
 		require.NoError(t, err)
 		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
 	})
@@ -2269,7 +2269,7 @@ image:
 		err = setHelmValue(&input, key, value)
 		require.NoError(t, err)
 
-		output, err := marshalWithIndent(&input, 2)
+		output, err := marshalWithIndent(&input, defaultIndent)
 		require.NoError(t, err)
 		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
 	})
@@ -2291,7 +2291,7 @@ tag: v2.0.0
 		err = setHelmValue(&input, key, value)
 		require.NoError(t, err)
 
-		output, err := marshalWithIndent(&input, 2)
+		output, err := marshalWithIndent(&input, defaultIndent)
 		require.NoError(t, err)
 		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
 	})
@@ -2312,7 +2312,7 @@ tag: v2.0.0
 		err = setHelmValue(&input, key, value)
 		require.NoError(t, err)
 
-		output, err := marshalWithIndent(&input, 2)
+		output, err := marshalWithIndent(&input, defaultIndent)
 		require.NoError(t, err)
 		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
 	})
@@ -2370,7 +2370,7 @@ image:
 		err = setHelmValue(&input, key, value)
 		require.NoError(t, err)
 
-		output, err := marshalWithIndent(&input, 2)
+		output, err := marshalWithIndent(&input, defaultIndent)
 		require.NoError(t, err)
 		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
 	})
@@ -2403,7 +2403,7 @@ image:
 		err = setHelmValue(&input, key, value)
 		require.NoError(t, err)
 
-		output, err := marshalWithIndent(&input, 2)
+		output, err := marshalWithIndent(&input, defaultIndent)
 		require.NoError(t, err)
 		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
 	})
@@ -2434,70 +2434,7 @@ image:
 		err = setHelmValue(&input, key, value)
 		require.NoError(t, err)
 
-		output, err := marshalWithIndent(&input, 2)
-		require.NoError(t, err)
-		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
-	})
-
-	t.Run("Indentation is guessed from nested mappings", func(t *testing.T) {
-		expected := `
-unguessable:
-   - unguessable
-image:
-   attributes:
-      tag: v2.0.0
-`
-
-		inputData := []byte(`
-unguessable:
-- unguessable
-image:
-   attributes:
-      tag: v1.0.0
-`)
-		input := yaml.Node{}
-		err := yaml.Unmarshal(inputData, &input)
-		require.NoError(t, err)
-		indent := guessIndent(&input)
-
-		key := "image.attributes.tag"
-		value := "v2.0.0"
-
-		err = setHelmValue(&input, key, value)
-		require.NoError(t, err)
-
-		output, err := marshalWithIndent(&input, indent)
-		require.NoError(t, err)
-		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
-	})
-
-	t.Run("Indentation is guessed from indented lists", func(t *testing.T) {
-		expected := `
-unguessable: [unguessable]
-guessable:
-   - guessable
-image:
-   attributes:
-      tag: v2.0.0
-`
-
-		inputData := []byte(`
-unguessable: [unguessable]
-guessable:
-   - guessable
-`)
-		input := yaml.Node{}
-		err := yaml.Unmarshal(inputData, &input)
-		require.NoError(t, err)
-		indent := guessIndent(&input)
-
-		key := "image.attributes.tag"
-		value := "v2.0.0"
-
-		err = setHelmValue(&input, key, value)
-		require.NoError(t, err)
-
-		output, err := marshalWithIndent(&input, indent)
+		output, err := marshalWithIndent(&input, defaultIndent)
 		require.NoError(t, err)
 		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
 	})
