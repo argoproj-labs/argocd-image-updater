@@ -44,7 +44,3 @@ The end-to-end tests are comprised of the following components:
 ## Run the test suite
 
 1. Run `./e2e-test.sh` to run all the tests located in `./suite`.
-
-## Known issues
-
-1. `./suite/004-multiple-images` is failing now.
