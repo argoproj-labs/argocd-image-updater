@@ -443,12 +443,7 @@ func (g GitHubAppCreds) getAccessToken() (string, error) {
 		return itr.Token(ctx)
 	}
 
-	// GitHub API url
-	baseUrl := "https://api.github.com"
-	if g.baseURL != "" {
-		baseUrl = strings.TrimSuffix(g.baseURL, "/")
-	}
-
+	baseUrl := g.getBaseURL()
 	// Create a new GitHub transport
 	c := GetRepoHTTPClient(baseUrl, g.insecure, g, g.proxy)
 	itr, err := ghinstallation.New(c.Transport,
