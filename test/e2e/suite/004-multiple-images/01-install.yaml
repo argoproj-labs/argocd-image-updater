@@ -8,7 +8,7 @@ kind: Application
 metadata:
   name: image-updater-004
   annotations:
-    argocd-image-updater.argoproj.io/image-list: test1=10.42.0.1:30000/test-image:1.X.X,test2=10.42.0.1:30000/other-image:1.X.X
+    argocd-image-updater.argoproj.io/image-list: test-nginx=nginx:1.17.10,test-memcached=memcached:1.6.10
     argocd-image-updater.argoproj.io/test.update-strategy: semver
   finalizers:
     - resources-finalizer.argocd.argoproj.io
@@ -16,7 +16,7 @@ spec:
   project: default
   source:
     repoURL: http://10.42.0.1:30002/testdata.git
-    path: ./004-multi-images
+    path: ./004-multi-images-public
     targetRevision: HEAD
   destination:
     server: https://kubernetes.default.svc
