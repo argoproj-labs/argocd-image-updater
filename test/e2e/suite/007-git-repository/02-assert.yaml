@@ -1,0 +1,25 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: image-updater-007
+spec:
+  source:
+    path: ./001-simple-kustomize-app
+    repoURL: https://10.42.0.1:30003/testdata.git
+    targetRevision: master
+status:
+  health:
+    status: Healthy
+  sync:
+    status: Synced
+  summary:
+    images:
+    - 10.42.0.1:30000/test-image:1.0.2
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  namespace: image-updater-e2e-007
+spec:
+  containers:
+  - image: 10.42.0.1:30000/test-image:1.0.2
