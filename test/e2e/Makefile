@@ -13,6 +13,9 @@ git-container-push: git-container-build
 remove-docker-images:
 	docker rmi $$(docker images | grep $(IMAGE_REPO) | awk '{print $$3}')
 
+remove-k3s-images:
+	sudo k3s crictl rmi $$(sudo k3s crictl images | grep $(IMAGE_REPO) | awk '{print $$3}')
+
 copy-testdata:
 	cp -r testdata containers/git
 
