@@ -18,7 +18,7 @@ jobs:
       - name: Setup Golang
         uses: actions/setup-go@v5
         with:
-          go-version: '1.22'
+          go-version: '1.23'
       - name: Download all Go modules
         run: |
           go mod download
@@ -62,7 +62,7 @@ jobs:
       - name: Setup Golang
         uses: actions/setup-go@v5
         with:
-          go-version: '1.22'
+          go-version: '1.23'
           cache: false
         env:
           GO111MODULE: off
@@ -80,7 +80,7 @@ jobs:
       - name: Setup Golang
         uses: actions/setup-go@v5
         with:
-          go-version: '1.22'
+          go-version: '1.23'
       - name: Run tests
         env:
           GNUPG_DISABLED: true
@@ -127,7 +127,7 @@ jobs:
       - name: Setup Golang
         uses: actions/setup-go@v5
         with:
-          go-version: '1.22'
+          go-version: '1.23'
       - name: Download all Go modules
         run: |
           cd registry-scanner
