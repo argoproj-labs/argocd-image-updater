@@ -2,6 +2,8 @@ module github.com/argoproj-labs/argocd-image-updater
 
 go 1.23.5
 
+toolchain go1.24.1
+
 require (
 	github.com/argoproj-labs/argocd-image-updater/registry-scanner v0.1.0
 	github.com/argoproj/argo-cd/v2 v2.13.6
@@ -15,7 +17,7 @@ require (
 	github.com/patrickmn/go-cache v2.1.0+incompatible
 	github.com/prometheus/client_golang v1.20.5
 	github.com/sirupsen/logrus v1.9.3
-	github.com/spf13/cobra v1.8.1
+	github.com/spf13/cobra v1.9.1
 	github.com/spf13/pflag v1.0.6
 	github.com/stretchr/testify v1.10.0
 	go.uber.org/ratelimit v0.3.1
