@@ -1,7 +1,6 @@
 module github.com/argoproj-labs/argocd-image-updater/registry-scanner
 
 go 1.23.5
-toolchain go1.24.1
 
 require (
 	github.com/Masterminds/semver/v3 v3.3.1
