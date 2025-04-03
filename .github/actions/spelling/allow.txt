@@ -1,3 +1,5 @@
+acr
+ACR
 aic
 amd
 anyfield
@@ -14,6 +16,7 @@ argoprojlabs
 args
 auths
 aws
+azurecr
 babayaga
 baralias
 baz
@@ -217,6 +220,7 @@ TODO
 toolchain
 Torvalds
 Tracef
+tsv
 uber
 unmarshal
 unmarshals
