@@ -1,3 +1,5 @@
+TEST AI GEMINI
+
 # End-to-end tests
 
 This directory contains the end-to-end tests for Argo CD Image Updater. The
