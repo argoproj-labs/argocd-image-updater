@@ -146,7 +146,7 @@ func (src *CredentialSource) FetchCredentials(registryURL string, kubeclient *ku
 			return nil, fmt.Errorf("could not stat %s: %v", src.ScriptPath, err)
 		}
 		cmd := exec.Command(src.ScriptPath)
-		out, err := argoexec.RunCommandExt(cmd, argoexec.CmdOpts{Timeout: 10 * time.Second})
+		out, err := argoexec.RunCommandExt(cmd, argoexec.CmdOpts{Timeout: 30 * time.Second})
 		if err != nil {
 			return nil, fmt.Errorf("error executing %s: %v", src.ScriptPath, err)
 		}
