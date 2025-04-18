@@ -94,6 +94,8 @@ is given, milliseconds will be assumed. If set to `0`, ArgoCD Image Updater
 will exit after the first run, effectively disabling the interval. Default
 value is `2m0s`.
 
+Can also be set using the *IMAGE_UPDATER_INTERVAL* environment variable.
+
 **--kubeconfig *path* **
 
 Specify the Kubernetes client config file to use when running outside a

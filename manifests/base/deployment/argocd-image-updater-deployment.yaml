@@ -59,6 +59,12 @@ spec:
               name: argocd-image-updater-secret
               key: argocd.token
               optional: true
+        - name: IMAGE_UPDATER_INTERVAL
+          valueFrom:
+            configMapKeyRef:
+              key: interval
+              name: argocd-image-updater-config
+              optional: true
         - name: IMAGE_UPDATER_LOGLEVEL
           valueFrom:
             configMapKeyRef:
