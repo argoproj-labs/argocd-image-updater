@@ -3,6 +3,7 @@ package env
 import (
 	"os"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -34,6 +35,29 @@ func Test_GetStringVal(t *testing.T) {
 		_ = os.Setenv("TEST_STRING_VAL", "")
 		defer os.Setenv("TEST_STRING_VAL", "")
 		assert.Equal(t, "invalid", GetStringVal("TEST_STRING_VAL", "invalid"))
+	})
+}
+
+func Test_GetDurationVal(t *testing.T) {
+	t.Run("Get duration value from existing env var", func(t *testing.T) {
+		_ = os.Setenv("TEST_DURATION_VAL", "1m")
+		defer os.Setenv("TEST_DURATION_VAL", "")
+		assert.Equal(t, time.Minute, GetDurationVal("TEST_DURATION_VAL", 2*time.Minute))
+	})
+	t.Run("Get default value from non-existing env var", func(t *testing.T) {
+		_ = os.Setenv("TEST_DURATION_VAL", "")
+		defer os.Setenv("TEST_DURATION_VAL", "")
+		assert.Equal(t, 2*time.Minute, GetDurationVal("TEST_DURATION_VAL", 2*time.Minute))
+	})
+	t.Run("Get default value for bad format env var", func(t *testing.T) {
+		_ = os.Setenv("TEST_DURATION_VAL", "bad format")
+		defer os.Setenv("TEST_DURATION_VAL", "")
+		assert.Equal(t, 2*time.Minute, GetDurationVal("TEST_DURATION_VAL", 2*time.Minute))
+	})
+	t.Run("Get 0 duration value for 0 env var", func(t *testing.T) {
+		_ = os.Setenv("TEST_DURATION_VAL", "0")
+		defer os.Setenv("TEST_DURATION_VAL", "")
+		assert.Equal(t, 0*time.Minute, GetDurationVal("TEST_DURATION_VAL", 2*time.Minute))
 	})
 }
 

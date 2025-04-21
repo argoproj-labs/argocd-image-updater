@@ -5,6 +5,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
 )
@@ -33,6 +34,20 @@ func GetStringVal(envVar string, defaultValue string) string {
 	} else {
 		return defaultValue
 	}
+}
+
+// GetDurationVal retrieves a time.Duration value from given environment envVar
+// Returns default value if envVar is not set or if the provided value is invalid.
+func GetDurationVal(envVar string, defaultValue time.Duration) time.Duration {
+	if val := os.Getenv(envVar); val != "" {
+		duration, err := time.ParseDuration(val)
+		if err != nil {
+			log.Warnf("Invalid duration format '%s' for environment variable '%s'. Using default value: %s", val, envVar, defaultValue)
+			return defaultValue
+		}
+		return duration
+	}
+	return defaultValue
 }
 
 // Helper function to parse a number from an environment variable. Returns a
