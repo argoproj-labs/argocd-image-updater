@@ -3,7 +3,7 @@ module github.com/argoproj-labs/argocd-image-updater
 go 1.23.5
 
 require (
-	github.com/argoproj-labs/argocd-image-updater/registry-scanner v0.1.0
+	github.com/argoproj-labs/argocd-image-updater/registry-scanner v0.0.0-20250421211119-90959ebfd519
 	github.com/argoproj/argo-cd/v2 v2.13.6
 	github.com/argoproj/gitops-engine v0.7.1-0.20250129155113-4c6e03c46314
 	github.com/argoproj/pkg v0.13.7-0.20230627120311-a4dd357b057e
@@ -111,7 +111,7 @@ require (
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/mxk/go-flowrate v0.0.0-20140419014527-cca7078d478f // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
-	github.com/opencontainers/image-spec v1.1.0 // indirect
+	github.com/opencontainers/image-spec v1.1.1 // indirect
 	github.com/peterbourgon/diskv v2.0.1+incompatible // indirect
 	github.com/pjbgf/sha1cd v0.3.2 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
