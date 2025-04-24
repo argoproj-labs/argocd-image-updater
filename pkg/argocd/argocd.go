@@ -25,13 +25,14 @@ import (
 
 // Kubernetes based client
 type k8sClient struct {
-	kubeClient *kube.ImageUpdaterKubernetesClient
+	kubeClient   *kube.ImageUpdaterKubernetesClient
+	appNamespace *string
 }
 
 // GetApplication retrieves an application by name across all namespaces.
 func (client *k8sClient) GetApplication(ctx context.Context, appName string) (*v1alpha1.Application, error) {
-	// List all applications across all namespaces (using empty labelSelector)
-	appList, err := client.ListApplications(v1.NamespaceAll)
+	// List all applications across configured namespace or all namespaces (using empty labelSelector)
+	appList, err := client.ListApplications("")
 	if err != nil {
 		return nil, fmt.Errorf("error listing applications: %w", err)
 	}
@@ -61,7 +62,7 @@ func (client *k8sClient) GetApplication(ctx context.Context, appName string) (*v
 
 // ListApplications lists all applications across all namespaces.
 func (client *k8sClient) ListApplications(labelSelector string) ([]v1alpha1.Application, error) {
-	list, err := client.kubeClient.ApplicationsClientset.ArgoprojV1alpha1().Applications(v1.NamespaceAll).List(context.TODO(), v1.ListOptions{LabelSelector: labelSelector})
+	list, err := client.kubeClient.ApplicationsClientset.ArgoprojV1alpha1().Applications(*client.appNamespace).List(context.TODO(), v1.ListOptions{LabelSelector: labelSelector})
 	if err != nil {
 		return nil, fmt.Errorf("error listing applications: %w", err)
 	}
@@ -99,9 +100,23 @@ func (client *k8sClient) UpdateSpec(ctx context.Context, spec *application.Appli
 	return nil, fmt.Errorf("max retries(%d) reached while updating application: %s", maxRetries, spec.GetName())
 }
 
+type K8SClientOptions struct {
+	AppNamespace string
+}
+
 // NewK8SClient creates a new kubernetes client to interact with kubernetes api-server.
-func NewK8SClient(kubeClient *kube.ImageUpdaterKubernetesClient) (ArgoCD, error) {
-	return &k8sClient{kubeClient: kubeClient}, nil
+func NewK8SClient(kubeClient *kube.ImageUpdaterKubernetesClient, opts *K8SClientOptions) (ArgoCD, error) {
+	// Provide default options if nil
+	if opts == nil {
+		opts = &K8SClientOptions{
+			AppNamespace: v1.NamespaceAll,
+		}
+	}
+
+	return &k8sClient{
+		kubeClient:   kubeClient,
+		appNamespace: &opts.AppNamespace,
+	}, nil
 }
 
 // Native

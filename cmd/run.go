@@ -259,7 +259,7 @@ func runImageUpdater(cfg *ImageUpdaterConfig, warmUp bool) (argocd.ImageUpdaterR
 	var argoClient argocd.ArgoCD
 	switch cfg.ApplicationsAPIKind {
 	case applicationsAPIKindK8S:
-		argoClient, err = argocd.NewK8SClient(cfg.KubeClient)
+		argoClient, err = argocd.NewK8SClient(cfg.KubeClient, &argocd.K8SClientOptions{AppNamespace: cfg.AppNamespace})
 	case applicationsAPIKindArgoCD:
 		argoClient, err = argocd.NewAPIClient(&cfg.ClientOpts)
 	default:
