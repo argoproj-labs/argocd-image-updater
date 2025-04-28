@@ -1,0 +1,23 @@
+# permissions for end users to view imageupdaters.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/name: image-updater
+    app.kubernetes.io/managed-by: kustomize
+  name: imageupdater-viewer-role
+rules:
+- apiGroups:
+  - argocd-image-updater.argoproj.io
+  resources:
+  - imageupdaters
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - argocd-image-updater.argoproj.io
+  resources:
+  - imageupdaters/status
+  verbs:
+  - get

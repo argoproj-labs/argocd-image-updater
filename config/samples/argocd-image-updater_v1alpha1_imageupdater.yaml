@@ -1,0 +1,9 @@
+apiVersion: argocd-image-updater.argoproj.io/v1alpha1
+kind: ImageUpdater
+metadata:
+  labels:
+    app.kubernetes.io/name: image-updater
+    app.kubernetes.io/managed-by: kustomize
+  name: imageupdater-sample
+spec:
+  # TODO(user): Add fields here
