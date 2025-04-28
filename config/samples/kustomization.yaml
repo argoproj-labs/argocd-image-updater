@@ -1,0 +1,4 @@
+## Append samples of your project ##
+resources:
+- argocd-image-updater_v1alpha1_imageupdater.yaml
+# +kubebuilder:scaffold:manifestskustomizesamples
