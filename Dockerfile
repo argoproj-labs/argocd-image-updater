@@ -1,29 +1,33 @@
-FROM golang:1.23 AS builder
+# Build the manager binary
+FROM golang:1.22 AS builder
+ARG TARGETOS
+ARG TARGETARCH
 
-RUN mkdir -p /src/argocd-image-updater
-WORKDIR /src/argocd-image-updater
-# cache dependencies as a layer for faster rebuilds
-COPY go.mod go.sum ./
+WORKDIR /workspace
+# Copy the Go Modules manifests
+COPY go.mod go.mod
+COPY go.sum go.sum
+# cache deps before building and copying source so that we don't need to re-download as much
+# and so that source changes don't invalidate our downloaded layer
 RUN go mod download
-COPY . .
 
-RUN mkdir -p dist && \
-	make controller
+# Copy the go source
+COPY cmd/main.go cmd/main.go
+COPY api/ api/
+COPY internal/controller/ internal/controller/
 
-FROM alpine:3.22
+# Build
+# the GOARCH has not a default value to allow the binary be built according to the host where the command
+# was called. For example, if we call make docker-build in a local env which has the Apple Silicon M1 SO
+# the docker BUILDPLATFORM arg will be linux/arm64 when for Apple x86 it will be linux/amd64. Therefore,
+# by leaving it empty we can ensure that the container and binary shipped on it will have the same platform.
+RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o manager cmd/main.go
 
-RUN apk update && \
-    apk upgrade && \
-    apk add ca-certificates git openssh-client aws-cli tini gpg gpg-agent && \
-    rm -rf /var/cache/apk/*
+# Use distroless as minimal base image to package the manager binary
+# Refer to https://github.com/GoogleContainerTools/distroless for more details
+FROM gcr.io/distroless/static:nonroot
+WORKDIR /
+COPY --from=builder /workspace/manager .
+USER 65532:65532
 
-RUN mkdir -p /usr/local/bin
-RUN mkdir -p /app/config
-RUN adduser --home "/app" --disabled-password --uid 1000 argocd
-
-COPY --from=builder /src/argocd-image-updater/dist/argocd-image-updater /usr/local/bin/
-COPY hack/git-ask-pass.sh /usr/local/bin/git-ask-pass.sh
-
-USER 1000
-
-ENTRYPOINT ["/sbin/tini", "--", "/usr/local/bin/argocd-image-updater"]
+ENTRYPOINT ["/manager"]
