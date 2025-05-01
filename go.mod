@@ -1,6 +1,7 @@
 module github.com/argoproj-labs/argocd-image-updater
 
 go 1.23.5
+toolchain go1.24.1
 
 require (
 	github.com/argoproj-labs/argocd-image-updater/registry-scanner v0.0.0-20250421211119-90959ebfd519
@@ -9,7 +10,6 @@ require (
 	github.com/argoproj/pkg v0.13.7-0.20230627120311-a4dd357b057e
 	github.com/bmatcuk/doublestar/v4 v4.8.1
 	github.com/bradleyfalzon/ghinstallation/v2 v2.14.0
-	github.com/distribution/distribution/v3 v3.0.0-20230722181636-7b502560cad4
 	github.com/go-git/go-git/v5 v5.13.2
 	github.com/google/uuid v1.6.0
 	github.com/patrickmn/go-cache v2.1.0+incompatible
@@ -21,7 +21,7 @@ require (
 	go.uber.org/ratelimit v0.3.1
 	golang.org/x/crypto v0.36.0
 	golang.org/x/exp v0.0.0-20240719175910-8a7402abbf56
-	golang.org/x/oauth2 v0.27.0
+	golang.org/x/oauth2 v0.28.0
 	golang.org/x/sync v0.12.0
 	google.golang.org/grpc v1.70.0
 	k8s.io/api v0.32.2
@@ -51,10 +51,9 @@ require (
 	github.com/cyphar/filepath-securejoin v0.3.6 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
+	github.com/distribution/distribution/v3 v3.0.0 // indirect
 	github.com/distribution/reference v0.6.0 // indirect
 	github.com/dlclark/regexp2 v1.11.4 // indirect
-	github.com/docker/go-metrics v0.0.1 // indirect
-	github.com/docker/libtrust v0.0.0-20160708172513-aabc10ec26b7 // indirect
 	github.com/emicklei/go-restful/v3 v3.11.0 // indirect
 	github.com/emirpasic/gods v1.18.1 // indirect
 	github.com/evanphx/json-patch v5.9.0+incompatible // indirect
@@ -84,14 +83,12 @@ require (
 	github.com/google/go-querystring v1.1.0 // indirect
 	github.com/google/gofuzz v1.2.0 // indirect
 	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510 // indirect
-	github.com/gorilla/mux v1.8.0 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/gregjones/httpcache v0.0.0-20190611155906-901d90724c79 // indirect
 	github.com/grpc-ecosystem/go-grpc-middleware v1.4.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway v1.16.0 // indirect
 	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
 	github.com/hashicorp/go-retryablehttp v0.7.7 // indirect
-	github.com/hashicorp/golang-lru v0.5.4 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/jbenet/go-context v0.0.0-20150711004518-d14ea06fba99 // indirect
 	github.com/jonboulle/clockwork v0.4.0 // indirect
@@ -141,7 +138,7 @@ require (
 	golang.org/x/term v0.30.0 // indirect
 	golang.org/x/text v0.23.0 // indirect
 	golang.org/x/time v0.7.0 // indirect
-	google.golang.org/genproto v0.0.0-20240123012728-ef4313101c80 // indirect
+	google.golang.org/genproto v0.0.0-20240903143218-8af14fe29dc1 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20241202173237-19429a94021a // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20241202173237-19429a94021a // indirect
 	google.golang.org/protobuf v1.36.1 // indirect
