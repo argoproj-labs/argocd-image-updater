@@ -29,8 +29,8 @@ github.com/anmitsu/go-shlex v0.0.0-20200514113438-38f4b401e2be/go.mod h1:ySMOLuW
 github.com/antihax/optional v1.0.0/go.mod h1:uupD/76wgC+ih3iEmQUL+0Ugr19nfwCT1kdvxnR2qWY=
 github.com/argoproj-labs/argocd-image-updater/registry-scanner v0.0.0-20250421211119-90959ebfd519 h1:URnrR3+5zLMkj2o10MbSE0aocgxBAUHtXKQo9cUiAro=
 github.com/argoproj-labs/argocd-image-updater/registry-scanner v0.0.0-20250421211119-90959ebfd519/go.mod h1:5kPCfISgNKi7q1bKdf35qP7AAJuNy35E8cqA1NeT5AU=
-github.com/argoproj/argo-cd/v2 v2.13.6 h1:AoOaNidqkGgnH/prgbLp5PyFxBU0UGJUGdXJw+UDvqM=
-github.com/argoproj/argo-cd/v2 v2.13.6/go.mod h1:+PE6B/sg2+vq7/WFMvc+eK3hVRnQNNYcExZKLqfXRyU=
+github.com/argoproj/argo-cd/v2 v2.13.7 h1:EjPESmxq/RkuV6yYYW2sjZvCxPTM4F58J1ze1thOD6A=
+github.com/argoproj/argo-cd/v2 v2.13.7/go.mod h1:VnIEoaw53mwPEGKqixL3ee1qfP3tNUFj+9RHJVhmxws=
 github.com/argoproj/gitops-engine v0.7.1-0.20250129155113-4c6e03c46314 h1:UIM6b4b/eNmWLwnsaJNmLzcm0qjHCuyHTuJKeIq2WeE=
 github.com/argoproj/gitops-engine v0.7.1-0.20250129155113-4c6e03c46314/go.mod h1:b1vuwkyMUszyUK+USUJqC8vJijnQsEPNDpC+sDdDLtM=
 github.com/argoproj/pkg v0.13.7-0.20230627120311-a4dd357b057e h1:kuLQvJqwwRMQTheT4MFyKVM8Txncu21CHT4yBWUl1Mk=
