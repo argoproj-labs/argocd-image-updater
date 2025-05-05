@@ -1,0 +1,5 @@
+replicaCount: 1
+image:
+  name: docker.io/library/nginx
+  tag: "latest"
+nameOverride: "nginx"

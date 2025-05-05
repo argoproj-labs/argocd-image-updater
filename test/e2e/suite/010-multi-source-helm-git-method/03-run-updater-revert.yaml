@@ -1,0 +1,14 @@
+apiVersion: kuttl.dev/v1beta1
+kind: TestStep
+commands:
+- script: |
+    kubectl patch -n $NAMESPACE application image-updater-010 \
+      --type=merge \
+      --patch='{"metadata": {"annotations": {"argocd-image-updater.argoproj.io/image-list": "gcr.io/heptio-images/ks-guestbook-demo:0.1,nginx:1.17.0"}}}'
+- script: |
+    sleep 2
+- script: |
+    ${SRC_DIR}/dist/argocd-image-updater run --once \
+      --argocd-namespace argocd-image-updater-e2e \
+      --registries-conf-path ${SRC_DIR}/test/e2e/assets/registries.conf \
+      --loglevel trace

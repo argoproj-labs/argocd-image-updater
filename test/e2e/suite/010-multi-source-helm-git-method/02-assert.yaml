@@ -1,0 +1,44 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: image-updater-010
+spec:
+  source:
+    path: ./008-simple-helm-app
+    repoURL: https://10.42.0.1:30003/testdata.git
+    targetRevision: HEAD
+status:
+  health:
+    status: Healthy
+  sync:
+    status: Synced
+  summary:
+    images:
+      - gcr.io/heptio-images/ks-guestbook-demo:0.2@sha256:e6fbd640820c32c847a53b93eb7b404f25ffb56df1cc16d0711eec3a405d6509
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: image-updater-010
+spec:
+  source:
+    path: ./009-multisource-helm
+    repoURL: https://10.42.0.1:30003/testdata.git
+    targetRevision: HEAD
+status:
+  health:
+    status: Healthy
+  sync:
+    status: Synced
+  summary:
+    images:
+      - nginx:1.17.10
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  namespace: image-updater-e2e-010
+spec:
+  containers:
+    - image: gcr.io/heptio-images/ks-guestbook-demo:0.2@sha256:e6fbd640820c32c847a53b93eb7b404f25ffb56df1cc16d0711eec3a405d6509
+    - image: nginx:1.17.10
