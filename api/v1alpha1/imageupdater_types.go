@@ -101,7 +101,7 @@ type ImageUpdateConfig struct {
 	Strategy string `json:"strategy"`
 }
 
-//ImageStatus contains information for an image:version and its update status in hosting applications
+// ImageStatus contains information for an image:version and its update status in hosting applications
 type ImageStatus struct {
 	// Name indicates the image name
 	Name string `json:"name"`
