@@ -18,11 +18,10 @@ package controller
 
 import (
 	"context"
-
+	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"time"
 
 	argocdimageupdaterv1alpha1 "github.com/argoproj-labs/argocd-image-updater/api/v1alpha1"
@@ -33,6 +32,7 @@ type ImageUpdaterReconciler struct {
 	client.Client
 	Scheme   *runtime.Scheme
 	Interval time.Duration
+	Log      logr.Logger
 }
 
 // +kubebuilder:rbac:groups=argocd-image-updater.argoproj.io,resources=imageupdaters,verbs=get;list;watch;create;update;patch;delete
@@ -76,8 +76,7 @@ type ImageUpdaterReconciler struct {
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.19.0/pkg/reconcile
 func (r *ImageUpdaterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	log := logf.FromContext(ctx)
-	log = log.WithValues("imageupdater", req.NamespacedName) // Add context to logs
+	log := r.Log.WithValues("imageupdater", req.NamespacedName) // Add context to logs
 	log.Info("Reconciling ImageUpdater")
 
 	// TODO: Implement the full reconciliation logic as described in the docstring:
