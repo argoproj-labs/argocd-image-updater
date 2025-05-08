@@ -218,7 +218,7 @@ the name `foo/bar` was updated to the new tag `1.1`.
 argocd-image-updater.argoproj.io/git-branch: main:image-updater{{range .Images}}-{{.Name}}-{{.NewTag}}{{end}}
 ```
 
-Alternatively, to assure unique branch names you could use the SHA1 representation of the changes:
+Alternatively, to assure unique branch names you could use the SHA256 representation of the changes:
 
 ```yaml
 argocd-image-updater.argoproj.io/git-branch: main:image-updater-{{.SHA256}}
