@@ -1023,7 +1023,7 @@ func TestKubernetesClient(t *testing.T) {
 			Namespace: "testns1",
 		},
 		ApplicationsClientset: fake.NewSimpleClientset(app1, app2),
-	})
+	}, nil)
 
 	require.NoError(t, err)
 
@@ -1064,7 +1064,7 @@ func TestKubernetesClient(t *testing.T) {
 		// Create the Kubernetes client
 		client, err := NewK8SClient(&kube.ImageUpdaterKubernetesClient{
 			ApplicationsClientset: clientset,
-		})
+		}, nil)
 		require.NoError(t, err)
 
 		// Test ListApplications error handling
@@ -1094,7 +1094,7 @@ func TestKubernetesClient(t *testing.T) {
 		// Create the Kubernetes client
 		client, err := NewK8SClient(&kube.ImageUpdaterKubernetesClient{
 			ApplicationsClientset: clientset,
-		})
+		}, nil)
 		require.NoError(t, err)
 
 		// Test GetApplication with multiple matching applications
@@ -1124,7 +1124,7 @@ func TestKubernetesClientUpdateSpec(t *testing.T) {
 
 		client, err := NewK8SClient(&kube.ImageUpdaterKubernetesClient{
 			ApplicationsClientset: clientset,
-		})
+		}, nil)
 		require.NoError(t, err)
 
 		appName := "test-app"
@@ -1145,7 +1145,7 @@ func TestKubernetesClientUpdateSpec(t *testing.T) {
 
 		client, err := NewK8SClient(&kube.ImageUpdaterKubernetesClient{
 			ApplicationsClientset: clientset,
-		})
+		}, nil)
 		require.NoError(t, err)
 
 		appName := "test-app"
@@ -1169,7 +1169,7 @@ func TestKubernetesClientUpdateSpec(t *testing.T) {
 
 		client, err := NewK8SClient(&kube.ImageUpdaterKubernetesClient{
 			ApplicationsClientset: clientset,
-		})
+		}, nil)
 		require.NoError(t, err)
 
 		clientset.PrependReactor("update", "applications", func(action k8stesting.Action) (handled bool, ret runtime.Object, err error) {
@@ -1198,7 +1198,7 @@ func TestKubernetesClientUpdateSpec(t *testing.T) {
 
 		client, err := NewK8SClient(&kube.ImageUpdaterKubernetesClient{
 			ApplicationsClientset: clientset,
-		})
+		}, nil)
 		require.NoError(t, err)
 
 		clientset.PrependReactor("update", "applications", func(action k8stesting.Action) (handled bool, ret runtime.Object, err error) {
