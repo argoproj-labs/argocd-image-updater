@@ -29,9 +29,16 @@ type k8sClient struct {
 	appNamespace *string
 }
 
-// GetApplication retrieves an application by name across all namespaces.
+// GetApplication retrieves an application by name, either in a specific namespace or all namespaces depending on client configuration.
 func (client *k8sClient) GetApplication(ctx context.Context, appName string) (*v1alpha1.Application, error) {
 	// List all applications across configured namespace or all namespaces (using empty labelSelector)
+	if *client.appNamespace != v1.NamespaceAll {
+		return client.kubeClient.ApplicationsClientset.ArgoprojV1alpha1().Applications(*client.appNamespace).Get(ctx, appName, v1.GetOptions{})
+	}
+	return client.getApplicationInAllNamespaces(ctx, appName)
+}
+
+func (client *k8sClient) getApplicationInAllNamespaces(ctx context.Context, appName string) (*v1alpha1.Application, error) {
 	appList, err := client.ListApplications("")
 	if err != nil {
 		return nil, fmt.Errorf("error listing applications: %w", err)
