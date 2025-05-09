@@ -10,9 +10,10 @@ const (
 
 // Helm related annotations
 const (
-	HelmParamImageNameAnnotationSuffix = "/%s.helm.image-name"
-	HelmParamImageTagAnnotationSuffix  = "/%s.helm.image-tag"
-	HelmParamImageSpecAnnotationSuffix = "/%s.helm.image-spec"
+	HelmParamImageNameAnnotationSuffix   = "/%s.helm.image-name"
+	HelmParamImageTagAnnotationSuffix    = "/%s.helm.image-tag"
+	HelmParamImageSpecAnnotationSuffix   = "/%s.helm.image-spec"
+	HelmParamReleaseNameAnnotationSuffix = "/%s.helm.release-name"
 )
 
 // Kustomize related annotations
