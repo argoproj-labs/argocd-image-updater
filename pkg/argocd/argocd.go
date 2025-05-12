@@ -35,10 +35,10 @@ func (client *k8sClient) GetApplication(ctx context.Context, appName string) (*v
 	if *client.appNamespace != v1.NamespaceAll {
 		return client.kubeClient.ApplicationsClientset.ArgoprojV1alpha1().Applications(*client.appNamespace).Get(ctx, appName, v1.GetOptions{})
 	}
-	return client.getApplicationInAllNamespaces(ctx, appName)
+	return client.getApplicationInAllNamespaces(appName)
 }
 
-func (client *k8sClient) getApplicationInAllNamespaces(ctx context.Context, appName string) (*v1alpha1.Application, error) {
+func (client *k8sClient) getApplicationInAllNamespaces(appName string) (*v1alpha1.Application, error) {
 	appList, err := client.ListApplications("")
 	if err != nil {
 		return nil, fmt.Errorf("error listing applications: %w", err)
