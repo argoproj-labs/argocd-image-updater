@@ -28,7 +28,7 @@ Runs the Argo CD Image Updater, possibly in an endless loop.
 
 **--application-namespace *namespace***
 
-Specifies the Kubernetes namespace in which Argo Image Updater will manage Argo CD Applications when using the Kubernetes-based Application API. By default, applications in all namespaces are considered. This flag can be used to limit scope to a single namespace for performance, security, or organizational reasons.
+Specifies the Kubernetes namespace in which Argo CD Image Updater will manage Argo CD Applications when using the Kubernetes-based Application API. By default, applications in all namespaces are considered. This flag can be used to limit scope to a single namespace for performance, security, or organizational reasons.
 
 **--argocd-auth-token *token***
 
