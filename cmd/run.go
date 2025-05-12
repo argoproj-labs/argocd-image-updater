@@ -24,6 +24,8 @@ import (
 	"github.com/spf13/cobra"
 
 	"golang.org/x/sync/semaphore"
+
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // newRunCommand implements "run" command
@@ -235,6 +237,7 @@ func newRunCommand() *cobra.Command {
 	runCmd.Flags().BoolVar(&disableKubernetes, "disable-kubernetes", false, "do not create and use a Kubernetes client")
 	runCmd.Flags().IntVar(&cfg.MaxConcurrency, "max-concurrency", 10, "maximum number of update threads to run concurrently")
 	runCmd.Flags().StringVar(&cfg.ArgocdNamespace, "argocd-namespace", "", "namespace where ArgoCD runs in (current namespace by default)")
+	runCmd.Flags().StringVar(&cfg.AppNamespace, "application-namespace", v1.NamespaceAll, "namespace where Argo Image Updater will manage applications (all namespaces by default)")
 	runCmd.Flags().StringSliceVar(&cfg.AppNamePatterns, "match-application-name", nil, "patterns to match application name against")
 	runCmd.Flags().StringVar(&cfg.AppLabel, "match-application-label", "", "label selector to match application labels against")
 	runCmd.Flags().BoolVar(&warmUpCache, "warmup-cache", true, "whether to perform a cache warm-up on startup")
@@ -256,7 +259,7 @@ func runImageUpdater(cfg *ImageUpdaterConfig, warmUp bool) (argocd.ImageUpdaterR
 	var argoClient argocd.ArgoCD
 	switch cfg.ApplicationsAPIKind {
 	case applicationsAPIKindK8S:
-		argoClient, err = argocd.NewK8SClient(cfg.KubeClient)
+		argoClient, err = argocd.NewK8SClient(cfg.KubeClient, &argocd.K8SClientOptions{AppNamespace: cfg.AppNamespace})
 	case applicationsAPIKindArgoCD:
 		argoClient, err = argocd.NewAPIClient(&cfg.ClientOpts)
 	default:
