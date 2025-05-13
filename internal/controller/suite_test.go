@@ -19,19 +19,20 @@ package controller
 import (
 	"context"
 	"fmt"
+	"github.com/bombsimon/logrusr/v2"
 	"path/filepath"
 	"runtime"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"testing"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
-	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	argocdimageupdaterv1alpha1 "github.com/argoproj-labs/argocd-image-updater/api/v1alpha1"
 	// +kubebuilder:scaffold:imports
@@ -53,7 +54,12 @@ func TestControllers(t *testing.T) {
 }
 
 var _ = BeforeSuite(func() {
-	logf.SetLogger(zap.New(zap.WriteTo(GinkgoWriter), zap.UseDevMode(true)))
+	err := log.SetLogLevel("trace")
+	if err != nil {
+		return
+	}
+	logrLogger := logrusr.New(log.Log()) // log.Log() should return the *logrus.Logger
+	ctrl.SetLogger(logrLogger)
 
 	ctx, cancel = context.WithCancel(context.TODO())
 
@@ -71,7 +77,6 @@ var _ = BeforeSuite(func() {
 			fmt.Sprintf("1.31.0-%s-%s", runtime.GOOS, runtime.GOARCH)),
 	}
 
-	var err error
 	// cfg is defined in this file globally.
 	cfg, err = testEnv.Start()
 	Expect(err).NotTo(HaveOccurred())
