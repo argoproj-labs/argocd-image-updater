@@ -118,8 +118,8 @@ Argo CD Image Updater can update images according to the following strategies:
 |Strategy|Description|
 |--------|-----------|
 |`semver`| Update to the tag with the highest allowed semantic version|
-|`latest`| Update to the tag with the most recent creation date|
-|`name`  | Update to the tag with the latest entry from an alphabetically sorted list|
+|`latest/newest-build`| Update to the tag with the most recent creation date|
+|`name/alphabetical`  | Update to the tag with the latest entry from an alphabetically sorted list|
 |`digest`| Update to the most recent pushed version of a mutable tag|
 
 You can define the update strategy for each image independently by setting the
@@ -132,13 +132,18 @@ argocd-image-updater.argoproj.io/<image_alias>.update-strategy: <strategy>
 If no update strategy is given, or an invalid value is used, the default
 strategy `semver` will be used.
 
+!!!warning "Renamed image update strategies"
+    The `latest` strategy has been renamed to `newest-build`, and `name` strategy has been renamed to `alphabetical`. 
+    Please switch to the new convention as support for the old naming convention will be removed in future releases.
+
 !!!warning
     As of November 2020, Docker Hub has introduced pull limits for accounts on
-    the free plan and unauthenticated requests. The `latest` update strategy
+    the free plan and unauthenticated requests. The `latest/newest-build` update strategy
     will perform manifest pulls for determining the most recently pushed tags,
     and these will count into your pull limits. So unless you are not affected
-    by these pull limits, it is **not recommended** to use the `latest` update
+    by these pull limits, it is **not recommended** to use the `latest/newest-build` update
     strategy with images hosted on Docker Hub.
+
 
 ## Filtering tags
 
