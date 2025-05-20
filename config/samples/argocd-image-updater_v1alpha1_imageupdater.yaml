@@ -6,4 +6,54 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
   name: imageupdater-sample
 spec:
-  # TODO(user): Add fields here
+  namespace: argocd
+  commonUpdateSettings:
+    updateStrategy: "semver" # Default strategy if not specified per image
+    forceUpdate: true
+    allowTags: "regexp:^[0-9a-f]{7}$"
+    ignoreTags: [ "latest", "master" ]
+    pullSecret: "secret:<namespace>/<secret_name>#<field>"
+  writeBackConfig:
+    method: "git:secret:argocd-image-updater/git-creds"
+    gitConfig: # Group git-related settings. Should be ignored when writeBackMethod: "argocd"
+      repository: "git@github.com:example/example.git"
+      branch: "main"
+      writeBackTarget: "helmvalues:/helm/config/test-values.yaml" # OR "kustomization:/config/overlays/bar" OR "helmvalues:/{{ .app.path.path }}/values.yaml" - for ApplicationSet.
+  applicationRefs:
+    - namePattern: "image-updater-001"
+    - namePattern: "image-updater-*"
+      labelSelectors:
+        matchLabels:
+          app: "true"
+    - namePattern: "app3"
+      commonUpdateSettings:
+        updateStrategy: "latest" # Default strategy if not specified per image
+        forceUpdate: true
+        allowTags: "regexp:^[0-9a-f]{7}$"
+        ignoreTags: [ "latest", "master" ]
+        pullSecret: "secret:<namespace>/<secret_name>#<field>"
+      writeBackConfig:
+        method: "git:secret:argocd-image-updater/git-creds"
+        gitConfig: # Group git-related settings. Should be ignored when writeBackMethod: "argocd"
+          repository: "git@github.com:example/example.git"
+          branch: "main"
+          writeBackTarget: "helmvalues:/helm/config/test-values.yaml" # OR "kustomization:/config/overlays/bar" OR "helmvalues:/{{ .app.path.path }}/values.yaml" - for ApplicationSet.
+    # Image List for the App and Per-Image Overrides
+    # (Maps to argocd-image-updater.argoproj.io/image-list and <alias>.* annotations)
+  images:
+    - alias: "nginx" # Maps to current '<alias>=' part of image-list annotation. Should clearly separate the image name (for registry) from its initial version/tag. What we are currently using before = sign (image=image:version)
+      imageName: "nginx:1.17.10" # The actual image name for registry lookup OR 10.42.0.1:30000/test-image:latest
+      commonUpdateSettings:
+        updateStrategy: "semver" # Per-image override
+        forceUpdate: true
+        allowTags: "regexp:^[0-9a-f]{7}$"
+        ignoreTags: [ "latest", "master" ]
+        pullSecret: "secret:<namespace>/<secret_name>#<field>"
+      platforms: [ "linux/arm64", "linux/amd64" ]
+      manifestTargets:
+        helm:
+          name: "dex.image.name"
+          tag: "dex.image.tag" # e.g., for nginx.image.repository
+          spec: "image/name:1.0"
+#        kustomize:
+#          name: "quay.io/argoproj/argocd"
