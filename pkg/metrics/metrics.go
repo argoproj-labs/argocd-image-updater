@@ -9,10 +9,13 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
-// TODO: These should not be global vars with this package
-var epm *EndpointMetrics
-var apm *ApplicationMetrics
-var cpm *ClientMetrics
+type Metrics struct {
+	Endpoint     *EndpointMetrics
+	Applications *ApplicationMetrics
+	Clients      *ClientMetrics
+}
+
+var defaultMetrics *Metrics
 
 // EndpointMetrics stores metrics for registry endpoints
 type EndpointMetrics struct {
@@ -117,19 +120,36 @@ func NewClientMetrics() *ClientMetrics {
 	return metrics
 }
 
+func NewMetrics() *Metrics {
+	return &Metrics{
+		Endpoint:     NewEndpointMetrics(),
+		Applications: NewApplicationsMetrics(),
+		Clients:      NewClientMetrics(),
+	}
+}
+
 // Endpoint returns the global EndpointMetrics object
 func Endpoint() *EndpointMetrics {
-	return epm
+	if defaultMetrics == nil {
+		return nil
+	}
+	return defaultMetrics.Endpoint
 }
 
 // Applications returns the global ApplicationMetrics object
 func Applications() *ApplicationMetrics {
-	return apm
+	if defaultMetrics == nil {
+		return nil
+	}
+	return defaultMetrics.Applications
 }
 
 // Clients returns the global ClientMetrics object
 func Clients() *ClientMetrics {
-	return cpm
+	if defaultMetrics == nil {
+		return nil
+	}
+	return defaultMetrics.Clients
 }
 
 // IncreaseRequest increases the request counter of EndpointMetrics object
@@ -180,9 +200,7 @@ func (cpm *ClientMetrics) IncreaseK8sClientError(by int) {
 	cpm.kubeAPIRequestsErrorsTotal.Add(float64(by))
 }
 
-// TODO: This is a lazy workaround, better initialize it somehwere else
-func init() {
-	epm = NewEndpointMetrics()
-	apm = NewApplicationsMetrics()
-	cpm = NewClientMetrics()
+// InitMetrics initializes the global metrics objects
+func InitMetrics() {
+	defaultMetrics = NewMetrics()
 }

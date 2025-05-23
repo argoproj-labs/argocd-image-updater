@@ -138,6 +138,9 @@ func newRunCommand() *cobra.Command {
 				cfg.ClientOpts.Plaintext,
 			)
 
+			// Initialize metrics before starting the metrics server or using any counters
+			metrics.InitMetrics()
+
 			// Health server will start in a go routine and run asynchronously
 			var hsErrCh chan error
 			var msErrCh chan error
