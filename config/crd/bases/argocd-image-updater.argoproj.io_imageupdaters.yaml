@@ -88,6 +88,135 @@ spec:
                             This acts as the default if not overridden at a more specific level.
                           type: string
                       type: object
+                    images:
+                      description: |-
+                        Images contains a list of configurations that how images should be updated.
+                        These rules apply to all applications selected by ApplicationRefs, and each
+                        image can override global/ApplicationRef settings.
+                      items:
+                        description: |-
+                          ImageConfig defines how a specific container image should be discovered, updated,
+                          and how those updates should be reflected in application manifests.
+                        properties:
+                          alias:
+                            description: |-
+                              Alias is a short, user-defined name for this image configuration.
+                              This field is mandatory.
+                            type: string
+                          commonUpdateSettings:
+                            description: CommonUpdateSettings overrides the effective
+                              default CommonUpdateSettings for this specific image.
+                            properties:
+                              allowTags:
+                                description: |-
+                                  AllowTags is a regex pattern for tags to allow.
+                                  This acts as the default if not overridden.
+                                type: string
+                              forceUpdate:
+                                default: false
+                                description: |-
+                                  ForceUpdate specifies whether updates should be forced.
+                                  This acts as the default if not overridden.
+                                type: boolean
+                              ignoreTags:
+                                description: |-
+                                  IgnoreTags is a list of glob-like patterns of tags to ignore.
+                                  This acts as the default and can be overridden at more specific levels.
+                                items:
+                                  type: string
+                                type: array
+                                x-kubernetes-list-type: atomic
+                              pullSecret:
+                                description: |-
+                                  PullSecret is the pull secret to use for images.
+                                  This acts as the default if not overridden.
+                                type: string
+                              updateStrategy:
+                                default: semver
+                                description: |-
+                                  UpdateStrategy defines the update strategy to apply.
+                                  Examples: "semver", "latest", "digest", "name".
+                                  This acts as the default if not overridden at a more specific level.
+                                type: string
+                            type: object
+                          imageName:
+                            description: |-
+                              ImageName is the full identifier of the image to be tracked,
+                              including the registry (if not Docker Hub), the image name, and an initial/current tag or version.
+                              This is the string used to query the container registry and also as a base for finding updates.
+                              Example: "docker.io/library/nginx:1.17.10", "quay.io/prometheus/node-exporter:v1.5.0".
+                              This field is mandatory.
+                            type: string
+                          manifestTargets:
+                            description: |-
+                              ManifestTarget defines how and where to update this image in Kubernetes manifests.
+                              Only one of Helm or Kustomize should be specified within this block.
+                              This whole block is optional if the image update isn't written to a manifest in a structured way.
+                            properties:
+                              helm:
+                                description: |-
+                                  Helm specifies update parameters if the target manifest is managed by Helm
+                                  and updates are to be made to Helm values files.
+                                properties:
+                                  name:
+                                    description: |-
+                                      Name is the dot-separated path to the Helm key for the image repository/name part.
+                                      Example: "image.repository", "frontend.deployment.image.name".
+                                      This field is required if the Helm target is used.
+                                    type: string
+                                  spec:
+                                    description: |-
+                                      Spec is an optional dot-separated path to a Helm key where the full image string
+                                      (e.g., "image/name:1.0") should be written.
+                                      Use this if your Helm chart expects the entire image reference in a single field,
+                                      rather than separate name/tag fields. If this is set, other Helm parameter-related
+                                      options will be ignored.
+                                    type: string
+                                  tag:
+                                    description: |-
+                                      Tag is the dot-separated path to the Helm key for the image tag part.
+                                      Example: "image.tag", "frontend.deployment.image.version".
+                                      This field is required if the Helm target is used.
+                                    type: string
+                                required:
+                                - name
+                                - tag
+                                type: object
+                              kustomize:
+                                description: |-
+                                  Kustomize specifies update parameters if the target manifest is managed by Kustomize
+                                  and updates involve changing image tags in Kustomize configurations.
+                                properties:
+                                  name:
+                                    description: |-
+                                      Name is the image name (which can include the registry and an initial tag)
+                                      as it appears in the `images` list of a kustomization.yaml file that needs to be updated.
+                                      The updater will typically change the tag or add a digest to this entry.
+                                      Example: "docker.io/library/nginx".
+                                      This field is required if the Kustomize target is used.
+                                    type: string
+                                required:
+                                - name
+                                type: object
+                            type: object
+                            x-kubernetes-validations:
+                            - message: Exactly one of helm or kustomize must be specified
+                                within manifestTargets if the block is present.
+                              rule: 'has(self.helm) ? !has(self.kustomize) : has(self.kustomize)'
+                          platforms:
+                            description: |-
+                              Platforms specifies a list of target platforms (e.g., "linux/amd64", "linux/arm64").
+                              If specified, the image updater will consider these platforms when checking for new versions or digests.
+                            items:
+                              type: string
+                            type: array
+                            x-kubernetes-list-type: atomic
+                        required:
+                        - alias
+                        - imageName
+                        type: object
+                      minItems: 1
+                      type: array
                     labelSelectors:
                       description: LabelSelectors indicates the label selectors to
                         apply for application selection
@@ -176,6 +305,7 @@ spec:
                           type: string
                       type: object
                   required:
+                  - images
                   - namePattern
                   type: object
                 minItems: 1
@@ -218,135 +348,6 @@ spec:
                       This acts as the default if not overridden at a more specific level.
                     type: string
                 type: object
-              images:
-                description: |-
-                  Images contains a list of configurations that how images should be updated.
-                  These rules apply to all applications selected by ApplicationRefs, and each
-                  image can override global/ApplicationRef settings.
-                items:
-                  description: |-
-                    ImageConfig defines how a specific container image should be discovered, updated,
-                    and how those updates should be reflected in application manifests.
-                  properties:
-                    alias:
-                      description: |-
-                        Alias is a short, user-defined name for this image configuration.
-                        This field is mandatory.
-                      type: string
-                    commonUpdateSettings:
-                      description: CommonUpdateSettings overrides the effective default
-                        CommonUpdateSettings for this specific image.
-                      properties:
-                        allowTags:
-                          description: |-
-                            AllowTags is a regex pattern for tags to allow.
-                            This acts as the default if not overridden.
-                          type: string
-                        forceUpdate:
-                          default: false
-                          description: |-
-                            ForceUpdate specifies whether updates should be forced.
-                            This acts as the default if not overridden.
-                          type: boolean
-                        ignoreTags:
-                          description: |-
-                            IgnoreTags is a list of glob-like patterns of tags to ignore.
-                            This acts as the default and can be overridden at more specific levels.
-                          items:
-                            type: string
-                          type: array
-                          x-kubernetes-list-type: atomic
-                        pullSecret:
-                          description: |-
-                            PullSecret is the pull secret to use for images.
-                            This acts as the default if not overridden.
-                          type: string
-                        updateStrategy:
-                          default: semver
-                          description: |-
-                            UpdateStrategy defines the update strategy to apply.
-                            Examples: "semver", "latest", "digest", "name".
-                            This acts as the default if not overridden at a more specific level.
-                          type: string
-                      type: object
-                    imageName:
-                      description: |-
-                        ImageName is the full identifier of the image to be tracked,
-                        including the registry (if not Docker Hub), the image name, and an initial/current tag or version.
-                        This is the string used to query the container registry and also as a base for finding updates.
-                        Example: "docker.io/library/nginx:1.17.10", "quay.io/prometheus/node-exporter:v1.5.0".
-                        This field is mandatory.
-                      type: string
-                    manifestTargets:
-                      description: |-
-                        ManifestTarget defines how and where to update this image in Kubernetes manifests.
-                        Only one of Helm or Kustomize should be specified within this block.
-                        This whole block is optional if the image update isn't written to a manifest in a structured way.
-                      properties:
-                        helm:
-                          description: |-
-                            Helm specifies update parameters if the target manifest is managed by Helm
-                            and updates are to be made to Helm values files.
-                          properties:
-                            name:
-                              description: |-
-                                Name is the dot-separated path to the Helm key for the image repository/name part.
-                                Example: "image.repository", "frontend.deployment.image.name".
-                                This field is required if the Helm target is used.
-                              type: string
-                            spec:
-                              description: |-
-                                Spec is an optional dot-separated path to a Helm key where the full image string
-                                (e.g., "image/name:1.0") should be written.
-                                Use this if your Helm chart expects the entire image reference in a single field,
-                                rather than separate name/tag fields. If this is set, other Helm parameter-related
-                                options will be ignored.
-                              type: string
-                            tag:
-                              description: |-
-                                Tag is the dot-separated path to the Helm key for the image tag part.
-                                Example: "image.tag", "frontend.deployment.image.version".
-                                This field is required if the Helm target is used.
-                              type: string
-                          required:
-                          - name
-                          - tag
-                          type: object
-                        kustomize:
-                          description: |-
-                            Kustomize specifies update parameters if the target manifest is managed by Kustomize
-                            and updates involve changing image tags in Kustomize configurations.
-                          properties:
-                            name:
-                              description: |-
-                                Name is the image name (which can include the registry and an initial tag)
-                                as it appears in the `images` list of a kustomization.yaml file that needs to be updated.
-                                The updater will typically change the tag or add a digest to this entry.
-                                Example: "docker.io/library/nginx".
-                                This field is required if the Kustomize target is used.
-                              type: string
-                          required:
-                          - name
-                          type: object
-                      type: object
-                      x-kubernetes-validations:
-                      - message: Exactly one of helm or kustomize must be specified
-                          within manifestTargets if the block is present.
-                        rule: 'has(self.helm) ? !has(self.kustomize) : has(self.kustomize)'
-                    platforms:
-                      description: |-
-                        Platforms specifies a list of target platforms (e.g., "linux/amd64", "linux/arm64").
-                        If specified, the image updater will consider these platforms when checking for new versions or digests.
-                      items:
-                        type: string
-                      type: array
-                      x-kubernetes-list-type: atomic
-                  required:
-                  - alias
-                  - imageName
-                  type: object
-                minItems: 1
-                type: array
               namespace:
                 description: |-
                   Namespace indicates the target namespace of the applications.
@@ -391,7 +392,6 @@ spec:
                 type: object
             required:
             - applicationRefs
-            - images
             - namespace
             type: object
           status:

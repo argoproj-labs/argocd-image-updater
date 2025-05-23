@@ -46,12 +46,6 @@ type ImageUpdaterSpec struct {
 	// Each reference can also provide specific overrides for the global settings defined above.
 	// +kubebuilder:validation:MinItems=1
 	ApplicationRefs []ApplicationRef `json:"applicationRefs"`
-
-	// Images contains a list of configurations that how images should be updated.
-	// These rules apply to all applications selected by ApplicationRefs, and each
-	// image can override global/ApplicationRef settings.
-	// +kubebuilder:validation:MinItems=1
-	Images []ImageConfig `json:"images"`
 }
 
 // ApplicationRef contains various criteria by which to include applications for managing by image updater
@@ -75,6 +69,12 @@ type ApplicationRef struct {
 	// matched by this selector.
 	// +optional
 	*WriteBackConfig `json:"writeBackConfig,omitempty"`
+
+	// Images contains a list of configurations that how images should be updated.
+	// These rules apply to applications selected by namePattern in ApplicationRefs, and each
+	// image can override global/ApplicationRef settings.
+	// +kubebuilder:validation:MinItems=1
+	Images []ImageConfig `json:"images"`
 }
 
 // GitConfig defines parameters for Git interaction when `writeBackMethod` involves Git.
