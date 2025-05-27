@@ -72,9 +72,9 @@ var _ = Describe("ImageUpdater Controller", func() {
 			testInterval := 5 * time.Second
 
 			controllerReconciler := &ImageUpdaterReconciler{
-				Client:   k8sClient,
-				Scheme:   k8sClient.Scheme(),
-				Interval: testInterval,
+				Client: k8sClient,
+				Scheme: k8sClient.Scheme(),
+				Config: testInterval,
 			}
 
 			result, err := controllerReconciler.Reconcile(ctx, reconcile.Request{

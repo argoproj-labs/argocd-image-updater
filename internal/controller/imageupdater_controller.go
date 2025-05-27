@@ -18,21 +18,21 @@ package controller
 
 import (
 	"context"
+	api "github.com/argoproj-labs/argocd-image-updater/api/v1alpha1"
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
 	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"time"
-
-	argocdimageupdaterv1alpha1 "github.com/argoproj-labs/argocd-image-updater/api/v1alpha1"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
 )
 
 // ImageUpdaterReconciler reconciles a ImageUpdater object
 type ImageUpdaterReconciler struct {
 	client.Client
-	Scheme   *runtime.Scheme
-	Interval time.Duration
-	Log      logr.Logger
+	Scheme *runtime.Scheme
+	Config *ImageUpdaterConfig
+	Log    logr.Logger
 }
 
 // +kubebuilder:rbac:groups=argocd-image-updater.argoproj.io,resources=imageupdaters,verbs=get;list;watch;create;update;patch;delete
@@ -76,21 +76,21 @@ type ImageUpdaterReconciler struct {
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.19.0/pkg/reconcile
 func (r *ImageUpdaterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	log := r.Log.WithValues("imageupdater", req.NamespacedName) // Add context to logs
-	log.Info("Reconciling ImageUpdater")
-
+	logg := r.Log.WithValues("imageupdater", req.NamespacedName) // Add context to logs
+	logg.Info("Reconciling ImageUpdater")
+	logg.Error(nil, "e")
 	// TODO: Implement the full reconciliation logic as described in the docstring:
 	// 1. Fetch the ImageUpdater resource:
-	var imageUpdater argocdimageupdaterv1alpha1.ImageUpdater
+	var imageUpdater api.ImageUpdater
 	if err := r.Get(ctx, req.NamespacedName, &imageUpdater); err != nil {
 		if client.IgnoreNotFound(err) != nil {
-			log.Error(err, "unable to fetch ImageUpdater")
+			log.Errorf("unable to fetch ImageUpdater %v", err)
 			return ctrl.Result{}, err
 		}
-		log.Info("ImageUpdater resource not found. Ignoring since object must be deleted.")
+		log.Infof("ImageUpdater resource not found. Ignoring since object must be deleted.")
 		return ctrl.Result{}, nil
 	}
-	log.Info("Successfully fetched ImageUpdater resource", "resourceVersion", imageUpdater.ResourceVersion)
+	log.Infof("Successfully fetched ImageUpdater resource resourceVersion: %s", imageUpdater.ResourceVersion)
 
 	// 2. Add finalizer logic if needed for cleanup before deletion.
 
@@ -105,18 +105,19 @@ func (r *ImageUpdaterReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	// For now, just requeue periodically.
 	// This interval might be a default, or could be overridden by logic
 	// that inspects the imageUpdater CR itself for a custom interval.
-	if r.Interval <= 0 {
-		log.Info("Requeue interval is not configured or is zero; will not requeue based on time unless an error occurs or explicitly requested.")
+	if r.Config.CheckInterval <= 0 {
+		log.Infof("Requeue interval is not configured or is zero; will not requeue based on time unless an error occurs or explicitly requested.")
 		return ctrl.Result{}, nil
 	}
 
-	log.Info("Reconciliation logic placeholder: will requeue after interval", "interval", r.Interval.String())
-	return ctrl.Result{RequeueAfter: r.Interval}, nil
+	log.Infof("Reconciliation logic placeholder: will requeue after interval %s", r.Config.CheckInterval.String())
+	return ctrl.Result{RequeueAfter: r.Config.CheckInterval}, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *ImageUpdaterReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&argocdimageupdaterv1alpha1.ImageUpdater{}).
+		For(&api.ImageUpdater{}).
+		WithOptions(controller.Options{MaxConcurrentReconciles: 1}).
 		Complete(r)
 }
