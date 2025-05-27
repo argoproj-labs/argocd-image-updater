@@ -18,7 +18,6 @@ package controller
 
 import (
 	"context"
-	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -69,19 +68,16 @@ var _ = Describe("ImageUpdater Controller", func() {
 		})
 		It("should successfully reconcile the resource", func() {
 			By("Reconciling the created resource")
-			testInterval := 5 * time.Second
 
 			controllerReconciler := &ImageUpdaterReconciler{
-				Client:   k8sClient,
-				Scheme:   k8sClient.Scheme(),
-				Interval: testInterval,
+				Client: k8sClient,
+				Scheme: k8sClient.Scheme(),
 			}
 
-			result, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: typeNamespacedName,
 			})
 			Expect(err).NotTo(HaveOccurred())
-			Expect(result.RequeueAfter).To(Equal(testInterval))
 		})
 	})
 })

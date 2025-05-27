@@ -19,22 +19,21 @@ package controller
 import (
 	"context"
 	"fmt"
-	"github.com/bombsimon/logrusr/v2"
 	"path/filepath"
 	"runtime"
-	ctrl "sigs.k8s.io/controller-runtime"
 	"testing"
 
+	"github.com/bombsimon/logrusr/v2"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-
-	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 
 	argocdimageupdaterv1alpha1 "github.com/argoproj-labs/argocd-image-updater/api/v1alpha1"
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
 	// +kubebuilder:scaffold:imports
 )
 
