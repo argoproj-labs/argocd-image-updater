@@ -30,3 +30,15 @@ const DefaultGitCommitMessage = `build: automatic update of {{ .AppName }}
 updates image {{ .Image }} tag '{{ .OldTag }}' to '{{ .NewTag }}'
 {{ end -}}
 `
+
+// DefaultArgoCDServerAddr is a Default ArgoCD server address when running in same cluster as ArgoCD
+const DefaultArgoCDServerAddr = "argocd-server.argocd"
+
+// DefaultRegistriesConfPath is a Default path to registry configuration
+const DefaultRegistriesConfPath = "/app/config/registries.conf"
+
+// DefaultCommitTemplatePath is a Default path to Git commit message template
+const DefaultCommitTemplatePath = "/app/config/commit.template"
+
+const ApplicationsAPIKindK8S = "kubernetes"
+const ApplicationsAPIKindArgoCD = "argocd"
