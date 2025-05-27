@@ -25,21 +25,13 @@ import (
 
 // Kubernetes based client
 type k8sClient struct {
-	kubeClient   *kube.ImageUpdaterKubernetesClient
-	appNamespace *string
+	kubeClient *kube.ImageUpdaterKubernetesClient
 }
 
-// GetApplication retrieves an application by name, either in a specific namespace or all namespaces depending on client configuration.
+// GetApplication retrieves an application by name across all namespaces.
 func (client *k8sClient) GetApplication(ctx context.Context, appName string) (*v1alpha1.Application, error) {
-	// List all applications across configured namespace or all namespaces (using empty labelSelector)
-	if *client.appNamespace != v1.NamespaceAll {
-		return client.kubeClient.ApplicationsClientset.ArgoprojV1alpha1().Applications(*client.appNamespace).Get(ctx, appName, v1.GetOptions{})
-	}
-	return client.getApplicationInAllNamespaces(appName)
-}
-
-func (client *k8sClient) getApplicationInAllNamespaces(appName string) (*v1alpha1.Application, error) {
-	appList, err := client.ListApplications("")
+	// List all applications across all namespaces (using empty labelSelector)
+	appList, err := client.ListApplications(v1.NamespaceAll)
 	if err != nil {
 		return nil, fmt.Errorf("error listing applications: %w", err)
 	}
@@ -69,7 +61,7 @@ func (client *k8sClient) getApplicationInAllNamespaces(appName string) (*v1alpha
 
 // ListApplications lists all applications across all namespaces.
 func (client *k8sClient) ListApplications(labelSelector string) ([]v1alpha1.Application, error) {
-	list, err := client.kubeClient.ApplicationsClientset.ArgoprojV1alpha1().Applications(*client.appNamespace).List(context.TODO(), v1.ListOptions{LabelSelector: labelSelector})
+	list, err := client.kubeClient.ApplicationsClientset.ArgoprojV1alpha1().Applications(v1.NamespaceAll).List(context.TODO(), v1.ListOptions{LabelSelector: labelSelector})
 	if err != nil {
 		return nil, fmt.Errorf("error listing applications: %w", err)
 	}
@@ -107,23 +99,9 @@ func (client *k8sClient) UpdateSpec(ctx context.Context, spec *application.Appli
 	return nil, fmt.Errorf("max retries(%d) reached while updating application: %s", maxRetries, spec.GetName())
 }
 
-type K8SClientOptions struct {
-	AppNamespace string
-}
-
 // NewK8SClient creates a new kubernetes client to interact with kubernetes api-server.
-func NewK8SClient(kubeClient *kube.ImageUpdaterKubernetesClient, opts *K8SClientOptions) (ArgoCD, error) {
-	// Provide default options if nil
-	if opts == nil {
-		opts = &K8SClientOptions{
-			AppNamespace: v1.NamespaceAll,
-		}
-	}
-
-	return &k8sClient{
-		kubeClient:   kubeClient,
-		appNamespace: &opts.AppNamespace,
-	}, nil
+func NewK8SClient(kubeClient *kube.ImageUpdaterKubernetesClient) (ArgoCD, error) {
+	return &k8sClient{kubeClient: kubeClient}, nil
 }
 
 // Native

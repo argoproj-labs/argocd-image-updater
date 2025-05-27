@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"runtime"
 
-	"github.com/argoproj-labs/argocd-image-updater/pkg/argocd"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/kube"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/image"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
@@ -69,7 +68,7 @@ argocd-image-updater test nginx --allow-tags '^1.19.\d+(\-.*)*$' --update-strate
 			var err error
 			if !disableKubernetes {
 				ctx := context.Background()
-				kubeClient, err = argocd.GetKubeConfig(ctx, "", kubeConfig)
+				kubeClient, err = getKubeConfig(ctx, "", kubeConfig)
 				if err != nil {
 					log.Fatalf("could not create K8s client: %v", err)
 				}

@@ -91,7 +91,7 @@ spec:
                     images:
                       description: |-
                         Images contains a list of configurations that how images should be updated.
-                        These rules apply to applications selected by namePattern in ApplicationRefs, and each
+                        These rules apply to all applications selected by ApplicationRefs, and each
                         image can override global/ApplicationRef settings.
                       items:
                         description: |-
