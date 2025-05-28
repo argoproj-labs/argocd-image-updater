@@ -9,6 +9,6 @@ spec:
   namespace: argocd
   applicationRefs:
     - namePattern: "image-updater-001"
-  images:
-    - alias: "nginx"
-      imageName: "nginx:1.17.10"
+      images:
+        - alias: "nginx"
+          imageName: "nginx:1.17.10"
