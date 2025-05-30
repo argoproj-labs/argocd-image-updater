@@ -34,6 +34,8 @@ Specifies the Kubernetes namespace in which Argo CD Image Updater will manage Ar
 
 API kind that is used to manage Argo CD applications ('kubernetes' or 'argocd') (default "kubernetes")
 
+Can also be set using the *APPLICATIONS_API* environment variable.
+
 **--argocd-auth-token *token* **
 
 Use *token* for authenticating to the Argo CD API. This token must be a base64
@@ -83,6 +85,8 @@ Can also be set using the *ARGOCD_SERVER* environment variable.
 
 Disable kubernetes events
 
+Can also be set with the *IMAGE_UPDATER_KUBE_EVENTS* environment variable.
+
 **--disable-kubernetes**
 
 If running locally, and you do not have a working connection to any Kubernetes
@@ -99,6 +103,8 @@ to workloads it found in need for upgrade.
 
 E-Mail address to use for Git commits (default "noreply@argoproj.io")
 
+Can also be set using the *GIT_COMMIT_EMAIL* environment variable.
+
 **--git-commit-message-path *path* ** 
 
 Path to a template to use for Git commit messages (default "/app/config/commit.template")
@@ -107,13 +113,23 @@ Path to a template to use for Git commit messages (default "/app/config/commit.t
 
 Whether to sign-off git commits
 
+**--git-commit-signing-key *key* **
+
+GnuPG key ID or path to Private SSH Key used to sign the commits
+
+Can also be set using the *GIT_COMMIT_SIGNING_KEY* environment variable. 
+
 **--git-commit-signing-method *method* ** 
 
 Method used to sign Git commits ('openpgp' or 'ssh') (default "openpgp")
 
+Can also be set using the *GIT_COMMIT_SIGNING_METHOD* environment variable.
+
 **--git-commit-user *user* **
 
 Username to use for Git commits (default "argocd-image-updater")
+
+Can also be set using the *GIT_COMMIT_USER* environment variable.
 
 **--health-port *port* **
 
