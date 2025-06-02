@@ -10,7 +10,7 @@ COPY . .
 RUN mkdir -p dist && \
 	make controller
 
-FROM alpine:3.21
+FROM alpine:3.22
 
 RUN apk update && \
     apk upgrade && \
