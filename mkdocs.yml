@@ -27,7 +27,14 @@ nav:
   - Getting started:
     - Installation: install/installation.md
     - Testing: install/testing.md
-    - Command Line and Configuration reference: install/reference.md
+    - Command Line and Configuration Reference: 
+      - install/reference.md
+      - Command "completion": install/cmd/completion.md
+      - Command "help": install/cmd/help.md
+      - Command "run": install/cmd/run.md
+      - Command "template": install/cmd/template.md 
+      - Command "test": install/cmd/test.md
+      - Command "version": install/cmd/version.md
   - Basics:
     - Updating images: basics/update.md
     - Update methods: basics/update-methods.md
