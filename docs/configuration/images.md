@@ -484,3 +484,16 @@ prefixed with `argocd-image-updater.argoproj.io/`.
 |`allow-tags`|A function to match tag names from the registry against to be considered for update|
 |`ignore-tags`|A comma-separated list of glob patterns that when matched, ignore a certain tag from the registry|
 |`pull-secret`|A reference to a secret to be used as registry credentials for this image|
+
+### <a name="appendix-defaults"></a>Application update configurations
+
+If you would like to change settings related to write-backs the 
+following annotations are available. Please note, all annotations must be 
+prefixed with `argocd-image-updater.argoproj.io`.
+
+|Annotation name|Description|
+|-------------- |-----------|
+|`write-back-method`|The method used for writing back updates. Either can be `argocd` (imperative) or `git` (declarative)|
+|`write-back-target`|The target used for writing back updates. Either can be `kustomization` (For kustomize) or `helmvalues` (For helm)| 
+|`git-branch`|Specify the branch in which updates will be wrote to|
+|`git-repository`|A URL to a git repository. If provided will override the RepoURL that is provided to the ArgoCD application|
