@@ -147,7 +147,7 @@ func (wbc *WriteBackConfig) RequiresLocking() bool {
 
 // UpdateApplication update all images of a single application. Will run in a goroutine.
 func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationState) ImageUpdaterResult {
-	var needUpdate bool = false
+	var needUpdate = false
 
 	result := ImageUpdaterResult{}
 	app := updateConf.UpdateApp.Application.GetName()
@@ -232,7 +232,7 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 		}
 
 		imgCredSrc := applicationImage.GetParameterPullSecret(updateConf.UpdateApp.Application.Annotations, common.ImageUpdaterAnnotationPrefix)
-		var creds *image.Credential = &image.Credential{}
+		var creds = &image.Credential{}
 		if imgCredSrc != nil {
 			creds, err = imgCredSrc.FetchCredentials(rep.RegistryAPI, updateConf.KubeClient.KubeClient)
 			if err != nil {

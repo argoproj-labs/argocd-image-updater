@@ -3417,7 +3417,7 @@ helm:
 		kubeClient.KubeClient.Namespace = "argocd"
 		app := app.DeepCopy()
 		app.Status.SourceType = "Helm"
-		app.ObjectMeta.Namespace = "argocd"
+		app.Namespace = "argocd"
 		app.Spec.Source.Helm = &v1alpha1.ApplicationSourceHelm{Parameters: []v1alpha1.HelmParameter{
 			{Name: "bar", Value: "bar", ForceString: true},
 			{Name: "baz", Value: "baz", ForceString: true},
@@ -3469,7 +3469,7 @@ helm:
 		kubeClient.KubeClient.Namespace = "argocd"
 		app := app.DeepCopy()
 		app.Status.SourceType = "Helm"
-		app.ObjectMeta.Namespace = "testNS"
+		app.Namespace = "testNS"
 		app.Spec.Source.Helm = &v1alpha1.ApplicationSourceHelm{Parameters: []v1alpha1.HelmParameter{
 			{Name: "bar", Value: "bar", ForceString: true},
 			{Name: "baz", Value: "baz", ForceString: true},

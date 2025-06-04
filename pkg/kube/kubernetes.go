@@ -66,8 +66,8 @@ func (client *ImageUpdaterKubernetesClient) CreateApplicationEvent(app *appv1alp
 
 	event := v1.Event{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:        fmt.Sprintf("%v.%x", app.ObjectMeta.Name, t.UnixNano()),
-			Namespace:   app.ObjectMeta.Namespace,
+			Name:        fmt.Sprintf("%v.%x", app.Name, t.UnixNano()),
+			Namespace:   app.Namespace,
 			Annotations: annotations,
 		},
 		Source: v1.EventSource{
@@ -76,10 +76,10 @@ func (client *ImageUpdaterKubernetesClient) CreateApplicationEvent(app *appv1alp
 		InvolvedObject: v1.ObjectReference{
 			Kind:            app.Kind,
 			APIVersion:      app.APIVersion,
-			Name:            app.ObjectMeta.Name,
-			Namespace:       app.ObjectMeta.Namespace,
-			ResourceVersion: app.ObjectMeta.ResourceVersion,
-			UID:             app.ObjectMeta.UID,
+			Name:            app.Name,
+			Namespace:       app.Namespace,
+			ResourceVersion: app.ResourceVersion,
+			UID:             app.UID,
 		},
 		FirstTimestamp: t,
 		LastTimestamp:  t,
@@ -89,7 +89,7 @@ func (client *ImageUpdaterKubernetesClient) CreateApplicationEvent(app *appv1alp
 		Reason:         reason,
 	}
 
-	result, err := client.KubeClient.Clientset.CoreV1().Events(app.ObjectMeta.Namespace).Create(client.KubeClient.Context, &event, metav1.CreateOptions{})
+	result, err := client.KubeClient.Clientset.CoreV1().Events(app.Namespace).Create(client.KubeClient.Context, &event, metav1.CreateOptions{})
 	if err != nil {
 		return nil, err
 	}

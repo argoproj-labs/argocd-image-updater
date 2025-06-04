@@ -664,11 +664,12 @@ func IsValidApplicationType(app *v1alpha1.Application) bool {
 func getApplicationType(app *v1alpha1.Application) ApplicationType {
 	sourceType := getApplicationSourceType(app)
 
-	if sourceType == v1alpha1.ApplicationSourceTypeKustomize {
+	switch sourceType {
+	case v1alpha1.ApplicationSourceTypeKustomize:
 		return ApplicationTypeKustomize
-	} else if sourceType == v1alpha1.ApplicationSourceTypeHelm {
+	case v1alpha1.ApplicationSourceTypeHelm:
 		return ApplicationTypeHelm
-	} else {
+	default:
 		return ApplicationTypeUnsupported
 	}
 }
@@ -683,11 +684,12 @@ func getApplicationSourceType(app *v1alpha1.Application) v1alpha1.ApplicationSou
 
 	if app.Spec.HasMultipleSources() {
 		for _, st := range app.Status.SourceTypes {
-			if st == v1alpha1.ApplicationSourceTypeHelm {
+			switch st {
+			case v1alpha1.ApplicationSourceTypeHelm:
 				return v1alpha1.ApplicationSourceTypeHelm
-			} else if st == v1alpha1.ApplicationSourceTypeKustomize {
+			case v1alpha1.ApplicationSourceTypeKustomize:
 				return v1alpha1.ApplicationSourceTypeKustomize
-			} else if st == v1alpha1.ApplicationSourceTypePlugin {
+			case v1alpha1.ApplicationSourceTypePlugin:
 				return v1alpha1.ApplicationSourceTypePlugin
 			}
 		}

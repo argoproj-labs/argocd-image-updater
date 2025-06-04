@@ -217,7 +217,7 @@ func commitChangesGit(app *v1alpha1.Application, wbc *WriteBackConfig, changeLis
 		logCtx.Debugf("Using branch template: %s", wbc.GitWriteBranch)
 		pushBranch = TemplateBranchName(wbc.GitWriteBranch, changeList)
 		if pushBranch == "" {
-			return fmt.Errorf("Git branch name could not be created from the template: %s", wbc.GitWriteBranch)
+			return fmt.Errorf("git branch name could not be created from the template: %s", wbc.GitWriteBranch)
 		}
 	}
 
