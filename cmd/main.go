@@ -51,6 +51,8 @@ type ImageUpdaterConfig struct {
 	GitCommitSignOff       bool
 	DisableKubeEvents      bool
 	GitCreds               git.CredsStore
+	WebhookPort            int
+	EnableWebhook          bool
 }
 
 // newRootCommand implements the root command of argocd-image-updater
@@ -63,6 +65,7 @@ func newRootCommand() error {
 	rootCmd.AddCommand(newVersionCommand())
 	rootCmd.AddCommand(newTestCommand())
 	rootCmd.AddCommand(newTemplateCommand())
+	rootCmd.AddCommand(NewWebhookCommand())
 	err := rootCmd.Execute()
 	return err
 }
