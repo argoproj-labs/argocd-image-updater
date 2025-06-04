@@ -7,14 +7,14 @@
 # - run this script from repo registry-scanner module: ./hack/create-release.sh [TARGET_VERSION] [REMOTE]
 # - merge the PR
 # Example Uses:
-# ./hack/create-release.sh 0.1.1 .                              Would create a new tag "registry-scanner/v0.1.1" with
-#                                                               the message "This is an example message" and edit 
-#                                                               VERSION to be 0.1.1 which would be committed.
+# ./hack/create-release.sh 0.1.1                                Would create a new tag "registry-scanner/v0.1.1" with
+#                                                               the message "Release registry-scanner/v0.1.1" and edit 
+#                                                               VERSION file to be 0.1.1 which would be committed.
 #
-# ./hack/create-release.sh 0.1.X "TEST" origin                  Would create a new tag "registry-scanner/v0.1.X" with
-#                                                               the message "TEST" and edit VERSION to be 0.1.X which 
-#                                                               would be committed. The contents would be pushed to the
-#                                                               remote "origin." 
+# ./hack/create-release.sh 0.1.X upstream                       Would create a new tag "registry-scanner/v0.1.X" with
+#                                                               the message "Relase registry-scanner/v0.1.X" and edit
+#                                                               VERSION to be 0.1.X which would be committed. The contents
+#                                                               would be pushed to the remote "upstream." 
 
 TARGET_VERSION="$1"
 
@@ -63,10 +63,9 @@ echo "${TARGET_VERSION}" > VERSION
 
 # Commit updated VERSION file
 git add VERSION
-git commit -s -m "automated: bump VERSION file to version ${TARGET_VERSION}" 
+git commit -s -m "Release ${NEW_TAG}" 
 git push "${REMOTE}" "${RELEASE_BRANCH}"
 
 # Create tag for registry-scanner
 git tag -a "${NEW_TAG}" -m "${MESSAGE}"
 git push "${REMOTE}" "${RELEASE_BRANCH}" "${NEW_TAG}"
-
