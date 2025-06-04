@@ -210,6 +210,9 @@ func newRunCommand() *cobra.Command {
 				harborHandler := webhook.NewHarborWebhook("")
 				handler.RegisterHandler(harborHandler)
 
+				quayHandler := webhook.NewQuayWebhook("")
+				handler.RegisterHandler(quayHandler)
+
 				log.Infof("Starting webhook server on port %d", cfg.WebhookPort)
 				webhookServer = webhook.NewWebhookServer(cfg.WebhookPort, handler, cfg.KubeClient, argoClient)
 

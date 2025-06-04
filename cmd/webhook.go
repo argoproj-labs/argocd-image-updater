@@ -11,6 +11,8 @@ import (
 	"github.com/argoproj-labs/argocd-image-updater/pkg/webhook"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
 
+	"github.com/argoproj/argo-cd/v2/reposerver/askpass"
+
 	"github.com/spf13/cobra"
 )
 
@@ -33,6 +35,11 @@ var webhookOpts WebhookOptions
 
 // NewWebhookCommand creates a new webhook command
 func NewWebhookCommand() *cobra.Command {
+	// !! for now just setting to default git credentials
+	var cfg *ImageUpdaterConfig = &ImageUpdaterConfig{
+		GitCommitUser: "argocd-image-updater",
+		GitCommitMail: "noreplay@argoproj.io",
+	}
 	var webhookCmd = &cobra.Command{
 		Use:   "webhook",
 		Short: "Start webhook server to receive registry events",
@@ -45,11 +52,29 @@ Supported registries:
 - Docker Hub
 - GitHub Container Registry (GHCR)
 `,
+		// TODO: as mentioned this needs to be better inline with run
 		Run: func(cmd *cobra.Command, args []string) {
-			runWebhook()
+			// !! this was just copy and pasted from run for now
+			// Start up the credentials store server
+			cs := askpass.NewServer(askpass.SocketPath)
+			csErrCh := make(chan error)
+			go func() {
+				log.Debugf("Starting askpass server")
+				csErrCh <- cs.Run()
+			}()
+
+			// Wait for cred server to be started, just in case
+			err := <-csErrCh
+			if err != nil {
+				log.Errorf("Error running askpass server: %v", err)
+				os.Exit(1) // TODO: NEED TO REFACTOR TO HAVE COMMAND TO RETURN ERROR
+			}
+
+			runWebhook(cfg)
 		},
 	}
 
+	// TODO: Need to get the flags consistent with the run command ones
 	webhookCmd.Flags().IntVar(&webhookOpts.Port, "port", 8080, "Port to listen on for webhook events")
 	webhookCmd.Flags().StringVar(&webhookOpts.DockerSecret, "docker-secret", "", "Secret for validating Docker Hub webhooks")
 	webhookCmd.Flags().StringVar(&webhookOpts.GHCRSecret, "ghcr-secret", "", "Secret for validating GitHub Container Registry webhooks")
@@ -66,7 +91,7 @@ Supported registries:
 }
 
 // runWebhook starts the webhook server
-func runWebhook() {
+func runWebhook(cfg *ImageUpdaterConfig) {
 	log.Infof("Starting webhook server on port %d", webhookOpts.Port)
 
 	// Initialize the ArgoCD client
@@ -122,8 +147,17 @@ func runWebhook() {
 	ghcrHandler := webhook.NewGHCRWebhook(webhookOpts.GHCRSecret)
 	handler.RegisterHandler(ghcrHandler)
 
+	quayHandler := webhook.NewQuayWebhook("")
+	handler.RegisterHandler(quayHandler)
+
 	// Create webhook server
 	server := webhook.NewWebhookServer(webhookOpts.Port, handler, kubeClient, argoClient)
+
+	// Set updater config
+	server.UpdaterConfig = &argocd.UpdaterConfig{
+		GitCommitUser:  cfg.GitCommitUser,
+		GitCommitEmail: cfg.GitCommitMail,
+	}
 
 	// Set up graceful shutdown
 	stop := make(chan os.Signal, 1)
