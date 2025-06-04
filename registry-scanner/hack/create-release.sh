@@ -63,8 +63,7 @@ echo "${TARGET_VERSION}" > VERSION
 
 # Commit updated VERSION file
 git add VERSION
-git commit -s -m "Release ${NEW_TAG}" 
-git push "${REMOTE}" "${RELEASE_BRANCH}"
+git commit -s -m "${MESSAGE}" 
 
 # Create tag for registry-scanner
 git tag -a "${NEW_TAG}" -m "${MESSAGE}"
