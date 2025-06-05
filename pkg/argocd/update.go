@@ -443,10 +443,9 @@ func marshalParamsOverride(app *v1alpha1.Application, originalData []byte) ([]by
 	var override []byte
 	var err error
 
-	appType := GetApplicationType(app)
 	appSource := getApplicationSource(app)
 
-	switch appType {
+	switch GetApplicationType(app) {
 	case ApplicationTypeKustomize:
 		if appSource.Kustomize == nil {
 			return []byte{}, nil
