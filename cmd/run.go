@@ -15,6 +15,7 @@ import (
 	"github.com/argoproj-labs/argocd-image-updater/pkg/health"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/metrics"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/version"
+	"github.com/argoproj-labs/argocd-image-updater/pkg/webhook"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/env"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/registry"
@@ -144,6 +145,7 @@ func newRunCommand() *cobra.Command {
 			// Health server will start in a go routine and run asynchronously
 			var hsErrCh chan error
 			var msErrCh chan error
+			var whErrCh chan error
 			if cfg.HealthPort > 0 {
 				log.Infof("Starting health probe server TCP port=%d", cfg.HealthPort)
 				hsErrCh = health.StartHealthServer(cfg.HealthPort)
@@ -179,6 +181,61 @@ func newRunCommand() *cobra.Command {
 
 			cfg.GitCreds = cs
 
+			// Start the webhook server if enabled
+			var webhookServer *webhook.WebhookServer
+			if cfg.EnableWebhook && cfg.WebhookPort > 0 {
+				// Initialize the ArgoCD client for webhook server
+				var argoClient argocd.ArgoCD
+				switch cfg.ApplicationsAPIKind {
+				case applicationsAPIKindK8S:
+					argoClient, err = argocd.NewK8SClient(cfg.KubeClient, &argocd.K8SClientOptions{AppNamespace: cfg.AppNamespace})
+				case applicationsAPIKindArgoCD:
+					argoClient, err = argocd.NewAPIClient(&cfg.ClientOpts)
+				}
+				if err != nil {
+					log.Fatalf("Could not create ArgoCD client for webhook server: %v", err)
+				}
+
+				// Create webhook handler
+				handler := webhook.NewWebhookHandler()
+
+				// Register supported webhook handlers with default empty secrets
+				// In production, these would be configured via flags or environment variables
+				dockerHandler := webhook.NewDockerHubWebhook("")
+				handler.RegisterHandler(dockerHandler)
+
+				ghcrHandler := webhook.NewGHCRWebhook("")
+				handler.RegisterHandler(ghcrHandler)
+
+				harborHandler := webhook.NewHarborWebhook("")
+				handler.RegisterHandler(harborHandler)
+
+				log.Infof("Starting webhook server on port %d", cfg.WebhookPort)
+				webhookServer = webhook.NewWebhookServer(cfg.WebhookPort, handler, cfg.KubeClient, argoClient)
+
+				// Set updater config
+				updaterConfig := &argocd.UpdaterConfig{
+					DryRun:                 cfg.DryRun,
+					GitCommitUser:          cfg.GitCommitUser,
+					GitCommitEmail:         cfg.GitCommitMail,
+					GitCommitMessage:       cfg.GitCommitMessage.Tree.Root.String(),
+					GitCommitSigningKey:    cfg.GitCommitSigningKey,
+					GitCommitSigningMethod: cfg.GitCommitSigningMethod,
+					GitCommitSignOff:       cfg.GitCommitSignOff,
+				}
+				webhookServer.UpdaterConfig = updaterConfig
+
+				whErrCh = make(chan error, 1)
+				go func() {
+					if err := webhookServer.Start(); err != nil {
+						log.Errorf("Webhook server error: %v", err)
+						whErrCh <- err
+					}
+				}()
+
+				log.Infof("Webhook server started and listening on port %d", cfg.WebhookPort)
+			}
+
 			// This is our main loop. We leave it only when our health probe server
 			// returns an error.
 			for {
@@ -189,6 +246,12 @@ func newRunCommand() *cobra.Command {
 					} else {
 						log.Infof("Health probe server exited gracefully")
 					}
+					// Clean shutdown of webhook server if running
+					if webhookServer != nil {
+						if err := webhookServer.Stop(); err != nil {
+							log.Errorf("Error stopping webhook server: %v", err)
+						}
+					}
 					return nil
 				case err := <-msErrCh:
 					if err != nil {
@@ -196,6 +259,15 @@ func newRunCommand() *cobra.Command {
 					} else {
 						log.Infof("Metrics server exited gracefully")
 					}
+					// Clean shutdown of webhook server if running
+					if webhookServer != nil {
+						if err := webhookServer.Stop(); err != nil {
+							log.Errorf("Error stopping webhook server: %v", err)
+						}
+					}
+					return nil
+				case err := <-whErrCh:
+					log.Errorf("Webhook server exited with error: %v", err)
 					return nil
 				default:
 					if lastRun.IsZero() || time.Since(lastRun) > cfg.CheckInterval {
@@ -251,6 +323,8 @@ func newRunCommand() *cobra.Command {
 	runCmd.Flags().BoolVar(&cfg.GitCommitSignOff, "git-commit-sign-off", env.GetBoolVal("GIT_COMMIT_SIGN_OFF", false), "Whether to sign-off git commits")
 	runCmd.Flags().StringVar(&commitMessagePath, "git-commit-message-path", defaultCommitTemplatePath, "Path to a template to use for Git commit messages")
 	runCmd.Flags().BoolVar(&cfg.DisableKubeEvents, "disable-kube-events", env.GetBoolVal("IMAGE_UPDATER_KUBE_EVENTS", false), "Disable kubernetes events")
+	runCmd.Flags().IntVar(&cfg.WebhookPort, "webhook-port", env.ParseNumFromEnv("WEBHOOK_PORT", 8082, 0, 65535), "Port to start the webhook server on, 0 to disable")
+	runCmd.Flags().BoolVar(&cfg.EnableWebhook, "enable-webhook", env.GetBoolVal("ENABLE_WEBHOOK", false), "Enable webhook server for receiving registry events")
 
 	return runCmd
 }
