@@ -460,95 +460,97 @@ func marshalKustomizeOverride(app *v1alpha1.Application, originalData []byte) ([
 	return marshalWithIndent(overrides, defaultIndent)
 }
 
+func marshalHelmOverride(app *v1alpha1.Application, originalData []byte) (override []byte, err error) {
+	appSource := getApplicationSource(app)
+	if appSource.Helm == nil {
+		return []byte{}, nil
+	}
+
+	if strings.HasPrefix(app.Annotations[common.WriteBackTargetAnnotation], common.HelmPrefix) {
+		images := GetImagesAndAliasesFromApplication(app)
+
+		helmNewValues := yaml.Node{}
+		if unmarshalErr := yaml.Unmarshal(originalData, &helmNewValues); unmarshalErr != nil {
+			return nil, unmarshalErr
+		}
+
+		for _, c := range images {
+			if c.ImageAlias == "" {
+				continue
+			}
+
+			helmAnnotationParamName, helmAnnotationParamVersion := getHelmParamNamesFromAnnotation(app.Annotations, c)
+
+			if helmAnnotationParamName == "" {
+				return nil, fmt.Errorf("could not find an image-name annotation for image %s", c.ImageName)
+			}
+			// for image-spec annotation, helmAnnotationParamName holds image-spec annotation value,
+			// and helmAnnotationParamVersion is empty
+			if helmAnnotationParamVersion == "" {
+				if c.GetParameterHelmImageSpec(app.Annotations, common.ImageUpdaterAnnotationPrefix) == "" {
+					// not a full image-spec, so image-tag is required
+					return nil, fmt.Errorf("could not find an image-tag annotation for image %s", c.ImageName)
+				}
+			} else {
+				// image-tag annotation is present, so continue to process image-tag
+				helmParamVersion := getHelmParam(appSource.Helm.Parameters, helmAnnotationParamVersion)
+				if helmParamVersion == nil {
+					return nil, fmt.Errorf("%s parameter not found", helmAnnotationParamVersion)
+				}
+				err = setHelmValue(&helmNewValues, helmAnnotationParamVersion, helmParamVersion.Value)
+				if err != nil {
+					return nil, fmt.Errorf("failed to set image parameter version value: %v", err)
+				}
+			}
+
+			helmParamName := getHelmParam(appSource.Helm.Parameters, helmAnnotationParamName)
+			if helmParamName == nil {
+				return nil, fmt.Errorf("%s parameter not found", helmAnnotationParamName)
+			}
+
+			err = setHelmValue(&helmNewValues, helmAnnotationParamName, helmParamName.Value)
+			if err != nil {
+				return nil, fmt.Errorf("failed to set image parameter name value: %v", err)
+			}
+		}
+		return marshalWithIndent(&helmNewValues, defaultIndent)
+	}
+
+	var params helmOverride
+	newParams := helmOverride{
+		Helm: helmParameters{
+			Parameters: appSource.Helm.Parameters,
+		},
+	}
+
+	outputParams := appSource.Helm.ValuesYAML()
+	log.WithContext().AddField("application", app).Debugf("values: '%s'", outputParams)
+
+	if len(originalData) == 0 {
+		override, err = marshalWithIndent(newParams, defaultIndent)
+		return override, err
+	}
+	err = yaml.Unmarshal(originalData, &params)
+	if err != nil {
+		// TODO: if err is not nill, why do we try to do marshalWithIndent and not return nil?
+		override, err = marshalWithIndent(newParams, defaultIndent)
+		return override, err
+	}
+	mergeHelmOverride(&params, &newParams)
+	return marshalWithIndent(params, defaultIndent)
+}
+
 // marshalParamsOverride marshals the parameter overrides of a given application
 // into YAML bytes
 func marshalParamsOverride(app *v1alpha1.Application, originalData []byte) ([]byte, error) {
 	var override []byte
 	var err error
 
-	appSource := getApplicationSource(app)
-
 	switch GetApplicationType(app) {
 	case ApplicationTypeKustomize:
 		override, err = marshalKustomizeOverride(app, originalData)
 	case ApplicationTypeHelm:
-		if appSource.Helm == nil {
-			return []byte{}, nil
-		}
-
-		if strings.HasPrefix(app.Annotations[common.WriteBackTargetAnnotation], common.HelmPrefix) {
-			images := GetImagesAndAliasesFromApplication(app)
-
-			helmNewValues := yaml.Node{}
-			err = yaml.Unmarshal(originalData, &helmNewValues)
-			if err != nil {
-				return nil, err
-			}
-
-			for _, c := range images {
-				if c.ImageAlias == "" {
-					continue
-				}
-
-				helmAnnotationParamName, helmAnnotationParamVersion := getHelmParamNamesFromAnnotation(app.Annotations, c)
-
-				if helmAnnotationParamName == "" {
-					return nil, fmt.Errorf("could not find an image-name annotation for image %s", c.ImageName)
-				}
-				// for image-spec annotation, helmAnnotationParamName holds image-spec annotation value,
-				// and helmAnnotationParamVersion is empty
-				if helmAnnotationParamVersion == "" {
-					if c.GetParameterHelmImageSpec(app.Annotations, common.ImageUpdaterAnnotationPrefix) == "" {
-						// not a full image-spec, so image-tag is required
-						return nil, fmt.Errorf("could not find an image-tag annotation for image %s", c.ImageName)
-					}
-				} else {
-					// image-tag annotation is present, so continue to process image-tag
-					helmParamVersion := getHelmParam(appSource.Helm.Parameters, helmAnnotationParamVersion)
-					if helmParamVersion == nil {
-						return nil, fmt.Errorf("%s parameter not found", helmAnnotationParamVersion)
-					}
-					err = setHelmValue(&helmNewValues, helmAnnotationParamVersion, helmParamVersion.Value)
-					if err != nil {
-						return nil, fmt.Errorf("failed to set image parameter version value: %v", err)
-					}
-				}
-
-				helmParamName := getHelmParam(appSource.Helm.Parameters, helmAnnotationParamName)
-				if helmParamName == nil {
-					return nil, fmt.Errorf("%s parameter not found", helmAnnotationParamName)
-				}
-
-				err = setHelmValue(&helmNewValues, helmAnnotationParamName, helmParamName.Value)
-				if err != nil {
-					return nil, fmt.Errorf("failed to set image parameter name value: %v", err)
-				}
-			}
-
-			override, err = marshalWithIndent(&helmNewValues, defaultIndent)
-		} else {
-			var params helmOverride
-			newParams := helmOverride{
-				Helm: helmParameters{
-					Parameters: appSource.Helm.Parameters,
-				},
-			}
-
-			outputParams := appSource.Helm.ValuesYAML()
-			log.WithContext().AddField("application", app).Debugf("values: '%s'", outputParams)
-
-			if len(originalData) == 0 {
-				override, err = marshalWithIndent(newParams, defaultIndent)
-				break
-			}
-			err = yaml.Unmarshal(originalData, &params)
-			if err != nil {
-				override, err = marshalWithIndent(newParams, defaultIndent)
-				break
-			}
-			mergeHelmOverride(&params, &newParams)
-			override, err = marshalWithIndent(params, defaultIndent)
-		}
+		override, err = marshalHelmOverride(app, originalData)
 	default:
 		err = fmt.Errorf("unsupported application type")
 	}
