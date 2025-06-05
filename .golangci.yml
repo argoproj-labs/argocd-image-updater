@@ -5,7 +5,7 @@ linters:
     - unconvert
     - ineffassign
     - unused
-    - unconvert
+    - govet
   exclusions:
     generated: lax
     presets:
@@ -35,3 +35,5 @@ formatters:
       - third_party$
       - builtin$
       - examples$
+run: 
+  timeout: 5m
