@@ -437,6 +437,29 @@ func marshalWithIndent(in interface{}, indent int) (out []byte, err error) {
 	return b.Bytes(), nil
 }
 
+func marshalKustomizeOverride(app *v1alpha1.Application, originalData []byte) ([]byte, error) {
+	src := getApplicationSource(app)
+	if src.Kustomize == nil {
+		return []byte{}, nil
+	}
+
+	overrides := kustomizeOverride{
+		Kustomize: kustomizeImages{
+			Images: &src.Kustomize.Images,
+		},
+	}
+
+	if len(originalData) > 0 {
+		var existing kustomizeOverride
+		if err := yaml.Unmarshal(originalData, &existing); err == nil {
+			mergeKustomizeOverride(&existing, &overrides)
+			overrides = existing
+		}
+	}
+
+	return marshalWithIndent(overrides, defaultIndent)
+}
+
 // marshalParamsOverride marshals the parameter overrides of a given application
 // into YAML bytes
 func marshalParamsOverride(app *v1alpha1.Application, originalData []byte) ([]byte, error) {
@@ -447,28 +470,7 @@ func marshalParamsOverride(app *v1alpha1.Application, originalData []byte) ([]by
 
 	switch GetApplicationType(app) {
 	case ApplicationTypeKustomize:
-		if appSource.Kustomize == nil {
-			return []byte{}, nil
-		}
-
-		var params kustomizeOverride
-		newParams := kustomizeOverride{
-			Kustomize: kustomizeImages{
-				Images: &appSource.Kustomize.Images,
-			},
-		}
-
-		if len(originalData) == 0 {
-			override, err = marshalWithIndent(newParams, defaultIndent)
-			break
-		}
-		err = yaml.Unmarshal(originalData, &params)
-		if err != nil {
-			override, err = marshalWithIndent(newParams, defaultIndent)
-			break
-		}
-		mergeKustomizeOverride(&params, &newParams)
-		override, err = marshalWithIndent(params, defaultIndent)
+		override, err = marshalKustomizeOverride(app, originalData)
 	case ApplicationTypeHelm:
 		if appSource.Helm == nil {
 			return []byte{}, nil
