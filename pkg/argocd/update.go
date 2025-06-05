@@ -543,22 +543,14 @@ func marshalHelmOverride(app *v1alpha1.Application, originalData []byte) (overri
 // marshalParamsOverride marshals the parameter overrides of a given application
 // into YAML bytes
 func marshalParamsOverride(app *v1alpha1.Application, originalData []byte) ([]byte, error) {
-	var override []byte
-	var err error
-
 	switch GetApplicationType(app) {
 	case ApplicationTypeKustomize:
-		override, err = marshalKustomizeOverride(app, originalData)
+		return marshalKustomizeOverride(app, originalData)
 	case ApplicationTypeHelm:
-		override, err = marshalHelmOverride(app, originalData)
+		return marshalHelmOverride(app, originalData)
 	default:
-		err = fmt.Errorf("unsupported application type")
+		return nil, fmt.Errorf("unsupported application type")
 	}
-	if err != nil {
-		return nil, err
-	}
-
-	return override, nil
 }
 
 func mergeHelmOverride(t *helmOverride, o *helmOverride) {
