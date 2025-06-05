@@ -429,7 +429,7 @@ func (g GitHubAppCreds) getAccessToken() (string, error) {
 
 	// Compute hash of creds for lookup in cache
 	h := sha256.New()
-	_, err := fmt.Fprintf(h, "%s %d %d %s", g.privateKey, g.appID, g.appInstallId, g.baseURL)
+	_, err := h.Write([]byte(fmt.Sprintf("%s %d %d %s", g.privateKey, g.appID, g.appInstallId, g.baseURL)))
 	if err != nil {
 		return "", err
 	}

@@ -30,11 +30,11 @@ import (
 
 // newRunCommand implements "run" command
 func newRunCommand() *cobra.Command {
-	var cfg = &ImageUpdaterConfig{}
+	var cfg *ImageUpdaterConfig = &ImageUpdaterConfig{}
 	var once bool
 	var kubeConfig string
 	var disableKubernetes bool
-	var warmUpCache = true
+	var warmUpCache bool = true
 	var commitMessagePath string
 	var commitMessageTpl string
 	var runCmd = &cobra.Command{
@@ -302,11 +302,11 @@ func runImageUpdater(cfg *ImageUpdaterConfig, warmUp bool) (argocd.ImageUpdaterR
 
 	// Allow a maximum of MaxConcurrency number of goroutines to exist at the
 	// same time. If in warm-up mode, set to 1 explicitly.
-	var concurrency = cfg.MaxConcurrency
+	var concurrency int = cfg.MaxConcurrency
 	if warmUp {
 		concurrency = 1
 	}
-	var dryRun = cfg.DryRun
+	var dryRun bool = cfg.DryRun
 	if warmUp {
 		dryRun = true
 	}

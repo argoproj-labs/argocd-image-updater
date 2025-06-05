@@ -19,6 +19,18 @@ linters:
       - third_party$
       - builtin$
       - examples$
+  settings:
+    staticcheck:
+      checks:
+        - all
+        - '-QF1003'
+        - '-QF1008'
+        - '-QF1011'
+        - '-QF1012'
+        - '-ST1003'
+        - '-ST1005'
+        - '-ST1016'
+        - '-ST1023'
 formatters:
   enable:
     - gofmt
