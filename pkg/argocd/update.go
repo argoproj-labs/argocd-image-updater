@@ -474,22 +474,22 @@ func marshalHelmOverride(app *v1alpha1.Application, originalData []byte) (overri
 			return nil, unmarshalErr
 		}
 
-		for _, c := range images {
-			if c.ImageAlias == "" {
+		for _, img := range images {
+			if img.ImageAlias == "" {
 				continue
 			}
 
-			helmAnnotationParamName, helmAnnotationParamVersion := getHelmParamNamesFromAnnotation(app.Annotations, c)
+			helmAnnotationParamName, helmAnnotationParamVersion := getHelmParamNamesFromAnnotation(app.Annotations, img)
 
 			if helmAnnotationParamName == "" {
-				return nil, fmt.Errorf("could not find an image-name annotation for image %s", c.ImageName)
+				return nil, fmt.Errorf("could not find an image-name annotation for image %s", img.ImageName)
 			}
 			// for image-spec annotation, helmAnnotationParamName holds image-spec annotation value,
 			// and helmAnnotationParamVersion is empty
 			if helmAnnotationParamVersion == "" {
-				if c.GetParameterHelmImageSpec(app.Annotations, common.ImageUpdaterAnnotationPrefix) == "" {
+				if img.GetParameterHelmImageSpec(app.Annotations, common.ImageUpdaterAnnotationPrefix) == "" {
 					// not a full image-spec, so image-tag is required
-					return nil, fmt.Errorf("could not find an image-tag annotation for image %s", c.ImageName)
+					return nil, fmt.Errorf("could not find an image-tag annotation for image %s", img.ImageName)
 				}
 			} else {
 				// image-tag annotation is present, so continue to process image-tag
