@@ -277,18 +277,7 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 			continue
 		}
 
-		// If the user has specified digest as update strategy, but the running
-		// image is configured to use a tag and no digest, we need to set an
-		// initial dummy digest, so that tag.Equals() will return false.
-		// TODO: Fix this. This is just a workaround.
-		if vc.Strategy == image.StrategyDigest {
-			if !updateableImage.ImageTag.IsDigest() {
-				log.Tracef("Setting dummy digest for image %s", updateableImage.GetFullNameWithTag())
-				updateableImage.ImageTag.TagDigest = "dummy"
-			}
-		}
-
-		if needsUpdate(updateableImage, applicationImage, latest) {
+		if needsUpdate(updateableImage, applicationImage, latest, vc.Strategy) {
 			appImageWithTag := applicationImage.WithTag(latest)
 			appImageFullNameWithTag := appImageWithTag.GetFullNameWithTag()
 
@@ -392,7 +381,17 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 	return result
 }
 
-func needsUpdate(updateableImage *image.ContainerImage, applicationImage *image.ContainerImage, latest *tag.ImageTag) bool {
+func needsUpdate(updateableImage *image.ContainerImage, applicationImage *image.ContainerImage, latest *tag.ImageTag, strategy image.UpdateStrategy) bool {
+	if strategy == image.StrategyDigest {
+		if updateableImage.ImageTag == nil {
+			return true
+		}
+		// When using digest strategy, consider the digest even if the current image
+		// was referenced by tag. If either digest is missing or differs, we want an update.
+		if !updateableImage.ImageTag.IsDigest() || updateableImage.ImageTag.TagDigest != latest.TagDigest {
+			return true
+		}
+	}
 	// If the latest tag does not match image's current tag or the kustomize image is different, it means we have an update candidate.
 	return !updateableImage.ImageTag.Equals(latest) || applicationImage.KustomizeImage != nil && applicationImage.DiffersFrom(updateableImage, false)
 }
