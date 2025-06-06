@@ -1035,19 +1035,19 @@ func TestKubernetesClient(t *testing.T) {
 	})
 
 	t.Run("Get application test-app1 successful", func(t *testing.T) {
-		app, err := client.GetApplication(context.TODO(), "test-app1")
+		app, err := client.GetApplication(context.Background(), "test-app1")
 		require.NoError(t, err)
 		assert.Equal(t, "test-app1", app.GetName())
 	})
 
 	t.Run("Get application test-app2 successful", func(t *testing.T) {
-		app, err := client.GetApplication(context.TODO(), "test-app2")
+		app, err := client.GetApplication(context.Background(), "test-app2")
 		require.NoError(t, err)
 		assert.Equal(t, "test-app2", app.GetName())
 	})
 
 	t.Run("Get application not found", func(t *testing.T) {
-		_, err := client.GetApplication(context.TODO(), "test-app-non-existent")
+		_, err := client.GetApplication(context.Background(), "test-app-non-existent")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "application test-app-non-existent not found")
 	})
@@ -1073,7 +1073,7 @@ func TestKubernetesClient(t *testing.T) {
 		assert.EqualError(t, err, "error listing applications: Internal error occurred: list error")
 
 		// Test GetApplication error handling
-		_, err = client.GetApplication(context.TODO(), "test-app")
+		_, err = client.GetApplication(context.Background(), "test-app")
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "error listing applications: Internal error occurred: list error")
 	})
@@ -1098,7 +1098,7 @@ func TestKubernetesClient(t *testing.T) {
 		require.NoError(t, err)
 
 		// Test GetApplication with multiple matching applications
-		_, err = client.GetApplication(context.TODO(), "test-app")
+		_, err = client.GetApplication(context.Background(), "test-app")
 		assert.Error(t, err)
 		assert.EqualError(t, err, "multiple applications found matching test-app")
 	})
@@ -1128,7 +1128,7 @@ func TestKubernetesClientUpdateSpec(t *testing.T) {
 		require.NoError(t, err)
 
 		appName := "test-app"
-		spec, err := client.UpdateSpec(context.TODO(), &application.ApplicationUpdateSpecRequest{
+		spec, err := client.UpdateSpec(context.Background(), &application.ApplicationUpdateSpecRequest{
 			Name: &appName,
 			Spec: &v1alpha1.ApplicationSpec{Source: &v1alpha1.ApplicationSource{
 				RepoURL: "https://github.com/argoproj/argocd-example-apps",
@@ -1156,7 +1156,7 @@ func TestKubernetesClientUpdateSpec(t *testing.T) {
 			Spec:         &v1alpha1.ApplicationSpec{},
 		}
 
-		_, err = client.UpdateSpec(context.TODO(), spec)
+		_, err = client.UpdateSpec(context.Background(), spec)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "error getting application: application test-app not found")
 	})
@@ -1185,7 +1185,7 @@ func TestKubernetesClientUpdateSpec(t *testing.T) {
 			Spec: &v1alpha1.ApplicationSpec{},
 		}
 
-		_, err = client.UpdateSpec(context.TODO(), spec)
+		_, err = client.UpdateSpec(context.Background(), spec)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "max retries(0) reached while updating application: test-app")
 	})
@@ -1213,7 +1213,7 @@ func TestKubernetesClientUpdateSpec(t *testing.T) {
 			Spec:         &v1alpha1.ApplicationSpec{},
 		}
 
-		_, err = client.UpdateSpec(context.TODO(), spec)
+		_, err = client.UpdateSpec(context.Background(), spec)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "error updating application: non-conflict error")
 	})

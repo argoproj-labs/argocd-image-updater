@@ -124,7 +124,7 @@ func (endpoint *RegistryEndpoint) GetTags(img *image.ContainerImage, regClient R
 
 		logCtx.Tracef("Getting manifest for image %s:%s (operation %d/%d)", nameInRegistry, tagStr, i, len(tags))
 
-		lockErr := sem.Acquire(context.TODO(), 1)
+		lockErr := sem.Acquire(context.Background(), 1)
 		if lockErr != nil {
 			log.Warnf("could not acquire semaphore: %v", lockErr)
 			wg.Done()
