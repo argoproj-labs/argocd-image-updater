@@ -1,0 +1,30 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: image-updater-e2e-009
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: image-updater-009
+  annotations:
+    argocd-image-updater.argoproj.io/image-list: "gcr.io/heptio-images/ks-guestbook-demo:0.2,nginx:1.17.10"
+    argocd-image-updater.argoproj.io/update-strategy: digest
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  sources:
+    - repoURL: https://10.42.0.1:30003/testdata.git
+      path: ./008-simple-helm-app
+      targetRevision: HEAD
+    - repoURL: https://10.42.0.1:30003/testdata.git
+      path: ./009-multisource-helm
+      targetRevision: HEAD
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: image-updater-e2e-009
+  syncPolicy:
+    automated: {}
+    retry:
+      limit: 2
