@@ -1,5 +1,7 @@
 package common
 
+import "github.com/sirupsen/logrus"
+
 // This file contains a list of constants required by other packages
 
 const ImageUpdaterAnnotationPrefix = "argocd-image-updater.argoproj.io"
@@ -42,3 +44,11 @@ const DefaultCommitTemplatePath = "/app/config/commit.template"
 
 const ApplicationsAPIKindK8S = "kubernetes"
 const ApplicationsAPIKindArgoCD = "argocd"
+
+// ControllerLogFields contains the constant, structured context for the ImageUpdater controller.
+// It's defined as logrus.Fields (map[string]interface{}) to be used directly with logrus loggers.
+var ControllerLogFields = logrus.Fields{
+	"controller":      "imageupdater",
+	"controllerGroup": ImageUpdaterAnnotationPrefix,
+	"controllerKind":  "ImageUpdater",
+}

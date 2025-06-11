@@ -8,6 +8,8 @@ import (
 	"github.com/argoproj-labs/argocd-image-updater/pkg/argocd"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/version"
+	"github.com/bombsimon/logrusr/v2"
+	"github.com/sirupsen/logrus"
 	"os"
 	"strings"
 	"text/template"
@@ -17,7 +19,6 @@ import (
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/registry"
 
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
-	"github.com/bombsimon/logrusr/v2"
 	"github.com/spf13/cobra"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
@@ -62,8 +63,9 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 			}
 			logrLogger := logrusr.New(log.Log()) // log.Log() should return the *logrus.Logger
 			ctrl.SetLogger(logrLogger)
-			setupLog := ctrl.Log.WithName("controller-setup")
-			setupLog.Info("Controller runtime logger initialized.", "setAppLogLevel", cfg.LogLevel)
+			setupLogger := ctrl.Log.WithName("controller-setup").
+				WithValues(logrusFieldsToLogrValues(common.ControllerLogFields)...)
+			setupLogger.Info("Controller runtime logger initialized.", "setAppLogLevel", cfg.LogLevel)
 
 			if once {
 				cfg.CheckInterval = 0
@@ -165,7 +167,7 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 			// - https://github.com/advisories/GHSA-4374-p667-p6c8
 			var tlsOpts []func(*tls.Config)
 			disableHTTP2 := func(c *tls.Config) {
-				setupLog.Info("disabling http/2")
+				log.Infof("disabling http/2")
 				c.NextProtos = []string{"http/1.1"}
 			}
 
@@ -221,34 +223,32 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 				// LeaderElectionReleaseOnCancel: true,
 			})
 			if err != nil {
-				setupLog.Error(err, "unable to start manager")
+				setupLogger.Error(err, "unable to start manager")
 				return err
 			}
 
-			reconcilerLogger := ctrl.Log.WithName("reconciler").WithName("ImageUpdater")
 			if err = (&controller.ImageUpdaterReconciler{
 				Client: mgr.GetClient(),
 				Scheme: mgr.GetScheme(),
 				Config: cfg,
-				Log:    reconcilerLogger,
 			}).SetupWithManager(mgr); err != nil {
-				setupLog.Error(err, "unable to create controller", "controller", "ImageUpdater")
+				setupLogger.Error(err, "unable to create controller", "controller", "ImageUpdater")
 				return err
 			}
 			// +kubebuilder:scaffold:builder
 
 			if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
-				setupLog.Error(err, "unable to set up health check")
+				setupLogger.Error(err, "unable to set up health check")
 				return err
 			}
 			if err := mgr.AddReadyzCheck("readyz", healthz.Ping); err != nil {
-				setupLog.Error(err, "unable to set up ready check")
+				setupLogger.Error(err, "unable to set up ready check")
 				return err
 			}
 
-			setupLog.Info("starting manager")
+			setupLogger.Info("starting manager")
 			if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
-				setupLog.Error(err, "problem running manager")
+				setupLogger.Error(err, "problem running manager")
 				return err
 			}
 			return nil
@@ -293,4 +293,23 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 	controllerCmd.Flags().BoolVar(&cfg.DisableKubeEvents, "disable-kube-events", env.GetBoolVal("IMAGE_UPDATER_KUBE_EVENTS", false), "Disable kubernetes events")
 
 	return controllerCmd
+}
+
+// logrusFieldsToLogrValues converts a logrus.Fields map (map[string]interface{})
+// into a flattened slice of key-value pairs, which is the format expected
+// by the logr.WithValues function used by controller-runtime.
+//
+// For example, a map like:
+//
+//	logrus.Fields{"controller": "imageupdater", "version": "v1.0"}
+//
+// will be converted to a slice like:
+//
+//	[]interface{}{"controller", "imageupdater", "version", "v1.0"}
+func logrusFieldsToLogrValues(fields logrus.Fields) []interface{} {
+	values := make([]interface{}, 0, len(fields)*2)
+	for key, val := range fields {
+		values = append(values, key, val)
+	}
+	return values
 }

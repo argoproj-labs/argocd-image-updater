@@ -19,8 +19,10 @@ package controller
 import (
 	"context"
 	api "github.com/argoproj-labs/argocd-image-updater/api/v1alpha1"
+	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
 	"github.com/go-logr/logr"
+	"github.com/sirupsen/logrus"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -76,21 +78,25 @@ type ImageUpdaterReconciler struct {
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.19.0/pkg/reconcile
 func (r *ImageUpdaterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	logg := r.Log.WithValues("imageupdater", req.NamespacedName) // Add context to logs
-	logg.Info("Reconciling ImageUpdater")
-	logg.Error(nil, "e")
-	// TODO: Implement the full reconciliation logic as described in the docstring:
+	reqLogger := log.Log().WithFields(logrus.Fields{
+		"logger":       "reconcile",
+		"cr_namespace": req.NamespacedName.Namespace,
+		"cr_name":      req.NamespacedName.Name,
+	}).WithFields(common.ControllerLogFields)
+
+	reqLogger.Debugf("Starting reconciliation for ImageUpdater resource")
+
 	// 1. Fetch the ImageUpdater resource:
 	var imageUpdater api.ImageUpdater
 	if err := r.Get(ctx, req.NamespacedName, &imageUpdater); err != nil {
 		if client.IgnoreNotFound(err) != nil {
-			log.Errorf("unable to fetch ImageUpdater %v", err)
+			reqLogger.Errorf("unable to fetch ImageUpdater %v", err)
 			return ctrl.Result{}, err
 		}
 		log.Infof("ImageUpdater resource not found. Ignoring since object must be deleted.")
 		return ctrl.Result{}, nil
 	}
-	log.Infof("Successfully fetched ImageUpdater resource resourceVersion: %s", imageUpdater.ResourceVersion)
+	reqLogger.Infof("Successfully fetched ImageUpdater resource resourceVersion: %s", imageUpdater.ResourceVersion)
 
 	// 2. Add finalizer logic if needed for cleanup before deletion.
 
@@ -106,11 +112,11 @@ func (r *ImageUpdaterReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	// This interval might be a default, or could be overridden by logic
 	// that inspects the imageUpdater CR itself for a custom interval.
 	if r.Config.CheckInterval <= 0 {
-		log.Infof("Requeue interval is not configured or is zero; will not requeue based on time unless an error occurs or explicitly requested.")
+		reqLogger.Infof("Requeue interval is not configured or is zero; will not requeue based on time unless an error occurs or explicitly requested.")
 		return ctrl.Result{}, nil
 	}
 
-	log.Infof("Reconciliation logic placeholder: will requeue after interval %s", r.Config.CheckInterval.String())
+	reqLogger.Debugf("Reconciliation logic placeholder: will requeue after interval %s", r.Config.CheckInterval.String())
 	return ctrl.Result{RequeueAfter: r.Config.CheckInterval}, nil
 }
 
