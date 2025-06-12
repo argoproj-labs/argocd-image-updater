@@ -41,7 +41,6 @@ func newRootCommand() error {
 		Use:   "argocd-image-updater",
 		Short: "Automatically update container images with ArgoCD",
 	}
-	// rootCmd.AddCommand(newRunCommand())
 	rootCmd.AddCommand(newVersionCommand())
 	rootCmd.AddCommand(newTestCommand())
 	rootCmd.AddCommand(newTemplateCommand())

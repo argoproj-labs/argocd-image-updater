@@ -51,8 +51,8 @@ type ImageUpdaterConfig struct {
 
 var lastRun time.Time
 
-// newControllerCommand implements "run" command
-func newControllerCommand(cr api.ImageUpdater) error {
+// reconcileResource
+func reconcileResource(cr api.ImageUpdater) error {
 	var cfg *ImageUpdaterConfig = &ImageUpdaterConfig{}
 
 	// Health server will start in a go routine and run asynchronously
@@ -66,14 +66,6 @@ func newControllerCommand(cr api.ImageUpdater) error {
 	if cfg.MetricsPort > 0 {
 		log.Infof("Starting metrics server on TCP port=%d", cfg.MetricsPort)
 		msErrCh = metrics.StartMetricsServer(cfg.MetricsPort)
-	}
-
-	if cfg.WarmUpCache {
-		err := warmupImageCache(cfg, cr)
-		if err != nil {
-			log.Errorf("Error warming up cache: %v", err)
-			return err
-		}
 	}
 
 	// Start up the credentials store server
@@ -138,7 +130,7 @@ func newControllerCommand(cr api.ImageUpdater) error {
 
 }
 
-// Main loop for argocd-image-controller
+// RunImageUpdater is a main loop for argocd-image-controller
 func RunImageUpdater(cfg *ImageUpdaterConfig, cr api.ImageUpdater, warmUp bool) (argocd.ImageUpdaterResult, error) {
 	result := argocd.ImageUpdaterResult{}
 	var err error
@@ -244,25 +236,4 @@ func RunImageUpdater(cfg *ImageUpdaterConfig, cr api.ImageUpdater, warmUp bool) 
 	wg.Wait()
 
 	return result, nil
-}
-
-// warmupImageCache performs a cache warm-up, which is basically one cycle of
-// the image update process with dryRun set to true and a maximum concurrency
-// of 1, i.e. sequential processing.
-func warmupImageCache(cfg *ImageUpdaterConfig, cr api.ImageUpdater) error {
-	log.Infof("Warming up image cache")
-	_, err := RunImageUpdater(cfg, cr, true)
-	if err != nil {
-		return nil
-	}
-	entries := 0
-	eps := registry.ConfiguredEndpoints()
-	for _, ep := range eps {
-		r, err := registry.GetRegistryEndpoint(ep)
-		if err == nil {
-			entries += r.Cache.NumEntries()
-		}
-	}
-	log.Infof("Finished cache warm-up, pre-loaded %d meta data entries from %d registries", entries, len(eps))
-	return nil
 }

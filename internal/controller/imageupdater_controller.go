@@ -84,7 +84,7 @@ func (r *ImageUpdaterReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		"cr_name":      req.NamespacedName.Name,
 	}).WithFields(common.ControllerLogFields)
 
-	reqLogger.Debugf("Starting reconciliation for ImageUpdater resource")
+	reqLogger.Debugf("Starting reconciliation for ImageUpdater resource.")
 
 	// 1. Fetch the ImageUpdater resource:
 	var imageUpdater api.ImageUpdater
@@ -93,10 +93,10 @@ func (r *ImageUpdaterReconciler) Reconcile(ctx context.Context, req ctrl.Request
 			reqLogger.Errorf("unable to fetch ImageUpdater %v", err)
 			return ctrl.Result{}, err
 		}
-		log.Infof("ImageUpdater resource not found. Ignoring since object must be deleted.")
+		reqLogger.Infof("ImageUpdater resource not found. Ignoring since object must be deleted.")
 		return ctrl.Result{}, nil
 	}
-	reqLogger.Infof("Successfully fetched ImageUpdater resource resourceVersion: %s", imageUpdater.ResourceVersion)
+	reqLogger.Infof("Successfully fetched ImageUpdater resource: %s, namespace: %s", imageUpdater.Name, imageUpdater.Namespace)
 
 	// 2. Add finalizer logic if needed for cleanup before deletion.
 

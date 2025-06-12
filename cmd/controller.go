@@ -5,12 +5,15 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	api "github.com/argoproj-labs/argocd-image-updater/api/v1alpha1"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/argocd"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/version"
 	"github.com/bombsimon/logrusr/v2"
 	"github.com/sirupsen/logrus"
 	"os"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"strings"
 	"text/template"
 
@@ -227,6 +230,14 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 				return err
 			}
 
+			if cfg.WarmUpCache {
+				err := warmupImageCache(mgr, cfg)
+				if err != nil {
+					log.Errorf("Error warming up cache: %v", err)
+					return err
+				}
+			}
+
 			if err = (&controller.ImageUpdaterReconciler{
 				Client: mgr.GetClient(),
 				Scheme: mgr.GetScheme(),
@@ -312,4 +323,43 @@ func logrusFieldsToLogrValues(fields logrus.Fields) []interface{} {
 		values = append(values, key, val)
 	}
 	return values
+}
+
+// warmupImageCache performs a cache warm-up, which is basically one cycle of
+// the image update process with dryRun set to true and a maximum concurrency
+// of 1, i.e. sequential processing.
+func warmupImageCache(mgr manager.Manager, cfg *controller.ImageUpdaterConfig) error {
+	log.Infof("Warming up image cache")
+	apiClient := mgr.GetClient()
+	imageList := &api.ImageUpdaterList{}
+	var listOpts []client.ListOption
+
+	log.Infof("Listing all ImageUpdater CRs before starting manager...")
+	if err := apiClient.List(context.Background(), imageList, listOpts...); err != nil {
+		log.Errorf("Failed to list ImageUpdater CRs %v", err)
+		return err
+	}
+
+	log.Infof("Found %d ImageUpdater CRs", len(imageList.Items))
+
+	for _, cr := range imageList.Items {
+		log.Infof("Found CR %s, namespace=%s", cr.Name, cr.Namespace)
+		_, err := controller.RunImageUpdater(cfg, cr, true)
+		if err != nil {
+			return nil
+		}
+		entries := 0
+		eps := registry.ConfiguredEndpoints()
+		for _, ep := range eps {
+			r, err := registry.GetRegistryEndpoint(ep)
+			if err == nil {
+				entries += r.Cache.NumEntries()
+			}
+		}
+		log.Infof("Finished cache warm-up for CR=%s, namespace=%s. Pre-loaded %d meta data entries from %d registries", cr.Name, cr.Namespace, entries, len(eps))
+
+	}
+
+	log.Infof("Finished cache warm-up.")
+	return nil
 }

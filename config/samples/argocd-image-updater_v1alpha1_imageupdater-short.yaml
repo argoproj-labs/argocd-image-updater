@@ -6,9 +6,9 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
   name: imageupdater-sample-short
 spec:
-  namespace: argocd
+  namespace: argocd-image-updater-e2e
   applicationRefs:
-    - namePattern: "image-updater-001"
+    - namePattern: "image-updater-001-1"
       images:
-        - alias: "nginx"
-          imageName: "nginx:1.17.10"
+        - alias: "test"
+          imageName: "10.42.0.1:30000/test-image:1.X.X"
