@@ -5,22 +5,25 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"net/http"
+	"os"
+	"strings"
+	"sync/atomic"
+	"text/template"
+
 	api "github.com/argoproj-labs/argocd-image-updater/api/v1alpha1"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/argocd"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/version"
 	"github.com/bombsimon/logrusr/v2"
 	"github.com/sirupsen/logrus"
-	"net/http"
-	"os"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"strings"
-	"sync/atomic"
-	"text/template"
 
 	"github.com/argoproj-labs/argocd-image-updater/internal/controller"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/env"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/registry"
+
+	"time"
 
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
 	"github.com/spf13/cobra"
@@ -29,7 +32,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
-	"time"
 )
 
 // newControllerCommand implements "controller" command

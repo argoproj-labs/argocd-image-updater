@@ -3,11 +3,12 @@ package controller
 import (
 	"context"
 	"fmt"
-	"github.com/argoproj-labs/argocd-image-updater/ext/git"
-	"github.com/argoproj-labs/argocd-image-updater/pkg/kube"
 	"sync"
 	"text/template"
 	"time"
+
+	"github.com/argoproj-labs/argocd-image-updater/ext/git"
+	"github.com/argoproj-labs/argocd-image-updater/pkg/kube"
 
 	api "github.com/argoproj-labs/argocd-image-updater/api/v1alpha1"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/argocd"
@@ -75,10 +76,8 @@ func reconcileResource(cr api.ImageUpdater) error {
 		csErrCh <- cs.Run()
 	}()
 
-	var err error
 	// Wait for cred server to be started, just in case
-	err = <-csErrCh
-	if err != nil {
+	if err := <-csErrCh; err != nil {
 		log.Errorf("Error running askpass server: %v", err)
 		return err
 	}
