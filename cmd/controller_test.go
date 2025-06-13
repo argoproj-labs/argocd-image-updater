@@ -1,12 +1,11 @@
 package main
 
 import (
-	"testing"
-	"time"
-
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/env"
 	"github.com/stretchr/testify/assert"
+	"testing"
+	"time"
 )
 
 // TestNewControllerCommand tests various flags and their default values.
