@@ -46,7 +46,6 @@ type ImageUpdaterConfig struct {
 	GitCommitSignOff       bool
 	DisableKubeEvents      bool
 	GitCreds               git.CredsStore
-	WarmUpCache            bool
 }
 
 var lastRun time.Time

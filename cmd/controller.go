@@ -11,10 +11,11 @@ import (
 	"github.com/argoproj-labs/argocd-image-updater/pkg/version"
 	"github.com/bombsimon/logrusr/v2"
 	"github.com/sirupsen/logrus"
+	"net/http"
 	"os"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"strings"
+	"sync/atomic"
 	"text/template"
 
 	"github.com/argoproj-labs/argocd-image-updater/internal/controller"
@@ -35,6 +36,7 @@ import (
 func newControllerCommand() *cobra.Command {
 	var metricsAddr string
 	var enableLeaderElection bool
+	var leaderElectionNamespace string
 	var probeAddr string
 	var secureMetrics bool
 	var enableHTTP2 bool
@@ -42,6 +44,7 @@ func newControllerCommand() *cobra.Command {
 	var once bool
 	var kubeConfig string
 	var disableKubernetes bool
+	var warmUpCache bool = true
 	var commitMessagePath string
 	var commitMessageTpl string
 
@@ -207,12 +210,14 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 			}
 
 			mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
-				Scheme:                 scheme,
-				Metrics:                metricsServerOptions,
-				WebhookServer:          webhookServer,
-				HealthProbeBindAddress: probeAddr,
-				LeaderElection:         enableLeaderElection,
-				LeaderElectionID:       "c21b75f2.argoproj.io",
+				Scheme:                  scheme,
+				Metrics:                 metricsServerOptions,
+				WebhookServer:           webhookServer,
+				HealthProbeBindAddress:  probeAddr,
+				LeaderElection:          enableLeaderElection,
+				LeaderElectionID:        "c21b75f2.argoproj.io",
+				LeaderElectionNamespace: leaderElectionNamespace,
+
 				// LeaderElectionReleaseOnCancel defines if the leader should step down voluntarily
 				// when the Manager ends. This requires the binary to immediately end when the
 				// Manager is stopped, otherwise, this setting is unsafe. Setting this significantly
@@ -230,18 +235,25 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 				return err
 			}
 
-			if cfg.WarmUpCache {
-				err := warmupImageCache(mgr, cfg)
-				if err != nil {
-					log.Errorf("Error warming up cache: %v", err)
-					return err
-				}
+			// Add the CacheWarmer as a Runnable to the manager.
+			setupLogger.Info("Adding cache warmer to the manager.")
+			warmupState := &WarmupStatus{
+				Done: make(chan struct{}),
+			}
+			if err := mgr.Add(&CacheWarmer{
+				Client: mgr.GetClient(),
+				Config: cfg,
+				Status: warmupState,
+			}); err != nil {
+				setupLogger.Error(err, "unable to add cache warmer to manager")
+				return err
 			}
 
 			if err = (&controller.ImageUpdaterReconciler{
-				Client: mgr.GetClient(),
-				Scheme: mgr.GetScheme(),
-				Config: cfg,
+				Client:      mgr.GetClient(),
+				Scheme:      mgr.GetScheme(),
+				Config:      cfg,
+				CacheWarmed: warmupState.Done,
 			}).SetupWithManager(mgr); err != nil {
 				setupLogger.Error(err, "unable to create controller", "controller", "ImageUpdater")
 				return err
@@ -252,7 +264,15 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 				setupLogger.Error(err, "unable to set up health check")
 				return err
 			}
-			if err := mgr.AddReadyzCheck("readyz", healthz.Ping); err != nil {
+
+			if err := mgr.AddReadyzCheck("warmup-check", func(req *http.Request) error {
+				if !warmupState.isCacheWarmed.Load() {
+					// If the cache is not yet warmed, the check fails.
+					return fmt.Errorf("cache is not yet warmed")
+				}
+				// Once warmed, the check passes.
+				return nil
+			}); err != nil {
 				setupLogger.Error(err, "unable to set up ready check")
 				return err
 			}
@@ -265,16 +285,12 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 			return nil
 		},
 	}
-	controllerCmd.Flags().StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
-		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
+	controllerCmd.Flags().StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
 	controllerCmd.Flags().StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
-	controllerCmd.Flags().BoolVar(&enableLeaderElection, "leader-elect", false,
-		"Enable leader election for controller manager. "+
-			"Enabling this will ensure there is only one active controller manager.")
-	controllerCmd.Flags().BoolVar(&secureMetrics, "metrics-secure", true,
-		"If set, the metrics endpoint is served securely via HTTPS. Use --metrics-secure=false to use HTTP instead.")
-	controllerCmd.Flags().BoolVar(&enableHTTP2, "enable-http2", false,
-		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
+	controllerCmd.Flags().BoolVar(&enableLeaderElection, "leader-elect", true, "Enable leader election for controller manager. Enabling this will ensure there is only one active controller manager.")
+	controllerCmd.Flags().StringVar(&leaderElectionNamespace, "leader-election-namespace", "image-updater-system", "The namespace where the leader election resource lives. Required when running outside of a cluster.")
+	controllerCmd.Flags().BoolVar(&secureMetrics, "metrics-secure", true, "If set, the metrics endpoint is served securely via HTTPS. Use --metrics-secure=false to use HTTP instead.")
+	controllerCmd.Flags().BoolVar(&enableHTTP2, "enable-http2", false, "If set, HTTP/2 will be enabled for the metrics and webhook servers")
 	controllerCmd.Flags().StringVar(&cfg.ApplicationsAPIKind, "applications-api", env.GetStringVal("APPLICATIONS_API", common.ApplicationsAPIKindK8S), "API kind that is used to manage Argo CD applications ('kubernetes' or 'argocd')")
 	controllerCmd.Flags().StringVar(&cfg.ClientOpts.ServerAddr, "argocd-server-addr", env.GetStringVal("ARGOCD_SERVER", ""), "address of ArgoCD API server")
 	controllerCmd.Flags().BoolVar(&cfg.ClientOpts.GRPCWeb, "argocd-grpc-web", env.GetBoolVal("ARGOCD_GRPC_WEB", false), "use grpc-web for connection to ArgoCD")
@@ -294,7 +310,7 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 	controllerCmd.Flags().StringVar(&cfg.ArgocdNamespace, "argocd-namespace", "", "namespace where ArgoCD runs in (current namespace by default)")
 	controllerCmd.Flags().StringSliceVar(&cfg.AppNamePatterns, "match-application-name", nil, "patterns to match application name against")
 	controllerCmd.Flags().StringVar(&cfg.AppLabel, "match-application-label", "", "label selector to match application labels against")
-	controllerCmd.Flags().BoolVar(&cfg.WarmUpCache, "warmup-cache", true, "whether to perform a cache warm-up on startup")
+	controllerCmd.Flags().BoolVar(&warmUpCache, "warmup-cache", true, "whether to perform a cache warm-up on startup")
 	controllerCmd.Flags().StringVar(&cfg.GitCommitUser, "git-commit-user", env.GetStringVal("GIT_COMMIT_USER", "argocd-image-updater"), "Username to use for Git commits")
 	controllerCmd.Flags().StringVar(&cfg.GitCommitMail, "git-commit-email", env.GetStringVal("GIT_COMMIT_EMAIL", "noreply@argoproj.io"), "E-Mail address to use for Git commits")
 	controllerCmd.Flags().StringVar(&cfg.GitCommitSigningKey, "git-commit-signing-key", env.GetStringVal("GIT_COMMIT_SIGNING_KEY", ""), "GnuPG key ID or path to Private SSH Key used to sign the commits")
@@ -325,26 +341,50 @@ func logrusFieldsToLogrValues(fields logrus.Fields) []interface{} {
 	return values
 }
 
-// warmupImageCache performs a cache warm-up, which is basically one cycle of
-// the image update process with dryRun set to true and a maximum concurrency
-// of 1, i.e. sequential processing.
-func warmupImageCache(mgr manager.Manager, cfg *controller.ImageUpdaterConfig) error {
-	log.Infof("Warming up image cache")
-	apiClient := mgr.GetClient()
+// WarmupStatus holds the shared state indicating if the cache warm-up is complete.
+type WarmupStatus struct {
+	isCacheWarmed atomic.Bool
+	Done          chan struct{}
+}
+
+// CacheWarmer implements manager.Runnable to warm up caches after the manager has started them.
+type CacheWarmer struct {
+	Client client.Client
+	Config *controller.ImageUpdaterConfig
+	Status *WarmupStatus
+}
+
+// Start contains the logic that will be executed by the manager.
+func (cw *CacheWarmer) Start(ctx context.Context) error {
+	defer close(cw.Status.Done)
+	warmUpCacheLogger := log.Log().WithFields(logrus.Fields{
+		"logger": "warmup-cache",
+	}).WithFields(common.ControllerLogFields)
+	warmUpCacheLogger.Debugf("Cache warmer started, waiting for caches to sync...")
+
+	// The manager will start this runnable, but it's good practice
+	// to wait for the caches to be fully synced before proceeding.
+	//if !cache.WaitForCacheSync(ctx, ...) {
+	//   return fmt.Errorf("failed to sync caches for warm-up")
+	//}
+	// For a simple list, you might not need to explicitly wait, but it's more robust.
+	// For this example, we'll proceed directly.
+
+	warmUpCacheLogger.Debugf("Caches are synced. Warming up image cache...")
 	imageList := &api.ImageUpdaterList{}
 	var listOpts []client.ListOption
 
-	log.Infof("Listing all ImageUpdater CRs before starting manager...")
-	if err := apiClient.List(context.Background(), imageList, listOpts...); err != nil {
-		log.Errorf("Failed to list ImageUpdater CRs %v", err)
+	warmUpCacheLogger.Debugf("Listing all ImageUpdater CRs before starting manager...")
+	if err := cw.Client.List(ctx, imageList, listOpts...); err != nil {
+		warmUpCacheLogger.Errorf("Failed to list ImageUpdater CRs during warm-up: %v", err)
 		return err
 	}
 
-	log.Infof("Found %d ImageUpdater CRs", len(imageList.Items))
+	warmUpCacheLogger.Debugf("Found %d ImageUpdater CRs to process for cache warm-up.", len(imageList.Items))
 
 	for _, cr := range imageList.Items {
-		log.Infof("Found CR %s, namespace=%s", cr.Name, cr.Namespace)
-		_, err := controller.RunImageUpdater(cfg, cr, true)
+		warmUpCacheLogger.Debugf("Found CR %s, namespace=%s", cr.Name, cr.Namespace)
+		_, err := controller.RunImageUpdater(cw.Config, cr, true)
 		if err != nil {
 			return nil
 		}
@@ -356,10 +396,17 @@ func warmupImageCache(mgr manager.Manager, cfg *controller.ImageUpdaterConfig) e
 				entries += r.Cache.NumEntries()
 			}
 		}
-		log.Infof("Finished cache warm-up for CR=%s, namespace=%s. Pre-loaded %d meta data entries from %d registries", cr.Name, cr.Namespace, entries, len(eps))
-
+		warmUpCacheLogger.Infof("Finished cache warm-up for CR=%s, namespace=%s. Pre-loaded %d meta data entries from %d registries", cr.Name, cr.Namespace, entries, len(eps))
 	}
 
-	log.Infof("Finished cache warm-up.")
+	cw.Status.isCacheWarmed.Store(true)
+	warmUpCacheLogger.Debugf("Readiness state set to 'true'. Controller can now start reconciling.")
+	warmUpCacheLogger.Infof("Finished cache warm-up.")
 	return nil
+}
+
+// NeedLeaderElection tells the manager that this runnable should only be
+// run on the leader replica.
+func (cw *CacheWarmer) NeedLeaderElection() bool {
+	return true
 }

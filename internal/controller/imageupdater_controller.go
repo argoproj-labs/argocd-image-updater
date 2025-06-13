@@ -21,20 +21,20 @@ import (
 	api "github.com/argoproj-labs/argocd-image-updater/api/v1alpha1"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
-	"github.com/go-logr/logr"
 	"github.com/sirupsen/logrus"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
+	"time"
 )
 
 // ImageUpdaterReconciler reconciles a ImageUpdater object
 type ImageUpdaterReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
-	Config *ImageUpdaterConfig
-	Log    logr.Logger
+	Scheme      *runtime.Scheme
+	Config      *ImageUpdaterConfig
+	CacheWarmed <-chan struct{}
 }
 
 // +kubebuilder:rbac:groups=argocd-image-updater.argoproj.io,resources=imageupdaters,verbs=get;list;watch;create;update;patch;delete
@@ -83,6 +83,15 @@ func (r *ImageUpdaterReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		"cr_namespace": req.NamespacedName.Namespace,
 		"cr_name":      req.NamespacedName.Name,
 	}).WithFields(common.ControllerLogFields)
+	select {
+	case <-r.CacheWarmed:
+		// The warm-up is complete, proceed with reconciliation.
+	default:
+		// The warm-up is not yet complete.
+		reqLogger.Debugf("Reconciliation for %s is waiting for cache warm-up to complete...", req.NamespacedName)
+		// Requeue the request to try again after a short delay.
+		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+	}
 
 	reqLogger.Debugf("Starting reconciliation for ImageUpdater resource.")
 
