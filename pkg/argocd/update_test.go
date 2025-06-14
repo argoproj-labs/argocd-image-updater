@@ -9,8 +9,6 @@ import (
 	"testing"
 	"time"
 
-	yaml "sigs.k8s.io/yaml/goyaml.v3"
-
 	"github.com/argoproj-labs/argocd-image-updater/ext/git"
 	gitmock "github.com/argoproj-labs/argocd-image-updater/ext/git/mocks"
 	argomock "github.com/argoproj-labs/argocd-image-updater/pkg/argocd/mocks"
@@ -24,10 +22,10 @@ import (
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/tag"
 	"github.com/argoproj-labs/argocd-image-updater/test/fake"
 	"github.com/argoproj-labs/argocd-image-updater/test/fixture"
-
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/application"
 	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
-	"github.com/distribution/distribution/v3/manifest/schema1" //nolint:staticcheck
+	"github.com/distribution/distribution/v3/manifest/schema1"
+	"github.com/goccy/go-yaml/parser"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -1704,6 +1702,104 @@ redis:
 		assert.Equal(t, strings.TrimSpace(strings.ReplaceAll(expected, "\t", "  ")), strings.TrimSpace(string(yaml)))
 	})
 
+	t.Run("Valid Helm source with Helm values file with comments and newlines", func(t *testing.T) {
+		expected := `
+nginx.image.name: nginx
+nginx.image.tag: v1.0.0
+replicas: 1
+`
+		app := v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name: "testapp",
+				Annotations: map[string]string{
+					"argocd-image-updater.argoproj.io/image-list":            "nginx=nginx",
+					"argocd-image-updater.argoproj.io/write-back-method":     "git",
+					"argocd-image-updater.argoproj.io/write-back-target":     "helmvalues:./test-values.yaml",
+					"argocd-image-updater.argoproj.io/nginx.helm.image-name": "nginx.image.name",
+					"argocd-image-updater.argoproj.io/nginx.helm.image-tag":  "nginx.image.tag",
+				},
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Sources: []v1alpha1.ApplicationSource{
+					{
+						Chart: "my-app",
+						Helm: &v1alpha1.ApplicationSourceHelm{
+							ReleaseName: "my-app",
+							ValueFiles:  []string{"$values/some/dir/values.yaml"},
+							Parameters: []v1alpha1.HelmParameter{
+								{
+									Name:        "nginx.image.name",
+									Value:       "nginx",
+									ForceString: true,
+								},
+								{
+									Name:        "nginx.image.tag",
+									Value:       "v1.0.0",
+									ForceString: true,
+								},
+							},
+						},
+						RepoURL:        "https://example.com/example",
+						TargetRevision: "main",
+					},
+					{
+						Ref:            "values",
+						RepoURL:        "https://example.com/example2",
+						TargetRevision: "main",
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceTypes: []v1alpha1.ApplicationSourceType{
+					v1alpha1.ApplicationSourceTypeHelm,
+					"",
+				},
+				Summary: v1alpha1.ApplicationSummary{
+					Images: []string{
+						"nginx:v0.0.0",
+						"redis:v0.0.0",
+					},
+				},
+			},
+		}
+
+		originalData := []byte(`
+nginx.image.name: nginx
+nginx.image.tag: v0.0.0
+replicas: 1
+`)
+		yaml, err := marshalParamsOverride(&app, originalData)
+		require.NoError(t, err)
+		assert.NotEmpty(t, yaml)
+		assert.Equal(t, strings.TrimSpace(strings.ReplaceAll(expected, "\t", "  ")), strings.TrimSpace(string(yaml)))
+
+		// comments and newlines
+		originalData = []byte(`
+test-value1: one
+
+#comment
+test-value2: two
+
+test-value3: three #inline comment
+`)
+		expected = `
+test-value1: one
+
+#comment
+test-value2: two
+
+test-value3: three #inline comment
+nginx:
+  image:
+    tag: v1.0.0
+    name: nginx
+`
+		yaml, err = marshalParamsOverride(&app, originalData)
+		require.NoError(t, err)
+		assert.NotEmpty(t, yaml)
+		assert.Equal(t, strings.TrimSpace(strings.ReplaceAll(expected, "\t", "  ")), strings.TrimSpace(string(yaml)))
+	})
+
 	t.Run("Valid Helm source with Helm values file with multiple aliases", func(t *testing.T) {
 		expected := `
 foo.image.name: nginx
@@ -2197,7 +2293,7 @@ replicas: 1
 	})
 }
 
-func Test_SetHelmValue(t *testing.T) {
+func Test_createOrUpdateNode(t *testing.T) {
 	t.Run("Update existing Key", func(t *testing.T) {
 		expected := `
 image:
@@ -2212,38 +2308,31 @@ image:
     name: repo-name
     tag: v1.0.0
 `)
-		input := yaml.Node{}
-		err := yaml.Unmarshal(inputData, &input)
+
+		root, err := parser.ParseBytes(inputData, parser.ParseComments)
 		require.NoError(t, err)
 
-		key := "image.attributes.tag"
-		value := "v2.0.0"
+		if err := createOrUpdateNode(root.Docs[0], []string{"image", "attributes", "tag"}, "v2.0.0"); err != nil {
+			require.NoError(t, err)
+		}
 
-		err = setHelmValue(&input, key, value)
-		require.NoError(t, err)
-
-		output, err := marshalWithIndent(&input, defaultIndent)
-		require.NoError(t, err)
-		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
+		actual := root.String()
+		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(actual))
 	})
 
 	t.Run("Update Key with dots", func(t *testing.T) {
 		expected := `image.attributes.tag: v2.0.0`
 
-		inputData := []byte(`image.attributes.tag: v1.0.0`)
-		input := yaml.Node{}
-		err := yaml.Unmarshal(inputData, &input)
+		input := []byte(`image.attributes.tag: v1.0.0`)
+		root, err := parser.ParseBytes(input, parser.ParseComments)
 		require.NoError(t, err)
 
-		key := "image.attributes.tag"
-		value := "v2.0.0"
+		if err := createOrUpdateNode(root.Docs[0], []string{"image.attributes.tag"}, "v2.0.0"); err != nil {
+			require.NoError(t, err)
+		}
 
-		err = setHelmValue(&input, key, value)
-		require.NoError(t, err)
-
-		output, err := marshalWithIndent(&input, defaultIndent)
-		require.NoError(t, err)
-		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
+		actual := strings.TrimSpace(root.String())
+		assert.Equal(t, expected, actual)
 	})
 
 	t.Run("Key not found", func(t *testing.T) {
@@ -2254,24 +2343,21 @@ image:
     tag: v2.0.0
 `
 
-		inputData := []byte(`
+		input := []byte(`
 image:
   attributes:
     name: repo-name
 `)
-		input := yaml.Node{}
-		err := yaml.Unmarshal(inputData, &input)
+
+		root, err := parser.ParseBytes(input, parser.ParseComments)
 		require.NoError(t, err)
 
-		key := "image.attributes.tag"
-		value := "v2.0.0"
+		if err := createOrUpdateNode(root.Docs[0], []string{"image", "attributes", "tag"}, "v2.0.0"); err != nil {
+			t.Fatal(err)
+		}
 
-		err = setHelmValue(&input, key, value)
-		require.NoError(t, err)
-
-		output, err := marshalWithIndent(&input, defaultIndent)
-		require.NoError(t, err)
-		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
+		actual := root.String()
+		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(actual))
 	})
 
 	t.Run("Root key not found", func(t *testing.T) {
@@ -2280,61 +2366,65 @@ name: repo-name
 tag: v2.0.0
 `
 
-		inputData := []byte(`name: repo-name`)
-		input := yaml.Node{}
-		err := yaml.Unmarshal(inputData, &input)
+		input := []byte(`name: repo-name`)
+		root, err := parser.ParseBytes(input, parser.ParseComments)
 		require.NoError(t, err)
 
-		key := "tag"
-		value := "v2.0.0"
+		if err := createOrUpdateNode(root.Docs[0], []string{"tag"}, "v2.0.0"); err != nil {
+			t.Fatal(err)
+		}
 
-		err = setHelmValue(&input, key, value)
-		require.NoError(t, err)
-
-		output, err := marshalWithIndent(&input, defaultIndent)
-		require.NoError(t, err)
-		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
+		actual := root.String()
+		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(actual))
 	})
 
 	t.Run("Empty values with deep key", func(t *testing.T) {
-		// this uses inline syntax because the input data
-		// needed is an empty map, which can only be expressed as {}.
-		expected := `{image: {attributes: {tag: v2.0.0}}}`
+		expected := `
+image:
+  attributes:
+    tag: v2.0.0
+`
 
-		inputData := []byte(`{}`)
-		input := yaml.Node{}
-		err := yaml.Unmarshal(inputData, &input)
+		input := []byte(``)
+		root, err := parser.ParseBytes(input, parser.ParseComments)
 		require.NoError(t, err)
 
-		key := "image.attributes.tag"
-		value := "v2.0.0"
+		if err := createOrUpdateNode(root.Docs[0], []string{"image", "attributes", "tag"}, "v2.0.0"); err != nil {
+			t.Fatal(err)
+		}
 
-		err = setHelmValue(&input, key, value)
-		require.NoError(t, err)
-
-		output, err := marshalWithIndent(&input, defaultIndent)
-		require.NoError(t, err)
-		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
+		actual := root.String()
+		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(actual))
 	})
 
 	t.Run("Unexpected type for key", func(t *testing.T) {
-		inputData := []byte(`
+		inputData := `
 image:
   attributes: v1.0.0
-`)
-		input := yaml.Node{}
-		err := yaml.Unmarshal(inputData, &input)
+`
+		input := []byte(inputData)
+		root, err := parser.ParseBytes(input, parser.ParseComments)
 		require.NoError(t, err)
 
-		key := "image.attributes.tag"
-		value := "v2.0.0"
+		expectedErr := createOrUpdateNode(root.Docs[0], []string{"image", "attributes", "tag"}, "v2.0.0")
+		assert.Error(t, expectedErr)
+		assert.Equal(t, "unexpected type *ast.StringNode for key attributes", expectedErr.Error())
 
-		err = setHelmValue(&input, key, value)
-		assert.Error(t, err)
-		assert.Equal(t, "unexpected type ScalarNode for key attributes", err.Error())
 	})
 
 	t.Run("Aliases, comments, and multiline strings are preserved", func(t *testing.T) {
+		input := `
+image:
+  attributes:
+    name: &repo repo-name
+    tag: v1.0.0
+    # this is a comment
+    multiline: |
+      one
+      two
+      three
+    alias: *repo
+`
 		expected := `
 image:
   attributes:
@@ -2347,35 +2437,27 @@ image:
       three
     alias: *repo
 `
-
-		inputData := []byte(`
-image:
-  attributes:
-    name: &repo repo-name
-    tag: v1.0.0
-    # this is a comment
-    multiline: |
-      one
-      two
-      three
-    alias: *repo
-`)
-		input := yaml.Node{}
-		err := yaml.Unmarshal(inputData, &input)
+		src := []byte(input)
+		root, err := parser.ParseBytes(src, parser.ParseComments)
 		require.NoError(t, err)
 
-		key := "image.attributes.tag"
-		value := "v2.0.0"
+		if err := createOrUpdateNode(root.Docs[0], []string{"image", "attributes", "tag"}, "v2.0.0"); err != nil {
+			t.Fatal(err)
+		}
 
-		err = setHelmValue(&input, key, value)
-		require.NoError(t, err)
-
-		output, err := marshalWithIndent(&input, defaultIndent)
-		require.NoError(t, err)
-		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
+		actual := root.String()
+		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(actual))
 	})
 
 	t.Run("Aliases to mappings are followed", func(t *testing.T) {
+		input := `
+global:
+  attributes: &attrs
+    name: &repo repo-name
+    tag: v1.0.0
+image:
+  attributes: *attrs
+`
 		expected := `
 global:
   attributes: &attrs
@@ -2384,31 +2466,26 @@ global:
 image:
   attributes: *attrs
 `
-
-		inputData := []byte(`
-global:
-  attributes: &attrs
-    name: &repo repo-name
-    tag: v1.0.0
-image:
-  attributes: *attrs
-`)
-		input := yaml.Node{}
-		err := yaml.Unmarshal(inputData, &input)
+		src := []byte(input)
+		root, err := parser.ParseBytes(src, parser.ParseComments)
 		require.NoError(t, err)
 
-		key := "image.attributes.tag"
-		value := "v2.0.0"
+		if err := createOrUpdateNode(root.Docs[0], []string{"image", "attributes", "tag"}, "v2.0.0"); err != nil {
+			t.Fatal(err)
+		}
 
-		err = setHelmValue(&input, key, value)
-		require.NoError(t, err)
-
-		output, err := marshalWithIndent(&input, defaultIndent)
-		require.NoError(t, err)
-		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
+		actual := root.String()
+		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(actual))
 	})
 
 	t.Run("Aliases to scalars are followed", func(t *testing.T) {
+		input := `
+image:
+  attributes:
+    name: repo-name
+    version: &ver v1.0.0
+    tag: *ver
+`
 		expected := `
 image:
   attributes:
@@ -2416,28 +2493,74 @@ image:
     version: &ver v2.0.0
     tag: *ver
 `
+		src := []byte(input)
+		root, err := parser.ParseBytes(src, parser.ParseComments)
+		require.NoError(t, err)
 
-		inputData := []byte(`
+		if err := createOrUpdateNode(root.Docs[0], []string{"image", "attributes", "tag"}, "v2.0.0"); err != nil {
+			t.Fatal(err)
+		}
+
+		actual := root.String()
+		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(actual))
+	})
+
+	t.Run("Anchors for scalars are updated appropriately", func(t *testing.T) {
+		input := `
 image:
   attributes:
     name: repo-name
     version: &ver v1.0.0
     tag: *ver
-`)
-		input := yaml.Node{}
-		err := yaml.Unmarshal(inputData, &input)
+`
+		expected := `
+image:
+  attributes:
+    name: repo-name
+    version: &ver v2.0.0
+    tag: *ver
+`
+		src := []byte(input)
+		root, err := parser.ParseBytes(src, parser.ParseComments)
 		require.NoError(t, err)
 
-		key := "image.attributes.tag"
-		value := "v2.0.0"
+		if err := createOrUpdateNode(root.Docs[0], []string{"image", "attributes", "version"}, "v2.0.0"); err != nil {
+			t.Fatal(err)
+		}
 
-		err = setHelmValue(&input, key, value)
-		require.NoError(t, err)
-
-		output, err := marshalWithIndent(&input, defaultIndent)
-		require.NoError(t, err)
-		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
+		actual := root.String()
+		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(actual))
 	})
+
+	t.Run("Anchors for maps are updated appropriately", func(t *testing.T) {
+		input := `
+global:
+  attributes: &attrs
+    name: repo-name
+    tag: v1.0.0
+image:
+  attributes: *attrs
+`
+		expected := `
+global:
+  attributes: &attrs
+    name: repo-name
+    tag: v2.0.0
+image:
+  attributes: *attrs
+`
+		src := []byte(input)
+		root, err := parser.ParseBytes(src, parser.ParseComments)
+		require.NoError(t, err)
+
+		if err := createOrUpdateNode(root.Docs[0], []string{"global", "attributes", "tag"}, "v2.0.0"); err != nil {
+			t.Fatal(err)
+		}
+
+		actual := root.String()
+		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(actual))
+	})
+
 }
 
 func Test_GetWriteBackConfig(t *testing.T) {

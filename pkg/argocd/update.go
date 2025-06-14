@@ -22,6 +22,10 @@ import (
 
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/application"
 	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
+	gyaml "github.com/goccy/go-yaml"
+	"github.com/goccy/go-yaml/ast"
+	"github.com/goccy/go-yaml/parser"
+	"github.com/goccy/go-yaml/token"
 	yaml "sigs.k8s.io/yaml/goyaml.v3"
 )
 
@@ -465,55 +469,52 @@ func marshalHelmOverride(app *v1alpha1.Application, originalData []byte) (overri
 	if appSource.Helm == nil {
 		return []byte{}, nil
 	}
-
-	if strings.HasPrefix(app.Annotations[common.WriteBackTargetAnnotation], common.HelmPrefix) {
+	target := app.Annotations[common.WriteBackTargetAnnotation]
+	if strings.HasPrefix(target, common.HelmPrefix) {
 		images := GetImagesAndAliasesFromApplication(app)
 
-		helmNewValues := yaml.Node{}
-		if unmarshalErr := yaml.Unmarshal(originalData, &helmNewValues); unmarshalErr != nil {
-			return nil, unmarshalErr
+		root, err := parser.ParseBytes([]byte(originalData), parser.ParseComments)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse original helm values: %w", err)
 		}
 
 		for _, img := range images {
 			if img.ImageAlias == "" {
 				continue
 			}
-
 			helmAnnotationParamName, helmAnnotationParamVersion := getHelmParamNamesFromAnnotation(app.Annotations, img)
-
-			if helmAnnotationParamName == "" {
-				return nil, fmt.Errorf("could not find an image-name annotation for image %s", img.ImageName)
-			}
 			// for image-spec annotation, helmAnnotationParamName holds image-spec annotation value,
-			// and helmAnnotationParamVersion is empty
+			// and version is empty
 			if helmAnnotationParamVersion == "" {
 				if img.GetParameterHelmImageSpec(app.Annotations, common.ImageUpdaterAnnotationPrefix) == "" {
 					// not a full image-spec, so image-tag is required
 					return nil, fmt.Errorf("could not find an image-tag annotation for image %s", img.ImageName)
 				}
 			} else {
-				// image-tag annotation is present, so continue to process image-tag
 				helmParamVersion := getHelmParam(appSource.Helm.Parameters, helmAnnotationParamVersion)
 				if helmParamVersion == nil {
 					return nil, fmt.Errorf("%s parameter not found", helmAnnotationParamVersion)
 				}
-				err = setHelmValue(&helmNewValues, helmAnnotationParamVersion, helmParamVersion.Value)
+				err = applyHelmParam(root, helmAnnotationParamVersion, helmParamVersion.Value)
 				if err != nil {
-					return nil, fmt.Errorf("failed to set image parameter version value: %v", err)
+					return nil, err
 				}
 			}
-
+			if helmAnnotationParamName == "" {
+				return nil, fmt.Errorf("could not find an image-name annotation for image %s", img.ImageName)
+			}
 			helmParamName := getHelmParam(appSource.Helm.Parameters, helmAnnotationParamName)
 			if helmParamName == nil {
 				return nil, fmt.Errorf("%s parameter not found", helmAnnotationParamName)
 			}
-
-			err = setHelmValue(&helmNewValues, helmAnnotationParamName, helmParamName.Value)
+			err = applyHelmParam(root, helmAnnotationParamName, helmParamName.Value)
 			if err != nil {
-				return nil, fmt.Errorf("failed to set image parameter name value: %v", err)
+				return nil, err
 			}
 		}
-		return marshalWithIndent(&helmNewValues, defaultIndent)
+
+		out := root.String()
+		return []byte(out), nil
 	}
 
 	var params helmOverride
@@ -586,102 +587,112 @@ func mergeKustomizeOverride(t *kustomizeOverride, o *kustomizeOverride) {
 	}
 }
 
-// Check if a key exists in a MappingNode and return the index of its value
-func findHelmValuesKey(m *yaml.Node, key string) (int, bool) {
-	for i, item := range m.Content {
-		if i%2 == 0 && item.Value == key {
-			return i + 1, true
+func findAnchorByName(root ast.Node, name string) *ast.AnchorNode {
+	for _, n := range ast.Filter(ast.AnchorType, root) {
+		anchor := n.(*ast.AnchorNode)
+		nameNode := anchor.Name.(*ast.StringNode)
+		if nameNode.Value == name {
+			return anchor
 		}
 	}
-	return -1, false
+	return nil
 }
 
-func nodeKindString(k yaml.Kind) string {
-	return map[yaml.Kind]string{
-		yaml.DocumentNode: "DocumentNode",
-		yaml.SequenceNode: "SequenceNode",
-		yaml.MappingNode:  "MappingNode",
-		yaml.ScalarNode:   "ScalarNode",
-		yaml.AliasNode:    "AliasNode",
-	}[k]
-}
-
-// set value of the parameter passed from the annotations.
-func setHelmValue(currentValues *yaml.Node, key string, value interface{}) error {
-	current := currentValues
-
-	// an unmarshalled document has a DocumentNode at the root, but
-	// we navigate from a MappingNode.
-	if current.Kind == yaml.DocumentNode {
-		current = current.Content[0]
+func createOrUpdateNode(node ast.Node, path []string, value string, root ...ast.Node) error {
+	// Keep track of the root in case we need to find an anchor for an alias
+	rootNode := node
+	if len(root) > 0 {
+		rootNode = root[0]
 	}
-
-	if current.Kind != yaml.MappingNode {
-		return fmt.Errorf("unexpected type %s for root", nodeKindString(current.Kind))
-	}
-
-	// Check if the full key exists
-	if idx, found := findHelmValuesKey(current, key); found {
-		(*current).Content[idx].Value = value.(string)
+	// Base case. We've recursed all the way down the path and found a node
+	if len(path) == 0 {
+		switch currentNode := node.(type) {
+		case *ast.StringNode:
+			currentNode.Value = value
+		case *ast.AnchorNode:
+			currentNode.Value = ast.String(&token.Token{Value: value})
+		case *ast.AliasNode:
+			anchorName := currentNode.Value.(*ast.StringNode).Value
+			anchor := findAnchorByName(rootNode.(*ast.MappingNode), anchorName)
+			if anchor == nil {
+				return fmt.Errorf("alias %q not found", anchorName)
+			}
+			anchor.Value = ast.String(&token.Token{Value: value})
+		default:
+			return fmt.Errorf("unexpected leaf node type %T", node)
+		}
 		return nil
 	}
-
-	var err error
-	keys := strings.Split(key, ".")
-
-	for i, k := range keys {
-		if idx, found := findHelmValuesKey(current, k); found {
-			// Navigate deeper into the map
-			current = (*current).Content[idx]
-			// unpack one level of alias; an alias of an alias is not supported
-			if current.Kind == yaml.AliasNode {
-				current = current.Alias
+	key, rest := path[0], path[1:]
+	switch currentNode := node.(type) {
+	case *ast.DocumentNode:
+		// Create a base mapping node if the incoming document is empty
+		if currentNode.Body == nil {
+			newNode, err := gyaml.ValueToNode(map[string]any{})
+			if err != nil {
+				return err
 			}
-			if i == len(keys)-1 {
-				// If we're at the final key, set the value and return
-				if current.Kind == yaml.ScalarNode {
-					current.Value = value.(string)
-					current.Tag = "!!str"
-				} else {
-					return fmt.Errorf("unexpected type %s for key %s", nodeKindString(current.Kind), k)
-				}
-				return nil
-			} else if current.Kind != yaml.MappingNode {
-				return fmt.Errorf("unexpected type %s for key %s", nodeKindString(current.Kind), k)
+			mn, ok := newNode.(*ast.MappingNode)
+			if !ok {
+				return fmt.Errorf("expected a MappingNode but got %T", newNode)
 			}
+			currentNode.Body = mn
+		}
+		return createOrUpdateNode(currentNode.Body, path, value, currentNode.Body)
+	case *ast.AnchorNode:
+		return createOrUpdateNode(currentNode.Value, path, value, rootNode)
+	case *ast.AliasNode:
+		aliasName := currentNode.Value.(*ast.StringNode).Value
+		anchor := findAnchorByName(rootNode.(*ast.MappingNode), aliasName)
+		if anchor == nil {
+			return fmt.Errorf("alias %q not found", aliasName)
+		}
+		return createOrUpdateNode(anchor.Value, path, value, rootNode)
+	case *ast.MappingNode:
+		for _, mappingValueNode := range currentNode.Values {
+			nodeKey := mappingValueNode.Key.String()
+			if nodeKey == key {
+				return createOrUpdateNode(mappingValueNode.Value, rest, value, rootNode)
+			}
+		}
+		var newNodeData map[string]any
+		if len(rest) == 0 {
+			newNodeData = map[string]any{key: value}
 		} else {
-			if i == len(keys)-1 {
-				current.Content = append(current.Content,
-					&yaml.Node{
-						Kind:  yaml.ScalarNode,
-						Value: k,
-						Tag:   "!!str",
-					},
-					&yaml.Node{
-						Kind:  yaml.ScalarNode,
-						Value: value.(string),
-						Tag:   "!!str",
-					},
-				)
-				return nil
-			} else {
-				current.Content = append(current.Content,
-					&yaml.Node{
-						Kind:  yaml.ScalarNode,
-						Value: k,
-						Tag:   "!!str",
-					},
-					&yaml.Node{
-						Kind:    yaml.MappingNode,
-						Content: []*yaml.Node{},
-					},
-				)
-				current = current.Content[len(current.Content)-1]
-			}
+			newNodeData = map[string]any{key: map[string]any{}}
+		}
+		newNode, err := gyaml.ValueToNode(newNodeData)
+		if err != nil {
+			return err
+		}
+		if err := ast.Merge(currentNode, newNode); err != nil {
+			return err
+		}
+		if mappingValue, ok := newNode.(*ast.MappingNode); ok {
+			return createOrUpdateNode(mappingValue.Values[0].Value, rest, value, rootNode)
 		}
 	}
 
-	return err
+	return fmt.Errorf("unexpected type %T for key attributes", node)
+}
+
+func applyHelmParam(root *ast.File, attrPath string, value string) error {
+	// check if literal path exists, and if it does, replace it
+	path, _ := gyaml.PathString(fmt.Sprintf("$.'%s'", attrPath))
+	if _, err := path.FilterFile(root); err == nil {
+		stringNode, err := gyaml.ValueToNode(value)
+		if err != nil {
+			return err
+		}
+		if err := path.ReplaceWithNode(root, stringNode); err != nil {
+			return err
+		}
+		return nil
+	}
+	if err := createOrUpdateNode(root.Docs[0], strings.Split(attrPath, "."), value); err != nil {
+		return err
+	}
+	return nil
 }
 
 func getWriteBackConfig(app *v1alpha1.Application, kubeClient *kube.ImageUpdaterKubernetesClient, argoClient ArgoCD) (*WriteBackConfig, error) {
