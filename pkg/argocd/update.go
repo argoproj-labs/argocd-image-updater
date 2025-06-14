@@ -473,7 +473,7 @@ func marshalHelmOverride(app *v1alpha1.Application, originalData []byte) (overri
 	if strings.HasPrefix(target, common.HelmPrefix) {
 		images := GetImagesAndAliasesFromApplication(app)
 
-		root, err := parser.ParseBytes([]byte(originalData), parser.ParseComments)
+		root, err := parser.ParseBytes(originalData, parser.ParseComments)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse original helm values: %w", err)
 		}
