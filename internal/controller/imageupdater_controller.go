@@ -122,8 +122,17 @@ func (r *ImageUpdaterReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	// For now, just requeue periodically.
 	// This interval might be a default, or could be overridden by logic
 	// that inspects the imageUpdater CR itself for a custom interval.
-	if r.Config.CheckInterval <= 0 {
-		reqLogger.Infof("Requeue interval is not configured or is zero; will not requeue based on time unless an error occurs or explicitly requested.")
+	if r.Config.CheckInterval < 0 {
+		reqLogger.Debugf("Requeue interval is not configured or below zero; will not requeue based on time unless an error occurs or explicitly requested.")
+		return ctrl.Result{}, nil
+	}
+
+	if r.Config.CheckInterval == 0 {
+		reqLogger.Debugf("Requeue interval is zero; will be requeued once.")
+		_, err := RunImageUpdater(r.Config, imageUpdater, false)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
 		return ctrl.Result{}, nil
 	}
 

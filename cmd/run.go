@@ -12,6 +12,8 @@ import (
 	"text/template"
 	"time"
 
+	"github.com/argoproj/argo-cd/v2/reposerver/askpass"
+
 	"github.com/bombsimon/logrusr/v2"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -157,6 +159,22 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 				log.Debugf("Using ArgoCD API credentials from environment ARGOCD_TOKEN")
 				cfg.ClientOpts.AuthToken = token
 			}
+
+			// Start up the credentials store server
+			cs := askpass.NewServer(askpass.SocketPath)
+			csErrCh := make(chan error)
+			go func() {
+				log.Debugf("Starting askpass server")
+				csErrCh <- cs.Run()
+			}()
+
+			// Wait for cred server to be started, just in case
+			if err := <-csErrCh; err != nil {
+				log.Errorf("Error running askpass server: %v", err)
+				return err
+			}
+
+			cfg.GitCreds = cs
 
 			log.Infof("ArgoCD configuration: [apiKind=%s, server=%s, auth_token=%v, insecure=%v, grpc_web=%v, plaintext=%v]",
 				cfg.ApplicationsAPIKind,
