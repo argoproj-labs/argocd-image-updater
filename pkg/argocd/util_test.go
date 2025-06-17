@@ -1,4 +1,4 @@
-package main
+package argocd
 
 import (
 	"context"
@@ -20,7 +20,7 @@ func TestGetKubeConfig(t *testing.T) {
 		{
 			name:        "Valid KubeConfig",
 			namespace:   "",
-			configPath:  "../test/testdata/kubernetes/config",
+			configPath:  "../../test/testdata/kubernetes/config",
 			expectError: false,
 			expectedNS:  "default",
 		},
@@ -33,7 +33,7 @@ func TestGetKubeConfig(t *testing.T) {
 		{
 			name:        "Valid KubeConfig with Namespace",
 			namespace:   "argocd",
-			configPath:  "../test/testdata/kubernetes/config",
+			configPath:  "../../test/testdata/kubernetes/config",
 			expectError: false,
 			expectedNS:  "argocd",
 		},
@@ -41,7 +41,7 @@ func TestGetKubeConfig(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			client, err := getKubeConfig(context.Background(), tt.namespace, tt.configPath)
+			client, err := GetKubeConfig(context.TODO(), tt.namespace, tt.configPath)
 			if tt.expectError {
 				require.Error(t, err)
 			} else {
@@ -66,7 +66,7 @@ func TestGetPrintableInterval(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		result := getPrintableInterval(test.input)
+		result := GetPrintableInterval(test.input)
 		if result != test.expected {
 			t.Errorf("For input %v, expected %v, but got %v", test.input, test.expected, result)
 		}
@@ -84,7 +84,7 @@ func TestGetPrintableHealthPort(t *testing.T) {
 	}
 
 	for _, testPort := range testPorts {
-		result := getPrintableHealthPort(testPort.input)
+		result := GetPrintableHealthPort(testPort.input)
 
 		if result != testPort.expected {
 			t.Errorf("For input %v, expected %v, but got %v", testPort.input, testPort.expected, result)

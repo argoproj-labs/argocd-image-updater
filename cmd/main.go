@@ -17,70 +17,21 @@ limitations under the License.
 package main
 
 import (
-	"k8s.io/apimachinery/pkg/runtime"
 	"os"
-	"text/template"
-	"time"
-
-	"github.com/argoproj-labs/argocd-image-updater/ext/git"
-	"github.com/argoproj-labs/argocd-image-updater/pkg/argocd"
-	"github.com/argoproj-labs/argocd-image-updater/pkg/kube"
 
 	"github.com/spf13/cobra"
-
-	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
-	// to ensure that exec-entrypoint and run can make use of them.
+	"k8s.io/apimachinery/pkg/runtime"
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
 	argocdimageupdaterv1alpha1 "github.com/argoproj-labs/argocd-image-updater/api/v1alpha1"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	// +kubebuilder:scaffold:imports
 )
 
 var (
 	scheme = runtime.NewScheme()
 )
-
-// Default ArgoCD server address when running in same cluster as ArgoCD
-const defaultArgoCDServerAddr = "argocd-server.argocd"
-
-// Default path to registry configuration
-const defaultRegistriesConfPath = "/app/config/registries.conf"
-
-// Default path to Git commit message template
-const defaultCommitTemplatePath = "/app/config/commit.template"
-
-const applicationsAPIKindK8S = "kubernetes"
-const applicationsAPIKindArgoCD = "argocd"
-
-// ImageUpdaterConfig contains global configuration and required runtime data
-type ImageUpdaterConfig struct {
-	ApplicationsAPIKind    string
-	ClientOpts             argocd.ClientOptions
-	ArgocdNamespace        string
-	AppNamespace           string
-	DryRun                 bool
-	CheckInterval          time.Duration
-	ArgoClient             argocd.ArgoCD
-	LogLevel               string
-	KubeClient             *kube.ImageUpdaterKubernetesClient
-	MaxConcurrency         int
-	HealthPort             int
-	MetricsPort            int
-	RegistriesConf         string
-	AppNamePatterns        []string
-	AppLabel               string
-	GitCommitUser          string
-	GitCommitMail          string
-	GitCommitMessage       *template.Template
-	GitCommitSigningKey    string
-	GitCommitSigningMethod string
-	GitCommitSignOff       bool
-	DisableKubeEvents      bool
-	GitCreds               git.CredsStore
-	EnableWebhook          bool
-}
 
 // newRootCommand implements the root command of argocd-image-updater
 func newRootCommand() error {

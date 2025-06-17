@@ -4,9 +4,11 @@ on:
     branches:
     - 'master'
     - 'release-*'
+    - 'crd'
   pull_request:
     branches:
     - 'master'
+    - 'crd'
 
 jobs:
   check-go:
