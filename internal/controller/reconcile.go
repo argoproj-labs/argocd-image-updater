@@ -7,14 +7,12 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/argoproj/argo-cd/v2/reposerver/askpass"
 	"golang.org/x/sync/semaphore"
 
 	api "github.com/argoproj-labs/argocd-image-updater/api/v1alpha1"
 	"github.com/argoproj-labs/argocd-image-updater/ext/git"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/argocd"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
-	"github.com/argoproj-labs/argocd-image-updater/pkg/health"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/kube"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/metrics"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
@@ -46,85 +44,6 @@ type ImageUpdaterConfig struct {
 	GitCommitSignOff       bool
 	DisableKubeEvents      bool
 	GitCreds               git.CredsStore
-}
-
-var lastRun time.Time
-
-// reconcileResource
-func reconcileResource(cr api.ImageUpdater) error {
-	var cfg *ImageUpdaterConfig = &ImageUpdaterConfig{}
-
-	// Health server will start in a go routine and run asynchronously
-	var hsErrCh chan error
-	var msErrCh chan error
-	if cfg.HealthPort > 0 {
-		log.Infof("Starting health probe server TCP port=%d", cfg.HealthPort)
-		hsErrCh = health.StartHealthServer(cfg.HealthPort)
-	}
-
-	if cfg.MetricsPort > 0 {
-		log.Infof("Starting metrics server on TCP port=%d", cfg.MetricsPort)
-		msErrCh = metrics.StartMetricsServer(cfg.MetricsPort)
-	}
-
-	// Start up the credentials store server
-	cs := askpass.NewServer(askpass.SocketPath)
-	csErrCh := make(chan error)
-	go func() {
-		log.Debugf("Starting askpass server")
-		csErrCh <- cs.Run()
-	}()
-
-	// Wait for cred server to be started, just in case
-	if err := <-csErrCh; err != nil {
-		log.Errorf("Error running askpass server: %v", err)
-		return err
-	}
-
-	cfg.GitCreds = cs
-
-	// This is our main loop. We leave it only when our health probe server
-	// returns an error.
-	for {
-		select {
-		case err := <-hsErrCh:
-			if err != nil {
-				log.Errorf("Health probe server exited with error: %v", err)
-			} else {
-				log.Infof("Health probe server exited gracefully")
-			}
-			return nil
-		case err := <-msErrCh:
-			if err != nil {
-				log.Errorf("Metrics server exited with error: %v", err)
-			} else {
-				log.Infof("Metrics server exited gracefully")
-			}
-			return nil
-		default:
-			if lastRun.IsZero() || time.Since(lastRun) > cfg.CheckInterval {
-				result, err := RunImageUpdater(cfg, cr, false)
-				if err != nil {
-					log.Errorf("Error: %v", err)
-				} else {
-					log.Infof("Processing results: applications=%d images_considered=%d images_skipped=%d images_updated=%d errors=%d",
-						result.NumApplicationsProcessed,
-						result.NumImagesConsidered,
-						result.NumSkipped,
-						result.NumImagesUpdated,
-						result.NumErrors)
-				}
-				lastRun = time.Now()
-			}
-		}
-		if cfg.CheckInterval == 0 {
-			break
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-	log.Infof("Finished.")
-	return nil
-
 }
 
 // RunImageUpdater is a main loop for argocd-image-controller
@@ -191,7 +110,7 @@ func RunImageUpdater(cfg *ImageUpdaterConfig, cr api.ImageUpdater, warmUp bool) 
 		lockErr := sem.Acquire(context.TODO(), 1)
 		if lockErr != nil {
 			log.Errorf("Could not acquire semaphore for application %s: %v", app, lockErr)
-			// Release entry in wait group on error, too - we're never gonna execute
+			// Release entry in wait group on error, too - we're never going to execute
 			wg.Done()
 			continue
 		}
@@ -231,6 +150,13 @@ func RunImageUpdater(cfg *ImageUpdaterConfig, cr api.ImageUpdater, warmUp bool) 
 
 	// Wait for all goroutines to finish
 	wg.Wait()
+
+	log.Infof("Processing results: applications=%d images_considered=%d images_skipped=%d images_updated=%d errors=%d",
+		result.NumApplicationsProcessed,
+		result.NumImagesConsidered,
+		result.NumSkipped,
+		result.NumImagesUpdated,
+		result.NumErrors)
 
 	return result, nil
 }
