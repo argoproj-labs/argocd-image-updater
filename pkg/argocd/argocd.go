@@ -3,16 +3,21 @@ package argocd
 import (
 	"context"
 	"fmt"
+
+	"k8s.io/client-go/util/retry"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	api "github.com/argoproj-labs/argocd-image-updater/api/v1alpha1"
+
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
+
+	"k8s.io/apimachinery/pkg/types"
 
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
-	"github.com/argoproj-labs/argocd-image-updater/pkg/kube"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/metrics"
 	registryCommon "github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/common"
-	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/env"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/image"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
 
@@ -20,26 +25,29 @@ import (
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/application"
 	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	"k8s.io/apimachinery/pkg/api/errors"
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // Kubernetes based client
 type k8sClient struct {
-	kubeClient   *kube.ImageUpdaterKubernetesClient
-	appNamespace *string
+	ctrlClient client.Client
 }
 
-// GetApplication retrieves an application by name, either in a specific namespace or all namespaces depending on client configuration.
-func (client *k8sClient) GetApplication(ctx context.Context, appName string) (*v1alpha1.Application, error) {
-	// List all applications across configured namespace or all namespaces (using empty labelSelector)
-	if *client.appNamespace != v1.NamespaceAll {
-		return client.kubeClient.ApplicationsClientset.ArgoprojV1alpha1().Applications(*client.appNamespace).Get(ctx, appName, v1.GetOptions{})
+// GetApplication retrieves a single application by its name and namespace.
+// TODO: the function will be probably updated to use `NamePattern` in GITOPS-7119
+func (client *k8sClient) GetApplication(ctx context.Context, appNamespace string, appName string) (*v1alpha1.Application, error) {
+	app := &v1alpha1.Application{}
+
+	if err := client.ctrlClient.Get(ctx, types.NamespacedName{Namespace: appNamespace, Name: appName}, app); err != nil {
+		return nil, err
 	}
-	return client.getApplicationInAllNamespaces(appName)
+	return app, nil
 }
 
-func (client *k8sClient) getApplicationInAllNamespaces(appName string) (*v1alpha1.Application, error) {
-	appList, err := client.ListApplications("")
+// GetApplicationInAllNamespaces
+// TODO: the function will be probably used when we implement `NamePattern` in GITOPS-7119
+// It has 0 usages now.
+func (client *k8sClient) GetApplicationInAllNamespaces(appName string) (*v1alpha1.Application, error) {
+	appList, err := client.ListApplications(context.TODO(), nil, "")
 	if err != nil {
 		return nil, fmt.Errorf("error listing applications: %w", err)
 	}
@@ -67,44 +75,77 @@ func (client *k8sClient) getApplicationInAllNamespaces(appName string) (*v1alpha
 	return &matchedApps[0], nil
 }
 
-// ListApplications lists all applications across all namespaces.
-func (client *k8sClient) ListApplications(labelSelector string) ([]v1alpha1.Application, error) {
-	list, err := client.kubeClient.ApplicationsClientset.ArgoprojV1alpha1().Applications(*client.appNamespace).List(context.TODO(), v1.ListOptions{LabelSelector: labelSelector})
-	if err != nil {
-		return nil, fmt.Errorf("error listing applications: %w", err)
-	}
-	log.Debugf("Applications listed: %d", len(list.Items))
-	return list.Items, nil
-}
+// ListApplications lists all applications for the current ImageUpdater CR in the namespace.
+// TODO: LabelSelector was not implemented here. It will be done in a separate task GITOPS-7119
+func (client *k8sClient) ListApplications(ctx context.Context, cr *api.ImageUpdater, labelSelector string) ([]v1alpha1.Application, error) {
+	log := log.LoggerFromContext(ctx)
 
-func (client *k8sClient) UpdateSpec(ctx context.Context, spec *application.ApplicationUpdateSpecRequest) (*v1alpha1.ApplicationSpec, error) {
-	const defaultMaxRetries = 7
-	const baseDelay = 100 * time.Millisecond // Initial delay before retrying
+	// A list to hold the successfully found applications.
+	foundApps := make([]v1alpha1.Application, 0)
+	// A map to prevent processing the same application name twice if it appears in multiple refs.
+	seenApps := make(map[string]bool)
+	// The target namespace is defined once in the spec.
+	targetNamespace := cr.Spec.Namespace
 
-	// Allow overriding max retries for testing purposes
-	maxRetries := env.ParseNumFromEnv("OVERRIDE_MAX_RETRIES", defaultMaxRetries, 0, 100)
+	// Iterate through each application reference in the spec.
+	for _, appRef := range cr.Spec.ApplicationRefs {
+		// We are now treating NamePattern as an exact name.
+		appName := appRef.NamePattern
 
-	for attempts := 0; attempts < maxRetries; attempts++ {
-		app, err := client.GetApplication(ctx, spec.GetName())
-		if err != nil {
-			log.Errorf("could not get application: %s, error: %v", spec.GetName(), err)
-			return nil, fmt.Errorf("error getting application: %w", err)
+		appKey := fmt.Sprintf("%s/%s", targetNamespace, appName)
+		if seenApps[appKey] {
+			continue // Already fetched this app, skip to the next ref.
 		}
-		app.Spec = *spec.Spec
 
-		updatedApp, err := client.kubeClient.ApplicationsClientset.ArgoprojV1alpha1().Applications(app.Namespace).Update(ctx, app, v1.UpdateOptions{})
+		log.Debugf("Attempting to fetch application '%s' in namespace '%s'", appName, targetNamespace)
+		app, err := client.GetApplication(ctx, targetNamespace, appName)
+
 		if err != nil {
-			if errors.IsConflict(err) {
-				log.Warnf("conflict occurred while updating application: %s, retrying... (%d/%d)", spec.GetName(), attempts+1, maxRetries)
-				time.Sleep(baseDelay * (1 << attempts)) // Exponential backoff, multiply baseDelay by 2^attempts
+			if errors.IsNotFound(err) {
+				log.Warnf("Application '%s' in namespace '%s' specified in ImageUpdater '%s' was not found, skipping.", appName, targetNamespace, cr.Name)
+				seenApps[appKey] = true // Mark as seen so we don't try again.
 				continue
 			}
-			log.Errorf("could not update application: %s, error: %v", spec.GetName(), err)
-			return nil, fmt.Errorf("error updating application: %w", err)
+			return nil, fmt.Errorf("failed to get application '%s' in namespace '%s': %w", appName, targetNamespace, err)
 		}
-		return &updatedApp.Spec, nil
+		log.Debugf("Application '%s' in namespace '%s' found", appName, targetNamespace)
+		foundApps = append(foundApps, *app)
+		seenApps[appKey] = true
 	}
-	return nil, fmt.Errorf("max retries(%d) reached while updating application: %s", maxRetries, spec.GetName())
+
+	log.Debugf("Applications listed: %d", len(foundApps))
+	return foundApps, nil
+}
+
+// UpdateSpec updates the spec for given application
+func (client *k8sClient) UpdateSpec(ctx context.Context, spec *application.ApplicationUpdateSpecRequest) (*v1alpha1.ApplicationSpec, error) {
+	log := log.LoggerFromContext(ctx)
+	app := &v1alpha1.Application{}
+	var err error
+
+	// Use RetryOnConflict to handle potential conflicts gracefully.
+	err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		// 1. Get the latest version of the Application within the retry loop.
+		app, err = client.GetApplication(ctx, spec.GetAppNamespace(), spec.GetName())
+		if err != nil {
+			log.Errorf("could not get application: %s, error: %v", spec.GetName(), err)
+			return err
+		}
+
+		app.Spec = *spec.Spec
+
+		// 3. Attempt to update the object. If there is a conflict,
+		//    RetryOnConflict will automatically re-fetch and re-apply the changes.
+		return client.ctrlClient.Update(ctx, app)
+	})
+
+	if err != nil {
+		log.Errorf("could not update application spec for %s: %v", spec.GetName(), err)
+		return nil, fmt.Errorf("failed to update application spec for %s after retries: %w", spec.GetName(), err)
+	}
+
+	log.Infof("Successfully updated application spec for %s", spec.GetName())
+	return &app.Spec, nil
 }
 
 type K8SClientOptions struct {
@@ -112,17 +153,9 @@ type K8SClientOptions struct {
 }
 
 // NewK8SClient creates a new kubernetes client to interact with kubernetes api-server.
-func NewK8SClient(kubeClient *kube.ImageUpdaterKubernetesClient, opts *K8SClientOptions) (ArgoCD, error) {
-	// Provide default options if nil
-	if opts == nil {
-		opts = &K8SClientOptions{
-			AppNamespace: v1.NamespaceAll,
-		}
-	}
-
+func NewK8SClient(ctrlClient client.Client) (ArgoCD, error) {
 	return &k8sClient{
-		kubeClient:   kubeClient,
-		appNamespace: &opts.AppNamespace,
+		ctrlClient: ctrlClient,
 	}, nil
 }
 
@@ -132,13 +165,15 @@ type argoCD struct {
 }
 
 // ArgoCD is the interface for accessing Argo CD functions we need
+//
+//go:generate mockery --name ArgoCD --output ./mocks --outpkg mocks
 type ArgoCD interface {
-	GetApplication(ctx context.Context, appName string) (*v1alpha1.Application, error)
-	ListApplications(labelSelector string) ([]v1alpha1.Application, error)
+	GetApplication(ctx context.Context, appNamespace string, appName string) (*v1alpha1.Application, error)
+	ListApplications(ctx context.Context, cr *api.ImageUpdater, labelSelector string) ([]v1alpha1.Application, error)
 	UpdateSpec(ctx context.Context, spec *application.ApplicationUpdateSpecRequest) (*v1alpha1.ApplicationSpec, error)
 }
 
-// Type of the application
+// ApplicationType Type of the application
 type ApplicationType int
 
 const (
@@ -265,7 +300,7 @@ func parseImageList(annotations map[string]string) *image.ContainerImageList {
 }
 
 // GetApplication gets the application named appName from Argo CD API
-func (client *argoCD) GetApplication(ctx context.Context, appName string) (*v1alpha1.Application, error) {
+func (client *argoCD) GetApplication(ctx context.Context, appNamespace string, appName string) (*v1alpha1.Application, error) {
 	conn, appClient, err := client.Client.NewApplicationClient()
 	metrics.Clients().IncreaseArgoCDClientRequest(client.Client.ClientOptions().ServerAddr, 1)
 	if err != nil {
@@ -286,7 +321,7 @@ func (client *argoCD) GetApplication(ctx context.Context, appName string) (*v1al
 
 // ListApplications returns a list of all application names that the API user
 // has access to.
-func (client *argoCD) ListApplications(labelSelector string) ([]v1alpha1.Application, error) {
+func (client *argoCD) ListApplications(ctx context.Context, cr *api.ImageUpdater, labelSelector string) ([]v1alpha1.Application, error) {
 	conn, appClient, err := client.Client.NewApplicationClient()
 	metrics.Clients().IncreaseArgoCDClientRequest(client.Client.ClientOptions().ServerAddr, 1)
 	if err != nil {
@@ -296,7 +331,7 @@ func (client *argoCD) ListApplications(labelSelector string) ([]v1alpha1.Applica
 	defer conn.Close()
 
 	metrics.Clients().IncreaseArgoCDClientRequest(client.Client.ClientOptions().ServerAddr, 1)
-	apps, err := appClient.List(context.TODO(), &application.ApplicationQuery{Selector: &labelSelector})
+	apps, err := appClient.List(ctx, &application.ApplicationQuery{Selector: &labelSelector})
 	if err != nil {
 		metrics.Clients().IncreaseArgoCDClientError(client.Client.ClientOptions().ServerAddr, 1)
 		return nil, err
@@ -633,7 +668,7 @@ func GetImagesAndAliasesFromApplication(app *v1alpha1.Application) image.Contain
 // GetApplicationTypeByName first retrieves application with given appName and
 // returns its application type
 func GetApplicationTypeByName(client ArgoCD, appName string) (ApplicationType, error) {
-	app, err := client.GetApplication(context.TODO(), appName)
+	app, err := client.GetApplication(context.TODO(), appName, "")
 	if err != nil {
 		return ApplicationTypeUnsupported, err
 	}
