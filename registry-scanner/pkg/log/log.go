@@ -9,6 +9,7 @@ package log
 // It might seem redundant, but we really want the different output streams.
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -176,6 +177,26 @@ func Fatalf(format string, args ...interface{}) {
 
 func disableLogColors() bool {
 	return strings.ToLower(os.Getenv("ENABLE_LOG_COLORS")) == "false"
+}
+
+// A private key type is used to prevent collisions with context keys from other packages.
+type loggerKey struct{}
+
+// ContextWithLogger returns a new context.Context that carries the provided logrus Entry.
+// Use this to pass a contextual logger down through a call stack.
+func ContextWithLogger(ctx context.Context, logger *logrus.Entry) context.Context {
+	return context.WithValue(ctx, loggerKey{}, logger)
+}
+
+// LoggerFromContext retrieves the logrus Entry from the context.
+// If no logger is found in the context, it returns the global logger, ensuring
+// that a valid logger is always returned.
+func LoggerFromContext(ctx context.Context) *logrus.Entry {
+	if logger, ok := ctx.Value(loggerKey{}).(*logrus.Entry); ok {
+		return logger
+	}
+	// Fallback to the global logger if none is found in the context.
+	return logrus.NewEntry(Log())
 }
 
 // Initializes the logging subsystem with default values
