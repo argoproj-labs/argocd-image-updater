@@ -175,9 +175,23 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 	for _, applicationImage := range updateConf.UpdateApp.Images {
 		updateableImage := applicationImages.ContainsImage(applicationImage, false)
 		if updateableImage == nil {
-			log.WithContext().AddField("application", app).Debugf("Image '%s' seems not to be live in this application, skipping", applicationImage.ImageName)
-			result.NumSkipped += 1
-			continue
+			// for force-update images, we should not skip them even if they're not "live"
+			// this handles cases like 0-replica deployments or CronJobs without active jobs
+			if applicationImage.HasForceUpdateOptionAnnotation(updateConf.UpdateApp.Application.Annotations, common.ImageUpdaterAnnotationPrefix) {
+				// find the image in our list that matches by name
+				for _, img := range applicationImages {
+					if img.ImageName == applicationImage.ImageName {
+						updateableImage = img
+						break
+					}
+				}
+			}
+
+			if updateableImage == nil {
+				log.WithContext().AddField("application", app).Debugf("Image '%s' seems not to be live in this application, skipping", applicationImage.ImageName)
+				result.NumSkipped += 1
+				continue
+			}
 		}
 
 		// In some cases, the running image has no tag set. We create a dummy
