@@ -12,9 +12,12 @@ import (
 	"text/template"
 	"time"
 
+	"github.com/bombsimon/logrusr/v2"
+
+	"github.com/argoproj-labs/argocd-image-updater/internal/controller"
+
 	"github.com/argoproj/argo-cd/v2/reposerver/askpass"
 
-	"github.com/bombsimon/logrusr/v2"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -25,7 +28,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
 	api "github.com/argoproj-labs/argocd-image-updater/api/v1alpha1"
-	"github.com/argoproj-labs/argocd-image-updater/internal/controller"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/argocd"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/version"
@@ -43,11 +45,11 @@ func newRunCommand() *cobra.Command {
 	var secureMetrics bool
 	var enableHTTP2 bool
 	var enableWebhooks bool
-	var cfg *controller.ImageUpdaterConfig = &controller.ImageUpdaterConfig{}
+	var cfg = &controller.ImageUpdaterConfig{}
 	var once bool
 	var kubeConfig string
 	var disableKubernetes bool
-	var warmUpCache bool = true
+	var warmUpCache bool
 	var commitMessagePath string
 	var commitMessageTpl string
 
@@ -70,7 +72,7 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 			if err := log.SetLogLevel(cfg.LogLevel); err != nil {
 				return err
 			}
-			logrLogger := logrusr.New(log.Log()) // log.Log() should return the *logrus.Logger
+			logrLogger := logrusr.New(log.Log())
 			ctrl.SetLogger(logrLogger)
 			setupLogger := ctrl.Log.WithName("controller-setup").
 				WithValues(logrusFieldsToLogrValues(common.ControllerLogFields)...)
@@ -86,12 +88,11 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 				return fmt.Errorf("--max-concurrency must be greater than 1")
 			}
 
-			log.Infof("%s %s starting [loglevel:%s, interval:%s, healthport:%s]",
-				version.BinaryName(),
-				version.Version(),
-				strings.ToUpper(cfg.LogLevel),
-				argocd.GetPrintableInterval(cfg.CheckInterval),
-				argocd.GetPrintableHealthPort(cfg.HealthPort),
+			setupLogger.Info("starting",
+				"app", version.BinaryName()+": "+version.Version(),
+				"loglevel", strings.ToUpper(cfg.LogLevel),
+				"interval", argocd.GetPrintableInterval(cfg.CheckInterval),
+				"healthport", argocd.GetPrintableHealthPort(cfg.HealthPort),
 			)
 
 			// User can specify a path to a template used for Git commit messages
@@ -99,10 +100,11 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 				tpl, err := os.ReadFile(commitMessagePath)
 				if err != nil {
 					if errors.Is(err, os.ErrNotExist) {
-						log.Warnf("commit message template at %s does not exist, using default", commitMessagePath)
+						setupLogger.Info("commit message template not found, using default", "path", commitMessagePath)
 						commitMessageTpl = common.DefaultGitCommitMessage
 					} else {
-						log.Fatalf("could not read commit message template: %v", err)
+						setupLogger.Error(err, "could not read commit message template", "path", commitMessagePath)
+						return err
 					}
 				} else {
 					commitMessageTpl = string(tpl)
@@ -110,14 +112,15 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 			}
 
 			if commitMessageTpl == "" {
-				log.Infof("Using default Git commit messages")
+				setupLogger.Info("Using default Git commit message template")
 				commitMessageTpl = common.DefaultGitCommitMessage
 			}
 
 			if tpl, err := template.New("commitMessage").Parse(commitMessageTpl); err != nil {
-				log.Fatalf("could not parse commit message template: %v", err)
+				setupLogger.Error(err, "could not parse commit message template")
+				return err
 			} else {
-				log.Debugf("Successfully parsed commit message template")
+				setupLogger.V(1).Info("Successfully parsed commit message template")
 				cfg.GitCommitMessage = tpl
 			}
 
@@ -126,18 +129,18 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 			if cfg.RegistriesConf != "" {
 				st, err := os.Stat(cfg.RegistriesConf)
 				if err != nil || st.IsDir() {
-					log.Warnf("Registry configuration at %s could not be read: %v -- using default configuration", cfg.RegistriesConf, err)
+					setupLogger.Info("Registry configuration not found or is a directory, using default configuration", "path", cfg.RegistriesConf, "error", err)
 				} else {
 					err = registry.LoadRegistryConfiguration(cfg.RegistriesConf, false)
 					if err != nil {
-						log.Errorf("Could not load registry configuration from %s: %v", cfg.RegistriesConf, err)
+						setupLogger.Error(err, "could not load registry configuration", "path", cfg.RegistriesConf)
 						return nil
 					}
 				}
 			}
 
 			if cfg.CheckInterval > 0 && cfg.CheckInterval < 60*time.Second {
-				log.Warnf("Check interval is very low - it is not recommended to run below 1m0s")
+				setupLogger.Info("Warning: Check interval is very low. It is not recommended to run below 1m0s", "interval", cfg.CheckInterval)
 			}
 
 			var err error
@@ -145,7 +148,8 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 				ctx := context.Background()
 				cfg.KubeClient, err = argocd.GetKubeConfig(ctx, cfg.ArgocdNamespace, kubeConfig)
 				if err != nil {
-					log.Fatalf("could not create K8s client: %v", err)
+					setupLogger.Error(err, "could not create K8s client")
+					return err
 				}
 				if cfg.ClientOpts.ServerAddr == "" {
 					cfg.ClientOpts.ServerAddr = fmt.Sprintf("argocd-server.%s", cfg.KubeClient.KubeClient.Namespace)
@@ -156,7 +160,7 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 			}
 
 			if token := os.Getenv("ARGOCD_TOKEN"); token != "" && cfg.ClientOpts.AuthToken == "" {
-				log.Debugf("Using ArgoCD API credentials from environment ARGOCD_TOKEN")
+				setupLogger.V(1).Info("Using ArgoCD API credentials from environment", "variable", "ARGOCD_TOKEN")
 				cfg.ClientOpts.AuthToken = token
 			}
 
@@ -164,26 +168,27 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 			cs := askpass.NewServer(askpass.SocketPath)
 			csErrCh := make(chan error)
 			go func() {
-				log.Debugf("Starting askpass server")
+				setupLogger.V(1).Info("Starting askpass server")
 				csErrCh <- cs.Run()
 			}()
 
 			// Wait for cred server to be started, just in case
 			if err := <-csErrCh; err != nil {
-				log.Errorf("Error running askpass server: %v", err)
+				setupLogger.Error(err, "Error running askpass server")
 				return err
 			}
 
 			cfg.GitCreds = cs
 
-			log.Infof("ArgoCD configuration: [apiKind=%s, server=%s, auth_token=%v, insecure=%v, grpc_web=%v, plaintext=%v]",
-				cfg.ApplicationsAPIKind,
-				cfg.ClientOpts.ServerAddr,
-				cfg.ClientOpts.AuthToken != "",
-				cfg.ClientOpts.Insecure,
-				cfg.ClientOpts.GRPCWeb,
-				cfg.ClientOpts.Plaintext,
+			setupLogger.Info("ArgoCD configuration loaded",
+				"apiKind", cfg.ApplicationsAPIKind,
+				"server", cfg.ClientOpts.ServerAddr,
+				"has_auth_token", cfg.ClientOpts.AuthToken != "",
+				"insecure", cfg.ClientOpts.Insecure,
+				"grpc_web", cfg.ClientOpts.GRPCWeb,
+				"plaintext", cfg.ClientOpts.Plaintext,
 			)
+
 			// if the enable-http2 flag is false (the default), http/2 should be disabled
 			// due to its vulnerabilities. More specifically, disabling http/2 will
 			// prevent from being vulnerable to the HTTP/2 Stream Cancellation and
@@ -192,7 +197,7 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 			// - https://github.com/advisories/GHSA-4374-p667-p6c8
 			var tlsOpts []func(*tls.Config)
 			disableHTTP2 := func(c *tls.Config) {
-				log.Infof("disabling http/2")
+				setupLogger.Info("Disabling HTTP/2 support")
 				c.NextProtos = []string{"http/1.1"}
 			}
 
@@ -266,21 +271,23 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 			warmupState := &WarmupStatus{
 				Done: make(chan struct{}),
 			}
+
+			reconciler := &controller.ImageUpdaterReconciler{
+				Client:      mgr.GetClient(),
+				Scheme:      mgr.GetScheme(),
+				Config:      cfg,
+				CacheWarmed: warmupState.Done,
+			}
+
 			if err := mgr.Add(&CacheWarmer{
-				Client: mgr.GetClient(),
-				Config: cfg,
-				Status: warmupState,
+				Reconciler: reconciler,
+				Status:     warmupState,
 			}); err != nil {
 				setupLogger.Error(err, "unable to add cache warmer to manager")
 				return err
 			}
 
-			if err = (&controller.ImageUpdaterReconciler{
-				Client:      mgr.GetClient(),
-				Scheme:      mgr.GetScheme(),
-				Config:      cfg,
-				CacheWarmed: warmupState.Done,
-			}).SetupWithManager(mgr); err != nil {
+			if err = reconciler.SetupWithManager(mgr); err != nil {
 				setupLogger.Error(err, "unable to create controller", "controller", "ImageUpdater")
 				return err
 			}
@@ -376,42 +383,46 @@ type WarmupStatus struct {
 
 // CacheWarmer implements manager.Runnable to warm up caches after the manager has started them.
 type CacheWarmer struct {
-	Client client.Client
-	Config *controller.ImageUpdaterConfig
-	Status *WarmupStatus
+	// We pass the whole Reconciler struct here, since it now holds all dependencies.
+	Reconciler *controller.ImageUpdaterReconciler
+	Status     *WarmupStatus
 }
 
 // Start contains the logic that will be executed by the manager.
 func (cw *CacheWarmer) Start(ctx context.Context) error {
 	defer close(cw.Status.Done)
-	warmUpCacheLogger := log.Log().WithFields(logrus.Fields{
+	warmUpCacheLogger := common.LogFields(logrus.Fields{
 		"logger": "warmup-cache",
-	}).WithFields(common.ControllerLogFields)
-	warmUpCacheLogger.Debugf("Cache warmer started, waiting for caches to sync...")
+	})
+	ctx = log.ContextWithLogger(ctx, warmUpCacheLogger)
 
-	// The manager will start this runnable, but it's good practice
-	// to wait for the caches to be fully synced before proceeding.
+	// TODO: WaitForCacheSync
 	//if !cache.WaitForCacheSync(ctx, ...) {
 	//   return fmt.Errorf("failed to sync caches for warm-up")
 	//}
-	// For a simple list, you might not need to explicitly wait, but it's more robust.
-	// For this example, we'll proceed directly.
 
 	warmUpCacheLogger.Debugf("Caches are synced. Warming up image cache...")
 	imageList := &api.ImageUpdaterList{}
 	var listOpts []client.ListOption
 
 	warmUpCacheLogger.Debugf("Listing all ImageUpdater CRs before starting manager...")
-	if err := cw.Client.List(ctx, imageList, listOpts...); err != nil {
+	if err := cw.Reconciler.List(ctx, imageList, listOpts...); err != nil {
 		warmUpCacheLogger.Errorf("Failed to list ImageUpdater CRs during warm-up: %v", err)
 		return err
 	}
 
 	warmUpCacheLogger.Debugf("Found %d ImageUpdater CRs to process for cache warm-up.", len(imageList.Items))
 
-	for _, cr := range imageList.Items {
-		warmUpCacheLogger.Debugf("Found CR %s, namespace=%s", cr.Name, cr.Namespace)
-		_, err := controller.RunImageUpdater(cw.Config, cr, true)
+	for _, imageUpdater := range imageList.Items {
+		warmUpCacheLogger = common.LogFields(logrus.Fields{
+			"logger":                 "warmup-cache",
+			"imageUpdater_namespace": imageUpdater.Namespace,
+			"imageUpdater_name":      imageUpdater.Name,
+		})
+		ctx = log.ContextWithLogger(ctx, warmUpCacheLogger)
+
+		warmUpCacheLogger.Debugf("Found CR %s, namespace=%s", imageUpdater.Name, imageUpdater.Namespace)
+		_, err := cw.Reconciler.RunImageUpdater(ctx, &imageUpdater, true)
 		if err != nil {
 			return nil
 		}
@@ -423,7 +434,7 @@ func (cw *CacheWarmer) Start(ctx context.Context) error {
 				entries += r.Cache.NumEntries()
 			}
 		}
-		warmUpCacheLogger.Infof("Finished cache warm-up for CR=%s, namespace=%s. Pre-loaded %d meta data entries from %d registries", cr.Name, cr.Namespace, entries, len(eps))
+		warmUpCacheLogger.Infof("Finished cache warm-up for CR=%s, namespace=%s. Pre-loaded %d meta data entries from %d registries", imageUpdater.Name, imageUpdater.Namespace, entries, len(eps))
 	}
 
 	cw.Status.isCacheWarmed.Store(true)
