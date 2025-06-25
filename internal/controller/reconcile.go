@@ -4,81 +4,46 @@ import (
 	"context"
 	"fmt"
 	"sync"
-	"text/template"
-	"time"
 
 	"golang.org/x/sync/semaphore"
 
 	api "github.com/argoproj-labs/argocd-image-updater/api/v1alpha1"
-	"github.com/argoproj-labs/argocd-image-updater/ext/git"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/argocd"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
-	"github.com/argoproj-labs/argocd-image-updater/pkg/kube"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/metrics"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/registry"
 )
 
-// ImageUpdaterConfig contains global configuration and required runtime data
-type ImageUpdaterConfig struct {
-	ApplicationsAPIKind    string
-	ClientOpts             argocd.ClientOptions
-	ArgocdNamespace        string
-	AppNamespace           string
-	DryRun                 bool
-	CheckInterval          time.Duration
-	ArgoClient             argocd.ArgoCD
-	LogLevel               string
-	KubeClient             *kube.ImageUpdaterKubernetesClient
-	MaxConcurrency         int
-	HealthPort             int
-	MetricsPort            int
-	RegistriesConf         string
-	AppNamePatterns        []string
-	AppLabel               string
-	GitCommitUser          string
-	GitCommitMail          string
-	GitCommitMessage       *template.Template
-	GitCommitSigningKey    string
-	GitCommitSigningMethod string
-	GitCommitSignOff       bool
-	DisableKubeEvents      bool
-	GitCreds               git.CredsStore
-}
-
 // RunImageUpdater is a main loop for argocd-image-controller
-func RunImageUpdater(cfg *ImageUpdaterConfig, cr api.ImageUpdater, warmUp bool) (argocd.ImageUpdaterResult, error) {
+func (r *ImageUpdaterReconciler) RunImageUpdater(ctx context.Context, cr *api.ImageUpdater, warmUp bool) (argocd.ImageUpdaterResult, error) {
+	log := log.LoggerFromContext(ctx)
+
 	result := argocd.ImageUpdaterResult{}
 	var err error
 	var argoClient argocd.ArgoCD
-	switch cfg.ApplicationsAPIKind {
+	switch r.Config.ApplicationsAPIKind {
 	case common.ApplicationsAPIKindK8S:
-		argoClient, err = argocd.NewK8SClient(cfg.KubeClient, &argocd.K8SClientOptions{AppNamespace: cr.Spec.Namespace})
+		argoClient, err = argocd.NewK8SClient(r.Client)
 	case common.ApplicationsAPIKindArgoCD:
-		argoClient, err = argocd.NewAPIClient(&cfg.ClientOpts)
+		argoClient, err = argocd.NewAPIClient(&r.Config.ClientOpts)
 	default:
-		return argocd.ImageUpdaterResult{}, fmt.Errorf("application api '%s' is not supported", cfg.ApplicationsAPIKind)
+		return argocd.ImageUpdaterResult{}, fmt.Errorf("application api '%s' is not supported", r.Config.ApplicationsAPIKind)
 	}
 	if err != nil {
 		return result, err
 	}
-	cfg.ArgoClient = argoClient
+	r.Config.ArgoClient = argoClient
 
-	apps, err := cfg.ArgoClient.ListApplications(cfg.AppLabel)
+	apps, err := r.Config.ArgoClient.ListApplications(ctx, cr, r.Config.AppLabel)
 	if err != nil {
-		log.WithContext().
-			AddField("argocd_server", cfg.ClientOpts.ServerAddr).
-			AddField("grpc_web", cfg.ClientOpts.GRPCWeb).
-			AddField("grpc_webroot", cfg.ClientOpts.GRPCWebRootPath).
-			AddField("plaintext", cfg.ClientOpts.Plaintext).
-			AddField("insecure", cfg.ClientOpts.Insecure).
-			Errorf("error while communicating with ArgoCD")
+		log.Errorf("error while communicating with ArgoCD: %v", err)
 		return result, err
 	}
 
 	// Get the list of applications that are allowed for updates, that is, those
 	// applications which have correct annotation.
-	appList, err := argocd.FilterApplicationsForUpdate(apps, cfg.AppNamePatterns)
+	appList, err := argocd.FilterApplicationsForUpdate(apps, r.Config.AppNamePatterns)
 	if err != nil {
 		return result, err
 	}
@@ -93,11 +58,11 @@ func RunImageUpdater(cfg *ImageUpdaterConfig, cr api.ImageUpdater, warmUp bool) 
 
 	// Allow a maximum of MaxConcurrency number of goroutines to exist at the
 	// same time. If in warm-up mode, set to 1 explicitly.
-	var concurrency int = cfg.MaxConcurrency
+	var concurrency int = r.Config.MaxConcurrency
 	if warmUp {
 		concurrency = 1
 	}
-	var dryRun bool = cfg.DryRun
+	var dryRun bool = r.Config.DryRun
 	if warmUp {
 		dryRun = true
 	}
@@ -120,18 +85,18 @@ func RunImageUpdater(cfg *ImageUpdaterConfig, cr api.ImageUpdater, warmUp bool) 
 			log.Debugf("Processing application %s", app)
 			upconf := &argocd.UpdateConfiguration{
 				NewRegFN:               registry.NewClient,
-				ArgoClient:             cfg.ArgoClient,
-				KubeClient:             cfg.KubeClient,
+				ArgoClient:             r.Config.ArgoClient,
+				KubeClient:             r.Config.KubeClient,
 				UpdateApp:              &curApplication,
 				DryRun:                 dryRun,
-				GitCommitUser:          cfg.GitCommitUser,
-				GitCommitEmail:         cfg.GitCommitMail,
-				GitCommitMessage:       cfg.GitCommitMessage,
-				GitCommitSigningKey:    cfg.GitCommitSigningKey,
-				GitCommitSigningMethod: cfg.GitCommitSigningMethod,
-				GitCommitSignOff:       cfg.GitCommitSignOff,
-				DisableKubeEvents:      cfg.DisableKubeEvents,
-				GitCreds:               cfg.GitCreds,
+				GitCommitUser:          r.Config.GitCommitUser,
+				GitCommitEmail:         r.Config.GitCommitMail,
+				GitCommitMessage:       r.Config.GitCommitMessage,
+				GitCommitSigningKey:    r.Config.GitCommitSigningKey,
+				GitCommitSigningMethod: r.Config.GitCommitSigningMethod,
+				GitCommitSignOff:       r.Config.GitCommitSignOff,
+				DisableKubeEvents:      r.Config.DisableKubeEvents,
+				GitCreds:               r.Config.GitCreds,
 			}
 			res := argocd.UpdateApplication(upconf, syncState)
 			result.NumApplicationsProcessed += 1
@@ -139,7 +104,7 @@ func RunImageUpdater(cfg *ImageUpdaterConfig, cr api.ImageUpdater, warmUp bool) 
 			result.NumImagesConsidered += res.NumImagesConsidered
 			result.NumImagesUpdated += res.NumImagesUpdated
 			result.NumSkipped += res.NumSkipped
-			if !warmUp && !cfg.DryRun {
+			if !warmUp && !r.Config.DryRun {
 				metrics.Applications().IncreaseImageUpdate(app, res.NumImagesUpdated)
 			}
 			metrics.Applications().IncreaseUpdateErrors(app, res.NumErrors)

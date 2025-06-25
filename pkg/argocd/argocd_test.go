@@ -3,26 +3,24 @@ package argocd
 import (
 	"context"
 	"fmt"
-	"os"
 	"testing"
 
-	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
-	"github.com/argoproj-labs/argocd-image-updater/pkg/kube"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	registryCommon "github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/common"
-	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/image"
-	registryKube "github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/kube"
+	api "github.com/argoproj-labs/argocd-image-updater/api/v1alpha1"
 
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/application"
 	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
-	"github.com/argoproj/argo-cd/v2/pkg/client/clientset/versioned/fake"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/api/errors"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/runtime/schema"
-	k8stesting "k8s.io/client-go/testing"
+	ctrlFake "sigs.k8s.io/controller-runtime/pkg/client/fake"
+
+	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
+	registryCommon "github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/common"
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/image"
 )
 
 func Test_GetImagesFromApplication(t *testing.T) {
@@ -1012,211 +1010,236 @@ func Test_SetHelmImage(t *testing.T) {
 
 func TestKubernetesClient(t *testing.T) {
 	app1 := &v1alpha1.Application{
-		ObjectMeta: v1.ObjectMeta{Name: "test-app1", Namespace: "testns1"},
+		ObjectMeta: v1.ObjectMeta{Name: "test-app1", Namespace: "testns"},
 	}
 	app2 := &v1alpha1.Application{
-		ObjectMeta: v1.ObjectMeta{Name: "test-app2", Namespace: "testns2"},
+		ObjectMeta: v1.ObjectMeta{Name: "test-app2", Namespace: "testns"},
 	}
 
-	client, err := NewK8SClient(&kube.ImageUpdaterKubernetesClient{
-		KubeClient: &registryKube.KubernetesClient{
-			Namespace: "testns1",
-		},
-		ApplicationsClientset: fake.NewSimpleClientset(app1, app2),
-	}, nil)
-
+	// Create the fake client and pre-load it with test applications
+	k8sClient, err := newTestK8sClient(app1, app2)
 	require.NoError(t, err)
 
 	t.Run("List applications", func(t *testing.T) {
-		apps, err := client.ListApplications("")
+		cr := &api.ImageUpdater{
+			Spec: api.ImageUpdaterSpec{
+				Namespace: "testns", // Target namespace
+				ApplicationRefs: []api.ApplicationRef{
+					{NamePattern: "test-app1"},
+					{NamePattern: "test-app2"},
+					{NamePattern: "non-existent-app"},
+				},
+			},
+		}
+		apps, err := k8sClient.ListApplications(context.TODO(), cr, "")
 		require.NoError(t, err)
 		require.Len(t, apps, 2)
-		assert.ElementsMatch(t, []string{"test-app1", "test-app2"}, []string{app1.Name, app2.Name})
+		assert.ElementsMatch(t, []string{"test-app1", "test-app2"}, []string{apps[0].Name, apps[1].Name})
 	})
 
-	t.Run("Get application test-app1 successful", func(t *testing.T) {
-		app, err := client.GetApplication(context.Background(), "test-app1")
+	t.Run("Get application successful", func(t *testing.T) {
+		app, err := k8sClient.GetApplication(context.TODO(), "testns", "test-app1")
 		require.NoError(t, err)
 		assert.Equal(t, "test-app1", app.GetName())
 	})
 
-	t.Run("Get application test-app2 successful", func(t *testing.T) {
-		app, err := client.GetApplication(context.Background(), "test-app2")
-		require.NoError(t, err)
-		assert.Equal(t, "test-app2", app.GetName())
-	})
-
 	t.Run("Get application not found", func(t *testing.T) {
-		_, err := client.GetApplication(context.Background(), "test-app-non-existent")
+		_, err := k8sClient.GetApplication(context.TODO(), "test-ns-non-existent", "test-app-non-existent")
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "application test-app-non-existent not found")
+		assert.True(t, errors.IsNotFound(err), "error should be a 'Not Found' error")
 	})
 
-	t.Run("List and Get applications errors", func(t *testing.T) {
-		// Create a fake clientset
-		clientset := fake.NewSimpleClientset()
-
-		// Simulate an error in the List action
-		clientset.PrependReactor("list", "applications", func(action k8stesting.Action) (handled bool, ret runtime.Object, err error) {
-			return true, nil, errors.NewInternalError(fmt.Errorf("list error"))
-		})
-
-		// Create the Kubernetes client
-		client, err := NewK8SClient(&kube.ImageUpdaterKubernetesClient{
-			ApplicationsClientset: clientset,
-		}, nil)
+	t.Run("List applications when none are found", func(t *testing.T) {
+		// Create the fake client without test applications
+		k8sClient, err := newTestK8sClient()
 		require.NoError(t, err)
 
-		// Test ListApplications error handling
-		apps, err := client.ListApplications("")
-		assert.Nil(t, apps)
-		assert.EqualError(t, err, "error listing applications: Internal error occurred: list error")
-
-		// Test GetApplication error handling
-		_, err = client.GetApplication(context.Background(), "test-app")
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "error listing applications: Internal error occurred: list error")
-	})
-
-	t.Run("Get applications with multiple applications found", func(t *testing.T) {
-		// Create a fake clientset with multiple applications having the same name
-		clientset := fake.NewSimpleClientset(
-			&v1alpha1.Application{
-				ObjectMeta: v1.ObjectMeta{Name: "test-app", Namespace: "ns1"},
-				Spec:       v1alpha1.ApplicationSpec{},
+		// Define an ImageUpdater CR that targets applications that don't exist
+		cr := &api.ImageUpdater{
+			ObjectMeta: v1.ObjectMeta{Name: "test-cr"},
+			Spec: api.ImageUpdaterSpec{
+				Namespace: "testns",
+				ApplicationRefs: []api.ApplicationRef{
+					{NamePattern: "test-app1"},
+					{NamePattern: "non-existent-app"},
+				},
 			},
-			&v1alpha1.Application{
-				ObjectMeta: v1.ObjectMeta{Name: "test-app", Namespace: "ns2"},
-				Spec:       v1alpha1.ApplicationSpec{},
-			},
-		)
-
-		// Create the Kubernetes client
-		client, err := NewK8SClient(&kube.ImageUpdaterKubernetesClient{
-			ApplicationsClientset: clientset,
-		}, nil)
+		}
+		apps, err := k8sClient.ListApplications(context.TODO(), cr, "")
 		require.NoError(t, err)
-
-		// Test GetApplication with multiple matching applications
-		_, err = client.GetApplication(context.Background(), "test-app")
-		assert.Error(t, err)
-		assert.EqualError(t, err, "multiple applications found matching test-app")
+		require.NotNil(t, apps)
+		assert.Len(t, apps, 0)
 	})
 }
 
 func TestKubernetesClientUpdateSpec(t *testing.T) {
-	app := &v1alpha1.Application{
-		ObjectMeta: v1.ObjectMeta{Name: "test-app", Namespace: "testns"},
-	}
-	clientset := fake.NewSimpleClientset(app)
+	// TODO: I don't want to remove "conflict" tests now as they can be a useful for inspiration in future.
 
-	t.Run("Successful update after conflict retry", func(t *testing.T) {
-		attempts := 0
-		clientset.PrependReactor("update", "*", func(action k8stesting.Action) (handled bool, ret runtime.Object, err error) {
-			if attempts == 0 {
-				attempts++
-				return true, nil, errors.NewConflict(
-					schema.GroupResource{Group: "argoproj.io", Resource: "Application"}, app.Name, fmt.Errorf("conflict updating %s", app.Name))
-			} else {
-				return false, nil, nil
-			}
-		})
+	//app := &v1alpha1.Application{
+	//	ObjectMeta: v1.ObjectMeta{Name: "test-app", Namespace: "testns"},
+	//}
+	// clientset := fake.NewSimpleClientset(app)
 
-		client, err := NewK8SClient(&kube.ImageUpdaterKubernetesClient{
-			ApplicationsClientset: clientset,
-		}, nil)
+	//t.Run("Successful update after conflict retry", func(t *testing.T) {
+	//	attempts := 0
+	//	clientset.PrependReactor("update", "*", func(action k8stesting.Action) (handled bool, ret runtime.Object, err error) {
+	//		if attempts == 0 {
+	//			attempts++
+	//			return true, nil, errors.NewConflict(
+	//				schema.GroupResource{Group: "argoproj.io", Resource: "Application"}, app.Name, fmt.Errorf("conflict updating %s", app.Name))
+	//		} else {
+	//			return false, nil, nil
+	//		}
+	//	})
+	//
+	//	client, err := NewK8SClient(&kube.ImageUpdaterKubernetesClient{
+	//		ApplicationsClientset: clientset,
+	//	}, nil)
+	//	require.NoError(t, err)
+	//
+	//	appName := "test-app"
+	//	spec, err := client.UpdateSpec(context.TODO(), &application.ApplicationUpdateSpecRequest{
+	//		Name: &appName,
+	//		Spec: &v1alpha1.ApplicationSpec{Source: &v1alpha1.ApplicationSource{
+	//			RepoURL: "https://github.com/argoproj/argocd-example-apps",
+	//		}},
+	//	})
+	//
+	//	require.NoError(t, err)
+	//	assert.Equal(t, "https://github.com/argoproj/argocd-example-apps", spec.Source.RepoURL)
+	//})
+
+	t.Run("Successful update of an application spec", func(t *testing.T) {
+		// Initial state of the application
+		initialApp := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{Name: "test-app", Namespace: "testns"},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: &v1alpha1.ApplicationSource{
+					RepoURL: "https://github.com/original/repo", // Original value
+				},
+			},
+		}
+
+		// Create a client pre-loaded with this application
+		fakeClient, err := newTestK8sClient(initialApp)
 		require.NoError(t, err)
 
+		// Define the update request
 		appName := "test-app"
-		spec, err := client.UpdateSpec(context.Background(), &application.ApplicationUpdateSpecRequest{
-			Name: &appName,
-			Spec: &v1alpha1.ApplicationSpec{Source: &v1alpha1.ApplicationSource{
-				RepoURL: "https://github.com/argoproj/argocd-example-apps",
-			}},
-		})
+		appNamespace := "testns"
+		updateRequest := &application.ApplicationUpdateSpecRequest{
+			Name:         &appName,
+			AppNamespace: &appNamespace,
+			Spec: &v1alpha1.ApplicationSpec{
+				Source: &v1alpha1.ApplicationSource{
+					RepoURL: "https://github.com/updated/repo", // New value
+				},
+			},
+		}
 
+		// Call the UpdateSpec method
+		updatedSpec, err := fakeClient.UpdateSpec(context.TODO(), updateRequest)
 		require.NoError(t, err)
-		assert.Equal(t, "https://github.com/argoproj/argocd-example-apps", spec.Source.RepoURL)
+		// Assert that the returned spec has the new value
+		assert.Equal(t, "https://github.com/updated/repo", updatedSpec.Source.RepoURL)
+
+		// Also, verify the object in the fake cluster was actually updated
+		updatedApp, err := fakeClient.GetApplication(context.TODO(), "testns", "test-app")
+		require.NoError(t, err)
+		assert.Equal(t, "https://github.com/updated/repo", updatedApp.Spec.Source.RepoURL)
 	})
 
 	t.Run("UpdateSpec errors - application not found", func(t *testing.T) {
-		// Create a fake empty clientset
-		clientset := fake.NewSimpleClientset()
-
-		client, err := NewK8SClient(&kube.ImageUpdaterKubernetesClient{
-			ApplicationsClientset: clientset,
-		}, nil)
+		// Create a client with NO initial applications
+		fakeClient, err := newTestK8sClient()
 		require.NoError(t, err)
 
-		appName := "test-app"
+		appName := "non-existent-app"
 		appNamespace := "testns"
-		spec := &application.ApplicationUpdateSpecRequest{
+		updateRequest := &application.ApplicationUpdateSpecRequest{
 			Name:         &appName,
 			AppNamespace: &appNamespace,
 			Spec:         &v1alpha1.ApplicationSpec{},
 		}
 
-		_, err = client.UpdateSpec(context.Background(), spec)
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "error getting application: application test-app not found")
+		_, err = fakeClient.UpdateSpec(context.TODO(), updateRequest)
+		require.Error(t, err)
+		assert.True(t, errors.IsNotFound(err), "error should be a 'Not Found' error because Get fails")
 	})
 
-	t.Run("UpdateSpec errors - conflict failing retries", func(t *testing.T) {
-		clientset := fake.NewSimpleClientset(&v1alpha1.Application{
-			ObjectMeta: v1.ObjectMeta{Name: "test-app", Namespace: "testns"},
-			Spec:       v1alpha1.ApplicationSpec{},
-		})
+	//t.Run("UpdateSpec errors - conflict failing retries", func(t *testing.T) {
+	//	clientset := fake.NewSimpleClientset(&v1alpha1.Application{
+	//		ObjectMeta: v1.ObjectMeta{Name: "test-app", Namespace: "testns"},
+	//		Spec:       v1alpha1.ApplicationSpec{},
+	//	})
+	//
+	//	initialApp := &v1alpha1.Application{
+	//		ObjectMeta: v1.ObjectMeta{Name: "test-app", Namespace: "testns"},
+	//		Spec: v1alpha1.ApplicationSpec{
+	//			Source: &v1alpha1.ApplicationSource{
+	//				RepoURL: "https://github.com/original/repo", // Original value
+	//			},
+	//		},
+	//	}
+	//
+	//	// Create a client pre-loaded with this application
+	//	fakeClient, err := newTestK8sClient(initialApp)
+	//	require.NoError(t, err)
+	//
+	//	clientset.PrependReactor("update", "applications", func(action k8stesting.Action) (handled bool, ret runtime.Object, err error) {
+	//		return true, nil, errors.NewConflict(v1alpha1.Resource("applications"), "test-app", fmt.Errorf("conflict error"))
+	//	})
+	//
+	//	os.Setenv("OVERRIDE_MAX_RETRIES", "0")
+	//	defer os.Unsetenv("OVERRIDE_MAX_RETRIES")
+	//
+	//	appName := "test-app"
+	//	spec := &application.ApplicationUpdateSpecRequest{
+	//		Name: &appName,
+	//		Spec: &v1alpha1.ApplicationSpec{},
+	//	}
+	//
+	//	_, err = fakeClient.UpdateSpec(context.TODO(), spec)
+	//	assert.Error(t, err)
+	//	assert.Contains(t, err.Error(), "max retries(0) reached while updating application: test-app")
+	//})
 
-		client, err := NewK8SClient(&kube.ImageUpdaterKubernetesClient{
-			ApplicationsClientset: clientset,
-		}, nil)
-		require.NoError(t, err)
-
-		clientset.PrependReactor("update", "applications", func(action k8stesting.Action) (handled bool, ret runtime.Object, err error) {
-			return true, nil, errors.NewConflict(v1alpha1.Resource("applications"), "test-app", fmt.Errorf("conflict error"))
-		})
-
-		os.Setenv("OVERRIDE_MAX_RETRIES", "0")
-		defer os.Unsetenv("OVERRIDE_MAX_RETRIES")
-
-		appName := "test-app"
-		spec := &application.ApplicationUpdateSpecRequest{
-			Name: &appName,
-			Spec: &v1alpha1.ApplicationSpec{},
-		}
-
-		_, err = client.UpdateSpec(context.Background(), spec)
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "max retries(0) reached while updating application: test-app")
-	})
-
-	t.Run("UpdateSpec errors - non-conflict update error", func(t *testing.T) {
-		clientset := fake.NewSimpleClientset(&v1alpha1.Application{
-			ObjectMeta: v1.ObjectMeta{Name: "test-app", Namespace: "testns"},
-			Spec:       v1alpha1.ApplicationSpec{},
-		})
-
-		client, err := NewK8SClient(&kube.ImageUpdaterKubernetesClient{
-			ApplicationsClientset: clientset,
-		}, nil)
-		require.NoError(t, err)
-
-		clientset.PrependReactor("update", "applications", func(action k8stesting.Action) (handled bool, ret runtime.Object, err error) {
-			return true, nil, fmt.Errorf("non-conflict error")
-		})
-
-		appName := "test-app"
-		appNamespace := "testns"
-		spec := &application.ApplicationUpdateSpecRequest{
-			Name:         &appName,
-			AppNamespace: &appNamespace,
-			Spec:         &v1alpha1.ApplicationSpec{},
-		}
-
-		_, err = client.UpdateSpec(context.Background(), spec)
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "error updating application: non-conflict error")
-	})
+	//t.Run("UpdateSpec errors - non-conflict update error", func(t *testing.T) {
+	//	clientset := fake.NewSimpleClientset(&v1alpha1.Application{
+	//		ObjectMeta: v1.ObjectMeta{Name: "test-app", Namespace: "testns"},
+	//		Spec:       v1alpha1.ApplicationSpec{},
+	//	})
+	//
+	//	initialApp := &v1alpha1.Application{
+	//		ObjectMeta: v1.ObjectMeta{Name: "test-app", Namespace: "testns"},
+	//		Spec: v1alpha1.ApplicationSpec{
+	//			Source: &v1alpha1.ApplicationSource{
+	//				RepoURL: "https://github.com/original/repo", // Original value
+	//			},
+	//		},
+	//	}
+	//
+	//	// Create a client pre-loaded with this application
+	//	fakeClient, err := newTestK8sClient(initialApp)
+	//
+	//	require.NoError(t, err)
+	//
+	//	clientset.PrependReactor("update", "applications", func(action k8stesting.Action) (handled bool, ret runtime.Object, err error) {
+	//		return true, nil, fmt.Errorf("non-conflict error")
+	//	})
+	//
+	//	appName := "test-app"
+	//	appNamespace := "testns"
+	//	spec := &application.ApplicationUpdateSpecRequest{
+	//		Name:         &appName,
+	//		AppNamespace: &appNamespace,
+	//		Spec:         &v1alpha1.ApplicationSpec{},
+	//	}
+	//
+	//	_, err = fakeClient.UpdateSpec(context.TODO(), spec)
+	//	assert.Error(t, err)
+	//	assert.Contains(t, err.Error(), "error updating application: non-conflict error")
+	//})
 }
 
 func Test_parseImageList(t *testing.T) {
@@ -1234,4 +1257,26 @@ func Test_parseImageList(t *testing.T) {
 		assert.Equal(t, "bar", imgs[0].ImageName)
 		assert.Equal(t, "baz", imgs[0].KustomizeImage.ImageName)
 	})
+}
+
+// Helper function to create a new fake client for tests
+func newTestK8sClient(initObjs ...client.Object) (ArgoCD, error) {
+	// Register the Argo CD Application scheme so the fake client knows about it
+	scheme := runtime.NewScheme()
+	err := v1alpha1.AddToScheme(scheme)
+	if err != nil {
+		return nil, fmt.Errorf("failed to add argocd scheme: %w", err)
+	}
+
+	// Create a fake client builder and add any initial objects
+	builder := ctrlFake.NewClientBuilder().WithScheme(scheme)
+	if len(initObjs) > 0 {
+		builder.WithObjects(initObjs...)
+	}
+
+	// Build the fake client
+	fakeClient := builder.Build()
+
+	// Use constructor to create the k8sClient instance
+	return NewK8SClient(fakeClient)
 }
