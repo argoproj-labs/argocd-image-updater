@@ -18,10 +18,16 @@ package controller
 
 import (
 	"context"
+	"text/template"
 	"time"
 
-	"github.com/sirupsen/logrus"
 	"k8s.io/apimachinery/pkg/runtime"
+
+	"github.com/argoproj-labs/argocd-image-updater/ext/git"
+	"github.com/argoproj-labs/argocd-image-updater/pkg/argocd"
+	"github.com/argoproj-labs/argocd-image-updater/pkg/kube"
+
+	"github.com/sirupsen/logrus"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -30,6 +36,33 @@ import (
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
 )
+
+// ImageUpdaterConfig contains global configuration and required runtime data
+type ImageUpdaterConfig struct {
+	ApplicationsAPIKind    string
+	ClientOpts             argocd.ClientOptions
+	ArgocdNamespace        string
+	AppNamespace           string
+	DryRun                 bool
+	CheckInterval          time.Duration
+	ArgoClient             argocd.ArgoCD
+	LogLevel               string
+	KubeClient             *kube.ImageUpdaterKubernetesClient
+	MaxConcurrency         int
+	HealthPort             int
+	MetricsPort            int
+	RegistriesConf         string
+	AppNamePatterns        []string
+	AppLabel               string
+	GitCommitUser          string
+	GitCommitMail          string
+	GitCommitMessage       *template.Template
+	GitCommitSigningKey    string
+	GitCommitSigningMethod string
+	GitCommitSignOff       bool
+	DisableKubeEvents      bool
+	GitCreds               git.CredsStore
+}
 
 // ImageUpdaterReconciler reconciles a ImageUpdater object
 type ImageUpdaterReconciler struct {
@@ -52,39 +85,38 @@ type ImageUpdaterReconciler struct {
 // The Reconcile function performs the following key steps:
 // 1. Fetches the ImageUpdater CR instance identified by the request.
 // 2. Inspects the CR's specification to determine:
-//    - Which images to monitor.
-//    - The image repositories and tags/versions policies (e.g., semver constraints).
-//    - The target application(s) or resources to update (this might involve interacting
-//      with other Kubernetes resources or systems like Argo CD Applications, which would
-//      require additional RBAC permissions).
-// 3. Queries the relevant container image registries to find the latest available and
-//    permissible versions of the monitored images.
-// 4. Compares these latest versions against the currently deployed versions or versions
-//    recorded in the ImageUpdater CR's status.
-// 5. If an update is warranted and permitted by the update strategy:
-//    - It may trigger an update to the target application(s) by modifying their
-//      declarative specifications (e.g., updating an image field in a Deployment or an
-//      Argo CD Application CR).
-// 6. Updates the status subresource of the ImageUpdater CR to reflect:
-//    - The latest versions checked.
-//    - The last update attempt time and result.
-//    - Any errors encountered during the process.
-// 7. Handles errors gracefully and determines if and when the reconciliation request
-//    should be requeued using ctrl.Result. For instance, network issues during registry
-//    queries might lead to a requeue with a backoff.
+//   - Which images to monitor.
+//   - The image repositories and tags/versions policies (e.g., semver constraints).
+//   - The target application(s) or resources to update (this might involve interacting
+//     with other Kubernetes resources or systems like Argo CD Applications, which would
+//     require additional RBAC permissions).
+//     3. Queries the relevant container image registries to find the latest available and
+//     permissible versions of the monitored images.
+//     4. Compares these latest versions against the currently deployed versions or versions
+//     recorded in the ImageUpdater CR's status.
+//     5. If an update is warranted and permitted by the update strategy:
+//   - It may trigger an update to the target application(s) by modifying their
+//     declarative specifications (e.g., updating an image field in a Deployment or an
+//     Argo CD Application CR).
+//     6. Updates the status subresource of the ImageUpdater CR to reflect:
+//   - The latest versions checked.
+//   - The last update attempt time and result.
+//   - Any errors encountered during the process.
+//     7. Handles errors gracefully and determines if and when the reconciliation request
+//     should be requeued using ctrl.Result. For instance, network issues during registry
+//     queries might lead to a requeue with a backoff.
 //
 // Currently, this Reconcile function logs the reconciliation event and then unconditionally
 // requeues the request after a configured interval (r.Interval). This serves as a
 // basic periodic check mechanism, which will be expanded with the detailed logic described above.
-
-// For more details, check Reconcile and its Result here:
-// - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.19.0/pkg/reconcile
 func (r *ImageUpdaterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	reqLogger := log.Log().WithFields(logrus.Fields{
-		"logger":       "reconcile",
-		"cr_namespace": req.NamespacedName.Namespace,
-		"cr_name":      req.NamespacedName.Name,
-	}).WithFields(common.ControllerLogFields)
+	reqLogger := common.LogFields(logrus.Fields{
+		"logger":                 "reconcile",
+		"imageUpdater_namespace": req.NamespacedName.Namespace,
+		"imageUpdater_name":      req.NamespacedName.Name,
+	})
+	ctx = log.ContextWithLogger(ctx, reqLogger)
+
 	select {
 	case <-r.CacheWarmed:
 		// The warm-up is complete, proceed with reconciliation.
@@ -111,17 +143,6 @@ func (r *ImageUpdaterReconciler) Reconcile(ctx context.Context, req ctrl.Request
 
 	// 2. Add finalizer logic if needed for cleanup before deletion.
 
-	// 3. Implement image checking and application update logic based on imageUpdater.Spec.
-
-	// 4. Update imageUpdater.Status with the results.
-	//    if err := r.Status().Update(ctx, &imageUpdater); err != nil {
-	//        log.Error(err, "unable to update ImageUpdater status")
-	//        return ctrl.Result{}, err
-	//    }
-
-	// For now, just requeue periodically.
-	// This interval might be a default, or could be overridden by logic
-	// that inspects the imageUpdater CR itself for a custom interval.
 	if r.Config.CheckInterval < 0 {
 		reqLogger.Debugf("Requeue interval is not configured or below zero; will not requeue based on time unless an error occurs or explicitly requested.")
 		return ctrl.Result{}, nil
@@ -129,11 +150,16 @@ func (r *ImageUpdaterReconciler) Reconcile(ctx context.Context, req ctrl.Request
 
 	if r.Config.CheckInterval == 0 {
 		reqLogger.Debugf("Requeue interval is zero; will be requeued once.")
-		_, err := RunImageUpdater(r.Config, imageUpdater, false)
+		_, err := r.RunImageUpdater(ctx, &imageUpdater, false)
 		if err != nil {
 			return ctrl.Result{}, err
 		}
 		return ctrl.Result{}, nil
+	}
+
+	_, err := r.RunImageUpdater(ctx, &imageUpdater, false)
+	if err != nil {
+		return ctrl.Result{}, err
 	}
 
 	reqLogger.Debugf("Reconciliation logic placeholder: will requeue after interval %s", r.Config.CheckInterval.String())

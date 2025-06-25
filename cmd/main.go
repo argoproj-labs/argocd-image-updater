@@ -19,6 +19,7 @@ package main
 import (
 	"os"
 
+	argocdapplicationv1alpha1 "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	"github.com/spf13/cobra"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -49,8 +50,8 @@ func newRootCommand() error {
 
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
-
 	utilruntime.Must(argocdimageupdaterv1alpha1.AddToScheme(scheme))
+	utilruntime.Must(argocdapplicationv1alpha1.AddToScheme(scheme))
 	// +kubebuilder:scaffold:scheme
 }
 

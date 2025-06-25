@@ -1,13 +1,16 @@
 package common
 
-import "github.com/sirupsen/logrus"
+import (
+	"github.com/sirupsen/logrus"
+
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
+)
 
 // This file contains a list of constants required by other packages
 
 const ImageUpdaterAnnotationPrefix = "argocd-image-updater.argoproj.io"
 
-// The annotation on the application resources to indicate the list of images
-// allowed for updates.
+// ImageUpdaterAnnotation The annotation on the application resources to indicate the list of images allowed for updates.
 const ImageUpdaterAnnotation = ImageUpdaterAnnotationPrefix + "/image-list"
 
 // Application update configuration related annotations
@@ -51,4 +54,8 @@ var ControllerLogFields = logrus.Fields{
 	"controller":      "imageupdater",
 	"controllerGroup": ImageUpdaterAnnotationPrefix,
 	"controllerKind":  "ImageUpdater",
+}
+
+func LogFields(fields logrus.Fields) *logrus.Entry {
+	return log.Log().WithFields(fields).WithFields(ControllerLogFields)
 }
