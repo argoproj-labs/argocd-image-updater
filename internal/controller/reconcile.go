@@ -7,16 +7,17 @@ import (
 
 	"golang.org/x/sync/semaphore"
 
-	api "github.com/argoproj-labs/argocd-image-updater/api/v1alpha1"
+	iuapi "github.com/argoproj-labs/argocd-image-updater/api/v1alpha1"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/argocd"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/metrics"
+	iutypes "github.com/argoproj-labs/argocd-image-updater/pkg/types"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/registry"
 )
 
 // RunImageUpdater is a main loop for argocd-image-controller
-func (r *ImageUpdaterReconciler) RunImageUpdater(ctx context.Context, cr *api.ImageUpdater, warmUp bool) (argocd.ImageUpdaterResult, error) {
+func (r *ImageUpdaterReconciler) RunImageUpdater(ctx context.Context, cr *iuapi.ImageUpdater, warmUp bool) (argocd.ImageUpdaterResult, error) {
 	log := log.LoggerFromContext(ctx)
 
 	result := argocd.ImageUpdaterResult{}
@@ -35,15 +36,8 @@ func (r *ImageUpdaterReconciler) RunImageUpdater(ctx context.Context, cr *api.Im
 	}
 	r.Config.ArgoClient = argoClient
 
-	apps, err := r.Config.ArgoClient.ListApplications(ctx, cr, r.Config.AppLabel)
-	if err != nil {
-		log.Errorf("error while communicating with ArgoCD: %v", err)
-		return result, err
-	}
-
-	// Get the list of applications that are allowed for updates, that is, those
-	// applications which have correct annotation.
-	appList, err := argocd.FilterApplicationsForUpdate(apps, r.Config.AppNamePatterns)
+	// Get the list of applications that are allowed for updates.
+	appList, err := r.Config.ArgoClient.FilterApplicationsForUpdate(ctx, cr)
 	if err != nil {
 		return result, err
 	}
@@ -80,7 +74,7 @@ func (r *ImageUpdaterReconciler) RunImageUpdater(ctx context.Context, cr *api.Im
 			continue
 		}
 
-		go func(app string, curApplication argocd.ApplicationImages) {
+		go func(app string, curApplication iutypes.ApplicationImages) {
 			defer sem.Release(1)
 			log.Debugf("Processing application %s", app)
 			upconf := &argocd.UpdateConfiguration{
