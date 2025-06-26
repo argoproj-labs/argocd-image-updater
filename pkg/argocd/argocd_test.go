@@ -5,10 +5,6 @@ import (
 	"fmt"
 	"testing"
 
-	"sigs.k8s.io/controller-runtime/pkg/client"
-
-	api "github.com/argoproj-labs/argocd-image-updater/api/v1alpha1"
-
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/application"
 	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	"github.com/stretchr/testify/assert"
@@ -16,9 +12,12 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlFake "sigs.k8s.io/controller-runtime/pkg/client/fake"
 
+	api "github.com/argoproj-labs/argocd-image-updater/api/v1alpha1"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
+	iutypes "github.com/argoproj-labs/argocd-image-updater/pkg/types"
 	registryCommon "github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/common"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/image"
 )
@@ -448,110 +447,6 @@ func Test_GetApplicationSource(t *testing.T) {
 		assert.Equal(t, appSource.Path, "sources/source1")
 	})
 
-}
-
-func Test_FilterApplicationsForUpdate(t *testing.T) {
-	t.Run("Filter for applications without patterns", func(t *testing.T) {
-		applicationList := []v1alpha1.Application{
-			// Annotated and correct type
-			{
-				ObjectMeta: v1.ObjectMeta{
-					Name:      "app1",
-					Namespace: "argocd",
-					Annotations: map[string]string{
-						common.ImageUpdaterAnnotation: "nginx, quay.io/dexidp/dex:v1.23.0",
-					},
-				},
-				Spec: v1alpha1.ApplicationSpec{},
-				Status: v1alpha1.ApplicationStatus{
-					SourceType: v1alpha1.ApplicationSourceTypeKustomize,
-				},
-			},
-			// Annotated, but invalid type
-			{
-				ObjectMeta: v1.ObjectMeta{
-					Name:      "app2",
-					Namespace: "argocd",
-					Annotations: map[string]string{
-						common.ImageUpdaterAnnotation: "nginx, quay.io/dexidp/dex:v1.23.0",
-					},
-				},
-				Spec: v1alpha1.ApplicationSpec{},
-				Status: v1alpha1.ApplicationStatus{
-					SourceType: v1alpha1.ApplicationSourceTypePlugin,
-				},
-			},
-			// Valid type, but not annotated
-			{
-				ObjectMeta: v1.ObjectMeta{
-					Name:      "app3",
-					Namespace: "argocd",
-				},
-				Spec: v1alpha1.ApplicationSpec{},
-				Status: v1alpha1.ApplicationStatus{
-					SourceType: v1alpha1.ApplicationSourceTypeHelm,
-				},
-			},
-		}
-		filtered, err := FilterApplicationsForUpdate(applicationList, []string{})
-		require.NoError(t, err)
-		require.Len(t, filtered, 1)
-		require.Contains(t, filtered, "argocd/app1")
-		assert.Len(t, filtered["argocd/app1"].Images, 2)
-	})
-
-	t.Run("Filter for applications with patterns", func(t *testing.T) {
-		applicationList := []v1alpha1.Application{
-			// Annotated and correct type
-			{
-				ObjectMeta: v1.ObjectMeta{
-					Name:      "app1",
-					Namespace: "argocd",
-					Annotations: map[string]string{
-						common.ImageUpdaterAnnotation: "nginx, quay.io/dexidp/dex:v1.23.0",
-					},
-				},
-				Spec: v1alpha1.ApplicationSpec{},
-				Status: v1alpha1.ApplicationStatus{
-					SourceType: v1alpha1.ApplicationSourceTypeKustomize,
-				},
-			},
-			// Annotated, but invalid type
-			{
-				ObjectMeta: v1.ObjectMeta{
-					Name:      "app2",
-					Namespace: "argocd",
-					Annotations: map[string]string{
-						common.ImageUpdaterAnnotation: "nginx, quay.io/dexidp/dex:v1.23.0",
-					},
-				},
-				Spec: v1alpha1.ApplicationSpec{},
-				Status: v1alpha1.ApplicationStatus{
-					SourceType: v1alpha1.ApplicationSourceTypeKustomize,
-				},
-			},
-			// Valid type, but not annotated
-			{
-				ObjectMeta: v1.ObjectMeta{
-					Name:      "otherapp3",
-					Namespace: "argocd",
-					Annotations: map[string]string{
-						common.ImageUpdaterAnnotation: "nginx, quay.io/dexidp/dex:v1.23.0",
-					},
-				},
-				Spec: v1alpha1.ApplicationSpec{},
-				Status: v1alpha1.ApplicationStatus{
-					SourceType: v1alpha1.ApplicationSourceTypeHelm,
-				},
-			},
-		}
-		filtered, err := FilterApplicationsForUpdate(applicationList, []string{"app*"})
-		require.NoError(t, err)
-		require.Len(t, filtered, 2)
-		require.Contains(t, filtered, "argocd/app1")
-		require.Contains(t, filtered, "argocd/app2")
-		assert.Len(t, filtered["argocd/app1"].Images, 2)
-	})
 }
 
 func Test_GetHelmParamAnnotations(t *testing.T) {
@@ -1031,7 +926,7 @@ func TestKubernetesClient(t *testing.T) {
 				},
 			},
 		}
-		apps, err := k8sClient.ListApplications(context.TODO(), cr, "")
+		apps, err := k8sClient.ListApplications(context.TODO(), cr)
 		require.NoError(t, err)
 		require.Len(t, apps, 2)
 		assert.ElementsMatch(t, []string{"test-app1", "test-app2"}, []string{apps[0].Name, apps[1].Name})
@@ -1065,7 +960,7 @@ func TestKubernetesClient(t *testing.T) {
 				},
 			},
 		}
-		apps, err := k8sClient.ListApplications(context.TODO(), cr, "")
+		apps, err := k8sClient.ListApplications(context.TODO(), cr)
 		require.NoError(t, err)
 		require.NotNil(t, apps)
 		assert.Len(t, apps, 0)
@@ -1259,8 +1154,868 @@ func Test_parseImageList(t *testing.T) {
 	})
 }
 
+// Assisted-by: Gemini AI
+func Test_parseImageListIuCR(t *testing.T) {
+	testCases := []struct {
+		name           string
+		inputImages    []api.ImageConfig
+		expectedImages image.ContainerImageList
+	}{
+		{
+			name: "Basic parsing with alias",
+			inputImages: []api.ImageConfig{
+				{Alias: "web", ImageName: "nginx:1.21.0"},
+				{Alias: "db", ImageName: "postgres:14"},
+			},
+			expectedImages: image.ContainerImageList{
+				image.NewFromIdentifier("web=nginx:1.21.0"),
+				image.NewFromIdentifier("db=postgres:14"),
+			},
+		},
+		{
+			name: "Parsing with Kustomize override",
+			inputImages: []api.ImageConfig{
+				{
+					Alias:     "web",
+					ImageName: "nginx:1.21.0",
+					ManifestTarget: &api.ManifestTarget{
+						Kustomize: &api.KustomizeTarget{
+							Name: "my-custom-nginx-name",
+						},
+					},
+				},
+			},
+			expectedImages: image.ContainerImageList{
+				func() *image.ContainerImage {
+					img := image.NewFromIdentifier("web=nginx:1.21.0")
+					img.KustomizeImage = image.NewFromIdentifier("my-custom-nginx-name")
+					return img
+				}(),
+			},
+		},
+		{
+			name: "Mixed list with and without Kustomize override",
+			inputImages: []api.ImageConfig{
+				{
+					Alias:     "web",
+					ImageName: "nginx:1.21.0",
+					ManifestTarget: &api.ManifestTarget{
+						Kustomize: &api.KustomizeTarget{
+							Name: "my-custom-nginx-name",
+						},
+					},
+				},
+				{Alias: "db", ImageName: "postgres:14"},
+			},
+			expectedImages: image.ContainerImageList{
+				func() *image.ContainerImage {
+					img := image.NewFromIdentifier("web=nginx:1.21.0")
+					img.KustomizeImage = image.NewFromIdentifier("my-custom-nginx-name")
+					return img
+				}(),
+				image.NewFromIdentifier("db=postgres:14"),
+			},
+		},
+		{
+			name:           "Empty input slice",
+			inputImages:    []api.ImageConfig{},
+			expectedImages: image.ContainerImageList{},
+		},
+		{
+			name:           "Nil input slice",
+			inputImages:    nil,
+			expectedImages: image.ContainerImageList{},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := parseImageListIuCR(tc.inputImages)
+			require.NotNil(t, got)
+			assert.ElementsMatch(t, tc.expectedImages, *got, "The parsed image list should match the expected list")
+		})
+	}
+}
+
+// Assisted-by: Gemini AI
+func Test_nameMatchesPattern(t *testing.T) {
+	testCases := []struct {
+		name    string
+		appName string
+		pattern string
+		want    bool
+	}{
+		{
+			name:    "Exact match",
+			appName: "my-app",
+			pattern: "my-app",
+			want:    true,
+		},
+		{
+			name:    "No match",
+			appName: "other-app",
+			pattern: "my-app",
+			want:    false,
+		},
+		{
+			name:    "Star wildcard match",
+			appName: "my-app-production",
+			pattern: "my-app-*",
+			want:    true,
+		},
+		{
+			name:    "Star wildcard no match",
+			appName: "other-app",
+			pattern: "my-app-*",
+			want:    false,
+		},
+		{
+			name:    "Question mark wildcard match",
+			appName: "app-v1",
+			pattern: "app-v?",
+			want:    true,
+		},
+		{
+			name:    "Question mark wildcard no match",
+			appName: "app-v12",
+			pattern: "app-v?",
+			want:    false,
+		},
+		{
+			name:    "Character set match",
+			appName: "color-red",
+			pattern: "color-[rbg]ed",
+			want:    true,
+		},
+		{
+			name:    "Character set no match",
+			appName: "color-yellow",
+			pattern: "color-[rbg]ed",
+			want:    false,
+		},
+		{
+			name:    "Character range match",
+			appName: "pod-3",
+			pattern: "pod-[0-9]",
+			want:    true,
+		},
+		{
+			name:    "Character range no match",
+			appName: "pod-a",
+			pattern: "pod-[0-9]",
+			want:    false,
+		},
+		{
+			name:    "Invalid pattern should not match and not panic",
+			appName: "any-app",
+			pattern: "my-app-[", // This is an invalid glob pattern
+			want:    false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := nameMatchesPattern(context.Background(), tc.appName, tc.pattern)
+			if got != tc.want {
+				t.Errorf("nameMatchesPattern(%q, %q) = %v; want %v", tc.appName, tc.pattern, got, tc.want)
+			}
+		})
+	}
+}
+
+// Assisted-by: Gemini AI
+func Test_nameMatchesPatterns(t *testing.T) {
+	testCases := []struct {
+		name     string
+		appName  string
+		patterns []string
+		want     bool
+	}{
+		{
+			name:     "Empty patterns list should return true",
+			appName:  "any-app",
+			patterns: []string{},
+			want:     true,
+		},
+		{
+			name:     "Nil patterns list should return true",
+			appName:  "any-app",
+			patterns: nil,
+			want:     true,
+		},
+		{
+			name:     "Match on first pattern",
+			appName:  "app-prod",
+			patterns: []string{"app-prod", "app-staging", "app-dev"},
+			want:     true,
+		},
+		{
+			name:     "Match on last pattern with wildcard",
+			appName:  "app-dev-feature-branch",
+			patterns: []string{"app-prod", "app-staging", "app-dev-*"},
+			want:     true,
+		},
+		{
+			name:     "No match in list",
+			appName:  "infra-service",
+			patterns: []string{"app-prod", "app-staging", "app-dev"},
+			want:     false,
+		},
+		{
+			name:     "List contains an invalid pattern but a valid one matches first",
+			appName:  "app-prod",
+			patterns: []string{"app-prod", "app-["},
+			want:     true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := nameMatchesPatterns(context.Background(), tc.appName, tc.patterns)
+			if got != tc.want {
+				t.Errorf("nameMatchesPatterns(%q, %v) = %v; want %v", tc.appName, tc.patterns, got, tc.want)
+			}
+		})
+	}
+}
+
+// Assisted-by: Gemini AI
+func Test_nameMatchesLabels(t *testing.T) {
+	testCases := []struct {
+		name      string
+		appLabels map[string]string
+		selector  *v1.LabelSelector
+		want      bool
+	}{
+		{
+			name:      "Nil selector should match",
+			appLabels: map[string]string{"env": "prod"},
+			selector:  nil,
+			want:      true,
+		},
+		{
+			name:      "Empty selector should match",
+			appLabels: map[string]string{"env": "prod"},
+			selector:  &v1.LabelSelector{},
+			want:      true,
+		},
+		{
+			name:      "MatchLabels: simple match",
+			appLabels: map[string]string{"env": "prod", "tier": "frontend"},
+			selector: &v1.LabelSelector{
+				MatchLabels: map[string]string{"env": "prod"},
+			},
+			want: true,
+		},
+		{
+			name:      "MatchLabels: exact match on multiple labels",
+			appLabels: map[string]string{"env": "prod", "tier": "frontend"},
+			selector: &v1.LabelSelector{
+				MatchLabels: map[string]string{"env": "prod", "tier": "frontend"},
+			},
+			want: true,
+		},
+		{
+			name:      "MatchLabels: mismatch on value",
+			appLabels: map[string]string{"env": "staging"},
+			selector: &v1.LabelSelector{
+				MatchLabels: map[string]string{"env": "prod"},
+			},
+			want: false,
+		},
+		{
+			name:      "MatchLabels: mismatch on missing key",
+			appLabels: map[string]string{"tier": "frontend"},
+			selector: &v1.LabelSelector{
+				MatchLabels: map[string]string{"env": "prod"},
+			},
+			want: false,
+		},
+		{
+			name:      "MatchExpressions: 'In' operator match",
+			appLabels: map[string]string{"env": "staging"},
+			selector: &v1.LabelSelector{
+				MatchExpressions: []v1.LabelSelectorRequirement{
+					{Key: "env", Operator: v1.LabelSelectorOpIn, Values: []string{"prod", "staging"}},
+				},
+			},
+			want: true,
+		},
+		{
+			name:      "MatchExpressions: 'In' operator mismatch",
+			appLabels: map[string]string{"env": "dev"},
+			selector: &v1.LabelSelector{
+				MatchExpressions: []v1.LabelSelectorRequirement{
+					{Key: "env", Operator: v1.LabelSelectorOpIn, Values: []string{"prod", "staging"}},
+				},
+			},
+			want: false,
+		},
+		{
+			name:      "MatchExpressions: 'NotIn' operator match",
+			appLabels: map[string]string{"env": "dev"},
+			selector: &v1.LabelSelector{
+				MatchExpressions: []v1.LabelSelectorRequirement{
+					{Key: "env", Operator: v1.LabelSelectorOpNotIn, Values: []string{"prod", "staging"}},
+				},
+			},
+			want: true,
+		},
+		{
+			name:      "MatchExpressions: 'NotIn' operator mismatch",
+			appLabels: map[string]string{"env": "prod"},
+			selector: &v1.LabelSelector{
+				MatchExpressions: []v1.LabelSelectorRequirement{
+					{Key: "env", Operator: v1.LabelSelectorOpNotIn, Values: []string{"prod", "staging"}},
+				},
+			},
+			want: false,
+		},
+		{
+			name:      "MatchExpressions: 'Exists' operator match",
+			appLabels: map[string]string{"env": "prod"},
+			selector: &v1.LabelSelector{
+				MatchExpressions: []v1.LabelSelectorRequirement{
+					{Key: "env", Operator: v1.LabelSelectorOpExists},
+				},
+			},
+			want: true,
+		},
+		{
+			name:      "MatchExpressions: 'Exists' operator mismatch",
+			appLabels: map[string]string{"tier": "frontend"},
+			selector: &v1.LabelSelector{
+				MatchExpressions: []v1.LabelSelectorRequirement{
+					{Key: "env", Operator: v1.LabelSelectorOpExists},
+				},
+			},
+			want: false,
+		},
+		{
+			name:      "MatchExpressions: 'DoesNotExist' operator match",
+			appLabels: map[string]string{"tier": "frontend"},
+			selector: &v1.LabelSelector{
+				MatchExpressions: []v1.LabelSelectorRequirement{
+					{Key: "env", Operator: v1.LabelSelectorOpDoesNotExist},
+				},
+			},
+			want: true,
+		},
+		{
+			name:      "MatchExpressions: 'DoesNotExist' operator mismatch",
+			appLabels: map[string]string{"env": "prod"},
+			selector: &v1.LabelSelector{
+				MatchExpressions: []v1.LabelSelectorRequirement{
+					{Key: "env", Operator: v1.LabelSelectorOpDoesNotExist},
+				},
+			},
+			want: false,
+		},
+		{
+			name:      "Combined MatchLabels and MatchExpressions: both match",
+			appLabels: map[string]string{"env": "prod", "tier": "frontend"},
+			selector: &v1.LabelSelector{
+				MatchLabels: map[string]string{"env": "prod"},
+				MatchExpressions: []v1.LabelSelectorRequirement{
+					{Key: "tier", Operator: v1.LabelSelectorOpIn, Values: []string{"frontend", "backend"}},
+				},
+			},
+			want: true,
+		},
+		{
+			name:      "Combined MatchLabels and MatchExpressions: one mismatch",
+			appLabels: map[string]string{"env": "prod", "tier": "database"},
+			selector: &v1.LabelSelector{
+				MatchLabels: map[string]string{"env": "prod"},
+				MatchExpressions: []v1.LabelSelectorRequirement{
+					{Key: "tier", Operator: v1.LabelSelectorOpIn, Values: []string{"frontend", "backend"}},
+				},
+			},
+			want: false,
+		},
+		{
+			name:      "Invalid selector should not match",
+			appLabels: map[string]string{"env": "prod"},
+			selector: &v1.LabelSelector{
+				MatchExpressions: []v1.LabelSelectorRequirement{
+					{Key: "env", Operator: "InvalidOperator", Values: []string{"prod"}},
+				},
+			},
+			want: false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := nameMatchesLabels(tc.appLabels, tc.selector)
+			if got != tc.want {
+				t.Errorf("nameMatchesLabels() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+// Assisted-by: Gemini AI
+func Test_processApplicationForUpdate(t *testing.T) {
+	// Define common applications and references to be used across test cases
+	kustomizeApp := &v1alpha1.Application{
+		ObjectMeta: v1.ObjectMeta{Name: "kustomize-app", Namespace: "testns"},
+		Status:     v1alpha1.ApplicationStatus{SourceType: v1alpha1.ApplicationSourceTypeKustomize},
+	}
+	helmApp := &v1alpha1.Application{
+		ObjectMeta: v1.ObjectMeta{Name: "helm-app", Namespace: "testns"},
+		Status:     v1alpha1.ApplicationStatus{SourceType: v1alpha1.ApplicationSourceTypeHelm},
+	}
+	unsupportedApp := &v1alpha1.Application{
+		ObjectMeta: v1.ObjectMeta{Name: "unsupported-app", Namespace: "testns"},
+		Status:     v1alpha1.ApplicationStatus{SourceType: v1alpha1.ApplicationSourceTypePlugin},
+	}
+
+	appRefWithImages := api.ApplicationRef{
+		NamePattern: "some-app",
+		Images: []api.ImageConfig{
+			{Alias: "web", ImageName: "nginx:1.21.0"},
+			{Alias: "db", ImageName: "postgres:14"},
+		},
+	}
+
+	appRefWithoutImages := api.ApplicationRef{
+		NamePattern: "some-app-no-images",
+		Images:      nil,
+	}
+
+	// Define the test cases
+	testCases := []struct {
+		name              string
+		app               *v1alpha1.Application
+		appRef            api.ApplicationRef
+		appNSName         string
+		initialApps       map[string]iutypes.ApplicationImages
+		expectedAppsCount int
+		expectKey         bool
+		expectedImagesLen int
+	}{
+		{
+			name:              "Supported Kustomize app should be added",
+			app:               kustomizeApp,
+			appRef:            appRefWithImages,
+			appNSName:         "testns/kustomize-app",
+			initialApps:       make(map[string]iutypes.ApplicationImages),
+			expectedAppsCount: 1,
+			expectKey:         true,
+			expectedImagesLen: 2,
+		},
+		{
+			name:              "Supported Helm app should be added",
+			app:               helmApp,
+			appRef:            appRefWithImages,
+			appNSName:         "testns/helm-app",
+			initialApps:       make(map[string]iutypes.ApplicationImages),
+			expectedAppsCount: 1,
+			expectKey:         true,
+			expectedImagesLen: 2,
+		},
+		{
+			name:              "Unsupported app type should be skipped",
+			app:               unsupportedApp,
+			appRef:            appRefWithImages,
+			appNSName:         "testns/unsupported-app",
+			initialApps:       make(map[string]iutypes.ApplicationImages),
+			expectedAppsCount: 0,
+			expectKey:         false,
+		},
+		{
+			name:              "Supported app with no images in ref should be added with empty image list",
+			app:               kustomizeApp,
+			appRef:            appRefWithoutImages,
+			appNSName:         "testns/kustomize-app-no-images",
+			initialApps:       make(map[string]iutypes.ApplicationImages),
+			expectedAppsCount: 1,
+			expectKey:         true,
+			expectedImagesLen: 0,
+		},
+		{
+			name:      "Should add to a pre-populated map without affecting existing entries",
+			app:       kustomizeApp,
+			appRef:    appRefWithImages,
+			appNSName: "testns/kustomize-app",
+			initialApps: map[string]iutypes.ApplicationImages{
+				"testns/existing-app": {Application: *helmApp},
+			},
+			expectedAppsCount: 2,
+			expectKey:         true,
+			expectedImagesLen: 2,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+			appsForUpdate := tc.initialApps
+
+			processApplicationForUpdate(ctx, tc.app, tc.appRef, tc.appNSName, appsForUpdate)
+
+			assert.Len(t, appsForUpdate, tc.expectedAppsCount, "The final map should have the expected number of applications")
+
+			if tc.expectKey {
+				require.Contains(t, appsForUpdate, tc.appNSName, "The application should be present in the map")
+				processedApp := appsForUpdate[tc.appNSName]
+				assert.Equal(t, *tc.app, processedApp.Application, "The application data in the map should match the input")
+				assert.Len(t, processedApp.Images, tc.expectedImagesLen, "The application should have the correct number of images")
+
+				// Verify one of the images to ensure parsing was correct
+				if tc.expectedImagesLen > 0 {
+					assert.Equal(t, "nginx", processedApp.Images[0].ImageName)
+					assert.Equal(t, "web", processedApp.Images[0].ImageAlias)
+				}
+			} else {
+				assert.NotContains(t, appsForUpdate, tc.appNSName, "The unsupported application should not be in the map")
+			}
+		})
+	}
+}
+
+// Assisted-by: Gemini AI
+func Test_calculateSpecificity(t *testing.T) {
+	testCases := []struct {
+		name      string
+		appRef    api.ApplicationRef
+		wantScore int
+	}{
+		{
+			name:      "Exact name, no labels",
+			appRef:    api.ApplicationRef{NamePattern: "app-one"},
+			wantScore: 1_000_000 + 7, // 1M for exact match, 7 for "app-one"
+		},
+		{
+			name:      "Simple wildcard, no labels",
+			appRef:    api.ApplicationRef{NamePattern: "app-*"},
+			wantScore: 4, // 4 for "app-"
+		},
+		{
+			name:      "More specific wildcard, no labels",
+			appRef:    api.ApplicationRef{NamePattern: "app-prod-*"},
+			wantScore: 9, // 9 for "app-prod-"
+		},
+		{
+			name:      "Question mark wildcard",
+			appRef:    api.ApplicationRef{NamePattern: "app-v?"},
+			wantScore: 5, // 5 for "app-v"
+		},
+		{
+			name:      "Character set wildcard",
+			appRef:    api.ApplicationRef{NamePattern: "app-[abc]"},
+			wantScore: 4, // 4 for "app-"
+		},
+		{
+			name:      "Wildcard only",
+			appRef:    api.ApplicationRef{NamePattern: "*"},
+			wantScore: 0,
+		},
+		{
+			name:      "Exact name with empty label selector",
+			appRef:    api.ApplicationRef{NamePattern: "app-one", LabelSelectors: &v1.LabelSelector{}},
+			wantScore: 1_000_000 + 7 + 10_000, // +10k for selector presence
+		},
+		{
+			name: "Exact name with one MatchLabel",
+			appRef: api.ApplicationRef{
+				NamePattern:    "app-one",
+				LabelSelectors: &v1.LabelSelector{MatchLabels: map[string]string{"env": "prod"}},
+			},
+			wantScore: 1_000_000 + 7 + 10_000 + 100, // +100 for the label
+		},
+		{
+			name: "Wildcard name with one MatchLabel",
+			appRef: api.ApplicationRef{
+				NamePattern:    "app-*",
+				LabelSelectors: &v1.LabelSelector{MatchLabels: map[string]string{"env": "prod"}},
+			},
+			wantScore: 4 + 10_000 + 100,
+		},
+		{
+			name: "Wildcard name with one MatchExpression",
+			appRef: api.ApplicationRef{
+				NamePattern: "app-*",
+				LabelSelectors: &v1.LabelSelector{
+					MatchExpressions: []v1.LabelSelectorRequirement{{Key: "env", Operator: "In", Values: []string{"prod"}}},
+				},
+			},
+			wantScore: 4 + 10_000 + 100, // +100 for the expression
+		},
+		{
+			name: "Wildcard name with complex selector",
+			appRef: api.ApplicationRef{
+				NamePattern: "app-*",
+				LabelSelectors: &v1.LabelSelector{
+					MatchLabels:      map[string]string{"env": "prod", "tier": "backend"},
+					MatchExpressions: []v1.LabelSelectorRequirement{{Key: "region", Operator: "Exists"}},
+				},
+			},
+			wantScore: 4 + 10_000 + (2 * 100) + (1 * 100), // 10_000 + 200 + 100 + 4 = 10_304
+		},
+		{
+			name:      "Empty pattern is an exact match",
+			appRef:    api.ApplicationRef{NamePattern: ""},
+			wantScore: 1_000_000,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := calculateSpecificity(tc.appRef)
+			assert.Equal(t, tc.wantScore, got)
+		})
+	}
+}
+
+// Assisted-by: Gemini AI
+func Test_sortApplicationRefs(t *testing.T) {
+	// Define a set of ApplicationRefs with varying specificity for use in test cases.
+	// The scores are calculated based on the logic in calculateSpecificity.
+	refExactWithLabels := api.ApplicationRef{
+		NamePattern: "app-one",
+		LabelSelectors: &v1.LabelSelector{
+			MatchLabels: map[string]string{"env": "prod"},
+		},
+	} // Highest score: 1_010_107
+
+	refExact := api.ApplicationRef{
+		NamePattern: "app-one",
+	} // High score: 1_000_007
+
+	refWildcardWithLabels := api.ApplicationRef{
+		NamePattern: "app-*",
+		LabelSelectors: &v1.LabelSelector{
+			MatchLabels: map[string]string{"env": "prod"},
+		},
+	} // Medium-high score: 10_104
+
+	refWildcardSpecific := api.ApplicationRef{
+		NamePattern: "app-prod-*",
+	} // Medium-low score: 9
+
+	refWildcardGeneral := api.ApplicationRef{
+		NamePattern: "app-*",
+	} // Low score: 4
+
+	refWildcardSingleChar := api.ApplicationRef{
+		NamePattern: "app-?",
+	} // Low score: 4 (same as app-*)
+
+	refWildcardBroadest := api.ApplicationRef{
+		NamePattern: "*",
+	} // Lowest score: 0
+
+	testCases := []struct {
+		name      string
+		inputRefs []api.ApplicationRef
+		wantRefs  []api.ApplicationRef
+	}{
+		{
+			name:      "Sorts from most to least specific",
+			inputRefs: []api.ApplicationRef{refWildcardGeneral, refExact, refWildcardBroadest, refExactWithLabels, refWildcardSpecific, refWildcardWithLabels},
+			wantRefs:  []api.ApplicationRef{refExactWithLabels, refExact, refWildcardWithLabels, refWildcardSpecific, refWildcardGeneral, refWildcardBroadest},
+		},
+		{
+			name:      "Maintains stable order for equal scores (case 1)",
+			inputRefs: []api.ApplicationRef{refWildcardGeneral, refWildcardSingleChar}, // app-*, then app-?
+			wantRefs:  []api.ApplicationRef{refWildcardGeneral, refWildcardSingleChar}, // Should remain in the same order
+		},
+		{
+			name:      "Maintains stable order for equal scores (case 2)",
+			inputRefs: []api.ApplicationRef{refWildcardSingleChar, refWildcardGeneral}, // app-?, then app-*
+			wantRefs:  []api.ApplicationRef{refWildcardSingleChar, refWildcardGeneral}, // Should remain in the same order
+		},
+		{
+			name:      "Handles empty slice",
+			inputRefs: []api.ApplicationRef{},
+			wantRefs:  []api.ApplicationRef{},
+		},
+		{
+			name:      "Handles nil slice",
+			inputRefs: nil,
+			wantRefs:  []api.ApplicationRef{},
+		},
+		{
+			name:      "Handles slice with one element",
+			inputRefs: []api.ApplicationRef{refWildcardGeneral},
+			wantRefs:  []api.ApplicationRef{refWildcardGeneral},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := sortApplicationRefs(tc.inputRefs)
+			assert.Equal(t, tc.wantRefs, got, "The sorted slice should match the expected order")
+		})
+	}
+}
+
+// Assisted-by: Gemini AI
+func Test_FilterApplicationsForUpdate(t *testing.T) {
+	// Define common applications to be used across test cases
+	appProd := &v1alpha1.Application{
+		ObjectMeta: v1.ObjectMeta{Name: "app-prod", Namespace: "testns", Labels: map[string]string{"env": "prod"}},
+		Status:     v1alpha1.ApplicationStatus{SourceType: v1alpha1.ApplicationSourceTypeKustomize},
+	}
+	appStaging := &v1alpha1.Application{
+		ObjectMeta: v1.ObjectMeta{Name: "app-staging", Namespace: "testns", Labels: map[string]string{"env": "staging"}},
+		Status:     v1alpha1.ApplicationStatus{SourceType: v1alpha1.ApplicationSourceTypeHelm},
+	}
+	otherProd := &v1alpha1.Application{
+		ObjectMeta: v1.ObjectMeta{Name: "other-prod", Namespace: "testns", Labels: map[string]string{"env": "prod"}},
+		Status:     v1alpha1.ApplicationStatus{SourceType: v1alpha1.ApplicationSourceTypeKustomize},
+	}
+	unsupportedApp := &v1alpha1.Application{
+		ObjectMeta: v1.ObjectMeta{Name: "unsupported-app", Namespace: "testns", Labels: map[string]string{"env": "prod"}},
+		Status:     v1alpha1.ApplicationStatus{SourceType: v1alpha1.ApplicationSourceTypePlugin},
+	}
+
+	testCases := []struct {
+		name            string
+		initialApps     []client.Object
+		imageUpdaterCR  *api.ImageUpdater
+		expectedKeys    []string
+		expectedImages  map[string]int // map[appKey]expectedImageCount, for specificity check
+		expectNilResult bool
+		expectError     bool
+	}{
+		{
+			name:        "Fast path for exact name matches",
+			initialApps: []client.Object{appProd, appStaging},
+			imageUpdaterCR: &api.ImageUpdater{
+				Spec: api.ImageUpdaterSpec{
+					Namespace: "testns",
+					ApplicationRefs: []api.ApplicationRef{
+						{NamePattern: "app-prod", Images: []api.ImageConfig{{Alias: "nginx", ImageName: "nginx:1.0"}}},
+					},
+				},
+			},
+			expectedKeys: []string{"testns/app-prod"},
+		},
+		{
+			name:        "Slow path with wildcard name pattern",
+			initialApps: []client.Object{appProd, appStaging, otherProd},
+			imageUpdaterCR: &api.ImageUpdater{
+				Spec: api.ImageUpdaterSpec{
+					Namespace: "testns",
+					ApplicationRefs: []api.ApplicationRef{
+						{NamePattern: "app-*", Images: []api.ImageConfig{{Alias: "nginx", ImageName: "nginx:1.0"}}},
+					},
+				},
+			},
+			expectedKeys: []string{"testns/app-prod", "testns/app-staging"},
+		},
+		{
+			name:        "Slow path with label selector",
+			initialApps: []client.Object{appProd, appStaging, otherProd},
+			imageUpdaterCR: &api.ImageUpdater{
+				Spec: api.ImageUpdaterSpec{
+					Namespace: "testns",
+					ApplicationRefs: []api.ApplicationRef{
+						{NamePattern: "*", LabelSelectors: &v1.LabelSelector{MatchLabels: map[string]string{"env": "prod"}}},
+					},
+				},
+			},
+			expectedKeys: []string{"testns/app-prod", "testns/other-prod"},
+		},
+		{
+			name:        "Specificity rule is applied correctly",
+			initialApps: []client.Object{appProd},
+			imageUpdaterCR: &api.ImageUpdater{
+				Spec: api.ImageUpdaterSpec{
+					Namespace: "testns",
+					ApplicationRefs: []api.ApplicationRef{
+						// General rule with 1 image
+						{NamePattern: "app-*", Images: []api.ImageConfig{{Alias: "nginx", ImageName: "nginx:1.0"}}},
+						// Specific rule with 2 images
+						{NamePattern: "app-prod", Images: []api.ImageConfig{{Alias: "nginx", ImageName: "nginx:1.0"}, {Alias: "redis", ImageName: "redis:6"}}},
+					},
+				},
+			},
+			expectedKeys:   []string{"testns/app-prod"},
+			expectedImages: map[string]int{"testns/app-prod": 2}, // Should match the more specific rule
+		},
+		{
+			name:        "Unsupported application type is skipped",
+			initialApps: []client.Object{appProd, unsupportedApp},
+			imageUpdaterCR: &api.ImageUpdater{
+				Spec: api.ImageUpdaterSpec{
+					Namespace: "testns",
+					ApplicationRefs: []api.ApplicationRef{
+						{NamePattern: "*", LabelSelectors: &v1.LabelSelector{MatchLabels: map[string]string{"env": "prod"}}},
+					},
+				},
+			},
+			expectedKeys: []string{"testns/app-prod"},
+		},
+		{
+			name:        "No applications in namespace returns nil result",
+			initialApps: nil,
+			imageUpdaterCR: &api.ImageUpdater{
+				Spec: api.ImageUpdaterSpec{
+					Namespace: "testns",
+					ApplicationRefs: []api.ApplicationRef{
+						{NamePattern: "*"},
+					},
+				},
+			},
+			expectNilResult: true,
+		},
+		{
+			name:        "No matching applications found returns empty map",
+			initialApps: []client.Object{appStaging},
+			imageUpdaterCR: &api.ImageUpdater{
+				Spec: api.ImageUpdaterSpec{
+					Namespace: "testns",
+					ApplicationRefs: []api.ApplicationRef{
+						{NamePattern: "app-prod"},
+					},
+				},
+			},
+			expectedKeys: []string{},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Setup
+			ctx := context.Background()
+			client, err := newTestK8sClient(tc.initialApps...)
+			require.NoError(t, err)
+
+			// Execute
+			appsForUpdate, err := client.FilterApplicationsForUpdate(ctx, tc.imageUpdaterCR)
+
+			// Assert
+			if tc.expectError {
+				require.Error(t, err)
+				return
+			}
+
+			require.NoError(t, err)
+
+			if tc.expectNilResult {
+				assert.Nil(t, appsForUpdate)
+				return
+			}
+
+			require.NotNil(t, appsForUpdate)
+			assert.Len(t, appsForUpdate, len(tc.expectedKeys), "The number of applications to update should match")
+
+			for _, key := range tc.expectedKeys {
+				assert.Contains(t, appsForUpdate, key)
+				if count, ok := tc.expectedImages[key]; ok {
+					assert.Len(t, appsForUpdate[key].Images, count, "The number of images for app %s should match the most specific rule", key)
+				}
+			}
+		})
+	}
+}
+
 // Helper function to create a new fake client for tests
-func newTestK8sClient(initObjs ...client.Object) (ArgoCD, error) {
+func newTestK8sClient(initObjs ...client.Object) (*k8sClient, error) {
 	// Register the Argo CD Application scheme so the fake client knows about it
 	scheme := runtime.NewScheme()
 	err := v1alpha1.AddToScheme(scheme)
@@ -1278,5 +2033,7 @@ func newTestK8sClient(initObjs ...client.Object) (ArgoCD, error) {
 	fakeClient := builder.Build()
 
 	// Use constructor to create the k8sClient instance
-	return NewK8SClient(fakeClient)
+	return &k8sClient{
+		ctrlClient: fakeClient,
+	}, nil
 }
