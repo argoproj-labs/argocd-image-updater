@@ -169,7 +169,7 @@ variable named `ARGOCD_TOKEN`, which is set from a field named
 `argocd.token` in a secret named `argocd-image-updater-secret`.
 
 The value for `argocd.token` should be set to the *base64 encoded* value of the
-access token you have generated above. As a short-cut, you can use the generate
+access token you have generated above. As a short-cut, you can use generate
 secret with `kubectl` and apply it over the existing resource:
 
 ```shell
