@@ -36,7 +36,11 @@ func Test_GetImagesFromApplication(t *testing.T) {
 				},
 			},
 		}
-		imageList := GetImagesFromApplication(application)
+		applicationImages := &iutypes.ApplicationImages{
+			Application: *application,
+			Images:      image.ContainerImageList{},
+		}
+		imageList := GetImagesFromApplication(applicationImages)
 		require.Len(t, imageList, 3)
 		assert.Equal(t, "nginx", imageList[0].ImageName)
 		assert.Equal(t, "that/image", imageList[1].ImageName)
@@ -54,7 +58,11 @@ func Test_GetImagesFromApplication(t *testing.T) {
 				Summary: v1alpha1.ApplicationSummary{},
 			},
 		}
-		imageList := GetImagesFromApplication(application)
+		applicationImages := &iutypes.ApplicationImages{
+			Application: *application,
+			Images:      image.ContainerImageList{},
+		}
+		imageList := GetImagesFromApplication(applicationImages)
 		assert.Empty(t, imageList)
 	})
 
@@ -73,7 +81,15 @@ func Test_GetImagesFromApplication(t *testing.T) {
 				Summary: v1alpha1.ApplicationSummary{},
 			},
 		}
-		imageList := GetImagesFromApplication(application)
+		imgToUpdate := image.NewFromIdentifier("nginx")
+		imgToUpdate.ForceUpdate = true
+
+		applicationImages := &iutypes.ApplicationImages{
+			Application: *application,
+			Images:      image.ContainerImageList{imgToUpdate},
+		}
+
+		imageList := GetImagesFromApplication(applicationImages)
 		require.Len(t, imageList, 1)
 		assert.Equal(t, "nginx", imageList[0].ImageName)
 		assert.Nil(t, imageList[0].ImageTag)
@@ -94,9 +110,16 @@ func Test_GetImagesAndAliasesFromApplication(t *testing.T) {
 				},
 			},
 		}
-		imageList := GetImagesAndAliasesFromApplication(application)
+		applicationImages := &iutypes.ApplicationImages{
+			Application: *application,
+			Images:      image.ContainerImageList{},
+		}
+
+		imageList := GetImagesAndAliasesFromApplication(applicationImages)
+
 		require.Len(t, imageList, 3)
 		assert.Equal(t, "nginx", imageList[0].ImageName)
+		assert.Equal(t, "", imageList[0].ImageAlias, "No alias should be set")
 		assert.Equal(t, "that/image", imageList[1].ImageName)
 		assert.Equal(t, "dexidp/dex", imageList[2].ImageName)
 	})
@@ -112,11 +135,19 @@ func Test_GetImagesAndAliasesFromApplication(t *testing.T) {
 				Summary: v1alpha1.ApplicationSummary{},
 			},
 		}
-		imageList := GetImagesAndAliasesFromApplication(application)
+		applicationImages := &iutypes.ApplicationImages{
+			Application: *application,
+			Images:      image.ContainerImageList{},
+		}
+
+		imageList := GetImagesAndAliasesFromApplication(applicationImages)
 		assert.Empty(t, imageList)
 	})
 
 	t.Run("Get list of images and aliases from application annotations", func(t *testing.T) {
+		annotations := map[string]string{
+			common.ImageUpdaterAnnotation: "webserver=nginx",
+		}
 		application := &v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
 				Name:      "test-app",
@@ -128,11 +159,19 @@ func Test_GetImagesAndAliasesFromApplication(t *testing.T) {
 			Spec: v1alpha1.ApplicationSpec{},
 			Status: v1alpha1.ApplicationStatus{
 				Summary: v1alpha1.ApplicationSummary{
-					Images: []string{"nginx:1.12.2"},
+					Images: []string{"nginx:1.12.2"}, // The running image
 				},
 			},
 		}
-		imageList := GetImagesAndAliasesFromApplication(application)
+
+		configuredImages := parseImageList(annotations)
+		applicationImages := &iutypes.ApplicationImages{
+			Application: *application,
+			Images:      *configuredImages,
+		}
+		imageList := GetImagesAndAliasesFromApplication(applicationImages)
+
+		// Assertions
 		require.Len(t, imageList, 1)
 		assert.Equal(t, "nginx", imageList[0].ImageName)
 		assert.Equal(t, "webserver", imageList[0].ImageAlias)
@@ -1156,6 +1195,29 @@ func Test_parseImageList(t *testing.T) {
 
 // Assisted-by: Gemini AI
 func Test_parseImageListIuCR(t *testing.T) {
+	// newExpectedImageForIuCR is a helper to construct an expected image object.
+	newExpectedImageForIuCR := func(identifier string, kustomizeName string) *image.ContainerImage {
+		img := &image.ContainerImage{
+			UpdateStrategy: image.StrategySemVer,
+			ForceUpdate:    false,
+			AllowTags:      "",
+			PullSecret:     "",
+			IgnoreTags:     []string{},
+		}
+
+		imgIdentity := image.NewFromIdentifier(identifier)
+		img.RegistryURL = imgIdentity.RegistryURL
+		img.ImageName = imgIdentity.ImageName
+		img.ImageTag = imgIdentity.ImageTag
+		img.ImageAlias = imgIdentity.ImageAlias
+
+		if kustomizeName != "" {
+			img.KustomizeImage = image.NewFromIdentifier(kustomizeName)
+		}
+
+		return img
+	}
+
 	testCases := []struct {
 		name           string
 		inputImages    []api.ImageConfig
@@ -1168,8 +1230,8 @@ func Test_parseImageListIuCR(t *testing.T) {
 				{Alias: "db", ImageName: "postgres:14"},
 			},
 			expectedImages: image.ContainerImageList{
-				image.NewFromIdentifier("web=nginx:1.21.0"),
-				image.NewFromIdentifier("db=postgres:14"),
+				newExpectedImageForIuCR("web=nginx:1.21.0", ""),
+				newExpectedImageForIuCR("db=postgres:14", ""),
 			},
 		},
 		{
@@ -1186,11 +1248,7 @@ func Test_parseImageListIuCR(t *testing.T) {
 				},
 			},
 			expectedImages: image.ContainerImageList{
-				func() *image.ContainerImage {
-					img := image.NewFromIdentifier("web=nginx:1.21.0")
-					img.KustomizeImage = image.NewFromIdentifier("my-custom-nginx-name")
-					return img
-				}(),
+				newExpectedImageForIuCR("web=nginx:1.21.0", "my-custom-nginx-name"),
 			},
 		},
 		{
@@ -1208,12 +1266,8 @@ func Test_parseImageListIuCR(t *testing.T) {
 				{Alias: "db", ImageName: "postgres:14"},
 			},
 			expectedImages: image.ContainerImageList{
-				func() *image.ContainerImage {
-					img := image.NewFromIdentifier("web=nginx:1.21.0")
-					img.KustomizeImage = image.NewFromIdentifier("my-custom-nginx-name")
-					return img
-				}(),
-				image.NewFromIdentifier("db=postgres:14"),
+				newExpectedImageForIuCR("web=nginx:1.21.0", "my-custom-nginx-name"),
+				newExpectedImageForIuCR("db=postgres:14", ""),
 			},
 		},
 		{
@@ -1230,11 +1284,148 @@ func Test_parseImageListIuCR(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := parseImageListIuCR(tc.inputImages)
+			got := parseImageListIuCR(context.Background(), tc.inputImages, nil)
 			require.NotNil(t, got)
 			assert.ElementsMatch(t, tc.expectedImages, *got, "The parsed image list should match the expected list")
 		})
 	}
+}
+
+// Assisted-by: Gemini AI
+// Helper functions to create pointers for test data, making the test setup cleaner.
+func strPtr(s string) *string { return &s }
+func boolPtr(b bool) *bool    { return &b }
+
+func Test_newContainerImageFromCommonSettings(t *testing.T) {
+	t.Run("should return default settings when parent and settings are nil", func(t *testing.T) {
+		// Test case: No parent and no specific settings are provided.
+		// Expected: A new image with the hardcoded default values.
+		img := newContainerImageFromCommonSettings(context.Background(), nil, nil)
+
+		assert.NotNil(t, img)
+		assert.Equal(t, image.StrategySemVer, img.UpdateStrategy)
+		assert.False(t, img.ForceUpdate)
+		assert.Equal(t, "", img.AllowTags)
+		assert.Equal(t, "", img.PullSecret)
+		assert.Equal(t, []string{}, img.IgnoreTags, "IgnoreTags should be an empty, non-nil slice")
+	})
+
+	t.Run("should apply settings on top of defaults when no parent is given", func(t *testing.T) {
+		// Test case: No parent is provided, but a full set of specific settings are.
+		// Expected: The defaults are overridden by the provided settings.
+		settings := &api.CommonUpdateSettings{
+			UpdateStrategy: strPtr(image.StrategyNewestBuild.String()),
+			ForceUpdate:    boolPtr(true),
+			AllowTags:      strPtr("v1.*"),
+			PullSecret:     strPtr("my-secret"),
+			IgnoreTags:     []string{"v1.0.0"},
+		}
+
+		img := newContainerImageFromCommonSettings(context.Background(), settings, nil)
+
+		assert.NotNil(t, img)
+		assert.Equal(t, image.StrategyNewestBuild, img.UpdateStrategy)
+		assert.True(t, img.ForceUpdate)
+		assert.Equal(t, "v1.*", img.AllowTags)
+		assert.Equal(t, "my-secret", img.PullSecret)
+		assert.Equal(t, []string{"v1.0.0"}, img.IgnoreTags)
+	})
+
+	t.Run("should return a clone of the parent when settings are nil", func(t *testing.T) {
+		// Test case: A parent is provided, but no new settings.
+		// Expected: A new object that is an exact copy of the parent.
+		parent := &image.ContainerImage{
+			UpdateStrategy: image.StrategyDigest,
+			ForceUpdate:    true,
+			AllowTags:      "rc-*",
+			PullSecret:     "parent-secret",
+			IgnoreTags:     []string{"rc-1"},
+		}
+
+		img := newContainerImageFromCommonSettings(context.Background(), nil, parent)
+
+		assert.NotNil(t, img)
+		assert.Equal(t, parent, img)
+		// Ensure it's a clone, not the same object in memory.
+		assert.NotSame(t, parent, img)
+	})
+
+	t.Run("should layer settings on top of a parent image", func(t *testing.T) {
+		// Test case: A parent and new settings are provided.
+		// Expected: The new settings should override the parent's values.
+		parent := &image.ContainerImage{
+			UpdateStrategy: image.StrategyNewestBuild,
+			ForceUpdate:    false,
+			AllowTags:      "v1.*",
+			PullSecret:     "parent-secret",
+			IgnoreTags:     []string{"v1.0.0"},
+		}
+
+		settings := &api.CommonUpdateSettings{
+			UpdateStrategy: strPtr(image.StrategySemVer.String()), // Override
+			ForceUpdate:    boolPtr(true),                         // Override
+			// AllowTags is nil, so the parent's value should be kept.
+			PullSecret: strPtr("child-secret"), // Override
+			IgnoreTags: []string{"v1.1.0"},     // Override
+		}
+
+		img := newContainerImageFromCommonSettings(context.Background(), settings, parent)
+
+		assert.NotNil(t, img)
+		assert.Equal(t, image.StrategySemVer, img.UpdateStrategy)
+		assert.True(t, img.ForceUpdate)
+		assert.Equal(t, "v1.*", img.AllowTags, "AllowTags should be kept from parent")
+		assert.Equal(t, "child-secret", img.PullSecret)
+		assert.Equal(t, []string{"v1.1.0"}, img.IgnoreTags)
+		assert.NotSame(t, parent, img)
+	})
+
+	t.Run("should not override parent fields if settings fields are nil", func(t *testing.T) {
+		// Test case: A parent is provided, but the new settings struct has nil fields.
+		// Expected: Only non-nil fields in the new settings should override the parent.
+		parent := &image.ContainerImage{
+			UpdateStrategy: image.StrategyNewestBuild,
+			ForceUpdate:    true,
+			AllowTags:      "v1.*",
+			PullSecret:     "parent-secret",
+			IgnoreTags:     []string{"v1.0.0"},
+		}
+
+		settings := &api.CommonUpdateSettings{
+			UpdateStrategy: strPtr(image.StrategyAlphabetical.String()), // Override
+			ForceUpdate:    nil,                                         // Should not override
+			AllowTags:      nil,                                         // Should not override
+			PullSecret:     strPtr("child-secret"),                      // Override
+			IgnoreTags:     nil,                                         // Should not override
+		}
+
+		img := newContainerImageFromCommonSettings(context.Background(), settings, parent)
+
+		assert.NotNil(t, img)
+		assert.Equal(t, image.StrategyAlphabetical, img.UpdateStrategy)
+		assert.True(t, img.ForceUpdate, "ForceUpdate should be kept from parent")
+		assert.Equal(t, "v1.*", img.AllowTags, "AllowTags should be kept from parent")
+		assert.Equal(t, "child-secret", img.PullSecret)
+		assert.Equal(t, []string{"v1.0.0"}, img.IgnoreTags, "IgnoreTags should be kept from parent")
+	})
+
+	t.Run("should handle empty but non-nil settings struct", func(t *testing.T) {
+		// Test case: An empty (but not nil) settings struct is provided.
+		// Expected: Since all fields in the settings struct are nil, it should behave
+		// as if no settings were provided, returning a clone of the parent.
+		parent := &image.ContainerImage{
+			UpdateStrategy: image.StrategyNewestBuild,
+			ForceUpdate:    true,
+		}
+		settings := &api.CommonUpdateSettings{} // Empty struct, all fields are nil
+
+		img := newContainerImageFromCommonSettings(context.Background(), settings, parent)
+
+		assert.NotNil(t, img)
+		// Should be an exact clone of the parent.
+		assert.Equal(t, parent, img)
+		assert.NotSame(t, parent, img)
+	})
 }
 
 // Assisted-by: Gemini AI
@@ -1653,7 +1844,7 @@ func Test_processApplicationForUpdate(t *testing.T) {
 			ctx := context.Background()
 			appsForUpdate := tc.initialApps
 
-			processApplicationForUpdate(ctx, tc.app, tc.appRef, tc.appNSName, appsForUpdate)
+			processApplicationForUpdate(ctx, tc.app, tc.appRef, nil, tc.appNSName, appsForUpdate)
 
 			assert.Len(t, appsForUpdate, tc.expectedAppsCount, "The final map should have the expected number of applications")
 

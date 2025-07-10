@@ -4,6 +4,8 @@ import (
 	"sort"
 	"sync"
 
+	"github.com/sirupsen/logrus"
+
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
 )
 
@@ -12,7 +14,7 @@ type ManifestOptions struct {
 	platforms map[string]bool
 	mutex     sync.RWMutex
 	metadata  bool
-	logger    *log.LogContext
+	logger    *logrus.Entry
 }
 
 // NewManifestOptions returns an initialized ManifestOptions struct
@@ -79,7 +81,7 @@ func (o *ManifestOptions) Platforms() []string {
 	return keys
 }
 
-// WantsMetdata returns true if metadata should be requested
+// WantsMetadata returns true if metadata should be requested
 func (o *ManifestOptions) WantsMetadata() bool {
 	return o.metadata
 }
@@ -90,17 +92,18 @@ func (o *ManifestOptions) WithMetadata(val bool) *ManifestOptions {
 	return o
 }
 
-// WithLogger sets the log context to use for the given manifest options.
-func (o *ManifestOptions) WithLogger(logger *log.LogContext) *ManifestOptions {
+// WithLogger sets the logrus entry to use for the given manifest options.
+func (o *ManifestOptions) WithLogger(logger *logrus.Entry) *ManifestOptions {
 	o.logger = logger
 	return o
 }
 
-// Logger gets the configured log context for given manifest options. If logger
-// is nil, returns a default log context.
-func (o *ManifestOptions) Logger() *log.LogContext {
+// Logger gets the configured logrus entry for given manifest options. If logger
+// is nil, returns a default log entry.
+func (o *ManifestOptions) Logger() *logrus.Entry {
 	if o.logger == nil {
-		return log.WithContext()
+		// Fallback to a new entry from the global logger
+		return logrus.NewEntry(log.Log())
 	} else {
 		return o.logger
 	}

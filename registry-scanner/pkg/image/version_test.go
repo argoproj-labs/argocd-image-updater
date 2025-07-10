@@ -1,6 +1,7 @@
 package image
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -32,7 +33,7 @@ func Test_LatestVersion(t *testing.T) {
 		tagList := newImageTagList([]string{"0.1", "0.5.1", "0.9", "1.0", "1.0.1", "1.1.2", "2.0.3"})
 		img := NewFromIdentifier("jannfis/test:1.0")
 		vc := VersionConstraint{}
-		newTag, err := img.GetNewestVersionFromTags(&vc, tagList)
+		newTag, err := img.GetNewestVersionFromTags(context.Background(), &vc, tagList)
 		require.NoError(t, err)
 		require.NotNil(t, newTag)
 		assert.Equal(t, "2.0.3", newTag.TagName)
@@ -42,7 +43,7 @@ func Test_LatestVersion(t *testing.T) {
 		tagList := newImageTagList([]string{"0.1", "0.5.1", "0.9", "1.0", "1.0.1", "1.1.2", "2.0.3"})
 		img := NewFromIdentifier("jannfis/test:1.0")
 		vc := VersionConstraint{Constraint: "^1.0"}
-		newTag, err := img.GetNewestVersionFromTags(&vc, tagList)
+		newTag, err := img.GetNewestVersionFromTags(context.Background(), &vc, tagList)
 		require.NoError(t, err)
 		require.NotNil(t, newTag)
 		assert.Equal(t, "1.1.2", newTag.TagName)
@@ -52,7 +53,7 @@ func Test_LatestVersion(t *testing.T) {
 		tagList := newImageTagList([]string{"0.1", "0.5.1", "0.9", "1.0", "1.0.1", "1.1.2", "2.0.3"})
 		img := NewFromIdentifier("jannfis/test:1.0")
 		vc := VersionConstraint{Constraint: "~1.0"}
-		newTag, err := img.GetNewestVersionFromTags(&vc, tagList)
+		newTag, err := img.GetNewestVersionFromTags(context.Background(), &vc, tagList)
 		require.NoError(t, err)
 		require.NotNil(t, newTag)
 		assert.Equal(t, "1.0.1", newTag.TagName)
@@ -62,7 +63,7 @@ func Test_LatestVersion(t *testing.T) {
 		tagList := newImageTagList([]string{"0.1", "0.5.1", "0.9", "2.0.3"})
 		img := NewFromIdentifier("jannfis/test:1.0")
 		vc := VersionConstraint{Constraint: "~1.0"}
-		newTag, err := img.GetNewestVersionFromTags(&vc, tagList)
+		newTag, err := img.GetNewestVersionFromTags(context.Background(), &vc, tagList)
 		require.NoError(t, err)
 		require.Nil(t, newTag)
 	})
@@ -71,7 +72,7 @@ func Test_LatestVersion(t *testing.T) {
 		tagList := newImageTagList([]string{"0.1", "0.5.1", "0.9", "2.0.3"})
 		img := NewFromIdentifier("jannfis/test:1.0")
 		vc := VersionConstraint{Constraint: "latest"}
-		newTag, err := img.GetNewestVersionFromTags(&vc, tagList)
+		newTag, err := img.GetNewestVersionFromTags(context.Background(), &vc, tagList)
 		assert.Error(t, err)
 		assert.Nil(t, newTag)
 	})
@@ -80,7 +81,7 @@ func Test_LatestVersion(t *testing.T) {
 		tagList := newImageTagList([]string{})
 		img := NewFromIdentifier("jannfis/test:1.0")
 		vc := VersionConstraint{Constraint: "~1.0"}
-		newTag, err := img.GetNewestVersionFromTags(&vc, tagList)
+		newTag, err := img.GetNewestVersionFromTags(context.Background(), &vc, tagList)
 		require.NoError(t, err)
 		require.NotNil(t, newTag)
 		assert.Equal(t, "1.0", newTag.TagName)
@@ -90,7 +91,7 @@ func Test_LatestVersion(t *testing.T) {
 		tagList := newImageTagListWithDate([]string{"zz", "bb", "yy", "cc", "yy", "aa", "ll"})
 		img := NewFromIdentifier("jannfis/test:bb")
 		vc := VersionConstraint{Strategy: StrategyNewestBuild}
-		newTag, err := img.GetNewestVersionFromTags(&vc, tagList)
+		newTag, err := img.GetNewestVersionFromTags(context.Background(), &vc, tagList)
 		require.NoError(t, err)
 		require.NotNil(t, newTag)
 		assert.Equal(t, "ll", newTag.TagName)
@@ -100,7 +101,7 @@ func Test_LatestVersion(t *testing.T) {
 		tagList := newImageTagListWithDate([]string{"zz", "bb", "yy", "cc", "yy", "aa", "ll"})
 		img := NewFromIdentifier("jannfis/test:bb")
 		vc := VersionConstraint{Strategy: StrategySemVer}
-		newTag, err := img.GetNewestVersionFromTags(&vc, tagList)
+		newTag, err := img.GetNewestVersionFromTags(context.Background(), &vc, tagList)
 		require.NoError(t, err)
 		require.NotNil(t, newTag)
 		assert.Equal(t, "bb", newTag.TagName)
@@ -110,7 +111,7 @@ func Test_LatestVersion(t *testing.T) {
 		tagList := newImageTagListWithDate([]string{"zz", "bb", "yy", "cc", "yy", "aa", "ll"})
 		img := NewFromIdentifier("jannfis/test:bb")
 		vc := VersionConstraint{Strategy: StrategyAlphabetical}
-		newTag, err := img.GetNewestVersionFromTags(&vc, tagList)
+		newTag, err := img.GetNewestVersionFromTags(context.Background(), &vc, tagList)
 		require.NoError(t, err)
 		require.NotNil(t, newTag)
 		assert.Equal(t, "zz", newTag.TagName)
@@ -122,7 +123,7 @@ func Test_LatestVersion(t *testing.T) {
 		tagList.Add(tag.NewImageTag("latest", time.Unix(int64(6), 0), newDigest))
 		img := NewFromIdentifier("jannfis/test:latest@sha:1234567")
 		vc := VersionConstraint{Strategy: StrategyDigest, Constraint: "latest"}
-		newTag, err := img.GetNewestVersionFromTags(&vc, tagList)
+		newTag, err := img.GetNewestVersionFromTags(context.Background(), &vc, tagList)
 		require.NoError(t, err)
 		assert.Equal(t, "latest", newTag.TagName)
 		assert.Equal(t, newDigest, newTag.TagDigest)
@@ -158,13 +159,14 @@ func Test_NewVersionConstraint(t *testing.T) {
 
 func Test_VersionConstraint_IsTagIgnored(t *testing.T) {
 	versionConstraint := VersionConstraint{IgnoreList: []string{"tag1", "tag2"}}
-	assert.True(t, versionConstraint.IsTagIgnored("tag1"))
-	assert.True(t, versionConstraint.IsTagIgnored("tag2"))
-	assert.False(t, versionConstraint.IsTagIgnored("tag3"))
+	ctx := context.Background()
+	assert.True(t, versionConstraint.IsTagIgnored(ctx, "tag1"))
+	assert.True(t, versionConstraint.IsTagIgnored(ctx, "tag2"))
+	assert.False(t, versionConstraint.IsTagIgnored(ctx, "tag3"))
 	versionConstraint.IgnoreList = []string{"tag?", "foo"}
-	assert.True(t, versionConstraint.IsTagIgnored("tag1"))
-	assert.True(t, versionConstraint.IsTagIgnored("foo"))
-	assert.False(t, versionConstraint.IsTagIgnored("tag10"))
+	assert.True(t, versionConstraint.IsTagIgnored(ctx, "tag1"))
+	assert.True(t, versionConstraint.IsTagIgnored(ctx, "foo"))
+	assert.False(t, versionConstraint.IsTagIgnored(ctx, "tag10"))
 }
 
 func Test_UpdateStrategy_IsCacheable(t *testing.T) {

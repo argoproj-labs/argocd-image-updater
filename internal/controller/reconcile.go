@@ -18,7 +18,7 @@ import (
 
 // RunImageUpdater is a main loop for argocd-image-controller
 func (r *ImageUpdaterReconciler) RunImageUpdater(ctx context.Context, cr *iuapi.ImageUpdater, warmUp bool) (argocd.ImageUpdaterResult, error) {
-	log := log.LoggerFromContext(ctx)
+	baseLogger := log.LoggerFromContext(ctx)
 
 	result := argocd.ImageUpdaterResult{}
 	var err error
@@ -45,7 +45,7 @@ func (r *ImageUpdaterReconciler) RunImageUpdater(ctx context.Context, cr *iuapi.
 	metrics.Applications().SetNumberOfApplications(len(appList))
 
 	if !warmUp {
-		log.Infof("Starting image update cycle, considering %d annotated application(s) for update", len(appList))
+		baseLogger.Infof("Starting image update cycle, considering %d annotated application(s) for update", len(appList))
 	}
 
 	syncState := argocd.NewSyncIterationState()
@@ -66,9 +66,11 @@ func (r *ImageUpdaterReconciler) RunImageUpdater(ctx context.Context, cr *iuapi.
 	wg.Add(len(appList))
 
 	for app, curApplication := range appList {
-		lockErr := sem.Acquire(context.TODO(), 1)
+		appLogger := baseLogger.WithField("application", app)
+
+		lockErr := sem.Acquire(ctx, 1)
 		if lockErr != nil {
-			log.Errorf("Could not acquire semaphore for application %s: %v", app, lockErr)
+			appLogger.Errorf("Could not acquire semaphore: %v", lockErr)
 			// Release entry in wait group on error, too - we're never going to execute
 			wg.Done()
 			continue
@@ -76,7 +78,10 @@ func (r *ImageUpdaterReconciler) RunImageUpdater(ctx context.Context, cr *iuapi.
 
 		go func(app string, curApplication iutypes.ApplicationImages) {
 			defer sem.Release(1)
-			log.Debugf("Processing application %s", app)
+
+			ctx = log.ContextWithLogger(ctx, appLogger)
+			appLogger.Debugf("Processing application")
+
 			upconf := &argocd.UpdateConfiguration{
 				NewRegFN:               registry.NewClient,
 				ArgoClient:             r.Config.ArgoClient,
@@ -92,7 +97,7 @@ func (r *ImageUpdaterReconciler) RunImageUpdater(ctx context.Context, cr *iuapi.
 				DisableKubeEvents:      r.Config.DisableKubeEvents,
 				GitCreds:               r.Config.GitCreds,
 			}
-			res := argocd.UpdateApplication(upconf, syncState)
+			res := argocd.UpdateApplication(ctx, upconf, syncState)
 			result.NumApplicationsProcessed += 1
 			result.NumErrors += res.NumErrors
 			result.NumImagesConsidered += res.NumImagesConsidered
@@ -110,7 +115,7 @@ func (r *ImageUpdaterReconciler) RunImageUpdater(ctx context.Context, cr *iuapi.
 	// Wait for all goroutines to finish
 	wg.Wait()
 
-	log.Infof("Processing results: applications=%d images_considered=%d images_skipped=%d images_updated=%d errors=%d",
+	baseLogger.Infof("Processing results: applications=%d images_considered=%d images_skipped=%d images_updated=%d errors=%d",
 		result.NumApplicationsProcessed,
 		result.NumImagesConsidered,
 		result.NumSkipped,

@@ -148,18 +148,18 @@ type CommonUpdateSettings struct {
 	// This acts as the default if not overridden at a more specific level.
 	// +optional
 	// +kubebuilder:default:="semver"
-	UpdateStrategy string `json:"updateStrategy,omitempty"`
+	UpdateStrategy *string `json:"updateStrategy,omitempty"`
 
 	// ForceUpdate specifies whether updates should be forced.
 	// This acts as the default if not overridden.
 	// +optional
 	// +kubebuilder:default:=false
-	ForceUpdate bool `json:"forceUpdate,omitempty"`
+	ForceUpdate *bool `json:"forceUpdate,omitempty"`
 
 	// AllowTags is a regex pattern for tags to allow.
 	// This acts as the default if not overridden.
 	// +optional
-	AllowTags string `json:"allowTags,omitempty"`
+	AllowTags *string `json:"allowTags,omitempty"`
 
 	// IgnoreTags is a list of glob-like patterns of tags to ignore.
 	// This acts as the default and can be overridden at more specific levels.
@@ -170,7 +170,7 @@ type CommonUpdateSettings struct {
 	// PullSecret is the pull secret to use for images.
 	// This acts as the default if not overridden.
 	// +optional
-	PullSecret string `json:"pullSecret,omitempty"`
+	PullSecret *string `json:"pullSecret,omitempty"`
 }
 
 // WriteBackConfig defines how and where to write back image updates.

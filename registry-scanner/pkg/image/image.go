@@ -5,20 +5,36 @@ import (
 	"time"
 
 	"github.com/distribution/distribution/v3/reference"
+	"github.com/sirupsen/logrus"
 
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/tag"
 )
 
+// ContainerImage represents a container image and its update configuration.
+// It acts as a rich domain object, carrying both its identity and the rules
+// for how it should be updated.
 type ContainerImage struct {
-	RegistryURL           string
-	ImageName             string
-	ImageTag              *tag.ImageTag
-	ImageAlias            string
+	// Identity fields
+	RegistryURL string
+	ImageName   string
+	ImageTag    *tag.ImageTag
+	ImageAlias  string
+
+	// Update settings
+	UpdateStrategy UpdateStrategy
+	ForceUpdate    bool
+	AllowTags      string
+	IgnoreTags     []string
+	PullSecret     string
+	Platforms      []string
+
+	// Manifest-specific fields
 	HelmParamImageName    string
 	HelmParamImageVersion string
 	KustomizeImage        *ContainerImage
-	original              string
+
+	original string
 }
 
 type ContainerImageList []*ContainerImage
@@ -152,6 +168,49 @@ func (img *ContainerImage) DiffersFrom(other *ContainerImage, checkVersion bool)
 	return img.RegistryURL != other.RegistryURL || img.ImageName != other.ImageName || (checkVersion && img.ImageTag.TagName != other.ImageTag.TagName)
 }
 
+// Clone creates a deep copy of the ContainerImage object.
+func (img *ContainerImage) Clone() *ContainerImage {
+	if img == nil {
+		return nil
+	}
+	clone := &ContainerImage{
+		RegistryURL:           img.RegistryURL,
+		ImageName:             img.ImageName,
+		ImageAlias:            img.ImageAlias,
+		UpdateStrategy:        img.UpdateStrategy,
+		ForceUpdate:           img.ForceUpdate,
+		AllowTags:             img.AllowTags,
+		PullSecret:            img.PullSecret,
+		HelmParamImageName:    img.HelmParamImageName,
+		HelmParamImageVersion: img.HelmParamImageVersion,
+		original:              img.original,
+	}
+
+	if img.ImageTag != nil {
+		clone.ImageTag = &tag.ImageTag{
+			TagName:   img.ImageTag.TagName,
+			TagDigest: img.ImageTag.TagDigest,
+		}
+	}
+
+	if img.KustomizeImage != nil {
+		clone.KustomizeImage = img.KustomizeImage.Clone()
+	}
+
+	// Ensure slices are copied, not just referenced
+	if img.IgnoreTags != nil {
+		clone.IgnoreTags = make([]string, len(img.IgnoreTags))
+		copy(clone.IgnoreTags, img.IgnoreTags)
+	}
+
+	if img.Platforms != nil {
+		clone.Platforms = make([]string, len(img.Platforms))
+		copy(clone.Platforms, img.Platforms)
+	}
+
+	return clone
+}
+
 // ContainsImage checks whether img is contained in a list of images
 func (list *ContainerImageList) ContainsImage(img *ContainerImage, checkVersion bool) *ContainerImage {
 	// if there is a KustomizeImage override, check it for a match first
@@ -262,6 +321,7 @@ func getImageDigestFromTag(tagStr string) (string, string) {
 
 // LogContext returns a log context for the given image, with required fields
 // set to the image's information.
+// TODO: deprecate and remove. Replace with GetLogFields() if necessary
 func (img *ContainerImage) LogContext() *log.LogContext {
 	logCtx := log.WithContext()
 	logCtx.AddField("image_name", img.GetFullNameWithoutTag())
@@ -272,4 +332,22 @@ func (img *ContainerImage) LogContext() *log.LogContext {
 		logCtx.AddField("image_digest", img.ImageTag.TagDigest)
 	}
 	return logCtx
+}
+
+// GetLogFields returns a map of structured log fields for the image.
+func (img *ContainerImage) GetLogFields() logrus.Fields {
+	fields := logrus.Fields{
+		"image_registry": img.RegistryURL,
+		"image_name":     img.GetFullNameWithoutTag(),
+		"image_alias":    img.ImageAlias,
+	}
+	if imageTag := img.ImageTag; imageTag != nil {
+		if imageTag.TagName != "" {
+			fields["image_tag"] = imageTag.TagName
+		}
+		if imageTag.TagDigest != "" {
+			fields["image_digest"] = imageTag.TagDigest
+		}
+	}
+	return fields
 }
