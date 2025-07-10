@@ -12,6 +12,7 @@ import (
 	"github.com/argoproj-labs/argocd-image-updater/pkg/argocd"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/kube"
+	iutypes "github.com/argoproj-labs/argocd-image-updater/pkg/types"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/image"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/registry"
@@ -123,7 +124,7 @@ func (s *WebhookServer) processWebhookEvent(event *WebhookEvent) error {
 
 	// List applications
 	// TODO: recreate this place to list applications properly
-	apps, err := s.ArgoClient.ListApplications(context.Background(), nil, "")
+	apps, err := s.ArgoClient.ListApplications(context.Background(), nil)
 	if err != nil {
 		return fmt.Errorf("failed to list applications: %w", err)
 	}
@@ -157,7 +158,7 @@ func (s *WebhookServer) processWebhookEvent(event *WebhookEvent) error {
 		}
 
 		// Run the update process
-		result := argocd.UpdateApplication(updateConf, argocd.NewSyncIterationState())
+		result := argocd.UpdateApplication(context.Background(), updateConf, argocd.NewSyncIterationState())
 
 		appLogCtx.Infof("Update result: processed=%d, updated=%d, errors=%d, skipped=%d",
 			result.NumApplicationsProcessed, result.NumImagesUpdated, result.NumErrors, result.NumSkipped)
@@ -167,8 +168,8 @@ func (s *WebhookServer) processWebhookEvent(event *WebhookEvent) error {
 }
 
 // findMatchingApplications finds applications that are watching the image from the webhook event
-func (s *WebhookServer) findMatchingApplications(apps []v1alpha1.Application, event *WebhookEvent) map[string]argocd.ApplicationImages {
-	matchedApps := make(map[string]argocd.ApplicationImages)
+func (s *WebhookServer) findMatchingApplications(apps []v1alpha1.Application, event *WebhookEvent) map[string]iutypes.ApplicationImages {
+	matchedApps := make(map[string]iutypes.ApplicationImages)
 
 	for _, app := range apps {
 		// Skip applications without image-list annotation
@@ -197,9 +198,9 @@ func (s *WebhookServer) findMatchingApplications(apps []v1alpha1.Application, ev
 
 			// Found a match, add to the list
 			appName := fmt.Sprintf("%s/%s", app.Namespace, app.Name)
-			appImages := argocd.ApplicationImages{
+			appImages := iutypes.ApplicationImages{
 				Application: app,
-				Images:      *imageList,
+				Images:      toImageListHelper(*imageList),
 			}
 			matchedApps[appName] = appImages
 			break
@@ -207,6 +208,15 @@ func (s *WebhookServer) findMatchingApplications(apps []v1alpha1.Application, ev
 	}
 
 	return matchedApps
+}
+
+// toImageListHelper is a private helper that converts an ContainerImageList to a ImageList.
+func toImageListHelper(list image.ContainerImageList) iutypes.ImageList {
+	il := make(iutypes.ImageList, len(list))
+	for i, img := range list {
+		il[i].ContainerImage = img
+	}
+	return il
 }
 
 // parseImageList is a local helper function that replicates the logic from argocd package

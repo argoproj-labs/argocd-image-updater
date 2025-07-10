@@ -1,6 +1,7 @@
 package registry
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -21,7 +22,6 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/options"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/registry/mocks"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/tag"
@@ -46,7 +46,7 @@ func TestBasic(t *testing.T) {
 
 func TestNewRepository(t *testing.T) {
 	t.Run("Invalid Reference Format", func(t *testing.T) {
-		ep, err := GetRegistryEndpoint("")
+		ep, err := GetRegistryEndpoint(context.Background(), "")
 		require.NoError(t, err)
 		client, err := NewClient(ep, "", "")
 		require.NoError(t, err)
@@ -56,7 +56,7 @@ func TestNewRepository(t *testing.T) {
 
 	})
 	t.Run("Success Ping", func(t *testing.T) {
-		ep, err := GetRegistryEndpoint("")
+		ep, err := GetRegistryEndpoint(context.Background(), "")
 		require.NoError(t, err)
 		client, err := NewClient(ep, "", "")
 		require.NoError(t, err)
@@ -156,7 +156,7 @@ func TestSetRefreshToken(t *testing.T) {
 }
 func TestNewClient(t *testing.T) {
 	t.Run("Create client with provided username and password", func(t *testing.T) {
-		ep, err := GetRegistryEndpoint("")
+		ep, err := GetRegistryEndpoint(context.Background(), "")
 		require.NoError(t, err)
 		_, err = NewClient(ep, "testuser", "pass")
 		require.NoError(t, err)
@@ -177,7 +177,7 @@ func TestTags(t *testing.T) {
 		mockTagService := new(mocks.TagService)
 		mockTagService.On("All", mock.Anything).Return([]string{"testTag-1", "testTag-2"}, nil)
 		mockRegClient.On("Tags", mock.Anything).Return(mockTagService)
-		tags, err := client.Tags()
+		tags, err := client.Tags(context.Background())
 		require.NoError(t, err)
 		assert.Contains(t, tags, "testTag-1")
 		assert.Contains(t, tags, "testTag-2")
@@ -190,7 +190,7 @@ func TestTags(t *testing.T) {
 		mockTagService := new(mocks.TagService)
 		mockTagService.On("All", mock.Anything).Return([]string{}, errors.New("Error on caling func All"))
 		mockRegClient.On("Tags", mock.Anything).Return(mockTagService)
-		_, err := client.Tags()
+		_, err := client.Tags(context.Background())
 		require.Error(t, err)
 	})
 }
@@ -204,7 +204,7 @@ func TestManifestForTag(t *testing.T) {
 		manService := new(mocks.ManifestService)
 		manService.On("Get", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, nil)
 		mockRegClient.On("Manifests", mock.Anything).Return(manService, nil)
-		_, err := client.ManifestForTag("tagStr")
+		_, err := client.ManifestForTag(context.Background(), "tagStr")
 		require.NoError(t, err)
 	})
 	t.Run("Error returned from Manifests call", func(t *testing.T) {
@@ -215,7 +215,7 @@ func TestManifestForTag(t *testing.T) {
 		manService := new(mocks.ManifestService)
 		manService.On("Get", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, nil)
 		mockRegClient.On("Manifests", mock.Anything).Return(manService, errors.New("Error on caling func Manifests"))
-		_, err := client.ManifestForTag("tagStr")
+		_, err := client.ManifestForTag(context.Background(), "tagStr")
 		require.Error(t, err)
 	})
 
@@ -227,7 +227,7 @@ func TestManifestForTag(t *testing.T) {
 		manService := new(mocks.ManifestService)
 		manService.On("Get", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, errors.New("Error on caling func Get"))
 		mockRegClient.On("Manifests", mock.Anything).Return(manService, nil)
-		_, err := client.ManifestForTag("tagStr")
+		_, err := client.ManifestForTag(context.Background(), "tagStr")
 		require.Error(t, err)
 	})
 
@@ -242,7 +242,7 @@ func TestManifestForDigest(t *testing.T) {
 		manService := new(mocks.ManifestService)
 		manService.On("Get", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, nil)
 		mockRegClient.On("Manifests", mock.Anything).Return(manService, nil)
-		_, err := client.ManifestForDigest("dgst")
+		_, err := client.ManifestForDigest(context.Background(), "dgst")
 		require.NoError(t, err)
 	})
 	t.Run("Error returned from Manifests call", func(t *testing.T) {
@@ -253,7 +253,7 @@ func TestManifestForDigest(t *testing.T) {
 		manService := new(mocks.ManifestService)
 		manService.On("Get", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, nil)
 		mockRegClient.On("Manifests", mock.Anything).Return(manService, errors.New("Error on caling func Manifests"))
-		_, err := client.ManifestForDigest("dgst")
+		_, err := client.ManifestForDigest(context.Background(), "dgst")
 		require.Error(t, err)
 	})
 	t.Run("Error returned from Get call", func(t *testing.T) {
@@ -264,7 +264,7 @@ func TestManifestForDigest(t *testing.T) {
 		manService := new(mocks.ManifestService)
 		manService.On("Get", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, errors.New("Error on caling func Get"))
 		mockRegClient.On("Manifests", mock.Anything).Return(manService, nil)
-		_, err := client.ManifestForDigest("dgst")
+		_, err := client.ManifestForDigest(context.Background(), "dgst")
 		require.Error(t, err)
 	})
 }
@@ -280,7 +280,7 @@ func TestTagInfoFromReferences(t *testing.T) {
 		tagInfo.Digest = [32]byte{}
 		opts := &options.ManifestOptions{}
 		opts.WithPlatform("testOS", "testArch", "testVarient")
-		opts.WithLogger(log.NewContext())
+		//opts.WithLogger(log.NewContext())
 		opts.WithMetadata(true)
 		descriptor := []distribution.Descriptor{
 			{
@@ -296,7 +296,7 @@ func TestTagInfoFromReferences(t *testing.T) {
 				},
 			},
 		}
-		tag, err := TagInfoFromReferences(&client, opts, log.NewContext(), tagInfo, descriptor)
+		tag, err := TagInfoFromReferences(context.Background(), &client, opts, tagInfo, descriptor)
 		require.Nil(t, tag)
 		require.NoError(t, err)
 	})
@@ -311,7 +311,7 @@ func TestTagInfoFromReferences(t *testing.T) {
 		opts := &options.ManifestOptions{}
 		opts.WithMetadata(false)
 		opts.WithPlatform("testOS", "testArch", "testVarient")
-		opts.WithLogger(log.NewContext())
+		//opts.WithLogger(log.NewContext())
 		descriptor := []distribution.Descriptor{
 			{
 				MediaType: "",
@@ -326,7 +326,7 @@ func TestTagInfoFromReferences(t *testing.T) {
 				},
 			},
 		}
-		tag, err := TagInfoFromReferences(&client, opts, log.NewContext(), tagInfo, descriptor)
+		tag, err := TagInfoFromReferences(context.Background(), &client, opts, tagInfo, descriptor)
 		require.NoError(t, err)
 		assert.Equal(t, tag, tagInfo)
 		require.NoError(t, err)
@@ -342,7 +342,7 @@ func TestTagInfoFromReferences(t *testing.T) {
 		opts := &options.ManifestOptions{}
 		opts.WithMetadata(true)
 		opts.WithPlatform("testOS", "testArch", "testVarient")
-		opts.WithLogger(log.NewContext())
+		//opts.WithLogger(log.NewContext())
 		descriptor := []distribution.Descriptor{
 			{
 				MediaType: "",
@@ -358,7 +358,7 @@ func TestTagInfoFromReferences(t *testing.T) {
 			},
 		}
 		mockRegClient.On("Manifests", mock.Anything).Return(nil, errors.New("Error from Manifests"))
-		_, err := TagInfoFromReferences(&client, opts, log.NewContext(), tagInfo, descriptor)
+		_, err := TagInfoFromReferences(context.Background(), &client, opts, tagInfo, descriptor)
 		require.Error(t, err)
 	})
 	t.Run("Return error from TagMetadata", func(t *testing.T) {
@@ -372,7 +372,7 @@ func TestTagInfoFromReferences(t *testing.T) {
 		opts := &options.ManifestOptions{}
 		opts.WithMetadata(true)
 		opts.WithPlatform("testOS", "testArch", "testVarient")
-		opts.WithLogger(log.NewContext())
+		//opts.WithLogger(log.NewContext())
 		descriptor := []distribution.Descriptor{
 			{
 				MediaType: "",
@@ -390,7 +390,7 @@ func TestTagInfoFromReferences(t *testing.T) {
 		manService := new(mocks.ManifestService)
 		manService.On("Get", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(new(mocks.Manifest), nil)
 		mockRegClient.On("Manifests", mock.Anything).Return(manService, nil)
-		_, err := TagInfoFromReferences(&client, opts, log.NewContext(), tagInfo, descriptor)
+		_, err := TagInfoFromReferences(context.Background(), &client, opts, tagInfo, descriptor)
 		require.Error(t, err)
 	})
 }
@@ -402,11 +402,12 @@ func Test_TagMetadata(t *testing.T) {
 				History: []schema1.History{}, //nolint:staticcheck
 			},
 		}
-		ep, err := GetRegistryEndpoint("")
+		ctx := context.Background()
+		ep, err := GetRegistryEndpoint(ctx, "")
 		require.NoError(t, err)
 		client, err := NewClient(ep, "", "")
 		require.NoError(t, err)
-		_, err = client.TagMetadata(meta1, &options.ManifestOptions{})
+		_, err = client.TagMetadata(ctx, meta1, &options.ManifestOptions{})
 		require.Error(t, err)
 	})
 
@@ -420,12 +421,12 @@ func Test_TagMetadata(t *testing.T) {
 				},
 			},
 		}
-
-		ep, err := GetRegistryEndpoint("")
+		ctx := context.Background()
+		ep, err := GetRegistryEndpoint(ctx, "")
 		require.NoError(t, err)
 		client, err := NewClient(ep, "", "")
 		require.NoError(t, err)
-		_, err = client.TagMetadata(meta1, &options.ManifestOptions{})
+		_, err = client.TagMetadata(ctx, meta1, &options.ManifestOptions{})
 		require.Error(t, err)
 	})
 
@@ -439,12 +440,12 @@ func Test_TagMetadata(t *testing.T) {
 				},
 			},
 		}
-
-		ep, err := GetRegistryEndpoint("")
+		ctx := context.Background()
+		ep, err := GetRegistryEndpoint(ctx, "")
 		require.NoError(t, err)
 		client, err := NewClient(ep, "", "")
 		require.NoError(t, err)
-		_, err = client.TagMetadata(meta1, &options.ManifestOptions{})
+		_, err = client.TagMetadata(ctx, meta1, &options.ManifestOptions{})
 		require.Error(t, err)
 
 	})
@@ -460,21 +461,22 @@ func Test_TagMetadata(t *testing.T) {
 				},
 			},
 		}
-		ep, err := GetRegistryEndpoint("")
+		ctx := context.Background()
+		ep, err := GetRegistryEndpoint(ctx, "")
 		require.NoError(t, err)
 		client, err := NewClient(ep, "", "")
 		require.NoError(t, err)
-		_, err = client.TagMetadata(meta1, &options.ManifestOptions{})
+		_, err = client.TagMetadata(ctx, meta1, &options.ManifestOptions{})
 		require.Error(t, err)
 
 		ts = time.Now().Format(time.RFC3339Nano)
 		opts := &options.ManifestOptions{}
 		meta1.Manifest.History[0].V1Compatibility = `{"created":"` + ts + `"}`
-		tagInfo, _ := client.TagMetadata(meta1, opts)
+		tagInfo, _ := client.TagMetadata(ctx, meta1, opts)
 		assert.Equal(t, ts, tagInfo.CreatedAt.Format(time.RFC3339Nano))
 
 		opts.WithPlatform("testOS", "testArch", "testVariant")
-		tagInfo, err = client.TagMetadata(meta1, opts)
+		tagInfo, err = client.TagMetadata(ctx, meta1, opts)
 		assert.Nil(t, tagInfo)
 		assert.Nil(t, err)
 	})
@@ -490,14 +492,15 @@ func Test_TagMetadata_2(t *testing.T) {
 				},
 			},
 		}
-		ep, err := GetRegistryEndpoint("")
+		ctx := context.Background()
+		ep, err := GetRegistryEndpoint(ctx, "")
 		require.NoError(t, err)
 		client, err := NewClient(ep, "", "")
 
 		require.NoError(t, err)
 		err = client.NewRepository("test/test")
 		require.NoError(t, err)
-		_, err = client.TagMetadata(meta1, &options.ManifestOptions{})
+		_, err = client.TagMetadata(ctx, meta1, &options.ManifestOptions{})
 		require.Error(t, err) // invalid digest format
 	})
 	t.Run("schema2 DeserializedManifest invalid digest format", func(t *testing.T) {
@@ -513,14 +516,15 @@ func Test_TagMetadata_2(t *testing.T) {
 				},
 			},
 		}
-		ep, err := GetRegistryEndpoint("")
+		ctx := context.Background()
+		ep, err := GetRegistryEndpoint(ctx, "")
 		require.NoError(t, err)
 		client, err := NewClient(ep, "", "")
 
 		require.NoError(t, err)
 		err = client.NewRepository("test/test")
 		require.NoError(t, err)
-		_, err = client.TagMetadata(meta1, &options.ManifestOptions{})
+		_, err = client.TagMetadata(ctx, meta1, &options.ManifestOptions{})
 		require.Error(t, err) // invalid digest format
 	})
 	t.Run("ocischema DeserializedImageIndex empty index not supported", func(t *testing.T) {
@@ -534,14 +538,15 @@ func Test_TagMetadata_2(t *testing.T) {
 				Annotations: nil,
 			},
 		}
-		ep, err := GetRegistryEndpoint("")
+		ctx := context.Background()
+		ep, err := GetRegistryEndpoint(ctx, "")
 		require.NoError(t, err)
 		client, err := NewClient(ep, "", "")
 
 		require.NoError(t, err)
 		err = client.NewRepository("test/test")
 		require.NoError(t, err)
-		_, err = client.TagMetadata(meta1, &options.ManifestOptions{})
+		_, err = client.TagMetadata(ctx, meta1, &options.ManifestOptions{})
 		require.Error(t, err) // empty index not supported
 	})
 	t.Run("ocischema DeserializedImageIndex empty manifestlist not supported", func(t *testing.T) {
@@ -554,14 +559,15 @@ func Test_TagMetadata_2(t *testing.T) {
 				Manifests: nil,
 			},
 		}
-		ep, err := GetRegistryEndpoint("")
+		ctx := context.Background()
+		ep, err := GetRegistryEndpoint(ctx, "")
 		require.NoError(t, err)
 		client, err := NewClient(ep, "", "")
 
 		require.NoError(t, err)
 		err = client.NewRepository("test/test")
 		require.NoError(t, err)
-		_, err = client.TagMetadata(meta1, &options.ManifestOptions{})
+		_, err = client.TagMetadata(ctx, meta1, &options.ManifestOptions{})
 		require.Error(t, err) // empty manifestlist not supported
 	})
 }
@@ -569,7 +575,7 @@ func Test_TagMetadata_2(t *testing.T) {
 func TestPing(t *testing.T) {
 	t.Run("fail ping", func(t *testing.T) {
 		mockManager := new(mocks.Manager)
-		ep, err := GetRegistryEndpoint("")
+		ep, err := GetRegistryEndpoint(context.Background(), "")
 		require.NoError(t, err)
 		mockManager.On("AddResponse", mock.Anything).Return(fmt.Errorf("fail ping"))
 		_, err = ping(mockManager, ep, "")
@@ -578,7 +584,7 @@ func TestPing(t *testing.T) {
 
 	t.Run("success ping", func(t *testing.T) {
 		mockManager := new(mocks.Manager)
-		ep, err := GetRegistryEndpoint("")
+		ep, err := GetRegistryEndpoint(context.Background(), "")
 		require.NoError(t, err)
 		mockManager.On("AddResponse", mock.Anything).Return(nil)
 		_, err = ping(mockManager, ep, "")

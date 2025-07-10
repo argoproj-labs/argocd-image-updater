@@ -1,6 +1,7 @@
 package image
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path"
@@ -149,14 +150,14 @@ func Test_FetchCredentialsFromSecret(t *testing.T) {
 			SecretName:      "test",
 			SecretField:     "username_password",
 		}
-		creds, err := credSrc.FetchCredentials("NA", &kube.KubernetesClient{Clientset: clientset})
+		creds, err := credSrc.FetchCredentials(context.Background(), "NA", &kube.KubernetesClient{Clientset: clientset})
 		require.NoError(t, err)
 		require.NotNil(t, creds)
 		assert.Equal(t, "foo", creds.Username)
 		assert.Equal(t, "bar", creds.Password)
 
 		credSrc.SecretNamespace = "test1" // test with a wrong SecretNamespace
-		creds, err = credSrc.FetchCredentials("NA", &kube.KubernetesClient{Clientset: clientset})
+		creds, err = credSrc.FetchCredentials(context.Background(), "NA", &kube.KubernetesClient{Clientset: clientset})
 		require.Error(t, err)
 		require.Nil(t, creds)
 	})
@@ -172,12 +173,12 @@ func Test_FetchCredentialsFromSecret(t *testing.T) {
 			SecretName:      "test",
 			SecretField:     "username_password",
 		}
-		creds, err := credSrc.FetchCredentials("NA", nil)
+		creds, err := credSrc.FetchCredentials(context.Background(), "NA", nil)
 		require.Error(t, err) // should fail with "could not fetch credentials: no Kubernetes client given"
 		require.Nil(t, creds)
 
 		credSrc.SecretField = "BAD" // test with a wrong SecretField
-		creds, err = credSrc.FetchCredentials("NA", &kube.KubernetesClient{Clientset: clientset})
+		creds, err = credSrc.FetchCredentials(context.Background(), "NA", &kube.KubernetesClient{Clientset: clientset})
 		require.Error(t, err)
 		require.Nil(t, creds)
 
@@ -197,14 +198,14 @@ func Test_FetchCredentialsFromPullSecret(t *testing.T) {
 			SecretNamespace: "test",
 			SecretName:      "test",
 		}
-		creds, err := credSrc.FetchCredentials("https://registry-1.docker.io", &kube.KubernetesClient{Clientset: clientset})
+		creds, err := credSrc.FetchCredentials(context.Background(), "https://registry-1.docker.io", &kube.KubernetesClient{Clientset: clientset})
 		require.NoError(t, err)
 		require.NotNil(t, creds)
 		assert.Equal(t, "foo", creds.Username)
 		assert.Equal(t, "bar", creds.Password)
 
 		credSrc.SecretNamespace = "test1" // test with a wrong SecretNamespace
-		creds, err = credSrc.FetchCredentials("https://registry-1.docker.io", &kube.KubernetesClient{Clientset: clientset})
+		creds, err = credSrc.FetchCredentials(context.Background(), "https://registry-1.docker.io", &kube.KubernetesClient{Clientset: clientset})
 		require.Error(t, err)
 		require.Nil(t, creds)
 	})
@@ -222,11 +223,11 @@ func Test_FetchCredentialsFromPullSecret(t *testing.T) {
 			SecretNamespace: "test",
 			SecretName:      "test",
 		}
-		creds, err := credSrc.FetchCredentials("https://registry-1.docker.io", &kube.KubernetesClient{Clientset: clientset})
+		creds, err := credSrc.FetchCredentials(context.Background(), "https://registry-1.docker.io", &kube.KubernetesClient{Clientset: clientset})
 		require.Error(t, err) // should fail with "no credentials in image pull secret"
 		require.Nil(t, creds)
 
-		creds, err = credSrc.FetchCredentials("https://registry-1.docker.io", nil)
+		creds, err = credSrc.FetchCredentials(context.Background(), "https://registry-1.docker.io", nil)
 		require.Error(t, err) // should fail with "could not fetch credentials: no Kubernetes client given"
 		require.Nil(t, creds)
 	})
@@ -243,7 +244,7 @@ func Test_FetchCredentialsFromPullSecret(t *testing.T) {
 			SecretNamespace: "test",
 			SecretName:      "test",
 		}
-		creds, err := credSrc.FetchCredentials("https://registry-1.docker.io", &kube.KubernetesClient{Clientset: clientset})
+		creds, err := credSrc.FetchCredentials(context.Background(), "https://registry-1.docker.io", &kube.KubernetesClient{Clientset: clientset})
 		require.NoError(t, err)
 		require.NotNil(t, creds)
 		assert.Equal(t, "foo", creds.Username)
@@ -260,7 +261,7 @@ func Test_FetchCredentialsFromEnv(t *testing.T) {
 			Registry: "https://registry-1.docker.io/v2",
 			EnvName:  "MY_SECRET_ENV",
 		}
-		creds, err := credSrc.FetchCredentials("https://registry-1.docker.io", nil)
+		creds, err := credSrc.FetchCredentials(context.Background(), "https://registry-1.docker.io", nil)
 		require.NoError(t, err)
 		require.NotNil(t, creds)
 		assert.Equal(t, "foo", creds.Username)
@@ -275,7 +276,7 @@ func Test_FetchCredentialsFromEnv(t *testing.T) {
 			Registry: "https://registry-1.docker.io/v2",
 			EnvName:  "MY_SECRET_ENV",
 		}
-		creds, err := credSrc.FetchCredentials("https://registry-1.docker.io", nil)
+		creds, err := credSrc.FetchCredentials(context.Background(), "https://registry-1.docker.io", nil)
 		require.Error(t, err)
 		require.Nil(t, creds)
 	})
@@ -289,7 +290,7 @@ func Test_FetchCredentialsFromEnv(t *testing.T) {
 				Registry: "https://registry-1.docker.io/v2",
 				EnvName:  "MY_SECRET_ENV",
 			}
-			creds, err := credSrc.FetchCredentials("https://registry-1.docker.io", nil)
+			creds, err := credSrc.FetchCredentials(context.Background(), "https://registry-1.docker.io", nil)
 			require.Error(t, err)
 			require.Nil(t, creds)
 		}
@@ -305,7 +306,7 @@ func Test_FetchCredentialsFromExt(t *testing.T) {
 			Registry:   "https://registry-1.docker.io/v2",
 			ScriptPath: path.Join(pwd, "..", "..", "test", "testdata", "scripts", "get-credentials-valid.sh"),
 		}
-		creds, err := credSrc.FetchCredentials("https://registry-1.docker.io", nil)
+		creds, err := credSrc.FetchCredentials(context.Background(), "https://registry-1.docker.io", nil)
 		require.NoError(t, err)
 		require.NotNil(t, creds)
 		assert.Equal(t, "username", creds.Username)
@@ -319,7 +320,7 @@ func Test_FetchCredentialsFromExt(t *testing.T) {
 			Registry:   "https://registry-1.docker.io/v2",
 			ScriptPath: path.Join(pwd, "..", "..", "test", "testdata", "scripts", "get-credentials-invalid.sh"),
 		}
-		creds, err := credSrc.FetchCredentials("https://registry-1.docker.io", nil)
+		creds, err := credSrc.FetchCredentials(context.Background(), "https://registry-1.docker.io", nil)
 		require.Errorf(t, err, "invalid script output")
 		require.Nil(t, creds)
 	})
@@ -331,7 +332,7 @@ func Test_FetchCredentialsFromExt(t *testing.T) {
 			Registry:   "https://registry-1.docker.io/v2",
 			ScriptPath: path.Join(pwd, "..", "..", "test", "testdata", "scripts", "get-credentials-notexist.sh"),
 		}
-		creds, err := credSrc.FetchCredentials("https://registry-1.docker.io", nil)
+		creds, err := credSrc.FetchCredentials(context.Background(), "https://registry-1.docker.io", nil)
 		require.Errorf(t, err, "no such file or directory")
 		require.Nil(t, creds)
 	})
@@ -341,7 +342,7 @@ func Test_FetchCredentialsFromExt(t *testing.T) {
 			Registry:   "https://registry-1.docker.io/v2",
 			ScriptPath: "get-credentials-notexist.sh",
 		}
-		creds, err := credSrc.FetchCredentials("https://registry-1.docker.io", nil)
+		creds, err := credSrc.FetchCredentials(context.Background(), "https://registry-1.docker.io", nil)
 		require.Errorf(t, err, "path to script must be absolute")
 		require.Nil(t, creds)
 	})
@@ -353,7 +354,7 @@ func Test_FetchCredentialsFromUnknown(t *testing.T) {
 			Type:     CredentialSourceType(-1),
 			Registry: "https://registry-1.docker.io/v2",
 		}
-		creds, err := credSrc.FetchCredentials("https://registry-1.docker.io", nil)
+		creds, err := credSrc.FetchCredentials(context.Background(), "https://registry-1.docker.io", nil)
 		require.Error(t, err) // should fail with "unknown credential type"
 		require.Nil(t, creds)
 	})
@@ -362,7 +363,7 @@ func Test_FetchCredentialsFromUnknown(t *testing.T) {
 func Test_ParseDockerConfig(t *testing.T) {
 	t.Run("Parse valid Docker configuration with matching registry", func(t *testing.T) {
 		config := fixture.MustReadFile("../../test/testdata/docker/valid-config.json")
-		username, password, err := parseDockerConfigJson("https://registry-1.docker.io", config)
+		username, password, err := parseDockerConfigJson(context.Background(), "https://registry-1.docker.io", config)
 		require.NoError(t, err)
 		assert.Equal(t, "foo", username)
 		assert.Equal(t, "bar", password)
@@ -370,7 +371,7 @@ func Test_ParseDockerConfig(t *testing.T) {
 
 	t.Run("Parse valid Docker configuration with matching registry as prefix", func(t *testing.T) {
 		config := fixture.MustReadFile("../../test/testdata/docker/valid-config-noproto.json")
-		username, password, err := parseDockerConfigJson("https://registry-1.docker.io", config)
+		username, password, err := parseDockerConfigJson(context.Background(), "https://registry-1.docker.io", config)
 		require.NoError(t, err)
 		assert.Equal(t, "foo", username)
 		assert.Equal(t, "bar", password)
@@ -378,7 +379,7 @@ func Test_ParseDockerConfig(t *testing.T) {
 
 	t.Run("Parse valid Docker configuration with matching http registry as prefix", func(t *testing.T) {
 		config := fixture.MustReadFile("../../test/testdata/docker/valid-config-noproto.json")
-		username, password, err := parseDockerConfigJson("http://registry-1.docker.io", config)
+		username, password, err := parseDockerConfigJson(context.Background(), "http://registry-1.docker.io", config)
 		require.NoError(t, err)
 		assert.Equal(t, "foo", username)
 		assert.Equal(t, "bar", password)
@@ -386,7 +387,7 @@ func Test_ParseDockerConfig(t *testing.T) {
 
 	t.Run("Parse valid Docker configuration with matching no-protocol registry as prefix", func(t *testing.T) {
 		config := fixture.MustReadFile("../../test/testdata/docker/valid-config-noproto.json")
-		username, password, err := parseDockerConfigJson("registry-1.docker.io", config)
+		username, password, err := parseDockerConfigJson(context.Background(), "registry-1.docker.io", config)
 		require.NoError(t, err)
 		assert.Equal(t, "foo", username)
 		assert.Equal(t, "bar", password)
@@ -394,7 +395,7 @@ func Test_ParseDockerConfig(t *testing.T) {
 
 	t.Run("Parse valid Docker configuration with matching registry as prefix with / in the end", func(t *testing.T) {
 		config := fixture.MustReadFile("../../test/testdata/docker/valid-config-noproto.json")
-		username, password, err := parseDockerConfigJson("https://registry-1.docker.io/", config)
+		username, password, err := parseDockerConfigJson(context.Background(), "https://registry-1.docker.io/", config)
 		require.NoError(t, err)
 		assert.Equal(t, "foo", username)
 		assert.Equal(t, "bar", password)
@@ -402,7 +403,7 @@ func Test_ParseDockerConfig(t *testing.T) {
 
 	t.Run("Parse valid Docker configuration without matching registry", func(t *testing.T) {
 		config := fixture.MustReadFile("../../test/testdata/docker/valid-config.json")
-		username, password, err := parseDockerConfigJson("https://gcr.io", config)
+		username, password, err := parseDockerConfigJson(context.Background(), "https://gcr.io", config)
 		assert.Error(t, err)
 		assert.Empty(t, username)
 		assert.Empty(t, password)

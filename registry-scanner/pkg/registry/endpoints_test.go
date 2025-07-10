@@ -1,6 +1,7 @@
 package registry
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"sync"
@@ -116,21 +117,21 @@ func Test_GetEndpoints(t *testing.T) {
 	RestoreDefaultRegistryConfiguration()
 
 	t.Run("Get default endpoint", func(t *testing.T) {
-		ep, err := GetRegistryEndpoint("")
+		ep, err := GetRegistryEndpoint(context.Background(), "")
 		require.NoError(t, err)
 		require.NotNil(t, ep)
 		assert.Equal(t, "docker.io", ep.RegistryPrefix)
 	})
 
 	t.Run("Get GCR endpoint", func(t *testing.T) {
-		ep, err := GetRegistryEndpoint("gcr.io")
+		ep, err := GetRegistryEndpoint(context.Background(), "gcr.io")
 		require.NoError(t, err)
 		require.NotNil(t, ep)
 		assert.Equal(t, ep.RegistryPrefix, "gcr.io")
 	})
 
 	t.Run("Infer endpoint", func(t *testing.T) {
-		ep, err := GetRegistryEndpoint("foobar.com")
+		ep, err := GetRegistryEndpoint(context.Background(), "foobar.com")
 		require.NoError(t, err)
 		require.NotNil(t, ep)
 		assert.Equal(t, "foobar.com", ep.RegistryPrefix)
@@ -142,11 +143,11 @@ func Test_AddEndpoint(t *testing.T) {
 	RestoreDefaultRegistryConfiguration()
 
 	t.Run("Add new endpoint", func(t *testing.T) {
-		err := AddRegistryEndpoint(NewRegistryEndpoint("example.com", "Example", "https://example.com", "", "", false, TagListSortUnsorted, 5, 0))
+		err := AddRegistryEndpoint(context.Background(), NewRegistryEndpoint("example.com", "Example", "https://example.com", "", "", false, TagListSortUnsorted, 5, 0))
 		require.NoError(t, err)
 	})
 	t.Run("Get example.com endpoint", func(t *testing.T) {
-		ep, err := GetRegistryEndpoint("example.com")
+		ep, err := GetRegistryEndpoint(context.Background(), "example.com")
 		require.NoError(t, err)
 		require.NotNil(t, ep)
 		assert.Equal(t, ep.RegistryPrefix, "example.com")
@@ -157,9 +158,9 @@ func Test_AddEndpoint(t *testing.T) {
 		assert.Equal(t, ep.TagListSort, TagListSortUnsorted)
 	})
 	t.Run("Change existing endpoint", func(t *testing.T) {
-		err := AddRegistryEndpoint(NewRegistryEndpoint("example.com", "Example", "https://example.com", "", "library", true, TagListSortLatestFirst, 5, 0))
+		err := AddRegistryEndpoint(context.Background(), NewRegistryEndpoint("example.com", "Example", "https://example.com", "", "library", true, TagListSortLatestFirst, 5, 0))
 		require.NoError(t, err)
-		ep, err := GetRegistryEndpoint("example.com")
+		ep, err := GetRegistryEndpoint(context.Background(), "example.com")
 		require.NoError(t, err)
 		require.NotNil(t, ep)
 		assert.Equal(t, ep.Insecure, true)
@@ -172,18 +173,18 @@ func Test_SetEndpointCredentials(t *testing.T) {
 	RestoreDefaultRegistryConfiguration()
 
 	t.Run("Set credentials on default registry", func(t *testing.T) {
-		err := SetRegistryEndpointCredentials("", "env:FOOBAR")
+		err := SetRegistryEndpointCredentials(context.Background(), "", "env:FOOBAR")
 		require.NoError(t, err)
-		ep, err := GetRegistryEndpoint("")
+		ep, err := GetRegistryEndpoint(context.TODO(), "")
 		require.NoError(t, err)
 		require.NotNil(t, ep)
 		assert.Equal(t, ep.Credentials, "env:FOOBAR")
 	})
 
 	t.Run("Unset credentials on default registry", func(t *testing.T) {
-		err := SetRegistryEndpointCredentials("", "")
+		err := SetRegistryEndpointCredentials(context.Background(), "", "")
 		require.NoError(t, err)
-		ep, err := GetRegistryEndpoint("")
+		ep, err := GetRegistryEndpoint(context.Background(), "")
 		require.NoError(t, err)
 		require.NotNil(t, ep)
 		assert.Equal(t, ep.Credentials, "")
@@ -199,7 +200,7 @@ func Test_EndpointConcurrentAccess(t *testing.T) {
 		wg.Add(numRuns)
 		for i := 0; i < numRuns; i++ {
 			go func() {
-				ep, err := GetRegistryEndpoint("gcr.io")
+				ep, err := GetRegistryEndpoint(context.Background(), "gcr.io")
 				require.NoError(t, err)
 				require.NotNil(t, ep)
 				wg.Done()
@@ -215,9 +216,9 @@ func Test_EndpointConcurrentAccess(t *testing.T) {
 		for i := 0; i < numRuns; i++ {
 			go func(i int) {
 				creds := fmt.Sprintf("secret:foo/secret-%d", i)
-				err := SetRegistryEndpointCredentials("", creds)
+				err := SetRegistryEndpointCredentials(context.Background(), "", creds)
 				require.NoError(t, err)
-				ep, err := GetRegistryEndpoint("")
+				ep, err := GetRegistryEndpoint(context.Background(), "")
 				require.NoError(t, err)
 				require.NotNil(t, ep)
 				wg.Done()
@@ -235,7 +236,7 @@ func Test_SetDefault(t *testing.T) {
 	assert.Equal(t, "docker.io", dep.RegistryPrefix)
 	assert.True(t, dep.IsDefault)
 
-	ep, err := GetRegistryEndpoint("ghcr.io")
+	ep, err := GetRegistryEndpoint(context.Background(), "ghcr.io")
 	require.NoError(t, err)
 	require.NotNil(t, ep)
 	require.False(t, ep.IsDefault)
@@ -249,7 +250,7 @@ func Test_SetDefault(t *testing.T) {
 
 func Test_DeepCopy(t *testing.T) {
 	t.Run("DeepCopy endpoint object", func(t *testing.T) {
-		ep, err := GetRegistryEndpoint("docker.pkg.github.com")
+		ep, err := GetRegistryEndpoint(context.Background(), "docker.pkg.github.com")
 		require.NoError(t, err)
 		require.NotNil(t, ep)
 		newEp := ep.DeepCopy()
@@ -348,7 +349,7 @@ func TestAddRegistryEndpointFromConfig(t *testing.T) {
 			Limit:       10,
 			CredsExpire: time.Minute * 30,
 		}
-		err := AddRegistryEndpointFromConfig(config)
+		err := AddRegistryEndpointFromConfig(context.Background(), config)
 		require.NoError(t, err)
 	})
 }

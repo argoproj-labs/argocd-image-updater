@@ -1,6 +1,7 @@
 package image
 
 import (
+	"context"
 	"fmt"
 	"regexp"
 	"runtime"
@@ -241,64 +242,6 @@ func Test_GetMatchOption(t *testing.T) {
 	})
 }
 
-func Test_GetSecretOption(t *testing.T) {
-	t.Run("Get cred source from annotation", func(t *testing.T) {
-		annotations := map[string]string{
-			fmt.Sprintf(common.PullSecretAnnotationSuffix, "dummy"): "pullsecret:foo/bar",
-		}
-		img := NewFromIdentifier("dummy=foo/bar:1.12")
-		credSrc := img.GetParameterPullSecret(annotations, "")
-		require.NotNil(t, credSrc)
-		assert.Equal(t, CredentialSourcePullSecret, credSrc.Type)
-		assert.Equal(t, "foo", credSrc.SecretNamespace)
-		assert.Equal(t, "bar", credSrc.SecretName)
-		assert.Equal(t, ".dockerconfigjson", credSrc.SecretField)
-	})
-
-	t.Run("Invalid reference in annotation", func(t *testing.T) {
-		annotations := map[string]string{
-			fmt.Sprintf(common.PullSecretAnnotationSuffix, "dummy"): "foo/bar",
-		}
-		img := NewFromIdentifier("dummy=foo/bar:1.12")
-		credSrc := img.GetParameterPullSecret(annotations, "")
-		require.Nil(t, credSrc)
-	})
-
-	t.Run("Missing pull secret in annotation", func(t *testing.T) {
-		annotations := map[string]string{}
-		img := NewFromIdentifier("dummy=foo/bar:1.12")
-		credSrc := img.GetParameterPullSecret(annotations, "")
-		require.Nil(t, credSrc)
-	})
-
-	t.Run("Prefer cred source from image-specific annotation", func(t *testing.T) {
-		annotations := map[string]string{
-			fmt.Sprintf(common.PullSecretAnnotationSuffix, "dummy"): "pullsecret:image/specific",
-			common.ApplicationWidePullSecretAnnotationSuffix:        "pullsecret:app/wide",
-		}
-		img := NewFromIdentifier("dummy=foo/bar:1.12")
-		credSrc := img.GetParameterPullSecret(annotations, "")
-		require.NotNil(t, credSrc)
-		assert.Equal(t, CredentialSourcePullSecret, credSrc.Type)
-		assert.Equal(t, "image", credSrc.SecretNamespace)
-		assert.Equal(t, "specific", credSrc.SecretName)
-		assert.Equal(t, ".dockerconfigjson", credSrc.SecretField)
-	})
-
-	t.Run("Get cred source from application-wide annotation", func(t *testing.T) {
-		annotations := map[string]string{
-			common.ApplicationWidePullSecretAnnotationSuffix: "pullsecret:app/wide",
-		}
-		img := NewFromIdentifier("dummy=foo/bar:1.12")
-		credSrc := img.GetParameterPullSecret(annotations, "")
-		require.NotNil(t, credSrc)
-		assert.Equal(t, CredentialSourcePullSecret, credSrc.Type)
-		assert.Equal(t, "app", credSrc.SecretNamespace)
-		assert.Equal(t, "wide", credSrc.SecretName)
-		assert.Equal(t, ".dockerconfigjson", credSrc.SecretField)
-	})
-}
-
 func Test_GetIgnoreTags(t *testing.T) {
 	t.Run("Get list of tags to ignore from image-specific annotation", func(t *testing.T) {
 		annotations := map[string]string{
@@ -376,9 +319,9 @@ func Test_HasForceUpdateOptionAnnotation(t *testing.T) {
 
 func Test_GetPlatformOptions(t *testing.T) {
 	t.Run("Empty platform options with restriction", func(t *testing.T) {
-		annotations := map[string]string{}
 		img := NewFromIdentifier("dummy=foo/bar:1.12")
-		opts := img.GetPlatformOptions(annotations, false, "")
+		ctx := context.Background()
+		opts := img.GetPlatformOptions(ctx, false, nil)
 		os := runtime.GOOS
 		arch := runtime.GOARCH
 		platform := opts.Platforms()[0]
@@ -394,9 +337,9 @@ func Test_GetPlatformOptions(t *testing.T) {
 		}
 	})
 	t.Run("Empty platform options without restriction", func(t *testing.T) {
-		annotations := map[string]string{}
 		img := NewFromIdentifier("dummy=foo/bar:1.12")
-		opts := img.GetPlatformOptions(annotations, true, "")
+		ctx := context.Background()
+		opts := img.GetPlatformOptions(ctx, true, nil)
 		os := runtime.GOOS
 		arch := runtime.GOARCH
 		assert.True(t, opts.WantsPlatform(os, arch, ""))
@@ -407,11 +350,10 @@ func Test_GetPlatformOptions(t *testing.T) {
 		os := "linux"
 		arch := "arm64"
 		variant := "v8"
-		annotations := map[string]string{
-			fmt.Sprintf(common.PlatformsAnnotationSuffix, "dummy"): options.PlatformKey(os, arch, variant),
-		}
+		platforms := []string{options.PlatformKey(os, arch, variant)}
 		img := NewFromIdentifier("dummy=foo/bar:1.12")
-		opts := img.GetPlatformOptions(annotations, false, "")
+		ctx := context.Background()
+		opts := img.GetPlatformOptions(ctx, false, platforms)
 		assert.True(t, opts.WantsPlatform(os, arch, variant))
 		assert.False(t, opts.WantsPlatform(os, arch, "invalid"))
 	})
@@ -419,11 +361,12 @@ func Test_GetPlatformOptions(t *testing.T) {
 		os := "linux"
 		arch := "arm"
 		variant := "v6"
-		annotations := map[string]string{
-			fmt.Sprintf(common.PlatformsAnnotationSuffix, "dummy"): options.PlatformKey(os, arch, variant),
-		}
+
+		platforms := []string{options.PlatformKey(os, arch, variant)}
+
 		img := NewFromIdentifier("dummy=foo/bar:1.12")
-		opts := img.GetPlatformOptions(annotations, false, "")
+		ctx := context.Background()
+		opts := img.GetPlatformOptions(ctx, false, platforms)
 		assert.True(t, opts.WantsPlatform(os, arch, variant))
 		assert.False(t, opts.WantsPlatform(os, arch, ""))
 		assert.False(t, opts.WantsPlatform(runtime.GOOS, runtime.GOARCH, ""))
@@ -433,11 +376,12 @@ func Test_GetPlatformOptions(t *testing.T) {
 		os := "linux"
 		arch := "arm"
 		variant := "v6"
-		annotations := map[string]string{
-			fmt.Sprintf(common.PlatformsAnnotationSuffix, "dummy"): options.PlatformKey(os, arch, variant) + ", " + options.PlatformKey(runtime.GOOS, runtime.GOARCH, ""),
-		}
+		platforms := []string{options.PlatformKey(os, arch, variant),
+			options.PlatformKey(runtime.GOOS, runtime.GOARCH, "")}
+
 		img := NewFromIdentifier("dummy=foo/bar:1.12")
-		opts := img.GetPlatformOptions(annotations, false, "")
+		ctx := context.Background()
+		opts := img.GetPlatformOptions(ctx, false, platforms)
 		assert.True(t, opts.WantsPlatform(os, arch, variant))
 		assert.True(t, opts.WantsPlatform(runtime.GOOS, runtime.GOARCH, ""))
 		assert.False(t, opts.WantsPlatform(os, arch, ""))
@@ -447,11 +391,11 @@ func Test_GetPlatformOptions(t *testing.T) {
 		os := "linux"
 		arch := "arm"
 		variant := "v6"
-		annotations := map[string]string{
-			fmt.Sprintf(common.PlatformsAnnotationSuffix, "dummy"): "invalid",
-		}
+		platforms := []string{"invalid"}
+
 		img := NewFromIdentifier("dummy=foo/bar:1.12")
-		opts := img.GetPlatformOptions(annotations, false, "")
+		ctx := context.Background()
+		opts := img.GetPlatformOptions(ctx, false, platforms)
 		assert.False(t, opts.WantsPlatform(os, arch, variant))
 		assert.False(t, opts.WantsPlatform(runtime.GOOS, runtime.GOARCH, ""))
 		assert.False(t, opts.WantsPlatform(os, arch, ""))
@@ -459,35 +403,36 @@ func Test_GetPlatformOptions(t *testing.T) {
 	})
 }
 
-func Test_ContainerImage_ParseMatchfunc(t *testing.T) {
+func Test_ContainerImage_ParseMatch(t *testing.T) {
+	ctx := context.Background()
 	img := NewFromIdentifier("dummy=foo/bar:1.12")
-	matchFunc, pattern := img.ParseMatchfunc("any")
+	matchFunc, pattern := img.ParseMatch(ctx, "any")
 	assert.True(t, matchFunc("MatchFuncAny any tag name", pattern))
 	assert.Nil(t, pattern)
 
-	matchFunc, pattern = img.ParseMatchfunc("ANY")
+	matchFunc, pattern = img.ParseMatch(ctx, "ANY")
 	assert.True(t, matchFunc("MatchFuncAny any tag name", pattern))
 	assert.Nil(t, pattern)
 
-	matchFunc, pattern = img.ParseMatchfunc("other")
+	matchFunc, pattern = img.ParseMatch(ctx, "other")
 	assert.False(t, matchFunc("MatchFuncNone any tag name", pattern))
 	assert.Nil(t, pattern)
 
-	matchFunc, pattern = img.ParseMatchfunc("not-regexp:a-z")
+	matchFunc, pattern = img.ParseMatch(ctx, "not-regexp:a-z")
 	assert.False(t, matchFunc("MatchFuncNone any tag name", pattern))
 	assert.Nil(t, pattern)
 
-	matchFunc, pattern = img.ParseMatchfunc("regexp:[aA-zZ]")
+	matchFunc, pattern = img.ParseMatch(ctx, "regexp:[aA-zZ]")
 	assert.True(t, matchFunc("MatchFuncRegexp-tag-name", pattern))
 	compiledRegexp, _ := regexp.Compile("[aA-zZ]")
 	assert.Equal(t, compiledRegexp, pattern)
 
-	matchFunc, pattern = img.ParseMatchfunc("RegExp:[aA-zZ]")
+	matchFunc, pattern = img.ParseMatch(ctx, "RegExp:[aA-zZ]")
 	assert.True(t, matchFunc("MatchFuncRegexp-tag-name", pattern))
 	compiledRegexp, _ = regexp.Compile("[aA-zZ]")
 	assert.Equal(t, compiledRegexp, pattern)
 
-	matchFunc, pattern = img.ParseMatchfunc("regexp:[aA-zZ") //invalid regexp: missing end ]
+	matchFunc, pattern = img.ParseMatch(ctx, "regexp:[aA-zZ") //invalid regexp: missing end ]
 	assert.False(t, matchFunc("MatchFuncNone-tag-name", pattern))
 	assert.Nil(t, pattern)
 }

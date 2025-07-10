@@ -1,6 +1,7 @@
 package image
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -92,8 +93,9 @@ func ParseCredentialSource(credentialSource string, requirePrefix bool) (*Creden
 
 // FetchCredentials fetches the credentials for a given registry according to
 // the credential source.
-func (src *CredentialSource) FetchCredentials(registryURL string, kubeclient *kube.KubernetesClient) (*Credential, error) {
+func (src *CredentialSource) FetchCredentials(ctx context.Context, registryURL string, kubeclient *kube.KubernetesClient) (*Credential, error) {
 	var creds Credential
+	log := log.LoggerFromContext(ctx)
 	log.Tracef("Fetching credentials for registry %s", registryURL)
 	switch src.Type {
 	case CredentialSourceEnv:
@@ -132,7 +134,7 @@ func (src *CredentialSource) FetchCredentials(registryURL string, kubeclient *ku
 		if err != nil {
 			return nil, fmt.Errorf("could not fetch secret '%s' from namespace '%s' (field: '%s'): %v", src.SecretName, src.SecretNamespace, src.SecretField, err)
 		}
-		creds.Username, creds.Password, err = parseDockerConfigJson(registryURL, data)
+		creds.Username, creds.Password, err = parseDockerConfigJson(ctx, registryURL, data)
 		if err != nil {
 			return nil, err
 		}
@@ -208,9 +210,10 @@ func (src *CredentialSource) parseExtDefinition(definition string) error {
 	return nil
 }
 
-// This unmarshals & parses Docker's config.json file, returning username and
+// parseDockerConfigJson unmarshals & parses Docker's config.json file, returning username and
 // password for given registry URL
-func parseDockerConfigJson(registryURL string, jsonSource string) (string, string, error) {
+func parseDockerConfigJson(ctx context.Context, registryURL string, jsonSource string) (string, string, error) {
+	log := log.LoggerFromContext(ctx)
 	var dockerConf map[string]interface{}
 	err := json.Unmarshal([]byte(jsonSource), &dockerConf)
 	if err != nil {

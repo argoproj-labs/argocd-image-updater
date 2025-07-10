@@ -1,6 +1,7 @@
 package registry
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"time"
@@ -39,7 +40,7 @@ func clearRegistries() {
 
 // LoadRegistryConfiguration loads a YAML-formatted registry configuration from
 // a given file at path.
-func LoadRegistryConfiguration(path string, clear bool) error {
+func LoadRegistryConfiguration(ctx context.Context, path string, clear bool) error {
 	registryBytes, err := os.ReadFile(path)
 	if err != nil {
 		return err
@@ -71,7 +72,7 @@ func LoadRegistryConfiguration(path string, clear bool) error {
 			}
 		}
 
-		if err := AddRegistryEndpoint(ep); err != nil {
+		if err := AddRegistryEndpoint(ctx, ep); err != nil {
 			return err
 		}
 

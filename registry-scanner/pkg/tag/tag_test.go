@@ -1,6 +1,7 @@
 package tag
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -112,7 +113,7 @@ func Test_SortableImageTagList(t *testing.T) {
 			tag := NewImageTag(name, time.Now(), "")
 			il.Add(tag)
 		}
-		sil := il.SortBySemVer()
+		sil := il.SortBySemVer(context.Background())
 		require.Len(t, sil, len(names))
 		assert.Equal(t, "v1.0", sil[0].TagName)
 		assert.Equal(t, "v1.0.1", sil[1].TagName)

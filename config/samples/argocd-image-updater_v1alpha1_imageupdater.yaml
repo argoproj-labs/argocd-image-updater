@@ -25,6 +25,18 @@ spec:
         - alias: "test1"
           imageName: "test:1.1.0"
     - namePattern: "image-updater-001"
+      commonUpdateSettings:
+        updateStrategy: "latest" # Default strategy if not specified per image
+        forceUpdate: true
+        allowTags: "regexp:^[0-9a-f]{7}$"
+        ignoreTags: [ "latest", "master" ]
+        pullSecret: "secret:<namespace>/<secret_name>#<field>"
+      writeBackConfig:
+        method: "git:secret:argocd-image-updater/git-creds"
+        gitConfig: # Group git-related settings. Should be ignored when writeBackMethod: "argocd"
+          repository: "git@github.com:example/example.git"
+          branch: "main"
+          writeBackTarget: "helmvalues:/helm/config/test-values.yaml" # OR "kustomization:/config/overlays/bar" OR "helmvalues:/{{ .app.path.path }}/values.yaml" - for ApplicationSet.
       images:
         - alias: "test1"
           imageName: "test1:1.1.0"

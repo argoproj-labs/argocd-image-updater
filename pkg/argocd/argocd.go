@@ -220,10 +220,6 @@ func NewAPIClient(opts *ClientOptions) (ArgoCD, error) {
 	return &argoCD{Client: client}, nil
 }
 
-// Will hold a list of applications with the images allowed to considered for
-// update.
-type ImageList map[string]iutypes.ApplicationImages
-
 // nameMatchesPatterns Matches a name against a list of patterns
 func nameMatchesPatterns(ctx context.Context, name string, patterns []string) bool {
 	if len(patterns) == 0 {
@@ -270,7 +266,7 @@ func nameMatchesLabels(appLabels map[string]string, selectors *metav1.LabelSelec
 
 // processApplicationForUpdate checks if an application is of a supported type,
 // and if so, creates an ApplicationImages struct and adds it to the update map.
-func processApplicationForUpdate(ctx context.Context, app *argocdapi.Application, appRef iuapi.ApplicationRef, appNSName string, appsForUpdate map[string]iutypes.ApplicationImages) {
+func processApplicationForUpdate(ctx context.Context, app *argocdapi.Application, appRef iuapi.ApplicationRef, appSettings *iutypes.Image, appNSName string, appsForUpdate map[string]iutypes.ApplicationImages) {
 	log := log.LoggerFromContext(ctx)
 	sourceType := getApplicationSourceType(app)
 
@@ -279,9 +275,9 @@ func processApplicationForUpdate(ctx context.Context, app *argocdapi.Application
 		log.Warnf("skipping app '%s' of type '%s' because it's not of supported source type", appNSName, sourceType)
 		return
 	}
-
 	log.Tracef("processing app '%s' of type '%v'", appNSName, sourceType)
-	imageList := parseImageListIuCR(appRef.Images)
+
+	imageList := parseImageListIuCR(ctx, appRef.Images, appSettings)
 	appImages := iutypes.ApplicationImages{
 		Application: *app,
 		Images:      *imageList,
@@ -377,13 +373,19 @@ func (client *k8sClient) FilterApplicationsForUpdate(ctx context.Context, cr *iu
 	// Sort namePatterns in applicationRefs from most specific to least specific.
 	applicationRefsSorted := sortApplicationRefs(cr.Spec.ApplicationRefs)
 
+	// Establish the base global settings
+	globalSettings := newContainerImageFromCommonSettings(ctx, cr.Spec.CommonUpdateSettings, nil)
+
 	// For each app in the list, find its best matching rule from the CR.
 	for _, app := range allAppsInNamespace.Items {
 		// Find the first matching rule for this application
 		for _, applicationRef := range applicationRefsSorted {
 			if nameMatchesPattern(ctx, app.Name, applicationRef.NamePattern) && nameMatchesLabels(app.Labels, applicationRef.LabelSelectors) {
+				// Calculate the effective settings for this ApplicationRef by layering on top of global.
+				appSettings := newContainerImageFromCommonSettings(ctx, applicationRef.CommonUpdateSettings, globalSettings)
+
 				appNSName := fmt.Sprintf("%s/%s", cr.Spec.Namespace, app.Name)
-				processApplicationForUpdate(ctx, &app, applicationRef, appNSName, appsForUpdate)
+				processApplicationForUpdate(ctx, &app, applicationRef, appSettings, appNSName, appsForUpdate)
 				break // Found the best match, move to the next app
 			}
 		}
@@ -391,14 +393,63 @@ func (client *k8sClient) FilterApplicationsForUpdate(ctx context.Context, cr *iu
 	return appsForUpdate, nil
 }
 
+// newContainerImageFromCommonSettings creates a new image.ContainerImage and populates it
+// by layering the given settings on top of a parent configuration.
+func newContainerImageFromCommonSettings(ctx context.Context, settings *iuapi.CommonUpdateSettings, parentImage *iutypes.Image) *iutypes.Image {
+	// Start with a clone of the parent to avoid side effects.
+	// If there is no parent, start with a fresh struct populated with the ultimate defaults.
+	var img *iutypes.Image
+	if parentImage != nil {
+		img = parentImage.Clone()
+	} else {
+		img = &iutypes.Image{
+			ContainerImage: &image.ContainerImage{},
+			UpdateStrategy: image.StrategySemVer,
+			ForceUpdate:    false,
+			AllowTags:      "",
+			PullSecret:     "",
+			IgnoreTags:     []string{},
+		}
+	}
+
+	if settings == nil {
+		return img
+	}
+
+	// Layer the new settings on top, only if they are explicitly set (non-nil).
+	if settings.UpdateStrategy != nil {
+		img.UpdateStrategy = img.ParseUpdateStrategy(ctx, *settings.UpdateStrategy)
+	}
+	if settings.ForceUpdate != nil {
+		img.ForceUpdate = *settings.ForceUpdate
+	}
+	if settings.AllowTags != nil {
+		img.AllowTags = *settings.AllowTags
+	}
+	if settings.PullSecret != nil {
+		img.PullSecret = *settings.PullSecret
+	}
+	if settings.IgnoreTags != nil {
+		img.IgnoreTags = settings.IgnoreTags
+	}
+
+	return img
+}
+
 // parseImageListIuCR parses a list of ImageConfig objects from the ImageUpdater CR
 // into a ContainerImageList, which is used internally for image management.
 // TODO: the function is explicitly written almost the same as parseImageList in order not to break existing tests. It should be only 1 function later.
-func parseImageListIuCR(images []iuapi.ImageConfig) *image.ContainerImageList {
-	results := make(image.ContainerImageList, 0)
+func parseImageListIuCR(ctx context.Context, images []iuapi.ImageConfig, appSettings *iutypes.Image) *iutypes.ImageList {
+	results := make(iutypes.ImageList, 0)
 
 	for _, im := range images {
-		img := image.NewFromIdentifier(im.Alias + "=" + im.ImageName)
+		// For each image, calculate its final settings by layering its specific
+		// settings on top of the application-level settings.
+		img := newContainerImageFromCommonSettings(ctx, im.CommonUpdateSettings, appSettings)
+		imgIdentity := image.NewFromIdentifier(im.Alias + "=" + im.ImageName)
+		img.ContainerImage = imgIdentity
+		img.Platforms = im.Platforms
+
 		if im.ManifestTarget != nil && im.ManifestTarget.Kustomize != nil {
 			if kustomizeImage := im.ManifestTarget.Kustomize.Name; kustomizeImage != "" {
 				img.KustomizeImage = image.NewFromIdentifier(kustomizeImage)
@@ -746,8 +797,9 @@ func SetKustomizeImage(app *argocdapi.Application, newImage *image.ContainerImag
 }
 
 // GetImagesFromApplication returns the list of known images for the given application
-func GetImagesFromApplication(app *argocdapi.Application) image.ContainerImageList {
+func GetImagesFromApplication(applicationImages *iutypes.ApplicationImages) image.ContainerImageList {
 	images := make(image.ContainerImageList, 0)
+	app := applicationImages.Application
 
 	// Get images deployed with the current ArgoCD app.
 	for _, imageStr := range app.Status.Summary.Images {
@@ -755,14 +807,10 @@ func GetImagesFromApplication(app *argocdapi.Application) image.ContainerImageLi
 		images = append(images, image)
 	}
 
-	// The Application may wish to update images that don't create a container we can detect.
-	// Check the image list for images with a force-update annotation, and add them if they are not already present.
-	annotations := app.Annotations
-
-	for _, img := range *parseImageList(annotations) {
-		if img.HasForceUpdateOptionAnnotation(annotations, common.ImageUpdaterAnnotationPrefix) {
+	for _, img := range applicationImages.Images {
+		if img.ForceUpdate {
 			img.ImageTag = nil // the tag from the image list will be a version constraint, which isn't a valid tag
-			images = append(images, img)
+			images = append(images, img.ContainerImage)
 		}
 	}
 
@@ -770,12 +818,12 @@ func GetImagesFromApplication(app *argocdapi.Application) image.ContainerImageLi
 }
 
 // GetImagesFromApplicationImagesAnnotation returns the list of known images for the given application from the images annotation
-func GetImagesAndAliasesFromApplication(app *argocdapi.Application) image.ContainerImageList {
-	images := GetImagesFromApplication(app)
+func GetImagesAndAliasesFromApplication(applicationImages *iutypes.ApplicationImages) image.ContainerImageList {
+	images := GetImagesFromApplication(applicationImages)
 
 	// We update the ImageAlias field of the Images found in the app.Status.Summary.Images list.
-	for _, img := range *parseImageList(app.Annotations) {
-		if image := images.ContainsImage(img, false); image != nil {
+	for _, img := range applicationImages.Images {
+		if image := images.ContainsImage(img.ContainerImage, false); image != nil {
 			if image.ImageAlias != "" {
 				// this image has already been matched to an alias, so create a copy
 				// and assign this alias to the image copy to avoid overwriting the existing alias association
