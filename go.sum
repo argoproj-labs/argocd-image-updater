@@ -27,8 +27,8 @@ github.com/alicebob/miniredis/v2 v2.33.0/go.mod h1:MhP4a3EU7aENRi9aO+tHfTBZicLqQ
 github.com/anmitsu/go-shlex v0.0.0-20200514113438-38f4b401e2be h1:9AeTilPcZAjCFIImctFaOjnTIavg87rW78vTPkQqLI8=
 github.com/anmitsu/go-shlex v0.0.0-20200514113438-38f4b401e2be/go.mod h1:ySMOLuWl6zY27l47sB3qLNK6tF2fkHG55UZxx8oIVo4=
 github.com/antihax/optional v1.0.0/go.mod h1:uupD/76wgC+ih3iEmQUL+0Ugr19nfwCT1kdvxnR2qWY=
-github.com/argoproj-labs/argocd-image-updater/registry-scanner v0.0.0-20250421211119-90959ebfd519 h1:URnrR3+5zLMkj2o10MbSE0aocgxBAUHtXKQo9cUiAro=
-github.com/argoproj-labs/argocd-image-updater/registry-scanner v0.0.0-20250421211119-90959ebfd519/go.mod h1:5kPCfISgNKi7q1bKdf35qP7AAJuNy35E8cqA1NeT5AU=
+github.com/argoproj-labs/argocd-image-updater/registry-scanner v0.0.0-20250624020913-398db53f47e4 h1:kDbTmJkeg4Z4JSc6ytEqcpv7PuM9lZJej78yQS+AnfY=
+github.com/argoproj-labs/argocd-image-updater/registry-scanner v0.0.0-20250624020913-398db53f47e4/go.mod h1:5Q9a7RvrHCgwoZDLN9f9YugZfvZuQWSbrMqRQD4IXTM=
 github.com/argoproj/argo-cd/v2 v2.13.8 h1:FX4wajO+DUADwyMq/+y+UlLhcljVY8v/+5DllzxEfwo=
 github.com/argoproj/argo-cd/v2 v2.13.8/go.mod h1:VnIEoaw53mwPEGKqixL3ee1qfP3tNUFj+9RHJVhmxws=
 github.com/argoproj/gitops-engine v0.7.1-0.20250129155113-4c6e03c46314 h1:UIM6b4b/eNmWLwnsaJNmLzcm0qjHCuyHTuJKeIq2WeE=
