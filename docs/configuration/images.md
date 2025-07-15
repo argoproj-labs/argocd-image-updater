@@ -32,7 +32,7 @@ following:
 argocd-image-updater.argoproj.io/image-list: nginx
 ```
 
-The above example would specify to update the image `nginx` to it's most recent
+The above example would specify to update the image `nginx` to its most recent
 version found in the container registry, without taking any version constraints
 into consideration.
 

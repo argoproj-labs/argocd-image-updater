@@ -165,11 +165,11 @@ kubectl -n argocd-image-updater rollout restart deployment argocd-image-updater
 
 When installed from the manifests into a Kubernetes cluster, the Argo CD Image
 Updater reads the token required for accessing Argo CD API from an environment
-variable named `ARGOCD_TOKEN`, which is set from a a field named
+variable named `ARGOCD_TOKEN`, which is set from a field named
 `argocd.token` in a secret named `argocd-image-updater-secret`.
 
 The value for `argocd.token` should be set to the *base64 encoded* value of the
-access token you have generated above. As a short-cut, you can use generate the
+access token you have generated above. As a short-cut, you can use generate
 secret with `kubectl` and apply it over the existing resource:
 
 ```shell
