@@ -10,7 +10,7 @@ require (
 	github.com/bmatcuk/doublestar/v4 v4.8.1
 	github.com/bradleyfalzon/ghinstallation/v2 v2.16.0
 	github.com/distribution/distribution/v3 v3.0.0-20230722181636-7b502560cad4
-	github.com/go-git/go-git/v5 v5.16.0
+	github.com/go-git/go-git/v5 v5.16.2
 	github.com/google/uuid v1.6.0
 	github.com/patrickmn/go-cache v2.1.0+incompatible
 	github.com/prometheus/client_golang v1.22.0
