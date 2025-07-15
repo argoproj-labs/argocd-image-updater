@@ -258,7 +258,7 @@ func commitChangesGit(app *v1alpha1.Application, wbc *WriteBackConfig, changeLis
 	if wbc.GitCommitMessage != "" {
 		cm, err := os.CreateTemp("", "image-updater-commit-msg")
 		if err != nil {
-			return fmt.Errorf("cold not create temp file: %v", err)
+			return fmt.Errorf("could not create temp file: %v", err)
 		}
 		logCtx.Debugf("Writing commit message to %s", cm.Name())
 		err = os.WriteFile(cm.Name(), []byte(wbc.GitCommitMessage), 0600)

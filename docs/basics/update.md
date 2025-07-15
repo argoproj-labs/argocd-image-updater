@@ -14,7 +14,7 @@ The workflow of Argo CD Image Updater can be described as follows:
   whose name match a given pattern, or match a given label.
 
 * It then goes through the list of `Applications` found and inspects each
-  for the the annotation `argocd-image-updater.argoproj.io/image-list`. This
+  for the annotation `argocd-image-updater.argoproj.io/image-list`. This
   annotation holds a list of image names that should be updated, and is a
   mandatory annotation for Argo CD Image Updater to indicate it should
   process this `Application`. Read more about the syntax expected in this
