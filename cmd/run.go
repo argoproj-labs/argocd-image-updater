@@ -316,7 +316,7 @@ func runImageUpdater(cfg *ImageUpdaterConfig, warmUp bool) (argocd.ImageUpdaterR
 	wg.Add(len(appList))
 
 	for app, curApplication := range appList {
-		lockErr := sem.Acquire(context.TODO(), 1)
+		lockErr := sem.Acquire(context.Background(), 1)
 		if lockErr != nil {
 			log.Errorf("Could not acquire semaphore for application %s: %v", app, lockErr)
 			// Release entry in wait group on error, too - we're never gonna execute

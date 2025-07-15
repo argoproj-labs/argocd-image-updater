@@ -69,7 +69,7 @@ func (client *k8sClient) getApplicationInAllNamespaces(appName string) (*v1alpha
 
 // ListApplications lists all applications across all namespaces.
 func (client *k8sClient) ListApplications(labelSelector string) ([]v1alpha1.Application, error) {
-	list, err := client.kubeClient.ApplicationsClientset.ArgoprojV1alpha1().Applications(*client.appNamespace).List(context.TODO(), v1.ListOptions{LabelSelector: labelSelector})
+	list, err := client.kubeClient.ApplicationsClientset.ArgoprojV1alpha1().Applications(*client.appNamespace).List(context.Background(), v1.ListOptions{LabelSelector: labelSelector})
 	if err != nil {
 		return nil, fmt.Errorf("error listing applications: %w", err)
 	}
