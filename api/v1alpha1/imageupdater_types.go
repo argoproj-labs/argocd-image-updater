@@ -45,6 +45,8 @@ type ImageUpdaterSpec struct {
 	// ApplicationRefs is a list of rules to select Argo CD Applications within the `spec.namespace`.
 	// Each reference can also provide specific overrides for the global settings defined above.
 	// +kubebuilder:validation:MinItems=1
+	// +listType=map
+	// +listMapKey=namePattern
 	ApplicationRefs []ApplicationRef `json:"applicationRefs"`
 }
 
@@ -74,6 +76,8 @@ type ApplicationRef struct {
 	// These rules apply to applications selected by namePattern in ApplicationRefs, and each
 	// image can override global/ApplicationRef settings.
 	// +kubebuilder:validation:MinItems=1
+	// +listType=map
+	// +listMapKey=alias
 	Images []ImageConfig `json:"images"`
 }
 
@@ -103,8 +107,10 @@ type GitConfig struct {
 // and how those updates should be reflected in application manifests.
 type ImageConfig struct {
 	// Alias is a short, user-defined name for this image configuration.
+	// It MUST be unique within a single ApplicationRef's list of images.
 	// This field is mandatory.
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:Pattern=`^[a-zA-Z0-9][a-zA-Z0-9-._]*$`
 	Alias string `json:"alias"`
 
 	// ImageName is the full identifier of the image to be tracked,

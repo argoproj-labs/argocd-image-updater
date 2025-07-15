@@ -101,7 +101,9 @@ spec:
                           alias:
                             description: |-
                               Alias is a short, user-defined name for this image configuration.
+                              It MUST be unique within a single ApplicationRef's list of images.
                               This field is mandatory.
+                            pattern: ^[a-zA-Z0-9][a-zA-Z0-9-._]*$
                             type: string
                           commonUpdateSettings:
                             description: CommonUpdateSettings overrides the effective
@@ -217,6 +219,9 @@ spec:
                         type: object
                       minItems: 1
                       type: array
+                      x-kubernetes-list-map-keys:
+                      - alias
+                      x-kubernetes-list-type: map
                     labelSelectors:
                       description: LabelSelectors indicates the label selectors to
                         apply for application selection
@@ -310,6 +315,9 @@ spec:
                   type: object
                 minItems: 1
                 type: array
+                x-kubernetes-list-map-keys:
+                - namePattern
+                x-kubernetes-list-type: map
               commonUpdateSettings:
                 description: |-
                   CommonUpdateSettings provides global default settings for update strategies,
