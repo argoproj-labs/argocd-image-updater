@@ -15,6 +15,7 @@ import (
 	"github.com/argoproj-labs/argocd-image-updater/ext/git"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/kube"
+	iutypes "github.com/argoproj-labs/argocd-image-updater/pkg/types"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/image"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/registry"
@@ -39,7 +40,7 @@ type UpdateConfiguration struct {
 	NewRegFN               registry.NewRegistryClient
 	ArgoClient             ArgoCD
 	KubeClient             *kube.ImageUpdaterKubernetesClient
-	UpdateApp              *ApplicationImages
+	UpdateApp              *iutypes.ApplicationImages
 	DryRun                 bool
 	GitCommitUser          string
 	GitCommitEmail         string

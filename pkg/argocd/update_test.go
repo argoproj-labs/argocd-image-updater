@@ -16,6 +16,7 @@ import (
 	argomock "github.com/argoproj-labs/argocd-image-updater/pkg/argocd/mocks"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/kube"
+	iutypes "github.com/argoproj-labs/argocd-image-updater/pkg/types"
 	registryCommon "github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/common"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/image"
 	registryKube "github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/kube"
@@ -54,7 +55,7 @@ func Test_UpdateApplication(t *testing.T) {
 		annotations := map[string]string{
 			common.ImageUpdaterAnnotation: "foobar=gcr.io/jannfis/foobar:>=1.0.1,foobar=gcr.io/jannfis/barbar:>=1.0.1",
 		}
-		appImages := &ApplicationImages{
+		appImages := &iutypes.ApplicationImages{
 			Application: v1alpha1.Application{
 				ObjectMeta: v1.ObjectMeta{
 					Name:        "guestbook",
@@ -125,7 +126,7 @@ func Test_UpdateApplication(t *testing.T) {
 			common.ImageUpdaterAnnotation:    "foo=gcr.io/jannfis/foobar:>=1.0.1",
 			common.WriteBackMethodAnnotation: "git:secret:argocd-image-updater/git-creds",
 		}
-		appImages := &ApplicationImages{
+		appImages := &iutypes.ApplicationImages{
 			Application: v1alpha1.Application{
 				ObjectMeta: v1.ObjectMeta{
 					Name:        "guestbook",
@@ -185,7 +186,7 @@ func Test_UpdateApplication(t *testing.T) {
 				Clientset: fake.NewFakeKubeClient(),
 			},
 		}
-		appImages := &ApplicationImages{
+		appImages := &iutypes.ApplicationImages{
 			Application: v1alpha1.Application{
 				ObjectMeta: v1.ObjectMeta{
 					Name:      "guestbook",
@@ -253,7 +254,7 @@ func Test_UpdateApplication(t *testing.T) {
 				Clientset: fake.NewFakeKubeClient(),
 			},
 		}
-		appImages := &ApplicationImages{
+		appImages := &iutypes.ApplicationImages{
 			Application: v1alpha1.Application{
 				ObjectMeta: v1.ObjectMeta{
 					Name:      "guestbook",
@@ -317,7 +318,7 @@ func Test_UpdateApplication(t *testing.T) {
 				Clientset: fake.NewFakeKubeClient(),
 			},
 		}
-		appImages := &ApplicationImages{
+		appImages := &iutypes.ApplicationImages{
 			Application: v1alpha1.Application{
 				ObjectMeta: v1.ObjectMeta{
 					Name:      "guestbook",
@@ -383,7 +384,7 @@ func Test_UpdateApplication(t *testing.T) {
 				Clientset: fake.NewFakeKubeClient(),
 			},
 		}
-		appImages := &ApplicationImages{
+		appImages := &iutypes.ApplicationImages{
 			Application: v1alpha1.Application{
 				ObjectMeta: v1.ObjectMeta{
 					Name:      "guestbook",
@@ -446,7 +447,7 @@ func Test_UpdateApplication(t *testing.T) {
 				Clientset: fake.NewFakeKubeClient(),
 			},
 		}
-		appImages := &ApplicationImages{
+		appImages := &iutypes.ApplicationImages{
 			Application: v1alpha1.Application{
 				ObjectMeta: v1.ObjectMeta{
 					Name:      "guestbook",
@@ -506,7 +507,7 @@ func Test_UpdateApplication(t *testing.T) {
 				Clientset: fake.NewFakeClientsetWithResources(fixture.NewSecret("foo", "bar", map[string][]byte{"creds": []byte("myuser:mypass")})),
 			},
 		}
-		appImages := &ApplicationImages{
+		appImages := &iutypes.ApplicationImages{
 			Application: v1alpha1.Application{
 				ObjectMeta: v1.ObjectMeta{
 					Name:      "guestbook",
@@ -566,7 +567,7 @@ func Test_UpdateApplication(t *testing.T) {
 				Clientset: fake.NewFakeKubeClient(),
 			},
 		}
-		appImages := &ApplicationImages{
+		appImages := &iutypes.ApplicationImages{
 			Application: v1alpha1.Application{
 				ObjectMeta: v1.ObjectMeta{
 					Name:      "guestbook",
@@ -624,7 +625,7 @@ func Test_UpdateApplication(t *testing.T) {
 				Clientset: fake.NewFakeKubeClient(),
 			},
 		}
-		appImages := &ApplicationImages{
+		appImages := &iutypes.ApplicationImages{
 			Application: v1alpha1.Application{
 				ObjectMeta: v1.ObjectMeta{
 					Name:      "guestbook",
@@ -686,7 +687,7 @@ func Test_UpdateApplication(t *testing.T) {
 			common.ImageUpdaterAnnotation: "foobar=gcr.io/jannfis/foobar:>=1.0.1",
 			fmt.Sprintf(registryCommon.Prefixed(common.ImageUpdaterAnnotationPrefix, registryCommon.KustomizeApplicationNameAnnotationSuffix), "foobar"): "jannfis/foobar",
 		}
-		appImages := &ApplicationImages{
+		appImages := &iutypes.ApplicationImages{
 			Application: v1alpha1.Application{
 				ObjectMeta: v1.ObjectMeta{
 					Name:        "guestbook",
@@ -747,7 +748,7 @@ func Test_UpdateApplication(t *testing.T) {
 			common.ImageUpdaterAnnotation: "foobar=gcr.io/jannfis/foobar:>=1.0.1",
 			fmt.Sprintf(registryCommon.Prefixed(common.ImageUpdaterAnnotationPrefix, registryCommon.KustomizeApplicationNameAnnotationSuffix), "foobar"): "jannfis/foobar",
 		}
-		appImages := &ApplicationImages{
+		appImages := &iutypes.ApplicationImages{
 			Application: v1alpha1.Application{
 				ObjectMeta: v1.ObjectMeta{
 					Name:        "guestbook",
@@ -820,7 +821,7 @@ func Test_UpdateApplication(t *testing.T) {
 				Clientset: fake.NewFakeKubeClient(),
 			},
 		}
-		appImages := &ApplicationImages{
+		appImages := &iutypes.ApplicationImages{
 			Application: v1alpha1.Application{
 				ObjectMeta: v1.ObjectMeta{
 					Name:      "guestbook",
@@ -898,7 +899,7 @@ func Test_UpdateApplication(t *testing.T) {
 				Clientset: fake.NewFakeKubeClient(),
 			},
 		}
-		appImages := &ApplicationImages{
+		appImages := &iutypes.ApplicationImages{
 			Application: v1alpha1.Application{
 				ObjectMeta: v1.ObjectMeta{
 					Name:      "guestbook",
@@ -960,7 +961,7 @@ func Test_UpdateApplication(t *testing.T) {
 				Clientset: fake.NewFakeKubeClient(),
 			},
 		}
-		appImages := &ApplicationImages{
+		appImages := &iutypes.ApplicationImages{
 			Application: v1alpha1.Application{
 				ObjectMeta: v1.ObjectMeta{
 					Name:      "guestbook",
@@ -1015,7 +1016,7 @@ func Test_UpdateApplication(t *testing.T) {
 				Clientset: fake.NewFakeKubeClient(),
 			},
 		}
-		appImages := &ApplicationImages{
+		appImages := &iutypes.ApplicationImages{
 			Application: v1alpha1.Application{
 				ObjectMeta: v1.ObjectMeta{
 					Name:      "guestbook",
@@ -1073,7 +1074,7 @@ func Test_UpdateApplication(t *testing.T) {
 				Clientset: fake.NewFakeKubeClient(),
 			},
 		}
-		appImages := &ApplicationImages{
+		appImages := &iutypes.ApplicationImages{
 			Application: v1alpha1.Application{
 				ObjectMeta: v1.ObjectMeta{
 					Name:      "guestbook",
@@ -1131,7 +1132,7 @@ func Test_UpdateApplication(t *testing.T) {
 				Clientset: fake.NewFakeKubeClient(),
 			},
 		}
-		appImages := &ApplicationImages{
+		appImages := &iutypes.ApplicationImages{
 			Application: v1alpha1.Application{
 				ObjectMeta: v1.ObjectMeta{
 					Name:      "guestbook",

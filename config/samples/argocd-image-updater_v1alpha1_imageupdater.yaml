@@ -20,8 +20,10 @@ spec:
       branch: "main"
       writeBackTarget: "helmvalues:/helm/config/test-values.yaml" # OR "kustomization:/config/overlays/bar" OR "helmvalues:/{{ .app.path.path }}/values.yaml" - for ApplicationSet.
   applicationRefs:
-    - namePattern: "image-updater-001"
+    - namePattern: "app-001"
       images:
+        - alias: "app-001"
+          imageName: "test1:1.1.0"
         - alias: "nginx" # Maps to current '<alias>=' part of image-list annotation. Should clearly separate the image name (for registry) from its initial version/tag. What we are currently using before = sign (image=image:version)
           imageName: "nginx:1.17.10" # The actual image name for registry lookup OR 10.42.0.1:30000/test-image:latest
           commonUpdateSettings:
@@ -39,10 +41,16 @@ spec:
       #        kustomize:
       #          name: "quay.io/argoproj/argocd"
 
-    - namePattern: "image-updater-*"
+    - namePattern: "app-*"
       labelSelectors:
         matchLabels:
           app: "true"
+        matchExpressions:
+          - key: "key"
+            operator: In
+            values:
+              - "value1"
+              - "value2"
       images:
         - alias: "nginx"
           imageName: "nginx:1.17.10"
