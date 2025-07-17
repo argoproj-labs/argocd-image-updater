@@ -1,18 +1,19 @@
 package webhook
 
 import (
-	"fmt"
-	"net/http"
-	"strings"
-	"sync"
+        "fmt"
+        "net/http"
+        "strings"
+        "sync"
 
-	"github.com/argoproj-labs/argocd-image-updater/pkg/argocd"
-	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
-	"github.com/argoproj-labs/argocd-image-updater/pkg/kube"
-	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/image"
-	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
-	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/registry"
-	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
+        "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
+
+        "github.com/argoproj-labs/argocd-image-updater/pkg/argocd"
+        "github.com/argoproj-labs/argocd-image-updater/pkg/common"
+        "github.com/argoproj-labs/argocd-image-updater/pkg/kube"
+        "github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/image"
+        "github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
+        "github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/registry"
 )
 
 // WebhookServer manages webhook endpoints and triggers update checks
