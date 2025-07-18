@@ -22,6 +22,26 @@ spec:
   applicationRefs:
     - namePattern: "image-updater-001"
       images:
+        - alias: "test1"
+          imageName: "test:1.1.0"
+    - namePattern: "image-updater-001"
+      commonUpdateSettings:
+        updateStrategy: "latest" # Default strategy if not specified per image
+        forceUpdate: true
+        allowTags: "regexp:^[0-9a-f]{7}$"
+        ignoreTags: [ "latest", "master" ]
+        pullSecret: "secret:<namespace>/<secret_name>#<field>"
+      writeBackConfig:
+        method: "git:secret:argocd-image-updater/git-creds"
+        gitConfig: # Group git-related settings. Should be ignored when writeBackMethod: "argocd"
+          repository: "git@github.com:example/example.git"
+          branch: "main"
+          writeBackTarget: "helmvalues:/helm/config/test-values.yaml" # OR "kustomization:/config/overlays/bar" OR "helmvalues:/{{ .app.path.path }}/values.yaml" - for ApplicationSet.
+      images:
+        - alias: "test1"
+          imageName: "test1:1.1.0"
+        - alias: "test2"
+          imageName: "test2:2.2.0"
         - alias: "nginx" # Maps to current '<alias>=' part of image-list annotation. Should clearly separate the image name (for registry) from its initial version/tag. What we are currently using before = sign (image=image:version)
           imageName: "nginx:1.17.10" # The actual image name for registry lookup OR 10.42.0.1:30000/test-image:latest
           commonUpdateSettings:
@@ -43,6 +63,12 @@ spec:
       labelSelectors:
         matchLabels:
           app: "true"
+        matchExpressions:
+          - key: "key"
+            operator: In
+            values:
+              - "value1"
+              - "value2"
       images:
         - alias: "nginx"
           imageName: "nginx:1.17.10"
