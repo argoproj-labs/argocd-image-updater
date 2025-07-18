@@ -188,8 +188,17 @@ func (ep *RegistryEndpoint) expireCredentials() bool {
 	return false
 }
 
-// Sets endpoint credentials for this registry from a reference to a K8s secret
+// SetEndpointCredentials Sets endpoint credentials for this registry from a reference to a K8s secret
 func (ep *RegistryEndpoint) SetEndpointCredentials(kubeClient *kube.KubernetesClient) error {
+	// Use singleflight to prevent concurrent credential fetching for the same registry
+	_, err, _ := credentialGroup.Do(ep.RegistryAPI, func() (interface{}, error) {
+		return nil, ep.setEndpointCredentialsInternal(kubeClient)
+	})
+	return err
+}
+
+// setEndpointCredentialsInternal performs the actual credential fetching
+func (ep *RegistryEndpoint) setEndpointCredentialsInternal(kubeClient *kube.KubernetesClient) error {
 	if ep.expireCredentials() {
 		log.Debugf("expired credentials for registry %s (updated:%s, expiry:%0fs)", ep.RegistryAPI, ep.CredsUpdated, ep.CredsExpire.Seconds())
 	}

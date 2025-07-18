@@ -13,6 +13,7 @@ import (
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
 
 	"go.uber.org/ratelimit"
+	"golang.org/x/sync/singleflight"
 )
 
 // TagListSort defines how the registry returns the list of tags
@@ -116,6 +117,9 @@ var defaultRegistry *RegistryEndpoint
 
 // Simple RW mutex for concurrent access to registries map
 var registryLock sync.RWMutex
+
+// credentialGroup ensures only one credential refresh happens per registry
+var credentialGroup singleflight.Group
 
 func AddRegistryEndpointFromConfig(epc RegistryConfiguration) error {
 	ep := NewRegistryEndpoint(epc.Prefix, epc.Name, epc.ApiURL, epc.Credentials, epc.DefaultNS, epc.Insecure, TagListSortFromString(epc.TagSortMode), epc.Limit, epc.CredsExpire)
