@@ -16,7 +16,7 @@ import (
 
 	"github.com/argoproj-labs/argocd-image-updater/internal/controller"
 
-	"github.com/argoproj/argo-cd/v2/reposerver/askpass"
+	"github.com/argoproj/argo-cd/v2/util/askpass"
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -44,7 +44,6 @@ func newRunCommand() *cobra.Command {
 	var probeAddr string
 	var secureMetrics bool
 	var enableHTTP2 bool
-	var enableWebhooks bool
 	var cfg = &controller.ImageUpdaterConfig{}
 	var once bool
 	var kubeConfig string
@@ -207,7 +206,7 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 
 			var webhookServer webhook.Server
 
-			if enableWebhooks {
+			if cfg.EnableWebhook && cfg.WebhookPort > 0 {
 				setupLogger.Info("enabling webhook server")
 				webhookServer = webhook.NewServer(webhook.Options{
 					TLSOpts: tlsOpts,
@@ -324,7 +323,6 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 	controllerCmd.Flags().StringVar(&leaderElectionNamespace, "leader-election-namespace", "", "The namespace used for the leader election lease. If empty, the controller will use the namespace of the pod it is running in. When running locally this value must be set.")
 	controllerCmd.Flags().BoolVar(&secureMetrics, "metrics-secure", true, "If set, the metrics endpoint is served securely via HTTPS. Use --metrics-secure=false to use HTTP instead.")
 	controllerCmd.Flags().BoolVar(&enableHTTP2, "enable-http2", false, "If set, HTTP/2 will be enabled for the metrics and webhook servers")
-	controllerCmd.Flags().BoolVar(&enableWebhooks, "enable-webhooks", false, "Enable admission webhooks. Requires a valid TLS certificate.")
 	controllerCmd.Flags().StringVar(&cfg.ApplicationsAPIKind, "applications-api", env.GetStringVal("APPLICATIONS_API", common.ApplicationsAPIKindK8S), "API kind that is used to manage Argo CD applications ('kubernetes' or 'argocd')")
 	controllerCmd.Flags().StringVar(&cfg.ClientOpts.ServerAddr, "argocd-server-addr", env.GetStringVal("ARGOCD_SERVER", ""), "address of ArgoCD API server")
 	controllerCmd.Flags().BoolVar(&cfg.ClientOpts.GRPCWeb, "argocd-grpc-web", env.GetBoolVal("ARGOCD_GRPC_WEB", false), "use grpc-web for connection to ArgoCD")
@@ -352,6 +350,8 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 	controllerCmd.Flags().BoolVar(&cfg.GitCommitSignOff, "git-commit-sign-off", env.GetBoolVal("GIT_COMMIT_SIGN_OFF", false), "Whether to sign-off git commits")
 	controllerCmd.Flags().StringVar(&commitMessagePath, "git-commit-message-path", common.DefaultCommitTemplatePath, "Path to a template to use for Git commit messages")
 	controllerCmd.Flags().BoolVar(&cfg.DisableKubeEvents, "disable-kube-events", env.GetBoolVal("IMAGE_UPDATER_KUBE_EVENTS", false), "Disable kubernetes events")
+	controllerCmd.Flags().IntVar(&cfg.WebhookPort, "webhook-port", env.ParseNumFromEnv("WEBHOOK_PORT", 8082, 0, 65535), "Port to start the webhook server on, 0 to disable")
+	controllerCmd.Flags().BoolVar(&cfg.EnableWebhook, "enable-webhook", env.GetBoolVal("ENABLE_WEBHOOK", false), "Enable webhook server for receiving registry events")
 
 	return controllerCmd
 }

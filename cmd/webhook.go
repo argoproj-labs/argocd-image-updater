@@ -7,11 +7,14 @@ import (
 	"syscall"
 
 	"github.com/argoproj-labs/argocd-image-updater/pkg/argocd"
+	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/kube"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/webhook"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
 
 	"github.com/spf13/cobra"
+	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 // WebhookOptions holds the options for the webhook server
@@ -54,7 +57,7 @@ Supported registries:
 	webhookCmd.Flags().StringVar(&webhookOpts.DockerSecret, "docker-secret", "", "Secret for validating Docker Hub webhooks")
 	webhookCmd.Flags().StringVar(&webhookOpts.GHCRSecret, "ghcr-secret", "", "Secret for validating GitHub Container Registry webhooks")
 	webhookCmd.Flags().BoolVar(&webhookOpts.UpdateOnEvent, "update-on-event", true, "Whether to trigger image update checks when webhook events are received")
-	webhookCmd.Flags().StringVar(&webhookOpts.ApplicationsAPIKind, "applications-api", applicationsAPIKindK8S, "API kind that is used to manage Argo CD applications ('kubernetes' or 'argocd')")
+	webhookCmd.Flags().StringVar(&webhookOpts.ApplicationsAPIKind, "applications-api", common.ApplicationsAPIKindK8S, "API kind that is used to manage Argo CD applications ('kubernetes' or 'argocd')")
 	webhookCmd.Flags().StringVar(&webhookOpts.AppNamespace, "application-namespace", "", "namespace where Argo Image Updater will manage applications")
 	webhookCmd.Flags().StringVar(&webhookOpts.ServerAddr, "argocd-server-addr", "", "address of ArgoCD API server")
 	webhookCmd.Flags().BoolVar(&webhookOpts.Insecure, "argocd-insecure", false, "(INSECURE) ignore invalid TLS certs for ArgoCD server")
@@ -75,19 +78,32 @@ func runWebhook() {
 
 	// Create Kubernetes client
 	var kubeClient *kube.ImageUpdaterKubernetesClient
-	kubeClient, err = getKubeConfig(context.TODO(), "", "")
+	kubeClient, err = argocd.GetKubeConfig(context.TODO(), "", "")
 	if err != nil {
 		log.Fatalf("Could not create Kubernetes client: %v", err)
 	}
 
 	// Set up based on application API kind
-	if webhookOpts.ApplicationsAPIKind == applicationsAPIKindK8S {
-		argoClient, err = argocd.NewK8SClient(kubeClient, &argocd.K8SClientOptions{AppNamespace: webhookOpts.AppNamespace})
+	if webhookOpts.ApplicationsAPIKind == common.ApplicationsAPIKindK8S {
+		// Create a new controller-runtime client, which is what the refactored
+		// NewK8SClient function expects.
+		config, err := ctrl.GetConfig()
+		if err != nil {
+			log.Fatalf("could not get k8s config: %v", err)
+		}
+		ctrlClient, err := client.New(config, client.Options{Scheme: scheme})
+		if err != nil {
+			log.Fatalf("could not create controller-runtime client: %v", err)
+		}
+		argoClient, err = argocd.NewK8SClient(ctrlClient)
+		if err != nil {
+			log.Fatalf("Could not create ArgoCD K8s client: %v", err)
+		}
 	} else {
 		// Use defaults if not specified
 		serverAddr := webhookOpts.ServerAddr
 		if serverAddr == "" {
-			serverAddr = defaultArgoCDServerAddr
+			serverAddr = common.DefaultArgoCDServerAddr
 		}
 
 		// Check for auth token from environment if not provided

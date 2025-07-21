@@ -1,6 +1,7 @@
 package webhook
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strings"
@@ -121,7 +122,8 @@ func (s *WebhookServer) processWebhookEvent(event *WebhookEvent) error {
 	defer s.mutex.Unlock()
 
 	// List applications
-	apps, err := s.ArgoClient.ListApplications("")
+	// TODO: recreate this place to list applications properly
+	apps, err := s.ArgoClient.ListApplications(context.Background(), nil, "")
 	if err != nil {
 		return fmt.Errorf("failed to list applications: %w", err)
 	}
