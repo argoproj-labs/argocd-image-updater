@@ -124,7 +124,7 @@ func (endpoint *RegistryEndpoint) GetTags(img *image.ContainerImage, regClient R
 
 		logCtx.Tracef("Getting manifest for image %s:%s (operation %d/%d)", nameInRegistry, tagStr, i, len(tags))
 
-		lockErr := sem.Acquire(context.TODO(), 1)
+		lockErr := sem.Acquire(context.Background(), 1)
 		if lockErr != nil {
 			log.Warnf("could not acquire semaphore: %v", lockErr)
 			wg.Done()
@@ -188,8 +188,17 @@ func (ep *RegistryEndpoint) expireCredentials() bool {
 	return false
 }
 
-// Sets endpoint credentials for this registry from a reference to a K8s secret
+// SetEndpointCredentials Sets endpoint credentials for this registry from a reference to a K8s secret
 func (ep *RegistryEndpoint) SetEndpointCredentials(kubeClient *kube.KubernetesClient) error {
+	// Use singleflight to prevent concurrent credential fetching for the same registry
+	_, err, _ := credentialGroup.Do(ep.RegistryAPI, func() (interface{}, error) {
+		return nil, ep.setEndpointCredentialsInternal(kubeClient)
+	})
+	return err
+}
+
+// setEndpointCredentialsInternal performs the actual credential fetching
+func (ep *RegistryEndpoint) setEndpointCredentialsInternal(kubeClient *kube.KubernetesClient) error {
 	if ep.expireCredentials() {
 		log.Debugf("expired credentials for registry %s (updated:%s, expiry:%0fs)", ep.RegistryAPI, ep.CredsUpdated, ep.CredsExpire.Seconds())
 	}

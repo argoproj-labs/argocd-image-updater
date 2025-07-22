@@ -44,6 +44,7 @@ func newRootCommand() error {
 	rootCmd.AddCommand(newVersionCommand())
 	rootCmd.AddCommand(newTestCommand())
 	rootCmd.AddCommand(newTemplateCommand())
+	rootCmd.AddCommand(NewWebhookCommand())
 	err := rootCmd.Execute()
 	return err
 }
