@@ -1,6 +1,7 @@
 package registry
 
 import (
+	"context"
 	"crypto/tls"
 	"fmt"
 	"math"
@@ -121,9 +122,9 @@ var registryLock sync.RWMutex
 // credentialGroup ensures only one credential refresh happens per registry
 var credentialGroup singleflight.Group
 
-func AddRegistryEndpointFromConfig(epc RegistryConfiguration) error {
+func AddRegistryEndpointFromConfig(ctx context.Context, epc RegistryConfiguration) error {
 	ep := NewRegistryEndpoint(epc.Prefix, epc.Name, epc.ApiURL, epc.Credentials, epc.DefaultNS, epc.Insecure, TagListSortFromString(epc.TagSortMode), epc.Limit, epc.CredsExpire)
-	return AddRegistryEndpoint(ep)
+	return AddRegistryEndpoint(ctx, ep)
 }
 
 // NewRegistryEndpoint returns an endpoint object with the given configuration
@@ -149,8 +150,9 @@ func NewRegistryEndpoint(prefix, name, apiUrl, credentials, defaultNS string, in
 }
 
 // AddRegistryEndpoint adds registry endpoint information with the given details
-func AddRegistryEndpoint(ep *RegistryEndpoint) error {
+func AddRegistryEndpoint(ctx context.Context, ep *RegistryEndpoint) error {
 	prefix := ep.RegistryPrefix
+	logCtx := log.LoggerFromContext(ctx)
 
 	registryLock.Lock()
 	// If the endpoint is supposed to be the default endpoint, make sure that
@@ -164,9 +166,7 @@ func AddRegistryEndpoint(ep *RegistryEndpoint) error {
 	registries[prefix] = ep
 	registryLock.Unlock()
 
-	logCtx := log.WithContext()
-	logCtx.AddField("registry", ep.RegistryAPI)
-	logCtx.AddField("prefix", ep.RegistryPrefix)
+	logCtx = logCtx.WithField("registry", ep.RegistryAPI).WithField("prefix", ep.RegistryPrefix)
 	if ep.limit != RateLimitNone {
 		logCtx.Debugf("setting rate limit to %d requests per second", ep.limit)
 	} else {
@@ -184,7 +184,8 @@ func inferRegistryEndpointFromPrefix(prefix string) *RegistryEndpoint {
 }
 
 // GetRegistryEndpoint retrieves the endpoint information for the given prefix
-func GetRegistryEndpoint(prefix string) (*RegistryEndpoint, error) {
+func GetRegistryEndpoint(ctx context.Context, prefix string) (*RegistryEndpoint, error) {
+	log := log.LoggerFromContext(ctx)
 	if prefix == "" {
 		if defaultRegistry == nil {
 			return nil, fmt.Errorf("no default endpoint configured")
@@ -203,7 +204,7 @@ func GetRegistryEndpoint(prefix string) (*RegistryEndpoint, error) {
 		var err error
 		ep := inferRegistryEndpointFromPrefix(prefix)
 		if ep != nil {
-			err = AddRegistryEndpoint(ep)
+			err = AddRegistryEndpoint(ctx, ep)
 		} else {
 			err = fmt.Errorf("could not infer registry configuration from prefix %s", prefix)
 		}
@@ -238,8 +239,8 @@ func GetDefaultRegistry() *RegistryEndpoint {
 
 // SetRegistryEndpointCredentials allows to change the credentials used for
 // endpoint access for existing RegistryEndpoint configuration
-func SetRegistryEndpointCredentials(prefix, credentials string) error {
-	registry, err := GetRegistryEndpoint(prefix)
+func SetRegistryEndpointCredentials(ctx context.Context, prefix, credentials string) error {
+	registry, err := GetRegistryEndpoint(ctx, prefix)
 	if err != nil {
 		return err
 	}

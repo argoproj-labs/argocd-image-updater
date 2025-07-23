@@ -56,76 +56,82 @@ argocd-image-updater test nginx --semver-constraint v1.17.x
 argocd-image-updater test nginx --allow-tags '^1.19.\d+(\-.*)*$' --update-strategy latest
 `,
 		Run: func(cmd *cobra.Command, args []string) {
+			// Create a root context and logger for the command
+			ctx := context.Background()
+			logger := log.LoggerFromContext(ctx).WithField("command", "test")
+			ctx = log.ContextWithLogger(ctx, logger)
+
 			if len(args) != 1 {
 				cmd.HelpFunc()(cmd, args)
-				log.Fatalf("image needs to be specified")
+				logger.Fatalf("image needs to be specified")
 			}
 
 			if err := log.SetLogLevel(logLevel); err != nil {
-				log.Fatalf("could not set log level to %s: %v", logLevel, err)
+				logger.Fatalf("could not set log level to %s: %v", logLevel, err)
 			}
 
 			var kubeClient *kube.ImageUpdaterKubernetesClient
 			var err error
+
 			if !disableKubernetes {
-				ctx := context.Background()
 				kubeClient, err = argocd.GetKubeConfig(ctx, "", kubeConfig)
 				if err != nil {
-					log.Fatalf("could not create K8s client: %v", err)
+					logger.Fatalf("could not create K8s client: %v", err)
 				}
 			}
 
 			img := image.NewFromIdentifier(args[0])
+
+			fields := img.GetLogFields(img.ImageAlias)
+			imgLogger := logger.WithFields(fields)
+			imgCtx := log.ContextWithLogger(ctx, imgLogger)
 
 			vc := &image.VersionConstraint{
 				Constraint: semverConstraint,
 				Strategy:   image.StrategySemVer,
 			}
 
-			vc.Strategy = img.ParseUpdateStrategy(strategy)
+			vc.Strategy = img.ParseUpdateStrategy(imgCtx, strategy)
 
 			if allowTags != "" {
-				vc.MatchFunc, vc.MatchArgs = img.ParseMatchfunc(allowTags)
+				vc.MatchFunc, vc.MatchArgs = img.ParseMatch(imgCtx, allowTags)
 			}
 
 			vc.IgnoreList = ignoreTags
 
-			logCtx := img.LogContext()
-			logCtx.Infof("retrieving information about image")
+			imgLogger.Infof("retrieving information about image")
 
 			vc.Options = options.NewManifestOptions()
 			for _, platform := range platforms {
 				os, arch, variant, err := image.ParsePlatform(platform)
 				if err != nil {
-					logCtx.Fatalf("Could not parse platform %s: %v", platform, err)
+					imgLogger.Fatalf("Could not parse platform %s: %v", platform, err)
 				}
 				if os != "linux" && os != "windows" {
-					log.Warnf("Target platform is '%s/%s', but that's not a supported container platform. Forgot --platforms?", os, arch)
+					imgLogger.Warnf("Target platform is '%s/%s', but that's not a supported container platform. Forgot --platforms?", os, arch)
 				}
 				vc.Options = vc.Options.WithPlatform(os, arch, variant)
 			}
 			vc.Options = vc.Options.WithMetadata(vc.Strategy.NeedsMetadata())
 
-			vc.Options.WithLogger(logCtx.AddField("application", "test"))
-
 			if registriesConfPath != "" {
-				if err := registry.LoadRegistryConfiguration(registriesConfPath, false); err != nil {
-					logCtx.Fatalf("could not load registries configuration: %v", err)
+				if err := registry.LoadRegistryConfiguration(imgCtx, registriesConfPath, false); err != nil {
+					imgLogger.Fatalf("could not load registries configuration: %v", err)
 				}
 			}
 
-			ep, err := registry.GetRegistryEndpoint(img.RegistryURL)
+			ep, err := registry.GetRegistryEndpoint(imgCtx, img.RegistryURL)
 			if err != nil {
-				logCtx.Fatalf("could not get registry endpoint: %v", err)
+				imgLogger.Fatalf("could not get registry endpoint: %v", err)
 			}
 
-			if err := ep.SetEndpointCredentials(kubeClient.KubeClient); err != nil {
-				logCtx.Fatalf("could not set registry credentials: %v", err)
+			if err := ep.SetEndpointCredentials(imgCtx, kubeClient.KubeClient); err != nil {
+				imgLogger.Fatalf("could not set registry credentials: %v", err)
 			}
 
 			checkFlag := func(f *pflag.Flag) {
 				if f.Name == "rate-limit" {
-					logCtx.Infof("Overriding registry rate-limit to %d requests per second", rateLimit)
+					imgLogger.Infof("Overriding registry rate-limit to %d requests per second", rateLimit)
 					ep.Limiter = ratelimit.New(rateLimit)
 				}
 			}
@@ -137,11 +143,11 @@ argocd-image-updater test nginx --allow-tags '^1.19.\d+(\-.*)*$' --update-strate
 			if credentials != "" {
 				credSrc, err := image.ParseCredentialSource(credentials, false)
 				if err != nil {
-					logCtx.Fatalf("could not parse credential definition '%s': %v", credentials, err)
+					imgLogger.Fatalf("could not parse credential definition '%s': %v", credentials, err)
 				}
-				creds, err = credSrc.FetchCredentials(ep.RegistryAPI, kubeClient.KubeClient)
+				creds, err = credSrc.FetchCredentials(imgCtx, ep.RegistryAPI, kubeClient.KubeClient)
 				if err != nil {
-					logCtx.Fatalf("could not fetch credentials: %v", err)
+					imgLogger.Fatalf("could not fetch credentials: %v", err)
 				}
 				username = creds.Username
 				password = creds.Password
@@ -149,28 +155,28 @@ argocd-image-updater test nginx --allow-tags '^1.19.\d+(\-.*)*$' --update-strate
 
 			regClient, err := registry.NewClient(ep, username, password)
 			if err != nil {
-				logCtx.Fatalf("could not create registry client: %v", err)
+				imgLogger.Fatalf("could not create registry client: %v", err)
 			}
 
-			logCtx.Infof("Fetching available tags and metadata from registry")
+			imgLogger.Infof("Fetching available tags and metadata from registry")
 
-			tags, err := ep.GetTags(img, regClient, vc)
+			tags, err := ep.GetTags(imgCtx, img, regClient, vc)
 			if err != nil {
-				logCtx.Fatalf("could not get tags: %v", err)
+				imgLogger.Fatalf("could not get tags: %v", err)
 			}
 
-			logCtx.Infof("Found %d tags in registry", len(tags.Tags()))
+			imgLogger.Infof("Found %d tags in registry", len(tags.Tags()))
 
-			upImg, err := img.GetNewestVersionFromTags(vc, tags)
+			upImg, err := img.GetNewestVersionFromTags(imgCtx, vc, tags)
 			if err != nil {
-				logCtx.Fatalf("could not get updateable image from tags: %v", err)
+				imgLogger.Fatalf("could not get updateable image from tags: %v", err)
 			}
 			if upImg == nil {
-				logCtx.Infof("no newer version of image found")
+				imgLogger.Infof("no newer version of image found")
 				return
 			}
 
-			logCtx.Infof("latest image according to constraint is %s", img.WithTag(upImg))
+			imgLogger.Infof("latest image according to constraint is %s", img.WithTag(upImg))
 		},
 	}
 

@@ -17,10 +17,10 @@ import (
 	"sigs.k8s.io/kustomize/kyaml/order"
 	kyaml "sigs.k8s.io/kustomize/kyaml/yaml"
 
-	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
-	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/image"
-
 	"github.com/argoproj-labs/argocd-image-updater/ext/git"
+	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
+	iutypes "github.com/argoproj-labs/argocd-image-updater/pkg/types"
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/image"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
 
 	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
@@ -127,7 +127,7 @@ func TemplateBranchName(branchName string, changeList []ChangeEntry) string {
 	}
 }
 
-type changeWriter func(app *v1alpha1.Application, wbc *WriteBackConfig, gitC git.Client) (err error, skip bool)
+type changeWriter func(applicationImages *iutypes.ApplicationImages, wbc *WriteBackConfig, gitC git.Client) (err error, skip bool)
 
 // getWriteBackBranch returns the branch to use for write-back operations.
 // It first checks for a branch specified in annotations, then uses the
@@ -158,9 +158,10 @@ func getWriteBackBranch(app *v1alpha1.Application) string {
 
 // commitChanges commits any changes required for updating one or more images
 // after the UpdateApplication cycle has finished.
-func commitChangesGit(app *v1alpha1.Application, wbc *WriteBackConfig, changeList []ChangeEntry, write changeWriter) error {
+func commitChangesGit(applicationImages *iutypes.ApplicationImages, wbc *WriteBackConfig, changeList []ChangeEntry, write changeWriter) error {
+	app := applicationImages.Application
 	logCtx := log.WithContext().AddField("application", app.GetName())
-	creds, err := wbc.GetCreds(app)
+	creds, err := wbc.GetCreds(&app)
 	if err != nil {
 		return fmt.Errorf("could not get creds for repo '%s': %v", wbc.GitRepo, err)
 	}
@@ -196,7 +197,7 @@ func commitChangesGit(app *v1alpha1.Application, wbc *WriteBackConfig, changeLis
 	if wbc.GitBranch != "" {
 		checkOutBranch = wbc.GitBranch
 	} else {
-		checkOutBranch = getWriteBackBranch(app)
+		checkOutBranch = getWriteBackBranch(&app)
 	}
 	logCtx.Tracef("targetRevision for update is '%s'", checkOutBranch)
 	if checkOutBranch == "" || checkOutBranch == "HEAD" {
@@ -248,7 +249,7 @@ func commitChangesGit(app *v1alpha1.Application, wbc *WriteBackConfig, changeLis
 		return err
 	}
 
-	if err, skip := write(app, wbc, gitC); err != nil {
+	if err, skip := write(applicationImages, wbc, gitC); err != nil {
 		return err
 	} else if skip {
 		return nil
@@ -298,7 +299,8 @@ func commitChangesGit(app *v1alpha1.Application, wbc *WriteBackConfig, changeLis
 	return nil
 }
 
-func writeOverrides(app *v1alpha1.Application, wbc *WriteBackConfig, gitC git.Client) (err error, skip bool) {
+func writeOverrides(applicationImages *iutypes.ApplicationImages, wbc *WriteBackConfig, gitC git.Client) (err error, skip bool) {
+	app := applicationImages.Application
 	logCtx := log.WithContext().AddField("application", app.GetName())
 	targetExists := true
 	targetFile := path.Join(gitC.Root(), wbc.Target)
@@ -321,7 +323,7 @@ func writeOverrides(app *v1alpha1.Application, wbc *WriteBackConfig, gitC git.Cl
 		if err != nil {
 			return err, false
 		}
-		override, err = marshalParamsOverride(app, originalData)
+		override, err = marshalParamsOverride(applicationImages, originalData)
 		if err != nil {
 			return
 		}
@@ -330,7 +332,7 @@ func writeOverrides(app *v1alpha1.Application, wbc *WriteBackConfig, gitC git.Cl
 			return nil, true
 		}
 	} else {
-		override, err = marshalParamsOverride(app, nil)
+		override, err = marshalParamsOverride(applicationImages, nil)
 		if err != nil {
 			return
 		}
@@ -356,7 +358,8 @@ func writeOverrides(app *v1alpha1.Application, wbc *WriteBackConfig, gitC git.Cl
 var _ changeWriter = writeOverrides
 
 // writeKustomization writes any changes required for updating one or more images to a kustomization.yml
-func writeKustomization(app *v1alpha1.Application, wbc *WriteBackConfig, gitC git.Client) (err error, skip bool) {
+func writeKustomization(applicationImages *iutypes.ApplicationImages, wbc *WriteBackConfig, gitC git.Client) (err error, skip bool) {
+	app := applicationImages.Application
 	logCtx := log.WithContext().AddField("application", app.GetName())
 
 	base := filepath.Join(gitC.Root(), wbc.KustomizeBase)
@@ -367,7 +370,7 @@ func writeKustomization(app *v1alpha1.Application, wbc *WriteBackConfig, gitC gi
 	if kustFile == "" {
 		return fmt.Errorf("could not find kustomization in %s", base), false
 	}
-	source := getApplicationSource(app)
+	source := getApplicationSource(&app)
 	if source == nil {
 		return fmt.Errorf("failed to find source for kustomization in %s", base), false
 	}

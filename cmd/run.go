@@ -130,7 +130,7 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 				if err != nil || st.IsDir() {
 					setupLogger.Info("Registry configuration not found or is a directory, using default configuration", "path", cfg.RegistriesConf, "error", err)
 				} else {
-					err = registry.LoadRegistryConfiguration(cfg.RegistriesConf, false)
+					err = registry.LoadRegistryConfiguration(context.Background(), cfg.RegistriesConf, false)
 					if err != nil {
 						setupLogger.Error(err, "could not load registry configuration", "path", cfg.RegistriesConf)
 						return nil
@@ -429,7 +429,7 @@ func (cw *CacheWarmer) Start(ctx context.Context) error {
 		entries := 0
 		eps := registry.ConfiguredEndpoints()
 		for _, ep := range eps {
-			r, err := registry.GetRegistryEndpoint(ep)
+			r, err := registry.GetRegistryEndpoint(ctx, ep)
 			if err == nil {
 				entries += r.Cache.NumEntries()
 			}

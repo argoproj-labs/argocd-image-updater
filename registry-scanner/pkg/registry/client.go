@@ -45,12 +45,14 @@ var knownMediaTypes = []string{
 }
 
 // RegistryClient defines the methods we need for querying container registries
+//
+//go:generate mockery --name RegistryClient --output ./mocks --outpkg mocks
 type RegistryClient interface {
 	NewRepository(nameInRepository string) error
-	Tags() ([]string, error)
-	ManifestForTag(tagStr string) (distribution.Manifest, error)
-	ManifestForDigest(dgst digest.Digest) (distribution.Manifest, error)
-	TagMetadata(manifest distribution.Manifest, opts *options.ManifestOptions) (*tag.TagInfo, error)
+	Tags(ctx context.Context) ([]string, error)
+	ManifestForTag(ctx context.Context, tagStr string) (distribution.Manifest, error)
+	ManifestForDigest(ctx context.Context, dgst digest.Digest) (distribution.Manifest, error)
+	TagMetadata(ctx context.Context, manifest distribution.Manifest, opts *options.ManifestOptions) (*tag.TagInfo, error)
 }
 
 type NewRegistryClient func(*RegistryEndpoint, string, string) (RegistryClient, error)
@@ -152,23 +154,23 @@ func NewClient(endpoint *RegistryEndpoint, username, password string) (RegistryC
 }
 
 // Tags returns a list of tags for given name in repository
-func (clt *registryClient) Tags() ([]string, error) {
-	tagService := clt.regClient.Tags(context.Background())
-	tTags, err := tagService.All(context.Background())
+func (clt *registryClient) Tags(ctx context.Context) ([]string, error) {
+	tagService := clt.regClient.Tags(ctx)
+	tTags, err := tagService.All(ctx)
 	if err != nil {
 		return nil, err
 	}
 	return tTags, nil
 }
 
-// Manifest  returns a Manifest for a given tag in repository
-func (clt *registryClient) ManifestForTag(tagStr string) (distribution.Manifest, error) {
-	manService, err := clt.regClient.Manifests(context.Background())
+// ManifestForTag returns a Manifest for a given tag in repository
+func (clt *registryClient) ManifestForTag(ctx context.Context, tagStr string) (distribution.Manifest, error) {
+	manService, err := clt.regClient.Manifests(ctx)
 	if err != nil {
 		return nil, err
 	}
 	manifest, err := manService.Get(
-		context.Background(),
+		ctx,
 		digest.FromString(tagStr),
 		distribution.WithTag(tagStr), distribution.WithManifestMediaTypes(knownMediaTypes))
 	if err != nil {
@@ -178,13 +180,13 @@ func (clt *registryClient) ManifestForTag(tagStr string) (distribution.Manifest,
 }
 
 // ManifestForDigest  returns a Manifest for a given digest in repository
-func (clt *registryClient) ManifestForDigest(dgst digest.Digest) (distribution.Manifest, error) {
-	manService, err := clt.regClient.Manifests(context.Background())
+func (clt *registryClient) ManifestForDigest(ctx context.Context, dgst digest.Digest) (distribution.Manifest, error) {
+	manService, err := clt.regClient.Manifests(ctx)
 	if err != nil {
 		return nil, err
 	}
 	manifest, err := manService.Get(
-		context.Background(),
+		ctx,
 		dgst,
 		distribution.WithManifestMediaTypes(knownMediaTypes))
 	if err != nil {
@@ -194,9 +196,9 @@ func (clt *registryClient) ManifestForDigest(dgst digest.Digest) (distribution.M
 }
 
 // TagMetadata retrieves metadata for a given manifest of given repository
-func (client *registryClient) TagMetadata(manifest distribution.Manifest, opts *options.ManifestOptions) (*tag.TagInfo, error) {
+func (clt *registryClient) TagMetadata(ctx context.Context, manifest distribution.Manifest, opts *options.ManifestOptions) (*tag.TagInfo, error) {
 	ti := &tag.TagInfo{}
-	logCtx := opts.Logger()
+	logCtx := log.LoggerFromContext(ctx)
 	var info struct {
 		Arch    string `json:"architecture"`
 		Created string `json:"created"`
@@ -258,7 +260,7 @@ func (client *registryClient) TagMetadata(manifest distribution.Manifest, opts *
 
 		logCtx.Tracef("SHA256 of manifest parent is %v", ti.EncodedDigest())
 
-		return TagInfoFromReferences(client, opts, logCtx, ti, list.References())
+		return TagInfoFromReferences(ctx, clt, opts, ti, list.References())
 
 	case *ocischema.DeserializedImageIndex:
 		var index ocischema.DeserializedImageIndex = *deserialized
@@ -278,7 +280,7 @@ func (client *registryClient) TagMetadata(manifest distribution.Manifest, opts *
 
 		logCtx.Tracef("SHA256 of manifest parent is %v", ti.EncodedDigest())
 
-		return TagInfoFromReferences(client, opts, logCtx, ti, index.References())
+		return TagInfoFromReferences(ctx, clt, opts, ti, index.References())
 
 	case *schema2.DeserializedManifest:
 		var man schema2.Manifest = deserialized.Manifest
@@ -294,7 +296,7 @@ func (client *registryClient) TagMetadata(manifest distribution.Manifest, opts *
 
 		// The data we require from a V2 manifest is in a blob that we need to
 		// fetch from the registry.
-		blobReader, err := client.regClient.Blobs(context.Background()).Get(context.Background(), man.Config.Digest)
+		blobReader, err := clt.regClient.Blobs(ctx).Get(ctx, man.Config.Digest)
 		if err != nil {
 			return nil, err
 		}
@@ -326,7 +328,7 @@ func (client *registryClient) TagMetadata(manifest distribution.Manifest, opts *
 
 		// The data we require from a V2 manifest is in a blob that we need to
 		// fetch from the registry.
-		blobReader, err := client.regClient.Blobs(context.Background()).Get(context.Background(), man.Config.Digest)
+		blobReader, err := clt.regClient.Blobs(ctx).Get(ctx, man.Config.Digest)
 		if err != nil {
 			return nil, err
 		}
@@ -354,7 +356,8 @@ func (client *registryClient) TagMetadata(manifest distribution.Manifest, opts *
 // TagInfoFromReferences is a helper method to retrieve metadata for a given
 // list of references. It will return the most recent pushed manifest from the
 // list of references.
-func TagInfoFromReferences(client *registryClient, opts *options.ManifestOptions, logCtx *log.LogContext, ti *tag.TagInfo, references []distribution.Descriptor) (*tag.TagInfo, error) {
+func TagInfoFromReferences(ctx context.Context, client *registryClient, opts *options.ManifestOptions, ti *tag.TagInfo, references []distribution.Descriptor) (*tag.TagInfo, error) {
+	logCtx := log.LoggerFromContext(ctx)
 	var ml []distribution.Descriptor
 	platforms := []string{}
 
@@ -396,12 +399,12 @@ func TagInfoFromReferences(client *registryClient, opts *options.ManifestOptions
 	for _, ref := range ml {
 		logCtx.Tracef("Inspecting metadata of reference: %v", ref.Digest)
 
-		man, err := client.ManifestForDigest(ref.Digest)
+		man, err := client.ManifestForDigest(ctx, ref.Digest)
 		if err != nil {
 			return nil, fmt.Errorf("could not fetch manifest %v: %v", ref.Digest, err)
 		}
 
-		cti, err := client.TagMetadata(man, opts)
+		cti, err := client.TagMetadata(ctx, man, opts)
 		if err != nil {
 			return nil, fmt.Errorf("could not fetch metadata for manifest %v: %v", ref.Digest, err)
 		}

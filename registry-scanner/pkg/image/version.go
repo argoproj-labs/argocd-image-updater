@@ -1,6 +1,7 @@
 package image
 
 import (
+	"context"
 	"path/filepath"
 
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
@@ -10,20 +11,21 @@ import (
 	"github.com/Masterminds/semver/v3"
 )
 
-// VersionSortMode defines the method to sort a list of tags
+// UpdateStrategy defines the method to use for finding the newest version of an image.
 type UpdateStrategy int
 
 const (
-	// VersionSortSemVer sorts tags using semver sorting (the default)
+	// StrategySemVer defines the semver update strategy (the default).
 	StrategySemVer UpdateStrategy = 0
-	// VersionSortLatest sorts tags after their creation date
+	// StrategyNewestBuild defines the newest-build strategy.
 	StrategyNewestBuild UpdateStrategy = 1
-	// VersionSortName sorts tags alphabetically by name
+	// StrategyAlphabetical defines the alphabetical strategy.
 	StrategyAlphabetical UpdateStrategy = 2
-	// VersionSortDigest uses latest digest of an image
+	// StrategyDigest defines the digest strategy.
 	StrategyDigest UpdateStrategy = 3
 )
 
+// String returns the string representation of the update strategy.
 func (us UpdateStrategy) String() string {
 	switch us {
 	case StrategySemVer:
@@ -79,14 +81,13 @@ func NewVersionConstraint() *VersionConstraint {
 // GetNewestVersionFromTags returns the latest available version from a list of
 // tags while optionally taking a semver constraint into account. Returns the
 // original version if no new version could be found from the list of tags.
-func (img *ContainerImage) GetNewestVersionFromTags(vc *VersionConstraint, tagList *tag.ImageTagList) (*tag.ImageTag, error) {
-	logCtx := log.NewContext()
-	logCtx.AddField("image", img.String())
+func (img *ContainerImage) GetNewestVersionFromTags(ctx context.Context, vc *VersionConstraint, tagList *tag.ImageTagList) (*tag.ImageTag, error) {
+	logCtx := log.LoggerFromContext(ctx)
 
 	var availableTags tag.SortableImageTagList
 	switch vc.Strategy {
 	case StrategySemVer:
-		availableTags = tagList.SortBySemVer()
+		availableTags = tagList.SortBySemVer(ctx)
 	case StrategyAlphabetical:
 		availableTags = tagList.SortAlphabetically()
 	case StrategyNewestBuild:
@@ -169,7 +170,8 @@ func (img *ContainerImage) GetNewestVersionFromTags(vc *VersionConstraint, tagLi
 }
 
 // IsTagIgnored matches tag against the patterns in IgnoreList and returns true if one of them matches
-func (vc *VersionConstraint) IsTagIgnored(tag string) bool {
+func (vc *VersionConstraint) IsTagIgnored(ctx context.Context, tag string) bool {
+	log := log.LoggerFromContext(ctx)
 	for _, t := range vc.IgnoreList {
 		if match, err := filepath.Match(t, tag); err == nil && match {
 			log.Tracef("tag %s is ignored by pattern %s", tag, t)
@@ -179,9 +181,9 @@ func (vc *VersionConstraint) IsTagIgnored(tag string) bool {
 	return false
 }
 
-// IsCacheable returns true if we can safely cache tags for strategy s
-func (s UpdateStrategy) IsCacheable() bool {
-	switch s {
+// IsCacheable returns true if we can safely cache tags for strategy us
+func (us UpdateStrategy) IsCacheable() bool {
+	switch us {
 	case StrategyDigest:
 		return false
 	default:
@@ -189,9 +191,9 @@ func (s UpdateStrategy) IsCacheable() bool {
 	}
 }
 
-// NeedsMetadata returns true if strategy s requires image metadata to work correctly
-func (s UpdateStrategy) NeedsMetadata() bool {
-	switch s {
+// NeedsMetadata returns true if strategy us requires image metadata to work correctly
+func (us UpdateStrategy) NeedsMetadata() bool {
+	switch us {
 	case StrategyNewestBuild:
 		return true
 	default:
@@ -199,9 +201,9 @@ func (s UpdateStrategy) NeedsMetadata() bool {
 	}
 }
 
-// NeedsVersionConstraint returns true if strategy s requires a version constraint to be defined
-func (s UpdateStrategy) NeedsVersionConstraint() bool {
-	switch s {
+// NeedsVersionConstraint returns true if strategy us requires a version constraint to be defined
+func (us UpdateStrategy) NeedsVersionConstraint() bool {
+	switch us {
 	case StrategyDigest:
 		return true
 	default:
@@ -209,9 +211,9 @@ func (s UpdateStrategy) NeedsVersionConstraint() bool {
 	}
 }
 
-// WantsOnlyConstraintTag returns true if strategy s only wants to inspect the tag specified by the constraint
-func (s UpdateStrategy) WantsOnlyConstraintTag() bool {
-	switch s {
+// WantsOnlyConstraintTag returns true if strategy us only wants to inspect the tag specified by the constraint
+func (us UpdateStrategy) WantsOnlyConstraintTag() bool {
+	switch us {
 	case StrategyDigest:
 		return true
 	default:
