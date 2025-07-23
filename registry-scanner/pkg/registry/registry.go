@@ -27,17 +27,17 @@ const (
 )
 
 // GetTags returns a list of available tags for the given image
-func (endpoint *RegistryEndpoint) GetTags(img *image.ContainerImage, regClient RegistryClient, vc *image.VersionConstraint) (*tag.ImageTagList, error) {
+func (ep *RegistryEndpoint) GetTags(ctx context.Context, img *image.ContainerImage, regClient RegistryClient, vc *image.VersionConstraint) (*tag.ImageTagList, error) {
 	var tagList *tag.ImageTagList = tag.NewImageTagList()
 	var err error
 
-	logCtx := vc.Options.Logger()
+	logCtx := log.LoggerFromContext(ctx)
 
 	// Some registries have a default namespace that is used when the image name
 	// doesn't specify one. For example at Docker Hub, this is 'library'.
 	var nameInRegistry string
-	if len := len(strings.Split(img.ImageName, "/")); len == 1 && endpoint.DefaultNS != "" {
-		nameInRegistry = endpoint.DefaultNS + "/" + img.ImageName
+	if len := len(strings.Split(img.ImageName, "/")); len == 1 && ep.DefaultNS != "" {
+		nameInRegistry = ep.DefaultNS + "/" + img.ImageName
 		logCtx.Debugf("Using canonical image name '%s' for image '%s'", nameInRegistry, img.ImageName)
 	} else {
 		nameInRegistry = img.ImageName
@@ -46,7 +46,7 @@ func (endpoint *RegistryEndpoint) GetTags(img *image.ContainerImage, regClient R
 	if err != nil {
 		return nil, err
 	}
-	tTags, err := regClient.Tags()
+	tTags, err := regClient.Tags(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -62,7 +62,7 @@ func (endpoint *RegistryEndpoint) GetTags(img *image.ContainerImage, regClient R
 	// digest, all but the constraint tag are ignored.
 	if vc.MatchFunc != nil || len(vc.IgnoreList) > 0 || vc.Strategy.WantsOnlyConstraintTag() {
 		for _, t := range tTags {
-			if (vc.MatchFunc != nil && !vc.MatchFunc(t, vc.MatchArgs)) || vc.IsTagIgnored(t) || (vc.Strategy.WantsOnlyConstraintTag() && t != vc.Constraint) {
+			if (vc.MatchFunc != nil && !vc.MatchFunc(t, vc.MatchArgs)) || vc.IsTagIgnored(ctx, t) || (vc.Strategy.WantsOnlyConstraintTag() && t != vc.Constraint) {
 				logCtx.Tracef("Removing tag %s because it either didn't match defined pattern or is ignored", t)
 			} else {
 				tags = append(tags, t)
@@ -80,12 +80,12 @@ func (endpoint *RegistryEndpoint) GetTags(img *image.ContainerImage, regClient R
 	//
 	// We just create a dummy time stamp according to the registry's sort mode, if
 	// set.
-	if (vc.Strategy != image.StrategyNewestBuild && vc.Strategy != image.StrategyDigest) || endpoint.TagListSort.IsTimeSorted() {
+	if (vc.Strategy != image.StrategyNewestBuild && vc.Strategy != image.StrategyDigest) || ep.TagListSort.IsTimeSorted() {
 		for i, tagStr := range tags {
 			var ts int
-			if endpoint.TagListSort == TagListSortLatestFirst {
+			if ep.TagListSort == TagListSortLatestFirst {
 				ts = len(tags) - i
-			} else if endpoint.TagListSort == TagListSortLatestLast {
+			} else if ep.TagListSort == TagListSortLatestLast {
 				ts = i
 			}
 			imgTag := tag.NewImageTag(tagStr, time.Unix(int64(ts), 0), "")
@@ -109,7 +109,7 @@ func (endpoint *RegistryEndpoint) GetTags(img *image.ContainerImage, regClient R
 		// an error, we treat it as a cache miss and just go ahead to invalidate
 		// the entry.
 		if vc.Strategy.IsCacheable() {
-			imgTag, err := endpoint.Cache.GetTag(nameInRegistry, tagStr)
+			imgTag, err := ep.Cache.GetTag(nameInRegistry, tagStr)
 			if err != nil {
 				log.Warnf("invalid entry for %s:%s in cache, invalidating.", nameInRegistry, imgTag.TagName)
 			} else if imgTag != nil {
@@ -124,9 +124,9 @@ func (endpoint *RegistryEndpoint) GetTags(img *image.ContainerImage, regClient R
 
 		logCtx.Tracef("Getting manifest for image %s:%s (operation %d/%d)", nameInRegistry, tagStr, i, len(tags))
 
-		lockErr := sem.Acquire(context.Background(), 1)
+		lockErr := sem.Acquire(ctx, 1)
 		if lockErr != nil {
-			log.Warnf("could not acquire semaphore: %v", lockErr)
+			logCtx.Warnf("could not acquire semaphore: %v", lockErr)
 			wg.Done()
 			continue
 		}
@@ -136,7 +136,7 @@ func (endpoint *RegistryEndpoint) GetTags(img *image.ContainerImage, regClient R
 			defer func() {
 				sem.Release(1)
 				wg.Done()
-				log.Tracef("released semaphore and terminated waitgroup")
+				logCtx.Tracef("released semaphore and terminated waitgroup")
 			}()
 
 			var ml distribution.Manifest
@@ -144,14 +144,14 @@ func (endpoint *RegistryEndpoint) GetTags(img *image.ContainerImage, regClient R
 
 			// We first try to fetch a V2 manifest, and if that's not available we fall
 			// back to fetching V1 manifest. If that fails also, we just skip this tag.
-			if ml, err = regClient.ManifestForTag(tagStr); err != nil {
+			if ml, err = regClient.ManifestForTag(ctx, tagStr); err != nil {
 				logCtx.Errorf("Error fetching metadata for %s:%s - neither V1 or V2 or OCI manifest returned by registry: %v", nameInRegistry, tagStr, err)
 				return
 			}
 
 			// Parse required meta data from the manifest. The metadata contains all
 			// information needed to decide whether to consider this tag or not.
-			ti, err := regClient.TagMetadata(ml, vc.Options)
+			ti, err := regClient.TagMetadata(ctx, ml, vc.Options)
 			if err != nil {
 				logCtx.Errorf("error fetching metadata for %s:%s: %v", nameInRegistry, tagStr, err)
 				return
@@ -171,7 +171,7 @@ func (endpoint *RegistryEndpoint) GetTags(img *image.ContainerImage, regClient R
 			tagListLock.Lock()
 			tagList.Add(imgTag)
 			tagListLock.Unlock()
-			endpoint.Cache.SetTag(nameInRegistry, imgTag)
+			ep.Cache.SetTag(nameInRegistry, imgTag)
 		}(tagStr)
 	}
 
@@ -189,18 +189,19 @@ func (ep *RegistryEndpoint) expireCredentials() bool {
 }
 
 // SetEndpointCredentials Sets endpoint credentials for this registry from a reference to a K8s secret
-func (ep *RegistryEndpoint) SetEndpointCredentials(kubeClient *kube.KubernetesClient) error {
+func (ep *RegistryEndpoint) SetEndpointCredentials(ctx context.Context, kubeClient *kube.KubernetesClient) error {
 	// Use singleflight to prevent concurrent credential fetching for the same registry
 	_, err, _ := credentialGroup.Do(ep.RegistryAPI, func() (interface{}, error) {
-		return nil, ep.setEndpointCredentialsInternal(kubeClient)
+		return nil, ep.setEndpointCredentialsInternal(ctx, kubeClient)
 	})
 	return err
 }
 
 // setEndpointCredentialsInternal performs the actual credential fetching
-func (ep *RegistryEndpoint) setEndpointCredentialsInternal(kubeClient *kube.KubernetesClient) error {
+func (ep *RegistryEndpoint) setEndpointCredentialsInternal(ctx context.Context, kubeClient *kube.KubernetesClient) error {
+	baseLogger := log.LoggerFromContext(ctx)
 	if ep.expireCredentials() {
-		log.Debugf("expired credentials for registry %s (updated:%s, expiry:%0fs)", ep.RegistryAPI, ep.CredsUpdated, ep.CredsExpire.Seconds())
+		baseLogger.Debugf("expired credentials for registry %s (updated:%s, expiry:%0fs)", ep.RegistryAPI, ep.CredsUpdated, ep.CredsExpire.Seconds())
 	}
 	if ep.Username == "" && ep.Password == "" && ep.Credentials != "" {
 		credSrc, err := image.ParseCredentialSource(ep.Credentials, false)
@@ -210,13 +211,12 @@ func (ep *RegistryEndpoint) setEndpointCredentialsInternal(kubeClient *kube.Kube
 
 		// For fetching credentials, we must have working Kubernetes client.
 		if (credSrc.Type == image.CredentialSourcePullSecret || credSrc.Type == image.CredentialSourceSecret) && kubeClient == nil {
-			log.WithContext().
-				AddField("registry", ep.RegistryAPI).
-				Warnf("cannot use K8s credentials without Kubernetes client")
+			logger := log.ContextWithLogger(ctx, baseLogger.WithField("registry", ep.RegistryAPI))
+			log.LoggerFromContext(logger).Warnf("cannot use K8s credentials without Kubernetes client")
 			return fmt.Errorf("could not fetch image tags")
 		}
 
-		creds, err := credSrc.FetchCredentials(ep.RegistryAPI, kubeClient)
+		creds, err := credSrc.FetchCredentials(ctx, ep.RegistryAPI, kubeClient)
 		if err != nil {
 			return err
 		}

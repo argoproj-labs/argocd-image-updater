@@ -1,7 +1,9 @@
 package image
 
 import (
+	"context"
 	"fmt"
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
 	"regexp"
 	"runtime"
 	"strings"
@@ -92,11 +94,11 @@ func (img *ContainerImage) GetParameterUpdateStrategy(annotations map[string]str
 		return StrategySemVer
 	}
 	logCtx.Tracef("Found update strategy %s", updateStrategyVal)
-	return img.ParseUpdateStrategy(updateStrategyVal)
+	return img.ParseUpdateStrategy(context.Background(), updateStrategyVal)
 }
 
-func (img *ContainerImage) ParseUpdateStrategy(val string) UpdateStrategy {
-	logCtx := img.LogContext()
+func (img *ContainerImage) ParseUpdateStrategy(ctx context.Context, val string) UpdateStrategy {
+	logCtx := log.LoggerFromContext(ctx)
 	switch strings.ToLower(val) {
 	case "semver":
 		return StrategySemVer
@@ -148,12 +150,17 @@ func (img *ContainerImage) GetParameterMatch(annotations map[string]string, anno
 		logCtx.Tracef("No match annotation found")
 		return MatchFuncAny, ""
 	}
-	return img.ParseMatchfunc(allowTagsVal)
+	return img.ParseMatch(context.Background(), allowTagsVal)
 }
 
-// ParseMatchfunc returns a matcher function and its argument from given value
-func (img *ContainerImage) ParseMatchfunc(val string) (MatchFuncFn, interface{}) {
-	logCtx := img.LogContext()
+// ParseMatch returns a matcher function and its argument from given value
+func (img *ContainerImage) ParseMatch(ctx context.Context, val string) (MatchFuncFn, interface{}) {
+	log := log.LoggerFromContext(ctx)
+
+	if val == "" {
+		log.Tracef("No tag match constraint found, allowing all tags")
+		return MatchFuncAny, ""
+	}
 
 	// The special value "any" doesn't take any parameter
 	if strings.ToLower(val) == "any" {
@@ -162,47 +169,21 @@ func (img *ContainerImage) ParseMatchfunc(val string) (MatchFuncFn, interface{})
 
 	opt := strings.SplitN(val, ":", 2)
 	if len(opt) != 2 {
-		logCtx.Warnf("Invalid match option syntax '%s', ignoring", val)
+		log.Warnf("Invalid match option syntax '%s', ignoring", val)
 		return MatchFuncNone, nil
 	}
 	switch strings.ToLower(opt[0]) {
 	case "regexp":
 		re, err := regexp.Compile(opt[1])
 		if err != nil {
-			logCtx.Warnf("Could not compile regexp '%s'", opt[1])
+			log.Warnf("Could not compile regexp '%s'", opt[1])
 			return MatchFuncNone, nil
 		}
 		return MatchFuncRegexp, re
 	default:
-		logCtx.Warnf("Unknown match function: %s", opt[0])
+		log.Warnf("Unknown match function: %s", opt[0])
 		return MatchFuncNone, nil
 	}
-}
-
-// GetParameterPullSecret retrieves an image's pull secret credentials
-func (img *ContainerImage) GetParameterPullSecret(annotations map[string]string, annotationPrefix string) *CredentialSource {
-	pullSecretAnnotations := []string{
-		fmt.Sprintf(common.Prefixed(annotationPrefix, common.PullSecretAnnotationSuffix), img.normalizedSymbolicName()),
-		common.Prefixed(annotationPrefix, common.ApplicationWidePullSecretAnnotationSuffix),
-	}
-	var pullSecretVal = ""
-	for _, key := range pullSecretAnnotations {
-		if val, ok := annotations[key]; ok {
-			pullSecretVal = val
-			break
-		}
-	}
-	logCtx := img.LogContext()
-	if pullSecretVal == "" {
-		logCtx.Tracef("No pull-secret annotation found")
-		return nil
-	}
-	credSrc, err := ParseCredentialSource(pullSecretVal, false)
-	if err != nil {
-		logCtx.Warnf("Invalid credential reference specified: %s", pullSecretVal)
-		return nil
-	}
-	return credSrc
 }
 
 // GetParameterIgnoreTags retrieves a list of tags to ignore from a comma-separated string
@@ -239,12 +220,10 @@ func (img *ContainerImage) GetParameterIgnoreTags(annotations map[string]string,
 // is specified in the annotations, we restrict the platform for images to the
 // platform we're executed on unless unrestricted is set to true, in which case
 // we do not setup a platform restriction if no platform annotation is found.
-func (img *ContainerImage) GetPlatformOptions(annotations map[string]string, unrestricted bool, annotationPrefix string) *options.ManifestOptions {
-	logCtx := img.LogContext()
+func (img *ContainerImage) GetPlatformOptions(ctx context.Context, unrestricted bool, platforms []string) *options.ManifestOptions {
+	log := log.LoggerFromContext(ctx)
 	var opts *options.ManifestOptions = options.NewManifestOptions()
-	key := fmt.Sprintf(common.Prefixed(annotationPrefix, common.PlatformsAnnotationSuffix), img.normalizedSymbolicName())
-	val, ok := annotations[key]
-	if !ok {
+	if platforms == nil || len(platforms) == 0 {
 		if !unrestricted {
 			os := runtime.GOOS
 			arch := runtime.GOARCH
@@ -254,11 +233,10 @@ func (img *ContainerImage) GetPlatformOptions(annotations map[string]string, unr
 				arch = a[0]
 				variant = a[1]
 			}
-			logCtx.Tracef("Using runtime platform constraint %s", options.PlatformKey(os, arch, variant))
+			log.Tracef("Using runtime platform constraint %s", options.PlatformKey(os, arch, variant))
 			opts = opts.WithPlatform(os, arch, variant)
 		}
 	} else {
-		platforms := strings.Split(val, ",")
 		for _, ps := range platforms {
 			pt := strings.TrimSpace(ps)
 			os, arch, variant, err := ParsePlatform(pt)
@@ -267,9 +245,9 @@ func (img *ContainerImage) GetPlatformOptions(annotations map[string]string, unr
 				// constraint intentionally to the invalid value so we don't
 				// end up updating to the wrong architecture possibly.
 				os = ps
-				logCtx.Warnf("could not parse platform identifier '%v': invalid format", pt)
+				log.Warnf("could not parse platform identifier '%v': invalid format", pt)
 			}
-			logCtx.Tracef("Adding platform constraint %s", options.PlatformKey(os, arch, variant))
+			log.Tracef("Adding platform constraint %s", options.PlatformKey(os, arch, variant))
 			opts = opts.WithPlatform(os, arch, variant)
 		}
 	}

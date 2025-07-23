@@ -1,6 +1,7 @@
 package argocd
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -16,6 +17,7 @@ import (
 	argomock "github.com/argoproj-labs/argocd-image-updater/pkg/argocd/mocks"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/kube"
+	iutypes "github.com/argoproj-labs/argocd-image-updater/pkg/types"
 	registryCommon "github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/common"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/image"
 	registryKube "github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/kube"
@@ -54,7 +56,13 @@ func Test_UpdateApplication(t *testing.T) {
 		annotations := map[string]string{
 			common.ImageUpdaterAnnotation: "foobar=gcr.io/jannfis/foobar:>=1.0.1,foobar=gcr.io/jannfis/barbar:>=1.0.1",
 		}
-		appImages := &ApplicationImages{
+
+		imageList := iutypes.ImageList{
+			iutypes.NewImage(image.NewFromIdentifier("foobar=gcr.io/jannfis/foobar:>=1.0.1")),
+			iutypes.NewImage(image.NewFromIdentifier("foobar=gcr.io/jannfis/barbar:>=1.0.1")),
+		}
+
+		appImages := &iutypes.ApplicationImages{
 			Application: v1alpha1.Application{
 				ObjectMeta: v1.ObjectMeta{
 					Name:        "guestbook",
@@ -81,9 +89,9 @@ func Test_UpdateApplication(t *testing.T) {
 					},
 				},
 			},
-			Images: *parseImageList(annotations),
+			Images: imageList,
 		}
-		res := UpdateApplication(&UpdateConfiguration{
+		res := UpdateApplication(context.Background(), &UpdateConfiguration{
 			NewRegFN:   mockClientFn,
 			ArgoClient: &argoClient,
 			KubeClient: &kubeClient,
@@ -125,7 +133,10 @@ func Test_UpdateApplication(t *testing.T) {
 			common.ImageUpdaterAnnotation:    "foo=gcr.io/jannfis/foobar:>=1.0.1",
 			common.WriteBackMethodAnnotation: "git:secret:argocd-image-updater/git-creds",
 		}
-		appImages := &ApplicationImages{
+		imageList := iutypes.ImageList{
+			iutypes.NewImage(image.NewFromIdentifier("foo=gcr.io/jannfis/foobar:>=1.0.1")),
+		}
+		appImages := &iutypes.ApplicationImages{
 			Application: v1alpha1.Application{
 				ObjectMeta: v1.ObjectMeta{
 					Name:        "guestbook",
@@ -152,9 +163,9 @@ func Test_UpdateApplication(t *testing.T) {
 					},
 				},
 			},
-			Images: *parseImageList(annotations),
+			Images: imageList,
 		}
-		res := UpdateApplication(&UpdateConfiguration{
+		res := UpdateApplication(context.Background(), &UpdateConfiguration{
 			NewRegFN:   mockClientFn,
 			ArgoClient: &argoClient,
 			KubeClient: &kubeClient,
@@ -176,7 +187,7 @@ func Test_UpdateApplication(t *testing.T) {
 			regMock.On("NewRepository", mock.MatchedBy(func(s string) bool {
 				return s == "jannfis/foobar"
 			})).Return(nil)
-			regMock.On("Tags").Return([]string{"1.0.1"}, nil)
+			regMock.On("Tags", mock.Anything).Return([]string{"1.0.1"}, nil)
 			return &regMock, nil
 		}
 
@@ -185,7 +196,7 @@ func Test_UpdateApplication(t *testing.T) {
 				Clientset: fake.NewFakeKubeClient(),
 			},
 		}
-		appImages := &ApplicationImages{
+		appImages := &iutypes.ApplicationImages{
 			Application: v1alpha1.Application{
 				ObjectMeta: v1.ObjectMeta{
 					Name:      "guestbook",
@@ -209,8 +220,8 @@ func Test_UpdateApplication(t *testing.T) {
 					},
 				},
 			},
-			Images: image.ContainerImageList{
-				image.NewFromIdentifier("jannfis/foobar:~1.0.0"),
+			Images: iutypes.ImageList{
+				iutypes.NewImage(image.NewFromIdentifier("jannfis/foobar:~1.0.0")),
 			},
 		}
 
@@ -221,7 +232,7 @@ func Test_UpdateApplication(t *testing.T) {
 			Spec:         &appImages.Application.Spec,
 		}).Return(nil, nil)
 
-		res := UpdateApplication(&UpdateConfiguration{
+		res := UpdateApplication(context.Background(), &UpdateConfiguration{
 			NewRegFN:   mockClientFn,
 			ArgoClient: &argoClient,
 			KubeClient: &kubeClient,
@@ -241,7 +252,7 @@ func Test_UpdateApplication(t *testing.T) {
 			regMock.On("NewRepository", mock.MatchedBy(func(s string) bool {
 				return s == "jannfis/foobar" || s == "jannfis/barbar"
 			})).Return(nil)
-			regMock.On("Tags").Return([]string{"1.0.1"}, nil)
+			regMock.On("Tags", mock.Anything).Return([]string{"1.0.1"}, nil)
 			return &regMock, nil
 		}
 
@@ -253,7 +264,7 @@ func Test_UpdateApplication(t *testing.T) {
 				Clientset: fake.NewFakeKubeClient(),
 			},
 		}
-		appImages := &ApplicationImages{
+		appImages := &iutypes.ApplicationImages{
 			Application: v1alpha1.Application{
 				ObjectMeta: v1.ObjectMeta{
 					Name:      "guestbook",
@@ -279,12 +290,14 @@ func Test_UpdateApplication(t *testing.T) {
 					},
 				},
 			},
-			Images: image.ContainerImageList{
-				image.NewFromIdentifier("jannfis/foobar:~1.0.0"),
-				image.NewFromIdentifier("jannfis/barbar:~1.0.0"),
+			Images: iutypes.ImageList{
+				iutypes.NewImage(
+					image.NewFromIdentifier("jannfis/foobar:~1.0.0")),
+				iutypes.NewImage(
+					image.NewFromIdentifier("jannfis/barbar:~1.0.0")),
 			},
 		}
-		res := UpdateApplication(&UpdateConfiguration{
+		res := UpdateApplication(context.Background(), &UpdateConfiguration{
 			NewRegFN:   mockClientFn,
 			ArgoClient: &argoClient,
 			KubeClient: &kubeClient,
@@ -305,7 +318,7 @@ func Test_UpdateApplication(t *testing.T) {
 			regMock.On("NewRepository", mock.MatchedBy(func(s string) bool {
 				return s == "jannfis/foobar"
 			})).Return(nil)
-			regMock.On("Tags").Return([]string{"1.0.1"}, nil)
+			regMock.On("Tags", mock.Anything).Return([]string{"1.0.1"}, nil)
 			return &regMock, nil
 		}
 
@@ -317,16 +330,27 @@ func Test_UpdateApplication(t *testing.T) {
 				Clientset: fake.NewFakeKubeClient(),
 			},
 		}
-		appImages := &ApplicationImages{
+		// Define annotations once to be used for both the application and parsing
+		annotations := map[string]string{
+			"argocd-image-updater.argoproj.io/image-list":                  "foobar=quay.io/jannfis/foobar:~1.0.0",
+			"argocd-image-updater.argoproj.io/foobar.kustomize.image-name": "jannfis/foobar",
+			"argocd-image-updater.argoproj.io/foobar.force-update":         "true",
+		}
+
+		containerImg := image.NewFromIdentifier("foobar=quay.io/jannfis/foobar:~1.0.0")
+		kustomizeImageName := containerImg.GetParameterKustomizeImageName(annotations, common.ImageUpdaterAnnotationPrefix)
+		containerImg.KustomizeImage = image.NewFromIdentifier(kustomizeImageName)
+		iuImg := iutypes.NewImage(containerImg)
+		iuImg.ForceUpdate = containerImg.HasForceUpdateOptionAnnotation(annotations, common.ImageUpdaterAnnotationPrefix)
+
+		imageList := iutypes.ImageList{iuImg}
+
+		appImages := &iutypes.ApplicationImages{
 			Application: v1alpha1.Application{
 				ObjectMeta: v1.ObjectMeta{
-					Name:      "guestbook",
-					Namespace: "guestbook",
-					Annotations: map[string]string{
-						"argocd-image-updater.argoproj.io/image-list":                  "foobar=quay.io/jannfis/foobar:~1.0.0",
-						"argocd-image-updater.argoproj.io/foobar.kustomize.image-name": "jannfis/foobar",
-						"argocd-image-updater.argoproj.io/foobar.force-update":         "true",
-					},
+					Name:        "guestbook",
+					Namespace:   "guestbook",
+					Annotations: annotations,
 				},
 				Spec: v1alpha1.ApplicationSpec{
 					Source: &v1alpha1.ApplicationSource{
@@ -346,11 +370,9 @@ func Test_UpdateApplication(t *testing.T) {
 					},
 				},
 			},
-			Images: image.ContainerImageList{
-				image.NewFromIdentifier("quay.io/jannfis/foobar"),
-			},
+			Images: imageList,
 		}
-		res := UpdateApplication(&UpdateConfiguration{
+		res := UpdateApplication(context.Background(), &UpdateConfiguration{
 			NewRegFN:   mockClientFn,
 			ArgoClient: &argoClient,
 			KubeClient: &kubeClient,
@@ -371,7 +393,7 @@ func Test_UpdateApplication(t *testing.T) {
 			regMock.On("NewRepository", mock.MatchedBy(func(s string) bool {
 				return s == "someorg/foobar"
 			})).Return(nil)
-			regMock.On("Tags").Return([]string{"1.0.1"}, nil)
+			regMock.On("Tags", mock.Anything).Return([]string{"1.0.1"}, nil)
 			return &regMock, nil
 		}
 
@@ -383,16 +405,25 @@ func Test_UpdateApplication(t *testing.T) {
 				Clientset: fake.NewFakeKubeClient(),
 			},
 		}
-		appImages := &ApplicationImages{
+		// Define annotations once to be used for both the application and parsing
+		annotations := map[string]string{
+			"argocd-image-updater.argoproj.io/image-list":                  "foobar=quay.io/someorg/foobar:~1.0.0",
+			"argocd-image-updater.argoproj.io/foobar.kustomize.image-name": "jannfis/foobar",
+			"argocd-image-updater.argoproj.io/foobar.force-update":         "true",
+		}
+		containerImg := image.NewFromIdentifier("foobar=quay.io/someorg/foobar:~1.0.0")
+		kustomizeImageName := containerImg.GetParameterKustomizeImageName(annotations, common.ImageUpdaterAnnotationPrefix)
+		containerImg.KustomizeImage = image.NewFromIdentifier(kustomizeImageName)
+		iuImg := iutypes.NewImage(containerImg)
+		iuImg.ForceUpdate = containerImg.HasForceUpdateOptionAnnotation(annotations, common.ImageUpdaterAnnotationPrefix)
+
+		imageList := iutypes.ImageList{iuImg}
+		appImages := &iutypes.ApplicationImages{
 			Application: v1alpha1.Application{
 				ObjectMeta: v1.ObjectMeta{
-					Name:      "guestbook",
-					Namespace: "guestbook",
-					Annotations: map[string]string{
-						"argocd-image-updater.argoproj.io/image-list":                  "foobar=quay.io/someorg/foobar:~1.0.0",
-						"argocd-image-updater.argoproj.io/foobar.kustomize.image-name": "jannfis/foobar",
-						"argocd-image-updater.argoproj.io/foobar.force-update":         "true",
-					},
+					Name:        "guestbook",
+					Namespace:   "guestbook",
+					Annotations: annotations,
 				},
 				Spec: v1alpha1.ApplicationSpec{
 					Source: &v1alpha1.ApplicationSource{
@@ -412,11 +443,9 @@ func Test_UpdateApplication(t *testing.T) {
 					},
 				},
 			},
-			Images: image.ContainerImageList{
-				image.NewFromIdentifier("quay.io/someorg/foobar"),
-			},
+			Images: imageList,
 		}
-		res := UpdateApplication(&UpdateConfiguration{
+		res := UpdateApplication(context.Background(), &UpdateConfiguration{
 			NewRegFN:   mockClientFn,
 			ArgoClient: &argoClient,
 			KubeClient: &kubeClient,
@@ -446,7 +475,7 @@ func Test_UpdateApplication(t *testing.T) {
 				Clientset: fake.NewFakeKubeClient(),
 			},
 		}
-		appImages := &ApplicationImages{
+		appImages := &iutypes.ApplicationImages{
 			Application: v1alpha1.Application{
 				ObjectMeta: v1.ObjectMeta{
 					Name:      "guestbook",
@@ -470,11 +499,12 @@ func Test_UpdateApplication(t *testing.T) {
 					},
 				},
 			},
-			Images: image.ContainerImageList{
-				image.NewFromIdentifier("jannfis/foobar:1.0.x"),
+			Images: iutypes.ImageList{
+				iutypes.NewImage(
+					image.NewFromIdentifier("jannfis/foobar:1.0.x")),
 			},
 		}
-		res := UpdateApplication(&UpdateConfiguration{
+		res := UpdateApplication(context.Background(), &UpdateConfiguration{
 			NewRegFN:   mockClientFn,
 			ArgoClient: &argoClient,
 			KubeClient: &kubeClient,
@@ -506,14 +536,15 @@ func Test_UpdateApplication(t *testing.T) {
 				Clientset: fake.NewFakeClientsetWithResources(fixture.NewSecret("foo", "bar", map[string][]byte{"creds": []byte("myuser:mypass")})),
 			},
 		}
-		appImages := &ApplicationImages{
+
+		img := iutypes.NewImage(image.NewFromIdentifier("dummy=jannfis/foobar:1.0.1"))
+		img.PullSecret = "secret:foo/bar#creds"
+
+		appImages := &iutypes.ApplicationImages{
 			Application: v1alpha1.Application{
 				ObjectMeta: v1.ObjectMeta{
 					Name:      "guestbook",
 					Namespace: "guestbook",
-					Annotations: map[string]string{
-						fmt.Sprintf(registryCommon.Prefixed(common.ImageUpdaterAnnotationPrefix, registryCommon.PullSecretAnnotationSuffix), "dummy"): "secret:foo/bar#creds",
-					},
 				},
 				Spec: v1alpha1.ApplicationSpec{
 					Source: &v1alpha1.ApplicationSource{
@@ -533,11 +564,9 @@ func Test_UpdateApplication(t *testing.T) {
 					},
 				},
 			},
-			Images: image.ContainerImageList{
-				image.NewFromIdentifier("dummy=jannfis/foobar:1.0.1"),
-			},
+			Images: iutypes.ImageList{img},
 		}
-		res := UpdateApplication(&UpdateConfiguration{
+		res := UpdateApplication(context.Background(), &UpdateConfiguration{
 			NewRegFN:   mockClientFn,
 			ArgoClient: &argoClient,
 			KubeClient: &kubeClient,
@@ -566,7 +595,7 @@ func Test_UpdateApplication(t *testing.T) {
 				Clientset: fake.NewFakeKubeClient(),
 			},
 		}
-		appImages := &ApplicationImages{
+		appImages := &iutypes.ApplicationImages{
 			Application: v1alpha1.Application{
 				ObjectMeta: v1.ObjectMeta{
 					Name:      "guestbook",
@@ -590,11 +619,12 @@ func Test_UpdateApplication(t *testing.T) {
 					},
 				},
 			},
-			Images: image.ContainerImageList{
-				image.NewFromIdentifier("jannfis/barbar:1.0.1"),
+			Images: iutypes.ImageList{
+				iutypes.NewImage(
+					image.NewFromIdentifier("jannfis/barbar:1.0.1")),
 			},
 		}
-		res := UpdateApplication(&UpdateConfiguration{
+		res := UpdateApplication(context.Background(), &UpdateConfiguration{
 			NewRegFN:   mockClientFn,
 			ArgoClient: &argoClient,
 			KubeClient: &kubeClient,
@@ -624,7 +654,7 @@ func Test_UpdateApplication(t *testing.T) {
 				Clientset: fake.NewFakeKubeClient(),
 			},
 		}
-		appImages := &ApplicationImages{
+		appImages := &iutypes.ApplicationImages{
 			Application: v1alpha1.Application{
 				ObjectMeta: v1.ObjectMeta{
 					Name:      "guestbook",
@@ -648,11 +678,12 @@ func Test_UpdateApplication(t *testing.T) {
 					},
 				},
 			},
-			Images: image.ContainerImageList{
-				image.NewFromIdentifier("jannfis/foobar:1.0.1"),
+			Images: iutypes.ImageList{
+				iutypes.NewImage(
+					image.NewFromIdentifier("jannfis/foobar:1.0.1")),
 			},
 		}
-		res := UpdateApplication(&UpdateConfiguration{
+		res := UpdateApplication(context.Background(), &UpdateConfiguration{
 			NewRegFN:   mockClientFn,
 			ArgoClient: &argoClient,
 			KubeClient: &kubeClient,
@@ -686,7 +717,13 @@ func Test_UpdateApplication(t *testing.T) {
 			common.ImageUpdaterAnnotation: "foobar=gcr.io/jannfis/foobar:>=1.0.1",
 			fmt.Sprintf(registryCommon.Prefixed(common.ImageUpdaterAnnotationPrefix, registryCommon.KustomizeApplicationNameAnnotationSuffix), "foobar"): "jannfis/foobar",
 		}
-		appImages := &ApplicationImages{
+		containerImg := image.NewFromIdentifier("foobar=gcr.io/jannfis/foobar:>=1.0.1")
+		kustomizeImageName := containerImg.GetParameterKustomizeImageName(annotations, common.ImageUpdaterAnnotationPrefix)
+		containerImg.KustomizeImage = image.NewFromIdentifier(kustomizeImageName)
+		iuImg := iutypes.NewImage(containerImg)
+		iuImg.ForceUpdate = containerImg.HasForceUpdateOptionAnnotation(annotations, common.ImageUpdaterAnnotationPrefix)
+		imageList := iutypes.ImageList{iuImg}
+		appImages := &iutypes.ApplicationImages{
 			Application: v1alpha1.Application{
 				ObjectMeta: v1.ObjectMeta{
 					Name:        "guestbook",
@@ -711,9 +748,9 @@ func Test_UpdateApplication(t *testing.T) {
 					},
 				},
 			},
-			Images: *parseImageList(annotations),
+			Images: imageList,
 		}
-		res := UpdateApplication(&UpdateConfiguration{
+		res := UpdateApplication(context.Background(), &UpdateConfiguration{
 			NewRegFN:   mockClientFn,
 			ArgoClient: &argoClient,
 			KubeClient: &kubeClient,
@@ -747,7 +784,13 @@ func Test_UpdateApplication(t *testing.T) {
 			common.ImageUpdaterAnnotation: "foobar=gcr.io/jannfis/foobar:>=1.0.1",
 			fmt.Sprintf(registryCommon.Prefixed(common.ImageUpdaterAnnotationPrefix, registryCommon.KustomizeApplicationNameAnnotationSuffix), "foobar"): "jannfis/foobar",
 		}
-		appImages := &ApplicationImages{
+		containerImg := image.NewFromIdentifier("foobar=gcr.io/jannfis/foobar:>=1.0.1")
+		kustomizeImageName := containerImg.GetParameterKustomizeImageName(annotations, common.ImageUpdaterAnnotationPrefix)
+		containerImg.KustomizeImage = image.NewFromIdentifier(kustomizeImageName)
+		iuImg := iutypes.NewImage(containerImg)
+		iuImg.ForceUpdate = containerImg.HasForceUpdateOptionAnnotation(annotations, common.ImageUpdaterAnnotationPrefix)
+		imageList := iutypes.ImageList{iuImg}
+		appImages := &iutypes.ApplicationImages{
 			Application: v1alpha1.Application{
 				ObjectMeta: v1.ObjectMeta{
 					Name:        "guestbook",
@@ -772,9 +815,9 @@ func Test_UpdateApplication(t *testing.T) {
 					},
 				},
 			},
-			Images: *parseImageList(annotations),
+			Images: imageList,
 		}
-		res := UpdateApplication(&UpdateConfiguration{
+		res := UpdateApplication(context.Background(), &UpdateConfiguration{
 			NewRegFN:   mockClientFn,
 			ArgoClient: &argoClient,
 			KubeClient: &kubeClient,
@@ -820,7 +863,7 @@ func Test_UpdateApplication(t *testing.T) {
 				Clientset: fake.NewFakeKubeClient(),
 			},
 		}
-		appImages := &ApplicationImages{
+		appImages := &iutypes.ApplicationImages{
 			Application: v1alpha1.Application{
 				ObjectMeta: v1.ObjectMeta{
 					Name:      "guestbook",
@@ -848,11 +891,12 @@ func Test_UpdateApplication(t *testing.T) {
 					},
 				},
 			},
-			Images: image.ContainerImageList{
-				image.NewFromIdentifier("dummy=jannfis/foobar"),
+			Images: iutypes.ImageList{
+				iutypes.NewImage(
+					image.NewFromIdentifier("dummy=jannfis/foobar")),
 			},
 		}
-		res := UpdateApplication(&UpdateConfiguration{
+		res := UpdateApplication(context.Background(), &UpdateConfiguration{
 			NewRegFN:   mockClientFn,
 			ArgoClient: &argoClient,
 			KubeClient: &kubeClient,
@@ -898,7 +942,7 @@ func Test_UpdateApplication(t *testing.T) {
 				Clientset: fake.NewFakeKubeClient(),
 			},
 		}
-		appImages := &ApplicationImages{
+		appImages := &iutypes.ApplicationImages{
 			Application: v1alpha1.Application{
 				ObjectMeta: v1.ObjectMeta{
 					Name:      "guestbook",
@@ -926,11 +970,12 @@ func Test_UpdateApplication(t *testing.T) {
 					},
 				},
 			},
-			Images: image.ContainerImageList{
-				image.NewFromIdentifier("dummy=jannfis/foobar"),
+			Images: iutypes.ImageList{
+				iutypes.NewImage(
+					image.NewFromIdentifier("dummy=jannfis/foobar")),
 			},
 		}
-		res := UpdateApplication(&UpdateConfiguration{
+		res := UpdateApplication(context.Background(), &UpdateConfiguration{
 			NewRegFN:   mockClientFn,
 			ArgoClient: &argoClient,
 			KubeClient: &kubeClient,
@@ -960,7 +1005,7 @@ func Test_UpdateApplication(t *testing.T) {
 				Clientset: fake.NewFakeKubeClient(),
 			},
 		}
-		appImages := &ApplicationImages{
+		appImages := &iutypes.ApplicationImages{
 			Application: v1alpha1.Application{
 				ObjectMeta: v1.ObjectMeta{
 					Name:      "guestbook",
@@ -984,11 +1029,12 @@ func Test_UpdateApplication(t *testing.T) {
 					},
 				},
 			},
-			Images: image.ContainerImageList{
-				image.NewFromIdentifier("example.io/jannfis/example:1.0.x"),
+			Images: iutypes.ImageList{
+				iutypes.NewImage(
+					image.NewFromIdentifier("example.io/jannfis/example:1.0.x")),
 			},
 		}
-		res := UpdateApplication(&UpdateConfiguration{
+		res := UpdateApplication(context.Background(), &UpdateConfiguration{
 			NewRegFN:   mockClientFn,
 			ArgoClient: &argoClient,
 			KubeClient: &kubeClient,
@@ -1015,7 +1061,7 @@ func Test_UpdateApplication(t *testing.T) {
 				Clientset: fake.NewFakeKubeClient(),
 			},
 		}
-		appImages := &ApplicationImages{
+		appImages := &iutypes.ApplicationImages{
 			Application: v1alpha1.Application{
 				ObjectMeta: v1.ObjectMeta{
 					Name:      "guestbook",
@@ -1039,11 +1085,12 @@ func Test_UpdateApplication(t *testing.T) {
 					},
 				},
 			},
-			Images: image.ContainerImageList{
-				image.NewFromIdentifier("jannfis/foobar:1.0.1"),
+			Images: iutypes.ImageList{
+				iutypes.NewImage(
+					image.NewFromIdentifier("jannfis/foobar:1.0.1")),
 			},
 		}
-		res := UpdateApplication(&UpdateConfiguration{
+		res := UpdateApplication(context.Background(), &UpdateConfiguration{
 			NewRegFN:   mockClientFn,
 			ArgoClient: &argoClient,
 			KubeClient: &kubeClient,
@@ -1073,7 +1120,7 @@ func Test_UpdateApplication(t *testing.T) {
 				Clientset: fake.NewFakeKubeClient(),
 			},
 		}
-		appImages := &ApplicationImages{
+		appImages := &iutypes.ApplicationImages{
 			Application: v1alpha1.Application{
 				ObjectMeta: v1.ObjectMeta{
 					Name:      "guestbook",
@@ -1097,11 +1144,12 @@ func Test_UpdateApplication(t *testing.T) {
 					},
 				},
 			},
-			Images: image.ContainerImageList{
-				image.NewFromIdentifier("jannfis/foobar:1.0.1"),
+			Images: iutypes.ImageList{
+				iutypes.NewImage(
+					image.NewFromIdentifier("jannfis/foobar:1.0.1")),
 			},
 		}
-		res := UpdateApplication(&UpdateConfiguration{
+		res := UpdateApplication(context.Background(), &UpdateConfiguration{
 			NewRegFN:   mockClientFn,
 			ArgoClient: &argoClient,
 			KubeClient: &kubeClient,
@@ -1131,7 +1179,7 @@ func Test_UpdateApplication(t *testing.T) {
 				Clientset: fake.NewFakeKubeClient(),
 			},
 		}
-		appImages := &ApplicationImages{
+		appImages := &iutypes.ApplicationImages{
 			Application: v1alpha1.Application{
 				ObjectMeta: v1.ObjectMeta{
 					Name:      "guestbook",
@@ -1155,11 +1203,12 @@ func Test_UpdateApplication(t *testing.T) {
 					},
 				},
 			},
-			Images: image.ContainerImageList{
-				image.NewFromIdentifier("jannfis/foobar:stable"),
+			Images: iutypes.ImageList{
+				iutypes.NewImage(
+					image.NewFromIdentifier("jannfis/foobar:stable")),
 			},
 		}
-		res := UpdateApplication(&UpdateConfiguration{
+		res := UpdateApplication(context.Background(), &UpdateConfiguration{
 			NewRegFN:   mockClientFn,
 			ArgoClient: &argoClient,
 			KubeClient: &kubeClient,
@@ -1213,7 +1262,15 @@ kustomize:
   images:
   - baz
 `)
-		yaml, err := marshalParamsOverride(&app, originalData)
+		// This test doesn't use helmvalues, but we populate Images for consistency.
+		applicationImages := &iutypes.ApplicationImages{
+			Application: app,
+			Images: iutypes.ImageList{
+				iutypes.NewImage(
+					image.NewFromIdentifier("nginx")),
+			},
+		}
+		yaml, err := marshalParamsOverride(applicationImages, originalData)
 		require.NoError(t, err)
 		assert.NotEmpty(t, yaml)
 		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(yaml)))
@@ -1256,7 +1313,14 @@ kustomize:
   - existing:latest
   - updated:old
 `)
-		yaml, err := marshalParamsOverride(&app, originalData)
+		applicationImages := &iutypes.ApplicationImages{
+			Application: app,
+			Images: iutypes.ImageList{
+				iutypes.NewImage(
+					image.NewFromIdentifier("nginx")),
+			},
+		}
+		yaml, err := marshalParamsOverride(applicationImages, originalData)
 		require.NoError(t, err)
 		assert.NotEmpty(t, yaml)
 		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(yaml)))
@@ -1281,8 +1345,14 @@ kustomize:
 				SourceType: v1alpha1.ApplicationSourceTypeKustomize,
 			},
 		}
-
-		yaml, err := marshalParamsOverride(&app, nil)
+		applicationImages := &iutypes.ApplicationImages{
+			Application: app,
+			Images: iutypes.ImageList{
+				iutypes.NewImage(
+					image.NewFromIdentifier("nginx")),
+			},
+		}
+		yaml, err := marshalParamsOverride(applicationImages, nil)
 		require.NoError(t, err)
 		assert.Empty(t, yaml)
 		assert.Equal(t, "", strings.TrimSpace(string(yaml)))
@@ -1342,7 +1412,14 @@ helm:
     value: baz
     forcestring: false
 `)
-		yaml, err := marshalParamsOverride(&app, originalData)
+		applicationImages := &iutypes.ApplicationImages{
+			Application: app,
+			Images: iutypes.ImageList{
+				iutypes.NewImage(
+					image.NewFromIdentifier("nginx")),
+			},
+		}
+		yaml, err := marshalParamsOverride(applicationImages, originalData)
 		require.NoError(t, err)
 		assert.NotEmpty(t, yaml)
 		assert.Equal(t, strings.TrimSpace(strings.ReplaceAll(expected, "\t", "  ")), strings.TrimSpace(string(yaml)))
@@ -1393,7 +1470,14 @@ helm:
 		}
 
 		originalData := []byte(``)
-		yaml, err := marshalParamsOverride(&app, originalData)
+		applicationImages := &iutypes.ApplicationImages{
+			Application: app,
+			Images: iutypes.ImageList{
+				iutypes.NewImage(
+					image.NewFromIdentifier("nginx")),
+			},
+		}
+		yaml, err := marshalParamsOverride(applicationImages, originalData)
 		require.NoError(t, err)
 		assert.NotEmpty(t, yaml)
 		assert.Equal(t, strings.TrimSpace(strings.ReplaceAll(expected, "\t", "  ")), strings.TrimSpace(string(yaml)))
@@ -1444,7 +1528,14 @@ helm:
 		}
 
 		originalData := []byte(`random content`)
-		yaml, err := marshalParamsOverride(&app, originalData)
+		applicationImages := &iutypes.ApplicationImages{
+			Application: app,
+			Images: iutypes.ImageList{
+				iutypes.NewImage(
+					image.NewFromIdentifier("nginx")),
+			},
+		}
+		yaml, err := marshalParamsOverride(applicationImages, originalData)
 		require.NoError(t, err)
 		assert.NotEmpty(t, yaml)
 		assert.Equal(t, strings.TrimSpace(strings.ReplaceAll(expected, "\t", "  ")), strings.TrimSpace(string(yaml)))
@@ -1470,7 +1561,14 @@ helm:
 			},
 		}
 
-		yaml, err := marshalParamsOverride(&app, nil)
+		applicationImages := &iutypes.ApplicationImages{
+			Application: app,
+			Images: iutypes.ImageList{
+				iutypes.NewImage(
+					image.NewFromIdentifier("nginx")),
+			},
+		}
+		yaml, err := marshalParamsOverride(applicationImages, nil)
 		require.NoError(t, err)
 		assert.Empty(t, yaml)
 	})
@@ -1527,7 +1625,14 @@ image.name: nginx
 image.tag: v0.0.0
 replicas: 1
 `)
-		yaml, err := marshalParamsOverride(&app, originalData)
+		applicationImages := &iutypes.ApplicationImages{
+			Application: app,
+			Images: iutypes.ImageList{
+				iutypes.NewImage(
+					image.NewFromIdentifier("nginx")),
+			},
+		}
+		yaml, err := marshalParamsOverride(applicationImages, originalData)
 		require.NoError(t, err)
 		assert.NotEmpty(t, yaml)
 		assert.Equal(t, strings.TrimSpace(strings.ReplaceAll(expected, "\t", "  ")), strings.TrimSpace(string(yaml)))
@@ -1577,7 +1682,14 @@ replicas: 1
 image.spec.foo: nginx:v0.0.0
 replicas: 1
 `)
-		yaml, err := marshalParamsOverride(&app, originalData)
+		applicationImages := &iutypes.ApplicationImages{
+			Application: app,
+			Images: iutypes.ImageList{
+				iutypes.NewImage(
+					image.NewFromIdentifier("nginx")),
+			},
+		}
+		yaml, err := marshalParamsOverride(applicationImages, originalData)
 		require.NoError(t, err)
 		assert.NotEmpty(t, yaml)
 		assert.Equal(t, strings.TrimSpace(strings.ReplaceAll(expected, "\t", "  ")), strings.TrimSpace(string(yaml)))
@@ -1591,7 +1703,7 @@ image:
   spec:
     foo: nginx:v1.0.0
 `
-		yaml, err = marshalParamsOverride(&app, originalData)
+		yaml, err = marshalParamsOverride(applicationImages, originalData)
 		require.NoError(t, err)
 		assert.NotEmpty(t, yaml)
 		assert.Equal(t, strings.TrimSpace(strings.ReplaceAll(expected, "\t", "  ")), strings.TrimSpace(string(yaml)))
@@ -1679,7 +1791,16 @@ redis.image.name: redis
 redis.image.tag: v0.0.0
 replicas: 1
 `)
-		yaml, err := marshalParamsOverride(&app, originalData)
+		applicationImages := &iutypes.ApplicationImages{
+			Application: app,
+			Images: iutypes.ImageList{
+				iutypes.NewImage(
+					image.NewFromIdentifier("nginx=nginx")),
+				iutypes.NewImage(
+					image.NewFromIdentifier("redis=redis")),
+			},
+		}
+		yaml, err := marshalParamsOverride(applicationImages, originalData)
 		require.NoError(t, err)
 		assert.NotEmpty(t, yaml)
 		assert.Equal(t, strings.TrimSpace(strings.ReplaceAll(expected, "\t", "  ")), strings.TrimSpace(string(yaml)))
@@ -1698,7 +1819,7 @@ redis:
     tag: v1.0.0
     name: redis
 `
-		yaml, err = marshalParamsOverride(&app, originalData)
+		yaml, err = marshalParamsOverride(applicationImages, originalData)
 		require.NoError(t, err)
 		assert.NotEmpty(t, yaml)
 		assert.Equal(t, strings.TrimSpace(strings.ReplaceAll(expected, "\t", "  ")), strings.TrimSpace(string(yaml)))
@@ -1801,7 +1922,18 @@ bbb.image.name: nginx
 bbb.image.tag: v0.0.0
 replicas: 1
 `)
-		yaml, err := marshalParamsOverride(&app, originalData)
+		applicationImages := &iutypes.ApplicationImages{
+			Application: app,
+			Images: iutypes.ImageList{
+				iutypes.NewImage(
+					image.NewFromIdentifier("foo=nginx")),
+				iutypes.NewImage(
+					image.NewFromIdentifier("bar=nginx")),
+				iutypes.NewImage(
+					image.NewFromIdentifier("bbb=nginx")),
+			},
+		}
+		yaml, err := marshalParamsOverride(applicationImages, originalData)
 		require.NoError(t, err)
 		assert.NotEmpty(t, yaml)
 		assert.Equal(t, strings.TrimSpace(strings.ReplaceAll(expected, "\t", "  ")), strings.TrimSpace(string(yaml)))
@@ -1864,7 +1996,14 @@ image:
 replicas: 1
 `)
 
-		yaml, err := marshalParamsOverride(&app, originalData)
+		applicationImages := &iutypes.ApplicationImages{
+			Application: app,
+			Images: iutypes.ImageList{
+				iutypes.NewImage(
+					image.NewFromIdentifier("nginx")),
+			},
+		}
+		yaml, err := marshalParamsOverride(applicationImages, originalData)
 		require.NoError(t, err)
 		assert.NotEmpty(t, yaml)
 		assert.Equal(t, strings.TrimSpace(strings.ReplaceAll(expected, "\t", "  ")), strings.TrimSpace(string(yaml)))
@@ -1924,7 +2063,15 @@ image:
 replicas: 1
 `)
 
-		yaml, err := marshalParamsOverride(&app, originalData)
+		applicationImages := &iutypes.ApplicationImages{
+			Application: app,
+			Images: iutypes.ImageList{
+				iutypes.NewImage(
+					image.NewFromIdentifier("nginx")),
+			},
+		}
+		yaml, err := marshalParamsOverride(applicationImages, originalData)
+
 		require.NoError(t, err)
 		assert.NotEmpty(t, yaml)
 		assert.Equal(t, strings.TrimSpace(strings.ReplaceAll(expected, "\t", "  ")), strings.TrimSpace(string(yaml)))
@@ -1972,7 +2119,14 @@ replicas: 1
 		}
 
 		originalData := []byte(`random: yaml`)
-		_, err := marshalParamsOverride(&app, originalData)
+		applicationImages := &iutypes.ApplicationImages{
+			Application: app,
+			Images: iutypes.ImageList{
+				iutypes.NewImage(
+					image.NewFromIdentifier("nginx")),
+			},
+		}
+		_, err := marshalParamsOverride(applicationImages, originalData)
 		assert.Error(t, err)
 		assert.Equal(t, "could not find an image-tag annotation for image nginx", err.Error())
 	})
@@ -2019,7 +2173,14 @@ replicas: 1
 		}
 
 		originalData := []byte(`random: yaml`)
-		_, err := marshalParamsOverride(&app, originalData)
+		applicationImages := &iutypes.ApplicationImages{
+			Application: app,
+			Images: iutypes.ImageList{
+				iutypes.NewImage(
+					image.NewFromIdentifier("nginx")),
+			},
+		}
+		_, err := marshalParamsOverride(applicationImages, originalData)
 		assert.Error(t, err)
 		assert.Equal(t, "could not find an image-name annotation for image nginx", err.Error())
 	})
@@ -2067,7 +2228,14 @@ replicas: 1
 		}
 
 		originalData := []byte(`random: yaml`)
-		_, err := marshalParamsOverride(&app, originalData)
+		applicationImages := &iutypes.ApplicationImages{
+			Application: app,
+			Images: iutypes.ImageList{
+				iutypes.NewImage(
+					image.NewFromIdentifier("nginx")),
+			},
+		}
+		_, err := marshalParamsOverride(applicationImages, originalData)
 		assert.Error(t, err)
 	})
 
@@ -2114,7 +2282,14 @@ replicas: 1
 		}
 
 		originalData := []byte(`random: yaml`)
-		_, err := marshalParamsOverride(&app, originalData)
+		applicationImages := &iutypes.ApplicationImages{
+			Application: app,
+			Images: iutypes.ImageList{
+				iutypes.NewImage(
+					image.NewFromIdentifier("nginx")),
+			},
+		}
+		_, err := marshalParamsOverride(applicationImages, originalData)
 		assert.Error(t, err)
 		assert.Equal(t, "wrongimage.tag parameter not found", err.Error())
 	})
@@ -2162,7 +2337,14 @@ replicas: 1
 		}
 
 		originalData := []byte(`random content`)
-		_, err := marshalParamsOverride(&app, originalData)
+		applicationImages := &iutypes.ApplicationImages{
+			Application: app,
+			Images: iutypes.ImageList{
+				iutypes.NewImage(
+					image.NewFromIdentifier("nginx")),
+			},
+		}
+		_, err := marshalParamsOverride(applicationImages, originalData)
 		assert.Error(t, err)
 	})
 
@@ -2192,7 +2374,11 @@ replicas: 1
 			},
 		}
 
-		_, err := marshalParamsOverride(&app, nil)
+		applicationImages := &iutypes.ApplicationImages{
+			Application: app,
+			Images:      iutypes.ImageList{},
+		}
+		_, err := marshalParamsOverride(applicationImages, nil)
 		assert.Error(t, err)
 	})
 }
@@ -3550,7 +3736,11 @@ func Test_CommitUpdates(t *testing.T) {
 		require.NoError(t, err)
 		wbc.GitClient = gitMock
 
-		err = commitChanges(&app, wbc, nil)
+		applicationImages := &iutypes.ApplicationImages{
+			Application: app,
+			Images:      iutypes.ImageList{},
+		}
+		err = commitChanges(applicationImages, wbc, nil)
 		assert.NoError(t, err)
 	})
 
@@ -3570,7 +3760,11 @@ func Test_CommitUpdates(t *testing.T) {
 		wbc.GitClient = gitMock
 		wbc.GitBranch = "mybranch"
 
-		err = commitChanges(&app, wbc, nil)
+		applicationImages := &iutypes.ApplicationImages{
+			Application: app,
+			Images:      iutypes.ImageList{},
+		}
+		err = commitChanges(applicationImages, wbc, nil)
 		assert.NoError(t, err)
 	})
 
@@ -3591,7 +3785,11 @@ func Test_CommitUpdates(t *testing.T) {
 		app.Spec.Source.TargetRevision = "HEAD"
 		wbc.GitBranch = ""
 
-		err = commitChanges(app, wbc, nil)
+		applicationImages := &iutypes.ApplicationImages{
+			Application: *app,
+			Images:      iutypes.ImageList{},
+		}
+		err = commitChanges(applicationImages, wbc, nil)
 		assert.NoError(t, err)
 	})
 
@@ -3619,7 +3817,11 @@ func Test_CommitUpdates(t *testing.T) {
 		}
 		gitMock.On("Checkout", TemplateBranchName(wbc.GitWriteBranch, cl), mock.Anything).Return(nil)
 
-		err = commitChanges(&app, wbc, cl)
+		applicationImages := &iutypes.ApplicationImages{
+			Application: app,
+			Images:      iutypes.ImageList{},
+		}
+		err = commitChanges(applicationImages, wbc, cl)
 		assert.NoError(t, err)
 	})
 
@@ -3654,7 +3856,11 @@ helm:
 		app.Spec.Source.TargetRevision = "HEAD"
 		wbc.GitBranch = ""
 
-		err = commitChanges(app, wbc, nil)
+		applicationImages := &iutypes.ApplicationImages{
+			Application: *app,
+			Images:      iutypes.ImageList{},
+		}
+		err = commitChanges(applicationImages, wbc, nil)
 		assert.NoError(t, err)
 		override, err := os.ReadFile(of)
 		assert.NoError(t, err)
@@ -3706,7 +3912,11 @@ helm:
 		app.Spec.Source.TargetRevision = "HEAD"
 		wbc.GitBranch = ""
 
-		err = commitChanges(app, wbc, nil)
+		applicationImages := &iutypes.ApplicationImages{
+			Application: *app,
+			Images:      iutypes.ImageList{},
+		}
+		err = commitChanges(applicationImages, wbc, nil)
 		assert.NoError(t, err)
 		override, err := os.ReadFile(of)
 		assert.NoError(t, err)
@@ -3758,7 +3968,11 @@ helm:
 		app.Spec.Source.TargetRevision = "HEAD"
 		wbc.GitBranch = ""
 
-		err = commitChanges(app, wbc, nil)
+		applicationImages := &iutypes.ApplicationImages{
+			Application: *app,
+			Images:      iutypes.ImageList{},
+		}
+		err = commitChanges(applicationImages, wbc, nil)
 		assert.NoError(t, err)
 		override, err := os.ReadFile(of)
 		assert.NoError(t, err)
@@ -3804,7 +4018,11 @@ replacements: []
 		app.Spec.Source.TargetRevision = "HEAD"
 		wbc.GitBranch = ""
 
-		err = commitChanges(app, wbc, nil)
+		applicationImages := &iutypes.ApplicationImages{
+			Application: *app,
+			Images:      iutypes.ImageList{},
+		}
+		err = commitChanges(applicationImages, wbc, nil)
 		assert.NoError(t, err)
 		kust, err := os.ReadFile(kf)
 		assert.NoError(t, err)
@@ -3823,7 +4041,11 @@ replacements: []
 
 		// test the merge case too
 		app.Spec.Source.Kustomize.Images = v1alpha1.KustomizeImages{"foo:123", "bar=qux"}
-		err = commitChanges(app, wbc, nil)
+		applicationImages = &iutypes.ApplicationImages{
+			Application: *app,
+			Images:      iutypes.ImageList{},
+		}
+		err = commitChanges(applicationImages, wbc, nil)
 		assert.NoError(t, err)
 		kust, err = os.ReadFile(kf)
 		assert.NoError(t, err)
@@ -3862,7 +4084,11 @@ replacements: []
 		wbc.GitCommitUser = "someone"
 		wbc.GitCommitEmail = "someone@example.com"
 
-		err = commitChanges(app, wbc, nil)
+		applicationImages := &iutypes.ApplicationImages{
+			Application: *app,
+			Images:      iutypes.ImageList{},
+		}
+		err = commitChanges(applicationImages, wbc, nil)
 		assert.NoError(t, err)
 	})
 
@@ -3890,7 +4116,11 @@ replacements: []
 		wbc.GitCommitUser = "someone"
 		wbc.GitCommitEmail = "someone@example.com"
 
-		err = commitChanges(app, wbc, nil)
+		applicationImages := &iutypes.ApplicationImages{
+			Application: *app,
+			Images:      iutypes.ImageList{},
+		}
+		err = commitChanges(applicationImages, wbc, nil)
 		assert.Errorf(t, err, "could not configure git")
 	})
 
@@ -3905,7 +4135,11 @@ replacements: []
 		require.NoError(t, err)
 		wbc.GitClient = gitMock
 
-		err = commitChanges(&app, wbc, nil)
+		applicationImages := &iutypes.ApplicationImages{
+			Application: app,
+			Images:      iutypes.ImageList{},
+		}
+		err = commitChanges(applicationImages, wbc, nil)
 		assert.Errorf(t, err, "cannot init")
 	})
 
@@ -3920,7 +4154,11 @@ replacements: []
 		require.NoError(t, err)
 		wbc.GitClient = gitMock
 
-		err = commitChanges(&app, wbc, nil)
+		applicationImages := &iutypes.ApplicationImages{
+			Application: app,
+			Images:      iutypes.ImageList{},
+		}
+		err = commitChanges(applicationImages, wbc, nil)
 		assert.Errorf(t, err, "cannot init")
 	})
 	t.Run("Cannot checkout", func(t *testing.T) {
@@ -3934,7 +4172,11 @@ replacements: []
 		require.NoError(t, err)
 		wbc.GitClient = gitMock
 
-		err = commitChanges(&app, wbc, nil)
+		applicationImages := &iutypes.ApplicationImages{
+			Application: app,
+			Images:      iutypes.ImageList{},
+		}
+		err = commitChanges(applicationImages, wbc, nil)
 		assert.Errorf(t, err, "cannot checkout")
 	})
 
@@ -3949,7 +4191,11 @@ replacements: []
 		require.NoError(t, err)
 		wbc.GitClient = gitMock
 
-		err = commitChanges(&app, wbc, nil)
+		applicationImages := &iutypes.ApplicationImages{
+			Application: app,
+			Images:      iutypes.ImageList{},
+		}
+		err = commitChanges(applicationImages, wbc, nil)
 		assert.Errorf(t, err, "cannot commit")
 	})
 
@@ -3964,7 +4210,11 @@ replacements: []
 		require.NoError(t, err)
 		wbc.GitClient = gitMock
 
-		err = commitChanges(&app, wbc, nil)
+		applicationImages := &iutypes.ApplicationImages{
+			Application: app,
+			Images:      iutypes.ImageList{},
+		}
+		err = commitChanges(applicationImages, wbc, nil)
 		assert.Errorf(t, err, "cannot push")
 	})
 
@@ -3983,7 +4233,11 @@ replacements: []
 		app.Spec.Source.TargetRevision = "HEAD"
 		wbc.GitBranch = ""
 
-		err = commitChanges(app, wbc, nil)
+		applicationImages := &iutypes.ApplicationImages{
+			Application: *app,
+			Images:      iutypes.ImageList{},
+		}
+		err = commitChanges(applicationImages, wbc, nil)
 		assert.Errorf(t, err, "failed to resolve ref")
 	})
 }

@@ -1,6 +1,7 @@
 package registry
 
 import (
+	"context"
 	"os"
 	"strings"
 	"sync"
@@ -27,12 +28,12 @@ func Test_GetTags(t *testing.T) {
 		regClient.On("NewRepository", mock.Anything).Return(nil)
 		regClient.On("Tags", mock.Anything).Return([]string{"1.2.0", "1.2.1", "1.2.2"}, nil)
 
-		ep, err := GetRegistryEndpoint("")
+		ep, err := GetRegistryEndpoint(context.Background(), "")
 		require.NoError(t, err)
 
 		img := image.NewFromIdentifier("foo/bar:1.2.0")
 
-		tl, err := ep.GetTags(img, &regClient, &image.VersionConstraint{Strategy: image.StrategySemVer, Options: options.NewManifestOptions()})
+		tl, err := ep.GetTags(context.Background(), img, &regClient, &image.VersionConstraint{Strategy: image.StrategySemVer, Options: options.NewManifestOptions()})
 		require.NoError(t, err)
 		assert.NotEmpty(t, tl)
 
@@ -45,13 +46,13 @@ func Test_GetTags(t *testing.T) {
 		regClient := mocks.RegistryClient{}
 		regClient.On("NewRepository", mock.Anything).Return(nil)
 		regClient.On("Tags", mock.Anything).Return([]string{"1.2.0", "1.2.1", "1.2.2"}, nil)
-
-		ep, err := GetRegistryEndpoint("")
+		ctx := context.Background()
+		ep, err := GetRegistryEndpoint(ctx, "")
 		require.NoError(t, err)
 
 		img := image.NewFromIdentifier("foo/bar:1.2.0")
 
-		tl, err := ep.GetTags(img, &regClient, &image.VersionConstraint{
+		tl, err := ep.GetTags(ctx, img, &regClient, &image.VersionConstraint{
 			Strategy:  image.StrategySemVer,
 			MatchFunc: image.MatchFuncNone,
 			Options:   options.NewManifestOptions()})
@@ -69,12 +70,12 @@ func Test_GetTags(t *testing.T) {
 		regClient.On("NewRepository", mock.Anything).Return(nil)
 		regClient.On("Tags", mock.Anything).Return([]string{"1.2.0", "1.2.1", "1.2.2"}, nil)
 
-		ep, err := GetRegistryEndpoint("")
+		ep, err := GetRegistryEndpoint(context.Background(), "")
 		require.NoError(t, err)
 
 		img := image.NewFromIdentifier("foo/bar:1.2.0")
 
-		tl, err := ep.GetTags(img, &regClient, &image.VersionConstraint{Strategy: image.StrategyAlphabetical, Options: options.NewManifestOptions()})
+		tl, err := ep.GetTags(context.Background(), img, &regClient, &image.VersionConstraint{Strategy: image.StrategyAlphabetical, Options: options.NewManifestOptions()})
 		require.NoError(t, err)
 		assert.NotEmpty(t, tl)
 
@@ -94,19 +95,18 @@ func Test_GetTags(t *testing.T) {
 				},
 			},
 		}
-
+		ctx := context.Background()
 		regClient := mocks.RegistryClient{}
 		regClient.On("NewRepository", mock.Anything).Return(nil)
 		regClient.On("Tags", mock.Anything).Return([]string{"1.2.0", "1.2.1", "1.2.2"}, nil)
 		regClient.On("ManifestForTag", mock.Anything, mock.Anything).Return(meta1, nil)
-		regClient.On("TagMetadata", mock.Anything, mock.Anything).Return(&tag.TagInfo{}, nil)
-
-		ep, err := GetRegistryEndpoint("")
+		regClient.On("TagMetadata", mock.Anything, mock.Anything, mock.Anything).Return(&tag.TagInfo{}, nil)
+		ep, err := GetRegistryEndpoint(ctx, "")
 		require.NoError(t, err)
 		ep.Cache.ClearCache()
 
 		img := image.NewFromIdentifier("foo/bar:1.2.0")
-		tl, err := ep.GetTags(img, &regClient, &image.VersionConstraint{Strategy: image.StrategyNewestBuild, Options: options.NewManifestOptions()})
+		tl, err := ep.GetTags(ctx, img, &regClient, &image.VersionConstraint{Strategy: image.StrategyNewestBuild, Options: options.NewManifestOptions()})
 		require.NoError(t, err)
 		assert.NotEmpty(t, tl)
 
@@ -134,15 +134,15 @@ registries:
 		require.Len(t, epl.Items, 1)
 
 		// New registry configuration
-		err = AddRegistryEndpointFromConfig(epl.Items[0])
+		err = AddRegistryEndpointFromConfig(context.Background(), epl.Items[0])
 		require.NoError(t, err)
-		ep, err := GetRegistryEndpoint("ghcr.io")
+		ep, err := GetRegistryEndpoint(context.Background(), "ghcr.io")
 		require.NoError(t, err)
 		require.NotEqual(t, 0, ep.CredsExpire)
 
 		// Initial creds
 		os.Setenv("TEST_CREDS", "foo:bar")
-		err = ep.SetEndpointCredentials(nil)
+		err = ep.SetEndpointCredentials(context.Background(), nil)
 		assert.NoError(t, err)
 		assert.Equal(t, "foo", ep.Username)
 		assert.Equal(t, "bar", ep.Password)
@@ -150,14 +150,14 @@ registries:
 
 		// Creds should still be cached
 		os.Setenv("TEST_CREDS", "bar:foo")
-		err = ep.SetEndpointCredentials(nil)
+		err = ep.SetEndpointCredentials(context.Background(), nil)
 		assert.NoError(t, err)
 		assert.Equal(t, "foo", ep.Username)
 		assert.Equal(t, "bar", ep.Password)
 
 		// Pretend 5 minutes have passed - creds have expired and are re-read from env
 		ep.CredsUpdated = ep.CredsUpdated.Add(time.Minute * -5)
-		err = ep.SetEndpointCredentials(nil)
+		err = ep.SetEndpointCredentials(context.Background(), nil)
 		assert.NoError(t, err)
 		assert.Equal(t, "bar", ep.Username)
 		assert.Equal(t, "foo", ep.Password)

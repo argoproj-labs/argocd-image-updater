@@ -17,6 +17,7 @@ import (
 	"github.com/argoproj-labs/argocd-image-updater/ext/git"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/kube"
+	iutypes "github.com/argoproj-labs/argocd-image-updater/pkg/types"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/image"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/registry"
@@ -41,7 +42,7 @@ type UpdateConfiguration struct {
 	NewRegFN               registry.NewRegistryClient
 	ArgoClient             ArgoCD
 	KubeClient             *kube.ImageUpdaterKubernetesClient
-	UpdateApp              *ApplicationImages
+	UpdateApp              *iutypes.ApplicationImages
 	DryRun                 bool
 	GitCommitUser          string
 	GitCommitEmail         string
@@ -154,15 +155,16 @@ func (wbc *WriteBackConfig) RequiresLocking() bool {
 }
 
 // UpdateApplication update all images of a single application. Will run in a goroutine.
-func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationState) ImageUpdaterResult {
-	var needUpdate bool = false
+func UpdateApplication(ctx context.Context, updateConf *UpdateConfiguration, state *SyncIterationState) ImageUpdaterResult {
+	baseLogger := log.LoggerFromContext(ctx)
 
+	var needUpdate bool = false
 	result := ImageUpdaterResult{}
 	app := updateConf.UpdateApp.Application.GetName()
 	changeList := make([]ChangeEntry, 0)
 
 	// Get all images that are deployed with the current application
-	applicationImages := GetImagesFromApplication(&updateConf.UpdateApp.Application)
+	applicationImages := GetImagesFromApplication(updateConf.UpdateApp)
 
 	result.NumApplicationsProcessed += 1
 
@@ -173,9 +175,10 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 	// constraints which are part of the application's annotation values.
 	//
 	for _, applicationImage := range updateConf.UpdateApp.Images {
-		updateableImage := applicationImages.ContainsImage(applicationImage, false)
+		// updateableImage is the live image found in the cluster status
+		updateableImage := applicationImages.ContainsImage(applicationImage.ContainerImage, false)
 		if updateableImage == nil {
-			log.WithContext().AddField("application", app).Debugf("Image '%s' seems not to be live in this application, skipping", applicationImage.ImageName)
+			baseLogger.Debugf("Image '%s' seems not to be live in this application, skipping", applicationImage.ImageName)
 			result.NumSkipped += 1
 			continue
 		}
@@ -189,20 +192,17 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 
 		result.NumImagesConsidered += 1
 
-		imgCtx := log.WithContext().
-			AddField("application", app).
-			AddField("registry", updateableImage.RegistryURL).
-			AddField("image_name", updateableImage.ImageName).
-			AddField("image_tag", updateableImage.ImageTag).
-			AddField("alias", applicationImage.ImageAlias)
+		fields := updateableImage.GetLogFields(applicationImage.ImageAlias)
+		imgCtx := baseLogger.WithFields(fields)
+		imageOpCtx := log.ContextWithLogger(ctx, imgCtx)
 
 		if updateableImage.KustomizeImage != nil {
-			imgCtx.AddField("kustomize_image", updateableImage.KustomizeImage)
+			imgCtx = imgCtx.WithField("kustomize_image", updateableImage.KustomizeImage)
 		}
 
 		imgCtx.Debugf("Considering this image for update")
 
-		rep, err := registry.GetRegistryEndpoint(applicationImage.RegistryURL)
+		rep, err := registry.GetRegistryEndpoint(imageOpCtx, applicationImage.RegistryURL)
 		if err != nil {
 			imgCtx.Errorf("Could not get registry endpoint from configuration: %v", err)
 			result.NumErrors += 1
@@ -217,13 +217,12 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 			imgCtx.Debugf("Using no version constraint when looking for a new tag")
 		}
 
-		vc.Strategy = applicationImage.GetParameterUpdateStrategy(updateConf.UpdateApp.Application.Annotations, common.ImageUpdaterAnnotationPrefix)
-		vc.MatchFunc, vc.MatchArgs = applicationImage.GetParameterMatch(updateConf.UpdateApp.Application.Annotations, common.ImageUpdaterAnnotationPrefix)
-		vc.IgnoreList = applicationImage.GetParameterIgnoreTags(updateConf.UpdateApp.Application.Annotations, common.ImageUpdaterAnnotationPrefix)
+		vc.Strategy = applicationImage.UpdateStrategy
+		vc.MatchFunc, vc.MatchArgs = applicationImage.ParseMatch(imageOpCtx, applicationImage.AllowTags)
+		vc.IgnoreList = applicationImage.IgnoreTags
 		vc.Options = applicationImage.
-			GetPlatformOptions(updateConf.UpdateApp.Application.Annotations, updateConf.IgnorePlatforms, common.ImageUpdaterAnnotationPrefix).
-			WithMetadata(vc.Strategy.NeedsMetadata()).
-			WithLogger(imgCtx.AddField("application", app))
+			GetPlatformOptions(imageOpCtx, updateConf.IgnorePlatforms, applicationImage.Platforms).
+			WithMetadata(vc.Strategy.NeedsMetadata())
 
 		// If a strategy needs meta-data and tagsortmode is set for the
 		// registry, let the user know.
@@ -232,17 +231,17 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 		}
 
 		// The endpoint can provide default credentials for pulling images
-		err = rep.SetEndpointCredentials(updateConf.KubeClient.KubeClient)
+		err = rep.SetEndpointCredentials(imageOpCtx, updateConf.KubeClient.KubeClient)
 		if err != nil {
 			imgCtx.Errorf("Could not set registry endpoint credentials: %v", err)
 			result.NumErrors += 1
 			continue
 		}
 
-		imgCredSrc := applicationImage.GetParameterPullSecret(updateConf.UpdateApp.Application.Annotations, common.ImageUpdaterAnnotationPrefix)
+		imgCredSrc := applicationImage.GetParameterPullSecret(imageOpCtx)
 		var creds *image.Credential = &image.Credential{}
 		if imgCredSrc != nil {
-			creds, err = imgCredSrc.FetchCredentials(rep.RegistryAPI, updateConf.KubeClient.KubeClient)
+			creds, err = imgCredSrc.FetchCredentials(imageOpCtx, rep.RegistryAPI, updateConf.KubeClient.KubeClient)
 			if err != nil {
 				imgCtx.Warnf("Could not fetch credentials: %v", err)
 				result.NumErrors += 1
@@ -258,7 +257,7 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 		}
 
 		// Get list of available image tags from the repository
-		tags, err := rep.GetTags(applicationImage, regClient, &vc)
+		tags, err := rep.GetTags(imageOpCtx, applicationImage.ContainerImage, regClient, &vc)
 		if err != nil {
 			imgCtx.Errorf("Could not get tags from registry: %v", err)
 			result.NumErrors += 1
@@ -269,7 +268,7 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 
 		// Get the latest available tag matching any constraint that might be set
 		// for allowed updates.
-		latest, err := updateableImage.GetNewestVersionFromTags(&vc, tags)
+		latest, err := updateableImage.GetNewestVersionFromTags(imageOpCtx, &vc, tags)
 		if err != nil {
 			imgCtx.Errorf("Unable to find newest version from available tags: %v", err)
 			result.NumErrors += 1
@@ -285,7 +284,7 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 			continue
 		}
 
-		if needsUpdate(updateableImage, applicationImage, latest, vc.Strategy) {
+		if needsUpdate(updateableImage, applicationImage.ContainerImage, latest, vc.Strategy) {
 			appImageWithTag := applicationImage.WithTag(latest)
 			appImageFullNameWithTag := appImageWithTag.GetFullNameWithTag()
 
@@ -355,17 +354,16 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 	}
 
 	if needUpdate {
-		logCtx := log.WithContext().AddField("application", app)
-		log.Debugf("Using commit message: %s", wbc.GitCommitMessage)
+		baseLogger.Debugf("Using commit message: %s", wbc.GitCommitMessage)
 		if !updateConf.DryRun {
-			logCtx.Infof("Committing %d parameter update(s) for application %s", result.NumImagesUpdated, app)
-			err := commitChangesLocked(&updateConf.UpdateApp.Application, wbc, state, changeList)
+			baseLogger.Infof("Committing %d parameter update(s) for application %s", result.NumImagesUpdated, app)
+			err := commitChangesLocked(updateConf.UpdateApp, wbc, state, changeList)
 			if err != nil {
-				logCtx.Errorf("Could not update application spec: %v", err)
+				baseLogger.Errorf("Could not update application spec: %v", err)
 				result.NumErrors += 1
 				result.NumImagesUpdated = 0
 			} else {
-				logCtx.Infof("Successfully updated the live application spec")
+				baseLogger.Infof("Successfully updated the live application spec")
 				if !updateConf.DisableKubeEvents && updateConf.KubeClient != nil {
 					annotations := map[string]string{}
 					for i, c := range changeList {
@@ -377,12 +375,12 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 					message := fmt.Sprintf("Successfully updated application '%s'", app)
 					_, err = updateConf.KubeClient.CreateApplicationEvent(&updateConf.UpdateApp.Application, "ImagesUpdated", message, annotations)
 					if err != nil {
-						logCtx.Warnf("Event could not be sent: %v", err)
+						baseLogger.Warnf("Event could not be sent: %v", err)
 					}
 				}
 			}
 		} else {
-			logCtx.Infof("Dry run - not committing %d changes to application", result.NumImagesUpdated)
+			baseLogger.Infof("Dry run - not committing %d changes to application", result.NumImagesUpdated)
 		}
 	}
 
@@ -446,9 +444,10 @@ func marshalWithIndent(in interface{}, indent int) (out []byte, err error) {
 
 // marshalParamsOverride marshals the parameter overrides of a given application
 // into YAML bytes
-func marshalParamsOverride(app *v1alpha1.Application, originalData []byte) ([]byte, error) {
+func marshalParamsOverride(applicationImages *iutypes.ApplicationImages, originalData []byte) ([]byte, error) {
 	var override []byte
 	var err error
+	app := &applicationImages.Application
 
 	appType := GetApplicationType(app)
 	appSource := getApplicationSource(app)
@@ -483,7 +482,7 @@ func marshalParamsOverride(app *v1alpha1.Application, originalData []byte) ([]by
 		}
 
 		if strings.HasPrefix(app.Annotations[common.WriteBackTargetAnnotation], common.HelmPrefix) {
-			images := GetImagesAndAliasesFromApplication(app)
+			images := GetImagesAndAliasesFromApplication(applicationImages)
 
 			helmNewValues := yaml.Node{}
 			err = yaml.Unmarshal(originalData, &helmNewValues)
@@ -823,19 +822,20 @@ func parseGitConfig(app *v1alpha1.Application, kubeClient *kube.ImageUpdaterKube
 	return nil
 }
 
-func commitChangesLocked(app *v1alpha1.Application, wbc *WriteBackConfig, state *SyncIterationState, changeList []ChangeEntry) error {
+func commitChangesLocked(applicationImages *iutypes.ApplicationImages, wbc *WriteBackConfig, state *SyncIterationState, changeList []ChangeEntry) error {
 	if wbc.RequiresLocking() {
 		lock := state.GetRepositoryLock(wbc.GitRepo)
 		lock.Lock()
 		defer lock.Unlock()
 	}
 
-	return commitChanges(app, wbc, changeList)
+	return commitChanges(applicationImages, wbc, changeList)
 }
 
 // commitChanges commits any changes required for updating one or more images
 // after the UpdateApplication cycle has finished.
-func commitChanges(app *v1alpha1.Application, wbc *WriteBackConfig, changeList []ChangeEntry) error {
+func commitChanges(applicationImages *iutypes.ApplicationImages, wbc *WriteBackConfig, changeList []ChangeEntry) error {
+	app := applicationImages.Application
 	switch wbc.Method {
 	case WriteBackApplication:
 		_, err := wbc.ArgoClient.UpdateSpec(context.TODO(), &application.ApplicationUpdateSpecRequest{
@@ -849,9 +849,9 @@ func commitChanges(app *v1alpha1.Application, wbc *WriteBackConfig, changeList [
 	case WriteBackGit:
 		// if the kustomize base is set, the target is a kustomization
 		if wbc.KustomizeBase != "" {
-			return commitChangesGit(app, wbc, changeList, writeKustomization)
+			return commitChangesGit(applicationImages, wbc, changeList, writeKustomization)
 		}
-		return commitChangesGit(app, wbc, changeList, writeOverrides)
+		return commitChangesGit(applicationImages, wbc, changeList, writeOverrides)
 	default:
 		return fmt.Errorf("unknown write back method set: %d", wbc.Method)
 	}
