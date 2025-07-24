@@ -11,7 +11,7 @@ import (
 	"github.com/argoproj-labs/argocd-image-updater/pkg/webhook"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
 
-	"github.com/argoproj/argo-cd/v2/reposerver/askpass"
+	"github.com/argoproj/argo-cd/v2/util/askpass"
 
 	"github.com/spf13/cobra"
 )

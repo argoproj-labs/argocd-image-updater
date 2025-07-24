@@ -28,9 +28,17 @@ func (q *QuayWebhook) Validate(r *http.Request) error {
 		return fmt.Errorf("invalid HTTP method: %s", r.Method)
 	}
 
+	// Quay at the moment does not support secrets
+	// !! This query param method is NOT secure use at own risk
 	if q.secret != "" {
-		// TODO: Add some secret scheme
-		// Current idea is through query param
+		secret := r.URL.Query().Get("secret")
+		if secret == "" {
+			return fmt.Errorf("Missing webhook secret")
+		}
+
+		if secret != q.secret {
+			return fmt.Errorf("Incorrect webhook secret")
+		}
 	}
 
 	return nil
