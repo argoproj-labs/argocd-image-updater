@@ -127,12 +127,6 @@ type ImageConfig struct {
 	// +optional
 	*CommonUpdateSettings `json:"commonUpdateSettings,omitempty"`
 
-	// Platforms specifies a list of target platforms (e.g., "linux/amd64", "linux/arm64").
-	// If specified, the image updater will consider these platforms when checking for new versions or digests.
-	// +listType=atomic
-	// +optional
-	Platforms []string `json:"platforms,omitempty"`
-
 	// ManifestTarget defines how and where to update this image in Kubernetes manifests.
 	// Only one of Helm or Kustomize should be specified within this block.
 	// This whole block is optional if the image update isn't written to a manifest in a structured way.
@@ -171,6 +165,12 @@ type CommonUpdateSettings struct {
 	// This acts as the default if not overridden.
 	// +optional
 	PullSecret *string `json:"pullSecret,omitempty"`
+
+	// Platforms specifies a list of target platforms (e.g., "linux/amd64", "linux/arm64").
+	// If specified, the image updater will consider these platforms when checking for new versions or digests.
+	// +listType=atomic
+	// +optional
+	Platforms []string `json:"platforms,omitempty"`
 }
 
 // WriteBackConfig defines how and where to write back image updates.
