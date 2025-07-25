@@ -75,6 +75,14 @@ spec:
                             type: string
                           type: array
                           x-kubernetes-list-type: atomic
+                        platforms:
+                          description: |-
+                            Platforms specifies a list of target platforms (e.g., "linux/amd64", "linux/arm64").
+                            If specified, the image updater will consider these platforms when checking for new versions or digests.
+                          items:
+                            type: string
+                          type: array
+                          x-kubernetes-list-type: atomic
                         pullSecret:
                           description: |-
                             PullSecret is the pull secret to use for images.
@@ -124,6 +132,14 @@ spec:
                                 description: |-
                                   IgnoreTags is a list of glob-like patterns of tags to ignore.
                                   This acts as the default and can be overridden at more specific levels.
+                                items:
+                                  type: string
+                                type: array
+                                x-kubernetes-list-type: atomic
+                              platforms:
+                                description: |-
+                                  Platforms specifies a list of target platforms (e.g., "linux/amd64", "linux/arm64").
+                                  If specified, the image updater will consider these platforms when checking for new versions or digests.
                                 items:
                                   type: string
                                 type: array
@@ -205,14 +221,6 @@ spec:
                             - message: Exactly one of helm or kustomize must be specified
                                 within manifestTargets if the block is present.
                               rule: 'has(self.helm) ? !has(self.kustomize) : has(self.kustomize)'
-                          platforms:
-                            description: |-
-                              Platforms specifies a list of target platforms (e.g., "linux/amd64", "linux/arm64").
-                              If specified, the image updater will consider these platforms when checking for new versions or digests.
-                            items:
-                              type: string
-                            type: array
-                            x-kubernetes-list-type: atomic
                         required:
                         - alias
                         - imageName
@@ -339,6 +347,14 @@ spec:
                     description: |-
                       IgnoreTags is a list of glob-like patterns of tags to ignore.
                       This acts as the default and can be overridden at more specific levels.
+                    items:
+                      type: string
+                    type: array
+                    x-kubernetes-list-type: atomic
+                  platforms:
+                    description: |-
+                      Platforms specifies a list of target platforms (e.g., "linux/amd64", "linux/arm64").
+                      If specified, the image updater will consider these platforms when checking for new versions or digests.
                     items:
                       type: string
                     type: array

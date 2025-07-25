@@ -216,15 +216,24 @@ func (img *ContainerImage) GetParameterIgnoreTags(annotations map[string]string,
 	return ignoreList
 }
 
-// GetPlatformOptions sets up platform constraints for an image. If no platform
-// is specified in the annotations, we restrict the platform for images to the
-// platform we're executed on unless unrestricted is set to true, in which case
-// we do not setup a platform restriction if no platform annotation is found.
-func (img *ContainerImage) GetPlatformOptions(ctx context.Context, unrestricted bool, platforms []string) *options.ManifestOptions {
+// GetPlatformOptions creates manifest options with platform constraints for an image.
+//
+// If a `platforms` slice is provided, its contents are used to set the platform
+// constraints for the image lookup.
+//
+// If the `platforms` slice is empty or nil, the behavior is controlled by the
+// `ignoreRuntimePlatform` flag:
+//   - If `ignoreRuntimePlatform` is `false` (the default, more secure behavior),
+//     the platform of the running image updater process is used as a fallback
+//     constraint. This ensures that by default, only images compatible with the
+//     current environment are considered.
+//   - If `ignoreRuntimePlatform` is `true`, no platform constraints are applied,
+//     allowing images for any platform to be considered.
+func (img *ContainerImage) GetPlatformOptions(ctx context.Context, ignoreRuntimePlatform bool, platforms []string) *options.ManifestOptions {
 	log := log.LoggerFromContext(ctx)
 	var opts *options.ManifestOptions = options.NewManifestOptions()
 	if platforms == nil || len(platforms) == 0 {
-		if !unrestricted {
+		if !ignoreRuntimePlatform {
 			os := runtime.GOOS
 			arch := runtime.GOARCH
 			variant := ""
