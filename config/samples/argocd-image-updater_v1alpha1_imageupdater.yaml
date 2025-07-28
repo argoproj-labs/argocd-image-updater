@@ -13,6 +13,7 @@ spec:
     allowTags: "regexp:^[0-9a-f]{7}$"
     ignoreTags: [ "latest", "master" ]
     pullSecret: "secret:<namespace>/<secret_name>#<field>"
+    platforms: [ "linux/arm64", "linux/amd64" ]
   writeBackConfig:
     method: "git:secret:argocd-image-updater/git-creds"
     gitConfig: # Group git-related settings. Should be ignored when writeBackMethod: "argocd"
@@ -31,6 +32,7 @@ spec:
         allowTags: "regexp:^[0-9a-f]{7}$"
         ignoreTags: [ "latest", "master" ]
         pullSecret: "secret:<namespace>/<secret_name>#<field>"
+        platforms: [ "linux/arm64", "linux/amd64" ]
       writeBackConfig:
         method: "git:secret:argocd-image-updater/git-creds"
         gitConfig: # Group git-related settings. Should be ignored when writeBackMethod: "argocd"
@@ -50,7 +52,7 @@ spec:
             allowTags: "regexp:^[0-9a-f]{7}$"
             ignoreTags: [ "latest", "master" ]
             pullSecret: "secret:<namespace>/<secret_name>#<field>"
-          platforms: [ "linux/arm64", "linux/amd64" ]
+            platforms: [ "linux/arm64", "windows" ]
           manifestTargets:
             helm:
               name: "dex.image.name"

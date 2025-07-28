@@ -409,6 +409,7 @@ func newContainerImageFromCommonSettings(ctx context.Context, settings *iuapi.Co
 			AllowTags:      "",
 			PullSecret:     "",
 			IgnoreTags:     []string{},
+			Platforms:      []string{},
 		}
 	}
 
@@ -432,6 +433,9 @@ func newContainerImageFromCommonSettings(ctx context.Context, settings *iuapi.Co
 	if settings.IgnoreTags != nil {
 		img.IgnoreTags = settings.IgnoreTags
 	}
+	if settings.Platforms != nil {
+		img.Platforms = settings.Platforms
+	}
 
 	return img
 }
@@ -448,7 +452,6 @@ func parseImageListIuCR(ctx context.Context, images []iuapi.ImageConfig, appSett
 		img := newContainerImageFromCommonSettings(ctx, im.CommonUpdateSettings, appSettings)
 		imgIdentity := image.NewFromIdentifier(im.Alias + "=" + im.ImageName)
 		img.ContainerImage = imgIdentity
-		img.Platforms = im.Platforms
 
 		if im.ManifestTarget != nil && im.ManifestTarget.Kustomize != nil {
 			if kustomizeImage := im.ManifestTarget.Kustomize.Name; kustomizeImage != "" {
