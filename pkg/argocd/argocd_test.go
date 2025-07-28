@@ -1179,6 +1179,7 @@ func Test_parseImageListIuCR(t *testing.T) {
 			AllowTags:      "",
 			PullSecret:     "",
 			IgnoreTags:     []string{},
+			Platforms:      []string{},
 		}
 
 		if kustomizeName != "" {
