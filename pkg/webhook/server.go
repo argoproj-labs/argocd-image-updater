@@ -12,7 +12,6 @@ import (
 	"github.com/argoproj-labs/argocd-image-updater/pkg/argocd"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/kube"
-	iutypes "github.com/argoproj-labs/argocd-image-updater/pkg/types"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/image"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/registry"
@@ -168,8 +167,8 @@ func (s *WebhookServer) processWebhookEvent(event *WebhookEvent) error {
 }
 
 // findMatchingApplications finds applications that are watching the image from the webhook event
-func (s *WebhookServer) findMatchingApplications(apps []v1alpha1.Application, event *WebhookEvent) map[string]iutypes.ApplicationImages {
-	matchedApps := make(map[string]iutypes.ApplicationImages)
+func (s *WebhookServer) findMatchingApplications(apps []v1alpha1.Application, event *WebhookEvent) map[string]argocd.ApplicationImages {
+	matchedApps := make(map[string]argocd.ApplicationImages)
 
 	for _, app := range apps {
 		// Skip applications without image-list annotation
@@ -198,7 +197,7 @@ func (s *WebhookServer) findMatchingApplications(apps []v1alpha1.Application, ev
 
 			// Found a match, add to the list
 			appName := fmt.Sprintf("%s/%s", app.Namespace, app.Name)
-			appImages := iutypes.ApplicationImages{
+			appImages := argocd.ApplicationImages{
 				Application: app,
 				Images:      toImageListHelper(*imageList),
 			}
@@ -211,8 +210,8 @@ func (s *WebhookServer) findMatchingApplications(apps []v1alpha1.Application, ev
 }
 
 // toImageListHelper is a private helper that converts an ContainerImageList to a ImageList.
-func toImageListHelper(list image.ContainerImageList) iutypes.ImageList {
-	il := make(iutypes.ImageList, len(list))
+func toImageListHelper(list image.ContainerImageList) argocd.ImageList {
+	il := make(argocd.ImageList, len(list))
 	for i, img := range list {
 		il[i].ContainerImage = img
 	}

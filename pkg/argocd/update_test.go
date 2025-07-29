@@ -12,12 +12,12 @@ import (
 
 	yaml "sigs.k8s.io/yaml/goyaml.v3"
 
+	iuapi "github.com/argoproj-labs/argocd-image-updater/api/v1alpha1"
 	"github.com/argoproj-labs/argocd-image-updater/ext/git"
 	gitmock "github.com/argoproj-labs/argocd-image-updater/ext/git/mocks"
 	argomock "github.com/argoproj-labs/argocd-image-updater/pkg/argocd/mocks"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/kube"
-	iutypes "github.com/argoproj-labs/argocd-image-updater/pkg/types"
 	registryCommon "github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/common"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/image"
 	registryKube "github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/kube"
@@ -57,12 +57,12 @@ func Test_UpdateApplication(t *testing.T) {
 			common.ImageUpdaterAnnotation: "foobar=gcr.io/jannfis/foobar:>=1.0.1,foobar=gcr.io/jannfis/barbar:>=1.0.1",
 		}
 
-		imageList := iutypes.ImageList{
-			iutypes.NewImage(image.NewFromIdentifier("foobar=gcr.io/jannfis/foobar:>=1.0.1")),
-			iutypes.NewImage(image.NewFromIdentifier("foobar=gcr.io/jannfis/barbar:>=1.0.1")),
+		imageList := ImageList{
+			NewImage(image.NewFromIdentifier("foobar=gcr.io/jannfis/foobar:>=1.0.1")),
+			NewImage(image.NewFromIdentifier("foobar=gcr.io/jannfis/barbar:>=1.0.1")),
 		}
 
-		appImages := &iutypes.ApplicationImages{
+		appImages := &ApplicationImages{
 			Application: v1alpha1.Application{
 				ObjectMeta: v1.ObjectMeta{
 					Name:        "guestbook",
@@ -88,6 +88,9 @@ func Test_UpdateApplication(t *testing.T) {
 						},
 					},
 				},
+			},
+			WriteBackConfig: &WriteBackConfig{
+				Method: WriteBackApplication,
 			},
 			Images: imageList,
 		}
@@ -133,10 +136,10 @@ func Test_UpdateApplication(t *testing.T) {
 			common.ImageUpdaterAnnotation:    "foo=gcr.io/jannfis/foobar:>=1.0.1",
 			common.WriteBackMethodAnnotation: "git:secret:argocd-image-updater/git-creds",
 		}
-		imageList := iutypes.ImageList{
-			iutypes.NewImage(image.NewFromIdentifier("foo=gcr.io/jannfis/foobar:>=1.0.1")),
+		imageList := ImageList{
+			NewImage(image.NewFromIdentifier("foo=gcr.io/jannfis/foobar:>=1.0.1")),
 		}
-		appImages := &iutypes.ApplicationImages{
+		appImages := &ApplicationImages{
 			Application: v1alpha1.Application{
 				ObjectMeta: v1.ObjectMeta{
 					Name:        "guestbook",
@@ -164,6 +167,13 @@ func Test_UpdateApplication(t *testing.T) {
 				},
 			},
 			Images: imageList,
+			WriteBackConfig: &WriteBackConfig{
+				Method:  WriteBackGit,
+				GitRepo: "https://example.com/example",
+				GetCreds: func(app *v1alpha1.Application) (git.Creds, error) {
+					return getCredsFromSecret(&WriteBackConfig{}, "argocd-image-updater/git-creds", &kubeClient)
+				},
+			},
 		}
 		res := UpdateApplication(context.Background(), &UpdateConfiguration{
 			NewRegFN:   mockClientFn,
@@ -196,7 +206,7 @@ func Test_UpdateApplication(t *testing.T) {
 				Clientset: fake.NewFakeKubeClient(),
 			},
 		}
-		appImages := &iutypes.ApplicationImages{
+		appImages := &ApplicationImages{
 			Application: v1alpha1.Application{
 				ObjectMeta: v1.ObjectMeta{
 					Name:      "guestbook",
@@ -220,8 +230,11 @@ func Test_UpdateApplication(t *testing.T) {
 					},
 				},
 			},
-			Images: iutypes.ImageList{
-				iutypes.NewImage(image.NewFromIdentifier("jannfis/foobar:~1.0.0")),
+			Images: ImageList{
+				NewImage(image.NewFromIdentifier("jannfis/foobar:~1.0.0")),
+			},
+			WriteBackConfig: &WriteBackConfig{
+				Method: WriteBackApplication,
 			},
 		}
 
@@ -264,7 +277,7 @@ func Test_UpdateApplication(t *testing.T) {
 				Clientset: fake.NewFakeKubeClient(),
 			},
 		}
-		appImages := &iutypes.ApplicationImages{
+		appImages := &ApplicationImages{
 			Application: v1alpha1.Application{
 				ObjectMeta: v1.ObjectMeta{
 					Name:      "guestbook",
@@ -290,11 +303,14 @@ func Test_UpdateApplication(t *testing.T) {
 					},
 				},
 			},
-			Images: iutypes.ImageList{
-				iutypes.NewImage(
+			Images: ImageList{
+				NewImage(
 					image.NewFromIdentifier("jannfis/foobar:~1.0.0")),
-				iutypes.NewImage(
+				NewImage(
 					image.NewFromIdentifier("jannfis/barbar:~1.0.0")),
+			},
+			WriteBackConfig: &WriteBackConfig{
+				Method: WriteBackApplication,
 			},
 		}
 		res := UpdateApplication(context.Background(), &UpdateConfiguration{
@@ -340,12 +356,12 @@ func Test_UpdateApplication(t *testing.T) {
 		containerImg := image.NewFromIdentifier("foobar=quay.io/jannfis/foobar:~1.0.0")
 		kustomizeImageName := containerImg.GetParameterKustomizeImageName(annotations, common.ImageUpdaterAnnotationPrefix)
 		containerImg.KustomizeImage = image.NewFromIdentifier(kustomizeImageName)
-		iuImg := iutypes.NewImage(containerImg)
+		iuImg := NewImage(containerImg)
 		iuImg.ForceUpdate = containerImg.HasForceUpdateOptionAnnotation(annotations, common.ImageUpdaterAnnotationPrefix)
 
-		imageList := iutypes.ImageList{iuImg}
+		imageList := ImageList{iuImg}
 
-		appImages := &iutypes.ApplicationImages{
+		appImages := &ApplicationImages{
 			Application: v1alpha1.Application{
 				ObjectMeta: v1.ObjectMeta{
 					Name:        "guestbook",
@@ -371,6 +387,9 @@ func Test_UpdateApplication(t *testing.T) {
 				},
 			},
 			Images: imageList,
+			WriteBackConfig: &WriteBackConfig{
+				Method: WriteBackApplication,
+			},
 		}
 		res := UpdateApplication(context.Background(), &UpdateConfiguration{
 			NewRegFN:   mockClientFn,
@@ -414,11 +433,11 @@ func Test_UpdateApplication(t *testing.T) {
 		containerImg := image.NewFromIdentifier("foobar=quay.io/someorg/foobar:~1.0.0")
 		kustomizeImageName := containerImg.GetParameterKustomizeImageName(annotations, common.ImageUpdaterAnnotationPrefix)
 		containerImg.KustomizeImage = image.NewFromIdentifier(kustomizeImageName)
-		iuImg := iutypes.NewImage(containerImg)
+		iuImg := NewImage(containerImg)
 		iuImg.ForceUpdate = containerImg.HasForceUpdateOptionAnnotation(annotations, common.ImageUpdaterAnnotationPrefix)
 
-		imageList := iutypes.ImageList{iuImg}
-		appImages := &iutypes.ApplicationImages{
+		imageList := ImageList{iuImg}
+		appImages := &ApplicationImages{
 			Application: v1alpha1.Application{
 				ObjectMeta: v1.ObjectMeta{
 					Name:        "guestbook",
@@ -444,6 +463,9 @@ func Test_UpdateApplication(t *testing.T) {
 				},
 			},
 			Images: imageList,
+			WriteBackConfig: &WriteBackConfig{
+				Method: WriteBackApplication,
+			},
 		}
 		res := UpdateApplication(context.Background(), &UpdateConfiguration{
 			NewRegFN:   mockClientFn,
@@ -475,7 +497,7 @@ func Test_UpdateApplication(t *testing.T) {
 				Clientset: fake.NewFakeKubeClient(),
 			},
 		}
-		appImages := &iutypes.ApplicationImages{
+		appImages := &ApplicationImages{
 			Application: v1alpha1.Application{
 				ObjectMeta: v1.ObjectMeta{
 					Name:      "guestbook",
@@ -499,9 +521,12 @@ func Test_UpdateApplication(t *testing.T) {
 					},
 				},
 			},
-			Images: iutypes.ImageList{
-				iutypes.NewImage(
+			Images: ImageList{
+				NewImage(
 					image.NewFromIdentifier("jannfis/foobar:1.0.x")),
+			},
+			WriteBackConfig: &WriteBackConfig{
+				Method: WriteBackApplication,
 			},
 		}
 		res := UpdateApplication(context.Background(), &UpdateConfiguration{
@@ -537,10 +562,10 @@ func Test_UpdateApplication(t *testing.T) {
 			},
 		}
 
-		img := iutypes.NewImage(image.NewFromIdentifier("dummy=jannfis/foobar:1.0.1"))
+		img := NewImage(image.NewFromIdentifier("dummy=jannfis/foobar:1.0.1"))
 		img.PullSecret = "secret:foo/bar#creds"
 
-		appImages := &iutypes.ApplicationImages{
+		appImages := &ApplicationImages{
 			Application: v1alpha1.Application{
 				ObjectMeta: v1.ObjectMeta{
 					Name:      "guestbook",
@@ -564,7 +589,10 @@ func Test_UpdateApplication(t *testing.T) {
 					},
 				},
 			},
-			Images: iutypes.ImageList{img},
+			Images: ImageList{img},
+			WriteBackConfig: &WriteBackConfig{
+				Method: WriteBackApplication,
+			},
 		}
 		res := UpdateApplication(context.Background(), &UpdateConfiguration{
 			NewRegFN:   mockClientFn,
@@ -595,7 +623,7 @@ func Test_UpdateApplication(t *testing.T) {
 				Clientset: fake.NewFakeKubeClient(),
 			},
 		}
-		appImages := &iutypes.ApplicationImages{
+		appImages := &ApplicationImages{
 			Application: v1alpha1.Application{
 				ObjectMeta: v1.ObjectMeta{
 					Name:      "guestbook",
@@ -619,9 +647,12 @@ func Test_UpdateApplication(t *testing.T) {
 					},
 				},
 			},
-			Images: iutypes.ImageList{
-				iutypes.NewImage(
+			Images: ImageList{
+				NewImage(
 					image.NewFromIdentifier("jannfis/barbar:1.0.1")),
+			},
+			WriteBackConfig: &WriteBackConfig{
+				Method: WriteBackApplication,
 			},
 		}
 		res := UpdateApplication(context.Background(), &UpdateConfiguration{
@@ -654,7 +685,7 @@ func Test_UpdateApplication(t *testing.T) {
 				Clientset: fake.NewFakeKubeClient(),
 			},
 		}
-		appImages := &iutypes.ApplicationImages{
+		appImages := &ApplicationImages{
 			Application: v1alpha1.Application{
 				ObjectMeta: v1.ObjectMeta{
 					Name:      "guestbook",
@@ -678,9 +709,12 @@ func Test_UpdateApplication(t *testing.T) {
 					},
 				},
 			},
-			Images: iutypes.ImageList{
-				iutypes.NewImage(
+			Images: ImageList{
+				NewImage(
 					image.NewFromIdentifier("jannfis/foobar:1.0.1")),
+			},
+			WriteBackConfig: &WriteBackConfig{
+				Method: WriteBackApplication,
 			},
 		}
 		res := UpdateApplication(context.Background(), &UpdateConfiguration{
@@ -720,10 +754,10 @@ func Test_UpdateApplication(t *testing.T) {
 		containerImg := image.NewFromIdentifier("foobar=gcr.io/jannfis/foobar:>=1.0.1")
 		kustomizeImageName := containerImg.GetParameterKustomizeImageName(annotations, common.ImageUpdaterAnnotationPrefix)
 		containerImg.KustomizeImage = image.NewFromIdentifier(kustomizeImageName)
-		iuImg := iutypes.NewImage(containerImg)
+		iuImg := NewImage(containerImg)
 		iuImg.ForceUpdate = containerImg.HasForceUpdateOptionAnnotation(annotations, common.ImageUpdaterAnnotationPrefix)
-		imageList := iutypes.ImageList{iuImg}
-		appImages := &iutypes.ApplicationImages{
+		imageList := ImageList{iuImg}
+		appImages := &ApplicationImages{
 			Application: v1alpha1.Application{
 				ObjectMeta: v1.ObjectMeta{
 					Name:        "guestbook",
@@ -749,6 +783,9 @@ func Test_UpdateApplication(t *testing.T) {
 				},
 			},
 			Images: imageList,
+			WriteBackConfig: &WriteBackConfig{
+				Method: WriteBackApplication,
+			},
 		}
 		res := UpdateApplication(context.Background(), &UpdateConfiguration{
 			NewRegFN:   mockClientFn,
@@ -787,10 +824,10 @@ func Test_UpdateApplication(t *testing.T) {
 		containerImg := image.NewFromIdentifier("foobar=gcr.io/jannfis/foobar:>=1.0.1")
 		kustomizeImageName := containerImg.GetParameterKustomizeImageName(annotations, common.ImageUpdaterAnnotationPrefix)
 		containerImg.KustomizeImage = image.NewFromIdentifier(kustomizeImageName)
-		iuImg := iutypes.NewImage(containerImg)
+		iuImg := NewImage(containerImg)
 		iuImg.ForceUpdate = containerImg.HasForceUpdateOptionAnnotation(annotations, common.ImageUpdaterAnnotationPrefix)
-		imageList := iutypes.ImageList{iuImg}
-		appImages := &iutypes.ApplicationImages{
+		imageList := ImageList{iuImg}
+		appImages := &ApplicationImages{
 			Application: v1alpha1.Application{
 				ObjectMeta: v1.ObjectMeta{
 					Name:        "guestbook",
@@ -816,6 +853,9 @@ func Test_UpdateApplication(t *testing.T) {
 				},
 			},
 			Images: imageList,
+			WriteBackConfig: &WriteBackConfig{
+				Method: WriteBackApplication,
+			},
 		}
 		res := UpdateApplication(context.Background(), &UpdateConfiguration{
 			NewRegFN:   mockClientFn,
@@ -863,7 +903,7 @@ func Test_UpdateApplication(t *testing.T) {
 				Clientset: fake.NewFakeKubeClient(),
 			},
 		}
-		appImages := &iutypes.ApplicationImages{
+		appImages := &ApplicationImages{
 			Application: v1alpha1.Application{
 				ObjectMeta: v1.ObjectMeta{
 					Name:      "guestbook",
@@ -891,9 +931,12 @@ func Test_UpdateApplication(t *testing.T) {
 					},
 				},
 			},
-			Images: iutypes.ImageList{
-				iutypes.NewImage(
+			Images: ImageList{
+				NewImage(
 					image.NewFromIdentifier("dummy=jannfis/foobar")),
+			},
+			WriteBackConfig: &WriteBackConfig{
+				Method: WriteBackApplication,
 			},
 		}
 		res := UpdateApplication(context.Background(), &UpdateConfiguration{
@@ -942,7 +985,7 @@ func Test_UpdateApplication(t *testing.T) {
 				Clientset: fake.NewFakeKubeClient(),
 			},
 		}
-		appImages := &iutypes.ApplicationImages{
+		appImages := &ApplicationImages{
 			Application: v1alpha1.Application{
 				ObjectMeta: v1.ObjectMeta{
 					Name:      "guestbook",
@@ -970,9 +1013,12 @@ func Test_UpdateApplication(t *testing.T) {
 					},
 				},
 			},
-			Images: iutypes.ImageList{
-				iutypes.NewImage(
+			Images: ImageList{
+				NewImage(
 					image.NewFromIdentifier("dummy=jannfis/foobar")),
+			},
+			WriteBackConfig: &WriteBackConfig{
+				Method: WriteBackApplication,
 			},
 		}
 		res := UpdateApplication(context.Background(), &UpdateConfiguration{
@@ -1005,7 +1051,7 @@ func Test_UpdateApplication(t *testing.T) {
 				Clientset: fake.NewFakeKubeClient(),
 			},
 		}
-		appImages := &iutypes.ApplicationImages{
+		appImages := &ApplicationImages{
 			Application: v1alpha1.Application{
 				ObjectMeta: v1.ObjectMeta{
 					Name:      "guestbook",
@@ -1029,9 +1075,12 @@ func Test_UpdateApplication(t *testing.T) {
 					},
 				},
 			},
-			Images: iutypes.ImageList{
-				iutypes.NewImage(
+			Images: ImageList{
+				NewImage(
 					image.NewFromIdentifier("example.io/jannfis/example:1.0.x")),
+			},
+			WriteBackConfig: &WriteBackConfig{
+				Method: WriteBackApplication,
 			},
 		}
 		res := UpdateApplication(context.Background(), &UpdateConfiguration{
@@ -1061,7 +1110,7 @@ func Test_UpdateApplication(t *testing.T) {
 				Clientset: fake.NewFakeKubeClient(),
 			},
 		}
-		appImages := &iutypes.ApplicationImages{
+		appImages := &ApplicationImages{
 			Application: v1alpha1.Application{
 				ObjectMeta: v1.ObjectMeta{
 					Name:      "guestbook",
@@ -1085,8 +1134,11 @@ func Test_UpdateApplication(t *testing.T) {
 					},
 				},
 			},
-			Images: iutypes.ImageList{
-				iutypes.NewImage(
+			WriteBackConfig: &WriteBackConfig{
+				Method: WriteBackApplication,
+			},
+			Images: ImageList{
+				NewImage(
 					image.NewFromIdentifier("jannfis/foobar:1.0.1")),
 			},
 		}
@@ -1120,7 +1172,7 @@ func Test_UpdateApplication(t *testing.T) {
 				Clientset: fake.NewFakeKubeClient(),
 			},
 		}
-		appImages := &iutypes.ApplicationImages{
+		appImages := &ApplicationImages{
 			Application: v1alpha1.Application{
 				ObjectMeta: v1.ObjectMeta{
 					Name:      "guestbook",
@@ -1144,8 +1196,11 @@ func Test_UpdateApplication(t *testing.T) {
 					},
 				},
 			},
-			Images: iutypes.ImageList{
-				iutypes.NewImage(
+			WriteBackConfig: &WriteBackConfig{
+				Method: WriteBackApplication,
+			},
+			Images: ImageList{
+				NewImage(
 					image.NewFromIdentifier("jannfis/foobar:1.0.1")),
 			},
 		}
@@ -1179,7 +1234,7 @@ func Test_UpdateApplication(t *testing.T) {
 				Clientset: fake.NewFakeKubeClient(),
 			},
 		}
-		appImages := &iutypes.ApplicationImages{
+		appImages := &ApplicationImages{
 			Application: v1alpha1.Application{
 				ObjectMeta: v1.ObjectMeta{
 					Name:      "guestbook",
@@ -1203,8 +1258,11 @@ func Test_UpdateApplication(t *testing.T) {
 					},
 				},
 			},
-			Images: iutypes.ImageList{
-				iutypes.NewImage(
+			WriteBackConfig: &WriteBackConfig{
+				Method: WriteBackApplication,
+			},
+			Images: ImageList{
+				NewImage(
 					image.NewFromIdentifier("jannfis/foobar:stable")),
 			},
 		}
@@ -1263,14 +1321,15 @@ kustomize:
   - baz
 `)
 		// This test doesn't use helmvalues, but we populate Images for consistency.
-		applicationImages := &iutypes.ApplicationImages{
+		applicationImages := &ApplicationImages{
 			Application: app,
-			Images: iutypes.ImageList{
-				iutypes.NewImage(
+			Images: ImageList{
+				NewImage(
 					image.NewFromIdentifier("nginx")),
 			},
 		}
-		yaml, err := marshalParamsOverride(applicationImages, originalData)
+
+		yaml, err := marshalParamsOverride(applicationImages, originalData, nil)
 		require.NoError(t, err)
 		assert.NotEmpty(t, yaml)
 		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(yaml)))
@@ -1313,14 +1372,15 @@ kustomize:
   - existing:latest
   - updated:old
 `)
-		applicationImages := &iutypes.ApplicationImages{
+		applicationImages := &ApplicationImages{
 			Application: app,
-			Images: iutypes.ImageList{
-				iutypes.NewImage(
+			Images: ImageList{
+				NewImage(
 					image.NewFromIdentifier("nginx")),
 			},
 		}
-		yaml, err := marshalParamsOverride(applicationImages, originalData)
+
+		yaml, err := marshalParamsOverride(applicationImages, originalData, nil)
 		require.NoError(t, err)
 		assert.NotEmpty(t, yaml)
 		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(yaml)))
@@ -1345,14 +1405,15 @@ kustomize:
 				SourceType: v1alpha1.ApplicationSourceTypeKustomize,
 			},
 		}
-		applicationImages := &iutypes.ApplicationImages{
+		applicationImages := &ApplicationImages{
 			Application: app,
-			Images: iutypes.ImageList{
-				iutypes.NewImage(
+			Images: ImageList{
+				NewImage(
 					image.NewFromIdentifier("nginx")),
 			},
 		}
-		yaml, err := marshalParamsOverride(applicationImages, nil)
+
+		yaml, err := marshalParamsOverride(applicationImages, nil, nil)
 		require.NoError(t, err)
 		assert.Empty(t, yaml)
 		assert.Equal(t, "", strings.TrimSpace(string(yaml)))
@@ -1412,14 +1473,14 @@ helm:
     value: baz
     forcestring: false
 `)
-		applicationImages := &iutypes.ApplicationImages{
+		applicationImages := &ApplicationImages{
 			Application: app,
-			Images: iutypes.ImageList{
-				iutypes.NewImage(
+			Images: ImageList{
+				NewImage(
 					image.NewFromIdentifier("nginx")),
 			},
 		}
-		yaml, err := marshalParamsOverride(applicationImages, originalData)
+		yaml, err := marshalParamsOverride(applicationImages, originalData, nil)
 		require.NoError(t, err)
 		assert.NotEmpty(t, yaml)
 		assert.Equal(t, strings.TrimSpace(strings.ReplaceAll(expected, "\t", "  ")), strings.TrimSpace(string(yaml)))
@@ -1470,14 +1531,14 @@ helm:
 		}
 
 		originalData := []byte(``)
-		applicationImages := &iutypes.ApplicationImages{
+		applicationImages := &ApplicationImages{
 			Application: app,
-			Images: iutypes.ImageList{
-				iutypes.NewImage(
+			Images: ImageList{
+				NewImage(
 					image.NewFromIdentifier("nginx")),
 			},
 		}
-		yaml, err := marshalParamsOverride(applicationImages, originalData)
+		yaml, err := marshalParamsOverride(applicationImages, originalData, nil)
 		require.NoError(t, err)
 		assert.NotEmpty(t, yaml)
 		assert.Equal(t, strings.TrimSpace(strings.ReplaceAll(expected, "\t", "  ")), strings.TrimSpace(string(yaml)))
@@ -1528,14 +1589,14 @@ helm:
 		}
 
 		originalData := []byte(`random content`)
-		applicationImages := &iutypes.ApplicationImages{
+		applicationImages := &ApplicationImages{
 			Application: app,
-			Images: iutypes.ImageList{
-				iutypes.NewImage(
+			Images: ImageList{
+				NewImage(
 					image.NewFromIdentifier("nginx")),
 			},
 		}
-		yaml, err := marshalParamsOverride(applicationImages, originalData)
+		yaml, err := marshalParamsOverride(applicationImages, originalData, nil)
 		require.NoError(t, err)
 		assert.NotEmpty(t, yaml)
 		assert.Equal(t, strings.TrimSpace(strings.ReplaceAll(expected, "\t", "  ")), strings.TrimSpace(string(yaml)))
@@ -1561,14 +1622,15 @@ helm:
 			},
 		}
 
-		applicationImages := &iutypes.ApplicationImages{
+		applicationImages := &ApplicationImages{
 			Application: app,
-			Images: iutypes.ImageList{
-				iutypes.NewImage(
+			Images: ImageList{
+				NewImage(
 					image.NewFromIdentifier("nginx")),
 			},
 		}
-		yaml, err := marshalParamsOverride(applicationImages, nil)
+
+		yaml, err := marshalParamsOverride(applicationImages, nil, nil)
 		require.NoError(t, err)
 		assert.Empty(t, yaml)
 	})
@@ -1625,14 +1687,15 @@ image.name: nginx
 image.tag: v0.0.0
 replicas: 1
 `)
-		applicationImages := &iutypes.ApplicationImages{
+		applicationImages := &ApplicationImages{
 			Application: app,
-			Images: iutypes.ImageList{
-				iutypes.NewImage(
+			Images: ImageList{
+				NewImage(
 					image.NewFromIdentifier("nginx")),
 			},
 		}
-		yaml, err := marshalParamsOverride(applicationImages, originalData)
+
+		yaml, err := marshalParamsOverride(applicationImages, originalData, nil)
 		require.NoError(t, err)
 		assert.NotEmpty(t, yaml)
 		assert.Equal(t, strings.TrimSpace(strings.ReplaceAll(expected, "\t", "  ")), strings.TrimSpace(string(yaml)))
@@ -1682,14 +1745,15 @@ replicas: 1
 image.spec.foo: nginx:v0.0.0
 replicas: 1
 `)
-		applicationImages := &iutypes.ApplicationImages{
+		applicationImages := &ApplicationImages{
 			Application: app,
-			Images: iutypes.ImageList{
-				iutypes.NewImage(
+			Images: ImageList{
+				NewImage(
 					image.NewFromIdentifier("nginx")),
 			},
 		}
-		yaml, err := marshalParamsOverride(applicationImages, originalData)
+
+		yaml, err := marshalParamsOverride(applicationImages, originalData, nil)
 		require.NoError(t, err)
 		assert.NotEmpty(t, yaml)
 		assert.Equal(t, strings.TrimSpace(strings.ReplaceAll(expected, "\t", "  ")), strings.TrimSpace(string(yaml)))
@@ -1703,7 +1767,8 @@ image:
   spec:
     foo: nginx:v1.0.0
 `
-		yaml, err = marshalParamsOverride(applicationImages, originalData)
+
+		yaml, err = marshalParamsOverride(applicationImages, originalData, nil)
 		require.NoError(t, err)
 		assert.NotEmpty(t, yaml)
 		assert.Equal(t, strings.TrimSpace(strings.ReplaceAll(expected, "\t", "  ")), strings.TrimSpace(string(yaml)))
@@ -1791,16 +1856,17 @@ redis.image.name: redis
 redis.image.tag: v0.0.0
 replicas: 1
 `)
-		applicationImages := &iutypes.ApplicationImages{
+		applicationImages := &ApplicationImages{
 			Application: app,
-			Images: iutypes.ImageList{
-				iutypes.NewImage(
+			Images: ImageList{
+				NewImage(
 					image.NewFromIdentifier("nginx=nginx")),
-				iutypes.NewImage(
+				NewImage(
 					image.NewFromIdentifier("redis=redis")),
 			},
 		}
-		yaml, err := marshalParamsOverride(applicationImages, originalData)
+
+		yaml, err := marshalParamsOverride(applicationImages, originalData, nil)
 		require.NoError(t, err)
 		assert.NotEmpty(t, yaml)
 		assert.Equal(t, strings.TrimSpace(strings.ReplaceAll(expected, "\t", "  ")), strings.TrimSpace(string(yaml)))
@@ -1819,7 +1885,7 @@ redis:
     tag: v1.0.0
     name: redis
 `
-		yaml, err = marshalParamsOverride(applicationImages, originalData)
+		yaml, err = marshalParamsOverride(applicationImages, originalData, nil)
 		require.NoError(t, err)
 		assert.NotEmpty(t, yaml)
 		assert.Equal(t, strings.TrimSpace(strings.ReplaceAll(expected, "\t", "  ")), strings.TrimSpace(string(yaml)))
@@ -1922,18 +1988,19 @@ bbb.image.name: nginx
 bbb.image.tag: v0.0.0
 replicas: 1
 `)
-		applicationImages := &iutypes.ApplicationImages{
+		applicationImages := &ApplicationImages{
 			Application: app,
-			Images: iutypes.ImageList{
-				iutypes.NewImage(
+			Images: ImageList{
+				NewImage(
 					image.NewFromIdentifier("foo=nginx")),
-				iutypes.NewImage(
+				NewImage(
 					image.NewFromIdentifier("bar=nginx")),
-				iutypes.NewImage(
+				NewImage(
 					image.NewFromIdentifier("bbb=nginx")),
 			},
 		}
-		yaml, err := marshalParamsOverride(applicationImages, originalData)
+
+		yaml, err := marshalParamsOverride(applicationImages, originalData, nil)
 		require.NoError(t, err)
 		assert.NotEmpty(t, yaml)
 		assert.Equal(t, strings.TrimSpace(strings.ReplaceAll(expected, "\t", "  ")), strings.TrimSpace(string(yaml)))
@@ -1996,14 +2063,15 @@ image:
 replicas: 1
 `)
 
-		applicationImages := &iutypes.ApplicationImages{
+		applicationImages := &ApplicationImages{
 			Application: app,
-			Images: iutypes.ImageList{
-				iutypes.NewImage(
+			Images: ImageList{
+				NewImage(
 					image.NewFromIdentifier("nginx")),
 			},
 		}
-		yaml, err := marshalParamsOverride(applicationImages, originalData)
+
+		yaml, err := marshalParamsOverride(applicationImages, originalData, nil)
 		require.NoError(t, err)
 		assert.NotEmpty(t, yaml)
 		assert.Equal(t, strings.TrimSpace(strings.ReplaceAll(expected, "\t", "  ")), strings.TrimSpace(string(yaml)))
@@ -2063,14 +2131,15 @@ image:
 replicas: 1
 `)
 
-		applicationImages := &iutypes.ApplicationImages{
+		applicationImages := &ApplicationImages{
 			Application: app,
-			Images: iutypes.ImageList{
-				iutypes.NewImage(
+			Images: ImageList{
+				NewImage(
 					image.NewFromIdentifier("nginx")),
 			},
 		}
-		yaml, err := marshalParamsOverride(applicationImages, originalData)
+
+		yaml, err := marshalParamsOverride(applicationImages, originalData, nil)
 
 		require.NoError(t, err)
 		assert.NotEmpty(t, yaml)
@@ -2119,14 +2188,15 @@ replicas: 1
 		}
 
 		originalData := []byte(`random: yaml`)
-		applicationImages := &iutypes.ApplicationImages{
+		applicationImages := &ApplicationImages{
 			Application: app,
-			Images: iutypes.ImageList{
-				iutypes.NewImage(
+			Images: ImageList{
+				NewImage(
 					image.NewFromIdentifier("nginx")),
 			},
 		}
-		_, err := marshalParamsOverride(applicationImages, originalData)
+
+		_, err := marshalParamsOverride(applicationImages, originalData, nil)
 		assert.Error(t, err)
 		assert.Equal(t, "could not find an image-tag annotation for image nginx", err.Error())
 	})
@@ -2173,14 +2243,15 @@ replicas: 1
 		}
 
 		originalData := []byte(`random: yaml`)
-		applicationImages := &iutypes.ApplicationImages{
+		applicationImages := &ApplicationImages{
 			Application: app,
-			Images: iutypes.ImageList{
-				iutypes.NewImage(
+			Images: ImageList{
+				NewImage(
 					image.NewFromIdentifier("nginx")),
 			},
 		}
-		_, err := marshalParamsOverride(applicationImages, originalData)
+
+		_, err := marshalParamsOverride(applicationImages, originalData, nil)
 		assert.Error(t, err)
 		assert.Equal(t, "could not find an image-name annotation for image nginx", err.Error())
 	})
@@ -2228,14 +2299,15 @@ replicas: 1
 		}
 
 		originalData := []byte(`random: yaml`)
-		applicationImages := &iutypes.ApplicationImages{
+		applicationImages := &ApplicationImages{
 			Application: app,
-			Images: iutypes.ImageList{
-				iutypes.NewImage(
+			Images: ImageList{
+				NewImage(
 					image.NewFromIdentifier("nginx")),
 			},
 		}
-		_, err := marshalParamsOverride(applicationImages, originalData)
+
+		_, err := marshalParamsOverride(applicationImages, originalData, nil)
 		assert.Error(t, err)
 	})
 
@@ -2282,14 +2354,15 @@ replicas: 1
 		}
 
 		originalData := []byte(`random: yaml`)
-		applicationImages := &iutypes.ApplicationImages{
+		applicationImages := &ApplicationImages{
 			Application: app,
-			Images: iutypes.ImageList{
-				iutypes.NewImage(
+			Images: ImageList{
+				NewImage(
 					image.NewFromIdentifier("nginx")),
 			},
 		}
-		_, err := marshalParamsOverride(applicationImages, originalData)
+
+		_, err := marshalParamsOverride(applicationImages, originalData, nil)
 		assert.Error(t, err)
 		assert.Equal(t, "wrongimage.tag parameter not found", err.Error())
 	})
@@ -2337,14 +2410,15 @@ replicas: 1
 		}
 
 		originalData := []byte(`random content`)
-		applicationImages := &iutypes.ApplicationImages{
+		applicationImages := &ApplicationImages{
 			Application: app,
-			Images: iutypes.ImageList{
-				iutypes.NewImage(
+			Images: ImageList{
+				NewImage(
 					image.NewFromIdentifier("nginx")),
 			},
 		}
-		_, err := marshalParamsOverride(applicationImages, originalData)
+
+		_, err := marshalParamsOverride(applicationImages, originalData, nil)
 		assert.Error(t, err)
 	})
 
@@ -2374,11 +2448,12 @@ replicas: 1
 			},
 		}
 
-		applicationImages := &iutypes.ApplicationImages{
+		applicationImages := &ApplicationImages{
 			Application: app,
-			Images:      iutypes.ImageList{},
+			Images:      ImageList{},
 		}
-		_, err := marshalParamsOverride(applicationImages, nil)
+
+		_, err := marshalParamsOverride(applicationImages, nil, nil)
 		assert.Error(t, err)
 	})
 }
@@ -2657,7 +2732,15 @@ func Test_GetWriteBackConfig(t *testing.T) {
 			},
 		}
 
-		wbc, err := getWriteBackConfig(&app, &kubeClient, &argoClient)
+		// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
+		settings := &iuapi.WriteBackConfig{
+			Method: stringPtr("git"),
+			GitConfig: &iuapi.GitConfig{
+				Branch: stringPtr("mybranch:mytargetbranch"),
+			},
+		}
+
+		wbc, err := newWBCFromCommonWBCSettings(&app, &kubeClient, settings, nil)
 		require.NoError(t, err)
 		require.NotNil(t, wbc)
 		assert.Equal(t, wbc.Method, WriteBackGit)
@@ -2691,7 +2774,15 @@ func Test_GetWriteBackConfig(t *testing.T) {
 			},
 		}
 
-		wbc, err := getWriteBackConfig(&app, &kubeClient, &argoClient)
+		// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
+		settings := &iuapi.WriteBackConfig{
+			Method: stringPtr("git"),
+			GitConfig: &iuapi.GitConfig{
+				Branch: stringPtr(":mytargetbranch"),
+			},
+		}
+
+		wbc, err := newWBCFromCommonWBCSettings(&app, &kubeClient, settings, nil)
 		require.NoError(t, err)
 		require.NotNil(t, wbc)
 		assert.Equal(t, "", wbc.GitBranch)
@@ -2724,7 +2815,15 @@ func Test_GetWriteBackConfig(t *testing.T) {
 			},
 		}
 
-		wbc, err := getWriteBackConfig(&app, &kubeClient, &argoClient)
+		// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
+		settings := &iuapi.WriteBackConfig{
+			Method: stringPtr("git"),
+			GitConfig: &iuapi.GitConfig{
+				Branch: stringPtr("mybranch"),
+			},
+		}
+
+		wbc, err := newWBCFromCommonWBCSettings(&app, &kubeClient, settings, nil)
 		require.NoError(t, err)
 		require.NotNil(t, wbc)
 		assert.Equal(t, "mybranch", wbc.GitBranch)
@@ -2760,7 +2859,12 @@ func Test_GetWriteBackConfig(t *testing.T) {
 			},
 		}
 
-		wbc, err := getWriteBackConfig(&app, &kubeClient, &argoClient)
+		// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
+		settings := &iuapi.WriteBackConfig{
+			Method: stringPtr("argocd"),
+		}
+
+		wbc, err := newWBCFromCommonWBCSettings(&app, &kubeClient, settings, nil)
 		require.NoError(t, err)
 		require.NotNil(t, wbc)
 		assert.Equal(t, wbc.Method, WriteBackApplication)
@@ -2797,7 +2901,16 @@ func Test_GetWriteBackConfig(t *testing.T) {
 			},
 		}
 
-		wbc, err := getWriteBackConfig(&app, &kubeClient, &argoClient)
+		// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
+		settings := &iuapi.WriteBackConfig{
+			Method: stringPtr("git"),
+			GitConfig: &iuapi.GitConfig{
+				Branch:          stringPtr("mybranch:mytargetbranch"),
+				WriteBackTarget: stringPtr("kustomization:../bar"),
+			},
+		}
+
+		wbc, err := newWBCFromCommonWBCSettings(&app, &kubeClient, settings, nil)
 		require.NoError(t, err)
 		require.NotNil(t, wbc)
 		assert.Equal(t, wbc.Method, WriteBackGit)
@@ -2835,7 +2948,16 @@ func Test_GetWriteBackConfig(t *testing.T) {
 			},
 		}
 
-		wbc, err := getWriteBackConfig(&app, &kubeClient, &argoClient)
+		// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
+		settings := &iuapi.WriteBackConfig{
+			Method: stringPtr("git"),
+			GitConfig: &iuapi.GitConfig{
+				Branch:          stringPtr("mybranch:mytargetbranch"),
+				WriteBackTarget: stringPtr("helmvalues:../bar/values.yaml"),
+			},
+		}
+
+		wbc, err := newWBCFromCommonWBCSettings(&app, &kubeClient, settings, nil)
 		require.NoError(t, err)
 		require.NotNil(t, wbc)
 		assert.Equal(t, wbc.Method, WriteBackGit)
@@ -2873,7 +2995,16 @@ func Test_GetWriteBackConfig(t *testing.T) {
 			},
 		}
 
-		wbc, err := getWriteBackConfig(&app, &kubeClient, &argoClient)
+		// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
+		settings := &iuapi.WriteBackConfig{
+			Method: stringPtr("git"),
+			GitConfig: &iuapi.GitConfig{
+				Branch:          stringPtr("mybranch:mytargetbranch"),
+				WriteBackTarget: stringPtr("helmvalues"),
+			},
+		}
+
+		wbc, err := newWBCFromCommonWBCSettings(&app, &kubeClient, settings, nil)
 		require.NoError(t, err)
 		require.NotNil(t, wbc)
 		assert.Equal(t, wbc.Method, WriteBackGit)
@@ -2911,7 +3042,16 @@ func Test_GetWriteBackConfig(t *testing.T) {
 			},
 		}
 
-		wbc, err := getWriteBackConfig(&app, &kubeClient, &argoClient)
+		// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
+		settings := &iuapi.WriteBackConfig{
+			Method: stringPtr("git"),
+			GitConfig: &iuapi.GitConfig{
+				Branch:          stringPtr("mybranch:mytargetbranch"),
+				WriteBackTarget: stringPtr("helmvalues:/helm/app/values.yaml"),
+			},
+		}
+
+		wbc, err := newWBCFromCommonWBCSettings(&app, &kubeClient, settings, nil)
 		require.NoError(t, err)
 		require.NotNil(t, wbc)
 		assert.Equal(t, wbc.Method, WriteBackGit)
@@ -2949,7 +3089,16 @@ func Test_GetWriteBackConfig(t *testing.T) {
 			},
 		}
 
-		wbc, err := getWriteBackConfig(&app, &kubeClient, &argoClient)
+		// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
+		settings := &iuapi.WriteBackConfig{
+			Method: stringPtr("git"),
+			GitConfig: &iuapi.GitConfig{
+				Branch:          stringPtr("mybranch:mytargetbranch"),
+				WriteBackTarget: stringPtr("target/folder/app-parameters.yaml"),
+			},
+		}
+
+		wbc, err := newWBCFromCommonWBCSettings(&app, &kubeClient, settings, nil)
 		require.NoError(t, err)
 		require.NotNil(t, wbc)
 		assert.Equal(t, wbc.Method, WriteBackGit)
@@ -2986,7 +3135,15 @@ func Test_GetWriteBackConfig(t *testing.T) {
 			},
 		}
 
-		_, err := getWriteBackConfig(&app, &kubeClient, &argoClient)
+		// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
+		settings := &iuapi.WriteBackConfig{
+			Method: stringPtr("git:error:argocd-image-updater/git-creds"),
+			GitConfig: &iuapi.GitConfig{
+				Branch: stringPtr("mybranch:mytargetbranch"),
+			},
+		}
+
+		_, err := newWBCFromCommonWBCSettings(&app, &kubeClient, settings, nil)
 		assert.Error(t, err)
 	})
 
@@ -3018,7 +3175,15 @@ func Test_GetWriteBackConfig(t *testing.T) {
 			},
 		}
 
-		wbc, err := getWriteBackConfig(&app, &kubeClient, &argoClient)
+		// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
+		settings := &iuapi.WriteBackConfig{
+			Method: stringPtr("argocd"),
+			GitConfig: &iuapi.GitConfig{
+				Branch: stringPtr("mybranch:mytargetbranch"),
+			},
+		}
+
+		wbc, err := newWBCFromCommonWBCSettings(&app, &kubeClient, settings, nil)
 		require.NoError(t, err)
 		require.NotNil(t, wbc)
 		assert.Equal(t, wbc.Method, WriteBackApplication)
@@ -3053,7 +3218,15 @@ func Test_GetWriteBackConfig(t *testing.T) {
 			},
 		}
 
-		wbc, err := getWriteBackConfig(&app, &kubeClient, &argoClient)
+		// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
+		settings := &iuapi.WriteBackConfig{
+			Method: stringPtr("unknown"),
+			GitConfig: &iuapi.GitConfig{
+				Branch: stringPtr("mybranch:mytargetbranch"),
+			},
+		}
+
+		wbc, err := newWBCFromCommonWBCSettings(&app, &kubeClient, settings, nil)
 		require.Error(t, err)
 		require.Nil(t, wbc)
 	})
@@ -3092,7 +3265,15 @@ func Test_GetGitCreds(t *testing.T) {
 				SourceType: v1alpha1.ApplicationSourceTypeKustomize,
 			},
 		}
-		wbc, err := getWriteBackConfig(&app, &kubeClient, &argoClient)
+		// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
+		settings := &iuapi.WriteBackConfig{
+			Method: stringPtr("git:secret:argocd-image-updater/git-creds"),
+			GitConfig: &iuapi.GitConfig{
+				Branch: stringPtr("mybranch:mytargetbranch"),
+			},
+		}
+
+		wbc, err := newWBCFromCommonWBCSettings(&app, &kubeClient, settings, nil)
 		require.NoError(t, err)
 
 		creds, err := wbc.GetCreds(&app)
@@ -3135,7 +3316,15 @@ func Test_GetGitCreds(t *testing.T) {
 				SourceType: v1alpha1.ApplicationSourceTypeKustomize,
 			},
 		}
-		wbc, err := getWriteBackConfig(&app, &kubeClient, &argoClient)
+		// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
+		settings := &iuapi.WriteBackConfig{
+			Method: stringPtr("git:secret:argocd-image-updater/git-creds"),
+			GitConfig: &iuapi.GitConfig{
+				Branch: stringPtr("mybranch:mytargetbranch"),
+			},
+		}
+
+		wbc, err := newWBCFromCommonWBCSettings(&app, &kubeClient, settings, nil)
 		require.NoError(t, err)
 
 		creds, err := wbc.GetCreds(&app)
@@ -3173,7 +3362,15 @@ func Test_GetGitCreds(t *testing.T) {
 					Clientset: fake.NewFakeClientsetWithResources(secret),
 				},
 			}
-			wbc, err = getWriteBackConfig(&app, &kubeClient, &argoClient)
+			// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
+			settings := &iuapi.WriteBackConfig{
+				Method: stringPtr("git"),
+				GitConfig: &iuapi.GitConfig{
+					Branch: stringPtr("mybranch:mytargetbranch"),
+				},
+			}
+
+			wbc, err = newWBCFromCommonWBCSettings(&app, &kubeClient, settings, nil)
 			require.NoError(t, err)
 			_, err = wbc.GetCreds(&app)
 			require.Error(t, err)
@@ -3209,7 +3406,15 @@ func Test_GetGitCreds(t *testing.T) {
 				SourceType: v1alpha1.ApplicationSourceTypeKustomize,
 			},
 		}
-		wbc, err := getWriteBackConfig(&app, &kubeClient, &argoClient)
+		// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
+		settings := &iuapi.WriteBackConfig{
+			Method: stringPtr("git:secret:argocd-image-updater/git-creds"),
+			GitConfig: &iuapi.GitConfig{
+				Branch: stringPtr("mybranch:mytargetbranch"),
+			},
+		}
+
+		wbc, err := newWBCFromCommonWBCSettings(&app, &kubeClient, settings, nil)
 		require.NoError(t, err)
 
 		creds, err := wbc.GetCreds(&app)
@@ -3263,7 +3468,15 @@ func Test_GetGitCreds(t *testing.T) {
 				SourceType: v1alpha1.ApplicationSourceTypeKustomize,
 			},
 		}
-		wbc, err := getWriteBackConfig(&app, &kubeClient, &argoClient)
+		// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
+		settings := &iuapi.WriteBackConfig{
+			Method: stringPtr("git"),
+			GitConfig: &iuapi.GitConfig{
+				Branch: stringPtr("mybranch:mytargetbranch"),
+			},
+		}
+
+		wbc, err := newWBCFromCommonWBCSettings(&app, &kubeClient, settings, nil)
 		require.NoError(t, err)
 
 		creds, err := wbc.GetCreds(&app)
@@ -3303,7 +3516,15 @@ func Test_GetGitCreds(t *testing.T) {
 				SourceType: v1alpha1.ApplicationSourceTypeKustomize,
 			},
 		}
-		wbc, err := getWriteBackConfig(&app, &kubeClient, &argoClient)
+		// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
+		settings := &iuapi.WriteBackConfig{
+			Method: stringPtr("git"),
+			GitConfig: &iuapi.GitConfig{
+				Branch: stringPtr("mybranch:mytargetbranch"),
+			},
+		}
+
+		wbc, err := newWBCFromCommonWBCSettings(&app, &kubeClient, settings, nil)
 		require.NoError(t, err)
 
 		creds, err := wbc.GetCreds(&app)
@@ -3341,7 +3562,15 @@ func Test_GetGitCreds(t *testing.T) {
 				SourceType: v1alpha1.ApplicationSourceTypeKustomize,
 			},
 		}
-		wbc, err := getWriteBackConfig(&app, &kubeClient, &argoClient)
+		// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
+		settings := &iuapi.WriteBackConfig{
+			Method: stringPtr("git"),
+			GitConfig: &iuapi.GitConfig{
+				Branch: stringPtr("mybranch:mytargetbranch"),
+			},
+		}
+
+		wbc, err := newWBCFromCommonWBCSettings(&app, &kubeClient, settings, nil)
 		require.NoError(t, err)
 
 		creds, err := wbc.GetCreds(&app)
@@ -3379,7 +3608,15 @@ func Test_GetGitCreds(t *testing.T) {
 				SourceType: v1alpha1.ApplicationSourceTypeKustomize,
 			},
 		}
-		wbc, err := getWriteBackConfig(&app, &kubeClient, &argoClient)
+		// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
+		settings := &iuapi.WriteBackConfig{
+			Method: stringPtr("git"),
+			GitConfig: &iuapi.GitConfig{
+				Branch: stringPtr("mybranch:mytargetbranch"),
+			},
+		}
+
+		wbc, err := newWBCFromCommonWBCSettings(&app, &kubeClient, settings, nil)
 		require.NoError(t, err)
 
 		creds, err := wbc.GetCreds(&app)
@@ -3419,7 +3656,16 @@ func Test_GetGitCreds(t *testing.T) {
 			},
 		}
 
-		wbc, err := getWriteBackConfig(&app, &kubeClient, &argoClient)
+		// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
+		settings := &iuapi.WriteBackConfig{
+			Method: stringPtr("git:secret:argocd-image-updater/git-creds"),
+			GitConfig: &iuapi.GitConfig{
+				Branch:     stringPtr("mybranch:mytargetbranch"),
+				Repository: stringPtr("git@github.com:example/example.git"),
+			},
+		}
+
+		wbc, err := newWBCFromCommonWBCSettings(&app, &kubeClient, settings, nil)
 		require.NoError(t, err)
 		require.Equal(t, wbc.GitRepo, "git@github.com:example/example.git")
 
@@ -3472,13 +3718,19 @@ func Test_CommitUpdates(t *testing.T) {
 		gitMock.On("Commit", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 		gitMock.On("Push", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 
-		wbc, err := getWriteBackConfig(&app, &kubeClient, &argoClient)
+		// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
+		// Pass nil settings to test the default target revision fallback
+		wbc, err := newWBCFromCommonWBCSettings(&app, &kubeClient, nil, nil)
 		require.NoError(t, err)
+		wbc.Method = WriteBackGit
+		wbc.GetCreds = func(app *v1alpha1.Application) (git.Creds, error) {
+			return git.NopCreds{}, nil
+		}
 		wbc.GitClient = gitMock
 
-		applicationImages := &iutypes.ApplicationImages{
+		applicationImages := &ApplicationImages{
 			Application: app,
-			Images:      iutypes.ImageList{},
+			Images:      ImageList{},
 		}
 		err = commitChanges(applicationImages, wbc, nil)
 		assert.NoError(t, err)
@@ -3495,14 +3747,18 @@ func Test_CommitUpdates(t *testing.T) {
 		gitMock.On("Push", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 		gitMock.On("SymRefToBranch", mock.Anything).Return("mydefaultbranch", nil)
 
-		wbc, err := getWriteBackConfig(&app, &kubeClient, &argoClient)
+		wbc, err := newWBCFromCommonWBCSettings(&app, &kubeClient, nil, nil)
 		require.NoError(t, err)
+		wbc.Method = WriteBackGit
+		wbc.GetCreds = func(app *v1alpha1.Application) (git.Creds, error) {
+			return git.NopCreds{}, nil
+		}
 		wbc.GitClient = gitMock
 		wbc.GitBranch = "mybranch"
 
-		applicationImages := &iutypes.ApplicationImages{
+		applicationImages := &ApplicationImages{
 			Application: app,
-			Images:      iutypes.ImageList{},
+			Images:      ImageList{},
 		}
 		err = commitChanges(applicationImages, wbc, nil)
 		assert.NoError(t, err)
@@ -3519,15 +3775,21 @@ func Test_CommitUpdates(t *testing.T) {
 		gitMock.On("Commit", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 		gitMock.On("Push", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 		gitMock.On("SymRefToBranch", mock.Anything).Return("mydefaultbranch", nil)
-		wbc, err := getWriteBackConfig(app, &kubeClient, &argoClient)
+
+		wbc, err := newWBCFromCommonWBCSettings(app, &kubeClient, nil, nil)
+		require.NoError(t, err)
+		wbc.Method = WriteBackGit
+		wbc.GetCreds = func(app *v1alpha1.Application) (git.Creds, error) {
+			return git.NopCreds{}, nil
+		}
 		require.NoError(t, err)
 		wbc.GitClient = gitMock
 		app.Spec.Source.TargetRevision = "HEAD"
 		wbc.GitBranch = ""
 
-		applicationImages := &iutypes.ApplicationImages{
+		applicationImages := &ApplicationImages{
 			Application: *app,
-			Images:      iutypes.ImageList{},
+			Images:      ImageList{},
 		}
 		err = commitChanges(applicationImages, wbc, nil)
 		assert.NoError(t, err)
@@ -3542,7 +3804,12 @@ func Test_CommitUpdates(t *testing.T) {
 		gitMock.On("Push", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 		gitMock.On("SymRefToBranch", mock.Anything).Return("mydefaultbranch", nil)
 
-		wbc, err := getWriteBackConfig(&app, &kubeClient, &argoClient)
+		wbc, err := newWBCFromCommonWBCSettings(&app, &kubeClient, nil, nil)
+		require.NoError(t, err)
+		wbc.Method = WriteBackGit
+		wbc.GetCreds = func(app *v1alpha1.Application) (git.Creds, error) {
+			return git.NopCreds{}, nil
+		}
 		require.NoError(t, err)
 		wbc.GitClient = gitMock
 		wbc.GitBranch = "mydefaultbranch"
@@ -3557,9 +3824,9 @@ func Test_CommitUpdates(t *testing.T) {
 		}
 		gitMock.On("Checkout", TemplateBranchName(wbc.GitWriteBranch, cl), mock.Anything).Return(nil)
 
-		applicationImages := &iutypes.ApplicationImages{
+		applicationImages := &ApplicationImages{
 			Application: app,
-			Images:      iutypes.ImageList{},
+			Images:      ImageList{},
 		}
 		err = commitChanges(applicationImages, wbc, cl)
 		assert.NoError(t, err)
@@ -3590,15 +3857,20 @@ helm:
 		gitMock.On("Commit", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 		gitMock.On("Push", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 		gitMock.On("SymRefToBranch", mock.Anything).Return("mydefaultbranch", nil)
-		wbc, err := getWriteBackConfig(app, &kubeClient, &argoClient)
+
+		wbc, err := newWBCFromCommonWBCSettings(app, &kubeClient, nil, nil)
+		wbc.Method = WriteBackGit
+		wbc.GetCreds = func(app *v1alpha1.Application) (git.Creds, error) {
+			return git.NopCreds{}, nil
+		}
 		require.NoError(t, err)
 		wbc.GitClient = gitMock
 		app.Spec.Source.TargetRevision = "HEAD"
 		wbc.GitBranch = ""
 
-		applicationImages := &iutypes.ApplicationImages{
+		applicationImages := &ApplicationImages{
 			Application: *app,
-			Images:      iutypes.ImageList{},
+			Images:      ImageList{},
 		}
 		err = commitChanges(applicationImages, wbc, nil)
 		assert.NoError(t, err)
@@ -3646,15 +3918,20 @@ helm:
 		gitMock.On("Commit", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 		gitMock.On("Push", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 		gitMock.On("SymRefToBranch", mock.Anything).Return("mydefaultbranch", nil)
-		wbc, err := getWriteBackConfig(app, &kubeClient, &argoClient)
+
+		wbc, err := newWBCFromCommonWBCSettings(app, &kubeClient, nil, nil)
+		wbc.Method = WriteBackGit
+		wbc.GetCreds = func(app *v1alpha1.Application) (git.Creds, error) {
+			return git.NopCreds{}, nil
+		}
 		require.NoError(t, err)
 		wbc.GitClient = gitMock
 		app.Spec.Source.TargetRevision = "HEAD"
 		wbc.GitBranch = ""
 
-		applicationImages := &iutypes.ApplicationImages{
+		applicationImages := &ApplicationImages{
 			Application: *app,
-			Images:      iutypes.ImageList{},
+			Images:      ImageList{},
 		}
 		err = commitChanges(applicationImages, wbc, nil)
 		assert.NoError(t, err)
@@ -3702,15 +3979,20 @@ helm:
 		gitMock.On("Commit", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 		gitMock.On("Push", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 		gitMock.On("SymRefToBranch", mock.Anything).Return("mydefaultbranch", nil)
-		wbc, err := getWriteBackConfig(app, &kubeClient, &argoClient)
+
+		wbc, err := newWBCFromCommonWBCSettings(app, &kubeClient, nil, nil)
 		require.NoError(t, err)
+		wbc.Method = WriteBackGit
+		wbc.GetCreds = func(app *v1alpha1.Application) (git.Creds, error) {
+			return git.NopCreds{}, nil
+		}
 		wbc.GitClient = gitMock
 		app.Spec.Source.TargetRevision = "HEAD"
 		wbc.GitBranch = ""
 
-		applicationImages := &iutypes.ApplicationImages{
+		applicationImages := &ApplicationImages{
 			Application: *app,
-			Images:      iutypes.ImageList{},
+			Images:      ImageList{},
 		}
 		err = commitChanges(applicationImages, wbc, nil)
 		assert.NoError(t, err)
@@ -3752,15 +4034,22 @@ replacements: []
 		gitMock.On("Commit", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 		gitMock.On("Push", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 		gitMock.On("SymRefToBranch", mock.Anything).Return("mydefaultbranch", nil)
-		wbc, err := getWriteBackConfig(app, &kubeClient, &argoClient)
+
+		wbc, err := newWBCFromCommonWBCSettings(app, &kubeClient, nil, nil)
 		require.NoError(t, err)
+		wbc.Method = WriteBackGit
+		wbc.GetCreds = func(app *v1alpha1.Application) (git.Creds, error) {
+			return git.NopCreds{}, nil
+		}
 		wbc.GitClient = gitMock
 		app.Spec.Source.TargetRevision = "HEAD"
 		wbc.GitBranch = ""
+		// Set the kustomize base for kustomization write-back
+		wbc.KustomizeBase = "."
 
-		applicationImages := &iutypes.ApplicationImages{
+		applicationImages := &ApplicationImages{
 			Application: *app,
-			Images:      iutypes.ImageList{},
+			Images:      ImageList{},
 		}
 		err = commitChanges(applicationImages, wbc, nil)
 		assert.NoError(t, err)
@@ -3781,9 +4070,9 @@ replacements: []
 
 		// test the merge case too
 		app.Spec.Source.Kustomize.Images = v1alpha1.KustomizeImages{"foo:123", "bar=qux"}
-		applicationImages = &iutypes.ApplicationImages{
+		applicationImages = &ApplicationImages{
 			Application: *app,
-			Images:      iutypes.ImageList{},
+			Images:      ImageList{},
 		}
 		err = commitChanges(applicationImages, wbc, nil)
 		assert.NoError(t, err)
@@ -3816,7 +4105,12 @@ replacements: []
 		gitMock.On("Config", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
 			args.Assert(t, "someone", "someone@example.com")
 		}).Return(nil)
-		wbc, err := getWriteBackConfig(app, &kubeClient, &argoClient)
+
+		wbc, err := newWBCFromCommonWBCSettings(app, &kubeClient, nil, nil)
+		wbc.Method = WriteBackGit
+		wbc.GetCreds = func(app *v1alpha1.Application) (git.Creds, error) {
+			return git.NopCreds{}, nil
+		}
 		require.NoError(t, err)
 		wbc.GitClient = gitMock
 		app.Spec.Source.TargetRevision = "HEAD"
@@ -3824,9 +4118,9 @@ replacements: []
 		wbc.GitCommitUser = "someone"
 		wbc.GitCommitEmail = "someone@example.com"
 
-		applicationImages := &iutypes.ApplicationImages{
+		applicationImages := &ApplicationImages{
 			Application: *app,
-			Images:      iutypes.ImageList{},
+			Images:      ImageList{},
 		}
 		err = commitChanges(applicationImages, wbc, nil)
 		assert.NoError(t, err)
@@ -3848,7 +4142,15 @@ replacements: []
 		gitMock.On("Config", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
 			args.Assert(t, "someone", "someone@example.com")
 		}).Return(fmt.Errorf("could not configure git"))
-		wbc, err := getWriteBackConfig(app, &kubeClient, &argoClient)
+		// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
+		settings := &iuapi.WriteBackConfig{
+			Method: stringPtr("git"),
+			GitConfig: &iuapi.GitConfig{
+				Branch: stringPtr("mybranch:mytargetbranch"),
+			},
+		}
+
+		wbc, err := newWBCFromCommonWBCSettings(app, &kubeClient, settings, nil)
 		require.NoError(t, err)
 		wbc.GitClient = gitMock
 		app.Spec.Source.TargetRevision = "HEAD"
@@ -3856,9 +4158,9 @@ replacements: []
 		wbc.GitCommitUser = "someone"
 		wbc.GitCommitEmail = "someone@example.com"
 
-		applicationImages := &iutypes.ApplicationImages{
+		applicationImages := &ApplicationImages{
 			Application: *app,
-			Images:      iutypes.ImageList{},
+			Images:      ImageList{},
 		}
 		err = commitChanges(applicationImages, wbc, nil)
 		assert.Errorf(t, err, "could not configure git")
@@ -3871,13 +4173,21 @@ replacements: []
 		gitMock.On("Checkout", mock.Anything, mock.Anything).Return(nil)
 		gitMock.On("Commit", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 		gitMock.On("Push", mock.Anything, mock.Anything, mock.Anything).Return(nil)
-		wbc, err := getWriteBackConfig(&app, &kubeClient, &argoClient)
+		// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
+		settings := &iuapi.WriteBackConfig{
+			Method: stringPtr("git"),
+			GitConfig: &iuapi.GitConfig{
+				Branch: stringPtr("mybranch:mytargetbranch"),
+			},
+		}
+
+		wbc, err := newWBCFromCommonWBCSettings(&app, &kubeClient, settings, nil)
 		require.NoError(t, err)
 		wbc.GitClient = gitMock
 
-		applicationImages := &iutypes.ApplicationImages{
+		applicationImages := &ApplicationImages{
 			Application: app,
-			Images:      iutypes.ImageList{},
+			Images:      ImageList{},
 		}
 		err = commitChanges(applicationImages, wbc, nil)
 		assert.Errorf(t, err, "cannot init")
@@ -3890,13 +4200,21 @@ replacements: []
 		gitMock.On("Checkout", mock.Anything, mock.Anything).Return(nil)
 		gitMock.On("Commit", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 		gitMock.On("Push", mock.Anything, mock.Anything, mock.Anything).Return(nil)
-		wbc, err := getWriteBackConfig(&app, &kubeClient, &argoClient)
+		// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
+		settings := &iuapi.WriteBackConfig{
+			Method: stringPtr("git"),
+			GitConfig: &iuapi.GitConfig{
+				Branch: stringPtr("mybranch:mytargetbranch"),
+			},
+		}
+
+		wbc, err := newWBCFromCommonWBCSettings(&app, &kubeClient, settings, nil)
 		require.NoError(t, err)
 		wbc.GitClient = gitMock
 
-		applicationImages := &iutypes.ApplicationImages{
+		applicationImages := &ApplicationImages{
 			Application: app,
-			Images:      iutypes.ImageList{},
+			Images:      ImageList{},
 		}
 		err = commitChanges(applicationImages, wbc, nil)
 		assert.Errorf(t, err, "cannot init")
@@ -3908,13 +4226,21 @@ replacements: []
 		gitMock.On("Checkout", mock.Anything, mock.Anything).Return(fmt.Errorf("cannot checkout"))
 		gitMock.On("Commit", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 		gitMock.On("Push", mock.Anything, mock.Anything, mock.Anything).Return(nil)
-		wbc, err := getWriteBackConfig(&app, &kubeClient, &argoClient)
+		// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
+		settings := &iuapi.WriteBackConfig{
+			Method: stringPtr("git"),
+			GitConfig: &iuapi.GitConfig{
+				Branch: stringPtr("mybranch:mytargetbranch"),
+			},
+		}
+
+		wbc, err := newWBCFromCommonWBCSettings(&app, &kubeClient, settings, nil)
 		require.NoError(t, err)
 		wbc.GitClient = gitMock
 
-		applicationImages := &iutypes.ApplicationImages{
+		applicationImages := &ApplicationImages{
 			Application: app,
-			Images:      iutypes.ImageList{},
+			Images:      ImageList{},
 		}
 		err = commitChanges(applicationImages, wbc, nil)
 		assert.Errorf(t, err, "cannot checkout")
@@ -3927,13 +4253,21 @@ replacements: []
 		gitMock.On("Add", mock.Anything).Return(nil)
 		gitMock.On("Commit", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(fmt.Errorf("cannot commit"))
 		gitMock.On("Push", mock.Anything, mock.Anything, mock.Anything).Return(nil)
-		wbc, err := getWriteBackConfig(&app, &kubeClient, &argoClient)
+		// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
+		settings := &iuapi.WriteBackConfig{
+			Method: stringPtr("git"),
+			GitConfig: &iuapi.GitConfig{
+				Branch: stringPtr("mybranch:mytargetbranch"),
+			},
+		}
+
+		wbc, err := newWBCFromCommonWBCSettings(&app, &kubeClient, settings, nil)
 		require.NoError(t, err)
 		wbc.GitClient = gitMock
 
-		applicationImages := &iutypes.ApplicationImages{
+		applicationImages := &ApplicationImages{
 			Application: app,
-			Images:      iutypes.ImageList{},
+			Images:      ImageList{},
 		}
 		err = commitChanges(applicationImages, wbc, nil)
 		assert.Errorf(t, err, "cannot commit")
@@ -3946,13 +4280,21 @@ replacements: []
 		gitMock.On("Add", mock.Anything).Return(nil)
 		gitMock.On("Commit", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 		gitMock.On("Push", mock.Anything, mock.Anything, mock.Anything).Return(fmt.Errorf("cannot push"))
-		wbc, err := getWriteBackConfig(&app, &kubeClient, &argoClient)
+		// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
+		settings := &iuapi.WriteBackConfig{
+			Method: stringPtr("git"),
+			GitConfig: &iuapi.GitConfig{
+				Branch: stringPtr("mybranch:mytargetbranch"),
+			},
+		}
+
+		wbc, err := newWBCFromCommonWBCSettings(&app, &kubeClient, settings, nil)
 		require.NoError(t, err)
 		wbc.GitClient = gitMock
 
-		applicationImages := &iutypes.ApplicationImages{
+		applicationImages := &ApplicationImages{
 			Application: app,
-			Images:      iutypes.ImageList{},
+			Images:      ImageList{},
 		}
 		err = commitChanges(applicationImages, wbc, nil)
 		assert.Errorf(t, err, "cannot push")
@@ -3967,15 +4309,23 @@ replacements: []
 		gitMock.On("Commit", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 		gitMock.On("Push", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 		gitMock.On("SymRefToBranch", mock.Anything).Return("", fmt.Errorf("failed to resolve ref"))
-		wbc, err := getWriteBackConfig(app, &kubeClient, &argoClient)
+		// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
+		settings := &iuapi.WriteBackConfig{
+			Method: stringPtr("git"),
+			GitConfig: &iuapi.GitConfig{
+				Branch: stringPtr("mybranch:mytargetbranch"),
+			},
+		}
+
+		wbc, err := newWBCFromCommonWBCSettings(app, &kubeClient, settings, nil)
 		require.NoError(t, err)
 		wbc.GitClient = gitMock
 		app.Spec.Source.TargetRevision = "HEAD"
 		wbc.GitBranch = ""
 
-		applicationImages := &iutypes.ApplicationImages{
+		applicationImages := &ApplicationImages{
 			Application: *app,
-			Images:      iutypes.ImageList{},
+			Images:      ImageList{},
 		}
 		err = commitChanges(applicationImages, wbc, nil)
 		assert.Errorf(t, err, "failed to resolve ref")
@@ -4119,4 +4469,9 @@ func Test_mergeKustomizeOverride(t *testing.T) {
 			assert.ElementsMatch(t, *expectedImages.Kustomize.Images, *existingImages.Kustomize.Images)
 		})
 	}
+}
+
+// Helper function to create string pointers for testing
+func stringPtr(s string) *string {
+	return &s
 }

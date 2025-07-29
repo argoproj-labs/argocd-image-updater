@@ -13,13 +13,11 @@ import (
 
 // ContainerImage represents a container image.
 type ContainerImage struct {
-	RegistryURL           string
-	ImageName             string
-	ImageTag              *tag.ImageTag
-	ImageAlias            string
-	HelmParamImageName    string
-	HelmParamImageVersion string
-	KustomizeImage        *ContainerImage
+	RegistryURL    string
+	ImageName      string
+	ImageTag       *tag.ImageTag
+	ImageAlias     string
+	KustomizeImage *ContainerImage
 
 	original string
 }
@@ -146,8 +144,6 @@ func (img *ContainerImage) WithTag(newTag *tag.ImageTag) *ContainerImage {
 	nimg.ImageName = img.ImageName
 	nimg.ImageTag = newTag
 	nimg.ImageAlias = img.ImageAlias
-	nimg.HelmParamImageName = img.HelmParamImageName
-	nimg.HelmParamImageVersion = img.HelmParamImageVersion
 	return nimg
 }
 
@@ -161,12 +157,10 @@ func (img *ContainerImage) Clone() *ContainerImage {
 		return nil
 	}
 	clone := &ContainerImage{
-		RegistryURL:           img.RegistryURL,
-		ImageName:             img.ImageName,
-		ImageAlias:            img.ImageAlias,
-		HelmParamImageName:    img.HelmParamImageName,
-		HelmParamImageVersion: img.HelmParamImageVersion,
-		original:              img.original,
+		RegistryURL: img.RegistryURL,
+		ImageName:   img.ImageName,
+		ImageAlias:  img.ImageAlias,
+		original:    img.original,
 	}
 
 	if img.ImageTag != nil {

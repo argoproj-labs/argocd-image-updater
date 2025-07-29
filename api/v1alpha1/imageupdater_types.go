@@ -87,12 +87,12 @@ type GitConfig struct {
 	// If not specified here or at the spec level, the controller MUST infer it from the
 	// Argo CD Application's `spec.source.repoURL`. This field allows overriding that.
 	// +optional
-	Repository string `json:"repository,omitempty"`
+	Repository *string `json:"repository,omitempty"`
 
 	// Branch to commit updates to.
 	// Required if write-back method is Git and this is not specified at the spec level.
 	// +optional
-	Branch string `json:"branch,omitempty"`
+	Branch *string `json:"branch,omitempty"`
 
 	// WriteBackTarget defines the path and type of file to update in the Git repository.
 	// Examples: "helmvalues:./helm/values.yaml", "kustomization:./kustomize/overlays/production".
@@ -100,7 +100,7 @@ type GitConfig struct {
 	// before this CR is generated, resulting in a concrete path here.
 	// Required if write-back method is Git and this is not specified at the spec level.
 	// +optional
-	WriteBackTarget string `json:"writeBackTarget,omitempty"`
+	WriteBackTarget *string `json:"writeBackTarget,omitempty"`
 }
 
 // ImageConfig defines how a specific container image should be discovered, updated,
@@ -178,12 +178,14 @@ type CommonUpdateSettings struct {
 // specific configurations for that method, like Git settings.
 type WriteBackConfig struct {
 	// Method defines the method for writing back updated image versions.
-	// This acts as the default if not overridden.
-	// +optional
+	// This acts as the default if not overridden. If not specified, defaults to "argocd".
+	// +kubebuilder:validation:Required
 	// +kubebuilder:default:="argocd"
-	Method string `json:"method,omitempty"`
+	// +kubebuilder:validation:Pattern=`^(argocd|git|git:[a-zA-Z0-9][a-zA-Z0-9-._/:]*)$`
+	Method *string `json:"method,omitempty"`
 
 	// GitConfig provides Git configuration settings if the write-back method involves Git.
+	// This can only be used when method is "git" or starts with "git:".
 	// +optional
 	*GitConfig `json:"gitConfig,omitempty"`
 }

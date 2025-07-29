@@ -22,23 +22,23 @@ import (
 
 	iuapi "github.com/argoproj-labs/argocd-image-updater/api/v1alpha1"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
+	"github.com/argoproj-labs/argocd-image-updater/pkg/kube"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/metrics"
-	iutypes "github.com/argoproj-labs/argocd-image-updater/pkg/types"
 	registryCommon "github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/common"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/image"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
 )
 
 // Kubernetes based client
-type k8sClient struct {
-	ctrlClient ctrlclient.Client
+type K8sClient struct {
+	ctrlclient.Client
 }
 
 // GetApplication retrieves a single application by its name and namespace.
-func (client *k8sClient) GetApplication(ctx context.Context, appNamespace string, appName string) (*argocdapi.Application, error) {
+func (client *K8sClient) GetApplication(ctx context.Context, appNamespace string, appName string) (*argocdapi.Application, error) {
 	app := &argocdapi.Application{}
 
-	if err := client.ctrlClient.Get(ctx, types.NamespacedName{Namespace: appNamespace, Name: appName}, app); err != nil {
+	if err := client.Get(ctx, types.NamespacedName{Namespace: appNamespace, Name: appName}, app); err != nil {
 		return nil, err
 	}
 	return app, nil
@@ -46,7 +46,7 @@ func (client *k8sClient) GetApplication(ctx context.Context, appNamespace string
 
 // GetApplicationInAllNamespaces has 0 usages now.
 // TODO: remove the function.
-func (client *k8sClient) GetApplicationInAllNamespaces(appName string) (*argocdapi.Application, error) {
+func (client *K8sClient) GetApplicationInAllNamespaces(appName string) (*argocdapi.Application, error) {
 	appList, err := client.ListApplications(context.TODO(), nil)
 	if err != nil {
 		return nil, fmt.Errorf("error listing applications: %w", err)
@@ -77,7 +77,7 @@ func (client *k8sClient) GetApplicationInAllNamespaces(appName string) (*argocda
 
 // ListApplications lists all applications for the current ImageUpdater CR in the namespace.
 // TODO: ListApplications has 0 real usages. We need to remove it.
-func (client *k8sClient) ListApplications(ctx context.Context, iuCR *iuapi.ImageUpdater) ([]argocdapi.Application, error) {
+func (client *K8sClient) ListApplications(ctx context.Context, iuCR *iuapi.ImageUpdater) ([]argocdapi.Application, error) {
 	log := log.LoggerFromContext(ctx)
 
 	// A list to hold the successfully found applications.
@@ -118,7 +118,7 @@ func (client *k8sClient) ListApplications(ctx context.Context, iuCR *iuapi.Image
 }
 
 // UpdateSpec updates the spec for given application
-func (client *k8sClient) UpdateSpec(ctx context.Context, spec *application.ApplicationUpdateSpecRequest) (*argocdapi.ApplicationSpec, error) {
+func (client *K8sClient) UpdateSpec(ctx context.Context, spec *application.ApplicationUpdateSpecRequest) (*argocdapi.ApplicationSpec, error) {
 	log := log.LoggerFromContext(ctx)
 	app := &argocdapi.Application{}
 	var err error
@@ -136,7 +136,7 @@ func (client *k8sClient) UpdateSpec(ctx context.Context, spec *application.Appli
 
 		// 3. Attempt to update the object. If there is a conflict,
 		//    RetryOnConflict will automatically re-fetch and re-apply the changes.
-		return client.ctrlClient.Update(ctx, app)
+		return client.Update(ctx, app)
 	})
 
 	if err != nil {
@@ -153,9 +153,9 @@ type K8SClientOptions struct {
 }
 
 // NewK8SClient creates a new kubernetes client to interact with kubernetes api-server.
-func NewK8SClient(ctrlClient ctrlclient.Client) (ArgoCD, error) {
-	return &k8sClient{
-		ctrlClient: ctrlClient,
+func NewK8SClient(ctrlClient ctrlclient.Client) (*K8sClient, error) {
+	return &K8sClient{
+		ctrlClient,
 	}, nil
 }
 
@@ -172,7 +172,6 @@ type ArgoCD interface {
 	// TODO: ListApplications has 0 real usages. We need to remove it.
 	ListApplications(ctx context.Context, iuCR *iuapi.ImageUpdater) ([]argocdapi.Application, error)
 	UpdateSpec(ctx context.Context, spec *application.ApplicationUpdateSpecRequest) (*argocdapi.ApplicationSpec, error)
-	FilterApplicationsForUpdate(ctx context.Context, iuCR *iuapi.ImageUpdater) (map[string]iutypes.ApplicationImages, error)
 }
 
 // ApplicationType Type of the application
@@ -266,21 +265,22 @@ func nameMatchesLabels(appLabels map[string]string, selectors *metav1.LabelSelec
 
 // processApplicationForUpdate checks if an application is of a supported type,
 // and if so, creates an ApplicationImages struct and adds it to the update map.
-func processApplicationForUpdate(ctx context.Context, app *argocdapi.Application, appRef iuapi.ApplicationRef, appSettings *iutypes.Image, appNSName string, appsForUpdate map[string]iutypes.ApplicationImages) {
+func processApplicationForUpdate(ctx context.Context, app *argocdapi.Application, appRef iuapi.ApplicationRef, appImageSettings *Image, appWBCSettings *WriteBackConfig, appNSName string, appsForUpdate map[string]ApplicationImages) {
 	log := log.LoggerFromContext(ctx)
-	sourceType := getApplicationSourceType(app)
+	sourceType := getApplicationSourceType(app, appWBCSettings)
 
 	// Check for valid application type
-	if !IsValidApplicationType(app) {
+	if !IsValidApplicationType(app, appWBCSettings) {
 		log.Warnf("skipping app '%s' of type '%s' because it's not of supported source type", appNSName, sourceType)
 		return
 	}
 	log.Tracef("processing app '%s' of type '%v'", appNSName, sourceType)
 
-	imageList := parseImageListIuCR(ctx, appRef.Images, appSettings)
-	appImages := iutypes.ApplicationImages{
-		Application: *app,
-		Images:      *imageList,
+	imageList := parseImageListIuCR(ctx, appRef.Images, appImageSettings)
+	appImages := ApplicationImages{
+		Application:     *app,
+		WriteBackConfig: appWBCSettings,
+		Images:          *imageList,
 	}
 	appsForUpdate[appNSName] = appImages
 }
@@ -348,8 +348,13 @@ func sortApplicationRefs(applicationRefs []iuapi.ApplicationRef) []iuapi.Applica
 
 // FilterApplicationsForUpdate Retrieve a list of applications from ArgoCD that qualify for image updates
 // Application needs either to be of type Kustomize or Helm.
-func (client *k8sClient) FilterApplicationsForUpdate(ctx context.Context, cr *iuapi.ImageUpdater) (map[string]iutypes.ApplicationImages, error) {
+func FilterApplicationsForUpdate(ctx context.Context, ctrlClient *K8sClient, kubeClient *kube.ImageUpdaterKubernetesClient, cr *iuapi.ImageUpdater) (map[string]ApplicationImages, error) {
 	log := log.LoggerFromContext(ctx)
+
+	// Validate CR configuration
+	if len(cr.Spec.ApplicationRefs) == 0 {
+		return nil, fmt.Errorf("no application references defined in ImageUpdater CR")
+	}
 
 	allAppsInNamespace := &argocdapi.ApplicationList{}
 	listOpts := []ctrlclient.ListOption{
@@ -358,7 +363,7 @@ func (client *k8sClient) FilterApplicationsForUpdate(ctx context.Context, cr *iu
 
 	// Perform the app list operation in the target namespace cr.Spec.Namespace.
 	log.Infof("Listing all applications in target namespace: %s", cr.Spec.Namespace)
-	if err := client.ctrlClient.List(ctx, allAppsInNamespace, listOpts...); err != nil {
+	if err := ctrlClient.List(ctx, allAppsInNamespace, listOpts...); err != nil {
 		log.Errorf("Failed to list applications in namespace: %s, error: %v", cr.Spec.Namespace, err)
 		return nil, err
 	}
@@ -368,13 +373,17 @@ func (client *k8sClient) FilterApplicationsForUpdate(ctx context.Context, cr *iu
 		return nil, nil
 	}
 
-	var appsForUpdate = make(map[string]iutypes.ApplicationImages)
+	var appsForUpdate = make(map[string]ApplicationImages)
 
 	// Sort namePatterns in applicationRefs from most specific to least specific.
 	applicationRefsSorted := sortApplicationRefs(cr.Spec.ApplicationRefs)
 
 	// Establish the base global settings
-	globalSettings := newContainerImageFromCommonSettings(ctx, cr.Spec.CommonUpdateSettings, nil)
+	globalUpdateSettings := newImageFromCommonUpdateSettings(ctx, cr.Spec.CommonUpdateSettings, nil)
+	globalWBCSettings, err := newWBCFromCommonWBCSettings(nil, kubeClient, cr.Spec.WriteBackConfig, nil)
+	if err != nil {
+		return nil, fmt.Errorf("could not create global write-back config: %w", err)
+	}
 
 	// For each app in the list, find its best matching rule from the CR.
 	for _, app := range allAppsInNamespace.Items {
@@ -382,10 +391,15 @@ func (client *k8sClient) FilterApplicationsForUpdate(ctx context.Context, cr *iu
 		for _, applicationRef := range applicationRefsSorted {
 			if nameMatchesPattern(ctx, app.Name, applicationRef.NamePattern) && nameMatchesLabels(app.Labels, applicationRef.LabelSelectors) {
 				// Calculate the effective settings for this ApplicationRef by layering on top of global.
-				appSettings := newContainerImageFromCommonSettings(ctx, applicationRef.CommonUpdateSettings, globalSettings)
+				appUpdateSettings := newImageFromCommonUpdateSettings(ctx, applicationRef.CommonUpdateSettings, globalUpdateSettings)
+				appWBCSettings, err := newWBCFromCommonWBCSettings(&app, kubeClient, applicationRef.WriteBackConfig, globalWBCSettings)
+				if err != nil {
+					log.Warnf("Could not create write-back config for app %s, skipping: %v", app.Name, err)
+					continue
+				}
 
 				appNSName := fmt.Sprintf("%s/%s", cr.Spec.Namespace, app.Name)
-				processApplicationForUpdate(ctx, &app, applicationRef, appSettings, appNSName, appsForUpdate)
+				processApplicationForUpdate(ctx, &app, applicationRef, appUpdateSettings, appWBCSettings, appNSName, appsForUpdate)
 				break // Found the best match, move to the next app
 			}
 		}
@@ -393,16 +407,16 @@ func (client *k8sClient) FilterApplicationsForUpdate(ctx context.Context, cr *iu
 	return appsForUpdate, nil
 }
 
-// newContainerImageFromCommonSettings creates a new image.ContainerImage and populates it
+// newImageFromCommonUpdateSettings creates a new Image and populates it
 // by layering the given settings on top of a parent configuration.
-func newContainerImageFromCommonSettings(ctx context.Context, settings *iuapi.CommonUpdateSettings, parentImage *iutypes.Image) *iutypes.Image {
+func newImageFromCommonUpdateSettings(ctx context.Context, settings *iuapi.CommonUpdateSettings, parentImage *Image) *Image {
 	// Start with a clone of the parent to avoid side effects.
 	// If there is no parent, start with a fresh struct populated with the ultimate defaults.
-	var img *iutypes.Image
+	var img *Image
 	if parentImage != nil {
 		img = parentImage.Clone()
 	} else {
-		img = &iutypes.Image{
+		img = &Image{
 			ContainerImage: &image.ContainerImage{},
 			UpdateStrategy: image.StrategySemVer,
 			ForceUpdate:    false,
@@ -440,16 +454,115 @@ func newContainerImageFromCommonSettings(ctx context.Context, settings *iuapi.Co
 	return img
 }
 
+// newWBCFromCommonWBCSettings creates a new WriteBackConfig and populates it
+// by layering the given settings on top of a parent configuration.
+// TODO: we are not setting wbc.ArgoClient because argoclient will be deprecated in GITOPS-7123.
+func newWBCFromCommonWBCSettings(app *argocdapi.Application, kubeClient *kube.ImageUpdaterKubernetesClient, settings *iuapi.WriteBackConfig, parentWBC *WriteBackConfig) (*WriteBackConfig, error) {
+	var wbc *WriteBackConfig
+	if parentWBC != nil {
+		wbc = parentWBC.Clone()
+	} else {
+		wbc = &WriteBackConfig{
+			Method:                 WriteBackApplication,
+			ArgoClient:             nil,
+			GitClient:              nil,
+			GetCreds:               nil,
+			GitBranch:              "",
+			GitWriteBranch:         "",
+			GitCommitUser:          "",
+			GitCommitEmail:         "",
+			GitCommitMessage:       "",
+			GitCommitSigningKey:    "",
+			GitCommitSigningMethod: "",
+			GitCommitSignOff:       false,
+			KustomizeBase:          "",
+			Target:                 "", // Will be set by parseDefaultTarget
+			GitRepo:                "",
+			GitCreds:               nil,
+		}
+	}
+
+	// If there are no specific settings, we might still need to define a
+	// default target if we are in an application context.
+	if settings == nil {
+		if app != nil {
+			appSource := getApplicationSource(app)
+			if appSource == nil {
+				return nil, fmt.Errorf("application source is not defined for %s/%s", app.Namespace, app.Name)
+			}
+			// Only set default target if not already set (e.g., globally)
+			if wbc.Target == "" {
+				wbc.Target = parseDefaultTarget(app.GetNamespace(), app.Name, appSource.Path, kubeClient)
+			}
+		}
+		return wbc, nil
+	}
+
+	// Layer the new settings on top, only if they are explicitly set (non-nil).
+	if settings.Method != nil {
+		method := *settings.Method
+		if method != "git" && method != "argocd" && !strings.HasPrefix(method, "git:") {
+			return nil, fmt.Errorf("invalid update mechanism: %s", method)
+		}
+		if strings.HasPrefix(method, "git") {
+			wbc.Method = WriteBackGit
+			creds := "repocreds"
+			if index := strings.Index(method, ":"); index > 0 {
+				creds = method[index+1:]
+			}
+
+			// Validate that we have an application context for Git operations
+			if app == nil {
+				return nil, fmt.Errorf("application context required for git write-back method")
+			}
+
+			// The target and other git settings might be configured without an application context.
+			// If an application context exists, we can derive defaults.
+			appSource := getApplicationSource(app)
+			if appSource == nil {
+				return nil, fmt.Errorf("application source is not defined for %s/%s", app.Namespace, app.Name)
+			}
+
+			if settings.GitConfig != nil && settings.GitConfig.WriteBackTarget != nil {
+				target := *settings.GitConfig.WriteBackTarget
+				if strings.HasPrefix(target, common.KustomizationPrefix) {
+					wbc.KustomizeBase = parseKustomizeBase(target, appSource.Path)
+				} else if strings.HasPrefix(target, common.HelmPrefix) { // This keeps backward compatibility
+					wbc.Target = parseTarget(target, appSource.Path)
+				} else { // This keeps backward compatibility
+					wbc.Target = target
+				}
+			}
+
+			// Parse Git configuration
+			if err := parseGitConfig(app, kubeClient, settings, wbc, creds); err != nil {
+				return nil, err
+			}
+
+		} else {
+			// Default write-back is to use Argo CD API
+			wbc.Method = WriteBackApplication
+			// Only set default target if not already set during git configuration
+			// and if app is not nil (global settings don't have an app context)
+			if wbc.Target == "" && app != nil {
+				wbc.Target = parseDefaultTarget(app.GetNamespace(), app.Name, getApplicationSource(app).Path, kubeClient)
+			}
+		}
+	}
+	return wbc, nil
+
+}
+
 // parseImageListIuCR parses a list of ImageConfig objects from the ImageUpdater CR
 // into a ContainerImageList, which is used internally for image management.
 // TODO: the function is explicitly written almost the same as parseImageList in order not to break existing tests. It should be only 1 function later.
-func parseImageListIuCR(ctx context.Context, images []iuapi.ImageConfig, appSettings *iutypes.Image) *iutypes.ImageList {
-	results := make(iutypes.ImageList, 0)
+func parseImageListIuCR(ctx context.Context, images []iuapi.ImageConfig, appSettings *Image) *ImageList {
+	results := make(ImageList, 0)
 
 	for _, im := range images {
 		// For each image, calculate its final settings by layering its specific
 		// settings on top of the application-level settings.
-		img := newContainerImageFromCommonSettings(ctx, im.CommonUpdateSettings, appSettings)
+		img := newImageFromCommonUpdateSettings(ctx, im.CommonUpdateSettings, appSettings)
 		imgIdentity := image.NewFromIdentifier(im.Alias + "=" + im.ImageName)
 		img.ContainerImage = imgIdentity
 
@@ -542,10 +655,6 @@ func (client *argoCD) UpdateSpec(ctx context.Context, in *application.Applicatio
 	return spec, nil
 }
 
-func (client *argoCD) FilterApplicationsForUpdate(ctx context.Context, cr *iuapi.ImageUpdater) (map[string]iutypes.ApplicationImages, error) {
-	return nil, nil
-}
-
 // getHelmParamNamesFromAnnotation inspects the given annotations for whether
 // the annotations for specifying Helm parameter names are being set and
 // returns their values.
@@ -620,9 +729,9 @@ func mergeHelmParams(src []argocdapi.HelmParameter, merge []argocdapi.HelmParame
 
 // GetHelmImage gets the image set in Application source matching new image
 // or an empty string if match is not found
-func GetHelmImage(app *argocdapi.Application, newImage *image.ContainerImage) (string, error) {
+func GetHelmImage(app *argocdapi.Application, newImage *image.ContainerImage, wbc *WriteBackConfig) (string, error) {
 
-	if appType := getApplicationType(app); appType != ApplicationTypeHelm {
+	if appType := getApplicationType(app, wbc); appType != ApplicationTypeHelm {
 		return "", fmt.Errorf("cannot set Helm params on non-Helm application")
 	}
 
@@ -668,8 +777,8 @@ func GetHelmImage(app *argocdapi.Application, newImage *image.ContainerImage) (s
 }
 
 // SetHelmImage sets image parameters for a Helm application
-func SetHelmImage(app *argocdapi.Application, newImage *image.ContainerImage) error {
-	if appType := getApplicationType(app); appType != ApplicationTypeHelm {
+func SetHelmImage(app *argocdapi.Application, newImage *image.ContainerImage, wbc *WriteBackConfig) error {
+	if appType := getApplicationType(app, wbc); appType != ApplicationTypeHelm {
 		return fmt.Errorf("cannot set Helm params on non-Helm application")
 	}
 
@@ -733,8 +842,8 @@ func SetHelmImage(app *argocdapi.Application, newImage *image.ContainerImage) er
 
 // GetKustomizeImage gets the image set in Application source matching new image
 // or an empty string if match is not found
-func GetKustomizeImage(app *argocdapi.Application, newImage *image.ContainerImage) (string, error) {
-	if appType := getApplicationType(app); appType != ApplicationTypeKustomize {
+func GetKustomizeImage(app *argocdapi.Application, newImage *image.ContainerImage, wbc *WriteBackConfig) (string, error) {
+	if appType := getApplicationType(app, wbc); appType != ApplicationTypeKustomize {
 		return "", fmt.Errorf("cannot set Kustomize image on non-Kustomize application")
 	}
 
@@ -762,8 +871,8 @@ func GetKustomizeImage(app *argocdapi.Application, newImage *image.ContainerImag
 }
 
 // SetKustomizeImage sets a Kustomize image for given application
-func SetKustomizeImage(app *argocdapi.Application, newImage *image.ContainerImage) error {
-	if appType := getApplicationType(app); appType != ApplicationTypeKustomize {
+func SetKustomizeImage(app *argocdapi.Application, newImage *image.ContainerImage, wbc *WriteBackConfig) error {
+	if appType := getApplicationType(app, wbc); appType != ApplicationTypeKustomize {
 		return fmt.Errorf("cannot set Kustomize image on non-Kustomize application")
 	}
 
@@ -800,7 +909,7 @@ func SetKustomizeImage(app *argocdapi.Application, newImage *image.ContainerImag
 }
 
 // GetImagesFromApplication returns the list of known images for the given application
-func GetImagesFromApplication(applicationImages *iutypes.ApplicationImages) image.ContainerImageList {
+func GetImagesFromApplication(applicationImages *ApplicationImages) image.ContainerImageList {
 	images := make(image.ContainerImageList, 0)
 	app := applicationImages.Application
 
@@ -821,7 +930,7 @@ func GetImagesFromApplication(applicationImages *iutypes.ApplicationImages) imag
 }
 
 // GetImagesFromApplicationImagesAnnotation returns the list of known images for the given application from the images annotation
-func GetImagesAndAliasesFromApplication(applicationImages *iutypes.ApplicationImages) image.ContainerImageList {
+func GetImagesAndAliasesFromApplication(applicationImages *ApplicationImages) image.ContainerImageList {
 	images := GetImagesFromApplication(applicationImages)
 
 	// We update the ImageAlias field of the Images found in the app.Status.Summary.Images list.
@@ -850,24 +959,14 @@ func GetImagesAndAliasesFromApplication(applicationImages *iutypes.ApplicationIm
 	return images
 }
 
-// GetApplicationTypeByName first retrieves application with given appName and
-// returns its application type
-func GetApplicationTypeByName(client ArgoCD, appName string) (ApplicationType, error) {
-	app, err := client.GetApplication(context.TODO(), appName, "")
-	if err != nil {
-		return ApplicationTypeUnsupported, err
-	}
-	return getApplicationType(app), nil
-}
-
 // GetApplicationType returns the type of the ArgoCD application
-func GetApplicationType(app *argocdapi.Application) ApplicationType {
-	return getApplicationType(app)
+func GetApplicationType(app *argocdapi.Application, wbc *WriteBackConfig) ApplicationType {
+	return getApplicationType(app, wbc)
 }
 
 // GetApplicationSourceType returns the source type of the ArgoCD application
-func GetApplicationSourceType(app *argocdapi.Application) argocdapi.ApplicationSourceType {
-	return getApplicationSourceType(app)
+func GetApplicationSourceType(app *argocdapi.Application, wbc *WriteBackConfig) argocdapi.ApplicationSourceType {
+	return getApplicationSourceType(app, wbc)
 }
 
 // GetApplicationSource returns the main source of a Helm or Kustomize type of the ArgoCD application
@@ -876,13 +975,13 @@ func GetApplicationSource(app *argocdapi.Application) *argocdapi.ApplicationSour
 }
 
 // IsValidApplicationType returns true if we can update the application
-func IsValidApplicationType(app *argocdapi.Application) bool {
-	return getApplicationType(app) != ApplicationTypeUnsupported
+func IsValidApplicationType(app *argocdapi.Application, wbc *WriteBackConfig) bool {
+	return getApplicationType(app, wbc) != ApplicationTypeUnsupported
 }
 
 // getApplicationType returns the type of the application
-func getApplicationType(app *argocdapi.Application) ApplicationType {
-	sourceType := getApplicationSourceType(app)
+func getApplicationType(app *argocdapi.Application, wbc *WriteBackConfig) ApplicationType {
+	sourceType := getApplicationSourceType(app, wbc)
 
 	if sourceType == argocdapi.ApplicationSourceTypeKustomize {
 		return ApplicationTypeKustomize
@@ -894,13 +993,12 @@ func getApplicationType(app *argocdapi.Application) ApplicationType {
 }
 
 // getApplicationSourceType returns the source type of the application
-func getApplicationSourceType(app *argocdapi.Application) argocdapi.ApplicationSourceType {
-
-	if st, set := app.Annotations[common.WriteBackTargetAnnotation]; set &&
-		strings.HasPrefix(st, common.KustomizationPrefix) {
-		return argocdapi.ApplicationSourceTypeKustomize
+func getApplicationSourceType(app *argocdapi.Application, wbc *WriteBackConfig) argocdapi.ApplicationSourceType {
+	if wbc != nil {
+		if target := wbc.Target; strings.HasPrefix(target, common.KustomizationPrefix) {
+			return argocdapi.ApplicationSourceTypeKustomize
+		}
 	}
-
 	if app.Spec.HasMultipleSources() {
 		for _, st := range app.Status.SourceTypes {
 			if st == argocdapi.ApplicationSourceTypeHelm {
@@ -932,6 +1030,23 @@ func getApplicationSource(app *argocdapi.Application) *argocdapi.ApplicationSour
 	}
 
 	return app.Spec.Source
+}
+
+// GetParameterPullSecret retrieves an image's pull secret credentials
+func GetParameterPullSecret(ctx context.Context, img *Image) *image.CredentialSource {
+	log := log.LoggerFromContext(ctx)
+
+	var pullSecretVal = img.PullSecret
+	if pullSecretVal == "" {
+		log.Tracef("No pull secret configured for this image")
+		return nil
+	}
+	credSrc, err := image.ParseCredentialSource(pullSecretVal, false)
+	if err != nil {
+		log.Warnf("Invalid credential reference specified: %s", pullSecretVal)
+		return nil
+	}
+	return credSrc
 }
 
 // String returns a string representation of the application type
