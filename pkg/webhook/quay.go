@@ -51,6 +51,8 @@ func (q *QuayWebhook) Parse(r *http.Request) (*WebhookEvent, error) {
 		return nil, fmt.Errorf("failed to read request body: %w", err)
 	}
 
+	// Quay Repository Push Event
+	// https://docs.quay.io/guides/notifications.html
 	var payload struct {
 		Name        string   `json:"name"`
 		Repository  string   `json:"repository"`

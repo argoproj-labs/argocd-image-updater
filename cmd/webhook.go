@@ -25,14 +25,13 @@ import (
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// WebhookOptions holds the options for the webhook server
+// WebhookConfig holds the options for the webhook server
 type WebhookConfig struct {
-	Port          int
-	DockerSecret  string
-	GHCRSecret    string
-	QuaySecret    string
-	HarborSecret  string
-	UpdateOnEvent bool
+	Port         int
+	DockerSecret string
+	GHCRSecret   string
+	QuaySecret   string
+	HarborSecret string
 }
 
 // NewWebhookCommand creates a new webhook command
@@ -191,12 +190,11 @@ Supported registries:
 	webhookCmd.Flags().StringVar(&commitMessagePath, "git-commit-message-path", defaultCommitTemplatePath, "Path to a template to use for Git commit messages")
 	webhookCmd.Flags().BoolVar(&cfg.DisableKubeEvents, "disable-kube-events", env.GetBoolVal("IMAGE_UPDATER_KUBE_EVENTS", false), "Disable kubernetes events")
 
-	webhookCmd.Flags().IntVar(&webhookCfg.Port, "port", env.ParseNumFromEnv("WEBHOOK_PORT", 8082, 0, 65535), "Port to listen on for webhook events")
-	webhookCmd.Flags().StringVar(&webhookCfg.DockerSecret, "docker-secret", env.GetStringVal("DOCKER_WEBHOOK_SECRET", ""), "Secret for validating Docker Hub webhooks")
-	webhookCmd.Flags().StringVar(&webhookCfg.GHCRSecret, "ghcr-secret", env.GetStringVal("GHCR_WEBHOOK_SECRET", ""), "Secret for validating GitHub Container Registry webhooks")
-	webhookCmd.Flags().StringVar(&webhookCfg.QuaySecret, "quay-secret", env.GetStringVal("QUAY_WEBHOOK_SECRET", ""), "Secret for validating Quay webhooks")
-	webhookCmd.Flags().StringVar(&webhookCfg.HarborSecret, "harbor-secret", env.GetStringVal("HARBOR_WEBHOOK_SECRET", ""), "Secret for validating Harbor webhooks")
-	webhookCmd.Flags().BoolVar(&webhookCfg.UpdateOnEvent, "update-on-event", true, "Whether to trigger image update checks when webhook events are received")
+	webhookCmd.Flags().IntVar(&webhookCfg.Port, "webhook-port", env.ParseNumFromEnv("WEBHOOK_PORT", 8082, 0, 65535), "Port to listen on for webhook events")
+	webhookCmd.Flags().StringVar(&webhookCfg.DockerSecret, "docker-webhook-secret", env.GetStringVal("DOCKER_WEBHOOK_SECRET", ""), "Secret for validating Docker Hub webhooks")
+	webhookCmd.Flags().StringVar(&webhookCfg.GHCRSecret, "ghcr-webhook-secret", env.GetStringVal("GHCR_WEBHOOK_SECRET", ""), "Secret for validating GitHub Container Registry webhooks")
+	webhookCmd.Flags().StringVar(&webhookCfg.QuaySecret, "quay-webhook-secret", env.GetStringVal("QUAY_WEBHOOK_SECRET", ""), "Secret for validating Quay webhooks")
+	webhookCmd.Flags().StringVar(&webhookCfg.HarborSecret, "harbor-webhook-secret", env.GetStringVal("HARBOR_WEBHOOK_SECRET", ""), "Secret for validating Harbor webhooks")
 
 	return webhookCmd
 }
