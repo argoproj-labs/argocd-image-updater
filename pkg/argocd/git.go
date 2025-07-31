@@ -19,7 +19,6 @@ import (
 
 	"github.com/argoproj-labs/argocd-image-updater/ext/git"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
-	iutypes "github.com/argoproj-labs/argocd-image-updater/pkg/types"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/image"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
 
@@ -127,7 +126,7 @@ func TemplateBranchName(branchName string, changeList []ChangeEntry) string {
 	}
 }
 
-type changeWriter func(applicationImages *iutypes.ApplicationImages, wbc *WriteBackConfig, gitC git.Client) (err error, skip bool)
+type changeWriter func(applicationImages *ApplicationImages, wbc *WriteBackConfig, gitC git.Client) (err error, skip bool)
 
 // getWriteBackBranch returns the branch to use for write-back operations.
 // It first checks for a branch specified in annotations, then uses the
@@ -158,7 +157,7 @@ func getWriteBackBranch(app *v1alpha1.Application) string {
 
 // commitChanges commits any changes required for updating one or more images
 // after the UpdateApplication cycle has finished.
-func commitChangesGit(applicationImages *iutypes.ApplicationImages, wbc *WriteBackConfig, changeList []ChangeEntry, write changeWriter) error {
+func commitChangesGit(applicationImages *ApplicationImages, wbc *WriteBackConfig, changeList []ChangeEntry, write changeWriter) error {
 	app := applicationImages.Application
 	logCtx := log.WithContext().AddField("application", app.GetName())
 	creds, err := wbc.GetCreds(&app)
@@ -299,7 +298,7 @@ func commitChangesGit(applicationImages *iutypes.ApplicationImages, wbc *WriteBa
 	return nil
 }
 
-func writeOverrides(applicationImages *iutypes.ApplicationImages, wbc *WriteBackConfig, gitC git.Client) (err error, skip bool) {
+func writeOverrides(applicationImages *ApplicationImages, wbc *WriteBackConfig, gitC git.Client) (err error, skip bool) {
 	app := applicationImages.Application
 	logCtx := log.WithContext().AddField("application", app.GetName())
 	targetExists := true
@@ -323,7 +322,7 @@ func writeOverrides(applicationImages *iutypes.ApplicationImages, wbc *WriteBack
 		if err != nil {
 			return err, false
 		}
-		override, err = marshalParamsOverride(applicationImages, originalData)
+		override, err = marshalParamsOverride(applicationImages, originalData, wbc)
 		if err != nil {
 			return
 		}
@@ -332,7 +331,7 @@ func writeOverrides(applicationImages *iutypes.ApplicationImages, wbc *WriteBack
 			return nil, true
 		}
 	} else {
-		override, err = marshalParamsOverride(applicationImages, nil)
+		override, err = marshalParamsOverride(applicationImages, nil, wbc)
 		if err != nil {
 			return
 		}
@@ -358,7 +357,7 @@ func writeOverrides(applicationImages *iutypes.ApplicationImages, wbc *WriteBack
 var _ changeWriter = writeOverrides
 
 // writeKustomization writes any changes required for updating one or more images to a kustomization.yml
-func writeKustomization(applicationImages *iutypes.ApplicationImages, wbc *WriteBackConfig, gitC git.Client) (err error, skip bool) {
+func writeKustomization(applicationImages *ApplicationImages, wbc *WriteBackConfig, gitC git.Client) (err error, skip bool) {
 	app := applicationImages.Application
 	logCtx := log.WithContext().AddField("application", app.GetName())
 

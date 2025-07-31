@@ -17,9 +17,11 @@ import (
 
 	api "github.com/argoproj-labs/argocd-image-updater/api/v1alpha1"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
-	iutypes "github.com/argoproj-labs/argocd-image-updater/pkg/types"
+	"github.com/argoproj-labs/argocd-image-updater/pkg/kube"
 	registryCommon "github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/common"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/image"
+	registryKube "github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/kube"
+	"github.com/argoproj-labs/argocd-image-updater/test/fake"
 )
 
 func Test_GetImagesFromApplication(t *testing.T) {
@@ -36,9 +38,9 @@ func Test_GetImagesFromApplication(t *testing.T) {
 				},
 			},
 		}
-		applicationImages := &iutypes.ApplicationImages{
+		applicationImages := &ApplicationImages{
 			Application: *application,
-			Images:      iutypes.ImageList{},
+			Images:      ImageList{},
 		}
 		imageList := GetImagesFromApplication(applicationImages)
 		require.Len(t, imageList, 3)
@@ -58,9 +60,9 @@ func Test_GetImagesFromApplication(t *testing.T) {
 				Summary: v1alpha1.ApplicationSummary{},
 			},
 		}
-		applicationImages := &iutypes.ApplicationImages{
+		applicationImages := &ApplicationImages{
 			Application: *application,
-			Images:      iutypes.ImageList{},
+			Images:      ImageList{},
 		}
 		imageList := GetImagesFromApplication(applicationImages)
 		assert.Empty(t, imageList)
@@ -82,12 +84,12 @@ func Test_GetImagesFromApplication(t *testing.T) {
 			},
 		}
 		imgToUpdate := image.NewFromIdentifier("nginx")
-		image := iutypes.NewImage(imgToUpdate)
+		image := NewImage(imgToUpdate)
 		image.ForceUpdate = true
 
-		applicationImages := &iutypes.ApplicationImages{
+		applicationImages := &ApplicationImages{
 			Application: *application,
-			Images:      iutypes.ImageList{image},
+			Images:      ImageList{image},
 		}
 
 		imageList := GetImagesFromApplication(applicationImages)
@@ -111,9 +113,9 @@ func Test_GetImagesAndAliasesFromApplication(t *testing.T) {
 				},
 			},
 		}
-		applicationImages := &iutypes.ApplicationImages{
+		applicationImages := &ApplicationImages{
 			Application: *application,
-			Images:      iutypes.ImageList{},
+			Images:      ImageList{},
 		}
 
 		imageList := GetImagesAndAliasesFromApplication(applicationImages)
@@ -136,9 +138,9 @@ func Test_GetImagesAndAliasesFromApplication(t *testing.T) {
 				Summary: v1alpha1.ApplicationSummary{},
 			},
 		}
-		applicationImages := &iutypes.ApplicationImages{
+		applicationImages := &ApplicationImages{
 			Application: *application,
-			Images:      iutypes.ImageList{},
+			Images:      ImageList{},
 		}
 
 		imageList := GetImagesAndAliasesFromApplication(applicationImages)
@@ -161,7 +163,7 @@ func Test_GetApplicationType(t *testing.T) {
 				},
 			},
 		}
-		appType := GetApplicationType(application)
+		appType := GetApplicationType(application, nil)
 		assert.Equal(t, ApplicationTypeHelm, appType)
 		assert.Equal(t, "Helm", appType.String())
 	})
@@ -180,7 +182,7 @@ func Test_GetApplicationType(t *testing.T) {
 				},
 			},
 		}
-		appType := GetApplicationType(application)
+		appType := GetApplicationType(application, nil)
 		assert.Equal(t, ApplicationTypeKustomize, appType)
 		assert.Equal(t, "Kustomize", appType.String())
 	})
@@ -199,7 +201,7 @@ func Test_GetApplicationType(t *testing.T) {
 				},
 			},
 		}
-		appType := GetApplicationType(application)
+		appType := GetApplicationType(application, nil)
 		assert.Equal(t, ApplicationTypeUnsupported, appType)
 		assert.Equal(t, "Unsupported", appType.String())
 	})
@@ -221,7 +223,11 @@ func Test_GetApplicationType(t *testing.T) {
 				},
 			},
 		}
-		appType := GetApplicationType(application)
+		// Create a WriteBackConfig with kustomization target to test the logic
+		wbc := &WriteBackConfig{
+			Target: "kustomization:.",
+		}
+		appType := GetApplicationType(application, wbc)
 		assert.Equal(t, ApplicationTypeKustomize, appType)
 	})
 
@@ -242,7 +248,7 @@ func Test_GetApplicationSourceType(t *testing.T) {
 				},
 			},
 		}
-		appType := GetApplicationSourceType(application)
+		appType := GetApplicationSourceType(application, nil)
 		assert.Equal(t, v1alpha1.ApplicationSourceTypeHelm, appType)
 	})
 
@@ -260,7 +266,7 @@ func Test_GetApplicationSourceType(t *testing.T) {
 				},
 			},
 		}
-		appType := GetApplicationSourceType(application)
+		appType := GetApplicationSourceType(application, nil)
 		assert.Equal(t, v1alpha1.ApplicationSourceTypeKustomize, appType)
 	})
 
@@ -278,7 +284,7 @@ func Test_GetApplicationSourceType(t *testing.T) {
 				},
 			},
 		}
-		appType := GetApplicationType(application)
+		appType := GetApplicationType(application, nil)
 		assert.NotEqual(t, v1alpha1.ApplicationSourceTypeHelm, appType)
 		assert.NotEqual(t, v1alpha1.ApplicationSourceTypeKustomize, appType)
 	})
@@ -300,7 +306,13 @@ func Test_GetApplicationSourceType(t *testing.T) {
 				},
 			},
 		}
-		appType := GetApplicationSourceType(application)
+
+		// Create a WriteBackConfig with kustomization target to test the logic
+		wbc := &WriteBackConfig{
+			Target: "kustomization:.",
+		}
+
+		appType := GetApplicationSourceType(application, wbc)
 		assert.Equal(t, v1alpha1.ApplicationSourceTypeKustomize, appType)
 	})
 }
@@ -628,7 +640,10 @@ func Test_SetKustomizeImage(t *testing.T) {
 			},
 		}
 		img := image.NewFromIdentifier("jannfis/foobar:1.0.1")
-		err := SetKustomizeImage(app, img)
+		wbc := &WriteBackConfig{
+			Target: "kustomization:.",
+		}
+		err := SetKustomizeImage(app, img, wbc)
 		require.NoError(t, err)
 		require.NotNil(t, app.Spec.Source.Kustomize)
 		assert.Len(t, app.Spec.Source.Kustomize.Images, 1)
@@ -654,7 +669,7 @@ func Test_SetKustomizeImage(t *testing.T) {
 			},
 		}
 		img := image.NewFromIdentifier("jannfis/foobar:1.0.1")
-		err := SetKustomizeImage(app, img)
+		err := SetKustomizeImage(app, img, nil)
 		require.NoError(t, err)
 		require.NotNil(t, app.Spec.Source.Kustomize)
 		assert.Len(t, app.Spec.Source.Kustomize.Images, 1)
@@ -686,7 +701,7 @@ func Test_SetKustomizeImage(t *testing.T) {
 			},
 		}
 		img := image.NewFromIdentifier("jannfis/foobar:1.0.1")
-		err := SetKustomizeImage(app, img)
+		err := SetKustomizeImage(app, img, nil)
 		require.Error(t, err)
 	})
 
@@ -718,7 +733,10 @@ func Test_SetKustomizeImage(t *testing.T) {
 			},
 		}
 		img := image.NewFromIdentifier("foobar=jannfis/foobar:1.0.1")
-		err := SetKustomizeImage(app, img)
+		wbc := &WriteBackConfig{
+			Target: "kustomization:.",
+		}
+		err := SetKustomizeImage(app, img, wbc)
 		require.NoError(t, err)
 		require.NotNil(t, app.Spec.Source.Kustomize)
 		assert.Len(t, app.Spec.Source.Kustomize.Images, 1)
@@ -765,8 +783,10 @@ func Test_SetHelmImage(t *testing.T) {
 		}
 
 		img := image.NewFromIdentifier("foobar=jannfis/foobar:1.0.1")
-
-		err := SetHelmImage(app, img)
+		wbc := &WriteBackConfig{
+			Target: "helmvalues:.",
+		}
+		err := SetHelmImage(app, img, wbc)
 		require.NoError(t, err)
 		require.NotNil(t, app.Spec.Source.Helm)
 		assert.Len(t, app.Spec.Source.Helm.Parameters, 2)
@@ -808,8 +828,10 @@ func Test_SetHelmImage(t *testing.T) {
 		}
 
 		img := image.NewFromIdentifier("foobar=jannfis/foobar:1.0.1")
-
-		err := SetHelmImage(app, img)
+		wbc := &WriteBackConfig{
+			Target: "helmvalues:.",
+		}
+		err := SetHelmImage(app, img, wbc)
 		require.NoError(t, err)
 		require.NotNil(t, app.Spec.Source.Helm)
 		assert.Len(t, app.Spec.Source.Helm.Parameters, 2)
@@ -862,8 +884,10 @@ func Test_SetHelmImage(t *testing.T) {
 		}
 
 		img := image.NewFromIdentifier("foobar=jannfis/foobar:1.0.1")
-
-		err := SetHelmImage(app, img)
+		wbc := &WriteBackConfig{
+			Target: "helmvalues:.",
+		}
+		err := SetHelmImage(app, img, wbc)
 		require.NoError(t, err)
 		require.NotNil(t, app.Spec.Source.Helm)
 		assert.Len(t, app.Spec.Source.Helm.Parameters, 4)
@@ -903,8 +927,10 @@ func Test_SetHelmImage(t *testing.T) {
 		}
 
 		img := image.NewFromIdentifier("foobar=jannfis/foobar:1.0.1")
-
-		err := SetHelmImage(app, img)
+		wbc := &WriteBackConfig{
+			Target: "kustomization:.",
+		}
+		err := SetHelmImage(app, img, wbc)
 		require.Error(t, err)
 	})
 
@@ -1164,7 +1190,7 @@ func Test_parseImageList(t *testing.T) {
 // Assisted-by: Gemini AI
 func Test_parseImageListIuCR(t *testing.T) {
 	// newExpectedImageForIuCR is a helper to construct an expected image object.
-	newExpectedImageForIuCR := func(identifier string, kustomizeName string) *iutypes.Image {
+	newExpectedImageForIuCR := func(identifier string, kustomizeName string) *Image {
 		// First, create the neutral image identity. This call correctly
 		// sets the `original` field on the returned object.
 		imgIdentity := image.NewFromIdentifier(identifier)
@@ -1172,7 +1198,7 @@ func Test_parseImageListIuCR(t *testing.T) {
 		// Then, create the application-specific image, embedding the identity.
 		// By assigning the whole identity struct, we ensure the `original`
 		// field is preserved in our expected object.
-		img := &iutypes.Image{
+		img := &Image{
 			ContainerImage: imgIdentity, // This is the crucial fix
 			UpdateStrategy: image.StrategySemVer,
 			ForceUpdate:    false,
@@ -1192,7 +1218,7 @@ func Test_parseImageListIuCR(t *testing.T) {
 	testCases := []struct {
 		name           string
 		inputImages    []api.ImageConfig
-		expectedImages iutypes.ImageList
+		expectedImages ImageList
 	}{
 		{
 			name: "Basic parsing with alias",
@@ -1200,7 +1226,7 @@ func Test_parseImageListIuCR(t *testing.T) {
 				{Alias: "web", ImageName: "nginx:1.21.0"},
 				{Alias: "db", ImageName: "postgres:14"},
 			},
-			expectedImages: iutypes.ImageList{
+			expectedImages: ImageList{
 				newExpectedImageForIuCR("web=nginx:1.21.0", ""),
 				newExpectedImageForIuCR("db=postgres:14", ""),
 			},
@@ -1218,7 +1244,7 @@ func Test_parseImageListIuCR(t *testing.T) {
 					},
 				},
 			},
-			expectedImages: iutypes.ImageList{
+			expectedImages: ImageList{
 				newExpectedImageForIuCR("web=nginx:1.21.0", "my-custom-nginx-name"),
 			},
 		},
@@ -1236,7 +1262,7 @@ func Test_parseImageListIuCR(t *testing.T) {
 				},
 				{Alias: "db", ImageName: "postgres:14"},
 			},
-			expectedImages: iutypes.ImageList{
+			expectedImages: ImageList{
 				newExpectedImageForIuCR("web=nginx:1.21.0", "my-custom-nginx-name"),
 				newExpectedImageForIuCR("db=postgres:14", ""),
 			},
@@ -1244,12 +1270,12 @@ func Test_parseImageListIuCR(t *testing.T) {
 		{
 			name:           "Empty input slice",
 			inputImages:    []api.ImageConfig{},
-			expectedImages: iutypes.ImageList{},
+			expectedImages: ImageList{},
 		},
 		{
 			name:           "Nil input slice",
 			inputImages:    nil,
-			expectedImages: iutypes.ImageList{},
+			expectedImages: ImageList{},
 		},
 	}
 
@@ -1271,7 +1297,7 @@ func Test_newContainerImageFromCommonSettings(t *testing.T) {
 	t.Run("should return default settings when parent and settings are nil", func(t *testing.T) {
 		// Test case: No parent and no specific settings are provided.
 		// Expected: A new image with the hardcoded default values.
-		img := newContainerImageFromCommonSettings(context.Background(), nil, nil)
+		img := newImageFromCommonUpdateSettings(context.Background(), nil, nil)
 
 		assert.NotNil(t, img)
 		assert.Equal(t, image.StrategySemVer, img.UpdateStrategy)
@@ -1292,7 +1318,7 @@ func Test_newContainerImageFromCommonSettings(t *testing.T) {
 			IgnoreTags:     []string{"v1.0.0"},
 		}
 
-		img := newContainerImageFromCommonSettings(context.Background(), settings, nil)
+		img := newImageFromCommonUpdateSettings(context.Background(), settings, nil)
 
 		assert.NotNil(t, img)
 		assert.Equal(t, image.StrategyNewestBuild, img.UpdateStrategy)
@@ -1305,7 +1331,7 @@ func Test_newContainerImageFromCommonSettings(t *testing.T) {
 	t.Run("should return a clone of the parent when settings are nil", func(t *testing.T) {
 		// Test case: A parent is provided, but no new settings.
 		// Expected: A new object that is an exact copy of the parent.
-		parent := &iutypes.Image{
+		parent := &Image{
 			UpdateStrategy: image.StrategyDigest,
 			ForceUpdate:    true,
 			AllowTags:      "rc-*",
@@ -1313,7 +1339,7 @@ func Test_newContainerImageFromCommonSettings(t *testing.T) {
 			IgnoreTags:     []string{"rc-1"},
 		}
 
-		img := newContainerImageFromCommonSettings(context.Background(), nil, parent)
+		img := newImageFromCommonUpdateSettings(context.Background(), nil, parent)
 
 		assert.NotNil(t, img)
 		assert.Equal(t, parent, img)
@@ -1324,7 +1350,7 @@ func Test_newContainerImageFromCommonSettings(t *testing.T) {
 	t.Run("should layer settings on top of a parent image", func(t *testing.T) {
 		// Test case: A parent and new settings are provided.
 		// Expected: The new settings should override the parent's values.
-		parent := &iutypes.Image{
+		parent := &Image{
 			UpdateStrategy: image.StrategyNewestBuild,
 			ForceUpdate:    false,
 			AllowTags:      "v1.*",
@@ -1340,7 +1366,7 @@ func Test_newContainerImageFromCommonSettings(t *testing.T) {
 			IgnoreTags: []string{"v1.1.0"},     // Override
 		}
 
-		img := newContainerImageFromCommonSettings(context.Background(), settings, parent)
+		img := newImageFromCommonUpdateSettings(context.Background(), settings, parent)
 
 		assert.NotNil(t, img)
 		assert.Equal(t, image.StrategySemVer, img.UpdateStrategy)
@@ -1354,7 +1380,7 @@ func Test_newContainerImageFromCommonSettings(t *testing.T) {
 	t.Run("should not override parent fields if settings fields are nil", func(t *testing.T) {
 		// Test case: A parent is provided, but the new settings struct has nil fields.
 		// Expected: Only non-nil fields in the new settings should override the parent.
-		parent := &iutypes.Image{
+		parent := &Image{
 			UpdateStrategy: image.StrategyNewestBuild,
 			ForceUpdate:    true,
 			AllowTags:      "v1.*",
@@ -1370,7 +1396,7 @@ func Test_newContainerImageFromCommonSettings(t *testing.T) {
 			IgnoreTags:     nil,                                         // Should not override
 		}
 
-		img := newContainerImageFromCommonSettings(context.Background(), settings, parent)
+		img := newImageFromCommonUpdateSettings(context.Background(), settings, parent)
 
 		assert.NotNil(t, img)
 		assert.Equal(t, image.StrategyAlphabetical, img.UpdateStrategy)
@@ -1384,13 +1410,13 @@ func Test_newContainerImageFromCommonSettings(t *testing.T) {
 		// Test case: An empty (but not nil) settings struct is provided.
 		// Expected: Since all fields in the settings struct are nil, it should behave
 		// as if no settings were provided, returning a clone of the parent.
-		parent := &iutypes.Image{
+		parent := &Image{
 			UpdateStrategy: image.StrategyNewestBuild,
 			ForceUpdate:    true,
 		}
 		settings := &api.CommonUpdateSettings{} // Empty struct, all fields are nil
 
-		img := newContainerImageFromCommonSettings(context.Background(), settings, parent)
+		img := newImageFromCommonUpdateSettings(context.Background(), settings, parent)
 
 		assert.NotNil(t, img)
 		// Should be an exact clone of the parent.
@@ -1752,7 +1778,7 @@ func Test_processApplicationForUpdate(t *testing.T) {
 		app               *v1alpha1.Application
 		appRef            api.ApplicationRef
 		appNSName         string
-		initialApps       map[string]iutypes.ApplicationImages
+		initialApps       map[string]ApplicationImages
 		expectedAppsCount int
 		expectKey         bool
 		expectedImagesLen int
@@ -1762,7 +1788,7 @@ func Test_processApplicationForUpdate(t *testing.T) {
 			app:               kustomizeApp,
 			appRef:            appRefWithImages,
 			appNSName:         "testns/kustomize-app",
-			initialApps:       make(map[string]iutypes.ApplicationImages),
+			initialApps:       make(map[string]ApplicationImages),
 			expectedAppsCount: 1,
 			expectKey:         true,
 			expectedImagesLen: 2,
@@ -1772,7 +1798,7 @@ func Test_processApplicationForUpdate(t *testing.T) {
 			app:               helmApp,
 			appRef:            appRefWithImages,
 			appNSName:         "testns/helm-app",
-			initialApps:       make(map[string]iutypes.ApplicationImages),
+			initialApps:       make(map[string]ApplicationImages),
 			expectedAppsCount: 1,
 			expectKey:         true,
 			expectedImagesLen: 2,
@@ -1782,7 +1808,7 @@ func Test_processApplicationForUpdate(t *testing.T) {
 			app:               unsupportedApp,
 			appRef:            appRefWithImages,
 			appNSName:         "testns/unsupported-app",
-			initialApps:       make(map[string]iutypes.ApplicationImages),
+			initialApps:       make(map[string]ApplicationImages),
 			expectedAppsCount: 0,
 			expectKey:         false,
 		},
@@ -1791,7 +1817,7 @@ func Test_processApplicationForUpdate(t *testing.T) {
 			app:               kustomizeApp,
 			appRef:            appRefWithoutImages,
 			appNSName:         "testns/kustomize-app-no-images",
-			initialApps:       make(map[string]iutypes.ApplicationImages),
+			initialApps:       make(map[string]ApplicationImages),
 			expectedAppsCount: 1,
 			expectKey:         true,
 			expectedImagesLen: 0,
@@ -1801,7 +1827,7 @@ func Test_processApplicationForUpdate(t *testing.T) {
 			app:       kustomizeApp,
 			appRef:    appRefWithImages,
 			appNSName: "testns/kustomize-app",
-			initialApps: map[string]iutypes.ApplicationImages{
+			initialApps: map[string]ApplicationImages{
 				"testns/existing-app": {Application: *helmApp},
 			},
 			expectedAppsCount: 2,
@@ -1815,7 +1841,7 @@ func Test_processApplicationForUpdate(t *testing.T) {
 			ctx := context.Background()
 			appsForUpdate := tc.initialApps
 
-			processApplicationForUpdate(ctx, tc.app, tc.appRef, nil, tc.appNSName, appsForUpdate)
+			processApplicationForUpdate(ctx, tc.app, tc.appRef, nil, nil, tc.appNSName, appsForUpdate)
 
 			assert.Len(t, appsForUpdate, tc.expectedAppsCount, "The final map should have the expected number of applications")
 
@@ -2019,19 +2045,47 @@ func Test_FilterApplicationsForUpdate(t *testing.T) {
 	// Define common applications to be used across test cases
 	appProd := &v1alpha1.Application{
 		ObjectMeta: v1.ObjectMeta{Name: "app-prod", Namespace: "testns", Labels: map[string]string{"env": "prod"}},
-		Status:     v1alpha1.ApplicationStatus{SourceType: v1alpha1.ApplicationSourceTypeKustomize},
+		Spec: v1alpha1.ApplicationSpec{
+			Source: &v1alpha1.ApplicationSource{
+				RepoURL:        "https://github.com/example/repo.git",
+				TargetRevision: "main",
+				Path:           "kustomize",
+			},
+		},
+		Status: v1alpha1.ApplicationStatus{SourceType: v1alpha1.ApplicationSourceTypeKustomize},
 	}
 	appStaging := &v1alpha1.Application{
 		ObjectMeta: v1.ObjectMeta{Name: "app-staging", Namespace: "testns", Labels: map[string]string{"env": "staging"}},
-		Status:     v1alpha1.ApplicationStatus{SourceType: v1alpha1.ApplicationSourceTypeHelm},
+		Spec: v1alpha1.ApplicationSpec{
+			Source: &v1alpha1.ApplicationSource{
+				RepoURL:        "https://github.com/example/repo.git",
+				TargetRevision: "main",
+				Path:           "helm",
+			},
+		},
+		Status: v1alpha1.ApplicationStatus{SourceType: v1alpha1.ApplicationSourceTypeHelm},
 	}
 	otherProd := &v1alpha1.Application{
 		ObjectMeta: v1.ObjectMeta{Name: "other-prod", Namespace: "testns", Labels: map[string]string{"env": "prod"}},
-		Status:     v1alpha1.ApplicationStatus{SourceType: v1alpha1.ApplicationSourceTypeKustomize},
+		Spec: v1alpha1.ApplicationSpec{
+			Source: &v1alpha1.ApplicationSource{
+				RepoURL:        "https://github.com/example/repo.git",
+				TargetRevision: "main",
+				Path:           "kustomize",
+			},
+		},
+		Status: v1alpha1.ApplicationStatus{SourceType: v1alpha1.ApplicationSourceTypeKustomize},
 	}
 	unsupportedApp := &v1alpha1.Application{
 		ObjectMeta: v1.ObjectMeta{Name: "unsupported-app", Namespace: "testns", Labels: map[string]string{"env": "prod"}},
-		Status:     v1alpha1.ApplicationStatus{SourceType: v1alpha1.ApplicationSourceTypePlugin},
+		Spec: v1alpha1.ApplicationSpec{
+			Source: &v1alpha1.ApplicationSource{
+				RepoURL:        "https://github.com/example/repo.git",
+				TargetRevision: "main",
+				Path:           "plugin",
+			},
+		},
+		Status: v1alpha1.ApplicationStatus{SourceType: v1alpha1.ApplicationSourceTypePlugin},
 	}
 
 	testCases := []struct {
@@ -2146,9 +2200,13 @@ func Test_FilterApplicationsForUpdate(t *testing.T) {
 			ctx := context.Background()
 			client, err := newTestK8sClient(tc.initialApps...)
 			require.NoError(t, err)
-
+			kubeClient := kube.ImageUpdaterKubernetesClient{
+				KubeClient: &registryKube.KubernetesClient{
+					Clientset: fake.NewFakeKubeClient(),
+				},
+			}
 			// Execute
-			appsForUpdate, err := client.FilterApplicationsForUpdate(ctx, tc.imageUpdaterCR)
+			appsForUpdate, err := FilterApplicationsForUpdate(ctx, client, &kubeClient, tc.imageUpdaterCR)
 
 			// Assert
 			if tc.expectError {
@@ -2176,8 +2234,35 @@ func Test_FilterApplicationsForUpdate(t *testing.T) {
 	}
 }
 
+func Test_GetParameterPullSecret(t *testing.T) {
+	t.Run("Get cred source from a valid pull secret string", func(t *testing.T) {
+		img := NewImage(image.NewFromIdentifier("dummy=foo/bar:1.12"))
+		img.PullSecret = "pullsecret:foo/bar"
+		credSrc := GetParameterPullSecret(context.Background(), img)
+		require.NotNil(t, credSrc)
+		assert.Equal(t, image.CredentialSourcePullSecret, credSrc.Type)
+		assert.Equal(t, "foo", credSrc.SecretNamespace)
+		assert.Equal(t, "bar", credSrc.SecretName)
+		assert.Equal(t, ".dockerconfigjson", credSrc.SecretField)
+	})
+
+	t.Run("Return nil for an invalid pull secret string", func(t *testing.T) {
+		img := NewImage(image.NewFromIdentifier("dummy=foo/bar:1.12"))
+		img.PullSecret = "pullsecret:invalid"
+		credSrc := GetParameterPullSecret(context.Background(), img)
+		require.Nil(t, credSrc)
+	})
+
+	t.Run("Return nil for an empty pull secret string", func(t *testing.T) {
+		img := NewImage(image.NewFromIdentifier("dummy=foo/bar:1.12"))
+		// img.PullSecret is "" by default, so no need to set it
+		credSrc := GetParameterPullSecret(context.Background(), img)
+		require.Nil(t, credSrc)
+	})
+}
+
 // Helper function to create a new fake client for tests
-func newTestK8sClient(initObjs ...client.Object) (*k8sClient, error) {
+func newTestK8sClient(initObjs ...client.Object) (*K8sClient, error) {
 	// Register the Argo CD Application scheme so the fake client knows about it
 	scheme := runtime.NewScheme()
 	err := v1alpha1.AddToScheme(scheme)
@@ -2195,7 +2280,7 @@ func newTestK8sClient(initObjs ...client.Object) (*k8sClient, error) {
 	fakeClient := builder.Build()
 
 	// Use constructor to create the k8sClient instance
-	return &k8sClient{
-		ctrlClient: fakeClient,
+	return &K8sClient{
+		fakeClient,
 	}, nil
 }

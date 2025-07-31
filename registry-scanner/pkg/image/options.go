@@ -232,7 +232,7 @@ func (img *ContainerImage) GetParameterIgnoreTags(annotations map[string]string,
 func (img *ContainerImage) GetPlatformOptions(ctx context.Context, ignoreRuntimePlatform bool, platforms []string) *options.ManifestOptions {
 	log := log.LoggerFromContext(ctx)
 	var opts *options.ManifestOptions = options.NewManifestOptions()
-	if platforms == nil || len(platforms) == 0 {
+	if len(platforms) == 0 {
 		if !ignoreRuntimePlatform {
 			os := runtime.GOOS
 			arch := runtime.GOARCH

@@ -2,16 +2,13 @@ package controller
 
 import (
 	"context"
-	"fmt"
 	"sync"
 
 	"golang.org/x/sync/semaphore"
 
 	iuapi "github.com/argoproj-labs/argocd-image-updater/api/v1alpha1"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/argocd"
-	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/metrics"
-	iutypes "github.com/argoproj-labs/argocd-image-updater/pkg/types"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/registry"
 )
@@ -21,23 +18,30 @@ func (r *ImageUpdaterReconciler) RunImageUpdater(ctx context.Context, cr *iuapi.
 	baseLogger := log.LoggerFromContext(ctx)
 
 	result := argocd.ImageUpdaterResult{}
-	var err error
-	var argoClient argocd.ArgoCD
-	switch r.Config.ApplicationsAPIKind {
-	case common.ApplicationsAPIKindK8S:
-		argoClient, err = argocd.NewK8SClient(r.Client)
-	case common.ApplicationsAPIKindArgoCD:
-		argoClient, err = argocd.NewAPIClient(&r.Config.ClientOpts)
-	default:
-		return argocd.ImageUpdaterResult{}, fmt.Errorf("application api '%s' is not supported", r.Config.ApplicationsAPIKind)
-	}
+
+	//TODO: This is a temporary solution. In GITOPS-7123 we will remove ArgoCD client together with this switch.
+	//var argoClient argocd.ArgoCD
+	//switch r.Config.ApplicationsAPIKind {
+	//case common.ApplicationsAPIKindK8S:
+	//	argoClient, err = argocd.NewK8SClient(r.Client)
+	//case common.ApplicationsAPIKindArgoCD:
+	//	argoClient, err = argocd.NewAPIClient(&r.Config.ClientOpts)
+	//default:
+	//	return argocd.ImageUpdaterResult{}, fmt.Errorf("application api '%s' is not supported", r.Config.ApplicationsAPIKind)
+	//}
+	//if err != nil {
+	//	return result, err
+	//}
+
+	k8sClient, err := argocd.NewK8SClient(r.Client)
 	if err != nil {
 		return result, err
 	}
-	r.Config.ArgoClient = argoClient
+	r.Config.ArgoClient = k8sClient
 
 	// Get the list of applications that are allowed for updates.
-	appList, err := r.Config.ArgoClient.FilterApplicationsForUpdate(ctx, cr)
+	// TODO: Two k8sClient and KubeClient structures will be simplified in GITOPS-7357
+	appList, err := argocd.FilterApplicationsForUpdate(ctx, k8sClient, r.Config.KubeClient, cr)
 	if err != nil {
 		return result, err
 	}
@@ -76,7 +80,7 @@ func (r *ImageUpdaterReconciler) RunImageUpdater(ctx context.Context, cr *iuapi.
 			continue
 		}
 
-		go func(app string, curApplication iutypes.ApplicationImages) {
+		go func(app string, curApplication argocd.ApplicationImages) {
 			defer sem.Release(1)
 
 			ctx = log.ContextWithLogger(ctx, appLogger)

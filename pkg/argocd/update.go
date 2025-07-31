@@ -6,16 +6,15 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
-	"sync"
-	"text/template"
 	"time"
 
 	"golang.org/x/exp/slices"
+	yaml "sigs.k8s.io/yaml/goyaml.v3"
 
+	iuapi "github.com/argoproj-labs/argocd-image-updater/api/v1alpha1"
 	"github.com/argoproj-labs/argocd-image-updater/ext/git"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/kube"
-	iutypes "github.com/argoproj-labs/argocd-image-updater/pkg/types"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/image"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/registry"
@@ -23,128 +22,7 @@ import (
 
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/application"
 	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
-	yaml "sigs.k8s.io/yaml/goyaml.v3"
 )
-
-// Stores some statistics about the results of a run
-type ImageUpdaterResult struct {
-	NumApplicationsProcessed int
-	NumImagesFound           int
-	NumImagesUpdated         int
-	NumImagesConsidered      int
-	NumSkipped               int
-	NumErrors                int
-}
-
-type UpdateConfiguration struct {
-	NewRegFN               registry.NewRegistryClient
-	ArgoClient             ArgoCD
-	KubeClient             *kube.ImageUpdaterKubernetesClient
-	UpdateApp              *iutypes.ApplicationImages
-	DryRun                 bool
-	GitCommitUser          string
-	GitCommitEmail         string
-	GitCommitMessage       *template.Template
-	GitCommitSigningKey    string
-	GitCommitSigningMethod string
-	GitCommitSignOff       bool
-	DisableKubeEvents      bool
-	IgnorePlatforms        bool
-	GitCreds               git.CredsStore
-}
-
-type GitCredsSource func(app *v1alpha1.Application) (git.Creds, error)
-
-type WriteBackMethod int
-
-const (
-	WriteBackApplication WriteBackMethod = 0
-	WriteBackGit         WriteBackMethod = 1
-)
-
-const defaultIndent = 2
-
-// WriteBackConfig holds information on how to write back the changes to an Application
-type WriteBackConfig struct {
-	Method     WriteBackMethod
-	ArgoClient ArgoCD
-	// If GitClient is not nil, the client will be used for updates. Otherwise, a new client will be created.
-	GitClient              git.Client
-	GetCreds               GitCredsSource
-	GitBranch              string
-	GitWriteBranch         string
-	GitCommitUser          string
-	GitCommitEmail         string
-	GitCommitMessage       string
-	GitCommitSigningKey    string
-	GitCommitSigningMethod string
-	GitCommitSignOff       bool
-	KustomizeBase          string
-	Target                 string
-	GitRepo                string
-	GitCreds               git.CredsStore
-}
-
-// The following are helper structs to only marshal the fields we require
-type kustomizeImages struct {
-	Images *v1alpha1.KustomizeImages `json:"images"`
-}
-
-type kustomizeOverride struct {
-	Kustomize kustomizeImages `json:"kustomize"`
-}
-
-type helmParameters struct {
-	Parameters []v1alpha1.HelmParameter `json:"parameters"`
-}
-
-type helmOverride struct {
-	Helm helmParameters `json:"helm"`
-}
-
-// ChangeEntry represents an image that has been changed by Image Updater
-type ChangeEntry struct {
-	Image  *image.ContainerImage
-	OldTag *tag.ImageTag
-	NewTag *tag.ImageTag
-}
-
-// SyncIterationState holds shared state of a running update operation
-type SyncIterationState struct {
-	lock            sync.Mutex
-	repositoryLocks map[string]*sync.Mutex
-}
-
-// NewSyncIterationState returns a new instance of SyncIterationState
-func NewSyncIterationState() *SyncIterationState {
-	return &SyncIterationState{
-		repositoryLocks: make(map[string]*sync.Mutex),
-	}
-}
-
-// GetRepositoryLock returns the lock for a specified repository
-func (state *SyncIterationState) GetRepositoryLock(repository string) *sync.Mutex {
-	state.lock.Lock()
-	defer state.lock.Unlock()
-
-	lock, exists := state.repositoryLocks[repository]
-	if !exists {
-		lock = &sync.Mutex{}
-		state.repositoryLocks[repository] = lock
-	}
-
-	return lock
-}
-
-// RequiresLocking returns true if write-back method requires repository locking
-func (wbc *WriteBackConfig) RequiresLocking() bool {
-	switch wbc.Method {
-	case WriteBackGit:
-		return true
-	default:
-		return false
-	}
-}
 
 // UpdateApplication update all images of a single application. Will run in a goroutine.
 func UpdateApplication(ctx context.Context, updateConf *UpdateConfiguration, state *SyncIterationState) ImageUpdaterResult {
@@ -230,7 +108,7 @@ func UpdateApplication(ctx context.Context, updateConf *UpdateConfiguration, sta
 			continue
 		}
 
-		imgCredSrc := applicationImage.GetParameterPullSecret(imageOpCtx)
+		imgCredSrc := GetParameterPullSecret(imageOpCtx, applicationImage)
 		var creds *image.Credential = &image.Credential{}
 		if imgCredSrc != nil {
 			creds, err = imgCredSrc.FetchCredentials(imageOpCtx, rep.RegistryAPI, updateConf.KubeClient.KubeClient)
@@ -282,7 +160,7 @@ func UpdateApplication(ctx context.Context, updateConf *UpdateConfiguration, sta
 
 			// Check if new image is already set in Application Spec when write back is set to argocd
 			// and compare with new image
-			appImageSpec, err := getAppImage(&updateConf.UpdateApp.Application, appImageWithTag)
+			appImageSpec, err := getAppImage(&updateConf.UpdateApp.Application, appImageWithTag, updateConf.UpdateApp.WriteBackConfig)
 			if err != nil {
 				continue
 			}
@@ -294,7 +172,7 @@ func UpdateApplication(ctx context.Context, updateConf *UpdateConfiguration, sta
 			needUpdate = true
 			imgCtx.Infof("Setting new image to %s", appImageFullNameWithTag)
 
-			err = setAppImage(&updateConf.UpdateApp.Application, appImageWithTag)
+			err = setAppImage(&updateConf.UpdateApp.Application, appImageWithTag, updateConf.UpdateApp.WriteBackConfig)
 
 			if err != nil {
 				imgCtx.Errorf("Error while trying to update image: %v", err)
@@ -309,7 +187,7 @@ func UpdateApplication(ctx context.Context, updateConf *UpdateConfiguration, sta
 			// We need to explicitly set the up-to-date images in the spec too, so
 			// that we correctly marshal out the parameter overrides to include all
 			// images, regardless of those were updated or not.
-			err = setAppImage(&updateConf.UpdateApp.Application, applicationImage.WithTag(updateableImage.ImageTag))
+			err = setAppImage(&updateConf.UpdateApp.Application, applicationImage.WithTag(updateableImage.ImageTag), updateConf.UpdateApp.WriteBackConfig)
 			if err != nil {
 				imgCtx.Errorf("Error while trying to update image: %v", err)
 				result.NumErrors += 1
@@ -318,10 +196,9 @@ func UpdateApplication(ctx context.Context, updateConf *UpdateConfiguration, sta
 		}
 	}
 
-	wbc, err := getWriteBackConfig(&updateConf.UpdateApp.Application, updateConf.KubeClient, updateConf.ArgoClient)
-	if err != nil {
-		return result
-	}
+	wbc := updateConf.UpdateApp.WriteBackConfig
+	wbc.ArgoClient = updateConf.ArgoClient
+
 	if updateConf.GitCreds == nil {
 		wbc.GitCreds = git.NoopCredsStore{}
 	} else {
@@ -394,24 +271,27 @@ func needsUpdate(updateableImage *image.ContainerImage, applicationImage *image.
 	return !updateableImage.ImageTag.Equals(latest) || applicationImage.KustomizeImage != nil && applicationImage.DiffersFrom(updateableImage, false)
 }
 
-func getAppImage(app *v1alpha1.Application, img *image.ContainerImage) (string, error) {
+// getAppImage retrieves the current image string from an Argo CD application.
+// It determines the application type (Kustomize or Helm) and calls the appropriate
+// function to extract the image information.
+func getAppImage(app *v1alpha1.Application, img *image.ContainerImage, wbc *WriteBackConfig) (string, error) {
 	var err error
-	if appType := GetApplicationType(app); appType == ApplicationTypeKustomize {
-		return GetKustomizeImage(app, img)
+	if appType := GetApplicationType(app, wbc); appType == ApplicationTypeKustomize {
+		return GetKustomizeImage(app, img, wbc)
 	} else if appType == ApplicationTypeHelm {
-		return GetHelmImage(app, img)
+		return GetHelmImage(app, img, wbc)
 	} else {
 		err = fmt.Errorf("could not update application %s - neither Helm nor Kustomize application", app)
 		return "", err
 	}
 }
 
-func setAppImage(app *v1alpha1.Application, img *image.ContainerImage) error {
+func setAppImage(app *v1alpha1.Application, img *image.ContainerImage, wbc *WriteBackConfig) error {
 	var err error
-	if appType := GetApplicationType(app); appType == ApplicationTypeKustomize {
-		err = SetKustomizeImage(app, img)
+	if appType := GetApplicationType(app, wbc); appType == ApplicationTypeKustomize {
+		err = SetKustomizeImage(app, img, wbc)
 	} else if appType == ApplicationTypeHelm {
-		err = SetHelmImage(app, img)
+		err = SetHelmImage(app, img, wbc)
 	} else {
 		err = fmt.Errorf("could not update application %s - neither Helm nor Kustomize application", app)
 	}
@@ -436,12 +316,12 @@ func marshalWithIndent(in interface{}, indent int) (out []byte, err error) {
 
 // marshalParamsOverride marshals the parameter overrides of a given application
 // into YAML bytes
-func marshalParamsOverride(applicationImages *iutypes.ApplicationImages, originalData []byte) ([]byte, error) {
+func marshalParamsOverride(applicationImages *ApplicationImages, originalData []byte, wbc *WriteBackConfig) ([]byte, error) {
 	var override []byte
 	var err error
 	app := &applicationImages.Application
 
-	appType := GetApplicationType(app)
+	appType := GetApplicationType(app, wbc)
 	appSource := getApplicationSource(app)
 
 	switch appType {
@@ -687,48 +567,6 @@ func setHelmValue(currentValues *yaml.Node, key string, value interface{}) error
 	return err
 }
 
-func getWriteBackConfig(app *v1alpha1.Application, kubeClient *kube.ImageUpdaterKubernetesClient, argoClient ArgoCD) (*WriteBackConfig, error) {
-	wbc := &WriteBackConfig{}
-	// Default write-back is to use Argo CD API
-	wbc.Method = WriteBackApplication
-	wbc.ArgoClient = argoClient
-	wbc.Target = parseDefaultTarget(app.GetNamespace(), app.Name, getApplicationSource(app).Path, kubeClient)
-
-	// If we have no update method, just return our default
-	method, ok := app.Annotations[common.WriteBackMethodAnnotation]
-	if !ok || strings.TrimSpace(method) == "argocd" {
-		return wbc, nil
-	}
-	method = strings.TrimSpace(method)
-
-	creds := "repocreds"
-	if index := strings.Index(method, ":"); index > 0 {
-		creds = method[index+1:]
-		method = method[:index]
-	}
-
-	// We might support further methods later
-	switch strings.TrimSpace(method) {
-	case "git":
-		wbc.Method = WriteBackGit
-		target, ok := app.Annotations[common.WriteBackTargetAnnotation]
-		if ok && strings.HasPrefix(target, common.KustomizationPrefix) {
-			wbc.KustomizeBase = parseKustomizeBase(target, getApplicationSource(app).Path)
-		} else if ok && strings.HasPrefix(target, common.HelmPrefix) { // This keeps backward compatibility
-			wbc.Target = parseTarget(target, getApplicationSource(app).Path)
-		} else if ok { // This keeps backward compatibility
-			wbc.Target = app.Annotations[common.WriteBackTargetAnnotation]
-		}
-		if err := parseGitConfig(app, kubeClient, wbc, creds); err != nil {
-			return nil, err
-		}
-	default:
-		return nil, fmt.Errorf("invalid update mechanism: %s", method)
-	}
-
-	return wbc, nil
-}
-
 func parseDefaultTarget(appNamespace string, appName string, path string, kubeClient *kube.ImageUpdaterKubernetesClient) string {
 	// when running from command line and argocd-namespace is not set, e.g., via --argocd-namespace option,
 	// kubeClient.Namespace may be resolved to "default". In this case, also use the file name without namespace
@@ -762,9 +600,10 @@ func parseTarget(writeBackTarget string, sourcePath string) string {
 	}
 }
 
-func parseGitConfig(app *v1alpha1.Application, kubeClient *kube.ImageUpdaterKubernetesClient, wbc *WriteBackConfig, creds string) error {
-	branch, ok := app.Annotations[common.GitBranchAnnotation]
-	if ok {
+func parseGitConfig(app *v1alpha1.Application, kubeClient *kube.ImageUpdaterKubernetesClient, settings *iuapi.WriteBackConfig, wbc *WriteBackConfig, creds string) error {
+	if settings.GitConfig != nil && settings.GitConfig.Branch != nil {
+		branch := *settings.GitConfig.Branch
+
 		branches := strings.Split(strings.TrimSpace(branch), ":")
 		if len(branches) > 2 {
 			return fmt.Errorf("invalid format for git-branch annotation: %v", branch)
@@ -773,10 +612,11 @@ func parseGitConfig(app *v1alpha1.Application, kubeClient *kube.ImageUpdaterKube
 		if len(branches) == 2 {
 			wbc.GitWriteBranch = branches[1]
 		}
+
 	}
 	wbc.GitRepo = getApplicationSource(app).RepoURL
-	repo, ok := app.Annotations[common.GitRepositoryAnnotation]
-	if ok {
+	if settings.GitConfig != nil && settings.GitConfig.Repository != nil {
+		repo := *settings.GitConfig.Repository
 		wbc.GitRepo = repo
 	}
 	credsSource, err := getGitCredsSource(creds, kubeClient, wbc)
@@ -787,7 +627,7 @@ func parseGitConfig(app *v1alpha1.Application, kubeClient *kube.ImageUpdaterKube
 	return nil
 }
 
-func commitChangesLocked(applicationImages *iutypes.ApplicationImages, wbc *WriteBackConfig, state *SyncIterationState, changeList []ChangeEntry) error {
+func commitChangesLocked(applicationImages *ApplicationImages, wbc *WriteBackConfig, state *SyncIterationState, changeList []ChangeEntry) error {
 	if wbc.RequiresLocking() {
 		lock := state.GetRepositoryLock(wbc.GitRepo)
 		lock.Lock()
@@ -799,7 +639,7 @@ func commitChangesLocked(applicationImages *iutypes.ApplicationImages, wbc *Writ
 
 // commitChanges commits any changes required for updating one or more images
 // after the UpdateApplication cycle has finished.
-func commitChanges(applicationImages *iutypes.ApplicationImages, wbc *WriteBackConfig, changeList []ChangeEntry) error {
+func commitChanges(applicationImages *ApplicationImages, wbc *WriteBackConfig, changeList []ChangeEntry) error {
 	app := applicationImages.Application
 	switch wbc.Method {
 	case WriteBackApplication:
