@@ -287,8 +287,9 @@ spec:
                         matched by this selector.
                       properties:
                         gitConfig:
-                          description: GitConfig provides Git configuration settings
-                            if the write-back method involves Git.
+                          description: |-
+                            GitConfig provides Git configuration settings if the write-back method involves Git.
+                            This can only be used when method is "git" or starts with "git:".
                           properties:
                             branch:
                               description: |-
@@ -314,8 +315,11 @@ spec:
                           default: argocd
                           description: |-
                             Method defines the method for writing back updated image versions.
-                            This acts as the default if not overridden.
+                            This acts as the default if not overridden. If not specified, defaults to "argocd".
+                          pattern: ^(argocd|git|git:[a-zA-Z0-9][a-zA-Z0-9-._/:]*)$
                           type: string
+                      required:
+                      - method
                       type: object
                   required:
                   - images
@@ -384,8 +388,9 @@ spec:
                   This can be overridden at the ApplicationRef level.
                 properties:
                   gitConfig:
-                    description: GitConfig provides Git configuration settings if
-                      the write-back method involves Git.
+                    description: |-
+                      GitConfig provides Git configuration settings if the write-back method involves Git.
+                      This can only be used when method is "git" or starts with "git:".
                     properties:
                       branch:
                         description: |-
@@ -411,8 +416,11 @@ spec:
                     default: argocd
                     description: |-
                       Method defines the method for writing back updated image versions.
-                      This acts as the default if not overridden.
+                      This acts as the default if not overridden. If not specified, defaults to "argocd".
+                    pattern: ^(argocd|git|git:[a-zA-Z0-9][a-zA-Z0-9-._/:]*)$
                     type: string
+                required:
+                - method
                 type: object
             required:
             - applicationRefs
