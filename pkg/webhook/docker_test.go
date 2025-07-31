@@ -2,9 +2,6 @@ package webhook
 
 import (
 	"bytes"
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/hex"
 	"io"
 	"net/http/httptest"
 	"strings"
@@ -42,19 +39,19 @@ func TestDockerHubWebhook_Validate(t *testing.T) {
 		name        string
 		method      string
 		body        string
-		signature   string
+		secret      string
 		noSecret    bool
 		expectError bool
 	}{
 		{
-			name:        "valid POST request with correct signature",
+			name:        "valid POST request with correct secret",
 			method:      "POST",
 			body:        `{"test": "data"}`,
-			signature:   generateSignature(secret, `{"test": "data"}`),
+			secret:      "test-secret",
 			expectError: false,
 		},
 		{
-			name:        "valid POST request without secret validation",
+			name:        "valid POST request without secret",
 			method:      "POST",
 			body:        `{"test": "data"}`,
 			noSecret:    true,
@@ -64,28 +61,21 @@ func TestDockerHubWebhook_Validate(t *testing.T) {
 			name:        "invalid HTTP method",
 			method:      "GET",
 			body:        `{"test": "data"}`,
-			signature:   generateSignature(secret, `{"test": "data"}`),
+			secret:      "test-secret",
 			expectError: true,
 		},
 		{
-			name:        "missing signature when secret is configured",
+			name:        "missing secret when secret is configured",
 			method:      "POST",
 			body:        `{"test": "data"}`,
-			signature:   "",
+			secret:      "",
 			expectError: true,
 		},
 		{
-			name:        "invalid signature",
+			name:        "invalid secret",
 			method:      "POST",
 			body:        `{"test": "data"}`,
-			signature:   "sha256=invalid",
-			expectError: true,
-		},
-		{
-			name:        "signature for different body",
-			method:      "POST",
-			body:        `{"test": "data"}`,
-			signature:   generateSignature(secret, `{"different": "data"}`),
+			secret:      "not-the-secret",
 			expectError: true,
 		},
 	}
@@ -98,8 +88,10 @@ func TestDockerHubWebhook_Validate(t *testing.T) {
 			}
 
 			req := httptest.NewRequest(tt.method, "/webhook", strings.NewReader(tt.body))
-			if tt.signature != "" {
-				req.Header.Set("X-Hub-Signature-256", tt.signature)
+			if tt.secret != "" {
+				query := req.URL.Query()
+				query.Set("secret", tt.secret)
+				req.URL.RawQuery = query.Encode()
 			}
 
 			err := testWebhook.Validate(req)
@@ -238,58 +230,6 @@ func TestDockerHubWebhook_Parse(t *testing.T) {
 	}
 }
 
-func TestDockerHubWebhook_validateSignature(t *testing.T) {
-	secret := "test-secret"
-	webhook := NewDockerHubWebhook(secret)
-
-	tests := []struct {
-		name      string
-		body      string
-		signature string
-		expected  bool
-	}{
-		{
-			name:      "valid signature",
-			body:      `{"test": "data"}`,
-			signature: generateSignature(secret, `{"test": "data"}`),
-			expected:  true,
-		},
-		{
-			name:      "invalid signature",
-			body:      `{"test": "data"}`,
-			signature: "sha256=invalid",
-			expected:  false,
-		},
-		{
-			name:      "signature without prefix",
-			body:      `{"test": "data"}`,
-			signature: "invalid",
-			expected:  false,
-		},
-		{
-			name:      "empty signature",
-			body:      `{"test": "data"}`,
-			signature: "",
-			expected:  false,
-		},
-		{
-			name:      "signature for different body",
-			body:      `{"test": "data"}`,
-			signature: generateSignature(secret, `{"different": "data"}`),
-			expected:  false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := webhook.validateSignature([]byte(tt.body), tt.signature)
-			if result != tt.expected {
-				t.Errorf("expected %v, got %v", tt.expected, result)
-			}
-		})
-	}
-}
-
 func TestDockerHubWebhook_ParseWithBodyReuse(t *testing.T) {
 	// Test that body can be read multiple times (e.g., after validation)
 	secret := "test-secret"
@@ -305,7 +245,9 @@ func TestDockerHubWebhook_ParseWithBodyReuse(t *testing.T) {
 	}`
 
 	req := httptest.NewRequest("POST", "/webhook", strings.NewReader(payload))
-	req.Header.Set("X-Hub-Signature-256", generateSignature(secret, payload))
+	query := req.URL.Query()
+	query.Set("secret", "test-secret")
+	req.URL.RawQuery = query.Encode()
 
 	// First, validate the request
 	err := webhook.Validate(req)
@@ -326,13 +268,6 @@ func TestDockerHubWebhook_ParseWithBodyReuse(t *testing.T) {
 	if event.Tag != "v1.0.0" {
 		t.Errorf("expected tag to be 'v1.0.0', got %q", event.Tag)
 	}
-}
-
-// Helper function to generate HMAC-SHA256 signature for testing
-func generateSignature(secret, body string) string {
-	mac := hmac.New(sha256.New, []byte(secret))
-	mac.Write([]byte(body))
-	return "sha256=" + hex.EncodeToString(mac.Sum(nil))
 }
 
 // Test helper to simulate reading request body multiple times

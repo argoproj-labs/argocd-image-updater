@@ -32,6 +32,7 @@ import (
 // newRunCommand implements "run" command
 func newRunCommand() *cobra.Command {
 	var cfg *ImageUpdaterConfig = &ImageUpdaterConfig{}
+	var webhookCfg *WebhookConfig = &WebhookConfig{}
 	var once bool
 	var kubeConfig string
 	var disableKubernetes bool
@@ -183,7 +184,7 @@ func newRunCommand() *cobra.Command {
 
 			// Start the webhook server if enabled
 			var webhookServer *webhook.WebhookServer
-			if cfg.EnableWebhook && cfg.WebhookPort > 0 {
+			if cfg.EnableWebhook && webhookCfg.Port > 0 {
 				// Initialize the ArgoCD client for webhook server
 				var argoClient argocd.ArgoCD
 				switch cfg.ApplicationsAPIKind {
@@ -200,30 +201,36 @@ func newRunCommand() *cobra.Command {
 				handler := webhook.NewWebhookHandler()
 
 				// Register supported webhook handlers with default empty secrets
-				// In production, these would be configured via flags or environment variables
-				dockerHandler := webhook.NewDockerHubWebhook("")
+				dockerHandler := webhook.NewDockerHubWebhook(webhookCfg.DockerSecret)
 				handler.RegisterHandler(dockerHandler)
 
-				ghcrHandler := webhook.NewGHCRWebhook("")
+				ghcrHandler := webhook.NewGHCRWebhook(webhookCfg.GHCRSecret)
 				handler.RegisterHandler(ghcrHandler)
 
-				harborHandler := webhook.NewHarborWebhook("")
+				harborHandler := webhook.NewHarborWebhook(webhookCfg.HarborSecret)
 				handler.RegisterHandler(harborHandler)
 
-				log.Infof("Starting webhook server on port %d", cfg.WebhookPort)
-				webhookServer = webhook.NewWebhookServer(cfg.WebhookPort, handler, cfg.KubeClient, argoClient)
+				quayHandler := webhook.NewQuayWebhook(webhookCfg.QuaySecret)
+				handler.RegisterHandler(quayHandler)
+
+				log.Infof("Starting webhook server on port %d", webhookCfg.Port)
+				webhookServer = webhook.NewWebhookServer(webhookCfg.Port, handler, cfg.KubeClient, argoClient)
 
 				// Set updater config
-				updaterConfig := &argocd.UpdaterConfig{
+				webhookServer.UpdaterConfig = &argocd.UpdateConfiguration{
+					NewRegFN:               registry.NewClient,
+					ArgoClient:             cfg.ArgoClient,
+					KubeClient:             cfg.KubeClient,
 					DryRun:                 cfg.DryRun,
 					GitCommitUser:          cfg.GitCommitUser,
 					GitCommitEmail:         cfg.GitCommitMail,
-					GitCommitMessage:       cfg.GitCommitMessage.Tree.Root.String(),
+					GitCommitMessage:       cfg.GitCommitMessage,
 					GitCommitSigningKey:    cfg.GitCommitSigningKey,
 					GitCommitSigningMethod: cfg.GitCommitSigningMethod,
 					GitCommitSignOff:       cfg.GitCommitSignOff,
+					DisableKubeEvents:      cfg.DisableKubeEvents,
+					GitCreds:               cfg.GitCreds,
 				}
-				webhookServer.UpdaterConfig = updaterConfig
 
 				whErrCh = make(chan error, 1)
 				go func() {
@@ -233,7 +240,7 @@ func newRunCommand() *cobra.Command {
 					}
 				}()
 
-				log.Infof("Webhook server started and listening on port %d", cfg.WebhookPort)
+				log.Infof("Webhook server started and listening on port %d", webhookCfg.Port)
 			}
 
 			// This is our main loop. We leave it only when our health probe server
@@ -323,8 +330,13 @@ func newRunCommand() *cobra.Command {
 	runCmd.Flags().BoolVar(&cfg.GitCommitSignOff, "git-commit-sign-off", env.GetBoolVal("GIT_COMMIT_SIGN_OFF", false), "Whether to sign-off git commits")
 	runCmd.Flags().StringVar(&commitMessagePath, "git-commit-message-path", defaultCommitTemplatePath, "Path to a template to use for Git commit messages")
 	runCmd.Flags().BoolVar(&cfg.DisableKubeEvents, "disable-kube-events", env.GetBoolVal("IMAGE_UPDATER_KUBE_EVENTS", false), "Disable kubernetes events")
-	runCmd.Flags().IntVar(&cfg.WebhookPort, "webhook-port", env.ParseNumFromEnv("WEBHOOK_PORT", 8082, 0, 65535), "Port to start the webhook server on, 0 to disable")
 	runCmd.Flags().BoolVar(&cfg.EnableWebhook, "enable-webhook", env.GetBoolVal("ENABLE_WEBHOOK", false), "Enable webhook server for receiving registry events")
+
+	runCmd.Flags().IntVar(&webhookCfg.Port, "webhook-port", env.ParseNumFromEnv("WEBHOOK_PORT", 8082, 0, 65535), "Port to listen on for webhook events")
+	runCmd.Flags().StringVar(&webhookCfg.DockerSecret, "docker-webhook-secret", env.GetStringVal("DOCKER_WEBHOOK_SECRET", ""), "Secret for validating Docker Hub webhooks")
+	runCmd.Flags().StringVar(&webhookCfg.GHCRSecret, "ghcr-webhook-secret", env.GetStringVal("GHCR_WEBHOOK_SECRET", ""), "Secret for validating GitHub Container Registry webhooks")
+	runCmd.Flags().StringVar(&webhookCfg.QuaySecret, "quay-webhook-secret", env.GetStringVal("QUAY_WEBHOOK_SECRET", ""), "Secret for validating Quay webhooks")
+	runCmd.Flags().StringVar(&webhookCfg.HarborSecret, "harbor-webhook-secret", env.GetStringVal("HARBOR_WEBHOOK_SECRET", ""), "Secret for validating Harbor webhooks")
 
 	return runCmd
 }
