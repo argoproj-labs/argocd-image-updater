@@ -45,6 +45,7 @@ func newRunCommand() *cobra.Command {
 	var secureMetrics bool
 	var enableHTTP2 bool
 	var cfg = &controller.ImageUpdaterConfig{}
+	var webhookCfg *WebhookConfig = &WebhookConfig{}
 	var once bool
 	var kubeConfig string
 	var disableKubernetes bool
@@ -206,7 +207,7 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 
 			var webhookServer webhook.Server
 
-			if cfg.EnableWebhook && cfg.WebhookPort > 0 {
+			if cfg.EnableWebhook && webhookCfg.Port > 0 {
 				setupLogger.Info("enabling webhook server")
 				webhookServer = webhook.NewServer(webhook.Options{
 					TLSOpts: tlsOpts,
@@ -350,8 +351,13 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 	controllerCmd.Flags().BoolVar(&cfg.GitCommitSignOff, "git-commit-sign-off", env.GetBoolVal("GIT_COMMIT_SIGN_OFF", false), "Whether to sign-off git commits")
 	controllerCmd.Flags().StringVar(&commitMessagePath, "git-commit-message-path", common.DefaultCommitTemplatePath, "Path to a template to use for Git commit messages")
 	controllerCmd.Flags().BoolVar(&cfg.DisableKubeEvents, "disable-kube-events", env.GetBoolVal("IMAGE_UPDATER_KUBE_EVENTS", false), "Disable kubernetes events")
-	controllerCmd.Flags().IntVar(&cfg.WebhookPort, "webhook-port", env.ParseNumFromEnv("WEBHOOK_PORT", 8082, 0, 65535), "Port to start the webhook server on, 0 to disable")
 	controllerCmd.Flags().BoolVar(&cfg.EnableWebhook, "enable-webhook", env.GetBoolVal("ENABLE_WEBHOOK", false), "Enable webhook server for receiving registry events")
+
+	controllerCmd.Flags().IntVar(&webhookCfg.Port, "webhook-port", env.ParseNumFromEnv("WEBHOOK_PORT", 8082, 0, 65535), "Port to listen on for webhook events")
+	controllerCmd.Flags().StringVar(&webhookCfg.DockerSecret, "docker-webhook-secret", env.GetStringVal("DOCKER_WEBHOOK_SECRET", ""), "Secret for validating Docker Hub webhooks")
+	controllerCmd.Flags().StringVar(&webhookCfg.GHCRSecret, "ghcr-webhook-secret", env.GetStringVal("GHCR_WEBHOOK_SECRET", ""), "Secret for validating GitHub Container Registry webhooks")
+	controllerCmd.Flags().StringVar(&webhookCfg.QuaySecret, "quay-webhook-secret", env.GetStringVal("QUAY_WEBHOOK_SECRET", ""), "Secret for validating Quay webhooks")
+	controllerCmd.Flags().StringVar(&webhookCfg.HarborSecret, "harbor-webhook-secret", env.GetStringVal("HARBOR_WEBHOOK_SECRET", ""), "Secret for validating Harbor webhooks")
 
 	return controllerCmd
 }

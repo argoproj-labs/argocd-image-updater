@@ -1,14 +1,10 @@
 package webhook
 
 import (
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
-	"strings"
 )
 
 // DockerHubWebhook handles Docker Hub webhook events
@@ -34,23 +30,16 @@ func (d *DockerHubWebhook) Validate(r *http.Request) error {
 		return fmt.Errorf("invalid HTTP method: %s", r.Method)
 	}
 
-	// If secret is configured, validate the signature
+	// If secret is configured, validate it
+	// !! this is not that secure, docker does not have native secrets!
 	if d.secret != "" {
-		signature := r.Header.Get("X-Hub-Signature-256")
-		if signature == "" {
-			return fmt.Errorf("missing webhook signature")
+		secret := r.URL.Query().Get("secret")
+		if secret == "" {
+			return fmt.Errorf("missing webhook secret")
 		}
 
-		body, err := io.ReadAll(r.Body)
-		if err != nil {
-			return fmt.Errorf("failed to read request body: %w", err)
-		}
-
-		// Reset body for later reading
-		r.Body = io.NopCloser(strings.NewReader(string(body)))
-
-		if !d.validateSignature(body, signature) {
-			return fmt.Errorf("invalid webhook signature")
+		if secret != d.secret {
+			return fmt.Errorf("invalid webhook secret")
 		}
 	}
 
@@ -102,19 +91,4 @@ func (d *DockerHubWebhook) Parse(r *http.Request) (*WebhookEvent, error) {
 		Repository:  repository,
 		Tag:         payload.PushData.Tag,
 	}, nil
-}
-
-// validateSignature validates the webhook signature using HMAC-SHA256
-func (d *DockerHubWebhook) validateSignature(body []byte, signature string) bool {
-	// Docker Hub signature format: sha256=<hex>
-	if !strings.HasPrefix(signature, "sha256=") {
-		return false
-	}
-
-	expectedSig := signature[7:] // Remove "sha256=" prefix
-	mac := hmac.New(sha256.New, []byte(d.secret))
-	mac.Write(body)
-	calculatedSig := hex.EncodeToString(mac.Sum(nil))
-
-	return hmac.Equal([]byte(expectedSig), []byte(calculatedSig))
 }
