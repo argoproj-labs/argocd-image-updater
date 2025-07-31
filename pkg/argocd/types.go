@@ -82,34 +82,6 @@ func (wbc *WriteBackConfig) RequiresLocking() bool {
 	}
 }
 
-// Clone creates a deep copy of the WriteBackConfig object.
-func (wbc *WriteBackConfig) Clone() *WriteBackConfig {
-	if wbc == nil {
-		return nil
-	}
-
-	clone := &WriteBackConfig{
-		Method:                 wbc.Method,
-		ArgoClient:             wbc.ArgoClient,
-		GitClient:              wbc.GitClient,
-		GetCreds:               wbc.GetCreds,
-		GitBranch:              wbc.GitBranch,
-		GitWriteBranch:         wbc.GitWriteBranch,
-		GitCommitUser:          wbc.GitCommitUser,
-		GitCommitEmail:         wbc.GitCommitEmail,
-		GitCommitMessage:       wbc.GitCommitMessage,
-		GitCommitSigningKey:    wbc.GitCommitSigningKey,
-		GitCommitSigningMethod: wbc.GitCommitSigningMethod,
-		GitCommitSignOff:       wbc.GitCommitSignOff,
-		KustomizeBase:          wbc.KustomizeBase,
-		Target:                 wbc.Target,
-		GitRepo:                wbc.GitRepo,
-		GitCreds:               wbc.GitCreds,
-	}
-
-	return clone
-}
-
 // The following are helper structs to only marshal the fields we require
 type kustomizeImages struct {
 	Images *argocdapi.KustomizeImages `json:"images"`
@@ -171,7 +143,7 @@ type ApplicationImages struct {
 
 // Image represents a container image and its update configuration.
 // It embeds the neutral ContainerImage type and adds updater-specific
-// configuration.
+// configuration. Use this struct to populate elements from ImageUpdater CR.
 type Image struct {
 	*image.ContainerImage
 
@@ -182,6 +154,12 @@ type Image struct {
 	IgnoreTags     []string
 	PullSecret     string
 	Platforms      []string
+
+	// ManifestTarget settings
+	HelmImageName      string
+	HelmImageTag       string
+	HelmImageSpec      string
+	KustomizeImageName string
 }
 
 // ImageList is a list of Image objects that can be updated.
@@ -192,32 +170,6 @@ func NewImage(ci *image.ContainerImage) *Image {
 	return &Image{
 		ContainerImage: ci,
 	}
-}
-
-// Clone creates a deep copy of the Image object.
-func (i *Image) Clone() *Image {
-	if i == nil {
-		return nil
-	}
-	clone := &Image{
-		ContainerImage: i.ContainerImage.Clone(),
-		UpdateStrategy: i.UpdateStrategy,
-		ForceUpdate:    i.ForceUpdate,
-		AllowTags:      i.AllowTags,
-		PullSecret:     i.PullSecret,
-	}
-
-	if i.IgnoreTags != nil {
-		clone.IgnoreTags = make([]string, len(i.IgnoreTags))
-		copy(clone.IgnoreTags, i.IgnoreTags)
-	}
-
-	if i.Platforms != nil {
-		clone.Platforms = make([]string, len(i.Platforms))
-		copy(clone.Platforms, i.Platforms)
-	}
-
-	return clone
 }
 
 // ToContainerImageList is a private helper that converts an ImageList to a

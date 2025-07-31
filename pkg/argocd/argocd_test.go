@@ -339,7 +339,7 @@ func Test_GetApplicationSource(t *testing.T) {
 			Status: v1alpha1.ApplicationStatus{},
 		}
 
-		appSource := GetApplicationSource(application)
+		appSource := GetApplicationSource(context.Background(), application)
 		assert.NotNil(t, appSource.Helm)
 	})
 
@@ -361,7 +361,7 @@ func Test_GetApplicationSource(t *testing.T) {
 			Status: v1alpha1.ApplicationStatus{},
 		}
 
-		appSource := GetApplicationSource(application)
+		appSource := GetApplicationSource(context.Background(), application)
 		assert.NotNil(t, appSource.Kustomize)
 	})
 
@@ -379,7 +379,7 @@ func Test_GetApplicationSource(t *testing.T) {
 			Status: v1alpha1.ApplicationStatus{},
 		}
 
-		appSource := GetApplicationSource(application)
+		appSource := GetApplicationSource(context.Background(), application)
 		assert.NotEmpty(t, appSource)
 	})
 
@@ -410,7 +410,7 @@ func Test_GetApplicationSource(t *testing.T) {
 			Status: v1alpha1.ApplicationStatus{},
 		}
 
-		appSource := GetApplicationSource(application)
+		appSource := GetApplicationSource(context.Background(), application)
 		assert.NotNil(t, appSource.Helm)
 	})
 
@@ -438,7 +438,7 @@ func Test_GetApplicationSource(t *testing.T) {
 			Status: v1alpha1.ApplicationStatus{},
 		}
 
-		appSource := GetApplicationSource(application)
+		appSource := GetApplicationSource(context.Background(), application)
 		assert.NotNil(t, appSource.Kustomize)
 	})
 
@@ -461,7 +461,7 @@ func Test_GetApplicationSource(t *testing.T) {
 			Status: v1alpha1.ApplicationStatus{},
 		}
 
-		appSource := GetApplicationSource(application)
+		appSource := GetApplicationSource(context.Background(), application)
 		assert.NotEmpty(t, appSource)
 		assert.Equal(t, appSource.Path, "sources/source1")
 	})
@@ -643,7 +643,8 @@ func Test_SetKustomizeImage(t *testing.T) {
 		wbc := &WriteBackConfig{
 			Target: "kustomization:.",
 		}
-		err := SetKustomizeImage(app, img, wbc)
+		appImage := &Image{}
+		err := SetKustomizeImage(context.Background(), app, img, wbc, appImage)
 		require.NoError(t, err)
 		require.NotNil(t, app.Spec.Source.Kustomize)
 		assert.Len(t, app.Spec.Source.Kustomize.Images, 1)
@@ -669,7 +670,8 @@ func Test_SetKustomizeImage(t *testing.T) {
 			},
 		}
 		img := image.NewFromIdentifier("jannfis/foobar:1.0.1")
-		err := SetKustomizeImage(app, img, nil)
+		appImage := &Image{}
+		err := SetKustomizeImage(context.Background(), app, img, nil, appImage)
 		require.NoError(t, err)
 		require.NotNil(t, app.Spec.Source.Kustomize)
 		assert.Len(t, app.Spec.Source.Kustomize.Images, 1)
@@ -700,8 +702,11 @@ func Test_SetKustomizeImage(t *testing.T) {
 				},
 			},
 		}
+		appImage := &Image{
+			KustomizeImageName: "jannfis/foobar:1.0.0",
+		}
 		img := image.NewFromIdentifier("jannfis/foobar:1.0.1")
-		err := SetKustomizeImage(app, img, nil)
+		err := SetKustomizeImage(context.Background(), app, img, nil, appImage)
 		require.Error(t, err)
 	})
 
@@ -710,9 +715,6 @@ func Test_SetKustomizeImage(t *testing.T) {
 			ObjectMeta: v1.ObjectMeta{
 				Name:      "test-app",
 				Namespace: "testns",
-				Annotations: map[string]string{
-					fmt.Sprintf(registryCommon.Prefixed(common.ImageUpdaterAnnotationPrefix, registryCommon.KustomizeApplicationNameAnnotationSuffix), "foobar"): "foobar",
-				},
 			},
 			Spec: v1alpha1.ApplicationSpec{
 				Source: &v1alpha1.ApplicationSource{
@@ -736,7 +738,10 @@ func Test_SetKustomizeImage(t *testing.T) {
 		wbc := &WriteBackConfig{
 			Target: "kustomization:.",
 		}
-		err := SetKustomizeImage(app, img, wbc)
+		appImage := &Image{
+			KustomizeImageName: "foobar",
+		}
+		err := SetKustomizeImage(context.Background(), app, img, wbc, appImage)
 		require.NoError(t, err)
 		require.NotNil(t, app.Spec.Source.Kustomize)
 		assert.Len(t, app.Spec.Source.Kustomize.Images, 1)
@@ -751,10 +756,6 @@ func Test_SetHelmImage(t *testing.T) {
 			ObjectMeta: v1.ObjectMeta{
 				Name:      "test-app",
 				Namespace: "testns",
-				Annotations: map[string]string{
-					fmt.Sprintf(registryCommon.Prefixed(common.ImageUpdaterAnnotationPrefix, registryCommon.HelmParamImageNameAnnotationSuffix), "foobar"): "image.name",
-					fmt.Sprintf(registryCommon.Prefixed(common.ImageUpdaterAnnotationPrefix, registryCommon.HelmParamImageTagAnnotationSuffix), "foobar"):  "image.tag",
-				},
 			},
 			Spec: v1alpha1.ApplicationSpec{
 				Source: &v1alpha1.ApplicationSource{
@@ -786,7 +787,11 @@ func Test_SetHelmImage(t *testing.T) {
 		wbc := &WriteBackConfig{
 			Target: "helmvalues:.",
 		}
-		err := SetHelmImage(app, img, wbc)
+		appImage := &Image{
+			HelmImageName: "image.name",
+			HelmImageTag:  "image.tag",
+		}
+		err := SetHelmImage(context.Background(), app, img, wbc, appImage)
 		require.NoError(t, err)
 		require.NotNil(t, app.Spec.Source.Helm)
 		assert.Len(t, app.Spec.Source.Helm.Parameters, 2)
@@ -807,10 +812,6 @@ func Test_SetHelmImage(t *testing.T) {
 			ObjectMeta: v1.ObjectMeta{
 				Name:      "test-app",
 				Namespace: "testns",
-				Annotations: map[string]string{
-					fmt.Sprintf(registryCommon.Prefixed(common.ImageUpdaterAnnotationPrefix, registryCommon.HelmParamImageNameAnnotationSuffix), "foobar"): "image.name",
-					fmt.Sprintf(registryCommon.Prefixed(common.ImageUpdaterAnnotationPrefix, registryCommon.HelmParamImageTagAnnotationSuffix), "foobar"):  "image.tag",
-				},
 			},
 			Spec: v1alpha1.ApplicationSpec{
 				Source: &v1alpha1.ApplicationSource{
@@ -831,7 +832,11 @@ func Test_SetHelmImage(t *testing.T) {
 		wbc := &WriteBackConfig{
 			Target: "helmvalues:.",
 		}
-		err := SetHelmImage(app, img, wbc)
+		appImage := &Image{
+			HelmImageName: "image.name",
+			HelmImageTag:  "image.tag",
+		}
+		err := SetHelmImage(context.Background(), app, img, wbc, appImage)
 		require.NoError(t, err)
 		require.NotNil(t, app.Spec.Source.Helm)
 		assert.Len(t, app.Spec.Source.Helm.Parameters, 2)
@@ -852,10 +857,6 @@ func Test_SetHelmImage(t *testing.T) {
 			ObjectMeta: v1.ObjectMeta{
 				Name:      "test-app",
 				Namespace: "testns",
-				Annotations: map[string]string{
-					fmt.Sprintf(registryCommon.Prefixed(common.ImageUpdaterAnnotationPrefix, registryCommon.HelmParamImageNameAnnotationSuffix), "foobar"): "foobar.image.name",
-					fmt.Sprintf(registryCommon.Prefixed(common.ImageUpdaterAnnotationPrefix, registryCommon.HelmParamImageTagAnnotationSuffix), "foobar"):  "foobar.image.tag",
-				},
 			},
 			Spec: v1alpha1.ApplicationSpec{
 				Source: &v1alpha1.ApplicationSource{
@@ -887,7 +888,11 @@ func Test_SetHelmImage(t *testing.T) {
 		wbc := &WriteBackConfig{
 			Target: "helmvalues:.",
 		}
-		err := SetHelmImage(app, img, wbc)
+		appImage := &Image{
+			HelmImageName: "foobar.image.name",
+			HelmImageTag:  "foobar.image.tag",
+		}
+		err := SetHelmImage(context.Background(), app, img, wbc, appImage)
 		require.NoError(t, err)
 		require.NotNil(t, app.Spec.Source.Helm)
 		assert.Len(t, app.Spec.Source.Helm.Parameters, 4)
@@ -908,10 +913,6 @@ func Test_SetHelmImage(t *testing.T) {
 			ObjectMeta: v1.ObjectMeta{
 				Name:      "test-app",
 				Namespace: "testns",
-				Annotations: map[string]string{
-					fmt.Sprintf(registryCommon.Prefixed(common.ImageUpdaterAnnotationPrefix, registryCommon.HelmParamImageNameAnnotationSuffix), "foobar"): "foobar.image.name",
-					fmt.Sprintf(registryCommon.Prefixed(common.ImageUpdaterAnnotationPrefix, registryCommon.HelmParamImageTagAnnotationSuffix), "foobar"):  "foobar.image.tag",
-				},
 			},
 			Spec: v1alpha1.ApplicationSpec{
 				Source: &v1alpha1.ApplicationSource{},
@@ -930,7 +931,11 @@ func Test_SetHelmImage(t *testing.T) {
 		wbc := &WriteBackConfig{
 			Target: "kustomization:.",
 		}
-		err := SetHelmImage(app, img, wbc)
+		appImage := &Image{
+			HelmImageName: "foobar.image.name",
+			HelmImageTag:  "foobar.image.tag",
+		}
+		err := SetHelmImage(context.Background(), app, img, wbc, appImage)
 		require.Error(t, err)
 	})
 
@@ -1199,13 +1204,17 @@ func Test_parseImageListIuCR(t *testing.T) {
 		// By assigning the whole identity struct, we ensure the `original`
 		// field is preserved in our expected object.
 		img := &Image{
-			ContainerImage: imgIdentity, // This is the crucial fix
-			UpdateStrategy: image.StrategySemVer,
-			ForceUpdate:    false,
-			AllowTags:      "",
-			PullSecret:     "",
-			IgnoreTags:     []string{},
-			Platforms:      []string{},
+			ContainerImage:     imgIdentity, // This is the crucial fix
+			UpdateStrategy:     image.StrategySemVer,
+			ForceUpdate:        false,
+			AllowTags:          "",
+			PullSecret:         "",
+			IgnoreTags:         []string{},
+			Platforms:          []string{},
+			HelmImageName:      "",
+			HelmImageTag:       "",
+			HelmImageSpec:      "",
+			KustomizeImageName: kustomizeName,
 		}
 
 		if kustomizeName != "" {
@@ -1239,7 +1248,7 @@ func Test_parseImageListIuCR(t *testing.T) {
 					ImageName: "nginx:1.21.0",
 					ManifestTarget: &api.ManifestTarget{
 						Kustomize: &api.KustomizeTarget{
-							Name: "my-custom-nginx-name",
+							Name: strPtr("my-custom-nginx-name"),
 						},
 					},
 				},
@@ -1256,7 +1265,7 @@ func Test_parseImageListIuCR(t *testing.T) {
 					ImageName: "nginx:1.21.0",
 					ManifestTarget: &api.ManifestTarget{
 						Kustomize: &api.KustomizeTarget{
-							Name: "my-custom-nginx-name",
+							Name: strPtr("my-custom-nginx-name"),
 						},
 					},
 				},
@@ -1288,16 +1297,70 @@ func Test_parseImageListIuCR(t *testing.T) {
 	}
 }
 
-// Assisted-by: Gemini AI
 // Helper functions to create pointers for test data, making the test setup cleaner.
 func strPtr(s string) *string { return &s }
 func boolPtr(b bool) *bool    { return &b }
 
-func Test_newContainerImageFromCommonSettings(t *testing.T) {
-	t.Run("should return default settings when parent and settings are nil", func(t *testing.T) {
-		// Test case: No parent and no specific settings are provided.
+// Assisted-by: Gemini AI
+func Test_mergeCommonUpdateSettings(t *testing.T) {
+	t.Run("should return empty settings when all inputs are nil", func(t *testing.T) {
+		merged := mergeCommonUpdateSettings(nil, nil)
+		assert.Equal(t, &api.CommonUpdateSettings{}, merged)
+	})
+
+	t.Run("should use global settings when app settings are nil", func(t *testing.T) {
+		global := &api.CommonUpdateSettings{
+			UpdateStrategy: strPtr("semver"),
+		}
+		merged := mergeCommonUpdateSettings(global, nil)
+		assert.Equal(t, global, merged)
+	})
+
+	t.Run("should use app settings when global settings are nil", func(t *testing.T) {
+		app := &api.CommonUpdateSettings{
+			UpdateStrategy: strPtr("latest"),
+		}
+		merged := mergeCommonUpdateSettings(nil, app)
+		assert.Equal(t, app, merged)
+	})
+
+	t.Run("should override global settings with app settings", func(t *testing.T) {
+		global := &api.CommonUpdateSettings{
+			UpdateStrategy: strPtr("semver"),
+			AllowTags:      strPtr("v1.*"),
+		}
+		app := &api.CommonUpdateSettings{
+			UpdateStrategy: strPtr("latest"),
+		}
+		merged := mergeCommonUpdateSettings(global, app)
+		assert.Equal(t, "latest", *merged.UpdateStrategy)
+		assert.Equal(t, "v1.*", *merged.AllowTags)
+	})
+
+	t.Run("should merge settings, taking non-nil fields from each level", func(t *testing.T) {
+		global := &api.CommonUpdateSettings{
+			UpdateStrategy: strPtr("semver"),
+			ForceUpdate:    boolPtr(false),
+		}
+		app := &api.CommonUpdateSettings{
+			ForceUpdate: boolPtr(true),
+			AllowTags:   strPtr("v1.*"),
+		}
+		imageSettings := &api.CommonUpdateSettings{
+			AllowTags: strPtr("rc-*"),
+		}
+		merged := mergeCommonUpdateSettings(global, app, imageSettings)
+		assert.Equal(t, "semver", *merged.UpdateStrategy)
+		assert.True(t, *merged.ForceUpdate)
+		assert.Equal(t, "rc-*", *merged.AllowTags)
+	})
+}
+
+// Assisted-by: Gemini AI
+func Test_newImageFromSettings(t *testing.T) {
+	t.Run("should return default settings when settings are nil", func(t *testing.T) {
 		// Expected: A new image with the hardcoded default values.
-		img := newImageFromCommonUpdateSettings(context.Background(), nil, nil)
+		img := newImageFromCommonUpdateSettings(context.Background(), nil)
 
 		assert.NotNil(t, img)
 		assert.Equal(t, image.StrategySemVer, img.UpdateStrategy)
@@ -1307,8 +1370,7 @@ func Test_newContainerImageFromCommonSettings(t *testing.T) {
 		assert.Equal(t, []string{}, img.IgnoreTags, "IgnoreTags should be an empty, non-nil slice")
 	})
 
-	t.Run("should apply settings on top of defaults when no parent is given", func(t *testing.T) {
-		// Test case: No parent is provided, but a full set of specific settings are.
+	t.Run("should apply settings on top of defaults", func(t *testing.T) {
 		// Expected: The defaults are overridden by the provided settings.
 		settings := &api.CommonUpdateSettings{
 			UpdateStrategy: strPtr(image.StrategyNewestBuild.String()),
@@ -1318,7 +1380,7 @@ func Test_newContainerImageFromCommonSettings(t *testing.T) {
 			IgnoreTags:     []string{"v1.0.0"},
 		}
 
-		img := newImageFromCommonUpdateSettings(context.Background(), settings, nil)
+		img := newImageFromCommonUpdateSettings(context.Background(), settings)
 
 		assert.NotNil(t, img)
 		assert.Equal(t, image.StrategyNewestBuild, img.UpdateStrategy)
@@ -1328,100 +1390,282 @@ func Test_newContainerImageFromCommonSettings(t *testing.T) {
 		assert.Equal(t, []string{"v1.0.0"}, img.IgnoreTags)
 	})
 
-	t.Run("should return a clone of the parent when settings are nil", func(t *testing.T) {
-		// Test case: A parent is provided, but no new settings.
-		// Expected: A new object that is an exact copy of the parent.
-		parent := &Image{
-			UpdateStrategy: image.StrategyDigest,
-			ForceUpdate:    true,
-			AllowTags:      "rc-*",
-			PullSecret:     "parent-secret",
-			IgnoreTags:     []string{"rc-1"},
-		}
+	t.Run("should handle empty but non-nil settings struct", func(t *testing.T) {
+		// Expected: An empty settings struct should result in default values.
+		settings := &api.CommonUpdateSettings{} // Empty struct, all fields are nil
 
-		img := newImageFromCommonUpdateSettings(context.Background(), nil, parent)
-
-		assert.NotNil(t, img)
-		assert.Equal(t, parent, img)
-		// Ensure it's a clone, not the same object in memory.
-		assert.NotSame(t, parent, img)
-	})
-
-	t.Run("should layer settings on top of a parent image", func(t *testing.T) {
-		// Test case: A parent and new settings are provided.
-		// Expected: The new settings should override the parent's values.
-		parent := &Image{
-			UpdateStrategy: image.StrategyNewestBuild,
-			ForceUpdate:    false,
-			AllowTags:      "v1.*",
-			PullSecret:     "parent-secret",
-			IgnoreTags:     []string{"v1.0.0"},
-		}
-
-		settings := &api.CommonUpdateSettings{
-			UpdateStrategy: strPtr(image.StrategySemVer.String()), // Override
-			ForceUpdate:    boolPtr(true),                         // Override
-			// AllowTags is nil, so the parent's value should be kept.
-			PullSecret: strPtr("child-secret"), // Override
-			IgnoreTags: []string{"v1.1.0"},     // Override
-		}
-
-		img := newImageFromCommonUpdateSettings(context.Background(), settings, parent)
+		img := newImageFromCommonUpdateSettings(context.Background(), settings)
 
 		assert.NotNil(t, img)
 		assert.Equal(t, image.StrategySemVer, img.UpdateStrategy)
-		assert.True(t, img.ForceUpdate)
-		assert.Equal(t, "v1.*", img.AllowTags, "AllowTags should be kept from parent")
-		assert.Equal(t, "child-secret", img.PullSecret)
-		assert.Equal(t, []string{"v1.1.0"}, img.IgnoreTags)
-		assert.NotSame(t, parent, img)
+		assert.False(t, img.ForceUpdate)
+	})
+}
+
+// Assisted-by: Gemini AI
+func Test_mergeWBCSettings(t *testing.T) {
+	t.Run("should return empty config when both are nil", func(t *testing.T) {
+		merged := mergeWBCSettings(nil, nil)
+		assert.Equal(t, &api.WriteBackConfig{}, merged)
 	})
 
-	t.Run("should not override parent fields if settings fields are nil", func(t *testing.T) {
-		// Test case: A parent is provided, but the new settings struct has nil fields.
-		// Expected: Only non-nil fields in the new settings should override the parent.
-		parent := &Image{
-			UpdateStrategy: image.StrategyNewestBuild,
-			ForceUpdate:    true,
-			AllowTags:      "v1.*",
-			PullSecret:     "parent-secret",
-			IgnoreTags:     []string{"v1.0.0"},
+	t.Run("should return global when app is nil", func(t *testing.T) {
+		global := &api.WriteBackConfig{Method: strPtr("git")}
+		merged := mergeWBCSettings(global, nil)
+		assert.Equal(t, "git", *merged.Method)
+		assert.NotSame(t, global, merged) // Ensure it's a copy
+	})
+
+	t.Run("should return app when global is nil", func(t *testing.T) {
+		app := &api.WriteBackConfig{Method: strPtr("argocd")}
+		merged := mergeWBCSettings(nil, app)
+		assert.Equal(t, "argocd", *merged.Method)
+	})
+
+	t.Run("app method should override global method", func(t *testing.T) {
+		global := &api.WriteBackConfig{Method: strPtr("git")}
+		app := &api.WriteBackConfig{Method: strPtr("argocd")}
+		merged := mergeWBCSettings(global, app)
+		assert.Equal(t, "argocd", *merged.Method)
+	})
+
+	t.Run("should merge GitConfig with app-level overrides", func(t *testing.T) {
+		global := &api.WriteBackConfig{
+			Method: strPtr("git"),
+			GitConfig: &api.GitConfig{
+				Repository: strPtr("global-repo"),
+				Branch:     strPtr("global-branch"),
+			},
 		}
-
-		settings := &api.CommonUpdateSettings{
-			UpdateStrategy: strPtr(image.StrategyAlphabetical.String()), // Override
-			ForceUpdate:    nil,                                         // Should not override
-			AllowTags:      nil,                                         // Should not override
-			PullSecret:     strPtr("child-secret"),                      // Override
-			IgnoreTags:     nil,                                         // Should not override
+		app := &api.WriteBackConfig{
+			GitConfig: &api.GitConfig{
+				Branch: strPtr("app-branch"),
+			},
 		}
+		merged := mergeWBCSettings(global, app)
+		require.NotNil(t, merged.GitConfig)
+		assert.Equal(t, "git", *merged.Method)
+		assert.Equal(t, "global-repo", *merged.GitConfig.Repository)
+		assert.Equal(t, "app-branch", *merged.GitConfig.Branch)
+	})
 
-		img := newImageFromCommonUpdateSettings(context.Background(), settings, parent)
+	t.Run("should create GitConfig if it only exists on app level", func(t *testing.T) {
+		global := &api.WriteBackConfig{Method: strPtr("git")}
+		app := &api.WriteBackConfig{
+			GitConfig: &api.GitConfig{
+				Repository: strPtr("app-repo"),
+			},
+		}
+		merged := mergeWBCSettings(global, app)
+		require.NotNil(t, merged.GitConfig)
+		assert.Equal(t, "app-repo", *merged.GitConfig.Repository)
+	})
+}
 
-		assert.NotNil(t, img)
-		assert.Equal(t, image.StrategyAlphabetical, img.UpdateStrategy)
-		assert.True(t, img.ForceUpdate, "ForceUpdate should be kept from parent")
-		assert.Equal(t, "v1.*", img.AllowTags, "AllowTags should be kept from parent")
-		assert.Equal(t, "child-secret", img.PullSecret)
-		assert.Equal(t, []string{"v1.0.0"}, img.IgnoreTags, "IgnoreTags should be kept from parent")
+// Assisted-by: Gemini AI
+func Test_newWBCFromSettings(t *testing.T) {
+	// Helper to create a standard app and kubeClient for tests
+	createTestAppAndClient := func() (*v1alpha1.Application, *kube.ImageUpdaterKubernetesClient) {
+		app := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{Name: "my-app", Namespace: "argocd-test"},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: &v1alpha1.ApplicationSource{
+					RepoURL: "https://github.com/argoproj/argo-cd.git",
+					Path:    "some/path",
+				},
+			},
+		}
+		kubeClient := kube.ImageUpdaterKubernetesClient{
+			KubeClient: &registryKube.KubernetesClient{
+				Clientset: fake.NewFakeKubeClient(),
+				Namespace: "argocd", // Different from app namespace to test full path generation
+			},
+		}
+		return app, &kubeClient
+	}
+
+	t.Run("should return argocd method and default file path target when settings are empty", func(t *testing.T) {
+		app, kubeClient := createTestAppAndClient()
+		settings := &api.WriteBackConfig{}
+		wbc, err := newWBCFromSettings(context.Background(), app, kubeClient, settings)
+		assert.NoError(t, err)
+		assert.NotNil(t, wbc)
+		assert.Equal(t, WriteBackApplication, wbc.Method)
+		assert.Equal(t, "some/path/.argocd-source-argocd-test_my-app.yaml", wbc.Target)
+	})
+
+	t.Run("should return argocd method and default file path target when settings are nil", func(t *testing.T) {
+		app, kubeClient := createTestAppAndClient()
+		var settings *api.WriteBackConfig = nil
+		wbc, err := newWBCFromSettings(context.Background(), app, kubeClient, settings)
+		assert.NoError(t, err)
+		assert.NotNil(t, wbc)
+		assert.Equal(t, WriteBackApplication, wbc.Method)
+		assert.Equal(t, "some/path/.argocd-source-argocd-test_my-app.yaml", wbc.Target)
+	})
+
+	t.Run("should set git method and keep default file path target when WriteBackTarget is nil", func(t *testing.T) {
+		app, kubeClient := createTestAppAndClient()
+		settings := &api.WriteBackConfig{
+			Method: strPtr("git"),
+		}
+		wbc, err := newWBCFromSettings(context.Background(), app, kubeClient, settings)
+		assert.NoError(t, err)
+		assert.Equal(t, WriteBackGit, wbc.Method)
+		assert.Equal(t, "some/path/.argocd-source-argocd-test_my-app.yaml", wbc.Target)
+	})
+
+	t.Run("should set correct target for helmvalues", func(t *testing.T) {
+		app, kubeClient := createTestAppAndClient()
+		settings := &api.WriteBackConfig{
+			Method: strPtr("git"),
+			GitConfig: &api.GitConfig{
+				WriteBackTarget: strPtr("helmvalues:another/values.yaml"),
+			},
+		}
+		wbc, err := newWBCFromSettings(context.Background(), app, kubeClient, settings)
+		assert.NoError(t, err)
+		assert.Equal(t, WriteBackGit, wbc.Method)
+		assert.Equal(t, "some/path/another/values.yaml", wbc.Target)
+	})
+
+	t.Run("should set correct kustomize base and keep default target", func(t *testing.T) {
+		app, kubeClient := createTestAppAndClient()
+		settings := &api.WriteBackConfig{
+			Method: strPtr("git"),
+			GitConfig: &api.GitConfig{
+				WriteBackTarget: strPtr("kustomization:overlays/prod"),
+			},
+		}
+		wbc, err := newWBCFromSettings(context.Background(), app, kubeClient, settings)
+		assert.NoError(t, err)
+		assert.Equal(t, WriteBackGit, wbc.Method)
+		assert.Equal(t, "some/path/overlays/prod", wbc.KustomizeBase)
+		assert.Equal(t, "some/path/.argocd-source-argocd-test_my-app.yaml", wbc.Target) // Target should be preserved
+	})
+
+	t.Run("should parse git branch correctly", func(t *testing.T) {
+		app, kubeClient := createTestAppAndClient()
+		settings := &api.WriteBackConfig{
+			Method: strPtr("git"),
+			GitConfig: &api.GitConfig{
+				Branch: strPtr("main:feature-branch"),
+			},
+		}
+		wbc, err := newWBCFromSettings(context.Background(), app, kubeClient, settings)
+		assert.NoError(t, err)
+		assert.Equal(t, WriteBackGit, wbc.Method)
+		assert.Equal(t, "main", wbc.GitBranch)
+		assert.Equal(t, "feature-branch", wbc.GitWriteBranch)
+	})
+
+	t.Run("should handle invalid method string", func(t *testing.T) {
+		app, kubeClient := createTestAppAndClient()
+		settings := &api.WriteBackConfig{
+			Method: strPtr("unsupported"),
+		}
+		_, err := newWBCFromSettings(context.Background(), app, kubeClient, settings)
+		assert.Error(t, err)
+	})
+}
+
+// Assisted-by: Gemini AI
+func Test_newImageFromManifestTargetSettings(t *testing.T) {
+	t.Run("should return the same image when settings are nil", func(t *testing.T) {
+		image := &Image{
+			HelmImageName: "image-helm",
+		}
+		img, err := newImageFromManifestTargetSettings(nil, image)
+		assert.NoError(t, err)
+		assert.Equal(t, image, img)
+		assert.Same(t, image, img)
 	})
 
 	t.Run("should handle empty but non-nil settings struct", func(t *testing.T) {
-		// Test case: An empty (but not nil) settings struct is provided.
-		// Expected: Since all fields in the settings struct are nil, it should behave
-		// as if no settings were provided, returning a clone of the parent.
-		parent := &Image{
-			UpdateStrategy: image.StrategyNewestBuild,
-			ForceUpdate:    true,
+		image := &Image{
+			KustomizeImageName: "image-kustomize",
 		}
-		settings := &api.CommonUpdateSettings{} // Empty struct, all fields are nil
+		settings := &api.ManifestTarget{}
+		img, err := newImageFromManifestTargetSettings(settings, image)
+		assert.NoError(t, err)
+		assert.Equal(t, image, img)
+		assert.Same(t, image, img)
+	})
 
-		img := newImageFromCommonUpdateSettings(context.Background(), settings, parent)
+	t.Run("should apply helm settings on top of image", func(t *testing.T) {
+		image := &Image{
+			HelmImageName: "image-helm",
+			HelmImageTag:  "image-tag",
+		}
+		settings := &api.ManifestTarget{
+			Helm: &api.HelmTarget{
+				Name: strPtr("child-helm"),
+			},
+		}
+		img, err := newImageFromManifestTargetSettings(settings, image)
+		assert.NoError(t, err)
+		assert.Equal(t, "child-helm", img.HelmImageName)
+		assert.Equal(t, "image-tag", img.HelmImageTag)
+	})
 
-		assert.NotNil(t, img)
-		// Should be an exact clone of the parent.
-		assert.Equal(t, parent, img)
-		assert.NotSame(t, parent, img)
+	t.Run("should apply helm name and tag when spec is empty", func(t *testing.T) {
+		image := &Image{
+			HelmImageName: "image-helm-name",
+			HelmImageTag:  "image-helm-tag",
+		}
+		settings := &api.ManifestTarget{
+			Helm: &api.HelmTarget{
+				Name: strPtr("child-helm-name"),
+				Tag:  strPtr("child-helm-tag"),
+			},
+		}
+		img, err := newImageFromManifestTargetSettings(settings, image)
+		assert.NoError(t, err)
+		assert.Equal(t, "child-helm-name", img.HelmImageName)
+		assert.Equal(t, "child-helm-tag", img.HelmImageTag)
+		assert.Empty(t, img.HelmImageSpec)
+	})
+
+	t.Run("should ignore helm name and tag when spec is present", func(t *testing.T) {
+		settings := &api.ManifestTarget{
+			Helm: &api.HelmTarget{
+				Spec: strPtr("child-helm-spec"),
+				Name: strPtr("should-be-ignored"),
+				Tag:  strPtr("should-be-ignored"),
+			},
+		}
+		img, err := newImageFromManifestTargetSettings(settings, &Image{HelmImageName: "image-helm-name", HelmImageTag: "image-helm-tag"})
+		assert.NoError(t, err)
+		assert.Equal(t, "child-helm-spec", img.HelmImageSpec)
+		assert.Equal(t, "image-helm-name", img.HelmImageName)
+		assert.Equal(t, "image-helm-tag", img.HelmImageTag)
+	})
+
+	t.Run("should apply kustomize settings on top of image", func(t *testing.T) {
+		image := &Image{
+			KustomizeImageName: "image-kustomize",
+		}
+		settings := &api.ManifestTarget{
+			Kustomize: &api.KustomizeTarget{
+				Name: strPtr("child-kustomize"),
+			},
+		}
+		img, err := newImageFromManifestTargetSettings(settings, image)
+		assert.NoError(t, err)
+		assert.Equal(t, "child-kustomize", img.KustomizeImageName)
+	})
+
+	t.Run("should return error when both helm and kustomize are set", func(t *testing.T) {
+		settings := &api.ManifestTarget{
+			Helm: &api.HelmTarget{
+				Name: strPtr("child-helm"),
+			},
+			Kustomize: &api.KustomizeTarget{
+				Name: strPtr("child-kustomize"),
+			},
+		}
+		_, err := newImageFromManifestTargetSettings(settings, nil)
+		assert.Error(t, err)
 	})
 }
 

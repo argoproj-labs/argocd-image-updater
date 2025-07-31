@@ -151,32 +151,6 @@ func (img *ContainerImage) DiffersFrom(other *ContainerImage, checkVersion bool)
 	return img.RegistryURL != other.RegistryURL || img.ImageName != other.ImageName || (checkVersion && img.ImageTag.TagName != other.ImageTag.TagName)
 }
 
-// Clone creates a deep copy of the ContainerImage object.
-func (img *ContainerImage) Clone() *ContainerImage {
-	if img == nil {
-		return nil
-	}
-	clone := &ContainerImage{
-		RegistryURL: img.RegistryURL,
-		ImageName:   img.ImageName,
-		ImageAlias:  img.ImageAlias,
-		original:    img.original,
-	}
-
-	if img.ImageTag != nil {
-		clone.ImageTag = &tag.ImageTag{
-			TagName:   img.ImageTag.TagName,
-			TagDate:   img.ImageTag.TagDate,
-			TagDigest: img.ImageTag.TagDigest,
-		}
-	}
-
-	if img.KustomizeImage != nil {
-		clone.KustomizeImage = img.KustomizeImage.Clone()
-	}
-	return clone
-}
-
 // ContainsImage checks whether img is contained in a list of images
 func (list *ContainerImageList) ContainsImage(img *ContainerImage, checkVersion bool) *ContainerImage {
 	// if there is a KustomizeImage override, check it for a match first

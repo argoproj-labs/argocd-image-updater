@@ -1,6 +1,7 @@
 package argocd
 
 import (
+	"context"
 	"testing"
 
 	"github.com/argoproj-labs/argocd-image-updater/ext/git"
@@ -56,6 +57,7 @@ func TestGetCredsFromSecret(t *testing.T) {
 }
 
 func TestGetGitCredsSource(t *testing.T) {
+	ctx := context.Background()
 	kubeClient := &kube.ImageUpdaterKubernetesClient{}
 	wbc := &WriteBackConfig{
 		GitRepo:  "https://github.com/example/repo.git",
@@ -63,49 +65,50 @@ func TestGetGitCredsSource(t *testing.T) {
 	}
 
 	// Test case 1: 'repocreds' credentials
-	creds1, err := getGitCredsSource("repocreds", kubeClient, wbc)
+	creds1, err := getGitCredsSource(ctx, "repocreds", kubeClient, wbc)
 	assert.NoError(t, err)
 	assert.NotNil(t, creds1)
 
 	// Test case 2: 'secret:<namespace>/<secret>' credentials
-	creds2, err := getGitCredsSource("secret:foo/bar", kubeClient, wbc)
+	creds2, err := getGitCredsSource(ctx, "secret:foo/bar", kubeClient, wbc)
 	assert.NoError(t, err)
 	assert.NotNil(t, creds2)
 
 	// Test case 3: Unexpected credentials format
-	_, err = getGitCredsSource("invalid", kubeClient, wbc)
+	_, err = getGitCredsSource(ctx, "invalid", kubeClient, wbc)
 	assert.Error(t, err)
 	assert.EqualError(t, err, "unexpected credentials format. Expected 'repocreds' or 'secret:<namespace>/<secret>' but got 'invalid'")
 }
 
 func TestGetCAPath(t *testing.T) {
+	ctx := context.Background()
 	// Test case 1: HTTPS URL
 	repoURL := "https://github.com/example/repo.git"
 	expectedCAPath := ""
-	caPath := getCAPath(repoURL)
+	caPath := getCAPath(ctx, repoURL)
 	assert.Equal(t, expectedCAPath, caPath)
 
 	// Test case 2: OCI URL
 	repoURL = "oci://example.com/repo"
 	expectedCAPath = ""
-	caPath = getCAPath(repoURL)
+	caPath = getCAPath(ctx, repoURL)
 	assert.Equal(t, expectedCAPath, caPath)
 
 	// Test case 3: SSH URL
 	repoURL = "git@github.com:example/repo.git"
 	expectedCAPath = ""
-	caPath = getCAPath(repoURL)
+	caPath = getCAPath(ctx, repoURL)
 	assert.Equal(t, expectedCAPath, caPath)
 
 	// Test case 4: Invalid URL
 	repoURL = "invalid-url"
 	expectedCAPath = ""
-	caPath = getCAPath(repoURL)
+	caPath = getCAPath(ctx, repoURL)
 	assert.Equal(t, expectedCAPath, caPath)
 }
 
 func TestGetGitCreds(t *testing.T) {
-
+	ctx := context.Background()
 	store := git.NoopCredsStore{}
 
 	// Test case 1: HTTP credentials
@@ -115,7 +118,7 @@ func TestGetGitCreds(t *testing.T) {
 		Repo:     "https://github.com/example/repo.git",
 	}
 	expectedHTTPSCreds := git.NewHTTPSCreds("myuser", "mypass", "", "", false, "", store, false)
-	httpCreds := GetGitCreds(repo, store)
+	httpCreds := GetGitCreds(ctx, repo, store)
 	assert.Equal(t, expectedHTTPSCreds, httpCreds)
 
 	// Test case 2: SSH credentials
@@ -125,7 +128,7 @@ func TestGetGitCreds(t *testing.T) {
 		Repo:          "https://github.com/example/repo.git",
 	}
 	expectedSSHCreds := git.NewSSHCreds("privatekey", "", false, store, "")
-	sshCreds := GetGitCreds(repo, store)
+	sshCreds := GetGitCreds(ctx, repo, store)
 	assert.Equal(t, expectedSSHCreds, sshCreds)
 
 	// Test case 3: GitHub App credentials
@@ -142,7 +145,7 @@ func TestGetGitCreds(t *testing.T) {
 		Proxy:                      "proxy",
 	}
 	expectedGitHubAppCreds := git.NewGitHubAppCreds(123, 456, "appprivatekey", "enterpriseurl", "https://github.com/example/repo.git", "certdata", "certkey", true, "proxy", store)
-	githubAppCreds := GetGitCreds(repo, store)
+	githubAppCreds := GetGitCreds(ctx, repo, store)
 	assert.Equal(t, expectedGitHubAppCreds, githubAppCreds)
 
 	// Test case 4: Google Cloud credentials
@@ -151,13 +154,13 @@ func TestGetGitCreds(t *testing.T) {
 		GCPServiceAccountKey: "serviceaccountkey",
 	}
 	expectedGoogleCloudCreds := git.NewGoogleCloudCreds("serviceaccountkey", store)
-	googleCloudCreds := GetGitCreds(repo, store)
+	googleCloudCreds := GetGitCreds(ctx, repo, store)
 	repo.Password = ""
 	repo.SSHPrivateKey = ""
 	assert.Equal(t, expectedGoogleCloudCreds, googleCloudCreds)
 
 	// Test case 5: No credentials
 	expectedNopCreds := git.NopCreds{}
-	nopCreds := GetGitCreds(nil, store)
+	nopCreds := GetGitCreds(ctx, nil, store)
 	assert.Equal(t, expectedNopCreds, nopCreds)
 }

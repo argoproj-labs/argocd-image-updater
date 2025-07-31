@@ -1,6 +1,7 @@
 package argocd
 
 import (
+	"context"
 	"os"
 	"testing"
 	"text/template"
@@ -39,7 +40,7 @@ updates image bar/baz tag '2.0' to '2.1'
 				NewTag: tag.NewImageTag("2.1", time.Now(), ""),
 			},
 		}
-		r := TemplateCommitMessage(tpl, "foobar", cl)
+		r := TemplateCommitMessage(context.Background(), tpl, "foobar", cl)
 		assert.NotEmpty(t, r)
 		assert.Equal(t, exp, r)
 	})
@@ -61,7 +62,7 @@ func Test_TemplateBranchName(t *testing.T) {
 				NewTag: tag.NewImageTag("2.1", time.Now(), ""),
 			},
 		}
-		r := TemplateBranchName(tpl, cl)
+		r := TemplateBranchName(context.Background(), tpl, cl)
 		assert.NotEmpty(t, r)
 		assert.Equal(t, exp, r)
 	})
@@ -75,7 +76,7 @@ func Test_TemplateBranchName(t *testing.T) {
 				NewTag: tag.NewImageTag("1.1", time.Now(), ""),
 			},
 		}
-		r := TemplateBranchName(tpl, cl)
+		r := TemplateBranchName(context.Background(), tpl, cl)
 		assert.NotEmpty(t, r)
 		assert.Equal(t, exp, r)
 	})
@@ -90,7 +91,7 @@ func Test_TemplateBranchName(t *testing.T) {
 				NewTag: tag.NewImageTag("1.1", time.Now(), ""),
 			},
 		}
-		r := TemplateBranchName(tpl, cl)
+		r := TemplateBranchName(context.Background(), tpl, cl)
 		assert.NotEmpty(t, r)
 		assert.Equal(t, exp, r)
 	})
@@ -102,7 +103,7 @@ func Test_TemplateBranchName(t *testing.T) {
 			"in-blandit-vel-pharetra-vel-urna-aliquam-euismod-elit-vel-mi"
 		exp := tpl[:255]
 		cl := []ChangeEntry{}
-		r := TemplateBranchName(tpl, cl)
+		r := TemplateBranchName(context.Background(), tpl, cl)
 		assert.NotEmpty(t, r)
 		assert.Equal(t, exp, r)
 		assert.Len(t, r, 255)
@@ -313,7 +314,7 @@ func Test_updateKustomizeFile(t *testing.T) {
 				path = makeTmpKustomization(t, []byte(tt.content))
 			}
 
-			err, skip := updateKustomizeFile(tt.filter, path)
+			err, skip := updateKustomizeFile(context.Background(), tt.filter, path)
 			if tt.wantErr {
 				assert.Error(t, err)
 				assert.False(t, skip)
@@ -354,7 +355,7 @@ func Test_getApplicationSource(t *testing.T) {
 			},
 		}
 
-		source := getApplicationSource(app)
+		source := getApplicationSource(context.Background(), app)
 		assert.Equal(t, "18.2.3", source.TargetRevision)
 		assert.Equal(t, "https://charts.bitnami.com/bitnami", source.RepoURL)
 	})
@@ -372,7 +373,7 @@ func Test_getApplicationSource(t *testing.T) {
 			},
 		}
 
-		source := getApplicationSource(app)
+		source := getApplicationSource(context.Background(), app)
 		assert.Equal(t, "main", source.TargetRevision)
 		assert.Equal(t, "https://github.com/example/repo.git", source.RepoURL)
 	})
@@ -380,7 +381,7 @@ func Test_getApplicationSource(t *testing.T) {
 
 func Test_getWriteBackBranch(t *testing.T) {
 	t.Run("nil application", func(t *testing.T) {
-		branch := getWriteBackBranch(nil)
+		branch := getWriteBackBranch(context.Background(), nil, nil)
 		assert.Equal(t, "", branch)
 	})
 
@@ -388,9 +389,6 @@ func Test_getWriteBackBranch(t *testing.T) {
 		app := &v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
 				Name: "test-app",
-				Annotations: map[string]string{
-					"argocd-image-updater.argoproj.io/git-repository": "https://github.com/chengfang/image-updater-examples.git",
-				},
 			},
 			Spec: v1alpha1.ApplicationSpec{
 				Sources: v1alpha1.ApplicationSources{
@@ -406,8 +404,9 @@ func Test_getWriteBackBranch(t *testing.T) {
 				},
 			},
 		}
+		wbc := &WriteBackConfig{GitRepo: "https://github.com/chengfang/image-updater-examples.git"}
 
-		branch := getWriteBackBranch(app)
+		branch := getWriteBackBranch(context.Background(), app, wbc)
 		assert.Equal(t, "main", branch)
 	})
 
@@ -432,7 +431,7 @@ func Test_getWriteBackBranch(t *testing.T) {
 			},
 		}
 
-		branch := getWriteBackBranch(app)
+		branch := getWriteBackBranch(context.Background(), app, nil)
 		assert.Equal(t, "18.2.3", branch)
 	})
 
@@ -440,9 +439,6 @@ func Test_getWriteBackBranch(t *testing.T) {
 		app := &v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
 				Name: "test-app",
-				Annotations: map[string]string{
-					"argocd-image-updater.argoproj.io/git-repository": "https://github.com/different/repo.git",
-				},
 			},
 			Spec: v1alpha1.ApplicationSpec{
 				Sources: v1alpha1.ApplicationSources{
@@ -455,8 +451,8 @@ func Test_getWriteBackBranch(t *testing.T) {
 				},
 			},
 		}
-
-		branch := getWriteBackBranch(app)
+		wbc := &WriteBackConfig{GitRepo: "https://github.com/different/repo.git"}
+		branch := getWriteBackBranch(context.Background(), app, wbc)
 		assert.Equal(t, "18.2.3", branch)
 	})
 }
