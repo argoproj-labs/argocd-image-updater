@@ -251,25 +251,25 @@ spec:
           valueFrom:
             configMapKeyRef:
               key: webhook.quay-secret
-              name: argocd-image-updater-config
+              name: argocd-image-updater-secret
               optional: true
         - name: DOCKER_WEBHOOK_SECRET
           valueFrom:
             secretKeyRef:
               key: webhook.docker-secret
-              name: argocd-image-updater-config
+              name: argocd-image-updater-secret
               optional: true
         - name: GHCR_WEBHOOK_SECRET
           valueFrom:
             secretKeyRef:
               key: webhook.ghcr-secret
-              name: argocd-image-updater-config
+              name: argocd-image-updater-secret
               optional: true
         - name: HARBOR_WEBHOOK_SECRET
           valueFrom:
             secretKeyRef:
               key: webhook.harbor-secret
-              name: argocd-image-updater-config
+              name: argocd-image-updater-secret
               optional: true
         image: quay.io/argoprojlabs/argocd-image-updater:latest
         imagePullPolicy: Always

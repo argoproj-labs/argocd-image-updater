@@ -128,25 +128,25 @@ spec:
         - name: QUAY_WEBHOOK_SECRET
           valueFrom:
             configMapKeyRef:
-                name: argocd-image-updater-config
+                name: argocd-image-updater-secret
                 key: webhook.quay-secret
                 optional: true
         - name: DOCKER_WEBHOOK_SECRET
           valueFrom:
             secretKeyRef:
-              name: argocd-image-updater-config
+              name: argocd-image-updater-secret
               key: webhook.docker-secret
               optional: true
         - name: GHCR_WEBHOOK_SECRET
           valueFrom:
             secretKeyRef:
-              name: argocd-image-updater-config
+              name: argocd-image-updater-secret
               key: webhook.ghcr-secret
               optional: true
         - name: HARBOR_WEBHOOK_SECRET
           valueFrom:
               secretKeyRef:
-                name: argocd-image-updater-config
+                name: argocd-image-updater-secret
                 key: webhook.harbor-secret
                 optional: true
         livenessProbe:
