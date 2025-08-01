@@ -7,7 +7,7 @@ require (
 	github.com/argoproj/argo-cd/v2 v2.14.15
 	github.com/argoproj/gitops-engine v0.7.1-0.20250521000818-c08b0a72c1f1
 	github.com/argoproj/pkg v0.13.7-0.20230627120311-a4dd357b057e
-	github.com/bmatcuk/doublestar/v4 v4.8.1
+	github.com/bmatcuk/doublestar/v4 v4.9.1
 	github.com/bradleyfalzon/ghinstallation/v2 v2.16.0
 	github.com/distribution/distribution/v3 v3.0.0-20230722181636-7b502560cad4
 	github.com/go-git/go-git/v5 v5.16.2
