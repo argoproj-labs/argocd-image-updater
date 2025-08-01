@@ -113,6 +113,42 @@ spec:
               name: argocd-image-updater-config
               key: log.level
               optional: true
+        - name: ENABLE_WEBHOOK
+          valueFrom:
+              configMapKeyRef:
+                name: argocd-image-updater-config
+                key: webhook.enable
+                optional: true
+        - name: WEBHOOK_PORT
+          valueFrom:
+            configMapKeyRef:
+                name: argocd-image-updater-config
+                key: webhook.port
+                optional: true
+        - name: QUAY_WEBHOOK_SECRET
+          valueFrom:
+            configMapKeyRef:
+                name: argocd-image-updater-config
+                key: webhook.quay-secret
+                optional: true
+        - name: DOCKER_WEBHOOK_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: argocd-image-updater-config
+              key: webhook.docker-secret
+              optional: true
+        - name: GHCR_WEBHOOK_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: argocd-image-updater-config
+              key: webhook.ghcr-secret
+              optional: true
+        - name: HARBOR_WEBHOOK_SECRET
+          valueFrom:
+              secretKeyRef:
+                name: argocd-image-updater-config
+                key: webhook.harbor-secret
+                optional: true
         livenessProbe:
           httpGet:
             path: /healthz
