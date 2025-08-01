@@ -8,5 +8,4 @@ images:
 resources:
 - ./config
 - ./deployment
-- ./networking
 - ./rbac

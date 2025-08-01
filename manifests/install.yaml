@@ -108,20 +108,6 @@ metadata:
     app.kubernetes.io/part-of: argocd-image-updater
   name: argocd-image-updater-secret
 ---
-apiVersion: v1
-kind: Service
-metadata:
-  name: argocd-image-updater-service
-spec:
-  ports:
-  - name: server-port
-    port: 8080
-    protocol: TCP
-    targetPort: 8080
-  selector:
-    app.kubernetes.io/name: argocd-image-updater
-  type: NodePort
----
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -335,27 +321,3 @@ spec:
           secretName: ssh-git-creds
       - emptyDir: {}
         name: tmp
----
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: argocd-image-updater-ingress
-spec:
-  rules:
-  - host: cluster.host
-    http:
-      paths:
-      - backend:
-          service:
-            name: argocd-image-updater-service
-            port:
-              number: 8080
-        path: /webhook
-        pathType: Prefix
-      - backend:
-          service:
-            name: argocd-image-updater-service
-            port:
-              number: 8080
-        path: /healthz
-        pathType: Prefix
