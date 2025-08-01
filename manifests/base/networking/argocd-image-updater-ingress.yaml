@@ -1,0 +1,23 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: argocd-image-updater-ingress
+spec:
+  rules:
+  - host: cluster.host
+    http:
+      paths:
+      - path: /webhook
+        pathType: Prefix
+        backend:
+          service:
+            name: argocd-image-updater-service
+            port:
+              number: 8080
+      - path: /healthz
+        pathType: Prefix
+        backend:
+          service:
+            name: argocd-image-updater-service
+            port:
+              number: 8080
