@@ -460,8 +460,7 @@ foo:
   command: ['sh', '-c', 'echo "Custom container running"']
 - name: bar-2
   image: nginx:1.19
-
-```.
+```
 
 *Solution:* Use the index in square brackets of the item that needs to be updated, i.e.
 
