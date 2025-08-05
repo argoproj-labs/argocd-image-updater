@@ -2542,6 +2542,39 @@ extraContainers:
 		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
 	})
 
+	t.Run("yaml list is correctly parsed when list name contains digits", func(t *testing.T) {
+		expected := `
+extraContainers:
+  images123:
+  - name: image-1
+    attributes:
+      name: repo-name
+      tag: 2.0.0
+`
+
+		inputData := []byte(`
+extraContainers:
+  images123:
+  - name: image-1
+    attributes:
+      name: repo-name
+      tag: 1.0.0
+`)
+		input := yaml.Node{}
+		err := yaml.Unmarshal(inputData, &input)
+		require.NoError(t, err)
+
+		key := "extraContainers.images123[0].attributes.tag"
+		value := "2.0.0"
+
+		err = setHelmValue(&input, key, value)
+		require.NoError(t, err)
+
+		output, err := marshalWithIndent(&input, defaultIndent)
+		require.NoError(t, err)
+		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
+	})
+
 	t.Run("id for yaml list is lower than 0", func(t *testing.T) {
 		inputData := []byte(`
 images:

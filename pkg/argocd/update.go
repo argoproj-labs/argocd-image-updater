@@ -635,7 +635,7 @@ func setHelmValue(currentValues *yaml.Node, key string, value interface{}) error
 	var err error
 	keys := strings.Split(key, ".")
 	// any-string[1]
-	pattern := `^(\D+)\[(.*)\]$`
+	pattern := `^(.*)\[(.*)\]$`
 	re := regexp.MustCompile(pattern)
 	for i, k := range keys {
 		// pointer is needed to determine that the id has indeed been passed.
