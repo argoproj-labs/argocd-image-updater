@@ -638,6 +638,7 @@ func setHelmValue(currentValues *yaml.Node, key string, value interface{}) error
 	pattern := `^(\D+)\[(.*)\]$`
 	re := regexp.MustCompile(pattern)
 	for i, k := range keys {
+		// pointer is needed to determine that the id has indeed been passed.
 		var idPtr *int
 		// by default, the search is based on the key without changes, but
 		// if string matches pattern, we consider it is an id in YAML list.
@@ -656,7 +657,6 @@ func setHelmValue(currentValues *yaml.Node, key string, value interface{}) error
 			// Navigate deeper into the map
 			current = (*current).Content[idx]
 			// unpack one level of alias; an alias of an alias is not supported
-			fmt.Println(current.Kind)
 			if current.Kind == yaml.AliasNode {
 				current = current.Alias
 			}
