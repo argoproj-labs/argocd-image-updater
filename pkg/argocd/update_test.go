@@ -2645,6 +2645,26 @@ image:
 		require.Error(t, err)
 		assert.Equal(t, "id 0 provided when \"image\" is not an yaml array", err.Error())
 	})
+
+	t.Run("invalid id given when node is not an yaml list", func(t *testing.T) {
+		inputData := []byte(`
+image:
+  attributes:
+    name: repo-name
+    tag: 1.0.0
+`)
+		input := yaml.Node{}
+		err := yaml.Unmarshal(inputData, &input)
+		require.NoError(t, err)
+
+		key := "image[invalid].attributes.tag"
+		value := "2.0.0"
+
+		err = setHelmValue(&input, key, value)
+
+		require.Error(t, err)
+		assert.Equal(t, "id \"invalid\" in yaml array must match pattern ^(\\D+)\\[(\\d+)\\]$", err.Error())
+	})
 }
 
 func Test_GetWriteBackConfig(t *testing.T) {
