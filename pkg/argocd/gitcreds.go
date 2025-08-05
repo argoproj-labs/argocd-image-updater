@@ -18,11 +18,11 @@ import (
 )
 
 // getGitCredsSource returns git credentials source that loads credentials from the secret or from Argo CD settings
-func getGitCredsSource(creds string, kubeClient *kube.ImageUpdaterKubernetesClient, wbc *WriteBackConfig) (GitCredsSource, error) {
+func getGitCredsSource(ctx context.Context, creds string, kubeClient *kube.ImageUpdaterKubernetesClient, wbc *WriteBackConfig) (GitCredsSource, error) {
 	switch {
 	case creds == "repocreds":
 		return func(app *v1alpha1.Application) (git.Creds, error) {
-			return getCredsFromArgoCD(wbc, kubeClient, app.Spec.Project)
+			return getCredsFromArgoCD(ctx, wbc, kubeClient, app.Spec.Project)
 		}, nil
 	case strings.HasPrefix(creds, "secret:"):
 		return func(app *v1alpha1.Application) (git.Creds, error) {
@@ -33,8 +33,8 @@ func getGitCredsSource(creds string, kubeClient *kube.ImageUpdaterKubernetesClie
 }
 
 // getCredsFromArgoCD loads repository credentials from Argo CD settings
-func getCredsFromArgoCD(wbc *WriteBackConfig, kubeClient *kube.ImageUpdaterKubernetesClient, project string) (git.Creds, error) {
-	ctx, cancel := context.WithCancel(context.Background())
+func getCredsFromArgoCD(ctx context.Context, wbc *WriteBackConfig, kubeClient *kube.ImageUpdaterKubernetesClient, project string) (git.Creds, error) {
+	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
 	settingsMgr := settings.NewSettingsManager(ctx, kubeClient.KubeClient.Clientset, kubeClient.KubeClient.Namespace)
@@ -46,14 +46,14 @@ func getCredsFromArgoCD(wbc *WriteBackConfig, kubeClient *kube.ImageUpdaterKuber
 	if !repo.HasCredentials() {
 		return nil, fmt.Errorf("credentials for '%s' are not configured in Argo CD settings", wbc.GitRepo)
 	}
-	creds := GetGitCreds(repo, wbc.GitCreds)
+	creds := GetGitCreds(ctx, repo, wbc.GitCreds)
 	return creds, nil
 }
 
 // GetGitCreds returns the credentials from a repository configuration used to authenticate at a Git repository
 // This is a slightly modified version of upstream's Repository.GetGitCreds method. We need it so it does not return the upstream type.
 // TODO(jannfis): Can be removed once we have the change to the git client's getGitAskPassEnv upstream.
-func GetGitCreds(repo *v1alpha1.Repository, store git.CredsStore) git.Creds {
+func GetGitCreds(ctx context.Context, repo *v1alpha1.Repository, store git.CredsStore) git.Creds {
 	if repo == nil {
 		return git.NopCreds{}
 	}
@@ -61,7 +61,7 @@ func GetGitCreds(repo *v1alpha1.Repository, store git.CredsStore) git.Creds {
 		return git.NewHTTPSCreds(repo.Username, repo.Password, repo.TLSClientCertData, repo.TLSClientCertKey, repo.IsInsecure(), repo.Proxy, store, repo.ForceHttpBasicAuth)
 	}
 	if repo.SSHPrivateKey != "" {
-		return git.NewSSHCreds(repo.SSHPrivateKey, getCAPath(repo.Repo), repo.IsInsecure(), store, repo.Proxy)
+		return git.NewSSHCreds(repo.SSHPrivateKey, getCAPath(ctx, repo.Repo), repo.IsInsecure(), store, repo.Proxy)
 	}
 	if repo.GithubAppPrivateKey != "" && repo.GithubAppId != 0 && repo.GithubAppInstallationId != 0 {
 		return git.NewGitHubAppCreds(repo.GithubAppId, repo.GithubAppInstallationId, repo.GithubAppPrivateKey, repo.GitHubAppEnterpriseBaseURL, repo.Repo, repo.TLSClientCertData, repo.TLSClientCertKey, repo.IsInsecure(), repo.Proxy, store)
@@ -74,7 +74,9 @@ func GetGitCreds(repo *v1alpha1.Repository, store git.CredsStore) git.Creds {
 
 // Taken from upstream Argo CD.
 // TODO(jannfis): Can be removed once we have the change to the git client's getGitAskPassEnv upstream.
-func getCAPath(repoURL string) string {
+func getCAPath(ctx context.Context, repoURL string) string {
+	log := log.LoggerFromContext(ctx)
+
 	// For git ssh protocol url without ssh://, url.Parse() will fail to parse.
 	// However, no warn log is output since ssh scheme url is a possible format.
 	if ok, _ := git.IsSSHURL(repoURL); ok {

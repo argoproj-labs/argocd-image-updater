@@ -210,12 +210,12 @@ type HelmTarget struct {
 	// Name is the dot-separated path to the Helm key for the image repository/name part.
 	// Example: "image.repository", "frontend.deployment.image.name".
 	// This field is required if the Helm target is used.
-	Name string `json:"name"`
+	Name *string `json:"name"`
 
 	// Tag is the dot-separated path to the Helm key for the image tag part.
 	// Example: "image.tag", "frontend.deployment.image.version".
 	// This field is required if the Helm target is used.
-	Tag string `json:"tag"`
+	Tag *string `json:"tag"`
 
 	// Spec is an optional dot-separated path to a Helm key where the full image string
 	// (e.g., "image/name:1.0") should be written.
@@ -223,7 +223,7 @@ type HelmTarget struct {
 	// rather than separate name/tag fields. If this is set, other Helm parameter-related
 	// options will be ignored.
 	// +optional
-	Spec string `json:"spec,omitempty"`
+	Spec *string `json:"spec,omitempty"`
 }
 
 // KustomizeTarget defines parameters for updating image references within Kustomize configurations.
@@ -233,7 +233,7 @@ type KustomizeTarget struct {
 	// The updater will typically change the tag or add a digest to this entry.
 	// Example: "docker.io/library/nginx".
 	// This field is required if the Kustomize target is used.
-	Name string `json:"name"`
+	Name *string `json:"name"`
 }
 
 //------------------------Status---------------------------------------------//
