@@ -660,6 +660,9 @@ func setHelmValue(currentValues *yaml.Node, key string, value interface{}) error
 			if current.Kind == yaml.AliasNode {
 				current = current.Alias
 			}
+			if current.Kind != yaml.SequenceNode && idPtr != nil {
+				return fmt.Errorf("id %d provided when \"%s\" is not an yaml array", *idPtr, key)
+			}
 			if current.Kind == yaml.SequenceNode {
 				if idPtr == nil {
 					return fmt.Errorf("no id provided for yaml array \"%s\"", key)

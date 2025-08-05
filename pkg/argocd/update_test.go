@@ -2625,6 +2625,26 @@ images:
 		require.Error(t, err)
 		assert.Equal(t, "no id provided for yaml array \"images\"", err.Error())
 	})
+
+	t.Run("id given when node is not an yaml list", func(t *testing.T) {
+		inputData := []byte(`
+image:
+  attributes:
+    name: repo-name
+    tag: 1.0.0
+`)
+		input := yaml.Node{}
+		err := yaml.Unmarshal(inputData, &input)
+		require.NoError(t, err)
+
+		key := "image[0].attributes.tag"
+		value := "2.0.0"
+
+		err = setHelmValue(&input, key, value)
+
+		require.Error(t, err)
+		assert.Equal(t, "id 0 provided when \"image\" is not an yaml array", err.Error())
+	})
 }
 
 func Test_GetWriteBackConfig(t *testing.T) {
