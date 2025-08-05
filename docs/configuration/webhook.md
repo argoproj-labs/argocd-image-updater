@@ -115,7 +115,7 @@ Because some container registries do not support secrets, there is a method incl
 
 It can be applied to the URL as below:
 ```
-https://imageupdater.yourdomain.com/webhook?type<YOUR_REGISTRY_TYPE>&secret?=<YOUR_SECRET>
+https://imageupdater.yourdomain.com/webhook?type=<YOUR_REGISTRY_TYPE>&secret=<YOUR_SECRET>
 ```
 
 Supported Registries That Use This:
