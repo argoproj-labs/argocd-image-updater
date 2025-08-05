@@ -2,6 +2,7 @@ package argocd
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -18,17 +19,17 @@ import (
 	kyaml "sigs.k8s.io/kustomize/kyaml/yaml"
 
 	"github.com/argoproj-labs/argocd-image-updater/ext/git"
-	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/image"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
 
 	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 )
 
-// templateCommitMessage renders a commit message template and returns it as
+// TemplateCommitMessage renders a commit message template and returns it
 // as a string. If the template could not be rendered, returns a default
 // message.
-func TemplateCommitMessage(tpl *template.Template, appName string, changeList []ChangeEntry) string {
+func TemplateCommitMessage(ctx context.Context, tpl *template.Template, appName string, changeList []ChangeEntry) string {
+	log := log.LoggerFromContext(ctx)
 	var cmBuf bytes.Buffer
 
 	type commitMessageChange struct {
@@ -65,7 +66,8 @@ func TemplateCommitMessage(tpl *template.Template, appName string, changeList []
 // TemplateBranchName parses a string to a template, and returns a
 // branch name from that new template. If a branch name can not be
 // rendered, it returns an empty value.
-func TemplateBranchName(branchName string, changeList []ChangeEntry) string {
+func TemplateBranchName(ctx context.Context, branchName string, changeList []ChangeEntry) string {
+	log := log.LoggerFromContext(ctx)
 	var cmBuf bytes.Buffer
 
 	tpl, err1 := template.New("branchName").Parse(branchName)
@@ -126,40 +128,41 @@ func TemplateBranchName(branchName string, changeList []ChangeEntry) string {
 	}
 }
 
-type changeWriter func(applicationImages *ApplicationImages, wbc *WriteBackConfig, gitC git.Client) (err error, skip bool)
+type changeWriter func(ctx context.Context, applicationImages *ApplicationImages, gitC git.Client) (err error, skip bool)
 
 // getWriteBackBranch returns the branch to use for write-back operations.
 // It first checks for a branch specified in annotations, then uses the
 // targetRevision from the matching git source, falling back to getApplicationSource.
-func getWriteBackBranch(app *v1alpha1.Application) string {
+func getWriteBackBranch(ctx context.Context, app *v1alpha1.Application, wbc *WriteBackConfig) string {
+	log := log.LoggerFromContext(ctx)
 	if app == nil {
 		return ""
 	}
 	// If git repository is specified, find matching source
-	if gitRepo, ok := app.GetAnnotations()[common.GitRepositoryAnnotation]; ok {
+	if wbc != nil && wbc.GitRepo != "" {
+		gitRepo := wbc.GitRepo
 		if app.Spec.HasMultipleSources() {
 			for _, s := range app.Spec.Sources {
 				if s.RepoURL == gitRepo {
-					log.WithContext().AddField("application", app.GetName()).
-						Debugf("Using target revision '%s' from matching source '%s'", s.TargetRevision, gitRepo)
+					log.Debugf("Using target revision '%s' from matching source '%s'", s.TargetRevision, gitRepo)
 					return s.TargetRevision
 				}
 			}
-			log.WithContext().AddField("application", app.GetName()).
-				Debugf("No matching source found for git repository %s, falling back to primary source", gitRepo)
+			log.Debugf("No matching source found for git repository %s, falling back to primary source", gitRepo)
 		}
 	}
-
 	// Fall back to getApplicationSource's targetRevision
 	// This maintains consistency with how other parts of the code select the source
-	return getApplicationSource(app).TargetRevision
+	return getApplicationSource(ctx, app).TargetRevision
 }
 
 // commitChanges commits any changes required for updating one or more images
 // after the UpdateApplication cycle has finished.
-func commitChangesGit(applicationImages *ApplicationImages, wbc *WriteBackConfig, changeList []ChangeEntry, write changeWriter) error {
+func commitChangesGit(ctx context.Context, applicationImages *ApplicationImages, changeList []ChangeEntry, write changeWriter) error {
+	logCtx := log.LoggerFromContext(ctx)
+
 	app := applicationImages.Application
-	logCtx := log.WithContext().AddField("application", app.GetName())
+	wbc := applicationImages.WriteBackConfig
 	creds, err := wbc.GetCreds(&app)
 	if err != nil {
 		return fmt.Errorf("could not get creds for repo '%s': %v", wbc.GitRepo, err)
@@ -196,7 +199,7 @@ func commitChangesGit(applicationImages *ApplicationImages, wbc *WriteBackConfig
 	if wbc.GitBranch != "" {
 		checkOutBranch = wbc.GitBranch
 	} else {
-		checkOutBranch = getWriteBackBranch(&app)
+		checkOutBranch = getWriteBackBranch(ctx, &app, wbc)
 	}
 	logCtx.Tracef("targetRevision for update is '%s'", checkOutBranch)
 	if checkOutBranch == "" || checkOutBranch == "HEAD" {
@@ -215,7 +218,7 @@ func commitChangesGit(applicationImages *ApplicationImages, wbc *WriteBackConfig
 
 	if wbc.GitWriteBranch != "" {
 		logCtx.Debugf("Using branch template: %s", wbc.GitWriteBranch)
-		pushBranch = TemplateBranchName(wbc.GitWriteBranch, changeList)
+		pushBranch = TemplateBranchName(ctx, wbc.GitWriteBranch, changeList)
 		if pushBranch == "" {
 			return fmt.Errorf("Git branch name could not be created from the template: %s", wbc.GitWriteBranch)
 		}
@@ -248,7 +251,7 @@ func commitChangesGit(applicationImages *ApplicationImages, wbc *WriteBackConfig
 		return err
 	}
 
-	if err, skip := write(applicationImages, wbc, gitC); err != nil {
+	if err, skip := write(ctx, applicationImages, gitC); err != nil {
 		return err
 	} else if skip {
 		return nil
@@ -298,9 +301,9 @@ func commitChangesGit(applicationImages *ApplicationImages, wbc *WriteBackConfig
 	return nil
 }
 
-func writeOverrides(applicationImages *ApplicationImages, wbc *WriteBackConfig, gitC git.Client) (err error, skip bool) {
-	app := applicationImages.Application
-	logCtx := log.WithContext().AddField("application", app.GetName())
+func writeOverrides(ctx context.Context, applicationImages *ApplicationImages, gitC git.Client) (err error, skip bool) {
+	logCtx := log.LoggerFromContext(ctx)
+	wbc := applicationImages.WriteBackConfig
 	targetExists := true
 	targetFile := path.Join(gitC.Root(), wbc.Target)
 	_, err = os.Stat(targetFile)
@@ -322,7 +325,7 @@ func writeOverrides(applicationImages *ApplicationImages, wbc *WriteBackConfig, 
 		if err != nil {
 			return err, false
 		}
-		override, err = marshalParamsOverride(applicationImages, originalData, wbc)
+		override, err = marshalParamsOverride(ctx, applicationImages, originalData)
 		if err != nil {
 			return
 		}
@@ -331,7 +334,7 @@ func writeOverrides(applicationImages *ApplicationImages, wbc *WriteBackConfig, 
 			return nil, true
 		}
 	} else {
-		override, err = marshalParamsOverride(applicationImages, nil, wbc)
+		override, err = marshalParamsOverride(ctx, applicationImages, nil)
 		if err != nil {
 			return
 		}
@@ -357,9 +360,10 @@ func writeOverrides(applicationImages *ApplicationImages, wbc *WriteBackConfig, 
 var _ changeWriter = writeOverrides
 
 // writeKustomization writes any changes required for updating one or more images to a kustomization.yml
-func writeKustomization(applicationImages *ApplicationImages, wbc *WriteBackConfig, gitC git.Client) (err error, skip bool) {
+func writeKustomization(ctx context.Context, applicationImages *ApplicationImages, gitC git.Client) (err error, skip bool) {
 	app := applicationImages.Application
-	logCtx := log.WithContext().AddField("application", app.GetName())
+	wbc := applicationImages.WriteBackConfig
+	logCtx := log.LoggerFromContext(ctx)
 
 	base := filepath.Join(gitC.Root(), wbc.KustomizeBase)
 
@@ -369,7 +373,7 @@ func writeKustomization(applicationImages *ApplicationImages, wbc *WriteBackConf
 	if kustFile == "" {
 		return fmt.Errorf("could not find kustomization in %s", base), false
 	}
-	source := getApplicationSource(&app)
+	source := getApplicationSource(ctx, &app)
 	if source == nil {
 		return fmt.Errorf("failed to find source for kustomization in %s", base), false
 	}
@@ -385,13 +389,15 @@ func writeKustomization(applicationImages *ApplicationImages, wbc *WriteBackConf
 		return err, false
 	}
 
-	return updateKustomizeFile(filterFunc, kustFile)
+	return updateKustomizeFile(ctx, filterFunc, kustFile)
 }
 
 // updateKustomizeFile reads the kustomization file at path, applies the filter to it, and writes the result back
 // to the file. This is the same behavior as kyaml.UpdateFile, but it preserves the original order of YAML fields
 // and indentation of YAML sequences to minimize git diffs.
-func updateKustomizeFile(filter kyaml.Filter, path string) (error, bool) {
+func updateKustomizeFile(ctx context.Context, filter kyaml.Filter, path string) (error, bool) {
+	log := log.LoggerFromContext(ctx)
+
 	// Open the input file for read
 	yRaw, err := os.ReadFile(path)
 	if err != nil {

@@ -1329,7 +1329,7 @@ kustomize:
 			},
 		}
 
-		yaml, err := marshalParamsOverride(applicationImages, originalData, nil)
+		yaml, err := marshalParamsOverride(context.Background(), applicationImages, originalData)
 		require.NoError(t, err)
 		assert.NotEmpty(t, yaml)
 		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(yaml)))
@@ -1380,7 +1380,7 @@ kustomize:
 			},
 		}
 
-		yaml, err := marshalParamsOverride(applicationImages, originalData, nil)
+		yaml, err := marshalParamsOverride(context.Background(), applicationImages, originalData)
 		require.NoError(t, err)
 		assert.NotEmpty(t, yaml)
 		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(yaml)))
@@ -1413,7 +1413,7 @@ kustomize:
 			},
 		}
 
-		yaml, err := marshalParamsOverride(applicationImages, nil, nil)
+		yaml, err := marshalParamsOverride(context.Background(), applicationImages, nil)
 		require.NoError(t, err)
 		assert.Empty(t, yaml)
 		assert.Equal(t, "", strings.TrimSpace(string(yaml)))
@@ -1480,7 +1480,7 @@ helm:
 					image.NewFromIdentifier("nginx")),
 			},
 		}
-		yaml, err := marshalParamsOverride(applicationImages, originalData, nil)
+		yaml, err := marshalParamsOverride(context.Background(), applicationImages, originalData)
 		require.NoError(t, err)
 		assert.NotEmpty(t, yaml)
 		assert.Equal(t, strings.TrimSpace(strings.ReplaceAll(expected, "\t", "  ")), strings.TrimSpace(string(yaml)))
@@ -1538,7 +1538,7 @@ helm:
 					image.NewFromIdentifier("nginx")),
 			},
 		}
-		yaml, err := marshalParamsOverride(applicationImages, originalData, nil)
+		yaml, err := marshalParamsOverride(context.Background(), applicationImages, originalData)
 		require.NoError(t, err)
 		assert.NotEmpty(t, yaml)
 		assert.Equal(t, strings.TrimSpace(strings.ReplaceAll(expected, "\t", "  ")), strings.TrimSpace(string(yaml)))
@@ -1596,7 +1596,7 @@ helm:
 					image.NewFromIdentifier("nginx")),
 			},
 		}
-		yaml, err := marshalParamsOverride(applicationImages, originalData, nil)
+		yaml, err := marshalParamsOverride(context.Background(), applicationImages, originalData)
 		require.NoError(t, err)
 		assert.NotEmpty(t, yaml)
 		assert.Equal(t, strings.TrimSpace(strings.ReplaceAll(expected, "\t", "  ")), strings.TrimSpace(string(yaml)))
@@ -1630,7 +1630,7 @@ helm:
 			},
 		}
 
-		yaml, err := marshalParamsOverride(applicationImages, nil, nil)
+		yaml, err := marshalParamsOverride(context.Background(), applicationImages, nil)
 		require.NoError(t, err)
 		assert.Empty(t, yaml)
 	})
@@ -1695,7 +1695,7 @@ replicas: 1
 			},
 		}
 
-		yaml, err := marshalParamsOverride(applicationImages, originalData, nil)
+		yaml, err := marshalParamsOverride(context.Background(), applicationImages, originalData)
 		require.NoError(t, err)
 		assert.NotEmpty(t, yaml)
 		assert.Equal(t, strings.TrimSpace(strings.ReplaceAll(expected, "\t", "  ")), strings.TrimSpace(string(yaml)))
@@ -1753,7 +1753,7 @@ replicas: 1
 			},
 		}
 
-		yaml, err := marshalParamsOverride(applicationImages, originalData, nil)
+		yaml, err := marshalParamsOverride(context.Background(), applicationImages, originalData)
 		require.NoError(t, err)
 		assert.NotEmpty(t, yaml)
 		assert.Equal(t, strings.TrimSpace(strings.ReplaceAll(expected, "\t", "  ")), strings.TrimSpace(string(yaml)))
@@ -1768,7 +1768,7 @@ image:
     foo: nginx:v1.0.0
 `
 
-		yaml, err = marshalParamsOverride(applicationImages, originalData, nil)
+		yaml, err = marshalParamsOverride(context.Background(), applicationImages, originalData)
 		require.NoError(t, err)
 		assert.NotEmpty(t, yaml)
 		assert.Equal(t, strings.TrimSpace(strings.ReplaceAll(expected, "\t", "  ")), strings.TrimSpace(string(yaml)))
@@ -1866,7 +1866,7 @@ replicas: 1
 			},
 		}
 
-		yaml, err := marshalParamsOverride(applicationImages, originalData, nil)
+		yaml, err := marshalParamsOverride(context.Background(), applicationImages, originalData)
 		require.NoError(t, err)
 		assert.NotEmpty(t, yaml)
 		assert.Equal(t, strings.TrimSpace(strings.ReplaceAll(expected, "\t", "  ")), strings.TrimSpace(string(yaml)))
@@ -1885,7 +1885,7 @@ redis:
     tag: v1.0.0
     name: redis
 `
-		yaml, err = marshalParamsOverride(applicationImages, originalData, nil)
+		yaml, err = marshalParamsOverride(context.Background(), applicationImages, originalData)
 		require.NoError(t, err)
 		assert.NotEmpty(t, yaml)
 		assert.Equal(t, strings.TrimSpace(strings.ReplaceAll(expected, "\t", "  ")), strings.TrimSpace(string(yaml)))
@@ -2000,7 +2000,7 @@ replicas: 1
 			},
 		}
 
-		yaml, err := marshalParamsOverride(applicationImages, originalData, nil)
+		yaml, err := marshalParamsOverride(context.Background(), applicationImages, originalData)
 		require.NoError(t, err)
 		assert.NotEmpty(t, yaml)
 		assert.Equal(t, strings.TrimSpace(strings.ReplaceAll(expected, "\t", "  ")), strings.TrimSpace(string(yaml)))
@@ -2071,7 +2071,7 @@ replicas: 1
 			},
 		}
 
-		yaml, err := marshalParamsOverride(applicationImages, originalData, nil)
+		yaml, err := marshalParamsOverride(context.Background(), applicationImages, originalData)
 		require.NoError(t, err)
 		assert.NotEmpty(t, yaml)
 		assert.Equal(t, strings.TrimSpace(strings.ReplaceAll(expected, "\t", "  ")), strings.TrimSpace(string(yaml)))
@@ -2139,7 +2139,7 @@ replicas: 1
 			},
 		}
 
-		yaml, err := marshalParamsOverride(applicationImages, originalData, nil)
+		yaml, err := marshalParamsOverride(context.Background(), applicationImages, originalData)
 
 		require.NoError(t, err)
 		assert.NotEmpty(t, yaml)
@@ -2196,7 +2196,7 @@ replicas: 1
 			},
 		}
 
-		_, err := marshalParamsOverride(applicationImages, originalData, nil)
+		_, err := marshalParamsOverride(context.Background(), applicationImages, originalData)
 		assert.Error(t, err)
 		assert.Equal(t, "could not find an image-tag annotation for image nginx", err.Error())
 	})
@@ -2251,7 +2251,7 @@ replicas: 1
 			},
 		}
 
-		_, err := marshalParamsOverride(applicationImages, originalData, nil)
+		_, err := marshalParamsOverride(context.Background(), applicationImages, originalData)
 		assert.Error(t, err)
 		assert.Equal(t, "could not find an image-name annotation for image nginx", err.Error())
 	})
@@ -2307,7 +2307,7 @@ replicas: 1
 			},
 		}
 
-		_, err := marshalParamsOverride(applicationImages, originalData, nil)
+		_, err := marshalParamsOverride(context.Background(), applicationImages, originalData)
 		assert.Error(t, err)
 	})
 
@@ -2362,7 +2362,7 @@ replicas: 1
 			},
 		}
 
-		_, err := marshalParamsOverride(applicationImages, originalData, nil)
+		_, err := marshalParamsOverride(context.Background(), applicationImages, originalData)
 		assert.Error(t, err)
 		assert.Equal(t, "wrongimage.tag parameter not found", err.Error())
 	})
@@ -2418,7 +2418,7 @@ replicas: 1
 			},
 		}
 
-		_, err := marshalParamsOverride(applicationImages, originalData, nil)
+		_, err := marshalParamsOverride(context.Background(), applicationImages, originalData)
 		assert.Error(t, err)
 	})
 
@@ -2453,7 +2453,7 @@ replicas: 1
 			Images:      ImageList{},
 		}
 
-		_, err := marshalParamsOverride(applicationImages, nil, nil)
+		_, err := marshalParamsOverride(context.Background(), applicationImages, nil)
 		assert.Error(t, err)
 	})
 }
@@ -2740,7 +2740,7 @@ func Test_GetWriteBackConfig(t *testing.T) {
 			},
 		}
 
-		wbc, err := newWBCFromCommonWBCSettings(&app, &kubeClient, settings, nil)
+		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, settings)
 		require.NoError(t, err)
 		require.NotNil(t, wbc)
 		assert.Equal(t, wbc.Method, WriteBackGit)
@@ -2782,7 +2782,7 @@ func Test_GetWriteBackConfig(t *testing.T) {
 			},
 		}
 
-		wbc, err := newWBCFromCommonWBCSettings(&app, &kubeClient, settings, nil)
+		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, settings)
 		require.NoError(t, err)
 		require.NotNil(t, wbc)
 		assert.Equal(t, "", wbc.GitBranch)
@@ -2823,7 +2823,7 @@ func Test_GetWriteBackConfig(t *testing.T) {
 			},
 		}
 
-		wbc, err := newWBCFromCommonWBCSettings(&app, &kubeClient, settings, nil)
+		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, settings)
 		require.NoError(t, err)
 		require.NotNil(t, wbc)
 		assert.Equal(t, "mybranch", wbc.GitBranch)
@@ -2864,7 +2864,7 @@ func Test_GetWriteBackConfig(t *testing.T) {
 			Method: stringPtr("argocd"),
 		}
 
-		wbc, err := newWBCFromCommonWBCSettings(&app, &kubeClient, settings, nil)
+		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, settings)
 		require.NoError(t, err)
 		require.NotNil(t, wbc)
 		assert.Equal(t, wbc.Method, WriteBackApplication)
@@ -2910,7 +2910,7 @@ func Test_GetWriteBackConfig(t *testing.T) {
 			},
 		}
 
-		wbc, err := newWBCFromCommonWBCSettings(&app, &kubeClient, settings, nil)
+		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, settings)
 		require.NoError(t, err)
 		require.NotNil(t, wbc)
 		assert.Equal(t, wbc.Method, WriteBackGit)
@@ -2957,7 +2957,7 @@ func Test_GetWriteBackConfig(t *testing.T) {
 			},
 		}
 
-		wbc, err := newWBCFromCommonWBCSettings(&app, &kubeClient, settings, nil)
+		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, settings)
 		require.NoError(t, err)
 		require.NotNil(t, wbc)
 		assert.Equal(t, wbc.Method, WriteBackGit)
@@ -3004,7 +3004,7 @@ func Test_GetWriteBackConfig(t *testing.T) {
 			},
 		}
 
-		wbc, err := newWBCFromCommonWBCSettings(&app, &kubeClient, settings, nil)
+		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, settings)
 		require.NoError(t, err)
 		require.NotNil(t, wbc)
 		assert.Equal(t, wbc.Method, WriteBackGit)
@@ -3051,7 +3051,7 @@ func Test_GetWriteBackConfig(t *testing.T) {
 			},
 		}
 
-		wbc, err := newWBCFromCommonWBCSettings(&app, &kubeClient, settings, nil)
+		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, settings)
 		require.NoError(t, err)
 		require.NotNil(t, wbc)
 		assert.Equal(t, wbc.Method, WriteBackGit)
@@ -3098,7 +3098,7 @@ func Test_GetWriteBackConfig(t *testing.T) {
 			},
 		}
 
-		wbc, err := newWBCFromCommonWBCSettings(&app, &kubeClient, settings, nil)
+		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, settings)
 		require.NoError(t, err)
 		require.NotNil(t, wbc)
 		assert.Equal(t, wbc.Method, WriteBackGit)
@@ -3143,7 +3143,7 @@ func Test_GetWriteBackConfig(t *testing.T) {
 			},
 		}
 
-		_, err := newWBCFromCommonWBCSettings(&app, &kubeClient, settings, nil)
+		_, err := newWBCFromSettings(context.Background(), &app, &kubeClient, settings)
 		assert.Error(t, err)
 	})
 
@@ -3183,7 +3183,7 @@ func Test_GetWriteBackConfig(t *testing.T) {
 			},
 		}
 
-		wbc, err := newWBCFromCommonWBCSettings(&app, &kubeClient, settings, nil)
+		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, settings)
 		require.NoError(t, err)
 		require.NotNil(t, wbc)
 		assert.Equal(t, wbc.Method, WriteBackApplication)
@@ -3226,7 +3226,7 @@ func Test_GetWriteBackConfig(t *testing.T) {
 			},
 		}
 
-		wbc, err := newWBCFromCommonWBCSettings(&app, &kubeClient, settings, nil)
+		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, settings)
 		require.Error(t, err)
 		require.Nil(t, wbc)
 	})
@@ -3273,7 +3273,7 @@ func Test_GetGitCreds(t *testing.T) {
 			},
 		}
 
-		wbc, err := newWBCFromCommonWBCSettings(&app, &kubeClient, settings, nil)
+		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, settings)
 		require.NoError(t, err)
 
 		creds, err := wbc.GetCreds(&app)
@@ -3324,7 +3324,7 @@ func Test_GetGitCreds(t *testing.T) {
 			},
 		}
 
-		wbc, err := newWBCFromCommonWBCSettings(&app, &kubeClient, settings, nil)
+		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, settings)
 		require.NoError(t, err)
 
 		creds, err := wbc.GetCreds(&app)
@@ -3370,7 +3370,7 @@ func Test_GetGitCreds(t *testing.T) {
 				},
 			}
 
-			wbc, err = newWBCFromCommonWBCSettings(&app, &kubeClient, settings, nil)
+			wbc, err = newWBCFromSettings(context.Background(), &app, &kubeClient, settings)
 			require.NoError(t, err)
 			_, err = wbc.GetCreds(&app)
 			require.Error(t, err)
@@ -3414,7 +3414,7 @@ func Test_GetGitCreds(t *testing.T) {
 			},
 		}
 
-		wbc, err := newWBCFromCommonWBCSettings(&app, &kubeClient, settings, nil)
+		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, settings)
 		require.NoError(t, err)
 
 		creds, err := wbc.GetCreds(&app)
@@ -3476,7 +3476,7 @@ func Test_GetGitCreds(t *testing.T) {
 			},
 		}
 
-		wbc, err := newWBCFromCommonWBCSettings(&app, &kubeClient, settings, nil)
+		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, settings)
 		require.NoError(t, err)
 
 		creds, err := wbc.GetCreds(&app)
@@ -3524,7 +3524,7 @@ func Test_GetGitCreds(t *testing.T) {
 			},
 		}
 
-		wbc, err := newWBCFromCommonWBCSettings(&app, &kubeClient, settings, nil)
+		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, settings)
 		require.NoError(t, err)
 
 		creds, err := wbc.GetCreds(&app)
@@ -3570,7 +3570,7 @@ func Test_GetGitCreds(t *testing.T) {
 			},
 		}
 
-		wbc, err := newWBCFromCommonWBCSettings(&app, &kubeClient, settings, nil)
+		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, settings)
 		require.NoError(t, err)
 
 		creds, err := wbc.GetCreds(&app)
@@ -3616,7 +3616,7 @@ func Test_GetGitCreds(t *testing.T) {
 			},
 		}
 
-		wbc, err := newWBCFromCommonWBCSettings(&app, &kubeClient, settings, nil)
+		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, settings)
 		require.NoError(t, err)
 
 		creds, err := wbc.GetCreds(&app)
@@ -3665,7 +3665,7 @@ func Test_GetGitCreds(t *testing.T) {
 			},
 		}
 
-		wbc, err := newWBCFromCommonWBCSettings(&app, &kubeClient, settings, nil)
+		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, settings)
 		require.NoError(t, err)
 		require.Equal(t, wbc.GitRepo, "git@github.com:example/example.git")
 
@@ -3717,10 +3717,10 @@ func Test_CommitUpdates(t *testing.T) {
 		gitMock.On("Add", mock.Anything).Return(nil)
 		gitMock.On("Commit", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 		gitMock.On("Push", mock.Anything, mock.Anything, mock.Anything).Return(nil)
-
+		ctx := context.Background()
 		// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
 		// Pass nil settings to test the default target revision fallback
-		wbc, err := newWBCFromCommonWBCSettings(&app, &kubeClient, nil, nil)
+		wbc, err := newWBCFromSettings(ctx, &app, &kubeClient, nil)
 		require.NoError(t, err)
 		wbc.Method = WriteBackGit
 		wbc.GetCreds = func(app *v1alpha1.Application) (git.Creds, error) {
@@ -3729,10 +3729,11 @@ func Test_CommitUpdates(t *testing.T) {
 		wbc.GitClient = gitMock
 
 		applicationImages := &ApplicationImages{
-			Application: app,
-			Images:      ImageList{},
+			Application:     app,
+			Images:          ImageList{},
+			WriteBackConfig: wbc,
 		}
-		err = commitChanges(applicationImages, wbc, nil)
+		err = commitChanges(ctx, applicationImages, nil)
 		assert.NoError(t, err)
 	})
 
@@ -3747,7 +3748,8 @@ func Test_CommitUpdates(t *testing.T) {
 		gitMock.On("Push", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 		gitMock.On("SymRefToBranch", mock.Anything).Return("mydefaultbranch", nil)
 
-		wbc, err := newWBCFromCommonWBCSettings(&app, &kubeClient, nil, nil)
+		ctx := context.Background()
+		wbc, err := newWBCFromSettings(ctx, &app, &kubeClient, nil)
 		require.NoError(t, err)
 		wbc.Method = WriteBackGit
 		wbc.GetCreds = func(app *v1alpha1.Application) (git.Creds, error) {
@@ -3757,10 +3759,11 @@ func Test_CommitUpdates(t *testing.T) {
 		wbc.GitBranch = "mybranch"
 
 		applicationImages := &ApplicationImages{
-			Application: app,
-			Images:      ImageList{},
+			Application:     app,
+			Images:          ImageList{},
+			WriteBackConfig: wbc,
 		}
-		err = commitChanges(applicationImages, wbc, nil)
+		err = commitChanges(ctx, applicationImages, nil)
 		assert.NoError(t, err)
 	})
 
@@ -3776,7 +3779,8 @@ func Test_CommitUpdates(t *testing.T) {
 		gitMock.On("Push", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 		gitMock.On("SymRefToBranch", mock.Anything).Return("mydefaultbranch", nil)
 
-		wbc, err := newWBCFromCommonWBCSettings(app, &kubeClient, nil, nil)
+		ctx := context.Background()
+		wbc, err := newWBCFromSettings(ctx, app, &kubeClient, nil)
 		require.NoError(t, err)
 		wbc.Method = WriteBackGit
 		wbc.GetCreds = func(app *v1alpha1.Application) (git.Creds, error) {
@@ -3788,10 +3792,11 @@ func Test_CommitUpdates(t *testing.T) {
 		wbc.GitBranch = ""
 
 		applicationImages := &ApplicationImages{
-			Application: *app,
-			Images:      ImageList{},
+			Application:     *app,
+			Images:          ImageList{},
+			WriteBackConfig: wbc,
 		}
-		err = commitChanges(applicationImages, wbc, nil)
+		err = commitChanges(ctx, applicationImages, nil)
 		assert.NoError(t, err)
 	})
 
@@ -3803,8 +3808,8 @@ func Test_CommitUpdates(t *testing.T) {
 		gitMock.On("Commit", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 		gitMock.On("Push", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 		gitMock.On("SymRefToBranch", mock.Anything).Return("mydefaultbranch", nil)
-
-		wbc, err := newWBCFromCommonWBCSettings(&app, &kubeClient, nil, nil)
+		ctx := context.Background()
+		wbc, err := newWBCFromSettings(ctx, &app, &kubeClient, nil)
 		require.NoError(t, err)
 		wbc.Method = WriteBackGit
 		wbc.GetCreds = func(app *v1alpha1.Application) (git.Creds, error) {
@@ -3822,13 +3827,14 @@ func Test_CommitUpdates(t *testing.T) {
 				NewTag: tag.NewImageTag("1.1", time.Now(), ""),
 			},
 		}
-		gitMock.On("Checkout", TemplateBranchName(wbc.GitWriteBranch, cl), mock.Anything).Return(nil)
+		gitMock.On("Checkout", TemplateBranchName(ctx, wbc.GitWriteBranch, cl), mock.Anything).Return(nil)
 
 		applicationImages := &ApplicationImages{
-			Application: app,
-			Images:      ImageList{},
+			Application:     app,
+			Images:          ImageList{},
+			WriteBackConfig: wbc,
 		}
-		err = commitChanges(applicationImages, wbc, cl)
+		err = commitChanges(ctx, applicationImages, cl)
 		assert.NoError(t, err)
 	})
 
@@ -3858,7 +3864,8 @@ helm:
 		gitMock.On("Push", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 		gitMock.On("SymRefToBranch", mock.Anything).Return("mydefaultbranch", nil)
 
-		wbc, err := newWBCFromCommonWBCSettings(app, &kubeClient, nil, nil)
+		ctx := context.Background()
+		wbc, err := newWBCFromSettings(ctx, app, &kubeClient, nil)
 		wbc.Method = WriteBackGit
 		wbc.GetCreds = func(app *v1alpha1.Application) (git.Creds, error) {
 			return git.NopCreds{}, nil
@@ -3869,10 +3876,11 @@ helm:
 		wbc.GitBranch = ""
 
 		applicationImages := &ApplicationImages{
-			Application: *app,
-			Images:      ImageList{},
+			Application:     *app,
+			Images:          ImageList{},
+			WriteBackConfig: wbc,
 		}
-		err = commitChanges(applicationImages, wbc, nil)
+		err = commitChanges(ctx, applicationImages, nil)
 		assert.NoError(t, err)
 		override, err := os.ReadFile(of)
 		assert.NoError(t, err)
@@ -3919,7 +3927,8 @@ helm:
 		gitMock.On("Push", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 		gitMock.On("SymRefToBranch", mock.Anything).Return("mydefaultbranch", nil)
 
-		wbc, err := newWBCFromCommonWBCSettings(app, &kubeClient, nil, nil)
+		ctx := context.Background()
+		wbc, err := newWBCFromSettings(ctx, app, &kubeClient, nil)
 		wbc.Method = WriteBackGit
 		wbc.GetCreds = func(app *v1alpha1.Application) (git.Creds, error) {
 			return git.NopCreds{}, nil
@@ -3930,10 +3939,11 @@ helm:
 		wbc.GitBranch = ""
 
 		applicationImages := &ApplicationImages{
-			Application: *app,
-			Images:      ImageList{},
+			Application:     *app,
+			Images:          ImageList{},
+			WriteBackConfig: wbc,
 		}
-		err = commitChanges(applicationImages, wbc, nil)
+		err = commitChanges(ctx, applicationImages, nil)
 		assert.NoError(t, err)
 		override, err := os.ReadFile(of)
 		assert.NoError(t, err)
@@ -3980,7 +3990,8 @@ helm:
 		gitMock.On("Push", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 		gitMock.On("SymRefToBranch", mock.Anything).Return("mydefaultbranch", nil)
 
-		wbc, err := newWBCFromCommonWBCSettings(app, &kubeClient, nil, nil)
+		ctx := context.Background()
+		wbc, err := newWBCFromSettings(ctx, app, &kubeClient, nil)
 		require.NoError(t, err)
 		wbc.Method = WriteBackGit
 		wbc.GetCreds = func(app *v1alpha1.Application) (git.Creds, error) {
@@ -3991,10 +4002,11 @@ helm:
 		wbc.GitBranch = ""
 
 		applicationImages := &ApplicationImages{
-			Application: *app,
-			Images:      ImageList{},
+			Application:     *app,
+			Images:          ImageList{},
+			WriteBackConfig: wbc,
 		}
-		err = commitChanges(applicationImages, wbc, nil)
+		err = commitChanges(ctx, applicationImages, nil)
 		assert.NoError(t, err)
 		override, err := os.ReadFile(of)
 		assert.NoError(t, err)
@@ -4035,7 +4047,8 @@ replacements: []
 		gitMock.On("Push", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 		gitMock.On("SymRefToBranch", mock.Anything).Return("mydefaultbranch", nil)
 
-		wbc, err := newWBCFromCommonWBCSettings(app, &kubeClient, nil, nil)
+		ctx := context.Background()
+		wbc, err := newWBCFromSettings(ctx, app, &kubeClient, nil)
 		require.NoError(t, err)
 		wbc.Method = WriteBackGit
 		wbc.GetCreds = func(app *v1alpha1.Application) (git.Creds, error) {
@@ -4048,10 +4061,11 @@ replacements: []
 		wbc.KustomizeBase = "."
 
 		applicationImages := &ApplicationImages{
-			Application: *app,
-			Images:      ImageList{},
+			Application:     *app,
+			Images:          ImageList{},
+			WriteBackConfig: wbc,
 		}
-		err = commitChanges(applicationImages, wbc, nil)
+		err = commitChanges(ctx, applicationImages, nil)
 		assert.NoError(t, err)
 		kust, err := os.ReadFile(kf)
 		assert.NoError(t, err)
@@ -4071,10 +4085,11 @@ replacements: []
 		// test the merge case too
 		app.Spec.Source.Kustomize.Images = v1alpha1.KustomizeImages{"foo:123", "bar=qux"}
 		applicationImages = &ApplicationImages{
-			Application: *app,
-			Images:      ImageList{},
+			Application:     *app,
+			Images:          ImageList{},
+			WriteBackConfig: wbc,
 		}
-		err = commitChanges(applicationImages, wbc, nil)
+		err = commitChanges(ctx, applicationImages, nil)
 		assert.NoError(t, err)
 		kust, err = os.ReadFile(kf)
 		assert.NoError(t, err)
@@ -4106,7 +4121,8 @@ replacements: []
 			args.Assert(t, "someone", "someone@example.com")
 		}).Return(nil)
 
-		wbc, err := newWBCFromCommonWBCSettings(app, &kubeClient, nil, nil)
+		ctx := context.Background()
+		wbc, err := newWBCFromSettings(ctx, app, &kubeClient, nil)
 		wbc.Method = WriteBackGit
 		wbc.GetCreds = func(app *v1alpha1.Application) (git.Creds, error) {
 			return git.NopCreds{}, nil
@@ -4119,10 +4135,11 @@ replacements: []
 		wbc.GitCommitEmail = "someone@example.com"
 
 		applicationImages := &ApplicationImages{
-			Application: *app,
-			Images:      ImageList{},
+			Application:     *app,
+			Images:          ImageList{},
+			WriteBackConfig: wbc,
 		}
-		err = commitChanges(applicationImages, wbc, nil)
+		err = commitChanges(ctx, applicationImages, nil)
 		assert.NoError(t, err)
 	})
 
@@ -4150,7 +4167,8 @@ replacements: []
 			},
 		}
 
-		wbc, err := newWBCFromCommonWBCSettings(app, &kubeClient, settings, nil)
+		ctx := context.Background()
+		wbc, err := newWBCFromSettings(ctx, app, &kubeClient, settings)
 		require.NoError(t, err)
 		wbc.GitClient = gitMock
 		app.Spec.Source.TargetRevision = "HEAD"
@@ -4159,10 +4177,11 @@ replacements: []
 		wbc.GitCommitEmail = "someone@example.com"
 
 		applicationImages := &ApplicationImages{
-			Application: *app,
-			Images:      ImageList{},
+			Application:     *app,
+			Images:          ImageList{},
+			WriteBackConfig: wbc,
 		}
-		err = commitChanges(applicationImages, wbc, nil)
+		err = commitChanges(ctx, applicationImages, nil)
 		assert.Errorf(t, err, "could not configure git")
 	})
 
@@ -4180,16 +4199,17 @@ replacements: []
 				Branch: stringPtr("mybranch:mytargetbranch"),
 			},
 		}
-
-		wbc, err := newWBCFromCommonWBCSettings(&app, &kubeClient, settings, nil)
+		ctx := context.Background()
+		wbc, err := newWBCFromSettings(ctx, &app, &kubeClient, settings)
 		require.NoError(t, err)
 		wbc.GitClient = gitMock
 
 		applicationImages := &ApplicationImages{
-			Application: app,
-			Images:      ImageList{},
+			Application:     app,
+			Images:          ImageList{},
+			WriteBackConfig: wbc,
 		}
-		err = commitChanges(applicationImages, wbc, nil)
+		err = commitChanges(ctx, applicationImages, nil)
 		assert.Errorf(t, err, "cannot init")
 	})
 
@@ -4207,16 +4227,17 @@ replacements: []
 				Branch: stringPtr("mybranch:mytargetbranch"),
 			},
 		}
-
-		wbc, err := newWBCFromCommonWBCSettings(&app, &kubeClient, settings, nil)
+		ctx := context.Background()
+		wbc, err := newWBCFromSettings(ctx, &app, &kubeClient, settings)
 		require.NoError(t, err)
 		wbc.GitClient = gitMock
 
 		applicationImages := &ApplicationImages{
-			Application: app,
-			Images:      ImageList{},
+			Application:     app,
+			Images:          ImageList{},
+			WriteBackConfig: wbc,
 		}
-		err = commitChanges(applicationImages, wbc, nil)
+		err = commitChanges(ctx, applicationImages, nil)
 		assert.Errorf(t, err, "cannot init")
 	})
 	t.Run("Cannot checkout", func(t *testing.T) {
@@ -4233,16 +4254,17 @@ replacements: []
 				Branch: stringPtr("mybranch:mytargetbranch"),
 			},
 		}
-
-		wbc, err := newWBCFromCommonWBCSettings(&app, &kubeClient, settings, nil)
+		ctx := context.Background()
+		wbc, err := newWBCFromSettings(ctx, &app, &kubeClient, settings)
 		require.NoError(t, err)
 		wbc.GitClient = gitMock
 
 		applicationImages := &ApplicationImages{
-			Application: app,
-			Images:      ImageList{},
+			Application:     app,
+			Images:          ImageList{},
+			WriteBackConfig: wbc,
 		}
-		err = commitChanges(applicationImages, wbc, nil)
+		err = commitChanges(ctx, applicationImages, nil)
 		assert.Errorf(t, err, "cannot checkout")
 	})
 
@@ -4260,16 +4282,17 @@ replacements: []
 				Branch: stringPtr("mybranch:mytargetbranch"),
 			},
 		}
-
-		wbc, err := newWBCFromCommonWBCSettings(&app, &kubeClient, settings, nil)
+		ctx := context.Background()
+		wbc, err := newWBCFromSettings(ctx, &app, &kubeClient, settings)
 		require.NoError(t, err)
 		wbc.GitClient = gitMock
 
 		applicationImages := &ApplicationImages{
-			Application: app,
-			Images:      ImageList{},
+			Application:     app,
+			Images:          ImageList{},
+			WriteBackConfig: wbc,
 		}
-		err = commitChanges(applicationImages, wbc, nil)
+		err = commitChanges(ctx, applicationImages, nil)
 		assert.Errorf(t, err, "cannot commit")
 	})
 
@@ -4287,16 +4310,17 @@ replacements: []
 				Branch: stringPtr("mybranch:mytargetbranch"),
 			},
 		}
-
-		wbc, err := newWBCFromCommonWBCSettings(&app, &kubeClient, settings, nil)
+		ctx := context.Background()
+		wbc, err := newWBCFromSettings(ctx, &app, &kubeClient, settings)
 		require.NoError(t, err)
 		wbc.GitClient = gitMock
 
 		applicationImages := &ApplicationImages{
-			Application: app,
-			Images:      ImageList{},
+			Application:     app,
+			Images:          ImageList{},
+			WriteBackConfig: wbc,
 		}
-		err = commitChanges(applicationImages, wbc, nil)
+		err = commitChanges(ctx, applicationImages, nil)
 		assert.Errorf(t, err, "cannot push")
 	})
 
@@ -4317,17 +4341,19 @@ replacements: []
 			},
 		}
 
-		wbc, err := newWBCFromCommonWBCSettings(app, &kubeClient, settings, nil)
+		ctx := context.Background()
+		wbc, err := newWBCFromSettings(ctx, app, &kubeClient, settings)
 		require.NoError(t, err)
 		wbc.GitClient = gitMock
 		app.Spec.Source.TargetRevision = "HEAD"
 		wbc.GitBranch = ""
 
 		applicationImages := &ApplicationImages{
-			Application: *app,
-			Images:      ImageList{},
+			Application:     *app,
+			Images:          ImageList{},
+			WriteBackConfig: wbc,
 		}
-		err = commitChanges(applicationImages, wbc, nil)
+		err = commitChanges(ctx, applicationImages, nil)
 		assert.Errorf(t, err, "failed to resolve ref")
 	})
 }
