@@ -648,7 +648,7 @@ func setHelmValue(currentValues *yaml.Node, key string, value interface{}) error
 			idStr := matches[2]
 			id, err := strconv.Atoi(idStr)
 			if err != nil {
-				return fmt.Errorf("id \"%s\" in yaml array must match pattern ^(\\D+)\\[(\\d+)\\]$", idStr)
+				return fmt.Errorf("id \"%s\" in yaml array must match pattern ^(.*)\\[(.*)\\]$", idStr)
 			}
 			idPtr = &id
 			key = matches[1]

@@ -2635,7 +2635,7 @@ images:
 		err = setHelmValue(&input, key, value)
 
 		require.Error(t, err)
-		assert.Equal(t, "id \"invalid\" in yaml array must match pattern ^(\\D+)\\[(\\d+)\\]$", err.Error())
+		assert.Equal(t, "id \"invalid\" in yaml array must match pattern ^(.*)\\[(.*)\\]$", err.Error())
 	})
 
 	t.Run("no id for yaml list given", func(t *testing.T) {
@@ -2696,7 +2696,7 @@ image:
 		err = setHelmValue(&input, key, value)
 
 		require.Error(t, err)
-		assert.Equal(t, "id \"invalid\" in yaml array must match pattern ^(\\D+)\\[(\\d+)\\]$", err.Error())
+		assert.Equal(t, "id \"invalid\" in yaml array must match pattern ^(.*)\\[(.*)\\]$", err.Error())
 	})
 }
 

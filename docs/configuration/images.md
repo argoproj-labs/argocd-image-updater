@@ -455,20 +455,20 @@ use the new image.
 
 ```yaml
 foo:
-- name: bar-1
+- name: foo-1
   image: busybox:latest
   command: ['sh', '-c', 'echo "Custom container running"']
-- name: bar-2
+- name: foo-2
   image: nginx:1.19
 ```
 
 *Solution:* Use the index in square brackets of the item that needs to be updated, i.e.
 
 ```yaml
-argocd-image-updater.argoproj.io/fooalias.helm.image-tag: foo[1].image
+argocd-image-updater.argoproj.io/fooalias.helm.image-spec: foo[1].image
 ```
 
-This works also for both annotation `<image_alias>.helm.image-name` and annotation `<image_alias>.helm.image-tag`.
+This works for annotations `<image_alias>.helm.image-name`, `<image_alias>.helm.image-tag` and `<image_alias>.helm.image-spec`.
 
 
 ## Appendix
