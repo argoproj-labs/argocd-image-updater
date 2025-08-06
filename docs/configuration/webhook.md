@@ -74,7 +74,7 @@ To set up a webhook notification, refer to your container registries documentati
 
 For the URL that you set for the webhook, your link should go as the following:
 ```
-https://imageupdater.yourdomain.com/webhook?type=<YOUR_REGISTRY_TYPE>
+https://app1.example.com/webhook?type=<YOUR_REGISTRY_TYPE>
 # Value of `type` for each supported container registry
 # Docker = docker.io
 # GitHub Container Registry = ghcr.io
@@ -115,7 +115,7 @@ Because some container registries do not support secrets, there is a method incl
 
 It can be applied to the URL as below:
 ```
-https://imageupdater.yourdomain.com/webhook?type=<YOUR_REGISTRY_TYPE>&secret=<YOUR_SECRET>
+https://app1.example.com/webhook?type=<YOUR_REGISTRY_TYPE>&secret=<YOUR_SECRET>
 ```
 
 Supported Registries That Use This:
