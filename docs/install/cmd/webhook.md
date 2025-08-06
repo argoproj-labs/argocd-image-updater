@@ -1,12 +1,19 @@
-## Command "run"
+## Command "webhook"
 
 ### Synopsis
 
-`argocd-image-updater run [flags]`
+`argocd-image-updater webhook [flags]`
 
 ### Description
 
-Runs the Argo CD Image Updater, possibly in an endless loop with a set of options. 
+Starts a server that listens for webhook events from container registries. When an event is received, it can trigger an image update check for the affected images.
+
+Supported Registries:
+
+- Docker Hub
+- GitHub Container Registry (GHCR)
+- Quay
+- Harbor
 
 ### Flags
 
@@ -78,22 +85,13 @@ cluster, this flag will prevent Argo CD Image Updater from creating a client
 to interact with Kubernetes. When Kubernetes access is disabled, pull secrets
 for images can only be specified from an environment variable.
 
-**--dry-run**
-
-If this flag is set, Argo CD Image Updater won't actually perform any changes
-to workloads it found in need for upgrade.
-
 **--docker-webhook-secret *secret***
 
 Secret for validating Docker Hub webhooks.
 
-**--enable-webhook *enabled***
-
-Enable webhook server for receiving registry events.
-
 **--ghcr-webhook-secret *secret***
 
-Secret for validating GitHub container registry webhooks.
+Secret for validating GitHub container registry secrets.
 
 **--git-commit-email *email***
 
@@ -131,33 +129,9 @@ Can also be set using the *GIT_COMMIT_USER* environment variable.
 
 Secret for validating Harbor webhooks
 
-**--health-port *port***
-
-Specifies the local port to bind the health server to. The health server is
-used to provide health and readiness probes when running as K8s workload.
-Use value *0* for *port* to disable launching the health server.
-
 **-h, --help**
 
 help for run
-
-**--interval *duration***
-
-Sets the interval for checking whether there are new images available to
-*duration*. *duration* must be given as a valid duration identifier with
-a unit suffix, i.e. `2m` for 2 minutes or `30s` for 30 seconds. If no unit
-is given, milliseconds will be assumed. If set to `0`, ArgoCD Image Updater
-will exit after the first run, effectively disabling the interval. Default
-value is `2m0s`.
-
-Can also be set using the *IMAGE_UPDATER_INTERVAL* environment variable.
-The `--interval` flag takes precedence over the `IMAGE_UPDATER_INTERVAL` environment variable.
-
-The order of precedence for determining the update interval is as follows:
-
-1.  **`--interval` flag:** If the `--interval` command-line flag is provided, its value will be used.
-2.  **`IMAGE_UPDATER_INTERVAL` environment variable:** If the `--interval` flag is not set, the value of the `IMAGE_UPDATER_INTERVAL` environment variable will be used.
-3.  **Default value:** If neither the `--interval` flag nor the `IMAGE_UPDATER_INTERVAL` environment variable is set, the default value will be used.
 
 **--kubeconfig *path***
 
@@ -197,18 +171,9 @@ one pattern, from which at least one has to match.
 Process a maximum of *number* applications concurrently. To disable concurrent
 application processing, specify a number of `1`.
 
-**--metrics-port *port***
-
-port to start the metrics server on, 0 to disable (default 8081)
-
-**--once**
-
-A shortcut for specifying `--interval 0 --health-port 0`. If given,
-Argo CD Image Updater will exit after the first update cycle.
-
 **--quay-webhook-secret *secret***
 
-Secret for validating Quay webhooks.
+Secret for validating Quay webhooks
 
 **--registries-conf-path *path***
 
@@ -217,12 +182,8 @@ Load the registry configuration from file at *path*. Defaults to the path
 default configuration should be used instead, specify the empty string, i.e.
 `--registries-conf-path=""`.
 
-**--warmup-cache**
+**--webhook-port *int***
 
-whether to perform a cache warm-up on startup (default true)
-
-**--webhook-port *port***
-
-Port to listen on for webhook events (default 8082)
+Port to listen on for webhook events (default 8080)
 
 [label selector syntax]: https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/#label-selectors
