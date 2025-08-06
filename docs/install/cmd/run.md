@@ -93,7 +93,7 @@ Enable webhook server for receiving registry events.
 
 **--ghcr-webhook-secret *secret***
 
-Secret for validating GitHub container registryw webhooks.
+Secret for validating GitHub container registry webhooks.
 
 **--git-commit-email *email***
 

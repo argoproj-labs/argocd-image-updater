@@ -33,7 +33,7 @@ If you are running Image Updater within your cluster, to enable the webhook you 
 What you need to edit depends on what command you plan to use. 
 
 If you want to use the webhook with polling through the `run` command you need to edit the `argocd-image-updater-config` ConfigMap with the following data:
-```
+```yaml
 data:
   # enable the webhook server
   webhook.enable: true
@@ -42,7 +42,7 @@ data:
 ```
 
 If you plan to use the webhook command for the server then the `argocd-image-updater` Deployment must be updated. Adjustments to the `argocd-image-updater-config` ConfigMap are optional. 
-```
+```yaml
 # argocd-image-updater Deployment, container args need to be changed to webhook
 spec:
   template:
@@ -86,11 +86,11 @@ https://app1.example.com/webhook?type=<YOUR_REGISTRY_TYPE>
 
 To help secure the webhook server you can apply a secret that is used to validate the incoming notification. The secrets can be set by editing the `argocd-image-updater-secret` secret.
 
-```
+```yaml
 stringData:
   webhook.docker-secret: <YOUR_SECRET>
   webhook.ghcr-secret: <YOUR_SECRET>
-  webhook.harbor-secret: <YOUR SECRET>
+  webhook.harbor-secret: <YOUR_SECRET>
   webhook.quay-secret: <YOUR_SECRET>
 ```
 
@@ -128,6 +128,19 @@ Supported Registries That Use This:
 To expose the webhook server we have provided a service and ingress to get started. These manifests are not applied with `install.yaml` so you will need to apply them yourself. 
 
 They are located in the `manifets/base/networking` directory.
+
+## Environment Variables
+
+The flags for both the `run` and `webhook` CLI commands can also be set via environment variables. Below is the list of which variables correspond to which flag. 
+
+|Environment Variable|Corresponding Flag|
+|--------|--------|
+|`ENABLE_WEBHOOK`|`--enable-webhook`|
+|`WEBHOOK_PORT`|`--webhook-port`|
+|`DOCKER_WEBHOOK_SECRET` |`--docker-webhook-secret`|
+|`GHCR_WEBHOOK_SECRET` |`--gchr-webhook-secret`|
+|`HARBOR_WEBHOOK_SECRET` |`--harbor-webhook-secret`|
+|`QUAY_WEBHOOK_SECRET` |`--quay-webhook-secret`|
 
 ## Adding Support For Other Registries
 
