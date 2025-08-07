@@ -516,7 +516,18 @@ func marshalParamsOverride(app *v1alpha1.Application, originalData []byte) ([]by
 				helmAnnotationParamName, helmAnnotationParamVersion := getHelmParamNamesFromAnnotation(app.Annotations, c)
 
 				if helmAnnotationParamName == "" {
-					return nil, fmt.Errorf("could not find an image-name annotation for image %s", c.ImageName)
+					// allow empty image-name
+					fmt.Sprintf("no image-name annotation found for image %s", c.ImageName)
+				} else {
+					helmParamName := getHelmParam(appSource.Helm.Parameters, helmAnnotationParamName)
+					if helmParamName == nil {
+						return nil, fmt.Errorf("%s parameter not found", helmAnnotationParamName)
+					}
+
+					err = setHelmValue(&helmNewValues, helmAnnotationParamName, helmParamName.Value)
+					if err != nil {
+						return nil, fmt.Errorf("failed to set image parameter name value: %v", err)
+					}
 				}
 				// for image-spec annotation, helmAnnotationParamName holds image-spec annotation value,
 				// and helmAnnotationParamVersion is empty
@@ -535,16 +546,6 @@ func marshalParamsOverride(app *v1alpha1.Application, originalData []byte) ([]by
 					if err != nil {
 						return nil, fmt.Errorf("failed to set image parameter version value: %v", err)
 					}
-				}
-
-				helmParamName := getHelmParam(appSource.Helm.Parameters, helmAnnotationParamName)
-				if helmParamName == nil {
-					return nil, fmt.Errorf("%s parameter not found", helmAnnotationParamName)
-				}
-
-				err = setHelmValue(&helmNewValues, helmAnnotationParamName, helmParamName.Value)
-				if err != nil {
-					return nil, fmt.Errorf("failed to set image parameter name value: %v", err)
 				}
 			}
 
