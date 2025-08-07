@@ -160,16 +160,19 @@ spec:
             configMapKeyRef:
                 name: argocd-image-updater-config
                 key: webhook.ratelimit-num-allowed-requests
+                optional: true
         - name: WEBHOOK_RATELIMIT_WINDOW
           valueFrom:
             configMapKeyRef:
                 name: argocd-image-updater-config
                 key: webhook.ratelimit-window
+                optional: true
         - name: WEBHOOK_RATELIMIT_CLEANUP_INTERVAL
           valueFrom:
             configMapKeyRef:
                 name: argocd-image-updater-config
                 key: webhook.ratelimit-cleanup-interval
+                optional: true
         livenessProbe:
           httpGet:
             path: /healthz

@@ -268,16 +268,19 @@ spec:
             configMapKeyRef:
               key: webhook.ratelimit-num-allowed-requests
               name: argocd-image-updater-config
+              optional: true
         - name: WEBHOOK_RATELIMIT_WINDOW
           valueFrom:
             configMapKeyRef:
               key: webhook.ratelimit-window
               name: argocd-image-updater-config
+              optional: true
         - name: WEBHOOK_RATELIMIT_CLEANUP_INTERVAL
           valueFrom:
             configMapKeyRef:
               key: webhook.ratelimit-cleanup-interval
               name: argocd-image-updater-config
+              optional: true
         image: quay.io/argoprojlabs/argocd-image-updater:latest
         imagePullPolicy: Always
         livenessProbe:
