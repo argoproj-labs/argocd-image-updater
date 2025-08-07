@@ -455,3 +455,37 @@ func TestParseImageList(t *testing.T) {
 		assert.Equal(t, "baz", imgs[0].KustomizeImage.ImageName)
 	})
 }
+
+// TestWebhookServerRateLimit tests to see if the webhook endpoint's rate limiting functionality works
+func TestWebhookServerRateLimit(t *testing.T) {
+	server := createMockServer(t, 8080)
+	limiter := NewRateLimiter(5, 60*time.Second, 30*time.Minute)
+
+	server.RateLimiter = limiter
+
+	// Test with a client that won't get limited
+	req := httptest.NewRequest(http.MethodPost, "/webhook?type=INVALIDREGISTRY", nil)
+	rec := httptest.NewRecorder()
+
+	req.RemoteAddr = "192.168.0.1"
+
+	server.handleWebhook(rec, req)
+
+	res := rec.Result()
+	defer res.Body.Close()
+
+	assert.Equal(t, res.StatusCode, http.StatusBadRequest, "Expected a status code of %d but got %d", http.StatusBadRequest, res.StatusCode)
+
+	req.RemoteAddr = "192.168.0.2"
+	rec2 := httptest.NewRecorder()
+
+	for range 6 {
+		server.handleWebhook(rec, req)
+	}
+	server.handleWebhook(rec2, req)
+
+	res2 := rec2.Result()
+	defer res2.Body.Close()
+
+	assert.Equal(t, res2.StatusCode, http.StatusTooManyRequests, "Expected a status code of %d but got %d", http.StatusTooManyRequests, res2.StatusCode)
+}

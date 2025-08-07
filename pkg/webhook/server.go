@@ -33,16 +33,19 @@ type WebhookServer struct {
 	mutex sync.Mutex
 	// mutex for concurrent repo access
 	syncState *argocd.SyncIterationState
+	// rate limiter to limit requests in an interval
+	RateLimiter *RateLimiter
 }
 
 // NewWebhookServer creates a new webhook server
 func NewWebhookServer(port int, handler *WebhookHandler, kubeClient *kube.ImageUpdaterKubernetesClient, argoClient argocd.ArgoCD) *WebhookServer {
 	return &WebhookServer{
-		Port:       port,
-		Handler:    handler,
-		KubeClient: kubeClient,
-		ArgoClient: argoClient,
-		syncState:  argocd.NewSyncIterationState(),
+		Port:        port,
+		Handler:     handler,
+		KubeClient:  kubeClient,
+		ArgoClient:  argoClient,
+		syncState:   argocd.NewSyncIterationState(),
+		RateLimiter: nil,
 	}
 }
 
@@ -81,6 +84,14 @@ func (s *WebhookServer) handleHealth(w http.ResponseWriter, r *http.Request) {
 func (s *WebhookServer) handleWebhook(w http.ResponseWriter, r *http.Request) {
 	logCtx := log.WithContext().AddField("remote", r.RemoteAddr)
 	logCtx.Debugf("Received webhook request from %s", r.RemoteAddr)
+
+	if s.RateLimiter != nil {
+		if allow := s.RateLimiter.Allow(r.RemoteAddr); !allow {
+			logCtx.Warnf("Client %s was rate limited", r.RemoteAddr)
+			http.Error(w, "Too many requests", http.StatusTooManyRequests)
+			return
+		}
+	}
 
 	event, err := s.Handler.ProcessWebhook(r)
 	if err != nil {

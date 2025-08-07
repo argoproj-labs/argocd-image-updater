@@ -216,6 +216,11 @@ func newRunCommand() *cobra.Command {
 				log.Infof("Starting webhook server on port %d", webhookCfg.Port)
 				webhookServer = webhook.NewWebhookServer(webhookCfg.Port, handler, cfg.KubeClient, argoClient)
 
+				if webhookCfg.RateLimitEnabled {
+					limiter := webhook.NewRateLimiter(webhookCfg.RateLimitNumAllowedRequests, webhookCfg.RateLimitWindow, webhookCfg.RateLimitCleanUpInterval)
+					webhookServer.RateLimiter = limiter
+				}
+
 				// Set updater config
 				webhookServer.UpdaterConfig = &argocd.UpdateConfiguration{
 					NewRegFN:               registry.NewClient,
@@ -270,6 +275,9 @@ func newRunCommand() *cobra.Command {
 					if webhookServer != nil {
 						if err := webhookServer.Stop(); err != nil {
 							log.Errorf("Error stopping webhook server: %v", err)
+						}
+						if webhookCfg.RateLimitEnabled {
+							webhookServer.RateLimiter.StopCleanUp()
 						}
 					}
 					return nil
@@ -337,6 +345,10 @@ func newRunCommand() *cobra.Command {
 	runCmd.Flags().StringVar(&webhookCfg.GHCRSecret, "ghcr-webhook-secret", env.GetStringVal("GHCR_WEBHOOK_SECRET", ""), "Secret for validating GitHub Container Registry webhooks")
 	runCmd.Flags().StringVar(&webhookCfg.QuaySecret, "quay-webhook-secret", env.GetStringVal("QUAY_WEBHOOK_SECRET", ""), "Secret for validating Quay webhooks")
 	runCmd.Flags().StringVar(&webhookCfg.HarborSecret, "harbor-webhook-secret", env.GetStringVal("HARBOR_WEBHOOK_SECRET", ""), "Secret for validating Harbor webhooks")
+	runCmd.Flags().BoolVar(&webhookCfg.RateLimitEnabled, "enable-webhook-ratelimit", false, "Enable rate limiting for the webhook endpoint")
+	runCmd.Flags().IntVar(&webhookCfg.RateLimitNumAllowedRequests, "webhook-ratelimit-num-allowed", 100, "The number of allowed requests in a window for webhook rate limiting")
+	runCmd.Flags().DurationVar(&webhookCfg.RateLimitWindow, "webhook-ratelimit-window", 2*time.Minute, "The duration for the window for the webhook rate limiting")
+	runCmd.Flags().DurationVar(&webhookCfg.RateLimitCleanUpInterval, "webhook-ratelimit-cleanup-interval", 1*time.Hour, "How often the rate limiter cleans up stale clients")
 
 	return runCmd
 }

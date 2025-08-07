@@ -10,6 +10,7 @@ import (
 	"strings"
 	"syscall"
 	"text/template"
+	"time"
 
 	"github.com/argoproj-labs/argocd-image-updater/pkg/argocd"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
@@ -26,11 +27,15 @@ import (
 
 // WebhookConfig holds the options for the webhook server
 type WebhookConfig struct {
-	Port         int
-	DockerSecret string
-	GHCRSecret   string
-	QuaySecret   string
-	HarborSecret string
+	Port                        int
+	DockerSecret                string
+	GHCRSecret                  string
+	QuaySecret                  string
+	HarborSecret                string
+	RateLimitEnabled            bool
+	RateLimitNumAllowedRequests int
+	RateLimitWindow             time.Duration
+	RateLimitCleanUpInterval    time.Duration
 }
 
 // NewWebhookCommand creates a new webhook command
@@ -190,6 +195,10 @@ Supported registries:
 	webhookCmd.Flags().StringVar(&webhookCfg.GHCRSecret, "ghcr-webhook-secret", env.GetStringVal("GHCR_WEBHOOK_SECRET", ""), "Secret for validating GitHub Container Registry webhooks")
 	webhookCmd.Flags().StringVar(&webhookCfg.QuaySecret, "quay-webhook-secret", env.GetStringVal("QUAY_WEBHOOK_SECRET", ""), "Secret for validating Quay webhooks")
 	webhookCmd.Flags().StringVar(&webhookCfg.HarborSecret, "harbor-webhook-secret", env.GetStringVal("HARBOR_WEBHOOK_SECRET", ""), "Secret for validating Harbor webhooks")
+	webhookCmd.Flags().BoolVar(&webhookCfg.RateLimitEnabled, "enable-webhook-ratelimit", false, "Enable rate limiting for the webhook endpoint")
+	webhookCmd.Flags().IntVar(&webhookCfg.RateLimitNumAllowedRequests, "webhook-ratelimit-num-allowed", 100, "The number of allowed requests in a window for webhook rate limiting")
+	webhookCmd.Flags().DurationVar(&webhookCfg.RateLimitWindow, "webhook-ratelimit-window", 2*time.Minute, "The duration for the window for the webhook rate limiting")
+	webhookCmd.Flags().DurationVar(&webhookCfg.RateLimitCleanUpInterval, "webhook-ratelimit-cleanup-interval", 1*time.Hour, "How often the rate limiter cleans up stale clients")
 
 	return webhookCmd
 }
@@ -238,6 +247,11 @@ func runWebhook(cfg *ImageUpdaterConfig, webhookCfg *WebhookConfig) error {
 	// Create webhook server
 	server := webhook.NewWebhookServer(webhookCfg.Port, handler, cfg.KubeClient, cfg.ArgoClient)
 
+	if webhookCfg.RateLimitEnabled {
+		limiter := webhook.NewRateLimiter(webhookCfg.RateLimitNumAllowedRequests, webhookCfg.RateLimitWindow, webhookCfg.RateLimitCleanUpInterval)
+		server.RateLimiter = limiter
+	}
+
 	// Set updater config
 	server.UpdaterConfig = &argocd.UpdateConfiguration{
 		NewRegFN:               registry.NewClient,
@@ -273,5 +287,10 @@ func runWebhook(cfg *ImageUpdaterConfig, webhookCfg *WebhookConfig) error {
 	if err := server.Stop(); err != nil {
 		log.Errorf("Error stopping webhook server: %v", err)
 	}
+
+	if webhookCfg.RateLimitEnabled {
+		server.RateLimiter.StopCleanUp()
+	}
+
 	return nil
 }
