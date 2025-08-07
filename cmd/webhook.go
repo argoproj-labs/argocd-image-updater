@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"os/signal"
 	"strconv"
@@ -195,10 +196,10 @@ Supported registries:
 	webhookCmd.Flags().StringVar(&webhookCfg.GHCRSecret, "ghcr-webhook-secret", env.GetStringVal("GHCR_WEBHOOK_SECRET", ""), "Secret for validating GitHub Container Registry webhooks")
 	webhookCmd.Flags().StringVar(&webhookCfg.QuaySecret, "quay-webhook-secret", env.GetStringVal("QUAY_WEBHOOK_SECRET", ""), "Secret for validating Quay webhooks")
 	webhookCmd.Flags().StringVar(&webhookCfg.HarborSecret, "harbor-webhook-secret", env.GetStringVal("HARBOR_WEBHOOK_SECRET", ""), "Secret for validating Harbor webhooks")
-	webhookCmd.Flags().BoolVar(&webhookCfg.RateLimitEnabled, "enable-webhook-ratelimit", false, "Enable rate limiting for the webhook endpoint")
-	webhookCmd.Flags().IntVar(&webhookCfg.RateLimitNumAllowedRequests, "webhook-ratelimit-num-allowed", 100, "The number of allowed requests in a window for webhook rate limiting")
-	webhookCmd.Flags().DurationVar(&webhookCfg.RateLimitWindow, "webhook-ratelimit-window", 2*time.Minute, "The duration for the window for the webhook rate limiting")
-	webhookCmd.Flags().DurationVar(&webhookCfg.RateLimitCleanUpInterval, "webhook-ratelimit-cleanup-interval", 1*time.Hour, "How often the rate limiter cleans up stale clients")
+	webhookCmd.Flags().BoolVar(&webhookCfg.RateLimitEnabled, "enable-webhook-ratelimit", env.GetBoolVal("ENABLE_WEBHOOK_RATELIMIT", false), "Enable rate limiting for the webhook endpoint")
+	webhookCmd.Flags().IntVar(&webhookCfg.RateLimitNumAllowedRequests, "webhook-ratelimit-num-allowed", env.ParseNumFromEnv("WEBHOOK_RATELIMIT_NUM_ALLOWED_REQUESTS", 100, 0, math.MaxInt), "The number of allowed requests in a window for webhook rate limiting")
+	webhookCmd.Flags().DurationVar(&webhookCfg.RateLimitWindow, "webhook-ratelimit-window", env.GetDurationVal("WEBHOOK_RATELIMIT_WINDOW", 2*time.Minute), "The duration for the window for the webhook rate limiting")
+	webhookCmd.Flags().DurationVar(&webhookCfg.RateLimitCleanUpInterval, "webhook-ratelimit-cleanup-interval", env.GetDurationVal("WEBHOOK_RATELIMIT_CLEANUP_INTERVAL", 1*time.Hour), "How often the rate limiter cleans up stale clients")
 
 	return webhookCmd
 }

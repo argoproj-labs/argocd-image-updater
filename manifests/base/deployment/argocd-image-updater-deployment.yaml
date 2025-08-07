@@ -149,6 +149,27 @@ spec:
                 name: argocd-image-updater-secret
                 key: webhook.harbor-secret
                 optional: true
+        - name: ENABLE_WEBHOOK_RATELIMIT
+          valueFrom:
+            configMapKeyRef:
+                name: argocd-image-updater-config
+                key: webhook.enable-rate-limit
+                optional: true
+        - name: WEBHOOK_RATELIMIT_NUM_ALLOWED_REQUESTS
+          valueFrom:
+            configMapKeyRef:
+                name: argocd-image-updater-config
+                key: webhook.ratelimit-num-allowed-requests
+        - name: WEBHOOK_RATELIMIT_WINDOW
+          valueFrom:
+            configMapKeyRef:
+                name: argocd-image-updater-config
+                key: webhook.ratelimit-window
+        - name: WEBHOOK_RATELIMIT_CLEANUP_INTERVAL
+          valueFrom:
+            configMapKeyRef:
+                name: argocd-image-updater-config
+                key: webhook.ratelimit-cleanup-interval
         livenessProbe:
           httpGet:
             path: /healthz
