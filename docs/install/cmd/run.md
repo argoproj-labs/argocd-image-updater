@@ -87,17 +87,25 @@ to workloads it found in need for upgrade.
 
 Secret for validating Docker Hub webhooks.
 
+Can also be set with the `DOCKER_WEBHOOK_SECRET` environment variable.
+
 **--enable-webhook *enabled***
 
 Enable webhook server for receiving registry events.
+
+Can also be set with the `ENABLE_WEBHOOK` environment variable.
 
 **--enable-webhook-ratelimit *enabled***
 
 Enable rate limiting for the webhook endpoint
 
+Can also be set with the `ENABLE_WEBHOOK_RATELIMIT` environment variable.
+
 **--ghcr-webhook-secret *secret***
 
 Secret for validating GitHub container registry webhooks.
+
+Can also be set with the `GHCR_WEBHOOK_SECRET` environment variable.
 
 **--git-commit-email *email***
 
@@ -134,6 +142,8 @@ Can also be set using the *GIT_COMMIT_USER* environment variable.
 **--harbor-webhook-secret *secret***
 
 Secret for validating Harbor webhooks
+
+Can also be set with the `HARBOR_WEBHOOK_SECRET` environment variable.
 
 **--health-port *port***
 
@@ -214,6 +224,8 @@ Argo CD Image Updater will exit after the first update cycle.
 
 Secret for validating Quay webhooks.
 
+Can also be set with the `QUAY_WEBHOOK_SECRET` environment variable.
+
 **--registries-conf-path *path***
 
 Load the registry configuration from file at *path*. Defaults to the path
@@ -229,17 +241,24 @@ whether to perform a cache warm-up on startup (default true)
 
 Port to listen on for webhook events (default 8082)
 
+Can also be set with the `WEBHOOK_PORT` environment variable.
+
 **--webhook-ratelimit-cleanup-interval *duration***
 
 How often the rate limiter cleans up stale clients (default 1h0m0s)
+
+Can also be set with the `WEBHOOK_RATELIMIT_CLEANUP_INTERVAL` environment variable.
 
 **--webhook-ratelimit-num-allowed *numRequests***
 
 The number of allowed requests in a window for webhook rate limiting (default 100)
 
+Can also be set with the `WEBHOOK_RATELIMIT_ALLOWED` environment variable.
+
 **--webhook-ratelimit-window *duration***
 
 The duration for the window for the webhook rate limiting (default 2m0s)
 
+Can also be set with the `WEBHOOK_RATELIMIT_WINDOW` environment variable.
 
 [label selector syntax]: https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/#label-selectors

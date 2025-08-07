@@ -7,12 +7,23 @@ import (
 
 // RateLimiter implements a sliding window rate limiting algorithm
 type RateLimiter struct {
-	mu       sync.Mutex
-	clients  map[string][]int64
+	// mutex for concurrent writing to data
+	mu sync.Mutex
+	// A map of clients and the timestamps of their requests
+	// The key will be an IP address of the client different ports
+	// count as a different client
+	clients map[string][]int64
+	// A map of clients and the timestamp when they were last seen
+	// Used for clean up.
 	lastSeen map[string]time.Time
-	window   time.Duration
-	allowed  int
-	done     chan bool
+	// The window of time checked from the time the request was made
+	// Example: If request was made at 12:05 and the window is 5m then
+	// then requests between 12:00 - 12:05 will count towards total
+	window time.Duration
+	// How many requests are allowed in a window
+	allowed int
+	// A channel used to cancel the clean up go routine
+	done chan bool
 }
 
 func NewRateLimiter(numRequests int, window time.Duration, cleanUpInterval time.Duration) *RateLimiter {
@@ -40,9 +51,10 @@ func (rl *RateLimiter) Allow(clientIP string) bool {
 	allow := false
 	windowStart := now.Unix() - int64(rl.window.Seconds())
 	filtered := []int64{}
-	for _, ts := range rl.clients[clientIP] {
+	for i, ts := range rl.clients[clientIP] {
 		if ts > windowStart {
-			filtered = append(filtered, ts)
+			filtered = rl.clients[clientIP][i:]
+			break
 		}
 	}
 	rl.clients[clientIP] = filtered

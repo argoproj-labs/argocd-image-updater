@@ -192,7 +192,7 @@ environment variables. Below is the list of which variables correspond to which 
 |`HARBOR_WEBHOOK_SECRET` |`--harbor-webhook-secret`|
 |`QUAY_WEBHOOK_SECRET` |`--quay-webhook-secret`|
 |`ENABLE_WEBHOOK_RATELIMIT`|`--enable-webhook-ratelimit`|
-|`WEBHOOK_RATELIMIT_NUM_ALLOWED_REQUESTS`|`--webhook-ratelimit-num-allowed`|
+|`WEBHOOK_RATELIMIT_ALLOWED_`|`--webhook-ratelimit-allowed`|
 |`WEBHOOK_RATELIMIT_WINDOW`|`--webhook-ratelimit-window`|
 |`WEBHOOK_RATELIMIT_CLEANUP_INTERVAL`|`--webhook-ratelimit-cleanup-interval`|
 

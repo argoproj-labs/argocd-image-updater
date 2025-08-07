@@ -201,6 +201,20 @@ func TestRateLimiterAllowMultipleClients(t *testing.T) {
 			numRequests: 5,
 			window:      2 * time.Second,
 		},
+		{
+			name: "Multiple clients with same IP and different port",
+			clients: []struct {
+				IP         string
+				sendAmount int
+				allowed    bool
+			}{
+				{IP: "127.0.0.1:3000", sendAmount: 2, allowed: true},
+				{IP: "127.0.0.1:6443", sendAmount: 10, allowed: false},
+				{IP: "127.0.0.1:8080", sendAmount: 5, allowed: true},
+			},
+			numRequests: 5,
+			window:      2 * time.Second,
+		},
 	}
 
 	for _, tt := range tests {
