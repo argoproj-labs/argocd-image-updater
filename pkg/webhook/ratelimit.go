@@ -15,12 +15,12 @@ type RateLimiter struct {
 	done     chan bool
 }
 
-func NewRateLimiter(numRequets int, window time.Duration, cleanUpInterval time.Duration) *RateLimiter {
+func NewRateLimiter(numRequests int, window time.Duration, cleanUpInterval time.Duration) *RateLimiter {
 	limiter := RateLimiter{
 		clients:  make(map[string][]int64),
 		lastSeen: make(map[string]time.Time),
 		window:   window,
-		allowed:  numRequets,
+		allowed:  numRequests,
 		done:     make(chan bool),
 	}
 	go limiter.StartCleanUp(cleanUpInterval)
