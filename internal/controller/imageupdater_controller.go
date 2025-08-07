@@ -164,7 +164,7 @@ func (r *ImageUpdaterReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, err
 	}
 
-	reqLogger.Debugf("Reconciliation logic placeholder: will requeue after interval %s", r.Config.CheckInterval.String())
+	reqLogger.Debugf("Reconciliation will requeue after interval %s", r.Config.CheckInterval.String())
 	return ctrl.Result{RequeueAfter: r.Config.CheckInterval}, nil
 }
 

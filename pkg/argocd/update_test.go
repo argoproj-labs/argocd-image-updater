@@ -1687,11 +1687,15 @@ image.name: nginx
 image.tag: v0.0.0
 replicas: 1
 `)
+		im := NewImage(
+			image.NewFromIdentifier("nginx"))
+		im.HelmImageName = "image.name"
+		im.HelmImageTag = "image.tag"
 		applicationImages := &ApplicationImages{
 			Application: app,
-			Images: ImageList{
-				NewImage(
-					image.NewFromIdentifier("nginx")),
+			Images:      ImageList{im},
+			WriteBackConfig: &WriteBackConfig{
+				Target: "helmvalues:./test-values.yaml",
 			},
 		}
 
@@ -1745,11 +1749,14 @@ replicas: 1
 image.spec.foo: nginx:v0.0.0
 replicas: 1
 `)
+		im := NewImage(
+			image.NewFromIdentifier("nginx"))
+		im.HelmImageSpec = "image.spec.foo"
 		applicationImages := &ApplicationImages{
 			Application: app,
-			Images: ImageList{
-				NewImage(
-					image.NewFromIdentifier("nginx")),
+			Images:      ImageList{im},
+			WriteBackConfig: &WriteBackConfig{
+				Target: "helmvalues:./test-values.yaml",
 			},
 		}
 
@@ -1856,13 +1863,19 @@ redis.image.name: redis
 redis.image.tag: v0.0.0
 replicas: 1
 `)
+		imNginx := NewImage(
+			image.NewFromIdentifier("nginx=nginx"))
+		imNginx.HelmImageName = "nginx.image.name"
+		imNginx.HelmImageTag = "nginx.image.tag"
+		imRedis := NewImage(
+			image.NewFromIdentifier("redis=redis"))
+		imRedis.HelmImageName = "redis.image.name"
+		imRedis.HelmImageTag = "redis.image.tag"
 		applicationImages := &ApplicationImages{
 			Application: app,
-			Images: ImageList{
-				NewImage(
-					image.NewFromIdentifier("nginx=nginx")),
-				NewImage(
-					image.NewFromIdentifier("redis=redis")),
+			Images:      ImageList{imNginx, imRedis},
+			WriteBackConfig: &WriteBackConfig{
+				Target: "helmvalues:./test-values.yaml",
 			},
 		}
 
@@ -1988,15 +2001,23 @@ bbb.image.name: nginx
 bbb.image.tag: v0.0.0
 replicas: 1
 `)
+		imFoo := NewImage(
+			image.NewFromIdentifier("foo=nginx"))
+		imFoo.HelmImageName = "foo.image.name"
+		imFoo.HelmImageTag = "foo.image.tag"
+		imBar := NewImage(
+			image.NewFromIdentifier("bar=nginx"))
+		imBar.HelmImageName = "bar.image.name"
+		imBar.HelmImageTag = "bar.image.tag"
+		imBbb := NewImage(
+			image.NewFromIdentifier("bbb=nginx"))
+		imBbb.HelmImageName = "bbb.image.name"
+		imBbb.HelmImageTag = "bbb.image.tag"
 		applicationImages := &ApplicationImages{
 			Application: app,
-			Images: ImageList{
-				NewImage(
-					image.NewFromIdentifier("foo=nginx")),
-				NewImage(
-					image.NewFromIdentifier("bar=nginx")),
-				NewImage(
-					image.NewFromIdentifier("bbb=nginx")),
+			Images:      ImageList{imFoo, imBar, imBbb},
+			WriteBackConfig: &WriteBackConfig{
+				Target: "helmvalues:./test-values.yaml",
 			},
 		}
 
@@ -2063,11 +2084,15 @@ image:
 replicas: 1
 `)
 
+		im := NewImage(
+			image.NewFromIdentifier("nginx"))
+		im.HelmImageName = "image.name"
+		im.HelmImageTag = "image.tag"
 		applicationImages := &ApplicationImages{
 			Application: app,
-			Images: ImageList{
-				NewImage(
-					image.NewFromIdentifier("nginx")),
+			Images:      ImageList{im},
+			WriteBackConfig: &WriteBackConfig{
+				Target: "helmvalues:./test-values.yaml",
 			},
 		}
 
@@ -2131,11 +2156,15 @@ image:
 replicas: 1
 `)
 
+		im := NewImage(
+			image.NewFromIdentifier("nginx"))
+		im.HelmImageName = "image.name"
+		im.HelmImageTag = "image.tag"
 		applicationImages := &ApplicationImages{
 			Application: app,
-			Images: ImageList{
-				NewImage(
-					image.NewFromIdentifier("nginx")),
+			Images:      ImageList{im},
+			WriteBackConfig: &WriteBackConfig{
+				Target: "helmvalues:./test-values.yaml",
 			},
 		}
 
@@ -2188,17 +2217,20 @@ replicas: 1
 		}
 
 		originalData := []byte(`random: yaml`)
+		im := NewImage(
+			image.NewFromIdentifier("nginx"))
+		im.HelmImageName = "image.name"
 		applicationImages := &ApplicationImages{
 			Application: app,
-			Images: ImageList{
-				NewImage(
-					image.NewFromIdentifier("nginx")),
+			Images:      ImageList{im},
+			WriteBackConfig: &WriteBackConfig{
+				Target: "helmvalues:./test-values.yaml",
 			},
 		}
 
 		_, err := marshalParamsOverride(context.Background(), applicationImages, originalData)
 		assert.Error(t, err)
-		assert.Equal(t, "could not find an image-tag annotation for image nginx", err.Error())
+		assert.Equal(t, "could not find an image-tag for image nginx", err.Error())
 	})
 
 	t.Run("Missing annotation image-name for helmvalues write-back-target", func(t *testing.T) {
@@ -2243,17 +2275,20 @@ replicas: 1
 		}
 
 		originalData := []byte(`random: yaml`)
+		im := NewImage(
+			image.NewFromIdentifier("nginx"))
+		im.HelmImageTag = "image.tag"
 		applicationImages := &ApplicationImages{
 			Application: app,
-			Images: ImageList{
-				NewImage(
-					image.NewFromIdentifier("nginx")),
+			Images:      ImageList{im},
+			WriteBackConfig: &WriteBackConfig{
+				Target: "helmvalues:./test-values.yaml",
 			},
 		}
 
 		_, err := marshalParamsOverride(context.Background(), applicationImages, originalData)
 		assert.Error(t, err)
-		assert.Equal(t, "could not find an image-name annotation for image nginx", err.Error())
+		assert.Equal(t, "could not find an image-name for image nginx", err.Error())
 	})
 
 	t.Run("Image-name annotation value not found in Helm source parameters list", func(t *testing.T) {
@@ -2299,11 +2334,15 @@ replicas: 1
 		}
 
 		originalData := []byte(`random: yaml`)
+		im := NewImage(
+			image.NewFromIdentifier("nginx"))
+		im.HelmImageName = "wrongimage.name"
+		im.HelmImageTag = "image.tag"
 		applicationImages := &ApplicationImages{
 			Application: app,
-			Images: ImageList{
-				NewImage(
-					image.NewFromIdentifier("nginx")),
+			Images:      ImageList{im},
+			WriteBackConfig: &WriteBackConfig{
+				Target: "helmvalues:./test-values.yaml",
 			},
 		}
 
@@ -2354,11 +2393,15 @@ replicas: 1
 		}
 
 		originalData := []byte(`random: yaml`)
+		im := NewImage(
+			image.NewFromIdentifier("nginx"))
+		im.HelmImageName = "image.name"
+		im.HelmImageTag = "wrongimage.tag"
 		applicationImages := &ApplicationImages{
 			Application: app,
-			Images: ImageList{
-				NewImage(
-					image.NewFromIdentifier("nginx")),
+			Images:      ImageList{im},
+			WriteBackConfig: &WriteBackConfig{
+				Target: "helmvalues:./test-values.yaml",
 			},
 		}
 
@@ -2410,11 +2453,16 @@ replicas: 1
 		}
 
 		originalData := []byte(`random content`)
+		im := NewImage(
+			image.NewFromIdentifier("nginx"))
+		im.HelmImageName = "image.name"
+		im.HelmImageTag = "image.tag"
 		applicationImages := &ApplicationImages{
 			Application: app,
-			Images: ImageList{
-				NewImage(
-					image.NewFromIdentifier("nginx")),
+			Images:      ImageList{im},
+			WriteBackConfig: &WriteBackConfig{
+				Method: WriteBackGit,
+				Target: "helmvalues:./test-values.yaml",
 			},
 		}
 

@@ -49,7 +49,7 @@ func (r *ImageUpdaterReconciler) RunImageUpdater(ctx context.Context, cr *iuapi.
 	metrics.Applications().SetNumberOfApplications(len(appList))
 
 	if !warmUp {
-		baseLogger.Infof("Starting image update cycle, considering %d annotated application(s) for update", len(appList))
+		baseLogger.Infof("Starting image update cycle, considering %d application(s) for update", len(appList))
 	}
 
 	syncState := argocd.NewSyncIterationState()
