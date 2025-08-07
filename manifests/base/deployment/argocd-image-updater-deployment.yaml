@@ -155,11 +155,11 @@ spec:
                 name: argocd-image-updater-config
                 key: webhook.enable-rate-limit
                 optional: true
-        - name: WEBHOOK_RATELIMIT_NUM_ALLOWED_REQUESTS
+        - name: WEBHOOK_RATELIMIT_ALLOWED
           valueFrom:
             configMapKeyRef:
                 name: argocd-image-updater-config
-                key: webhook.ratelimit-num-allowed-requests
+                key: webhook.ratelimit-allowed
                 optional: true
         - name: WEBHOOK_RATELIMIT_WINDOW
           valueFrom:

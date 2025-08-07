@@ -249,7 +249,7 @@ How often the rate limiter cleans up stale clients (default 1h0m0s)
 
 Can also be set with the `WEBHOOK_RATELIMIT_CLEANUP_INTERVAL` environment variable.
 
-**--webhook-ratelimit-num-allowed *numRequests***
+**--webhook-ratelimit-allowed *numRequests***
 
 The number of allowed requests in a window for webhook rate limiting (default 100)
 

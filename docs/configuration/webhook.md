@@ -171,7 +171,7 @@ data:
   # Enable rate limiting for the webhook endpoint
   webhook.enable-rate-limit: true
   # Set the amount of requests that can be made in a window before getting limited
-  webhook.ratelimit-num-allowed-requests: <SOME_NUMBER>
+  webhook.ratelimit-allowed: <SOME_NUMBER>
   # Set the window of time checked
   webhook.ratelimit-window: <SOME_DURATION>
   # Set the interval for when clean ups occur
@@ -192,7 +192,7 @@ environment variables. Below is the list of which variables correspond to which 
 |`HARBOR_WEBHOOK_SECRET` |`--harbor-webhook-secret`|
 |`QUAY_WEBHOOK_SECRET` |`--quay-webhook-secret`|
 |`ENABLE_WEBHOOK_RATELIMIT`|`--enable-webhook-ratelimit`|
-|`WEBHOOK_RATELIMIT_ALLOWED_`|`--webhook-ratelimit-allowed`|
+|`WEBHOOK_RATELIMIT_ALLOWED`|`--webhook-ratelimit-allowed`|
 |`WEBHOOK_RATELIMIT_WINDOW`|`--webhook-ratelimit-window`|
 |`WEBHOOK_RATELIMIT_CLEANUP_INTERVAL`|`--webhook-ratelimit-cleanup-interval`|
 
