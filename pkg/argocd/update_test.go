@@ -1977,7 +1977,7 @@ replicas: 1
 		assert.Equal(t, "could not find an image-tag annotation for image nginx", err.Error())
 	})
 
-	t.Run("Missing annotation image-name for helmvalues write-back-target", func(t *testing.T) {
+	t.Run("Allow empty annotation image-name for helmvalues write-back-target", func(t *testing.T) {
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
 				Name: "testapp",
@@ -2020,8 +2020,7 @@ replicas: 1
 
 		originalData := []byte(`random: yaml`)
 		_, err := marshalParamsOverride(&app, originalData)
-		assert.Error(t, err)
-		assert.Equal(t, "could not find an image-name annotation for image nginx", err.Error())
+		assert.NoError(t, err)
 	})
 
 	t.Run("Image-name annotation value not found in Helm source parameters list", func(t *testing.T) {
