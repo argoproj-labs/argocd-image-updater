@@ -485,6 +485,11 @@ func marshalParamsOverride(app *v1alpha1.Application, originalData []byte) ([]by
 		if strings.HasPrefix(app.Annotations[common.WriteBackTargetAnnotation], common.HelmPrefix) {
 			images := GetImagesAndAliasesFromApplication(app)
 
+			if originalData == nil {
+				// allow non-exists target file
+				originalData = []byte(`{}`)
+			}
+
 			helmNewValues := yaml.Node{}
 			err = yaml.Unmarshal(originalData, &helmNewValues)
 			if err != nil {
