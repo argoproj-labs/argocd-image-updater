@@ -155,6 +155,29 @@ to apply them yourself.
 
 They are located in the `manifets/base/networking` directory.
 
+## Enabling Rate Limiting
+
+To prevent the endpoint from being overwhelmed with requests which could cause
+updates to run over and over, rate limiting can be turned on for the `/webhook`
+endpoint to prevent this from happening. The rate limiting occurs when the client
+goes over the amount of requests in the given window from when they make the request.
+
+The window and amount of requests are configurable and can be set through editing
+the `argocd-image-updater-config` ConfigMap. There is also an interval that can be
+set to clean up the storage to remove clients that might not have sent notifications
+in awhile. 
+```yaml
+data:
+  # Enable rate limiting for the webhook endpoint
+  webhook.enable-rate-limit: true
+  # Set the amount of requests that can be made in a window before getting limited
+  webhook.ratelimit-num-allowed-requests: <SOME_NUMBER>
+  # Set the window of time checked
+  webhook.ratelimit-window: <SOME_DURATION>
+  # Set the interval for when clean ups occur
+  webhook.ratelimit-cleanup-interval: <SOME_DURATION> 
+```
+
 ## Environment Variables
 
 The flags for both the `run` and `webhook` CLI commands can also be set via 
@@ -168,6 +191,10 @@ environment variables. Below is the list of which variables correspond to which 
 |`GHCR_WEBHOOK_SECRET` |`--gchr-webhook-secret`|
 |`HARBOR_WEBHOOK_SECRET` |`--harbor-webhook-secret`|
 |`QUAY_WEBHOOK_SECRET` |`--quay-webhook-secret`|
+|`ENABLE_WEBHOOK_RATELIMIT`|`--enable-webhook-ratelimit`|
+|`WEBHOOK_RATELIMIT_NUM_ALLOWED_REQUESTS`|`--webhook-ratelimit-num-allowed`|
+|`WEBHOOK_RATELIMIT_WINDOW`|`--webhook-ratelimit-window`|
+|`WEBHOOK_RATELIMIT_CLEANUP_INTERVAL`|`--webhook-ratelimit-cleanup-interval`|
 
 ## Adding Support For Other Registries
 

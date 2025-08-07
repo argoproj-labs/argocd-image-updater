@@ -89,6 +89,11 @@ for images can only be specified from an environment variable.
 
 Secret for validating Docker Hub webhooks.
 
+
+**--enable-webhook-ratelimit *enabled***
+
+Enable rate limiting for the webhook endpoint
+
 **--ghcr-webhook-secret *secret***
 
 Secret for validating GitHub container registry secrets.
@@ -185,5 +190,17 @@ default configuration should be used instead, specify the empty string, i.e.
 **--webhook-port *int***
 
 Port to listen on for webhook events (default 8080)
+
+**--webhook-ratelimit-cleanup-interval *duration***
+
+How often the rate limiter cleans up stale clients (default 1h0m0s)
+
+**--webhook-ratelimit-num-allowed *numRequests***
+
+The number of allowed requests in a window for webhook rate limiting (default 100)
+
+**--webhook-ratelimit-window *duration***
+
+The duration for the window for the webhook rate limiting (default 2m0s)
 
 [label selector syntax]: https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/#label-selectors

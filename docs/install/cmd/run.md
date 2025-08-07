@@ -91,6 +91,10 @@ Secret for validating Docker Hub webhooks.
 
 Enable webhook server for receiving registry events.
 
+**--enable-webhook-ratelimit *enabled***
+
+Enable rate limiting for the webhook endpoint
+
 **--ghcr-webhook-secret *secret***
 
 Secret for validating GitHub container registry webhooks.
@@ -224,5 +228,18 @@ whether to perform a cache warm-up on startup (default true)
 **--webhook-port *port***
 
 Port to listen on for webhook events (default 8082)
+
+**--webhook-ratelimit-cleanup-interval *duration***
+
+How often the rate limiter cleans up stale clients (default 1h0m0s)
+
+**--webhook-ratelimit-num-allowed *numRequests***
+
+The number of allowed requests in a window for webhook rate limiting (default 100)
+
+**--webhook-ratelimit-window *duration***
+
+The duration for the window for the webhook rate limiting (default 2m0s)
+
 
 [label selector syntax]: https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/#label-selectors
