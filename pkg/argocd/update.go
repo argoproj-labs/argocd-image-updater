@@ -65,7 +65,7 @@ const (
 
 const defaultIndent = 2
 
-// regular expression for searching for an element in a yaml array
+// listElementPattern is a regular expression for searching for an element in a yaml array
 const listElementPattern = `^(.*)\[(.*)\]$`
 
 var re = regexp.MustCompile(listElementPattern)
