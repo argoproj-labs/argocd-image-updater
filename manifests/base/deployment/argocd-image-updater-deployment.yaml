@@ -149,6 +149,12 @@ spec:
                 name: argocd-image-updater-secret
                 key: webhook.harbor-secret
                 optional: true
+        - name: WEBHOOK_RATELIMIT_ALLOWED
+          valueFrom:
+            configMapKeyRef:
+                name: argocd-image-updater-config
+                key: webhook.ratelimit-allowed
+                optional: true
         livenessProbe:
           httpGet:
             path: /healthz

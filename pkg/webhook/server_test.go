@@ -13,6 +13,7 @@ import (
 	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"go.uber.org/ratelimit"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/argoproj-labs/argocd-image-updater/pkg/argocd"
@@ -454,4 +455,35 @@ func TestParseImageList(t *testing.T) {
 		assert.Equal(t, "bar", imgs[0].ImageName)
 		assert.Equal(t, "baz", imgs[0].KustomizeImage.ImageName)
 	})
+}
+
+// TestWebhookServerRateLimit tests to see if the webhook endpoint's rate limiting functionality works
+func TestWebhookServerRateLimit(t *testing.T) {
+	server := createMockServer(t, 8080)
+	server.RateLimiter = ratelimit.New(1)
+
+	// Test with a client that won't get limited
+	req := httptest.NewRequest(http.MethodPost, "/webhook?type=INVALIDREGISTRY", nil)
+	rec := httptest.NewRecorder()
+
+	start := time.Now()
+	server.handleWebhook(rec, req)
+
+	diff := time.Since(start)
+	assert.Less(t, diff, time.Second, "Expected there to be no delay between that.")
+
+	start = time.Now()
+	server.handleWebhook(rec, req)
+
+	diff = time.Since(start)
+	assert.GreaterOrEqual(t, diff, time.Second, "Expected there to be a delay on second request")
+
+	// Wait for bucket to refresh
+	time.Sleep(time.Second)
+
+	start = time.Now()
+	server.handleWebhook(rec, req)
+
+	diff = time.Since(start)
+	assert.Less(t, diff, time.Second, "Expected there to be no delay after the refill")
 }
