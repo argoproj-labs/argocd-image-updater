@@ -65,7 +65,8 @@ const (
 
 const defaultIndent = 2
 
-// listElementPattern is a regular expression for searching for an element in a yaml array
+// listElementPattern is a regular expression for searching for an element in a yaml array.
+// example: any-string[1]
 const listElementPattern = `^(.*)\[(.*)\]$`
 
 var re = regexp.MustCompile(listElementPattern)
@@ -639,7 +640,6 @@ func setHelmValue(currentValues *yaml.Node, key string, value interface{}) error
 
 	var err error
 	keys := strings.Split(key, ".")
-	// any-string[1]
 	for i, k := range keys {
 		// pointer is needed to determine that the id has indeed been passed.
 		var idPtr *int
