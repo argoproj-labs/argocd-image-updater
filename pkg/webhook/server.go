@@ -13,6 +13,7 @@ import (
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
 
 	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
+	"go.uber.org/ratelimit"
 )
 
 // WebhookServer manages webhook endpoints and triggers update checks
@@ -34,7 +35,7 @@ type WebhookServer struct {
 	// mutex for concurrent repo access
 	syncState *argocd.SyncIterationState
 	// rate limiter to limit requests in an interval
-	RateLimiter *RateLimiter
+	RateLimiter ratelimit.Limiter
 }
 
 // NewWebhookServer creates a new webhook server
@@ -86,11 +87,7 @@ func (s *WebhookServer) handleWebhook(w http.ResponseWriter, r *http.Request) {
 	logCtx.Debugf("Received webhook request from %s", r.RemoteAddr)
 
 	if s.RateLimiter != nil {
-		if allow := s.RateLimiter.Allow(r.RemoteAddr); !allow {
-			logCtx.Warnf("Client %s was rate limited", r.RemoteAddr)
-			http.Error(w, "Too many requests", http.StatusTooManyRequests)
-			return
-		}
+		s.RateLimiter.Take()
 	}
 
 	event, err := s.Handler.ProcessWebhook(r)

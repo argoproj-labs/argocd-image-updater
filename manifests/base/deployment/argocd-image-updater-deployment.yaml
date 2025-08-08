@@ -149,29 +149,11 @@ spec:
                 name: argocd-image-updater-secret
                 key: webhook.harbor-secret
                 optional: true
-        - name: ENABLE_WEBHOOK_RATELIMIT
-          valueFrom:
-            configMapKeyRef:
-                name: argocd-image-updater-config
-                key: webhook.enable-rate-limit
-                optional: true
         - name: WEBHOOK_RATELIMIT_ALLOWED
           valueFrom:
             configMapKeyRef:
                 name: argocd-image-updater-config
                 key: webhook.ratelimit-allowed
-                optional: true
-        - name: WEBHOOK_RATELIMIT_WINDOW
-          valueFrom:
-            configMapKeyRef:
-                name: argocd-image-updater-config
-                key: webhook.ratelimit-window
-                optional: true
-        - name: WEBHOOK_RATELIMIT_CLEANUP_INTERVAL
-          valueFrom:
-            configMapKeyRef:
-                name: argocd-image-updater-config
-                key: webhook.ratelimit-cleanup-interval
                 optional: true
         livenessProbe:
           httpGet:

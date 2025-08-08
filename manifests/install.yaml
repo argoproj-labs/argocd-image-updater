@@ -257,28 +257,10 @@ spec:
               key: webhook.harbor-secret
               name: argocd-image-updater-secret
               optional: true
-        - name: ENABLE_WEBHOOK_RATELIMIT
-          valueFrom:
-            configMapKeyRef:
-              key: webhook.enable-rate-limit
-              name: argocd-image-updater-config
-              optional: true
         - name: WEBHOOK_RATELIMIT_ALLOWED
           valueFrom:
             configMapKeyRef:
               key: webhook.ratelimit-allowed
-              name: argocd-image-updater-config
-              optional: true
-        - name: WEBHOOK_RATELIMIT_WINDOW
-          valueFrom:
-            configMapKeyRef:
-              key: webhook.ratelimit-window
-              name: argocd-image-updater-config
-              optional: true
-        - name: WEBHOOK_RATELIMIT_CLEANUP_INTERVAL
-          valueFrom:
-            configMapKeyRef:
-              key: webhook.ratelimit-cleanup-interval
               name: argocd-image-updater-config
               optional: true
         image: quay.io/argoprojlabs/argocd-image-updater:latest

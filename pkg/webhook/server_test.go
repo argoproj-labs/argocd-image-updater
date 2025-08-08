@@ -13,6 +13,7 @@ import (
 	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"go.uber.org/ratelimit"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/argoproj-labs/argocd-image-updater/pkg/argocd"
@@ -459,33 +460,30 @@ func TestParseImageList(t *testing.T) {
 // TestWebhookServerRateLimit tests to see if the webhook endpoint's rate limiting functionality works
 func TestWebhookServerRateLimit(t *testing.T) {
 	server := createMockServer(t, 8080)
-	limiter := NewRateLimiter(5, 60*time.Second, 30*time.Minute)
-
-	server.RateLimiter = limiter
+	server.RateLimiter = ratelimit.New(1)
 
 	// Test with a client that won't get limited
 	req := httptest.NewRequest(http.MethodPost, "/webhook?type=INVALIDREGISTRY", nil)
 	rec := httptest.NewRecorder()
 
-	req.RemoteAddr = "192.168.0.1"
-
+	start := time.Now()
 	server.handleWebhook(rec, req)
 
-	res := rec.Result()
-	defer res.Body.Close()
+	diff := time.Since(start)
+	assert.Less(t, diff, time.Second, "Expected there to be no delay between that.")
 
-	assert.Equal(t, res.StatusCode, http.StatusBadRequest, "Expected a status code of %d but got %d", http.StatusBadRequest, res.StatusCode)
+	start = time.Now()
+	server.handleWebhook(rec, req)
 
-	req.RemoteAddr = "192.168.0.2"
-	rec2 := httptest.NewRecorder()
+	diff = time.Since(start)
+	assert.GreaterOrEqual(t, diff, time.Second, "Expected there to be a delay on second request")
 
-	for range 6 {
-		server.handleWebhook(rec, req)
-	}
-	server.handleWebhook(rec2, req)
+	// Wait for bucket to refresh
+	time.Sleep(time.Second)
 
-	res2 := rec2.Result()
-	defer res2.Body.Close()
+	start = time.Now()
+	server.handleWebhook(rec, req)
 
-	assert.Equal(t, res2.StatusCode, http.StatusTooManyRequests, "Expected a status code of %d but got %d", http.StatusTooManyRequests, res2.StatusCode)
+	diff = time.Since(start)
+	assert.Less(t, diff, time.Second, "Expected there to be no delay after the refill")
 }

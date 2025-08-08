@@ -91,12 +91,6 @@ Secret for validating Docker Hub webhooks.
 
 Can also be set with the `DOCKER_WEBHOOK_SECRET` environment variable.
 
-**--enable-webhook-ratelimit *enabled***
-
-Enable rate limiting for the webhook endpoint
-
-Can also be set with the `ENABLE_WEBHOOK_RATELIMIT` environment variable.
-
 **--ghcr-webhook-secret *secret***
 
 Secret for validating GitHub container registry secrets.
@@ -202,22 +196,10 @@ Port to listen on for webhook events (default 8080)
 
 Can also be set with the `WEBHOOK_PORT` environment variable.
 
-**--webhook-ratelimit-cleanup-interval *duration***
-
-How often the rate limiter cleans up stale clients (default 1h0m0s)
-
-Can also be set with the `WEBHOOK_RATELIMIT_CLEANUP_INTERVAL` environment variable.
-
 **--webhook-ratelimit-allowed *numRequests***
 
 The number of allowed requests in a window for webhook rate limiting (default 100)
 
 Can also be set with the `WEBHOOK_RATELIMIT_ALLOWED` environment variable.
-
-**--webhook-ratelimit-window *duration***
-
-The duration for the window for the webhook rate limiting (default 2m0s)
-
-Can also be set with the `WEBHOOK_RATELIMIT_WINDOW` environment variable.
 
 [label selector syntax]: https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/#label-selectors

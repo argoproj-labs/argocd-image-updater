@@ -27,6 +27,8 @@ import (
 
 	"golang.org/x/sync/semaphore"
 
+	"go.uber.org/ratelimit"
+
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -217,10 +219,7 @@ func newRunCommand() *cobra.Command {
 				log.Infof("Starting webhook server on port %d", webhookCfg.Port)
 				webhookServer = webhook.NewWebhookServer(webhookCfg.Port, handler, cfg.KubeClient, argoClient)
 
-				if webhookCfg.RateLimitEnabled {
-					limiter := webhook.NewRateLimiter(webhookCfg.RateLimitNumAllowedRequests, webhookCfg.RateLimitWindow, webhookCfg.RateLimitCleanUpInterval)
-					webhookServer.RateLimiter = limiter
-				}
+				webhookServer.RateLimiter = ratelimit.New(webhookCfg.RateLimitNumAllowedRequests)
 
 				// Set updater config
 				webhookServer.UpdaterConfig = &argocd.UpdateConfiguration{
@@ -276,9 +275,6 @@ func newRunCommand() *cobra.Command {
 					if webhookServer != nil {
 						if err := webhookServer.Stop(); err != nil {
 							log.Errorf("Error stopping webhook server: %v", err)
-						}
-						if webhookCfg.RateLimitEnabled {
-							webhookServer.RateLimiter.StopCleanUp()
 						}
 					}
 					return nil
@@ -346,10 +342,7 @@ func newRunCommand() *cobra.Command {
 	runCmd.Flags().StringVar(&webhookCfg.GHCRSecret, "ghcr-webhook-secret", env.GetStringVal("GHCR_WEBHOOK_SECRET", ""), "Secret for validating GitHub Container Registry webhooks")
 	runCmd.Flags().StringVar(&webhookCfg.QuaySecret, "quay-webhook-secret", env.GetStringVal("QUAY_WEBHOOK_SECRET", ""), "Secret for validating Quay webhooks")
 	runCmd.Flags().StringVar(&webhookCfg.HarborSecret, "harbor-webhook-secret", env.GetStringVal("HARBOR_WEBHOOK_SECRET", ""), "Secret for validating Harbor webhooks")
-	runCmd.Flags().BoolVar(&webhookCfg.RateLimitEnabled, "enable-webhook-ratelimit", env.GetBoolVal("ENABLE_WEBHOOK_RATELIMIT", false), "Enable rate limiting for the webhook endpoint")
-	runCmd.Flags().IntVar(&webhookCfg.RateLimitNumAllowedRequests, "webhook-ratelimit-allowed", env.ParseNumFromEnv("WEBHOOK_RATELIMIT_ALLOWED", 100, 0, math.MaxInt), "The number of allowed requests in a window for webhook rate limiting")
-	runCmd.Flags().DurationVar(&webhookCfg.RateLimitWindow, "webhook-ratelimit-window", env.GetDurationVal("WEBHOOK_RATELIMIT_WINDOW", 2*time.Minute), "The duration for the window for the webhook rate limiting")
-	runCmd.Flags().DurationVar(&webhookCfg.RateLimitCleanUpInterval, "webhook-ratelimit-cleanup-interval", env.GetDurationVal("WEBHOOK_RATELIMIT_CLEANUP_INTERVAL", 1*time.Hour), "How often the rate limiter cleans up stale clients")
+	runCmd.Flags().IntVar(&webhookCfg.RateLimitNumAllowedRequests, "webhook-ratelimit-allowed", env.ParseNumFromEnv("WEBHOOK_RATELIMIT_ALLOWED", 20, 0, math.MaxInt), "The number of allowed requests in a window for webhook rate limiting")
 
 	return runCmd
 }
