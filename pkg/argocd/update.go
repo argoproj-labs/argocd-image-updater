@@ -65,6 +65,11 @@ const (
 
 const defaultIndent = 2
 
+// regular expression for searching for an element in a yaml array
+const listElementPattern = `^(.*)\[(.*)\]$`
+
+var re = regexp.MustCompile(listElementPattern)
+
 // WriteBackConfig holds information on how to write back the changes to an Application
 type WriteBackConfig struct {
 	Method     WriteBackMethod
@@ -635,8 +640,6 @@ func setHelmValue(currentValues *yaml.Node, key string, value interface{}) error
 	var err error
 	keys := strings.Split(key, ".")
 	// any-string[1]
-	pattern := `^(.*)\[(.*)\]$`
-	re := regexp.MustCompile(pattern)
 	for i, k := range keys {
 		// pointer is needed to determine that the id has indeed been passed.
 		var idPtr *int
