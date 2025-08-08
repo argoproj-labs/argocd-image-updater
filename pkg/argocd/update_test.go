@@ -2747,6 +2747,266 @@ image:
 		require.NoError(t, err)
 		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
 	})
+
+	t.Run("yaml list is correctly parsed", func(t *testing.T) {
+		expected := `
+images:
+- name: image-1
+  attributes:
+    name: repo-name
+    tag: 2.0.0
+`
+
+		inputData := []byte(`
+images:
+- name: image-1
+  attributes:
+    name: repo-name
+    tag: 1.0.0
+`)
+		input := yaml.Node{}
+		err := yaml.Unmarshal(inputData, &input)
+		require.NoError(t, err)
+
+		key := "images[0].attributes.tag"
+		value := "2.0.0"
+
+		err = setHelmValue(&input, key, value)
+		require.NoError(t, err)
+
+		output, err := marshalWithIndent(&input, defaultIndent)
+		require.NoError(t, err)
+		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
+	})
+
+	t.Run("yaml list is correctly parsed when multiple values", func(t *testing.T) {
+		expected := `
+images:
+- name: image-1
+  attributes:
+    name: repo-name
+    tag: 1.0.0
+- name: image-2
+  attributes:
+    name: repo-name
+    tag: 2.0.0
+`
+
+		inputData := []byte(`
+images:
+- name: image-1
+  attributes:
+    name: repo-name
+    tag: 1.0.0
+- name: image-2
+  attributes:
+    name: repo-name
+    tag: 1.0.0
+`)
+		input := yaml.Node{}
+		err := yaml.Unmarshal(inputData, &input)
+		require.NoError(t, err)
+
+		key := "images[1].attributes.tag"
+		value := "2.0.0"
+
+		err = setHelmValue(&input, key, value)
+		require.NoError(t, err)
+
+		output, err := marshalWithIndent(&input, defaultIndent)
+		require.NoError(t, err)
+		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
+	})
+
+	t.Run("yaml list is correctly parsed when inside map", func(t *testing.T) {
+		expected := `
+extraContainers:
+  images:
+  - name: image-1
+    attributes:
+      name: repo-name
+      tag: 2.0.0
+`
+
+		inputData := []byte(`
+extraContainers:
+  images:
+  - name: image-1
+    attributes:
+      name: repo-name
+      tag: 1.0.0
+`)
+		input := yaml.Node{}
+		err := yaml.Unmarshal(inputData, &input)
+		require.NoError(t, err)
+
+		key := "extraContainers.images[0].attributes.tag"
+		value := "2.0.0"
+
+		err = setHelmValue(&input, key, value)
+		require.NoError(t, err)
+
+		output, err := marshalWithIndent(&input, defaultIndent)
+		require.NoError(t, err)
+		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
+	})
+
+	t.Run("yaml list is correctly parsed when list name contains digits", func(t *testing.T) {
+		expected := `
+extraContainers:
+  images123:
+  - name: image-1
+    attributes:
+      name: repo-name
+      tag: 2.0.0
+`
+
+		inputData := []byte(`
+extraContainers:
+  images123:
+  - name: image-1
+    attributes:
+      name: repo-name
+      tag: 1.0.0
+`)
+		input := yaml.Node{}
+		err := yaml.Unmarshal(inputData, &input)
+		require.NoError(t, err)
+
+		key := "extraContainers.images123[0].attributes.tag"
+		value := "2.0.0"
+
+		err = setHelmValue(&input, key, value)
+		require.NoError(t, err)
+
+		output, err := marshalWithIndent(&input, defaultIndent)
+		require.NoError(t, err)
+		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
+	})
+
+	t.Run("id for yaml list is lower than 0", func(t *testing.T) {
+		inputData := []byte(`
+images:
+- name: image-1
+  attributes:
+    name: repo-name
+    tag: 1.0.0
+`)
+		input := yaml.Node{}
+		err := yaml.Unmarshal(inputData, &input)
+		require.NoError(t, err)
+
+		key := "images[-1].attributes.tag"
+		value := "2.0.0"
+
+		err = setHelmValue(&input, key, value)
+
+		require.Error(t, err)
+		assert.Equal(t, "id -1 is out of range [0, 1)", err.Error())
+	})
+
+	t.Run("id for yaml list is greater than length of list", func(t *testing.T) {
+		inputData := []byte(`
+images:
+- name: image-1
+  attributes:
+    name: repo-name
+    tag: 1.0.0
+`)
+		input := yaml.Node{}
+		err := yaml.Unmarshal(inputData, &input)
+		require.NoError(t, err)
+
+		key := "images[1].attributes.tag"
+		value := "2.0.0"
+
+		err = setHelmValue(&input, key, value)
+
+		require.Error(t, err)
+		assert.Equal(t, "id 1 is out of range [0, 1)", err.Error())
+	})
+
+	t.Run("id for YAML list is not a valid integer", func(t *testing.T) {
+		inputData := []byte(`
+images:
+- name: image-1
+  attributes:
+    name: repo-name
+    tag: 1.0.0
+`)
+		input := yaml.Node{}
+		err := yaml.Unmarshal(inputData, &input)
+		require.NoError(t, err)
+
+		key := "images[invalid].attributes.tag"
+		value := "2.0.0"
+
+		err = setHelmValue(&input, key, value)
+
+		require.Error(t, err)
+		assert.Equal(t, "id \"invalid\" in yaml array must match pattern ^(.*)\\[(.*)\\]$", err.Error())
+	})
+
+	t.Run("no id for yaml list given", func(t *testing.T) {
+		inputData := []byte(`
+images:
+- name: image-1
+  attributes:
+    name: repo-name
+    tag: 1.0.0
+`)
+		input := yaml.Node{}
+		err := yaml.Unmarshal(inputData, &input)
+		require.NoError(t, err)
+
+		key := "images.attributes.tag"
+		value := "2.0.0"
+
+		err = setHelmValue(&input, key, value)
+
+		require.Error(t, err)
+		assert.Equal(t, "no id provided for yaml array \"images\"", err.Error())
+	})
+
+	t.Run("id given when node is not an yaml list", func(t *testing.T) {
+		inputData := []byte(`
+image:
+  attributes:
+    name: repo-name
+    tag: 1.0.0
+`)
+		input := yaml.Node{}
+		err := yaml.Unmarshal(inputData, &input)
+		require.NoError(t, err)
+
+		key := "image[0].attributes.tag"
+		value := "2.0.0"
+
+		err = setHelmValue(&input, key, value)
+
+		require.Error(t, err)
+		assert.Equal(t, "id 0 provided when \"image\" is not an yaml array", err.Error())
+	})
+
+	t.Run("invalid id given when node is not an yaml list", func(t *testing.T) {
+		inputData := []byte(`
+image:
+  attributes:
+    name: repo-name
+    tag: 1.0.0
+`)
+		input := yaml.Node{}
+		err := yaml.Unmarshal(inputData, &input)
+		require.NoError(t, err)
+
+		key := "image[invalid].attributes.tag"
+		value := "2.0.0"
+
+		err = setHelmValue(&input, key, value)
+
+		require.Error(t, err)
+		assert.Equal(t, "id \"invalid\" in yaml array must match pattern ^(.*)\\[(.*)\\]$", err.Error())
+	})
 }
 
 func Test_GetWriteBackConfig(t *testing.T) {

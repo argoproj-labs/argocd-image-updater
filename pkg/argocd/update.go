@@ -5,6 +5,8 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -23,6 +25,12 @@ import (
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/application"
 	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 )
+
+// listElementPattern is a regular expression for searching for an element in a yaml array.
+// example: any-string[1]
+const listElementPattern = `^(.*)\[(.*)\]$`
+
+var re = regexp.MustCompile(listElementPattern)
 
 // UpdateApplication update all images of a single application. Will run in a goroutine.
 func UpdateApplication(ctx context.Context, updateConf *UpdateConfiguration, state *SyncIterationState) ImageUpdaterResult {
@@ -520,14 +528,41 @@ func setHelmValue(currentValues *yaml.Node, key string, value interface{}) error
 
 	var err error
 	keys := strings.Split(key, ".")
-
 	for i, k := range keys {
-		if idx, found := findHelmValuesKey(current, k); found {
+		// pointer is needed to determine that the id has indeed been passed.
+		var idPtr *int
+		// by default, the search is based on the key without changes, but
+		// if string matches pattern, we consider it is an id in YAML list.
+		key := k
+		matches := re.FindStringSubmatch(k)
+		if matches != nil {
+			idStr := matches[2]
+			id, err := strconv.Atoi(idStr)
+			if err != nil {
+				return fmt.Errorf("id \"%s\" in yaml array must match pattern ^(.*)\\[(.*)\\]$", idStr)
+			}
+			idPtr = &id
+			key = matches[1]
+		}
+		if idx, found := findHelmValuesKey(current, key); found {
 			// Navigate deeper into the map
 			current = (*current).Content[idx]
 			// unpack one level of alias; an alias of an alias is not supported
 			if current.Kind == yaml.AliasNode {
 				current = current.Alias
+			}
+			if current.Kind != yaml.SequenceNode && idPtr != nil {
+				return fmt.Errorf("id %d provided when \"%s\" is not an yaml array", *idPtr, key)
+			}
+			if current.Kind == yaml.SequenceNode {
+				if idPtr == nil {
+					return fmt.Errorf("no id provided for yaml array \"%s\"", key)
+				}
+				currentContent := (*current).Content
+				if *idPtr < 0 || *idPtr >= len(currentContent) {
+					return fmt.Errorf("id %d is out of range [0, %d)", *idPtr, len(currentContent))
+				}
+				current = (*current).Content[*idPtr]
 			}
 			if i == len(keys)-1 {
 				// If we're at the final key, set the value and return
