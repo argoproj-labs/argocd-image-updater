@@ -115,14 +115,17 @@ func Test_GetImagesAndAliasesFromApplication(t *testing.T) {
 		}
 		applicationImages := &ApplicationImages{
 			Application: *application,
-			Images:      ImageList{},
+			Images: ImageList{
+				NewImage(image.NewFromIdentifier("nginx:1.12.2")),
+				NewImage(image.NewFromIdentifier("that/image")),
+				NewImage(image.NewFromIdentifier("quay.io/dexidp/dex:v1.23.0")),
+			},
 		}
 
 		imageList := GetImagesAndAliasesFromApplication(applicationImages)
 
 		require.Len(t, imageList, 3)
 		assert.Equal(t, "nginx", imageList[0].ImageName)
-		assert.Equal(t, "", imageList[0].ImageAlias, "No alias should be set")
 		assert.Equal(t, "that/image", imageList[1].ImageName)
 		assert.Equal(t, "dexidp/dex", imageList[2].ImageName)
 	})
@@ -468,71 +471,79 @@ func Test_GetApplicationSource(t *testing.T) {
 
 }
 
-func Test_GetHelmParamAnnotations(t *testing.T) {
+func Test_GetHelmParamNames(t *testing.T) {
 	t.Run("Get parameter names without symbolic names", func(t *testing.T) {
-		annotations := map[string]string{
-			fmt.Sprintf(registryCommon.Prefixed(common.ImageUpdaterAnnotationPrefix, registryCommon.HelmParamImageSpecAnnotationSuffix), "myimg"): "image.blub",
-			fmt.Sprintf(registryCommon.Prefixed(common.ImageUpdaterAnnotationPrefix, registryCommon.HelmParamImageTagAnnotationSuffix), "myimg"):  "image.blab",
-		}
-		name, tag := getHelmParamNamesFromAnnotation(annotations, &image.ContainerImage{
-			ImageAlias: "",
-		})
+		name, tag := getHelmParamNames(
+			&Image{
+				ContainerImage: &image.ContainerImage{
+					ImageAlias: "",
+				},
+				HelmImageName: "image.blub",
+				HelmImageTag:  "image.blab"},
+		)
 		assert.Equal(t, "image.name", name)
 		assert.Equal(t, "image.tag", tag)
 	})
 
 	t.Run("Find existing image spec annotation", func(t *testing.T) {
-		annotations := map[string]string{
-			fmt.Sprintf(registryCommon.Prefixed(common.ImageUpdaterAnnotationPrefix, registryCommon.HelmParamImageSpecAnnotationSuffix), "myimg"): "image.path",
-			fmt.Sprintf(registryCommon.Prefixed(common.ImageUpdaterAnnotationPrefix, registryCommon.HelmParamImageTagAnnotationSuffix), "myimg"):  "image.tag",
-		}
-		name, tag := getHelmParamNamesFromAnnotation(annotations, &image.ContainerImage{
-			ImageAlias: "myimg",
-		})
+		name, tag := getHelmParamNames(
+			&Image{
+				ContainerImage: &image.ContainerImage{
+					ImageAlias: "myimg",
+				},
+				HelmImageSpec: "image.path",
+				HelmImageTag:  "image.tag"},
+		)
 		assert.Equal(t, "image.path", name)
 		assert.Empty(t, tag)
 	})
 
 	t.Run("Find existing image name and image tag annotations", func(t *testing.T) {
-		annotations := map[string]string{
-			fmt.Sprintf(registryCommon.Prefixed(common.ImageUpdaterAnnotationPrefix, registryCommon.HelmParamImageNameAnnotationSuffix), "myimg"): "image.name",
-			fmt.Sprintf(registryCommon.Prefixed(common.ImageUpdaterAnnotationPrefix, registryCommon.HelmParamImageTagAnnotationSuffix), "myimg"):  "image.tag",
-		}
-		name, tag := getHelmParamNamesFromAnnotation(annotations, &image.ContainerImage{
-			ImageAlias: "myimg",
-		})
+		name, tag := getHelmParamNames(
+			&Image{
+				ContainerImage: &image.ContainerImage{
+					ImageAlias: "myimg",
+				},
+				HelmImageName: "image.name",
+				HelmImageTag:  "image.tag"},
+		)
 		assert.Equal(t, "image.name", name)
 		assert.Equal(t, "image.tag", tag)
 	})
 
 	t.Run("Find non-existing image name and image tag annotations", func(t *testing.T) {
-		annotations := map[string]string{
-			fmt.Sprintf(registryCommon.Prefixed(common.ImageUpdaterAnnotationPrefix, registryCommon.HelmParamImageNameAnnotationSuffix), "otherimg"): "image.name",
-			fmt.Sprintf(registryCommon.Prefixed(common.ImageUpdaterAnnotationPrefix, registryCommon.HelmParamImageTagAnnotationSuffix), "otherimg"):  "image.tag",
-		}
-		name, tag := getHelmParamNamesFromAnnotation(annotations, &image.ContainerImage{
-			ImageAlias: "myimg",
-		})
+		name, tag := getHelmParamNames(
+			&Image{
+				ContainerImage: &image.ContainerImage{
+					ImageAlias: "myimg",
+				},
+				HelmImageName: "",
+				HelmImageTag:  ""},
+		)
 		assert.Empty(t, name)
 		assert.Empty(t, tag)
 	})
 
 	t.Run("Find existing image tag annotations", func(t *testing.T) {
-		annotations := map[string]string{
-			fmt.Sprintf(registryCommon.Prefixed(common.ImageUpdaterAnnotationPrefix, registryCommon.HelmParamImageTagAnnotationSuffix), "myimg"): "image.tag",
-		}
-		name, tag := getHelmParamNamesFromAnnotation(annotations, &image.ContainerImage{
-			ImageAlias: "myimg",
-		})
+		name, tag := getHelmParamNames(
+			&Image{
+				ContainerImage: &image.ContainerImage{
+					ImageAlias: "myimg",
+				},
+				HelmImageTag: "image.tag"},
+		)
 		assert.Empty(t, name)
 		assert.Equal(t, "image.tag", tag)
 	})
 
 	t.Run("No suitable annotations found", func(t *testing.T) {
-		annotations := map[string]string{}
-		name, tag := getHelmParamNamesFromAnnotation(annotations, &image.ContainerImage{
-			ImageAlias: "myimg",
-		})
+		name, tag := getHelmParamNames(
+			&Image{
+				ContainerImage: &image.ContainerImage{
+					ImageAlias: "myimg",
+				},
+			},
+		)
 		assert.Empty(t, name)
 		assert.Empty(t, tag)
 	})
