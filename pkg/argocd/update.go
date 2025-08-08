@@ -42,7 +42,7 @@ func UpdateApplication(ctx context.Context, updateConf *UpdateConfiguration, sta
 	// its images is eligible for updating.
 	//
 	// Whether an image qualifies for update is dependent on semantic version
-	// constraints which are part of the application's annotation values.
+	// constraints which are part of the application's values.
 	//
 	for _, applicationImage := range updateConf.UpdateApp.Images {
 		// updateableImage is the live image found in the cluster status
@@ -362,7 +362,7 @@ func marshalParamsOverride(ctx context.Context, applicationImages *ApplicationIm
 			return []byte{}, nil
 		}
 
-		if strings.HasPrefix(app.Annotations[common.WriteBackTargetAnnotation], common.HelmPrefix) {
+		if wbc != nil && strings.HasPrefix(wbc.Target, common.HelmPrefix) {
 			images := GetImagesAndAliasesFromApplication(applicationImages)
 
 			helmNewValues := yaml.Node{}
@@ -372,40 +372,40 @@ func marshalParamsOverride(ctx context.Context, applicationImages *ApplicationIm
 			}
 
 			for _, c := range images {
-				if c.ImageAlias == "" {
+				if c == nil || c.ImageAlias == "" {
 					continue
 				}
 
-				helmAnnotationParamName, helmAnnotationParamVersion := getHelmParamNamesFromAnnotation(app.Annotations, c)
+				helmParamName, helmParamVersion := getHelmParamNames(c)
 
-				if helmAnnotationParamName == "" {
-					return nil, fmt.Errorf("could not find an image-name annotation for image %s", c.ImageName)
+				if helmParamName == "" {
+					return nil, fmt.Errorf("could not find an image-name for image %s", c.ImageName)
 				}
-				// for image-spec annotation, helmAnnotationParamName holds image-spec annotation value,
-				// and helmAnnotationParamVersion is empty
-				if helmAnnotationParamVersion == "" {
-					if c.GetParameterHelmImageSpec(app.Annotations, common.ImageUpdaterAnnotationPrefix) == "" {
+				// for image-spec, helmParamName holds image-spec value,
+				// and helmParamVersion is empty
+				if helmParamVersion == "" {
+					if c.HelmImageSpec == "" {
 						// not a full image-spec, so image-tag is required
-						return nil, fmt.Errorf("could not find an image-tag annotation for image %s", c.ImageName)
+						return nil, fmt.Errorf("could not find an image-tag for image %s", c.ImageName)
 					}
 				} else {
-					// image-tag annotation is present, so continue to process image-tag
-					helmParamVersion := getHelmParam(appSource.Helm.Parameters, helmAnnotationParamVersion)
-					if helmParamVersion == nil {
-						return nil, fmt.Errorf("%s parameter not found", helmAnnotationParamVersion)
+					// image-tag is present, so continue to process image-tag
+					helmParamVer := getHelmParam(appSource.Helm.Parameters, helmParamVersion)
+					if helmParamVer == nil {
+						return nil, fmt.Errorf("%s parameter not found", helmParamVersion)
 					}
-					err = setHelmValue(&helmNewValues, helmAnnotationParamVersion, helmParamVersion.Value)
+					err = setHelmValue(&helmNewValues, helmParamVersion, helmParamVer.Value)
 					if err != nil {
 						return nil, fmt.Errorf("failed to set image parameter version value: %v", err)
 					}
 				}
 
-				helmParamName := getHelmParam(appSource.Helm.Parameters, helmAnnotationParamName)
-				if helmParamName == nil {
-					return nil, fmt.Errorf("%s parameter not found", helmAnnotationParamName)
+				helmParamN := getHelmParam(appSource.Helm.Parameters, helmParamName)
+				if helmParamN == nil {
+					return nil, fmt.Errorf("%s parameter not found", helmParamName)
 				}
 
-				err = setHelmValue(&helmNewValues, helmAnnotationParamName, helmParamName.Value)
+				err = setHelmValue(&helmNewValues, helmParamName, helmParamN.Value)
 				if err != nil {
 					return nil, fmt.Errorf("failed to set image parameter name value: %v", err)
 				}
@@ -498,7 +498,7 @@ func nodeKindString(k yaml.Kind) string {
 	}[k]
 }
 
-// set value of the parameter passed from the annotations.
+// setHelmValue sets value of the parameter passed from the CRD configuration.
 func setHelmValue(currentValues *yaml.Node, key string, value interface{}) error {
 	current := currentValues
 
@@ -615,7 +615,7 @@ func parseGitConfig(ctx context.Context, app *v1alpha1.Application, kubeClient *
 
 		branches := strings.Split(strings.TrimSpace(branch), ":")
 		if len(branches) > 2 {
-			return fmt.Errorf("invalid format for git-branch annotation: %v", branch)
+			return fmt.Errorf("invalid format for git-branch: %v", branch)
 		}
 		wbc.GitBranch = branches[0]
 		if len(branches) == 2 {

@@ -727,30 +727,27 @@ func (client *argoCD) UpdateSpec(ctx context.Context, in *application.Applicatio
 	return spec, nil
 }
 
-// getHelmParamNamesFromAnnotation inspects the given annotations for whether
-// the annotations for specifying Helm parameter names are being set and
+// getHelmParamNames inspects the given image for whether
+// the Helm parameter names are being set and
 // returns their values.
-func getHelmParamNamesFromAnnotation(annotations map[string]string, img *image.ContainerImage) (string, string) {
+func getHelmParamNames(img *Image) (string, string) {
 	// Return default values without symbolic name given
-	if img.ImageAlias == "" {
+	if img == nil || img.ImageAlias == "" {
 		return "image.name", "image.tag"
 	}
 
-	var annotationName, helmParamName, helmParamVersion string
+	var helmParamName, helmParamVersion string
 
 	// Image spec is a full-qualified specifier, if we have it, we return early
-	if param := img.GetParameterHelmImageSpec(annotations, common.ImageUpdaterAnnotationPrefix); param != "" {
-		log.Tracef("found annotation %s", annotationName)
+	if param := img.HelmImageSpec; param != "" {
 		return strings.TrimSpace(param), ""
 	}
 
-	if param := img.GetParameterHelmImageName(annotations, common.ImageUpdaterAnnotationPrefix); param != "" {
-		log.Tracef("found annotation %s", annotationName)
+	if param := img.HelmImageName; param != "" {
 		helmParamName = param
 	}
 
-	if param := img.GetParameterHelmImageTag(annotations, common.ImageUpdaterAnnotationPrefix); param != "" {
-		log.Tracef("found annotation %s", annotationName)
+	if param := img.HelmImageTag; param != "" {
 		helmParamVersion = param
 	}
 
@@ -992,34 +989,43 @@ func GetImagesFromApplication(applicationImages *ApplicationImages) image.Contai
 	return images
 }
 
-// GetImagesFromApplicationImagesAnnotation returns the list of known images for the given application from the images annotation
-func GetImagesAndAliasesFromApplication(applicationImages *ApplicationImages) image.ContainerImageList {
-	images := GetImagesFromApplication(applicationImages)
+// GetImagesAndAliasesFromApplication returns the list of known images for the given application
+// TODO: this function together with GetImagesFromApplication should be refactored. We iterate through
+// applicationImages.Images 3 times in one place (2 in functions and in containerImages.ContainsImage).
+// Also the 4th loop is in marshalParamsOverride. See GITOPS-7415
+func GetImagesAndAliasesFromApplication(applicationImages *ApplicationImages) ImageList {
+	containerImages := GetImagesFromApplication(applicationImages)
 
-	// We update the ImageAlias field of the Images found in the app.Status.Summary.Images list.
-	for _, img := range applicationImages.Images {
-		if image := images.ContainsImage(img.ContainerImage, false); image != nil {
-			if image.ImageAlias != "" {
+	// We iterate through the list of images with alias information.
+	for _, aliasedImage := range applicationImages.Images {
+		// For each one, we find its corresponding entry in the list of images found in the app source.
+		if sourceImage := containerImages.ContainsImage(aliasedImage.ContainerImage, false); sourceImage != nil {
+			if sourceImage.ImageAlias != "" {
 				// this image has already been matched to an alias, so create a copy
 				// and assign this alias to the image copy to avoid overwriting the existing alias association
-				imageCopy := *image
-				if img.ImageAlias == "" {
-					imageCopy.ImageAlias = img.ImageName
+				imageCopy := *sourceImage
+				if aliasedImage.ImageAlias == "" {
+					imageCopy.ImageAlias = aliasedImage.ImageName
 				} else {
-					imageCopy.ImageAlias = img.ImageAlias
+					imageCopy.ImageAlias = aliasedImage.ImageAlias
 				}
-				images = append(images, &imageCopy)
+				// We update the aliasedImage to point to this new copy.
+				aliasedImage.ContainerImage = &imageCopy
 			} else {
-				if img.ImageAlias == "" {
-					image.ImageAlias = img.ImageName
+				// This is the first alias for this image. We can modify it in place.
+				if aliasedImage.ImageAlias == "" {
+					sourceImage.ImageAlias = aliasedImage.ImageName
 				} else {
-					image.ImageAlias = img.ImageAlias
+					sourceImage.ImageAlias = aliasedImage.ImageAlias
 				}
+				// We update the aliasedImage to point to the now-aliased source image.
+				aliasedImage.ContainerImage = sourceImage
 			}
 		}
 	}
 
-	return images
+	// The applicationImages.Images list is now correctly aliased.
+	return applicationImages.Images
 }
 
 // GetApplicationType returns the type of the ArgoCD application
