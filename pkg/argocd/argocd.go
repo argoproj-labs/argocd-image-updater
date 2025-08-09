@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -747,13 +748,24 @@ func getImageFromSpec(app *v1alpha1.Application, targetImage *image.ContainerIma
 	switch appType {
 	case ApplicationTypeHelm:
 		if source.Helm != nil && source.Helm.Parameters != nil {
+			// Define regex patterns for tag/version parameters
+			tagPatterns := []*regexp.Regexp{
+				regexp.MustCompile(`^(.+\.)?(tag|version|imageTag)$`),
+				regexp.MustCompile(`^(image|container)\.(.+\.)?(tag|version)$`),
+			}
+			
 			for _, param := range source.Helm.Parameters {
-				if param.Name == "image.tag" || param.Name == "image.version" {
-					foundImage := image.NewFromIdentifier(fmt.Sprintf("%s:%s", targetImage.ImageName, param.Value))
-					if foundImage != nil && foundImage.ImageName == targetImage.ImageName {
-						return foundImage
+				// Check if parameter matches tag/version patterns
+				for _, pattern := range tagPatterns {
+					if pattern.MatchString(param.Name) {
+						foundImage := image.NewFromIdentifier(fmt.Sprintf("%s:%s", targetImage.ImageName, param.Value))
+						if foundImage != nil && foundImage.ImageName == targetImage.ImageName {
+							return foundImage
+						}
+						break
 					}
 				}
+				
 				if param.Name == "image" || param.Name == "image.repository" {
 					foundImage := image.NewFromIdentifier(param.Value)
 					if foundImage != nil && foundImage.ImageName == targetImage.ImageName {
