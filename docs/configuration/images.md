@@ -358,6 +358,10 @@ If the `<image_alias>.helm.image-spec` annotation is set, the two other
 annotations `<image_alias>.helm.image-name` and `<image_alias>.helm.image-tag`
 will be ignored.
 
+If the image is in the yaml list, then the index can be specified
+in the annotations `<image_alias>.helm.image-spec`, `<image_alias>.helm.image-name`
+or `<image_alias>.helm.image-tag` in square brackets.
+
 ## Examples
 
 ### Following an image's patch branch
@@ -444,6 +448,28 @@ When there's a new build for `yourorg/yourimage:latest` found in the registry,
 Argo CD Image Updater will update your configuration to use the SHA256 sum of
 the image, and Kubernetes will restart your pods automatically to have them
 use the new image.
+
+### Updating the image in the yaml list
+
+*Scenario:* You want to automatically update the image `nginx:1.19` that is inside the yaml list, e.g.
+
+```yaml
+foo:
+- name: foo-1
+  image: busybox:latest
+  command: ['sh', '-c', 'echo "Custom container running"']
+- name: foo-2
+  image: nginx:1.19
+```
+
+*Solution:* Use the index in square brackets of the item that needs to be updated, i.e.
+
+```yaml
+argocd-image-updater.argoproj.io/fooalias.helm.image-spec: foo[1].image
+```
+
+This works for annotations `<image_alias>.helm.image-name`, `<image_alias>.helm.image-tag` and `<image_alias>.helm.image-spec`.
+
 
 ## Appendix
 
