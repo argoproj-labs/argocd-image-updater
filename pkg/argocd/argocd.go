@@ -736,7 +736,10 @@ func (a ApplicationType) String() string {
 	}
 }
 
-// getImageFromSpec tries to find the current image tag from the application spec
+// getImageFromSpec tries to find the current image tag from the application spec.
+// For Helm applications, it attempts to match common parameter patterns for image tags
+// using regex (e.g., image.tag, *.version, *.imageTag). However, if a Helm chart uses
+// uncommon parameter names, this function may not detect them correctly.
 func getImageFromSpec(app *v1alpha1.Application, targetImage *image.ContainerImage) *image.ContainerImage {
 	appType := getApplicationType(app)
 	source := getApplicationSource(app)

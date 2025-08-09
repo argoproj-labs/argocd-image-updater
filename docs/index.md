@@ -96,6 +96,12 @@ Otherwise, current known limitations are:
   Image Updater is running in (or has access to). It is currently not possible
   to fetch those secrets from other clusters.
 
+* When using Helm applications with zero-replica deployments and `force-update`
+  enabled, the image updater will attempt to match common Helm parameter patterns
+  for image tags (such as `image.tag`, `*.version`, `*.imageTag`). If your Helm
+  chart uses uncommon parameter names, the updater may not detect the current
+  image version correctly, leading to repeated update attempts.
+
 ## Questions, help and support
 
 If you have any questions, need some help in setting things up or just want to
