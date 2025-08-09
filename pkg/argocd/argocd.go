@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -592,7 +593,14 @@ func GetImagesFromApplication(app *v1alpha1.Application) image.ContainerImageLis
 	annotations := app.Annotations
 	for _, img := range *parseImageList(annotations) {
 		if img.HasForceUpdateOptionAnnotation(annotations, common.ImageUpdaterAnnotationPrefix) {
-			img.ImageTag = nil // the tag from the image list will be a version constraint, which isn't a valid tag
+			// for force-update images, try to get the current image tag from the spec
+			// this helps handle cases where there are 0 replicas
+			currentImage := getImageFromSpec(app, img)
+			if currentImage != nil {
+				img.ImageTag = currentImage.ImageTag
+			} else {
+				img.ImageTag = nil
+			}
 			images = append(images, img)
 		}
 	}
@@ -726,4 +734,66 @@ func (a ApplicationType) String() string {
 	default:
 		return "Unknown"
 	}
+}
+
+// getImageFromSpec tries to find the current image tag from the application spec.
+// For Helm applications, it attempts to match common parameter patterns for image tags
+// using regex (e.g., image.tag, *.version, *.imageTag). However, if a Helm chart uses
+// uncommon parameter names, this function may not detect them correctly.
+func getImageFromSpec(app *v1alpha1.Application, targetImage *image.ContainerImage) *image.ContainerImage {
+	appType := getApplicationType(app)
+	source := getApplicationSource(app)
+
+	if source == nil {
+		return nil
+	}
+
+	switch appType {
+	case ApplicationTypeHelm:
+		if source.Helm != nil && source.Helm.Parameters != nil {
+			// Define regex patterns for tag/version parameters
+			tagPatterns := []*regexp.Regexp{
+				regexp.MustCompile(`^(.+\.)?(tag|version|imageTag)$`),
+				regexp.MustCompile(`^(image|container)\.(.+\.)?(tag|version)$`),
+			}
+			
+			for _, param := range source.Helm.Parameters {
+				// Check if parameter matches tag/version patterns
+				for _, pattern := range tagPatterns {
+					if pattern.MatchString(param.Name) {
+						foundImage := image.NewFromIdentifier(fmt.Sprintf("%s:%s", targetImage.ImageName, param.Value))
+						if foundImage != nil && foundImage.ImageName == targetImage.ImageName {
+							return foundImage
+						}
+						break
+					}
+				}
+				
+				if param.Name == "image" || param.Name == "image.repository" {
+					foundImage := image.NewFromIdentifier(param.Value)
+					if foundImage != nil && foundImage.ImageName == targetImage.ImageName {
+						return foundImage
+					}
+				}
+			}
+		}
+	case ApplicationTypeKustomize:
+		if source.Kustomize != nil && source.Kustomize.Images != nil {
+			for _, kustomizeImage := range source.Kustomize.Images {
+				imageStr := string(kustomizeImage)
+				if strings.Contains(imageStr, "=") {
+					parts := strings.SplitN(imageStr, "=", 2)
+					if len(parts) == 2 {
+						imageStr = parts[1]
+					}
+				}
+				foundImage := image.NewFromIdentifier(imageStr)
+				if foundImage != nil && foundImage.ImageName == targetImage.ImageName {
+					return foundImage
+				}
+			}
+		}
+	}
+
+	return nil
 }
