@@ -1691,12 +1691,12 @@ replicas: 1
 test-value1: one
 nginx:
   image:
-    tag: v1.0.0
     name: nginx
+    tag: v1.0.0
 redis:
   image:
-    tag: v1.0.0
     name: redis
+    tag: v1.0.0
 `
 		yaml, err = marshalParamsOverride(&app, originalData)
 		require.NoError(t, err)
@@ -1938,7 +1938,7 @@ replicas: 1
 					"argocd-image-updater.argoproj.io/image-list":            "nginx",
 					"argocd-image-updater.argoproj.io/write-back-method":     "git",
 					"argocd-image-updater.argoproj.io/write-back-target":     "helmvalues:./test-values.yaml",
-					"argocd-image-updater.argoproj.io/nginx.helm.image-name": "image.name",
+					"argocd-image-updater.argoproj.io/nginx.helm.image-name": "dockerimage.name",
 				},
 			},
 			Spec: v1alpha1.ApplicationSpec{
