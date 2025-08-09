@@ -517,7 +517,7 @@ func marshalParamsOverride(app *v1alpha1.Application, originalData []byte) ([]by
 
 				if helmAnnotationParamName == "" {
 					// allow empty image-name
-					fmt.Sprintf("no image-name annotation found for image %s", c.ImageName)
+					log.Debugf("no image-name annotation found for image %s", c.ImageName)
 				} else {
 					helmParamName := getHelmParam(appSource.Helm.Parameters, helmAnnotationParamName)
 					if helmParamName == nil {
