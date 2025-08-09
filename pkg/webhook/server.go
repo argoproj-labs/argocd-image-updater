@@ -1,6 +1,7 @@
 package webhook
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strings"
@@ -123,7 +124,8 @@ func (s *WebhookServer) processWebhookEvent(event *WebhookEvent) error {
 	defer s.mutex.Unlock()
 
 	// List applications
-	apps, err := s.ArgoClient.ListApplications("")
+	// TODO: recreate this place to list applications properly
+	apps, err := s.ArgoClient.ListApplications(context.Background(), nil)
 	if err != nil {
 		return fmt.Errorf("failed to list applications: %w", err)
 	}
@@ -148,7 +150,7 @@ func (s *WebhookServer) processWebhookEvent(event *WebhookEvent) error {
 		s.UpdaterConfig.UpdateApp = &appImages
 
 		// Run the update process
-		result := argocd.UpdateApplication(s.UpdaterConfig, s.syncState)
+		result := argocd.UpdateApplication(context.Background(), s.UpdaterConfig, s.syncState)
 
 		appLogCtx.Infof("Update result: processed=%d, updated=%d, errors=%d, skipped=%d",
 			result.NumApplicationsProcessed, result.NumImagesUpdated, result.NumErrors, result.NumSkipped)
@@ -190,7 +192,7 @@ func (s *WebhookServer) findMatchingApplications(apps []v1alpha1.Application, ev
 			appName := fmt.Sprintf("%s/%s", app.Namespace, app.Name)
 			appImages := argocd.ApplicationImages{
 				Application: app,
-				Images:      *imageList,
+				Images:      toImageListHelper(*imageList),
 			}
 			matchedApps[appName] = appImages
 			break
@@ -198,6 +200,15 @@ func (s *WebhookServer) findMatchingApplications(apps []v1alpha1.Application, ev
 	}
 
 	return matchedApps
+}
+
+// toImageListHelper is a private helper that converts an ContainerImageList to a ImageList.
+func toImageListHelper(list image.ContainerImageList) argocd.ImageList {
+	il := make(argocd.ImageList, len(list))
+	for i, img := range list {
+		il[i].ContainerImage = img
+	}
+	return il
 }
 
 // parseImageList is a local helper function that replicates the logic from argocd package

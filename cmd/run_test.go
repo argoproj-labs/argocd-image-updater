@@ -22,7 +22,7 @@ func TestNewRunCommand(t *testing.T) {
 	asser.Equal(":8081", controllerCommand.Flag("health-probe-bind-address").Value.String())
 	asser.Equal("true", controllerCommand.Flag("leader-election").Value.String())
 	asser.Equal("", controllerCommand.Flag("leader-election-namespace").Value.String())
-	asser.Equal("false", controllerCommand.Flag("enable-webhooks").Value.String())
+	asser.Equal("false", controllerCommand.Flag("enable-webhook").Value.String())
 	asser.Equal("true", controllerCommand.Flag("metrics-secure").Value.String())
 	asser.Equal("false", controllerCommand.Flag("enable-http2").Value.String())
 	asser.Nil(controllerCommand.Help())
