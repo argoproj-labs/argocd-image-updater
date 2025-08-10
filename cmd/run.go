@@ -205,8 +205,8 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 				tlsOpts = append(tlsOpts, disableHTTP2)
 			}
 
+			// TODO: webhook for CRD will be refactored in GITOPS-7336
 			var webhookServer webhook.Server
-
 			if cfg.EnableWebhook && webhookCfg.Port > 0 {
 				setupLogger.Info("enabling webhook server")
 				webhookServer = webhook.NewServer(webhook.Options{

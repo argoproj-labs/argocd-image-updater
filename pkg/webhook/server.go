@@ -124,7 +124,7 @@ func (s *WebhookServer) processWebhookEvent(event *WebhookEvent) error {
 	defer s.mutex.Unlock()
 
 	// List applications
-	// TODO: recreate this place to list applications properly
+	// TODO: recreate this place to list applications properly in GITOPS-7336
 	apps, err := s.ArgoClient.ListApplications(context.Background(), nil)
 	if err != nil {
 		return fmt.Errorf("failed to list applications: %w", err)
