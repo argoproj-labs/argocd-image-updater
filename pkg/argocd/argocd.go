@@ -750,6 +750,10 @@ func (a ApplicationType) String() string {
 // using regex (e.g., image.tag, *.version, *.imageTag). However, if a Helm chart uses
 // uncommon parameter names, this function may not detect them correctly.
 func getImageFromSpec(app *v1alpha1.Application, targetImage *image.ContainerImage) *image.ContainerImage {
+	if targetImage == nil {
+		return nil
+	}
+	
 	appType := getApplicationType(app)
 	source := getApplicationSource(app)
 
