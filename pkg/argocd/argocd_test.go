@@ -97,6 +97,10 @@ func Test_GetImagesFromApplication(t *testing.T) {
 					Helm: &v1alpha1.ApplicationSourceHelm{
 						Parameters: []v1alpha1.HelmParameter{
 							{
+								Name:  "image.name",
+								Value: "myregistry/myapp",
+							},
+							{
 								Name:  "image.tag",
 								Value: "1.2.3",
 							},
