@@ -593,15 +593,24 @@ func GetImagesFromApplication(app *v1alpha1.Application) image.ContainerImageLis
 	annotations := app.Annotations
 	for _, img := range *parseImageList(annotations) {
 		if img.HasForceUpdateOptionAnnotation(annotations, common.ImageUpdaterAnnotationPrefix) {
-			// for force-update images, try to get the current image tag from the spec
-			// this helps handle cases where there are 0 replicas
-			currentImage := getImageFromSpec(app, img)
-			if currentImage != nil {
-				img.ImageTag = currentImage.ImageTag
-			} else {
-				img.ImageTag = nil
+			// Check if this image is already in the list from status
+			found := false
+			for _, existingImg := range images {
+				if existingImg.ImageName == img.ImageName {
+					found = true
+					break
+				}
 			}
-			images = append(images, img)
+
+			if !found {
+				currentImage := getImageFromSpec(app, img)
+				if currentImage != nil {
+					img.ImageTag = currentImage.ImageTag
+				} else {
+					img.ImageTag = nil
+				}
+				images = append(images, img)
+			}
 		}
 	}
 
@@ -751,25 +760,63 @@ func getImageFromSpec(app *v1alpha1.Application, targetImage *image.ContainerIma
 	switch appType {
 	case ApplicationTypeHelm:
 		if source.Helm != nil && source.Helm.Parameters != nil {
-			// Define regex patterns for tag/version parameters
-			tagPatterns := []*regexp.Regexp{
-				regexp.MustCompile(`^(.+\.)?(tag|version|imageTag)$`),
-				regexp.MustCompile(`^(image|container)\.(.+\.)?(tag|version)$`),
+			// Try to find image name and tag parameters
+			var imageName, imageTag string
+			imageNameParam := targetImage.GetParameterHelmImageName(app.Annotations, common.ImageUpdaterAnnotationPrefix)
+			imageTagParam := targetImage.GetParameterHelmImageTag(app.Annotations, common.ImageUpdaterAnnotationPrefix)
+
+			if imageNameParam == "" {
+				imageNameParam = registryCommon.DefaultHelmImageName
 			}
-			
+			if imageTagParam == "" {
+				imageTagParam = registryCommon.DefaultHelmImageTag
+			}
+
 			for _, param := range source.Helm.Parameters {
-				// Check if parameter matches tag/version patterns
-				for _, pattern := range tagPatterns {
-					if pattern.MatchString(param.Name) {
-						foundImage := image.NewFromIdentifier(fmt.Sprintf("%s:%s", targetImage.ImageName, param.Value))
-						if foundImage != nil && foundImage.ImageName == targetImage.ImageName {
-							return foundImage
+				if param.Name == imageNameParam {
+					imageName = param.Value
+				}
+				if param.Name == imageTagParam {
+					imageTag = param.Value
+				}
+			}
+
+			if imageName != "" && imageTag != "" && imageName == targetImage.GetFullNameWithoutTag() {
+				foundImage := image.NewFromIdentifier(fmt.Sprintf("%s:%s", imageName, imageTag))
+				if foundImage != nil {
+					return foundImage
+				}
+			}
+
+			if imageTag == "" {
+				tagPatterns := []*regexp.Regexp{
+					regexp.MustCompile(`^(.+\.)?(tag|version|imageTag)$`),
+					regexp.MustCompile(`^(image|container)\.(.+\.)?(tag|version)$`),
+				}
+
+				for _, param := range source.Helm.Parameters {
+					for _, pattern := range tagPatterns {
+						if pattern.MatchString(param.Name) && param.Value != "" {
+							prefix := strings.TrimSuffix(param.Name, ".tag")
+							prefix = strings.TrimSuffix(prefix, ".version")
+							prefix = strings.TrimSuffix(prefix, ".imageTag")
+
+							for _, p := range source.Helm.Parameters {
+								if (p.Name == prefix || p.Name == prefix+".name" || p.Name == prefix+".repository") &&
+									p.Value == targetImage.GetFullNameWithoutTag() {
+									foundImage := image.NewFromIdentifier(fmt.Sprintf("%s:%s", targetImage.GetFullNameWithoutTag(), param.Value))
+									if foundImage != nil {
+										return foundImage
+									}
+								}
+							}
 						}
-						break
 					}
 				}
-				
-				if param.Name == "image" || param.Name == "image.repository" {
+			}
+
+			for _, param := range source.Helm.Parameters {
+				if param.Name == "image" || param.Name == "image.repository" || param.Name == registryCommon.DefaultHelmImageName {
 					foundImage := image.NewFromIdentifier(param.Value)
 					if foundImage != nil && foundImage.ImageName == targetImage.ImageName {
 						return foundImage
