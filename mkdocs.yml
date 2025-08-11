@@ -35,6 +35,7 @@ nav:
       - Command "template": install/cmd/template.md 
       - Command "test": install/cmd/test.md
       - Command "version": install/cmd/version.md
+      - Command "webhook": install/cmd/webhook.md
   - Basics:
     - Updating images: basics/update.md
     - Update methods: basics/update-methods.md
@@ -44,6 +45,7 @@ nav:
     - Applications: configuration/applications.md
     - Images: configuration/images.md
     - Container Registries: configuration/registries.md
+    - Webhook: configuration/webhook.md
   - Contributing:
     - Overview: contributing/start.md
     - Developing: contributing/development.md

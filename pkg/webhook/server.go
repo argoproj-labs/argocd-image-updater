@@ -7,14 +7,13 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
-
 	"github.com/argoproj-labs/argocd-image-updater/pkg/argocd"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/kube"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/image"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
-	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/registry"
+
+	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 )
 
 // WebhookServer manages webhook endpoints and triggers update checks
@@ -24,7 +23,7 @@ type WebhookServer struct {
 	// Handler is the webhook handler
 	Handler *WebhookHandler
 	// UpdaterConfig holds configuration for image updating
-	UpdaterConfig *argocd.UpdaterConfig
+	UpdaterConfig *argocd.UpdateConfiguration
 	// KubeClient is the Kubernetes client
 	KubeClient *kube.ImageUpdaterKubernetesClient
 	// ArgoClient is the ArgoCD client
@@ -33,6 +32,8 @@ type WebhookServer struct {
 	Server *http.Server
 	// mutex for concurrent update operations
 	mutex sync.Mutex
+	// mutex for concurrent repo access
+	syncState *argocd.SyncIterationState
 }
 
 // NewWebhookServer creates a new webhook server
@@ -42,6 +43,7 @@ func NewWebhookServer(port int, handler *WebhookHandler, kubeClient *kube.ImageU
 		Handler:    handler,
 		KubeClient: kubeClient,
 		ArgoClient: argoClient,
+		syncState:  argocd.NewSyncIterationState(),
 	}
 }
 
@@ -122,7 +124,7 @@ func (s *WebhookServer) processWebhookEvent(event *WebhookEvent) error {
 	defer s.mutex.Unlock()
 
 	// List applications
-	// TODO: recreate this place to list applications properly
+	// TODO: recreate this place to list applications properly in GITOPS-7336
 	apps, err := s.ArgoClient.ListApplications(context.Background(), nil)
 	if err != nil {
 		return fmt.Errorf("failed to list applications: %w", err)
@@ -145,19 +147,10 @@ func (s *WebhookServer) processWebhookEvent(event *WebhookEvent) error {
 		appLogCtx.Infof("Triggering image update check for application")
 
 		// Create update configuration for this application
-		updateConf := &argocd.UpdateConfiguration{
-			NewRegFN:          registry.NewClient,
-			ArgoClient:        s.ArgoClient,
-			KubeClient:        s.KubeClient,
-			UpdateApp:         &appImages,
-			DryRun:            false,
-			GitCommitUser:     s.UpdaterConfig.GitCommitUser,
-			GitCommitEmail:    s.UpdaterConfig.GitCommitEmail,
-			DisableKubeEvents: false,
-		}
+		s.UpdaterConfig.UpdateApp = &appImages
 
 		// Run the update process
-		result := argocd.UpdateApplication(context.Background(), updateConf, argocd.NewSyncIterationState())
+		result := argocd.UpdateApplication(context.Background(), s.UpdaterConfig, s.syncState)
 
 		appLogCtx.Infof("Update result: processed=%d, updated=%d, errors=%d, skipped=%d",
 			result.NumApplicationsProcessed, result.NumImagesUpdated, result.NumErrors, result.NumSkipped)
