@@ -16,9 +16,7 @@ import (
 	ctrlFake "sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	api "github.com/argoproj-labs/argocd-image-updater/api/v1alpha1"
-	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/kube"
-	registryCommon "github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/common"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/image"
 	registryKube "github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/kube"
 	"github.com/argoproj-labs/argocd-image-updater/test/fake"
@@ -73,10 +71,6 @@ func Test_GetImagesFromApplication(t *testing.T) {
 			ObjectMeta: v1.ObjectMeta{
 				Name:      "test-app",
 				Namespace: "argocd",
-				Annotations: map[string]string{
-					fmt.Sprintf(registryCommon.Prefixed(common.ImageUpdaterAnnotationPrefix, registryCommon.ForceUpdateOptionAnnotationSuffix), "nginx"): "true",
-					common.ImageUpdaterAnnotation: "nginx=nginx",
-				},
 			},
 			Spec: v1alpha1.ApplicationSpec{},
 			Status: v1alpha1.ApplicationStatus{
@@ -214,9 +208,6 @@ func Test_GetApplicationType(t *testing.T) {
 			ObjectMeta: v1.ObjectMeta{
 				Name:      "test-app",
 				Namespace: "argocd",
-				Annotations: map[string]string{
-					common.WriteBackTargetAnnotation: "kustomization:.",
-				},
 			},
 			Spec: v1alpha1.ApplicationSpec{},
 			Status: v1alpha1.ApplicationStatus{
@@ -297,9 +288,6 @@ func Test_GetApplicationSourceType(t *testing.T) {
 			ObjectMeta: v1.ObjectMeta{
 				Name:      "test-app",
 				Namespace: "argocd",
-				Annotations: map[string]string{
-					common.WriteBackTargetAnnotation: "kustomization:.",
-				},
 			},
 			Spec: v1alpha1.ApplicationSpec{},
 			Status: v1alpha1.ApplicationStatus{
@@ -485,7 +473,7 @@ func Test_GetHelmParamNames(t *testing.T) {
 		assert.Equal(t, "image.tag", tag)
 	})
 
-	t.Run("Find existing image spec annotation", func(t *testing.T) {
+	t.Run("Find existing image spec", func(t *testing.T) {
 		name, tag := getHelmParamNames(
 			&Image{
 				ContainerImage: &image.ContainerImage{
@@ -498,7 +486,7 @@ func Test_GetHelmParamNames(t *testing.T) {
 		assert.Empty(t, tag)
 	})
 
-	t.Run("Find existing image name and image tag annotations", func(t *testing.T) {
+	t.Run("Find existing image name and image tag", func(t *testing.T) {
 		name, tag := getHelmParamNames(
 			&Image{
 				ContainerImage: &image.ContainerImage{
@@ -511,7 +499,7 @@ func Test_GetHelmParamNames(t *testing.T) {
 		assert.Equal(t, "image.tag", tag)
 	})
 
-	t.Run("Find non-existing image name and image tag annotations", func(t *testing.T) {
+	t.Run("Find non-existing image name and image tag", func(t *testing.T) {
 		name, tag := getHelmParamNames(
 			&Image{
 				ContainerImage: &image.ContainerImage{
@@ -524,7 +512,7 @@ func Test_GetHelmParamNames(t *testing.T) {
 		assert.Empty(t, tag)
 	})
 
-	t.Run("Find existing image tag annotations", func(t *testing.T) {
+	t.Run("Find existing image tag", func(t *testing.T) {
 		name, tag := getHelmParamNames(
 			&Image{
 				ContainerImage: &image.ContainerImage{
@@ -536,7 +524,7 @@ func Test_GetHelmParamNames(t *testing.T) {
 		assert.Equal(t, "image.tag", tag)
 	})
 
-	t.Run("No suitable annotations found", func(t *testing.T) {
+	t.Run("No suitable image found", func(t *testing.T) {
 		name, tag := getHelmParamNames(
 			&Image{
 				ContainerImage: &image.ContainerImage{
@@ -1186,25 +1174,8 @@ func TestKubernetesClientUpdateSpec(t *testing.T) {
 	//})
 }
 
-func Test_parseImageList(t *testing.T) {
-	t.Run("Test basic parsing", func(t *testing.T) {
-		assert.Equal(t, []string{"foo", "bar"}, parseImageList(map[string]string{common.ImageUpdaterAnnotation: " foo, bar "}).Originals())
-		// should whitespace inside the spec be preserved?
-		assert.Equal(t, []string{"foo", "bar", "baz = qux"}, parseImageList(map[string]string{common.ImageUpdaterAnnotation: " foo, bar,baz = qux "}).Originals())
-		assert.Equal(t, []string{"foo", "bar", "baz=qux"}, parseImageList(map[string]string{common.ImageUpdaterAnnotation: "foo,bar,baz=qux"}).Originals())
-	})
-	t.Run("Test kustomize override", func(t *testing.T) {
-		imgs := *parseImageList(map[string]string{
-			common.ImageUpdaterAnnotation: "foo=bar",
-			fmt.Sprintf(registryCommon.Prefixed(common.ImageUpdaterAnnotationPrefix, registryCommon.KustomizeApplicationNameAnnotationSuffix), "foo"): "baz",
-		})
-		assert.Equal(t, "bar", imgs[0].ImageName)
-		assert.Equal(t, "baz", imgs[0].KustomizeImage.ImageName)
-	})
-}
-
 // Assisted-by: Gemini AI
-func Test_parseImageListIuCR(t *testing.T) {
+func Test_parseImageList(t *testing.T) {
 	// newExpectedImageForIuCR is a helper to construct an expected image object.
 	newExpectedImageForIuCR := func(identifier string, kustomizeName string) *Image {
 		// First, create the neutral image identity. This call correctly
@@ -1301,7 +1272,7 @@ func Test_parseImageListIuCR(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := parseImageListIuCR(context.Background(), tc.inputImages, nil)
+			got := parseImageList(context.Background(), tc.inputImages, nil)
 			require.NotNil(t, got)
 			assert.ElementsMatch(t, tc.expectedImages, *got, "The parsed image list should match the expected list")
 		})

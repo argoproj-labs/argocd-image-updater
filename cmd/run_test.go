@@ -1,6 +1,8 @@
 package main
 
 import (
+	"os"
+	"strconv"
 	"testing"
 	"time"
 
@@ -45,7 +47,8 @@ func TestNewRunCommand(t *testing.T) {
 	asser.Equal("false", controllerCommand.Flag("once").Value.String())
 	asser.Equal(common.DefaultRegistriesConfPath, controllerCommand.Flag("registries-conf-path").Value.String())
 	asser.Equal("false", controllerCommand.Flag("disable-kubernetes").Value.String())
-	asser.Equal("10", controllerCommand.Flag("max-concurrency").Value.String())
+	asser.Equal(strconv.Itoa(env.ParseNumFromEnv("MAX_CONCURRENT_APPS", 10, 1, 100)), controllerCommand.Flag("max-concurrent-apps").Value.String())
+	asser.Equal(strconv.Itoa(env.ParseNumFromEnv("MAX_CONCURRENT_RECONCILES", 1, 1, 10)), controllerCommand.Flag("max-concurrent-reconciles").Value.String())
 	asser.Equal("", controllerCommand.Flag("argocd-namespace").Value.String())
 	asser.Equal("[]", controllerCommand.Flag("match-application-name").Value.String())
 	asser.Equal("", controllerCommand.Flag("match-application-label").Value.String())
@@ -60,4 +63,94 @@ func TestNewRunCommand(t *testing.T) {
 
 	asser.Nil(controllerCommand.Help())
 
+}
+
+// Assisted-by: Gemini AI
+// TestMaxConcurrentAppsCornerCases tests corner cases for MAX_CONCURRENT_APPS flag
+func TestMaxConcurrentAppsCornerCases(t *testing.T) {
+	tests := []struct {
+		name           string
+		envValue       string
+		expectedResult string
+		description    string
+	}{
+		{
+			name:           "MAX_CONCURRENT_APPS with value below minimum (0)",
+			envValue:       "0",
+			expectedResult: "10", // Default value when below min (1)
+			description:    "Should return default value when environment variable is below minimum allowed value",
+		},
+		{
+			name:           "MAX_CONCURRENT_APPS with value above maximum (101)",
+			envValue:       "101",
+			expectedResult: "10", // Default value when above max (100)
+			description:    "Should return default value when environment variable is above maximum allowed value",
+		},
+		{
+			name:           "MAX_CONCURRENT_APPS with negative value (-1)",
+			envValue:       "-1",
+			expectedResult: "10", // Default value when below min (1)
+			description:    "Should return default value when environment variable is negative",
+		},
+		{
+			name:           "MAX_CONCURRENT_APPS with non-numeric value (abc)",
+			envValue:       "abc",
+			expectedResult: "10", // Default value when parsing fails
+			description:    "Should return default value when environment variable is not a valid number",
+		},
+		{
+			name:           "MAX_CONCURRENT_APPS with empty string",
+			envValue:       "",
+			expectedResult: "10", // Default value when not set
+			description:    "Should return default value when environment variable is empty",
+		},
+		{
+			name:           "MAX_CONCURRENT_APPS with decimal value (5.5)",
+			envValue:       "5.5",
+			expectedResult: "10", // Default value when parsing fails (expects integer)
+			description:    "Should return default value when environment variable is a decimal number",
+		},
+		{
+			name:           "MAX_CONCURRENT_APPS with very large number (999999)",
+			envValue:       "999999",
+			expectedResult: "10", // Default value when above max (100)
+			description:    "Should return default value when environment variable is very large",
+		},
+		{
+			name:           "MAX_CONCURRENT_APPS with boundary value at minimum (1)",
+			envValue:       "1",
+			expectedResult: "1", // Valid value at minimum boundary
+			description:    "Should accept minimum boundary value",
+		},
+		{
+			name:           "MAX_CONCURRENT_APPS with boundary value at maximum (100)",
+			envValue:       "100",
+			expectedResult: "100", // Valid value at maximum boundary
+			description:    "Should accept maximum boundary value",
+		},
+		{
+			name:           "MAX_CONCURRENT_APPS with valid value in middle range (50)",
+			envValue:       "50",
+			expectedResult: "50", // Valid value in middle of range
+			description:    "Should accept valid value in middle of allowed range",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Set environment variable
+			if tt.envValue != "" {
+				os.Setenv("MAX_CONCURRENT_APPS", tt.envValue)
+				defer os.Unsetenv("MAX_CONCURRENT_APPS")
+			} else {
+				os.Unsetenv("MAX_CONCURRENT_APPS")
+			}
+
+			// Create new command to test the flag value
+			controllerCommand := newRunCommand()
+			flagValue := controllerCommand.Flag("max-concurrent-apps").Value.String()
+
+			assert.Equal(t, tt.expectedResult, flagValue, tt.description)
+		})
+	}
 }

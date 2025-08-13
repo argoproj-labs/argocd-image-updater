@@ -71,6 +71,18 @@ spec:
               name: argocd-image-updater-config
               key: log.level
               optional: true
+        - name: MAX_CONCURRENT_APPS
+          valueFrom:
+            configMapKeyRef:
+              name: argocd-image-updater-config
+              key: max_concurrent_apps
+              optional: true
+        - name: MAX_CONCURRENT_RECONCILES
+          valueFrom:
+            configMapKeyRef:
+              name: argocd-image-updater-config
+              key: max_concurrent_reconciles
+              optional: true
         - name: GIT_COMMIT_USER
           valueFrom:
             configMapKeyRef:

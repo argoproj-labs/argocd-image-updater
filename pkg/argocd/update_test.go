@@ -16,9 +16,7 @@ import (
 	"github.com/argoproj-labs/argocd-image-updater/ext/git"
 	gitmock "github.com/argoproj-labs/argocd-image-updater/ext/git/mocks"
 	argomock "github.com/argoproj-labs/argocd-image-updater/pkg/argocd/mocks"
-	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/kube"
-	registryCommon "github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/common"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/image"
 	registryKube "github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/kube"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/registry"
@@ -53,9 +51,6 @@ func Test_UpdateApplication(t *testing.T) {
 				Clientset: fake.NewFakeKubeClient(),
 			},
 		}
-		annotations := map[string]string{
-			common.ImageUpdaterAnnotation: "foobar=gcr.io/jannfis/foobar:>=1.0.1,foobar=gcr.io/jannfis/barbar:>=1.0.1",
-		}
 
 		imageList := ImageList{
 			NewImage(image.NewFromIdentifier("foobar=gcr.io/jannfis/foobar:>=1.0.1")),
@@ -65,9 +60,8 @@ func Test_UpdateApplication(t *testing.T) {
 		appImages := &ApplicationImages{
 			Application: v1alpha1.Application{
 				ObjectMeta: v1.ObjectMeta{
-					Name:        "guestbook",
-					Namespace:   "guestbook",
-					Annotations: annotations,
+					Name:      "guestbook",
+					Namespace: "guestbook",
 				},
 				Spec: v1alpha1.ApplicationSpec{
 					Source: &v1alpha1.ApplicationSource{
@@ -131,20 +125,14 @@ func Test_UpdateApplication(t *testing.T) {
 				Clientset: fake.NewFakeClientsetWithResources(secret),
 			},
 		}
-
-		annotations := map[string]string{
-			common.ImageUpdaterAnnotation:    "foo=gcr.io/jannfis/foobar:>=1.0.1",
-			common.WriteBackMethodAnnotation: "git:secret:argocd-image-updater/git-creds",
-		}
 		imageList := ImageList{
 			NewImage(image.NewFromIdentifier("foo=gcr.io/jannfis/foobar:>=1.0.1")),
 		}
 		appImages := &ApplicationImages{
 			Application: v1alpha1.Application{
 				ObjectMeta: v1.ObjectMeta{
-					Name:        "guestbook",
-					Namespace:   "guestbook",
-					Annotations: annotations,
+					Name:      "guestbook",
+					Namespace: "guestbook",
 				},
 				Spec: v1alpha1.ApplicationSpec{
 					Source: &v1alpha1.ApplicationSource{
@@ -346,27 +334,19 @@ func Test_UpdateApplication(t *testing.T) {
 				Clientset: fake.NewFakeKubeClient(),
 			},
 		}
-		// Define annotations once to be used for both the application and parsing
-		annotations := map[string]string{
-			"argocd-image-updater.argoproj.io/image-list":                  "foobar=quay.io/jannfis/foobar:~1.0.0",
-			"argocd-image-updater.argoproj.io/foobar.kustomize.image-name": "jannfis/foobar",
-			"argocd-image-updater.argoproj.io/foobar.force-update":         "true",
-		}
 
 		containerImg := image.NewFromIdentifier("foobar=quay.io/jannfis/foobar:~1.0.0")
-		kustomizeImageName := containerImg.GetParameterKustomizeImageName(annotations, common.ImageUpdaterAnnotationPrefix)
-		containerImg.KustomizeImage = image.NewFromIdentifier(kustomizeImageName)
 		iuImg := NewImage(containerImg)
-		iuImg.ForceUpdate = containerImg.HasForceUpdateOptionAnnotation(annotations, common.ImageUpdaterAnnotationPrefix)
+		iuImg.KustomizeImageName = "jannfis/foobar"
+		iuImg.ForceUpdate = true
 
 		imageList := ImageList{iuImg}
 
 		appImages := &ApplicationImages{
 			Application: v1alpha1.Application{
 				ObjectMeta: v1.ObjectMeta{
-					Name:        "guestbook",
-					Namespace:   "guestbook",
-					Annotations: annotations,
+					Name:      "guestbook",
+					Namespace: "guestbook",
 				},
 				Spec: v1alpha1.ApplicationSpec{
 					Source: &v1alpha1.ApplicationSource{
@@ -424,25 +404,18 @@ func Test_UpdateApplication(t *testing.T) {
 				Clientset: fake.NewFakeKubeClient(),
 			},
 		}
-		// Define annotations once to be used for both the application and parsing
-		annotations := map[string]string{
-			"argocd-image-updater.argoproj.io/image-list":                  "foobar=quay.io/someorg/foobar:~1.0.0",
-			"argocd-image-updater.argoproj.io/foobar.kustomize.image-name": "jannfis/foobar",
-			"argocd-image-updater.argoproj.io/foobar.force-update":         "true",
-		}
+
 		containerImg := image.NewFromIdentifier("foobar=quay.io/someorg/foobar:~1.0.0")
-		kustomizeImageName := containerImg.GetParameterKustomizeImageName(annotations, common.ImageUpdaterAnnotationPrefix)
-		containerImg.KustomizeImage = image.NewFromIdentifier(kustomizeImageName)
 		iuImg := NewImage(containerImg)
-		iuImg.ForceUpdate = containerImg.HasForceUpdateOptionAnnotation(annotations, common.ImageUpdaterAnnotationPrefix)
+		iuImg.KustomizeImageName = "jannfis/foobar"
+		iuImg.ForceUpdate = true
 
 		imageList := ImageList{iuImg}
 		appImages := &ApplicationImages{
 			Application: v1alpha1.Application{
 				ObjectMeta: v1.ObjectMeta{
-					Name:        "guestbook",
-					Namespace:   "guestbook",
-					Annotations: annotations,
+					Name:      "guestbook",
+					Namespace: "guestbook",
 				},
 				Spec: v1alpha1.ApplicationSpec{
 					Source: &v1alpha1.ApplicationSource{
@@ -747,22 +720,18 @@ func Test_UpdateApplication(t *testing.T) {
 				Clientset: fake.NewFakeKubeClient(),
 			},
 		}
-		annotations := map[string]string{
-			common.ImageUpdaterAnnotation: "foobar=gcr.io/jannfis/foobar:>=1.0.1",
-			fmt.Sprintf(registryCommon.Prefixed(common.ImageUpdaterAnnotationPrefix, registryCommon.KustomizeApplicationNameAnnotationSuffix), "foobar"): "jannfis/foobar",
-		}
+
 		containerImg := image.NewFromIdentifier("foobar=gcr.io/jannfis/foobar:>=1.0.1")
-		kustomizeImageName := containerImg.GetParameterKustomizeImageName(annotations, common.ImageUpdaterAnnotationPrefix)
-		containerImg.KustomizeImage = image.NewFromIdentifier(kustomizeImageName)
 		iuImg := NewImage(containerImg)
-		iuImg.ForceUpdate = containerImg.HasForceUpdateOptionAnnotation(annotations, common.ImageUpdaterAnnotationPrefix)
+		iuImg.KustomizeImageName = "jannfis/foobar"
+		iuImg.ContainerImage.KustomizeImage = image.NewFromIdentifier("jannfis/foobar")
+		iuImg.ForceUpdate = false
 		imageList := ImageList{iuImg}
 		appImages := &ApplicationImages{
 			Application: v1alpha1.Application{
 				ObjectMeta: v1.ObjectMeta{
-					Name:        "guestbook",
-					Namespace:   "guestbook",
-					Annotations: annotations,
+					Name:      "guestbook",
+					Namespace: "guestbook",
 				},
 				Spec: v1alpha1.ApplicationSpec{
 					Source: &v1alpha1.ApplicationSource{
@@ -817,22 +786,17 @@ func Test_UpdateApplication(t *testing.T) {
 				Clientset: fake.NewFakeKubeClient(),
 			},
 		}
-		annotations := map[string]string{
-			common.ImageUpdaterAnnotation: "foobar=gcr.io/jannfis/foobar:>=1.0.1",
-			fmt.Sprintf(registryCommon.Prefixed(common.ImageUpdaterAnnotationPrefix, registryCommon.KustomizeApplicationNameAnnotationSuffix), "foobar"): "jannfis/foobar",
-		}
+
 		containerImg := image.NewFromIdentifier("foobar=gcr.io/jannfis/foobar:>=1.0.1")
-		kustomizeImageName := containerImg.GetParameterKustomizeImageName(annotations, common.ImageUpdaterAnnotationPrefix)
-		containerImg.KustomizeImage = image.NewFromIdentifier(kustomizeImageName)
 		iuImg := NewImage(containerImg)
-		iuImg.ForceUpdate = containerImg.HasForceUpdateOptionAnnotation(annotations, common.ImageUpdaterAnnotationPrefix)
+		iuImg.KustomizeImageName = "jannfis/foobar"
+		iuImg.ForceUpdate = false
 		imageList := ImageList{iuImg}
 		appImages := &ApplicationImages{
 			Application: v1alpha1.Application{
 				ObjectMeta: v1.ObjectMeta{
-					Name:        "guestbook",
-					Namespace:   "guestbook",
-					Annotations: annotations,
+					Name:      "guestbook",
+					Namespace: "guestbook",
 				},
 				Spec: v1alpha1.ApplicationSpec{
 					Source: &v1alpha1.ApplicationSource{
@@ -908,10 +872,6 @@ func Test_UpdateApplication(t *testing.T) {
 				ObjectMeta: v1.ObjectMeta{
 					Name:      "guestbook",
 					Namespace: "guestbook",
-					Annotations: map[string]string{
-						fmt.Sprintf(registryCommon.Prefixed(common.ImageUpdaterAnnotationPrefix, registryCommon.AllowTagsOptionAnnotationSuffix), "dummy"): "regexp:^foobar$",
-						fmt.Sprintf(registryCommon.Prefixed(common.ImageUpdaterAnnotationPrefix, registryCommon.UpdateStrategyAnnotationSuffix), "dummy"):  "name",
-					},
 				},
 				Spec: v1alpha1.ApplicationSpec{
 					Source: &v1alpha1.ApplicationSource{
@@ -990,10 +950,6 @@ func Test_UpdateApplication(t *testing.T) {
 				ObjectMeta: v1.ObjectMeta{
 					Name:      "guestbook",
 					Namespace: "guestbook",
-					Annotations: map[string]string{
-						fmt.Sprintf(registryCommon.Prefixed(common.ImageUpdaterAnnotationPrefix, registryCommon.IgnoreTagsOptionAnnotationSuffix), "dummy"): "*",
-						fmt.Sprintf(registryCommon.UpdateStrategyAnnotationSuffix, "dummy"):                                                                 "name",
-					},
 				},
 				Spec: v1alpha1.ApplicationSpec{
 					Source: &v1alpha1.ApplicationSource{
@@ -1294,10 +1250,6 @@ kustomize:
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
 				Name: "testapp",
-				Annotations: map[string]string{
-					"argocd-image-updater.argoproj.io/image-list":        "nginx",
-					"argocd-image-updater.argoproj.io/write-back-method": "git",
-				},
 			},
 			Spec: v1alpha1.ApplicationSpec{
 				Source: &v1alpha1.ApplicationSource{
@@ -1346,9 +1298,6 @@ kustomize:
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
 				Name: "testapp",
-				Annotations: map[string]string{
-					"argocd-image-updater.argoproj.io/image-list": "nginx",
-				},
 			},
 			Spec: v1alpha1.ApplicationSpec{
 				Source: &v1alpha1.ApplicationSource{
@@ -1390,10 +1339,6 @@ kustomize:
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
 				Name: "testapp",
-				Annotations: map[string]string{
-					"argocd-image-updater.argoproj.io/image-list":        "nginx",
-					"argocd-image-updater.argoproj.io/write-back-method": "git",
-				},
 			},
 			Spec: v1alpha1.ApplicationSpec{
 				Source: &v1alpha1.ApplicationSource{
@@ -1436,10 +1381,6 @@ helm:
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
 				Name: "testapp",
-				Annotations: map[string]string{
-					"argocd-image-updater.argoproj.io/image-list":        "nginx",
-					"argocd-image-updater.argoproj.io/write-back-method": "git",
-				},
 			},
 			Spec: v1alpha1.ApplicationSpec{
 				Source: &v1alpha1.ApplicationSource{
@@ -1500,10 +1441,6 @@ helm:
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
 				Name: "testapp",
-				Annotations: map[string]string{
-					"argocd-image-updater.argoproj.io/image-list":        "nginx",
-					"argocd-image-updater.argoproj.io/write-back-method": "git",
-				},
 			},
 			Spec: v1alpha1.ApplicationSpec{
 				Source: &v1alpha1.ApplicationSource{
@@ -1558,10 +1495,6 @@ helm:
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
 				Name: "testapp",
-				Annotations: map[string]string{
-					"argocd-image-updater.argoproj.io/image-list":        "nginx",
-					"argocd-image-updater.argoproj.io/write-back-method": "git",
-				},
 			},
 			Spec: v1alpha1.ApplicationSpec{
 				Source: &v1alpha1.ApplicationSource{
@@ -1606,10 +1539,6 @@ helm:
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
 				Name: "testapp",
-				Annotations: map[string]string{
-					"argocd-image-updater.argoproj.io/image-list":        "nginx",
-					"argocd-image-updater.argoproj.io/write-back-method": "git",
-				},
 			},
 			Spec: v1alpha1.ApplicationSpec{
 				Source: &v1alpha1.ApplicationSource{
@@ -1644,13 +1573,6 @@ replicas: 1
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
 				Name: "testapp",
-				Annotations: map[string]string{
-					"argocd-image-updater.argoproj.io/image-list":            "nginx",
-					"argocd-image-updater.argoproj.io/write-back-method":     "git",
-					"argocd-image-updater.argoproj.io/write-back-target":     "helmvalues:./test-values.yaml",
-					"argocd-image-updater.argoproj.io/nginx.helm.image-name": "image.name",
-					"argocd-image-updater.argoproj.io/nginx.helm.image-tag":  "image.tag",
-				},
 			},
 			Spec: v1alpha1.ApplicationSpec{
 				Source: &v1alpha1.ApplicationSource{
@@ -1713,12 +1635,6 @@ replicas: 1
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
 				Name: "testapp",
-				Annotations: map[string]string{
-					"argocd-image-updater.argoproj.io/image-list":            "nginx",
-					"argocd-image-updater.argoproj.io/write-back-method":     "git",
-					"argocd-image-updater.argoproj.io/write-back-target":     "helmvalues:./test-values.yaml",
-					"argocd-image-updater.argoproj.io/nginx.helm.image-spec": "image.spec.foo",
-				},
 			},
 			Spec: v1alpha1.ApplicationSpec{
 				Source: &v1alpha1.ApplicationSource{
@@ -1792,15 +1708,6 @@ replicas: 1
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
 				Name: "testapp",
-				Annotations: map[string]string{
-					"argocd-image-updater.argoproj.io/image-list":            "nginx=nginx, redis=redis",
-					"argocd-image-updater.argoproj.io/write-back-method":     "git",
-					"argocd-image-updater.argoproj.io/write-back-target":     "helmvalues:./test-values.yaml",
-					"argocd-image-updater.argoproj.io/nginx.helm.image-name": "nginx.image.name",
-					"argocd-image-updater.argoproj.io/nginx.helm.image-tag":  "nginx.image.tag",
-					"argocd-image-updater.argoproj.io/redis.helm.image-name": "redis.image.name",
-					"argocd-image-updater.argoproj.io/redis.helm.image-tag":  "redis.image.tag",
-				},
 			},
 			Spec: v1alpha1.ApplicationSpec{
 				Sources: []v1alpha1.ApplicationSource{
@@ -1917,17 +1824,6 @@ replicas: 1
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
 				Name: "testapp",
-				Annotations: map[string]string{
-					"argocd-image-updater.argoproj.io/image-list":          "foo=nginx, bar=nginx, bbb=nginx",
-					"argocd-image-updater.argoproj.io/write-back-method":   "git",
-					"argocd-image-updater.argoproj.io/write-back-target":   "helmvalues:./test-values.yaml",
-					"argocd-image-updater.argoproj.io/foo.helm.image-name": "foo.image.name",
-					"argocd-image-updater.argoproj.io/foo.helm.image-tag":  "foo.image.tag",
-					"argocd-image-updater.argoproj.io/bar.helm.image-name": "bar.image.name",
-					"argocd-image-updater.argoproj.io/bar.helm.image-tag":  "bar.image.tag",
-					"argocd-image-updater.argoproj.io/bbb.helm.image-name": "bbb.image.name",
-					"argocd-image-updater.argoproj.io/bbb.helm.image-tag":  "bbb.image.tag",
-				},
 			},
 			Spec: v1alpha1.ApplicationSpec{
 				Sources: []v1alpha1.ApplicationSource{
@@ -2039,13 +1935,6 @@ replicas: 1
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
 				Name: "testapp",
-				Annotations: map[string]string{
-					"argocd-image-updater.argoproj.io/image-list":            "nginx",
-					"argocd-image-updater.argoproj.io/write-back-method":     "git",
-					"argocd-image-updater.argoproj.io/write-back-target":     "helmvalues:./test-values.yaml",
-					"argocd-image-updater.argoproj.io/nginx.helm.image-name": "image.name",
-					"argocd-image-updater.argoproj.io/nginx.helm.image-tag":  "image.tag",
-				},
 			},
 			Spec: v1alpha1.ApplicationSpec{
 				Source: &v1alpha1.ApplicationSource{
@@ -2112,13 +2001,6 @@ replicas: 1
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
 				Name: "testapp",
-				Annotations: map[string]string{
-					"argocd-image-updater.argoproj.io/image-list":            "nginx",
-					"argocd-image-updater.argoproj.io/write-back-method":     "git",
-					"argocd-image-updater.argoproj.io/write-back-target":     "helmvalues:./test-values.yaml",
-					"argocd-image-updater.argoproj.io/nginx.helm.image-name": "image.name",
-					"argocd-image-updater.argoproj.io/nginx.helm.image-tag":  "image.tag",
-				},
 			},
 			Spec: v1alpha1.ApplicationSpec{
 				Source: &v1alpha1.ApplicationSource{
@@ -2175,16 +2057,10 @@ replicas: 1
 		assert.Equal(t, strings.TrimSpace(strings.ReplaceAll(expected, "\t", "  ")), strings.TrimSpace(string(yaml)))
 	})
 
-	t.Run("Missing annotation image-tag for helmvalues write-back-target", func(t *testing.T) {
+	t.Run("Missing image-tag for helmvalues write-back-target", func(t *testing.T) {
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
 				Name: "testapp",
-				Annotations: map[string]string{
-					"argocd-image-updater.argoproj.io/image-list":            "nginx",
-					"argocd-image-updater.argoproj.io/write-back-method":     "git",
-					"argocd-image-updater.argoproj.io/write-back-target":     "helmvalues:./test-values.yaml",
-					"argocd-image-updater.argoproj.io/nginx.helm.image-name": "image.name",
-				},
 			},
 			Spec: v1alpha1.ApplicationSpec{
 				Source: &v1alpha1.ApplicationSource{
@@ -2233,16 +2109,10 @@ replicas: 1
 		assert.Equal(t, "could not find an image-tag for image nginx", err.Error())
 	})
 
-	t.Run("Missing annotation image-name for helmvalues write-back-target", func(t *testing.T) {
+	t.Run("Missing image-name for helmvalues write-back-target", func(t *testing.T) {
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
 				Name: "testapp",
-				Annotations: map[string]string{
-					"argocd-image-updater.argoproj.io/image-list":           "nginx",
-					"argocd-image-updater.argoproj.io/write-back-method":    "git",
-					"argocd-image-updater.argoproj.io/write-back-target":    "helmvalues:./test-values.yaml",
-					"argocd-image-updater.argoproj.io/nginx.helm.image-tag": "image.tag",
-				},
 			},
 			Spec: v1alpha1.ApplicationSpec{
 				Source: &v1alpha1.ApplicationSource{
@@ -2291,17 +2161,10 @@ replicas: 1
 		assert.Equal(t, "could not find an image-name for image nginx", err.Error())
 	})
 
-	t.Run("Image-name annotation value not found in Helm source parameters list", func(t *testing.T) {
+	t.Run("Image-name value not found in Helm source parameters list", func(t *testing.T) {
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
 				Name: "testapp",
-				Annotations: map[string]string{
-					"argocd-image-updater.argoproj.io/image-list":            "nginx",
-					"argocd-image-updater.argoproj.io/write-back-method":     "git",
-					"argocd-image-updater.argoproj.io/write-back-target":     "helmvalues:./test-values.yaml",
-					"argocd-image-updater.argoproj.io/nginx.helm.image-name": "wrongimage.name",
-					"argocd-image-updater.argoproj.io/nginx.helm.image-tag":  "image.tag",
-				},
 			},
 			Spec: v1alpha1.ApplicationSpec{
 				Source: &v1alpha1.ApplicationSource{
@@ -2350,17 +2213,10 @@ replicas: 1
 		assert.Error(t, err)
 	})
 
-	t.Run("Image-tag annotation value not found in Helm source parameters list", func(t *testing.T) {
+	t.Run("Image-tag value not found in Helm source parameters list", func(t *testing.T) {
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
 				Name: "testapp",
-				Annotations: map[string]string{
-					"argocd-image-updater.argoproj.io/image-list":            "nginx",
-					"argocd-image-updater.argoproj.io/write-back-method":     "git",
-					"argocd-image-updater.argoproj.io/write-back-target":     "helmvalues:./test-values.yaml",
-					"argocd-image-updater.argoproj.io/nginx.helm.image-name": "image.name",
-					"argocd-image-updater.argoproj.io/nginx.helm.image-tag":  "wrongimage.tag",
-				},
 			},
 			Spec: v1alpha1.ApplicationSpec{
 				Source: &v1alpha1.ApplicationSource{
@@ -2414,13 +2270,6 @@ replicas: 1
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
 				Name: "testapp",
-				Annotations: map[string]string{
-					"argocd-image-updater.argoproj.io/image-list":            "nginx",
-					"argocd-image-updater.argoproj.io/write-back-method":     "git",
-					"argocd-image-updater.argoproj.io/write-back-target":     "helmvalues:./test-values.yaml",
-					"argocd-image-updater.argoproj.io/nginx.helm.image-name": "image.name",
-					"argocd-image-updater.argoproj.io/nginx.helm.image-tag":  "image.tag",
-				},
 			},
 			Spec: v1alpha1.ApplicationSpec{
 				Source: &v1alpha1.ApplicationSource{
@@ -2474,10 +2323,6 @@ replicas: 1
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
 				Name: "testapp",
-				Annotations: map[string]string{
-					"argocd-image-updater.argoproj.io/image-list":        "nginx",
-					"argocd-image-updater.argoproj.io/write-back-method": "git",
-				},
 			},
 			Spec: v1alpha1.ApplicationSpec{
 				Source: &v1alpha1.ApplicationSource{
@@ -3014,11 +2859,6 @@ func Test_GetWriteBackConfig(t *testing.T) {
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
 				Name: "testapp",
-				Annotations: map[string]string{
-					"argocd-image-updater.argoproj.io/image-list":        "nginx",
-					"argocd-image-updater.argoproj.io/write-back-method": "git",
-					"argocd-image-updater.argoproj.io/git-branch":        "mybranch:mytargetbranch",
-				},
 			},
 			Spec: v1alpha1.ApplicationSpec{
 				Source: &v1alpha1.ApplicationSource{
@@ -3060,10 +2900,6 @@ func Test_GetWriteBackConfig(t *testing.T) {
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
 				Name: "testapp",
-				Annotations: map[string]string{
-					"argocd-image-updater.argoproj.io/write-back-method": "git",
-					"argocd-image-updater.argoproj.io/git-branch":        ":mytargetbranch",
-				},
 			},
 			Spec: v1alpha1.ApplicationSpec{
 				Source: &v1alpha1.ApplicationSource{
@@ -3101,10 +2937,6 @@ func Test_GetWriteBackConfig(t *testing.T) {
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
 				Name: "testapp",
-				Annotations: map[string]string{
-					"argocd-image-updater.argoproj.io/write-back-method": "git",
-					"argocd-image-updater.argoproj.io/git-branch":        "mybranch",
-				},
 			},
 			Spec: v1alpha1.ApplicationSpec{
 				Source: &v1alpha1.ApplicationSource{
@@ -3142,10 +2974,6 @@ func Test_GetWriteBackConfig(t *testing.T) {
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
 				Name: "testapp",
-				Annotations: map[string]string{
-					"argocd-image-updater.argoproj.io/image-list":        "nginx",
-					"argocd-image-updater.argoproj.io/write-back-method": "argocd",
-				},
 			},
 			Spec: v1alpha1.ApplicationSpec{
 				Source: &v1alpha1.ApplicationSource{
@@ -3182,11 +3010,6 @@ func Test_GetWriteBackConfig(t *testing.T) {
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
 				Name: "testapp",
-				Annotations: map[string]string{
-					"argocd-image-updater.argoproj.io/image-list":        "nginx",
-					"argocd-image-updater.argoproj.io/write-back-method": "git",
-					"argocd-image-updater.argoproj.io/write-back-target": "kustomization:../bar",
-				},
 			},
 			Spec: v1alpha1.ApplicationSpec{
 				Source: &v1alpha1.ApplicationSource{
@@ -3229,11 +3052,6 @@ func Test_GetWriteBackConfig(t *testing.T) {
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
 				Name: "testapp",
-				Annotations: map[string]string{
-					"argocd-image-updater.argoproj.io/image-list":        "nginx",
-					"argocd-image-updater.argoproj.io/write-back-method": "git",
-					"argocd-image-updater.argoproj.io/write-back-target": "helmvalues:../bar/values.yaml",
-				},
 			},
 			Spec: v1alpha1.ApplicationSpec{
 				Source: &v1alpha1.ApplicationSource{
@@ -3276,11 +3094,6 @@ func Test_GetWriteBackConfig(t *testing.T) {
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
 				Name: "testapp",
-				Annotations: map[string]string{
-					"argocd-image-updater.argoproj.io/image-list":        "nginx",
-					"argocd-image-updater.argoproj.io/write-back-method": "git",
-					"argocd-image-updater.argoproj.io/write-back-target": "helmvalues",
-				},
 			},
 			Spec: v1alpha1.ApplicationSpec{
 				Source: &v1alpha1.ApplicationSource{
@@ -3323,11 +3136,6 @@ func Test_GetWriteBackConfig(t *testing.T) {
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
 				Name: "testapp",
-				Annotations: map[string]string{
-					"argocd-image-updater.argoproj.io/image-list":        "nginx",
-					"argocd-image-updater.argoproj.io/write-back-method": "git",
-					"argocd-image-updater.argoproj.io/write-back-target": "helmvalues:/helm/app/values.yaml",
-				},
 			},
 			Spec: v1alpha1.ApplicationSpec{
 				Source: &v1alpha1.ApplicationSource{
@@ -3370,11 +3178,6 @@ func Test_GetWriteBackConfig(t *testing.T) {
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
 				Name: "testapp",
-				Annotations: map[string]string{
-					"argocd-image-updater.argoproj.io/image-list":        "nginx",
-					"argocd-image-updater.argoproj.io/write-back-method": "git",
-					"argocd-image-updater.argoproj.io/write-back-target": "target/folder/app-parameters.yaml",
-				},
 			},
 			Spec: v1alpha1.ApplicationSpec{
 				Source: &v1alpha1.ApplicationSource{
@@ -3417,10 +3220,6 @@ func Test_GetWriteBackConfig(t *testing.T) {
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
 				Name: "testapp",
-				Annotations: map[string]string{
-					"argocd-image-updater.argoproj.io/image-list":        "nginx",
-					"argocd-image-updater.argoproj.io/write-back-method": "git:error:argocd-image-updater/git-creds",
-				},
 			},
 			Spec: v1alpha1.ApplicationSpec{
 				Source: &v1alpha1.ApplicationSource{
@@ -3459,9 +3258,6 @@ func Test_GetWriteBackConfig(t *testing.T) {
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
 				Name: "testapp",
-				Annotations: map[string]string{
-					"argocd-image-updater.argoproj.io/image-list": "nginx",
-				},
 			},
 			Spec: v1alpha1.ApplicationSpec{
 				Source: &v1alpha1.ApplicationSource{
@@ -3501,10 +3297,6 @@ func Test_GetWriteBackConfig(t *testing.T) {
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
 				Name: "testapp",
-				Annotations: map[string]string{
-					"argocd-image-updater.argoproj.io/image-list":        "nginx",
-					"argocd-image-updater.argoproj.io/write-back-method": "unknown",
-				},
 			},
 			Spec: v1alpha1.ApplicationSpec{
 				Source: &v1alpha1.ApplicationSource{
@@ -3557,11 +3349,6 @@ func Test_GetGitCreds(t *testing.T) {
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
 				Name: "testapp",
-				Annotations: map[string]string{
-					"argocd-image-updater.argoproj.io/image-list":        "nginx",
-					"argocd-image-updater.argoproj.io/write-back-method": "git:secret:argocd-image-updater/git-creds",
-					"argocd-image-updater.argoproj.io/git-credentials":   "argocd-image-updater/git-creds",
-				},
 			},
 			Spec: v1alpha1.ApplicationSpec{
 				Source: &v1alpha1.ApplicationSource{
@@ -3608,11 +3395,6 @@ func Test_GetGitCreds(t *testing.T) {
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
 				Name: "testapp",
-				Annotations: map[string]string{
-					"argocd-image-updater.argoproj.io/image-list":        "nginx",
-					"argocd-image-updater.argoproj.io/write-back-method": "git:secret:argocd-image-updater/git-creds",
-					"argocd-image-updater.argoproj.io/git-credentials":   "argocd-image-updater/git-creds",
-				},
 			},
 			Spec: v1alpha1.ApplicationSpec{
 				Source: &v1alpha1.ApplicationSource{
@@ -3699,10 +3481,6 @@ func Test_GetGitCreds(t *testing.T) {
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
 				Name: "testapp",
-				Annotations: map[string]string{
-					"argocd-image-updater.argoproj.io/image-list":        "nginx",
-					"argocd-image-updater.argoproj.io/write-back-method": "git:secret:argocd-image-updater/git-creds",
-				},
 			},
 			Spec: v1alpha1.ApplicationSpec{
 				Source: &v1alpha1.ApplicationSource{
@@ -3761,10 +3539,6 @@ func Test_GetGitCreds(t *testing.T) {
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
 				Name: "testapp",
-				Annotations: map[string]string{
-					"argocd-image-updater.argoproj.io/image-list":        "nginx",
-					"argocd-image-updater.argoproj.io/write-back-method": "git:repocreds",
-				},
 			},
 			Spec: v1alpha1.ApplicationSpec{
 				Source: &v1alpha1.ApplicationSource{
@@ -3809,10 +3583,6 @@ func Test_GetGitCreds(t *testing.T) {
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
 				Name: "testapp",
-				Annotations: map[string]string{
-					"argocd-image-updater.argoproj.io/image-list":        "nginx",
-					"argocd-image-updater.argoproj.io/write-back-method": "git:secret:argocd-image-updater/git-creds",
-				},
 			},
 			Spec: v1alpha1.ApplicationSpec{
 				Source: &v1alpha1.ApplicationSource{
@@ -3854,11 +3624,6 @@ func Test_GetGitCreds(t *testing.T) {
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
 				Name: "testapp",
-				Annotations: map[string]string{
-					"argocd-image-updater.argoproj.io/image-list":        "nginx",
-					"argocd-image-updater.argoproj.io/write-back-method": "git:secret:nonexist",
-					"argocd-image-updater.argoproj.io/git-credentials":   "",
-				},
 			},
 			Spec: v1alpha1.ApplicationSpec{
 				Source: &v1alpha1.ApplicationSource{
@@ -3900,11 +3665,6 @@ func Test_GetGitCreds(t *testing.T) {
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
 				Name: "testapp",
-				Annotations: map[string]string{
-					"argocd-image-updater.argoproj.io/image-list":        "nginx",
-					"argocd-image-updater.argoproj.io/write-back-method": "git",
-					"argocd-image-updater.argoproj.io/git-credentials":   "argocd-image-updater/nonexist",
-				},
 			},
 			Spec: v1alpha1.ApplicationSpec{
 				Source: &v1alpha1.ApplicationSource{
@@ -3947,11 +3707,6 @@ func Test_GetGitCreds(t *testing.T) {
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
 				Name: "testapp",
-				Annotations: map[string]string{
-					"argocd-image-updater.argoproj.io/image-list":        "nginx",
-					"argocd-image-updater.argoproj.io/write-back-method": "git:secret:argocd-image-updater/git-creds",
-					"argocd-image-updater.argoproj.io/git-repository":    "git@github.com:example/example.git",
-				},
 			},
 			Spec: v1alpha1.ApplicationSpec{
 				Source: &v1alpha1.ApplicationSource{
@@ -4000,10 +3755,6 @@ func Test_CommitUpdates(t *testing.T) {
 	app := v1alpha1.Application{
 		ObjectMeta: v1.ObjectMeta{
 			Name: "testapp",
-			Annotations: map[string]string{
-				"argocd-image-updater.argoproj.io/image-list":        "nginx",
-				"argocd-image-updater.argoproj.io/write-back-method": "git:secret:argocd-image-updater/git-creds",
-			},
 		},
 		Spec: v1alpha1.ApplicationSpec{
 			Source: &v1alpha1.ApplicationSource{
@@ -4335,7 +4086,6 @@ helm:
 
 	t.Run("Good commit to kustomization", func(t *testing.T) {
 		app := app.DeepCopy()
-		app.Annotations[common.WriteBackTargetAnnotation] = "kustomization"
 		app.Spec.Source.Kustomize = &v1alpha1.ApplicationSourceKustomize{Images: v1alpha1.KustomizeImages{"foo=bar", "bar=baz:123"}}
 		gitMock, dir, cleanup := mockGit(t)
 		defer cleanup()
