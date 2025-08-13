@@ -187,7 +187,7 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 						appImgNameWithoutRegistry = strings.Join(parts[1:], "/")
 					}
 				}
-				
+
 				for _, img := range applicationImages {
 					imgNameWithoutRegistry := img.ImageName
 					if strings.Contains(imgNameWithoutRegistry, "/") {
@@ -196,7 +196,7 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 							imgNameWithoutRegistry = strings.Join(parts[1:], "/")
 						}
 					}
-					
+
 					if img.ImageName == applicationImage.ImageName || imgNameWithoutRegistry == appImgNameWithoutRegistry {
 						updateableImage = img
 						break
