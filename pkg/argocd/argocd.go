@@ -594,9 +594,10 @@ func GetImagesFromApplication(app *v1alpha1.Application) image.ContainerImageLis
 	for _, img := range *parseImageList(annotations) {
 		if img.HasForceUpdateOptionAnnotation(annotations, common.ImageUpdaterAnnotationPrefix) {
 			// Check if this image is already in the list from status
+			// We only consider it a duplicate if both the registry and image name match
 			found := false
 			for _, existingImg := range images {
-				if existingImg.ImageName == img.ImageName {
+				if existingImg.ImageName == img.ImageName && existingImg.RegistryURL == img.RegistryURL {
 					found = true
 					break
 				}

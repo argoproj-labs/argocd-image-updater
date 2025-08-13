@@ -179,8 +179,25 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 			// this handles cases like 0-replica deployments or CronJobs without active jobs
 			if applicationImage.HasForceUpdateOptionAnnotation(updateConf.UpdateApp.Application.Annotations, common.ImageUpdaterAnnotationPrefix) {
 				// find the image in our list that matches by name
+				// Compare without registry prefix to handle different registries
+				appImgNameWithoutRegistry := applicationImage.ImageName
+				if strings.Contains(appImgNameWithoutRegistry, "/") {
+					parts := strings.Split(appImgNameWithoutRegistry, "/")
+					if len(parts) >= 2 && strings.Contains(parts[0], ".") {
+						appImgNameWithoutRegistry = strings.Join(parts[1:], "/")
+					}
+				}
+				
 				for _, img := range applicationImages {
-					if img.ImageName == applicationImage.ImageName {
+					imgNameWithoutRegistry := img.ImageName
+					if strings.Contains(imgNameWithoutRegistry, "/") {
+						parts := strings.Split(imgNameWithoutRegistry, "/")
+						if len(parts) >= 2 && strings.Contains(parts[0], ".") {
+							imgNameWithoutRegistry = strings.Join(parts[1:], "/")
+						}
+					}
+					
+					if img.ImageName == applicationImage.ImageName || imgNameWithoutRegistry == appImgNameWithoutRegistry {
 						updateableImage = img
 						break
 					}
