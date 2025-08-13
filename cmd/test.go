@@ -37,7 +37,7 @@ func newTestCommand() *cobra.Command {
 		Short: "Test the behaviour of argocd-image-updater",
 		Long: `
 The test command lets you test the behaviour of argocd-image-updater before
-configuring annotations on your Argo CD Applications.
+configuring ImageUpdater CRD on your Argo CD Applications.
 
 Its main use case is to tell you to which tag a given image would be updated
 to using the given parametrization. Command line switches can be used as a

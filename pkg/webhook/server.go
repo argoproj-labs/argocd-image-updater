@@ -8,7 +8,6 @@ import (
 	"sync"
 
 	"github.com/argoproj-labs/argocd-image-updater/pkg/argocd"
-	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/kube"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/image"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
@@ -166,7 +165,7 @@ func (s *WebhookServer) findMatchingApplications(apps []v1alpha1.Application, ev
 	for _, app := range apps {
 		// Skip applications without image-list annotation
 		annotations := app.GetAnnotations()
-		if _, exists := annotations[common.ImageUpdaterAnnotation]; !exists {
+		if _, exists := annotations[ImageUpdaterAnnotation]; !exists {
 			continue
 		}
 
@@ -211,18 +210,51 @@ func toImageListHelper(list image.ContainerImageList) argocd.ImageList {
 	return il
 }
 
+// TODO: the functions bellow were moved from other parts of the project to compile the package.
+// Annotations will be refactored in GITOPS-7336
+
 // parseImageList is a local helper function that replicates the logic from argocd package
 func parseImageList(annotations map[string]string) *image.ContainerImageList {
 	results := make(image.ContainerImageList, 0)
-	if updateImage, ok := annotations[common.ImageUpdaterAnnotation]; ok {
+	if updateImage, ok := annotations[ImageUpdaterAnnotation]; ok {
 		splits := strings.Split(updateImage, ",")
 		for _, s := range splits {
 			img := image.NewFromIdentifier(strings.TrimSpace(s))
-			if kustomizeImage := img.GetParameterKustomizeImageName(annotations, common.ImageUpdaterAnnotationPrefix); kustomizeImage != "" {
+			if kustomizeImage := GetParameterKustomizeImageName(img, annotations, ImageUpdaterAnnotationPrefix); kustomizeImage != "" {
 				img.KustomizeImage = image.NewFromIdentifier(kustomizeImage)
 			}
 			results = append(results, img)
 		}
 	}
 	return &results
+}
+
+const ImageUpdaterAnnotationPrefix = "argocd-image-updater.argoproj.io"
+
+// ImageUpdaterAnnotation The annotation on the application resources to indicate the list of images allowed for updates.
+const ImageUpdaterAnnotation = ImageUpdaterAnnotationPrefix + "/image-list"
+
+// Kustomize related annotations
+const (
+	KustomizeApplicationNameAnnotationSuffix = "/%s.kustomize.image-name"
+)
+
+// GetParameterKustomizeImageName gets the value for image-spec option for the
+// image from a set of annotations
+func GetParameterKustomizeImageName(img *image.ContainerImage, annotations map[string]string, annotationPrefix string) string {
+	key := fmt.Sprintf(Prefixed(annotationPrefix, KustomizeApplicationNameAnnotationSuffix), normalizedSymbolicName(img))
+	val, ok := annotations[key]
+	if !ok {
+		return ""
+	}
+	return val
+}
+
+func normalizedSymbolicName(img *image.ContainerImage) string {
+	return strings.ReplaceAll(img.ImageAlias, "/", "_")
+}
+
+// Prefixed returns the annotation of the constant prefixed with the given prefix
+func Prefixed(prefix string, annotation string) string {
+	return prefix + annotation
 }

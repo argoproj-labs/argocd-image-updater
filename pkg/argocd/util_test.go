@@ -41,7 +41,7 @@ func TestGetKubeConfig(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			client, err := GetKubeConfig(context.TODO(), tt.namespace, tt.configPath)
+			client, err := GetKubeConfig(context.Background(), tt.namespace, tt.configPath)
 			if tt.expectError {
 				require.Error(t, err)
 			} else {
