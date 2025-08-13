@@ -753,7 +753,7 @@ func getImageFromSpec(app *v1alpha1.Application, targetImage *image.ContainerIma
 	if targetImage == nil {
 		return nil
 	}
-	
+
 	appType := getApplicationType(app)
 	source := getApplicationSource(app)
 
