@@ -257,6 +257,12 @@ spec:
               key: webhook.harbor-secret
               name: argocd-image-updater-secret
               optional: true
+        - name: ENABLE_WEBHOOK_RATELIMIT
+          valueFrom:
+            configMapKeyRef:
+              key: webhook.enable-ratelimit
+              name: argocd-image-updater-config
+              optional: true
         - name: WEBHOOK_RATELIMIT_ALLOWED
           valueFrom:
             configMapKeyRef:

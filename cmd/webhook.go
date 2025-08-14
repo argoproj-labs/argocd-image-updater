@@ -11,6 +11,7 @@ import (
 	"strings"
 	"syscall"
 	"text/template"
+	"time"
 
 	"github.com/argoproj-labs/argocd-image-updater/pkg/argocd"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
@@ -33,6 +34,7 @@ type WebhookConfig struct {
 	GHCRSecret                  string
 	QuaySecret                  string
 	HarborSecret                string
+	RateLimitEnabled            bool
 	RateLimitNumAllowedRequests int
 }
 
@@ -193,7 +195,8 @@ Supported registries:
 	webhookCmd.Flags().StringVar(&webhookCfg.GHCRSecret, "ghcr-webhook-secret", env.GetStringVal("GHCR_WEBHOOK_SECRET", ""), "Secret for validating GitHub Container Registry webhooks")
 	webhookCmd.Flags().StringVar(&webhookCfg.QuaySecret, "quay-webhook-secret", env.GetStringVal("QUAY_WEBHOOK_SECRET", ""), "Secret for validating Quay webhooks")
 	webhookCmd.Flags().StringVar(&webhookCfg.HarborSecret, "harbor-webhook-secret", env.GetStringVal("HARBOR_WEBHOOK_SECRET", ""), "Secret for validating Harbor webhooks")
-	webhookCmd.Flags().IntVar(&webhookCfg.RateLimitNumAllowedRequests, "webhook-ratelimit-allowed", env.ParseNumFromEnv("WEBHOOK_RATELIMIT_ALLOWED", 20, 0, math.MaxInt), "The number of allowed requests in a window for webhook rate limiting")
+	webhookCmd.Flags().BoolVar(&webhookCfg.RateLimitEnabled, "enable-webhook-ratelimit", env.GetBoolVal("ENABLE_WEBHOOK_RATELIMIT", false), "Enable ratelimit for the webhook endpoint")
+	webhookCmd.Flags().IntVar(&webhookCfg.RateLimitNumAllowedRequests, "webhook-ratelimit-allowed", env.ParseNumFromEnv("WEBHOOK_RATELIMIT_ALLOWED", 1, 1, math.MaxInt), "The number of allowed requests in an hour for webhook rate limiting")
 
 	return webhookCmd
 }
@@ -242,7 +245,9 @@ func runWebhook(cfg *ImageUpdaterConfig, webhookCfg *WebhookConfig) error {
 	// Create webhook server
 	server := webhook.NewWebhookServer(webhookCfg.Port, handler, cfg.KubeClient, cfg.ArgoClient)
 
-	server.RateLimiter = ratelimit.New(webhookCfg.RateLimitNumAllowedRequests)
+	if webhookCfg.RateLimitEnabled {
+		server.RateLimiter = ratelimit.New(webhookCfg.RateLimitNumAllowedRequests, ratelimit.Per(time.Hour))
+	}
 
 	// Set updater config
 	server.UpdaterConfig = &argocd.UpdateConfiguration{

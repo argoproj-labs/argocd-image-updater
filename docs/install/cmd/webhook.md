@@ -91,6 +91,12 @@ Secret for validating Docker Hub webhooks.
 
 Can also be set with the `DOCKER_WEBHOOK_SECRET` environment variable.
 
+**--enable-webhook-ratelimit *enabled***
+
+Enable rate limiting for the webhook endpoint 
+
+Can also be set with the `ENABLE_WEBHOOK_RATELIMIT` environment variable.
+
 **--ghcr-webhook-secret *secret***
 
 Secret for validating GitHub container registry secrets.
@@ -198,7 +204,7 @@ Can also be set with the `WEBHOOK_PORT` environment variable.
 
 **--webhook-ratelimit-allowed *numRequests***
 
-The number of allowed requests in a window for webhook rate limiting (default 100)
+The number of allowed requests in an hour for webhook rate limiting (default 1)
 
 Can also be set with the `WEBHOOK_RATELIMIT_ALLOWED` environment variable.
 

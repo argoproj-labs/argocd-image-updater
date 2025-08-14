@@ -86,10 +86,6 @@ func (s *WebhookServer) handleWebhook(w http.ResponseWriter, r *http.Request) {
 	logCtx := log.WithContext().AddField("remote", r.RemoteAddr)
 	logCtx.Debugf("Received webhook request from %s", r.RemoteAddr)
 
-	if s.RateLimiter != nil {
-		s.RateLimiter.Take()
-	}
-
 	event, err := s.Handler.ProcessWebhook(r)
 	if err != nil {
 		logCtx.Errorf("Failed to process webhook: %v", err)
@@ -104,6 +100,10 @@ func (s *WebhookServer) handleWebhook(w http.ResponseWriter, r *http.Request) {
 
 	// Process webhook asynchronously
 	go func() {
+		if s.RateLimiter != nil {
+			s.RateLimiter.Take()
+		}
+
 		err := s.processWebhookEvent(event)
 		if err != nil {
 			logCtx.Errorf("Failed to process webhook event: %v", err)

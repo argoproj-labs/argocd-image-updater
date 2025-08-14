@@ -219,7 +219,9 @@ func newRunCommand() *cobra.Command {
 				log.Infof("Starting webhook server on port %d", webhookCfg.Port)
 				webhookServer = webhook.NewWebhookServer(webhookCfg.Port, handler, cfg.KubeClient, argoClient)
 
-				webhookServer.RateLimiter = ratelimit.New(webhookCfg.RateLimitNumAllowedRequests)
+				if webhookCfg.RateLimitEnabled {
+					webhookServer.RateLimiter = ratelimit.New(webhookCfg.RateLimitNumAllowedRequests, ratelimit.Per(time.Hour))
+				}
 
 				// Set updater config
 				webhookServer.UpdaterConfig = &argocd.UpdateConfiguration{
@@ -342,7 +344,8 @@ func newRunCommand() *cobra.Command {
 	runCmd.Flags().StringVar(&webhookCfg.GHCRSecret, "ghcr-webhook-secret", env.GetStringVal("GHCR_WEBHOOK_SECRET", ""), "Secret for validating GitHub Container Registry webhooks")
 	runCmd.Flags().StringVar(&webhookCfg.QuaySecret, "quay-webhook-secret", env.GetStringVal("QUAY_WEBHOOK_SECRET", ""), "Secret for validating Quay webhooks")
 	runCmd.Flags().StringVar(&webhookCfg.HarborSecret, "harbor-webhook-secret", env.GetStringVal("HARBOR_WEBHOOK_SECRET", ""), "Secret for validating Harbor webhooks")
-	runCmd.Flags().IntVar(&webhookCfg.RateLimitNumAllowedRequests, "webhook-ratelimit-allowed", env.ParseNumFromEnv("WEBHOOK_RATELIMIT_ALLOWED", 20, 0, math.MaxInt), "The number of allowed requests in a window for webhook rate limiting")
+	runCmd.Flags().BoolVar(&webhookCfg.RateLimitEnabled, "enable-webhook-ratelimit", env.GetBoolVal("ENABLE_WEBHOOK_RATELIMIT", false), "Enable ratelimit for the webhook endpoint")
+	runCmd.Flags().IntVar(&webhookCfg.RateLimitNumAllowedRequests, "webhook-ratelimit-allowed", env.ParseNumFromEnv("WEBHOOK_RATELIMIT_ALLOWED", 1, 1, math.MaxInt), "The number of allowed requests in an hour for webhook rate limiting")
 
 	return runCmd
 }

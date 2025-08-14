@@ -13,7 +13,6 @@ import (
 	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
-	"go.uber.org/ratelimit"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/argoproj-labs/argocd-image-updater/pkg/argocd"
@@ -72,6 +71,15 @@ var (
 		},
 	}
 )
+
+type mockRateLimiter struct {
+	Called bool
+}
+
+func (m *mockRateLimiter) Take() time.Time {
+	m.Called = true
+	return time.Now()
+}
 
 // Helper function to create a mock server
 func createMockServer(t *testing.T, port int) *WebhookServer {
@@ -460,30 +468,35 @@ func TestParseImageList(t *testing.T) {
 // TestWebhookServerRateLimit tests to see if the webhook endpoint's rate limiting functionality works
 func TestWebhookServerRateLimit(t *testing.T) {
 	server := createMockServer(t, 8080)
-	server.RateLimiter = ratelimit.New(1)
+	mockArgoClient := server.ArgoClient.(*mocks.ArgoCD)
+	mockArgoClient.On("ListApplications", mock.Anything).Return([]v1alpha1.Application{}, nil).Maybe()
 
-	// Test with a client that won't get limited
-	req := httptest.NewRequest(http.MethodPost, "/webhook?type=INVALIDREGISTRY", nil)
+	handler := NewDockerHubWebhook("")
+	assert.NotNil(t, handler, "Docker handler was nil")
+
+	server.Handler.RegisterHandler(handler)
+
+	mock := &mockRateLimiter{}
+	server.RateLimiter = mock
+
+	body := []byte(`{
+		"repository": {
+			"repo_name": "somepersononthisfakeregistry/myimagethatdoescoolstuff",
+			"name": "myimagethatdoescoolstuff",
+			"namespace": "randomplaceincluster"
+		},
+		"push_data": {
+			"tag": "v12.0.9"
+		}
+	}`)
+
+	req := httptest.NewRequest(http.MethodPost, "/webhook?type=docker", bytes.NewReader(body))
 	rec := httptest.NewRecorder()
 
-	start := time.Now()
 	server.handleWebhook(rec, req)
 
-	diff := time.Since(start)
-	assert.Less(t, diff, time.Second, "Expected there to be no delay between that.")
-
-	start = time.Now()
-	server.handleWebhook(rec, req)
-
-	diff = time.Since(start)
-	assert.GreaterOrEqual(t, diff, time.Second, "Expected there to be a delay on second request")
-
-	// Wait for bucket to refresh
+	// Wait for thread to call it.
 	time.Sleep(time.Second)
 
-	start = time.Now()
-	server.handleWebhook(rec, req)
-
-	diff = time.Since(start)
-	assert.Less(t, diff, time.Second, "Expected there to be no delay after the refill")
+	assert.True(t, mock.Called, "Take was not called")
 }
