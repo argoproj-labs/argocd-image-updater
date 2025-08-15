@@ -61,10 +61,6 @@ Supported registries:
 				return err
 			}
 
-			if cfg.MaxConcurrentApps < 1 {
-				return fmt.Errorf("--max-concurrent-apps must be greater than 1")
-			}
-
 			log.Infof("%s %s starting [loglevel:%s, webhookport:%s]",
 				version.BinaryName(),
 				version.Version(),
@@ -173,7 +169,7 @@ Supported registries:
 	webhookCmd.Flags().StringVar(&kubeConfig, "kubeconfig", "", "full path to kubernetes client configuration, i.e. ~/.kube/config")
 	webhookCmd.Flags().StringVar(&cfg.RegistriesConf, "registries-conf-path", common.DefaultRegistriesConfPath, "path to registries configuration file")
 	webhookCmd.Flags().BoolVar(&disableKubernetes, "disable-kubernetes", false, "do not create and use a Kubernetes client")
-	webhookCmd.Flags().IntVar(&cfg.MaxConcurrentApps, "max-concurrent-apps", 10, "maximum number of update threads to run concurrently")
+	webhookCmd.Flags().IntVar(&cfg.MaxConcurrentApps, "max-concurrent-apps", 10, "maximum number of ArgoCD applications that can be updated concurrently (must be >= 1)")
 	webhookCmd.Flags().StringVar(&cfg.ArgocdNamespace, "argocd-namespace", "", "namespace where ArgoCD runs in (current namespace by default)")
 	webhookCmd.Flags().StringVar(&cfg.AppNamespace, "application-namespace", v1.NamespaceAll, "namespace where Argo Image Updater will manage applications (all namespaces by default)")
 	webhookCmd.Flags().StringSliceVar(&cfg.AppNamePatterns, "match-application-name", nil, "patterns to match application name against")
@@ -191,6 +187,14 @@ Supported registries:
 	webhookCmd.Flags().StringVar(&webhookCfg.GHCRSecret, "ghcr-webhook-secret", env.GetStringVal("GHCR_WEBHOOK_SECRET", ""), "Secret for validating GitHub Container Registry webhooks")
 	webhookCmd.Flags().StringVar(&webhookCfg.QuaySecret, "quay-webhook-secret", env.GetStringVal("QUAY_WEBHOOK_SECRET", ""), "Secret for validating Quay webhooks")
 	webhookCmd.Flags().StringVar(&webhookCfg.HarborSecret, "harbor-webhook-secret", env.GetStringVal("HARBOR_WEBHOOK_SECRET", ""), "Secret for validating Harbor webhooks")
+
+	// Add validation for max-concurrent-apps
+	webhookCmd.PreRunE = func(cmd *cobra.Command, args []string) error {
+		if cfg.MaxConcurrentApps < 1 {
+			return fmt.Errorf("--max-concurrent-apps must be greater than 0, got %d", cfg.MaxConcurrentApps)
+		}
+		return nil
+	}
 
 	return webhookCmd
 }

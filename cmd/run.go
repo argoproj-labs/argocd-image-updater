@@ -84,11 +84,6 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 				cfg.HealthPort = 0
 			}
 
-			// Enforce sane --max-concurrent-apps values
-			if cfg.MaxConcurrentApps < 1 {
-				return fmt.Errorf("--max-concurrent-apps must be greater than 1")
-			}
-
 			setupLogger.Info("starting",
 				"app", version.BinaryName()+": "+version.Version(),
 				"loglevel", strings.ToUpper(cfg.LogLevel),
@@ -342,7 +337,7 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 	controllerCmd.Flags().BoolVar(&once, "once", false, "run only once, same as specifying --interval=0 and --health-port=0")
 	controllerCmd.Flags().StringVar(&cfg.RegistriesConf, "registries-conf-path", common.DefaultRegistriesConfPath, "path to registries configuration file")
 	controllerCmd.Flags().BoolVar(&disableKubernetes, "disable-kubernetes", false, "do not create and use a Kubernetes client")
-	controllerCmd.Flags().IntVar(&cfg.MaxConcurrentApps, "max-concurrent-apps", 10, "maximum number of update threads to run concurrently")
+	controllerCmd.Flags().IntVar(&cfg.MaxConcurrentApps, "max-concurrent-apps", 10, "maximum number of ArgoCD applications that can be updated concurrently (must be >= 1)")
 	controllerCmd.Flags().IntVar(&MaxConcurrentReconciles, "max-concurrent-reconciles", 1, "maximum number of concurrent Reconciles which can be run")
 	controllerCmd.Flags().StringVar(&cfg.ArgocdNamespace, "argocd-namespace", "", "namespace where ArgoCD runs in (current namespace by default)")
 	controllerCmd.Flags().StringSliceVar(&cfg.AppNamePatterns, "match-application-name", nil, "patterns to match application name against")
@@ -363,6 +358,14 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 	controllerCmd.Flags().StringVar(&webhookCfg.GHCRSecret, "ghcr-webhook-secret", env.GetStringVal("GHCR_WEBHOOK_SECRET", ""), "Secret for validating GitHub Container Registry webhooks")
 	controllerCmd.Flags().StringVar(&webhookCfg.QuaySecret, "quay-webhook-secret", env.GetStringVal("QUAY_WEBHOOK_SECRET", ""), "Secret for validating Quay webhooks")
 	controllerCmd.Flags().StringVar(&webhookCfg.HarborSecret, "harbor-webhook-secret", env.GetStringVal("HARBOR_WEBHOOK_SECRET", ""), "Secret for validating Harbor webhooks")
+
+	// Add validation for max-concurrent-apps
+	controllerCmd.PreRunE = func(cmd *cobra.Command, args []string) error {
+		if cfg.MaxConcurrentApps < 1 {
+			return fmt.Errorf("--max-concurrent-apps must be greater than 0, got %d", cfg.MaxConcurrentApps)
+		}
+		return nil
+	}
 
 	return controllerCmd
 }
