@@ -34,7 +34,6 @@ type WebhookConfig struct {
 	GHCRSecret                  string
 	QuaySecret                  string
 	HarborSecret                string
-	RateLimitEnabled            bool
 	RateLimitNumAllowedRequests int
 }
 
