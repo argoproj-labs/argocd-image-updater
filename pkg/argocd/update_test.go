@@ -1996,7 +1996,7 @@ replicas: 1
 						Parameters: []v1alpha1.HelmParameter{
 							{
 								Name:        "image.name",
-								Value:       "nginx",
+								Value:       "nginx-other",
 								ForceString: true,
 							},
 							{
@@ -2018,9 +2018,22 @@ replicas: 1
 			},
 		}
 
-		originalData := []byte(`random: yaml`)
-		_, err := marshalParamsOverride(&app, originalData)
+		originalData := []byte(`
+image:
+  registry: docker.io
+  repository: nginx
+  tag: v0.0.0
+`)
+		expected := `
+image:
+  registry: docker.io
+  repository: nginx
+  tag: v1.0.0
+`
+		yaml, err := marshalParamsOverride(&app, originalData)
 		assert.NoError(t, err)
+		assert.NotEmpty(t, yaml)
+		assert.Equal(t, strings.TrimSpace(strings.ReplaceAll(expected, "\t", "  ")), strings.TrimSpace(string(yaml)))
 	})
 
 	t.Run("Image-name annotation value not found in Helm source parameters list", func(t *testing.T) {
