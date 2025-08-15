@@ -486,7 +486,7 @@ func marshalParamsOverride(app *v1alpha1.Application, originalData []byte) ([]by
 			images := GetImagesAndAliasesFromApplication(app)
 
 			var helmNewValues yaml.Node
-			if originalData == nil {
+			if len(originalData) == 0 {
 				// allow non-exists target file
 				helmNewValues = yaml.Node{
 					Kind:        yaml.DocumentNode,
