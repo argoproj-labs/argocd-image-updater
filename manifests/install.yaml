@@ -257,6 +257,12 @@ spec:
               key: webhook.harbor-secret
               name: argocd-image-updater-secret
               optional: true
+        - name: WEBHOOK_RATELIMIT_ALLOWED
+          valueFrom:
+            configMapKeyRef:
+              key: webhook.ratelimit-allowed
+              name: argocd-image-updater-config
+              optional: true
         image: quay.io/argoprojlabs/argocd-image-updater:latest
         imagePullPolicy: Always
         livenessProbe:
