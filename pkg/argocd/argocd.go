@@ -24,7 +24,6 @@ import (
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/kube"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/metrics"
-	registryCommon "github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/common"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/image"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
 )
@@ -44,39 +43,7 @@ func (client *K8sClient) GetApplication(ctx context.Context, appNamespace string
 	return app, nil
 }
 
-// GetApplicationInAllNamespaces has 0 usages now.
-// TODO: remove the function.
-func (client *K8sClient) GetApplicationInAllNamespaces(appName string) (*argocdapi.Application, error) {
-	appList, err := client.ListApplications(context.TODO(), nil)
-	if err != nil {
-		return nil, fmt.Errorf("error listing applications: %w", err)
-	}
-
-	// Filter applications by name using nameMatchesPatterns
-	var matchedApps []argocdapi.Application
-
-	for _, app := range appList {
-		log.Debugf("Found application: %s in namespace %s", app.Name, app.Namespace)
-		if nameMatchesPatterns(context.Background(), app.Name, []string{appName}) {
-			log.Debugf("Application %s matches the pattern", app.Name)
-			matchedApps = append(matchedApps, app)
-		}
-	}
-
-	if len(matchedApps) == 0 {
-		return nil, fmt.Errorf("application %s not found", appName)
-	}
-
-	if len(matchedApps) > 1 {
-		return nil, fmt.Errorf("multiple applications found matching %s", appName)
-	}
-
-	// Retrieve the application in the specified namespace
-	return &matchedApps[0], nil
-}
-
 // ListApplications lists all applications for the current ImageUpdater CR in the namespace.
-// TODO: ListApplications has 0 real usages. We need to remove it.
 func (client *K8sClient) ListApplications(ctx context.Context, iuCR *iuapi.ImageUpdater) ([]argocdapi.Application, error) {
 	log := log.LoggerFromContext(ctx)
 
@@ -169,7 +136,6 @@ type argoCD struct {
 //go:generate mockery --name ArgoCD --output ./mocks --outpkg mocks
 type ArgoCD interface {
 	GetApplication(ctx context.Context, appNamespace string, appName string) (*argocdapi.Application, error)
-	// TODO: ListApplications has 0 real usages. We need to remove it.
 	ListApplications(ctx context.Context, iuCR *iuapi.ImageUpdater) ([]argocdapi.Application, error)
 	UpdateSpec(ctx context.Context, spec *application.ApplicationUpdateSpecRequest) (*argocdapi.ApplicationSpec, error)
 }
@@ -276,7 +242,7 @@ func processApplicationForUpdate(ctx context.Context, app *argocdapi.Application
 	}
 	log.Tracef("processing app '%s' of type '%v'", appNSName, sourceType)
 
-	imageList := parseImageListIuCR(ctx, appRef.Images, appCommonUpdateSettings)
+	imageList := parseImageList(ctx, appRef.Images, appCommonUpdateSettings)
 	appImages := ApplicationImages{
 		Application:     *app,
 		WriteBackConfig: appWBCSettings,
@@ -618,10 +584,9 @@ func newImageFromManifestTargetSettings(settings *iuapi.ManifestTarget, img *Ima
 	return img, nil
 }
 
-// parseImageListIuCR parses a list of ImageConfig objects from the ImageUpdater CR
+// parseImageList parses a list of ImageConfig objects from the ImageUpdater CR
 // into a ContainerImageList, which is used internally for image management.
-// TODO: the function is explicitly written almost the same as parseImageList in order not to break existing tests. It should be only 1 function later.
-func parseImageListIuCR(ctx context.Context, images []iuapi.ImageConfig, appSettings *iuapi.CommonUpdateSettings) *ImageList {
+func parseImageList(ctx context.Context, images []iuapi.ImageConfig, appSettings *iuapi.CommonUpdateSettings) *ImageList {
 	log := log.LoggerFromContext(ctx)
 	results := make(ImageList, 0)
 	for _, im := range images {
@@ -649,21 +614,6 @@ func parseImageListIuCR(ctx context.Context, images []iuapi.ImageConfig, appSett
 	return &results
 }
 
-func parseImageList(annotations map[string]string) *image.ContainerImageList {
-	results := make(image.ContainerImageList, 0)
-	if updateImage, ok := annotations[common.ImageUpdaterAnnotation]; ok {
-		splits := strings.Split(updateImage, ",")
-		for _, s := range splits {
-			img := image.NewFromIdentifier(strings.TrimSpace(s))
-			if kustomizeImage := img.GetParameterKustomizeImageName(annotations, common.ImageUpdaterAnnotationPrefix); kustomizeImage != "" {
-				img.KustomizeImage = image.NewFromIdentifier(kustomizeImage)
-			}
-			results = append(results, img)
-		}
-	}
-	return &results
-}
-
 // GetApplication gets the application named appName from Argo CD API
 func (client *argoCD) GetApplication(ctx context.Context, appNamespace string, appName string) (*argocdapi.Application, error) {
 	conn, appClient, err := client.Client.NewApplicationClient()
@@ -686,7 +636,6 @@ func (client *argoCD) GetApplication(ctx context.Context, appNamespace string, a
 
 // ListApplications returns a list of all application names that the API user
 // has access to.
-// TODO: ListApplications has 0 real usages. We need to remove it.
 func (client *argoCD) ListApplications(ctx context.Context, cr *iuapi.ImageUpdater) ([]argocdapi.Application, error) {
 	conn, appClient, err := client.Client.NewApplicationClient()
 	metrics.Clients().IncreaseArgoCDClientRequest(client.Client.ClientOptions().ServerAddr, 1)
@@ -812,10 +761,10 @@ func GetHelmImage(ctx context.Context, app *argocdapi.Application, wbc *WriteBac
 
 	if hpImageSpec == "" {
 		if hpImageName == "" {
-			hpImageName = registryCommon.DefaultHelmImageName
+			hpImageName = common.DefaultHelmImageName
 		}
 		if hpImageTag == "" {
-			hpImageTag = registryCommon.DefaultHelmImageTag
+			hpImageTag = common.DefaultHelmImageTag
 		}
 	}
 
@@ -860,10 +809,10 @@ func SetHelmImage(ctx context.Context, app *argocdapi.Application, newImage *ima
 
 	if hpImageSpec == "" {
 		if hpImageName == "" {
-			hpImageName = registryCommon.DefaultHelmImageName
+			hpImageName = common.DefaultHelmImageName
 		}
 		if hpImageTag == "" {
-			hpImageTag = registryCommon.DefaultHelmImageTag
+			hpImageTag = common.DefaultHelmImageTag
 		}
 	}
 

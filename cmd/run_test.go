@@ -45,7 +45,8 @@ func TestNewRunCommand(t *testing.T) {
 	asser.Equal("false", controllerCommand.Flag("once").Value.String())
 	asser.Equal(common.DefaultRegistriesConfPath, controllerCommand.Flag("registries-conf-path").Value.String())
 	asser.Equal("false", controllerCommand.Flag("disable-kubernetes").Value.String())
-	asser.Equal("10", controllerCommand.Flag("max-concurrency").Value.String())
+	asser.Equal("10", controllerCommand.Flag("max-concurrent-apps").Value.String())
+	asser.Equal("1", controllerCommand.Flag("max-concurrent-reconciles").Value.String())
 	asser.Equal("", controllerCommand.Flag("argocd-namespace").Value.String())
 	asser.Equal("[]", controllerCommand.Flag("match-application-name").Value.String())
 	asser.Equal("", controllerCommand.Flag("match-application-label").Value.String())
@@ -60,4 +61,39 @@ func TestNewRunCommand(t *testing.T) {
 
 	asser.Nil(controllerCommand.Help())
 
+}
+
+// TestMaxConcurrentAppsValidation tests the validation of the --max-concurrent-apps flag.
+func TestMaxConcurrentAppsValidation(t *testing.T) {
+	asser := assert.New(t)
+	controllerCommand := newRunCommand()
+
+	// Test that PreRunE validation is set
+	asser.NotNil(controllerCommand.PreRunE)
+
+	// Test valid value
+	err := controllerCommand.Flags().Set("max-concurrent-apps", "5")
+	asser.NoError(err)
+
+	// Test that PreRunE passes with valid value
+	err = controllerCommand.PreRunE(controllerCommand, []string{})
+	asser.NoError(err)
+
+	// Test invalid value (0)
+	err = controllerCommand.Flags().Set("max-concurrent-apps", "0")
+	asser.NoError(err)
+
+	// Test that PreRunE fails with invalid value
+	err = controllerCommand.PreRunE(controllerCommand, []string{})
+	asser.Error(err)
+	asser.Contains(err.Error(), "must be greater than 0")
+
+	// Test invalid value (negative)
+	err = controllerCommand.Flags().Set("max-concurrent-apps", "-1")
+	asser.NoError(err)
+
+	// Test that PreRunE fails with negative value
+	err = controllerCommand.PreRunE(controllerCommand, []string{})
+	asser.Error(err)
+	asser.Contains(err.Error(), "must be greater than 0")
 }

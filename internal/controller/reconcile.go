@@ -8,7 +8,6 @@ import (
 
 	iuapi "github.com/argoproj-labs/argocd-image-updater/api/v1alpha1"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/argocd"
-	"github.com/argoproj-labs/argocd-image-updater/pkg/metrics"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/registry"
 )
@@ -46,7 +45,8 @@ func (r *ImageUpdaterReconciler) RunImageUpdater(ctx context.Context, cr *iuapi.
 		return result, err
 	}
 
-	metrics.Applications().SetNumberOfApplications(len(appList))
+	// TODO: metrics will be implemnted in GITOPS-7113
+	//metrics.Applications().SetNumberOfApplications(len(appList))
 
 	if !warmUp {
 		baseLogger.Infof("Starting image update cycle, considering %d application(s) for update", len(appList))
@@ -54,9 +54,9 @@ func (r *ImageUpdaterReconciler) RunImageUpdater(ctx context.Context, cr *iuapi.
 
 	syncState := argocd.NewSyncIterationState()
 
-	// Allow a maximum of MaxConcurrency number of goroutines to exist at the
+	// Allow a maximum of MaxConcurrentApps number of goroutines to exist at the
 	// same time. If in warm-up mode, set to 1 explicitly.
-	var concurrency int = r.Config.MaxConcurrency
+	var concurrency int = r.Config.MaxConcurrentApps
 	if warmUp {
 		concurrency = 1
 	}
@@ -107,11 +107,12 @@ func (r *ImageUpdaterReconciler) RunImageUpdater(ctx context.Context, cr *iuapi.
 			result.NumImagesConsidered += res.NumImagesConsidered
 			result.NumImagesUpdated += res.NumImagesUpdated
 			result.NumSkipped += res.NumSkipped
-			if !warmUp && !r.Config.DryRun {
-				metrics.Applications().IncreaseImageUpdate(app, res.NumImagesUpdated)
-			}
-			metrics.Applications().IncreaseUpdateErrors(app, res.NumErrors)
-			metrics.Applications().SetNumberOfImagesWatched(app, res.NumImagesConsidered)
+			// TODO: metrics will be implemnted in GITOPS-7113
+			//if !warmUp && !r.Config.DryRun {
+			//	metrics.Applications().IncreaseImageUpdate(app, res.NumImagesUpdated)
+			//}
+			//metrics.Applications().IncreaseUpdateErrors(app, res.NumErrors)
+			//metrics.Applications().SetNumberOfImagesWatched(app, res.NumImagesConsidered)
 			wg.Done()
 		}(app, curApplication)
 	}

@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"fmt"
 	"text/template"
 	"time"
 
@@ -48,7 +49,7 @@ type ImageUpdaterConfig struct {
 	ArgoClient             argocd.ArgoCD
 	LogLevel               string
 	KubeClient             *kube.ImageUpdaterKubernetesClient
-	MaxConcurrency         int
+	MaxConcurrentApps      int
 	HealthPort             int
 	MetricsPort            int
 	RegistriesConf         string
@@ -68,9 +69,10 @@ type ImageUpdaterConfig struct {
 // ImageUpdaterReconciler reconciles a ImageUpdater object
 type ImageUpdaterReconciler struct {
 	client.Client
-	Scheme      *runtime.Scheme
-	Config      *ImageUpdaterConfig
-	CacheWarmed <-chan struct{}
+	Scheme                  *runtime.Scheme
+	Config                  *ImageUpdaterConfig
+	MaxConcurrentReconciles int
+	CacheWarmed             <-chan struct{}
 }
 
 // +kubebuilder:rbac:groups=argocd-image-updater.argoproj.io,resources=imageupdaters,verbs=get;list;watch;create;update;patch;delete
@@ -82,34 +84,6 @@ type ImageUpdaterReconciler struct {
 // (like create, update, delete) or due to periodic requeues. Its primary
 // responsibility is to ensure that container images managed by ImageUpdater CRs
 // are kept up-to-date according to the policies defined within each CR.
-//
-// The Reconcile function performs the following key steps:
-// 1. Fetches the ImageUpdater CR instance identified by the request.
-// 2. Inspects the CR's specification to determine:
-//   - Which images to monitor.
-//   - The image repositories and tags/versions policies (e.g., semver constraints).
-//   - The target application(s) or resources to update (this might involve interacting
-//     with other Kubernetes resources or systems like Argo CD Applications, which would
-//     require additional RBAC permissions).
-//     3. Queries the relevant container image registries to find the latest available and
-//     permissible versions of the monitored images.
-//     4. Compares these latest versions against the currently deployed versions or versions
-//     recorded in the ImageUpdater CR's status.
-//     5. If an update is warranted and permitted by the update strategy:
-//   - It may trigger an update to the target application(s) by modifying their
-//     declarative specifications (e.g., updating an image field in a Deployment or an
-//     Argo CD Application CR).
-//     6. Updates the status subresource of the ImageUpdater CR to reflect:
-//   - The latest versions checked.
-//   - The last update attempt time and result.
-//   - Any errors encountered during the process.
-//     7. Handles errors gracefully and determines if and when the reconciliation request
-//     should be requeued using ctrl.Result. For instance, network issues during registry
-//     queries might lead to a requeue with a backoff.
-//
-// Currently, this Reconcile function logs the reconciliation event and then unconditionally
-// requeues the request after a configured interval (r.Interval). This serves as a
-// basic periodic check mechanism, which will be expanded with the detailed logic described above.
 func (r *ImageUpdaterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	reqLogger := common.LogFields(logrus.Fields{
 		"logger":                 "reconcile",
@@ -129,6 +103,12 @@ func (r *ImageUpdaterReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	}
 
 	reqLogger.Debugf("Starting reconciliation for ImageUpdater resource.")
+
+	// Check if client is available
+	if r.Client == nil {
+		reqLogger.Errorf("client is nil, cannot proceed with reconciliation")
+		return ctrl.Result{}, fmt.Errorf("client is nil")
+	}
 
 	// 1. Fetch the ImageUpdater resource:
 	var imageUpdater api.ImageUpdater
@@ -171,6 +151,6 @@ func (r *ImageUpdaterReconciler) Reconcile(ctx context.Context, req ctrl.Request
 func (r *ImageUpdaterReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&api.ImageUpdater{}).
-		WithOptions(controller.Options{MaxConcurrentReconciles: 1}).
+		WithOptions(controller.Options{MaxConcurrentReconciles: r.MaxConcurrentReconciles}).
 		Complete(r)
 }
