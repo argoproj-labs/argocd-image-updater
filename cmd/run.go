@@ -84,9 +84,9 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 				cfg.HealthPort = 0
 			}
 
-			// Enforce sane --max-concurrency values
-			if cfg.MaxConcurrency < 1 {
-				return fmt.Errorf("--max-concurrency must be greater than 1")
+			// Enforce sane --max-concurrent-apps values
+			if cfg.MaxConcurrentApps < 1 {
+				return fmt.Errorf("--max-concurrent-apps must be greater than 1")
 			}
 
 			setupLogger.Info("starting",
@@ -277,7 +277,7 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 				Client:                  mgr.GetClient(),
 				Scheme:                  mgr.GetScheme(),
 				Config:                  cfg,
-				MaxConcurrentReconciles: cfg.MaxConcurrency,
+				MaxConcurrentReconciles: cfg.MaxConcurrentApps,
 				CacheWarmed:             warmupState.Done,
 			}
 
@@ -342,7 +342,7 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 	controllerCmd.Flags().BoolVar(&once, "once", false, "run only once, same as specifying --interval=0 and --health-port=0")
 	controllerCmd.Flags().StringVar(&cfg.RegistriesConf, "registries-conf-path", common.DefaultRegistriesConfPath, "path to registries configuration file")
 	controllerCmd.Flags().BoolVar(&disableKubernetes, "disable-kubernetes", false, "do not create and use a Kubernetes client")
-	controllerCmd.Flags().IntVar(&cfg.MaxConcurrency, "max-concurrency", 10, "maximum number of update threads to run concurrently")
+	controllerCmd.Flags().IntVar(&cfg.MaxConcurrentApps, "max-concurrent-apps", 10, "maximum number of update threads to run concurrently")
 	controllerCmd.Flags().IntVar(&MaxConcurrentReconciles, "max-concurrent-reconciles", 1, "maximum number of concurrent Reconciles which can be run")
 	controllerCmd.Flags().StringVar(&cfg.ArgocdNamespace, "argocd-namespace", "", "namespace where ArgoCD runs in (current namespace by default)")
 	controllerCmd.Flags().StringSliceVar(&cfg.AppNamePatterns, "match-application-name", nil, "patterns to match application name against")

@@ -198,10 +198,10 @@ func TestImageUpdaterReconciler_Reconcile(t *testing.T) {
 				MaxConcurrentReconciles: 1,
 				CacheWarmed:             cacheChan,
 				Config: &ImageUpdaterConfig{
-					CheckInterval:  30 * time.Second,
-					MaxConcurrency: 1,
-					DryRun:         true,
-					KubeClient:     &kube.ImageUpdaterKubernetesClient{},
+					CheckInterval:     30 * time.Second,
+					MaxConcurrentApps: 1,
+					DryRun:            true,
+					KubeClient:        &kube.ImageUpdaterKubernetesClient{},
 				},
 			}
 
@@ -371,10 +371,10 @@ func TestImageUpdaterReconciler_Reconcile_ComplexScenarios(t *testing.T) {
 				MaxConcurrentReconciles: 1,
 				CacheWarmed:             cacheChan,
 				Config: &ImageUpdaterConfig{
-					CheckInterval:  30 * time.Second,
-					MaxConcurrency: 1,
-					DryRun:         true,
-					KubeClient:     &kube.ImageUpdaterKubernetesClient{},
+					CheckInterval:     30 * time.Second,
+					MaxConcurrentApps: 1,
+					DryRun:            true,
+					KubeClient:        &kube.ImageUpdaterKubernetesClient{},
 				},
 			}
 
@@ -430,10 +430,10 @@ func TestImageUpdaterReconciler_Reconcile_AdvancedScenarios(t *testing.T) {
 			MaxConcurrentReconciles: 1,
 			CacheWarmed:             cacheChan,
 			Config: &ImageUpdaterConfig{
-				CheckInterval:  30 * time.Second,
-				MaxConcurrency: 1,
-				DryRun:         true,
-				KubeClient:     &kube.ImageUpdaterKubernetesClient{},
+				CheckInterval:     30 * time.Second,
+				MaxConcurrentApps: 1,
+				DryRun:            true,
+				KubeClient:        &kube.ImageUpdaterKubernetesClient{},
 			},
 		}
 
@@ -518,10 +518,10 @@ func TestImageUpdaterReconciler_Reconcile_AdvancedScenarios(t *testing.T) {
 			MaxConcurrentReconciles: 1,
 			CacheWarmed:             cacheChan,
 			Config: &ImageUpdaterConfig{
-				CheckInterval:  30 * time.Second,
-				MaxConcurrency: 1,
-				DryRun:         true,
-				KubeClient:     &kube.ImageUpdaterKubernetesClient{},
+				CheckInterval:     30 * time.Second,
+				MaxConcurrentApps: 1,
+				DryRun:            true,
+				KubeClient:        &kube.ImageUpdaterKubernetesClient{},
 			},
 		}
 
@@ -589,9 +589,9 @@ func TestImageUpdaterReconciler_Reconcile_CacheWarmup(t *testing.T) {
 			MaxConcurrentReconciles: 1,
 			CacheWarmed:             cacheChan,
 			Config: &ImageUpdaterConfig{
-				CheckInterval:  30 * time.Second,
-				MaxConcurrency: 1,
-				DryRun:         true,
+				CheckInterval:     30 * time.Second,
+				MaxConcurrentApps: 1,
+				DryRun:            true,
 			},
 		}
 
@@ -618,9 +618,9 @@ func TestImageUpdaterReconciler_Reconcile_CacheWarmup(t *testing.T) {
 			MaxConcurrentReconciles: 1,
 			CacheWarmed:             cacheChan,
 			Config: &ImageUpdaterConfig{
-				CheckInterval:  30 * time.Second,
-				MaxConcurrency: 1,
-				DryRun:         true,
+				CheckInterval:     30 * time.Second,
+				MaxConcurrentApps: 1,
+				DryRun:            true,
 			},
 		}
 
@@ -674,9 +674,9 @@ func TestImageUpdaterReconciler_Reconcile_CheckInterval(t *testing.T) {
 				MaxConcurrentReconciles: 1,
 				CacheWarmed:             cacheChan,
 				Config: &ImageUpdaterConfig{
-					CheckInterval:  tt.checkInterval,
-					MaxConcurrency: 1,
-					DryRun:         true,
+					CheckInterval:     tt.checkInterval,
+					MaxConcurrentApps: 1,
+					DryRun:            true,
 				},
 			}
 
@@ -708,9 +708,9 @@ func TestImageUpdaterReconciler_Reconcile_ErrorHandling(t *testing.T) {
 			MaxConcurrentReconciles: 1,
 			CacheWarmed:             cacheChan,
 			Config: &ImageUpdaterConfig{
-				CheckInterval:  30 * time.Second,
-				MaxConcurrency: 1,
-				DryRun:         true,
+				CheckInterval:     30 * time.Second,
+				MaxConcurrentApps: 1,
+				DryRun:            true,
 			},
 		}
 
@@ -740,9 +740,9 @@ func TestImageUpdaterReconciler_Reconcile_Integration(t *testing.T) {
 			MaxConcurrentReconciles: 1,
 			CacheWarmed:             cacheChan,
 			Config: &ImageUpdaterConfig{
-				CheckInterval:  30 * time.Second,
-				MaxConcurrency: 1,
-				DryRun:         true,
+				CheckInterval:     30 * time.Second,
+				MaxConcurrentApps: 1,
+				DryRun:            true,
 			},
 		}
 

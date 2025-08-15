@@ -49,7 +49,7 @@ type ImageUpdaterConfig struct {
 	ArgoClient             argocd.ArgoCD
 	LogLevel               string
 	KubeClient             *kube.ImageUpdaterKubernetesClient
-	MaxConcurrency         int
+	MaxConcurrentApps      int
 	HealthPort             int
 	MetricsPort            int
 	RegistriesConf         string

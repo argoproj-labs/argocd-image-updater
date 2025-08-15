@@ -192,10 +192,17 @@ style wildcards, i.e. `*-staging` would match any application name with a
 suffix of `-staging`. Can be specified multiple times to define more than
 one pattern, from which at least one has to match.
 
-**--max-concurrency *number***
+**--max-concurrent-apps *number***
 
 Process a maximum of *number* applications concurrently. To disable concurrent
 application processing, specify a number of `1`.
+
+**--max-concurrent-reconciles *number***
+
+Process a maximum of *number* ImageUpdater custom resources concurrently. 
+This controls how many ImageUpdater CRs can be reconciled simultaneously by the controller. 
+To disable concurrent reconciliation processing, specify a number of 1. 
+Higher values may improve throughput but could increase resource usage and API load.
 
 **--metrics-port *port***
 

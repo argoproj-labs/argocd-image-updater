@@ -54,9 +54,9 @@ func (r *ImageUpdaterReconciler) RunImageUpdater(ctx context.Context, cr *iuapi.
 
 	syncState := argocd.NewSyncIterationState()
 
-	// Allow a maximum of MaxConcurrency number of goroutines to exist at the
+	// Allow a maximum of MaxConcurrentApps number of goroutines to exist at the
 	// same time. If in warm-up mode, set to 1 explicitly.
-	var concurrency int = r.Config.MaxConcurrency
+	var concurrency int = r.Config.MaxConcurrentApps
 	if warmUp {
 		concurrency = 1
 	}
