@@ -35,9 +35,13 @@ Can also be set with the *IMAGE_UPDATER_KUBE_EVENTS* environment variable.
 
 Secret for validating Docker Hub webhooks.
 
+Can also be set with the `DOCKER_WEBHOOK_SECRET` environment variable.
+
 **--ghcr-webhook-secret *secret***
 
 Secret for validating GitHub container registry secrets.
+
+Can also be set with the `GHCR_WEBHOOK_SECRET` environment variable.
 
 **--git-commit-email *email***
 
@@ -75,6 +79,8 @@ Can also be set using the *GIT_COMMIT_USER* environment variable.
 
 Secret for validating Harbor webhooks
 
+Can also be set with the `HARBOR_WEBHOOK_SECRET` environment variable.
+
 **-h, --help**
 
 help for run
@@ -104,6 +110,8 @@ Can also be set using the *MAX_CONCURRENT_APPS* environment variable.
 
 Secret for validating Quay webhooks
 
+Can also be set with the `QUAY_WEBHOOK_SECRET` environment variable.
+
 **--registries-conf-path *path***
 
 Load the registry configuration from file at *path*. Defaults to the path
@@ -114,5 +122,14 @@ default configuration should be used instead, specify the empty string, i.e.
 **--webhook-port *int***
 
 Port to listen on for webhook events (default 8080)
+
+Can also be set with the `WEBHOOK_PORT` environment variable.
+
+**--webhook-ratelimit-allowed *numRequests***
+
+The number of allowed requests in an hour for webhook rate limiting, setting to 0
+means that the rate limiting is disabled.
+
+Can also be set with the `WEBHOOK_RATELIMIT_ALLOWED` environment variable.
 
 [label selector syntax]: https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/#label-selectors

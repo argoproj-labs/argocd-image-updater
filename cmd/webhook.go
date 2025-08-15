@@ -3,12 +3,15 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
+	"math"
 	"os"
 	"os/signal"
 	"strconv"
 	"strings"
 	"syscall"
 	"text/template"
+	"time"
 
 	"github.com/argoproj-labs/argocd-image-updater/internal/controller"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/argocd"
@@ -21,16 +24,18 @@ import (
 
 	"github.com/argoproj/argo-cd/v2/util/askpass"
 	"github.com/spf13/cobra"
+	"go.uber.org/ratelimit"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // WebhookConfig holds the options for the webhook server
 type WebhookConfig struct {
-	Port         int
-	DockerSecret string
-	GHCRSecret   string
-	QuaySecret   string
-	HarborSecret string
+	Port                        int
+	DockerSecret                string
+	GHCRSecret                  string
+	QuaySecret                  string
+	HarborSecret                string
+	RateLimitNumAllowedRequests int
 }
 
 // NewWebhookCommand creates a new webhook command
@@ -155,6 +160,7 @@ Supported registries:
 	webhookCmd.Flags().StringVar(&webhookCfg.GHCRSecret, "ghcr-webhook-secret", env.GetStringVal("GHCR_WEBHOOK_SECRET", ""), "Secret for validating GitHub Container Registry webhooks")
 	webhookCmd.Flags().StringVar(&webhookCfg.QuaySecret, "quay-webhook-secret", env.GetStringVal("QUAY_WEBHOOK_SECRET", ""), "Secret for validating Quay webhooks")
 	webhookCmd.Flags().StringVar(&webhookCfg.HarborSecret, "harbor-webhook-secret", env.GetStringVal("HARBOR_WEBHOOK_SECRET", ""), "Secret for validating Harbor webhooks")
+	webhookCmd.Flags().IntVar(&webhookCfg.RateLimitNumAllowedRequests, "webhook-ratelimit-allowed", env.ParseNumFromEnv("WEBHOOK_RATELIMIT_ALLOWED", 0, 0, math.MaxInt), "The number of allowed requests in an hour for webhook rate limiting, setting to 0 disables ratelimiting")
 
 	return webhookCmd
 }
@@ -199,6 +205,10 @@ func runWebhook(cfg *controller.ImageUpdaterConfig, webhookCfg *WebhookConfig) e
 	// Create webhook server
 	server := webhook.NewWebhookServer(webhookCfg.Port, handler, cfg.KubeClient, cfg.ArgoClient)
 
+	if webhookCfg.RateLimitNumAllowedRequests > 0 {
+		server.RateLimiter = ratelimit.New(webhookCfg.RateLimitNumAllowedRequests, ratelimit.Per(time.Hour))
+	}
+
 	// Set updater config
 	server.UpdaterConfig = &argocd.UpdateConfiguration{
 		NewRegFN:               registry.NewClient,
@@ -234,5 +244,6 @@ func runWebhook(cfg *controller.ImageUpdaterConfig, webhookCfg *WebhookConfig) e
 	if err := server.Stop(); err != nil {
 		log.Errorf("Error stopping webhook server: %v", err)
 	}
+
 	return nil
 }
