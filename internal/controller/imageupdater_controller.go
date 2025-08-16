@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"sync"
 	"text/template"
 	"time"
 
@@ -73,6 +74,10 @@ type ImageUpdaterReconciler struct {
 	Config                  *ImageUpdaterConfig
 	MaxConcurrentReconciles int
 	CacheWarmed             <-chan struct{}
+	// Channel to signal manager to stop
+	StopChan chan struct{}
+	// For run-once mode: wait for all CRs to complete
+	Wg sync.WaitGroup
 }
 
 // +kubebuilder:rbac:groups=argocd-image-updater.argoproj.io,resources=imageupdaters,verbs=get;list;watch;create;update;patch;delete
@@ -130,11 +135,17 @@ func (r *ImageUpdaterReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	}
 
 	if r.Config.CheckInterval == 0 {
-		reqLogger.Debugf("Requeue interval is zero; will be requeued once.")
+		reqLogger.Debugf("Requeue interval is zero; will run once and stop.")
 		_, err := r.RunImageUpdater(ctx, &imageUpdater, false)
 		if err != nil {
-			return ctrl.Result{}, err
+			reqLogger.Errorf("Error processing CR %s/%s: %v", imageUpdater.Namespace, imageUpdater.Name, err)
+		} else {
+			reqLogger.Infof("Finish Reconciliation for CR %s/%s", imageUpdater.Namespace, imageUpdater.Name)
 		}
+
+		// Signal that this CR is complete (regardless of success/failure)
+		r.Wg.Done()
+
 		return ctrl.Result{}, nil
 	}
 
