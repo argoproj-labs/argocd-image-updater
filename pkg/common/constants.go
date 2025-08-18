@@ -6,21 +6,16 @@ import (
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
 )
 
-// This file contains a list of constants required by other packages
-
-const ImageUpdaterAnnotationPrefix = "argocd-image-updater.argoproj.io"
-
-// ImageUpdaterAnnotation The annotation on the application resources to indicate the list of images allowed for updates.
-const ImageUpdaterAnnotation = ImageUpdaterAnnotationPrefix + "/image-list"
-
-// Application update configuration related annotations
+// Application update configurations
 const (
-	WriteBackMethodAnnotation = ImageUpdaterAnnotationPrefix + "/write-back-method"
-	GitBranchAnnotation       = ImageUpdaterAnnotationPrefix + "/git-branch"
-	GitRepositoryAnnotation   = ImageUpdaterAnnotationPrefix + "/git-repository"
-	WriteBackTargetAnnotation = ImageUpdaterAnnotationPrefix + "/write-back-target"
-	KustomizationPrefix       = "kustomization"
-	HelmPrefix                = "helmvalues"
+	KustomizationPrefix = "kustomization"
+	HelmPrefix          = "helmvalues"
+)
+
+// Defaults for Helm parameter names
+const (
+	DefaultHelmImageName = "image.name"
+	DefaultHelmImageTag  = "image.tag"
 )
 
 // DefaultTargetFilePattern configurations related to the write-back functionality
@@ -28,7 +23,7 @@ const DefaultTargetFilePattern = ".argocd-source-%s_%s.yaml"
 const DefaultTargetFilePatternWithoutNamespace = ".argocd-source-%s.yaml"
 const DefaultHelmValuesFilename = "values.yaml"
 
-// The default Git commit message's template
+// DefaultGitCommitMessage the default Git commit message's template
 const DefaultGitCommitMessage = `build: automatic update of {{ .AppName }}
 
 {{ range .AppChanges -}}
@@ -46,13 +41,12 @@ const DefaultRegistriesConfPath = "/app/config/registries.conf"
 const DefaultCommitTemplatePath = "/app/config/commit.template"
 
 const ApplicationsAPIKindK8S = "kubernetes"
-const ApplicationsAPIKindArgoCD = "argocd"
 
 // ControllerLogFields contains the constant, structured context for the ImageUpdater controller.
 // It's defined as logrus.Fields (map[string]interface{}) to be used directly with logrus loggers.
 var ControllerLogFields = logrus.Fields{
 	"controller":      "imageupdater",
-	"controllerGroup": ImageUpdaterAnnotationPrefix,
+	"controllerGroup": "argocd-image-updater.argoproj.io",
 	"controllerKind":  "ImageUpdater",
 }
 

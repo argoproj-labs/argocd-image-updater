@@ -175,7 +175,7 @@ func Test_SetEndpointCredentials(t *testing.T) {
 	t.Run("Set credentials on default registry", func(t *testing.T) {
 		err := SetRegistryEndpointCredentials(context.Background(), "", "env:FOOBAR")
 		require.NoError(t, err)
-		ep, err := GetRegistryEndpoint(context.TODO(), "")
+		ep, err := GetRegistryEndpoint(context.Background(), "")
 		require.NoError(t, err)
 		require.NotNil(t, ep)
 		assert.Equal(t, ep.Credentials, "env:FOOBAR")

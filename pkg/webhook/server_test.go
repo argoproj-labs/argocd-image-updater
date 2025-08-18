@@ -17,9 +17,7 @@ import (
 
 	"github.com/argoproj-labs/argocd-image-updater/pkg/argocd"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/argocd/mocks"
-	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/kube"
-	registryCommon "github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/common"
 	registryKube "github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/kube"
 	"github.com/argoproj-labs/argocd-image-updater/test/fake"
 )
@@ -31,7 +29,7 @@ var (
 				Name:      "test-appA",
 				Namespace: "argocd",
 				Annotations: map[string]string{
-					common.ImageUpdaterAnnotation: "quay.io/argoprojlabs/argocd-image-updater:1.X.X",
+					ImageUpdaterAnnotation: "quay.io/argoprojlabs/argocd-image-updater:1.X.X",
 				},
 			},
 			Spec: v1alpha1.ApplicationSpec{},
@@ -46,7 +44,7 @@ var (
 				Name:      "test-appB",
 				Namespace: "argocd",
 				Annotations: map[string]string{
-					common.ImageUpdaterAnnotation: "localhost/testimage:12.0.X",
+					ImageUpdaterAnnotation: "localhost/testimage:12.0.X",
 				},
 			},
 			Spec: v1alpha1.ApplicationSpec{},
@@ -403,7 +401,7 @@ func TestFindMatchingApplications(t *testing.T) {
 							Name:      "test-appA",
 							Namespace: "argocd",
 							Annotations: map[string]string{
-								common.ImageUpdaterAnnotation: "quay.io/argoprojlabs/argocd-image-updater:1.X.X",
+								ImageUpdaterAnnotation: "quay.io/argoprojlabs/argocd-image-updater:1.X.X",
 							},
 						},
 						Spec: v1alpha1.ApplicationSpec{},
@@ -446,15 +444,15 @@ func TestFindMatchingApplications(t *testing.T) {
 func TestParseImageList(t *testing.T) {
 
 	t.Run("Test basic parsing", func(t *testing.T) {
-		assert.Equal(t, []string{"foo", "bar"}, parseImageList(map[string]string{common.ImageUpdaterAnnotation: " foo, bar "}).Originals())
+		assert.Equal(t, []string{"foo", "bar"}, parseImageList(map[string]string{ImageUpdaterAnnotation: " foo, bar "}).Originals())
 		// should whitespace inside the spec be preserved?
-		assert.Equal(t, []string{"foo", "bar", "baz = qux"}, parseImageList(map[string]string{common.ImageUpdaterAnnotation: " foo, bar,baz = qux "}).Originals())
-		assert.Equal(t, []string{"foo", "bar", "baz=qux"}, parseImageList(map[string]string{common.ImageUpdaterAnnotation: "foo,bar,baz=qux"}).Originals())
+		assert.Equal(t, []string{"foo", "bar", "baz = qux"}, parseImageList(map[string]string{ImageUpdaterAnnotation: " foo, bar,baz = qux "}).Originals())
+		assert.Equal(t, []string{"foo", "bar", "baz=qux"}, parseImageList(map[string]string{ImageUpdaterAnnotation: "foo,bar,baz=qux"}).Originals())
 	})
 	t.Run("Test kustomize override", func(t *testing.T) {
 		imgs := *parseImageList(map[string]string{
-			common.ImageUpdaterAnnotation: "foo=bar",
-			fmt.Sprintf(registryCommon.Prefixed(common.ImageUpdaterAnnotationPrefix, registryCommon.KustomizeApplicationNameAnnotationSuffix), "foo"): "baz",
+			ImageUpdaterAnnotation: "foo=bar",
+			fmt.Sprintf(Prefixed(ImageUpdaterAnnotationPrefix, KustomizeApplicationNameAnnotationSuffix), "foo"): "baz",
 		})
 		assert.Equal(t, "bar", imgs[0].ImageName)
 		assert.Equal(t, "baz", imgs[0].KustomizeImage.ImageName)

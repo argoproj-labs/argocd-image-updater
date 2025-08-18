@@ -166,10 +166,12 @@ style wildcards, i.e. `*-staging` would match any application name with a
 suffix of `-staging`. Can be specified multiple times to define more than
 one pattern, from which at least one has to match.
 
-**--max-concurrency *number***
+**--max-concurrent-apps *number***
 
 Process a maximum of *number* applications concurrently. To disable concurrent
 application processing, specify a number of `1`.
+
+Can also be set using the *MAX_CONCURRENT_APPS* environment variable.
 
 **--quay-webhook-secret *secret***
 
