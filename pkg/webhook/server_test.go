@@ -72,6 +72,15 @@ var (
 	}
 )
 
+type mockRateLimiter struct {
+	Called bool
+}
+
+func (m *mockRateLimiter) Take() time.Time {
+	m.Called = true
+	return time.Now()
+}
+
 // Helper function to create a mock server
 func createMockServer(t *testing.T, port int) *WebhookServer {
 	handler := NewWebhookHandler()
@@ -454,4 +463,40 @@ func TestParseImageList(t *testing.T) {
 		assert.Equal(t, "bar", imgs[0].ImageName)
 		assert.Equal(t, "baz", imgs[0].KustomizeImage.ImageName)
 	})
+}
+
+// TestWebhookServerRateLimit tests to see if the webhook endpoint's rate limiting functionality works
+func TestWebhookServerRateLimit(t *testing.T) {
+	server := createMockServer(t, 8080)
+	mockArgoClient := server.ArgoClient.(*mocks.ArgoCD)
+	mockArgoClient.On("ListApplications", mock.Anything).Return([]v1alpha1.Application{}, nil).Maybe()
+
+	handler := NewDockerHubWebhook("")
+	assert.NotNil(t, handler, "Docker handler was nil")
+
+	server.Handler.RegisterHandler(handler)
+
+	mock := &mockRateLimiter{}
+	server.RateLimiter = mock
+
+	body := []byte(`{
+		"repository": {
+			"repo_name": "somepersononthisfakeregistry/myimagethatdoescoolstuff",
+			"name": "myimagethatdoescoolstuff",
+			"namespace": "randomplaceincluster"
+		},
+		"push_data": {
+			"tag": "v12.0.9"
+		}
+	}`)
+
+	req := httptest.NewRequest(http.MethodPost, "/webhook?type=docker", bytes.NewReader(body))
+	rec := httptest.NewRecorder()
+
+	server.handleWebhook(rec, req)
+
+	// Wait for thread to call it.
+	time.Sleep(time.Second)
+
+	assert.True(t, mock.Called, "Take was not called")
 }

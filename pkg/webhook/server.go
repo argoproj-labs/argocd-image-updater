@@ -13,6 +13,7 @@ import (
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
 
 	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
+	"go.uber.org/ratelimit"
 )
 
 // WebhookServer manages webhook endpoints and triggers update checks
@@ -33,16 +34,19 @@ type WebhookServer struct {
 	mutex sync.Mutex
 	// mutex for concurrent repo access
 	syncState *argocd.SyncIterationState
+	// rate limiter to limit requests in an interval
+	RateLimiter ratelimit.Limiter
 }
 
 // NewWebhookServer creates a new webhook server
 func NewWebhookServer(port int, handler *WebhookHandler, kubeClient *kube.ImageUpdaterKubernetesClient, argoClient argocd.ArgoCD) *WebhookServer {
 	return &WebhookServer{
-		Port:       port,
-		Handler:    handler,
-		KubeClient: kubeClient,
-		ArgoClient: argoClient,
-		syncState:  argocd.NewSyncIterationState(),
+		Port:        port,
+		Handler:     handler,
+		KubeClient:  kubeClient,
+		ArgoClient:  argoClient,
+		syncState:   argocd.NewSyncIterationState(),
+		RateLimiter: nil,
 	}
 }
 
@@ -96,6 +100,10 @@ func (s *WebhookServer) handleWebhook(w http.ResponseWriter, r *http.Request) {
 
 	// Process webhook asynchronously
 	go func() {
+		if s.RateLimiter != nil {
+			s.RateLimiter.Take()
+		}
+
 		err := s.processWebhookEvent(event)
 		if err != nil {
 			logCtx.Errorf("Failed to process webhook event: %v", err)

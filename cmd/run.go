@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"strings"
 	"sync"
@@ -25,6 +26,8 @@ import (
 	"github.com/spf13/cobra"
 
 	"golang.org/x/sync/semaphore"
+
+	"go.uber.org/ratelimit"
 
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -216,6 +219,10 @@ func newRunCommand() *cobra.Command {
 				log.Infof("Starting webhook server on port %d", webhookCfg.Port)
 				webhookServer = webhook.NewWebhookServer(webhookCfg.Port, handler, cfg.KubeClient, argoClient)
 
+				if webhookCfg.RateLimitNumAllowedRequests > 0 {
+					webhookServer.RateLimiter = ratelimit.New(webhookCfg.RateLimitNumAllowedRequests, ratelimit.Per(time.Hour))
+				}
+
 				// Set updater config
 				webhookServer.UpdaterConfig = &argocd.UpdateConfiguration{
 					NewRegFN:               registry.NewClient,
@@ -337,6 +344,7 @@ func newRunCommand() *cobra.Command {
 	runCmd.Flags().StringVar(&webhookCfg.GHCRSecret, "ghcr-webhook-secret", env.GetStringVal("GHCR_WEBHOOK_SECRET", ""), "Secret for validating GitHub Container Registry webhooks")
 	runCmd.Flags().StringVar(&webhookCfg.QuaySecret, "quay-webhook-secret", env.GetStringVal("QUAY_WEBHOOK_SECRET", ""), "Secret for validating Quay webhooks")
 	runCmd.Flags().StringVar(&webhookCfg.HarborSecret, "harbor-webhook-secret", env.GetStringVal("HARBOR_WEBHOOK_SECRET", ""), "Secret for validating Harbor webhooks")
+	runCmd.Flags().IntVar(&webhookCfg.RateLimitNumAllowedRequests, "webhook-ratelimit-allowed", env.ParseNumFromEnv("WEBHOOK_RATELIMIT_ALLOWED", 0, 0, math.MaxInt), "The number of allowed requests in an hour for webhook rate limiting, setting to 0 disables ratelimiting")
 
 	return runCmd
 }

@@ -155,6 +155,21 @@ to apply them yourself.
 
 They are located in the `manifets/base/networking` directory.
 
+## Rate Limiting
+
+To prevent overloading from the `/webhook` endpoint which could cause Image 
+Updater to use too many resources rate limiting is implemented for the endpoint.
+
+The rate limiting allows for a certain amount of requests per hour. This setting
+is configurable and can be set with the configuration value below. If you go over
+the limit the request will wait until it is allowed. The rate limit value defaults 
+to 0 which means that it is disabled.
+```yaml
+data:
+  # How many requests can be made per second. The default is 0 meaning disabled.
+  webhook.ratelimit-allowed: <SOME_NUMBER>
+```
+
 ## Environment Variables
 
 The flags for both the `run` and `webhook` CLI commands can also be set via 
@@ -168,6 +183,7 @@ environment variables. Below is the list of which variables correspond to which 
 |`GHCR_WEBHOOK_SECRET` |`--gchr-webhook-secret`|
 |`HARBOR_WEBHOOK_SECRET` |`--harbor-webhook-secret`|
 |`QUAY_WEBHOOK_SECRET` |`--quay-webhook-secret`|
+|`WEBHOOK_RATELIMIT_ALLOWED`|`--webhook-ratelimit-allowed`|
 
 ## Adding Support For Other Registries
 
