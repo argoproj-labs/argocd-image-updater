@@ -7,3 +7,9 @@ status:
     status: Healthy
   sync:
     status: Synced
+---
+apiVersion: argocd-image-updater.argoproj.io/v1alpha1
+kind: ImageUpdater
+metadata:
+  name: image-updater-003
+  namespace: argocd-image-updater-e2e

@@ -27,14 +27,21 @@ The end-to-end tests are comprised of the following components:
    changes to the cluster's configuration, i.e. it will set up a custom
    container registry and credentials.
 
-2. Run `./bin/install.sh`. This will
+2. Install CRDs into the K8s cluster specified in ~/.kube/config.
+
+    * `make -f controller.Makefile install`
+
+3. Run `./bin/install.sh`. This will
 
     * Configure your Docker daemon to be able to push to the test registry in
       an insecure manner.
 
     * Configure K3s to be able to access the test registry
 
-3. Create required namespace in the cluster: `kubectl create ns argocd-image-updater-e2e`
+4. Create required namespaces in the cluster: 
+   * `kubectl create ns argocd-image-updater-e2e`
+
+   * `kubectl create ns image-updater-system`
 
 ## Pre-requisites
 

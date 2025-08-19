@@ -1,8 +1,8 @@
-#apiVersion: v1
-#kind: Namespace
-#metadata:
-#  name: image-updater-e2e-001
-#---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: image-updater-e2e-001
+---
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -18,7 +18,7 @@ spec:
     targetRevision: HEAD
   destination:
     server: https://kubernetes.default.svc
-    namespace: image-updater-e2e-001
+    namespace: argocd-image-updater-e2e
   syncPolicy:
     automated: {}
     retry:
@@ -34,9 +34,6 @@ metadata:
   name: image-updater-001
   namespace: argocd-image-updater-e2e
 spec:
-#  annotations:
-#    argocd-image-updater.argoproj.io/image-list: test=10.42.0.1:30000/test-image:1.X.X
-#    argocd-image-updater.argoproj.io/test.update-strategy: semver
   namespace: argocd-image-updater-e2e
   commonUpdateSettings:
     updateStrategy: "semver"

@@ -6,12 +6,20 @@ spec:
   source:
     kustomize:
       images:
-      - gcr.io/heptio-images/ks-guestbook-demo:0.2
+      - quay.io/dkarpele/my-guestbook:1.0.2
 status:
   health:
     status: Healthy
   sync:
     status: Synced
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: image-updater-e2e-101-0
+status:
+  observedGeneration: 2
+  readyReplicas: 1
 ---
 apiVersion: argoproj.io/v1alpha1
 kind: Application
@@ -23,6 +31,14 @@ status:
   sync:
     status: Synced
 ---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: image-updater-e2e-101-1
+status:
+  observedGeneration: 1
+  readyReplicas: 1
+---
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -32,3 +48,11 @@ status:
     status: Healthy
   sync:
     status: Synced
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: image-updater-e2e-101-2
+status:
+  observedGeneration: 1
+  readyReplicas: 1

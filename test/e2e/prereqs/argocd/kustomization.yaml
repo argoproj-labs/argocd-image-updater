@@ -9,3 +9,9 @@ patches:
       version: v1
       kind: ClusterRoleBinding
       name: argocd-application-controller
+  - path: clusterrolebinding.json
+    target:
+      group: rbac.authorization.k8s.io
+      version: v1
+      kind: ClusterRoleBinding
+      name: argocd-server

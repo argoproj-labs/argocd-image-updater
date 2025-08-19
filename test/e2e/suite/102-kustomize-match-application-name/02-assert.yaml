@@ -2,28 +2,67 @@ apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: image-updater-102-0
+spec:
+  source:
+    kustomize:
+      images:
+        - quay.io/dkarpele/my-guestbook:1.0.1
 status:
   health:
     status: Healthy
   sync:
     status: Synced
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: image-updater-e2e-102-0
+status:
+  observedGeneration: 2
+  readyReplicas: 1
 ---
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: image-updater-102-1
+spec:
+  source:
+    kustomize:
+      images:
+        - quay.io/dkarpele/my-guestbook:1.0.2
 status:
   health:
     status: Healthy
   sync:
     status: Synced
 ---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: image-updater-e2e-102-1
+status:
+  observedGeneration: 2
+  readyReplicas: 1
+---
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: image-updater-102-2
+spec:
+  source:
+    kustomize:
+      images:
+        - quay.io/dkarpele/my-guestbook:2.0.0
 status:
   health:
     status: Healthy
   sync:
     status: Synced
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: image-updater-e2e-102-2
+status:
+  observedGeneration: 2
+  readyReplicas: 1

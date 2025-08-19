@@ -6,19 +6,17 @@ metadata:
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
+  namespace: argocd-image-updater-e2e
   name: image-updater-101-0
   labels:
     app.index: "0"
-  annotations:
-    argocd-image-updater.argoproj.io/image-list: guestbook=gcr.io/heptio-images/ks-guestbook-demo:~0
-    argocd-image-updater.argoproj.io/test.update-strategy: semver
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
   project: default
   source:
-    repoURL: https://github.com/argoproj/argocd-example-apps.git
-    path: kustomize-guestbook
+    repoURL: https://10.42.0.1:30003/testdata.git
+    path: ./005-public-guestbook
     targetRevision: HEAD
   destination:
     server: https://kubernetes.default.svc
@@ -36,19 +34,17 @@ metadata:
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
+  namespace: argocd-image-updater-e2e
   name: image-updater-101-1
   labels:
     app.index: "1"
-  annotations:
-    argocd-image-updater.argoproj.io/image-list: guestbook=gcr.io/heptio-images/ks-guestbook-demo:~0
-    argocd-image-updater.argoproj.io/test.update-strategy: semver
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
   project: default
   source:
-    repoURL: https://github.com/argoproj/argocd-example-apps.git
-    path: kustomize-guestbook
+    repoURL: https://10.42.0.1:30003/testdata.git
+    path: ./005-public-guestbook
     targetRevision: HEAD
   destination:
     server: https://kubernetes.default.svc
@@ -66,17 +62,15 @@ metadata:
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
+  namespace: argocd-image-updater-e2e
   name: image-updater-101-2
-  annotations:
-    argocd-image-updater.argoproj.io/image-list: guestbook=gcr.io/heptio-images/ks-guestbook-demo:~0
-    argocd-image-updater.argoproj.io/test.update-strategy: semver
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
   project: default
   source:
-    repoURL: https://github.com/argoproj/argocd-example-apps.git
-    path: kustomize-guestbook
+    repoURL: https://10.42.0.1:30003/testdata.git
+    path: ./005-public-guestbook
     targetRevision: HEAD
   destination:
     server: https://kubernetes.default.svc
@@ -85,3 +79,42 @@ spec:
     automated: {}
     retry:
       limit: 2
+---
+apiVersion: argocd-image-updater.argoproj.io/v1alpha1
+kind: ImageUpdater
+metadata:
+  labels:
+    app.kubernetes.io/name: image-updater
+    app.kubernetes.io/managed-by: kustomize
+  name: image-updater-101
+  namespace: argocd-image-updater-e2e
+spec:
+  namespace: argocd-image-updater-e2e
+  applicationRefs:
+    - namePattern: "image-updater-101-0"
+      labelSelectors:
+        matchLabels:
+          app.index: "0"
+      images:
+        - alias: "guestbook"
+          imageName: "quay.io/dkarpele/my-guestbook:~1.0"
+          commonUpdateSettings:
+            updateStrategy: "semver"
+    - namePattern: "image-updater-101-1"
+      labelSelectors:
+        matchLabels:
+          app.index: "mismatch"
+      images:
+        - alias: "guestbook"
+          imageName: "quay.io/dkarpele/my-guestbook:~1.0"
+          commonUpdateSettings:
+            updateStrategy: "semver"
+    - namePattern: "image-updater-101-2"
+      labelSelectors:
+        matchLabels:
+          app.index: "2"
+      images:
+        - alias: "guestbook"
+          imageName: "quay.io/dkarpele/my-guestbook:~1.0"
+          commonUpdateSettings:
+            updateStrategy: "semver"

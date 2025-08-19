@@ -8,7 +8,7 @@ spec:
   source:
     kustomize:
       images:
-      - gcr.io/heptio-images/ks-guestbook-demo:0.2
+      - quay.io/dkarpele/my-guestbook:1.0.2
 status:
   health:
     status: Healthy
@@ -21,4 +21,4 @@ metadata:
   namespace: image-updater-e2e-006-01
 spec:
   containers:
-  - image: gcr.io/heptio-images/ks-guestbook-demo:0.2
+  - image: quay.io/dkarpele/my-guestbook:1.0.2

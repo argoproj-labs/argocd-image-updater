@@ -1,0 +1,19 @@
+apiVersion: argocd-image-updater.argoproj.io/v1alpha1
+kind: ImageUpdater
+metadata:
+  labels:
+    app.kubernetes.io/name: image-updater
+    app.kubernetes.io/managed-by: kustomize
+  name: image-updater-002
+  namespace: argocd-image-updater-e2e
+spec:
+  namespace: argocd-image-updater-e2e
+  applicationRefs:
+    - namePattern: "image-updater-002"
+      commonUpdateSettings:
+        updateStrategy: "digest"
+      writeBackConfig:
+        method: "git"
+      images:
+        - alias: "test"
+          imageName: "10.42.0.1:30000/test-image:1.0.0"
