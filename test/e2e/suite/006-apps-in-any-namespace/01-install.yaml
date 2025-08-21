@@ -72,9 +72,6 @@ kind: Application
 metadata:
   name: image-updater-006
   namespace: image-updater-e2e-006-01
-  annotations:
-    argocd-image-updater.argoproj.io/image-list: guestbook=gcr.io/heptio-images/ks-guestbook-demo:~0
-    argocd-image-updater.argoproj.io/guestbook.update-strategy: semver
 spec:
   project: project-one
   source:
@@ -88,3 +85,21 @@ spec:
     automated:
       prune: true
       selfHeal: true
+---
+apiVersion: argocd-image-updater.argoproj.io/v1alpha1
+kind: ImageUpdater
+metadata:
+  labels:
+    app.kubernetes.io/name: image-updater
+    app.kubernetes.io/managed-by: kustomize
+  name: image-updater-006
+  namespace: argocd-image-updater-e2e
+spec:
+  namespace: image-updater-e2e-006-01
+  commonUpdateSettings:
+    updateStrategy: "semver"
+  applicationRefs:
+    - namePattern: "image-updater-006"
+      images:
+        - alias: "guestbook"
+          imageName: "quay.io/dkarpele/my-guestbook:~1.0"

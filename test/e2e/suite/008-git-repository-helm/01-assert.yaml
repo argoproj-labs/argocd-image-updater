@@ -14,7 +14,7 @@ status:
     status: Synced
   summary:
     images:
-    - gcr.io/heptio-images/ks-guestbook-demo:0.1@sha256:fe18e00a6aeece16b5b2f77a32ee60929e8a60e27c71df8df66bf804f5677f47
+    - quay.io/dkarpele/my-guestbook:1.0.0
 ---
 apiVersion: v1
 kind: Pod
@@ -22,4 +22,4 @@ metadata:
   namespace: image-updater-e2e-008
 spec:
   containers:
-  - image: gcr.io/heptio-images/ks-guestbook-demo:0.1@sha256:fe18e00a6aeece16b5b2f77a32ee60929e8a60e27c71df8df66bf804f5677f47
+  - image: quay.io/dkarpele/my-guestbook:1.0.0

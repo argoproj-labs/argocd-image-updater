@@ -2,7 +2,11 @@ apiVersion: kuttl.dev/v1beta1
 kind: TestStep
 commands:
 - script: |
-    ${SRC_DIR}/dist/argocd-image-updater run --once \
+    ${SRC_DIR}/dist/argocd-image-updater run \
+      --once \
       --argocd-namespace argocd-image-updater-e2e \
-      --loglevel trace
+      --registries-conf-path ${SRC_DIR}/test/e2e/assets/registries.conf \
+      --loglevel trace \
+      --leader-election-namespace image-updater-system \
+      --max-concurrent-reconciles 10
     sleep 30

@@ -1,0 +1,22 @@
+apiVersion: argocd-image-updater.argoproj.io/v1alpha1
+kind: ImageUpdater
+metadata:
+  labels:
+    app.kubernetes.io/name: image-updater
+    app.kubernetes.io/managed-by: kustomize
+  name: image-updater-008
+  namespace: argocd-image-updater-e2e
+spec:
+  namespace: argocd-image-updater-e2e
+  commonUpdateSettings:
+    updateStrategy: "semver"
+  writeBackConfig:
+    method: "git"
+    gitConfig:
+      branch: "master"
+      repository: "https://10.42.0.1:30003/testdata.git"
+  applicationRefs:
+    - namePattern: "image-updater-008"
+      images:
+        - alias: "test"
+          imageName: "quay.io/dkarpele/my-guestbook:1.0.0"

@@ -7,6 +7,17 @@ status:
     status: Healthy
   sync:
     status: Synced
+  summary:
+    images:
+      - quay.io/dkarpele/my-guestbook:1.0.0
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: image-updater-e2e-101-0
+status:
+  observedGeneration: 1
+  readyReplicas: 1
 ---
 apiVersion: argoproj.io/v1alpha1
 kind: Application
@@ -17,6 +28,17 @@ status:
     status: Healthy
   sync:
     status: Synced
+  summary:
+    images:
+      - quay.io/dkarpele/my-guestbook:1.0.0
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: image-updater-e2e-101-1
+status:
+  observedGeneration: 1
+  readyReplicas: 1
 ---
 apiVersion: argoproj.io/v1alpha1
 kind: Application
@@ -27,3 +49,20 @@ status:
     status: Healthy
   sync:
     status: Synced
+  summary:
+    images:
+      - quay.io/dkarpele/my-guestbook:1.0.0
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: image-updater-e2e-101-2
+status:
+  observedGeneration: 1
+  readyReplicas: 1
+---
+apiVersion: argocd-image-updater.argoproj.io/v1alpha1
+kind: ImageUpdater
+metadata:
+  name: image-updater-101
+  namespace: argocd-image-updater-e2e

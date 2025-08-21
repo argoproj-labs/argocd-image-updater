@@ -6,10 +6,8 @@ metadata:
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
+  namespace: argocd-image-updater-e2e
   name: image-updater-004
-  annotations:
-    argocd-image-updater.argoproj.io/image-list: test-nginx=nginx:1.17.10,test-memcached=memcached:1.6.10
-    argocd-image-updater.argoproj.io/test.update-strategy: semver
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
@@ -25,3 +23,24 @@ spec:
     automated: {}
     retry:
       limit: 2
+
+---
+apiVersion: argocd-image-updater.argoproj.io/v1alpha1
+kind: ImageUpdater
+metadata:
+  labels:
+    app.kubernetes.io/name: image-updater
+    app.kubernetes.io/managed-by: kustomize
+  name: image-updater-004
+  namespace: argocd-image-updater-e2e
+spec:
+  namespace: argocd-image-updater-e2e
+  applicationRefs:
+    - namePattern: "image-updater-004"
+      commonUpdateSettings:
+        updateStrategy: "semver"
+      images:
+        - alias: "test-nginx"
+          imageName: "nginx:1.17.10"
+        - alias: "test-memcached"
+          imageName: "memcached:1.6.10"

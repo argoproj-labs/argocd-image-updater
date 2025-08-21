@@ -6,7 +6,7 @@ spec:
   source:
     kustomize:
       images:
-      - gcr.io/heptio-images/ks-guestbook-demo:0.2
+      - quay.io/dkarpele/my-guestbook:1.0.2
 status:
   health:
     status: Healthy
@@ -19,12 +19,17 @@ metadata:
   namespace: image-updater-e2e-005-01
 spec:
   containers:
-  - image: gcr.io/heptio-images/ks-guestbook-demo:0.2
+  - image: quay.io/dkarpele/my-guestbook:1.0.2
 ---
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: image-updater-005-02
+spec:
+  source:
+    kustomize:
+      images:
+        - quay.io/dkarpele/my-guestbook:2.0.0
 status:
   health:
     status: Healthy
@@ -37,4 +42,4 @@ metadata:
   namespace: image-updater-e2e-005-02
 spec:
   containers:
-  - image: gcr.io/heptio-images/ks-guestbook-demo:0.1
+  - image: quay.io/dkarpele/my-guestbook:2.0.0

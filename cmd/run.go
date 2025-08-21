@@ -21,7 +21,6 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
@@ -82,6 +81,7 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 			if once {
 				cfg.CheckInterval = 0
 				cfg.HealthPort = 0
+				warmUpCache = true
 			}
 
 			setupLogger.Info("starting",
@@ -268,20 +268,30 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 				Done: make(chan struct{}),
 			}
 
+			// Create stop channel for run-once mode
+			stopChan := make(chan struct{})
+
 			reconciler := &controller.ImageUpdaterReconciler{
 				Client:                  mgr.GetClient(),
 				Scheme:                  mgr.GetScheme(),
 				Config:                  cfg,
 				MaxConcurrentReconciles: cfg.MaxConcurrentApps,
 				CacheWarmed:             warmupState.Done,
+				StopChan:                stopChan,
 			}
 
-			if err := mgr.Add(&CacheWarmer{
-				Reconciler: reconciler,
-				Status:     warmupState,
-			}); err != nil {
-				setupLogger.Error(err, "unable to add cache warmer to manager")
-				return err
+			if warmUpCache {
+				if err := mgr.Add(&CacheWarmer{
+					Reconciler: reconciler,
+					Status:     warmupState,
+				}); err != nil {
+					setupLogger.Error(err, "unable to add cache warmer to manager")
+					return err
+				}
+			} else {
+				setupLogger.Info("Cache warm-up disabled, skipping cache warmer")
+				// If warm-up is disabled, we need to signal that cache is warmed
+				close(warmupState.Done)
 			}
 
 			if err = reconciler.SetupWithManager(mgr); err != nil {
@@ -308,7 +318,24 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 			}
 
 			setupLogger.Info("starting manager")
-			if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
+
+			// Create a context that can be cancelled by the stop channel
+			ctx, cancel := context.WithCancel(ctrl.SetupSignalHandler())
+			defer cancel()
+
+			// Start a goroutine to listen for stop signal from reconciler
+			go func() {
+				select {
+				case <-stopChan:
+					setupLogger.Info("received stop signal from reconciler, shutting down manager")
+					cancel()
+				case <-ctx.Done():
+					// Normal shutdown signal (Ctrl+C, etc.) - context already cancelled
+					setupLogger.Info("received shutdown signal")
+				}
+			}()
+
+			if err := mgr.Start(ctx); err != nil {
 				setupLogger.Error(err, "problem running manager")
 				return err
 			}
@@ -409,15 +436,37 @@ func (cw *CacheWarmer) Start(ctx context.Context) error {
 
 	warmUpCacheLogger.Debugf("Caches are synced. Warming up image cache...")
 	imageList := &api.ImageUpdaterList{}
-	var listOpts []client.ListOption
 
 	warmUpCacheLogger.Debugf("Listing all ImageUpdater CRs before starting manager...")
-	if err := cw.Reconciler.List(ctx, imageList, listOpts...); err != nil {
+	if err := cw.Reconciler.List(ctx, imageList); err != nil {
 		warmUpCacheLogger.Errorf("Failed to list ImageUpdater CRs during warm-up: %v", err)
 		return err
 	}
 
 	warmUpCacheLogger.Debugf("Found %d ImageUpdater CRs to process for cache warm-up.", len(imageList.Items))
+
+	// If we're in run-once mode, count the total CRs and set up WaitGroup
+	if cw.Reconciler.Config.CheckInterval == 0 {
+		cw.Reconciler.Wg.Add(len(imageList.Items))
+
+		warmUpCacheLogger.Infof("Run-once mode: will process %d CRs before stopping", len(imageList.Items))
+
+		// If there are no CRs, signal to stop immediately
+		if len(imageList.Items) == 0 {
+			warmUpCacheLogger.Infof("No CRs found in run-once mode - will stop immediately")
+			if cw.Reconciler.StopChan != nil {
+				close(cw.Reconciler.StopChan)
+			}
+		} else {
+			// Start the stop watcher that will wait for all CRs to complete
+			if cw.Reconciler.StopChan != nil {
+				go func() {
+					cw.Reconciler.Wg.Wait()
+					close(cw.Reconciler.StopChan)
+				}()
+			}
+		}
+	}
 
 	for _, imageUpdater := range imageList.Items {
 		warmUpCacheLogger = common.LogFields(logrus.Fields{

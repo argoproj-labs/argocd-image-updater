@@ -5,6 +5,11 @@ delete:
 - apiVersion: argoproj.io/v1alpha1
   kind: Application
   name: image-updater-001
+  namespace: argocd-image-updater-e2e
+- apiVersion: argocd-image-updater.argoproj.io/v1alpha1
+  kind: ImageUpdater
+  name: image-updater-001
+  namespace: argocd-image-updater-e2e
 - apiVersion: v1
   kind: Namespace
   name: image-updater-e2e-001
