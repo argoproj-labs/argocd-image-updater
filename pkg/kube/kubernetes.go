@@ -8,7 +8,7 @@ import (
 	"os"
 	"time"
 
-	kube "github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/kube"
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/kube"
 
 	appv1alpha1 "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	"github.com/argoproj/argo-cd/v2/pkg/client/clientset/versioned"
@@ -24,8 +24,7 @@ type ImageUpdaterKubernetesClient struct {
 	KubeClient            *kube.KubernetesClient
 }
 
-func NewKubernetesClient(ctx context.Context, kubeConfig, namespace string) (*ImageUpdaterKubernetesClient, error) {
-
+func NewImageUpdaterKubernetesClient(ctx context.Context, kubeConfig, namespace string) (*ImageUpdaterKubernetesClient, error) {
 	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
 	loadingRules.DefaultClientConfig = &clientcmd.DefaultClientConfig
 	loadingRules.ExplicitPath = kubeConfig

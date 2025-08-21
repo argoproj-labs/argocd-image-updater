@@ -10,8 +10,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/api/errors"
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlFake "sigs.k8s.io/controller-runtime/pkg/client/fake"
 
@@ -19,6 +20,7 @@ import (
 	"github.com/argoproj-labs/argocd-image-updater/pkg/kube"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/image"
 	registryKube "github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/kube"
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
 	"github.com/argoproj-labs/argocd-image-updater/test/fake"
 )
 
@@ -963,20 +965,20 @@ func TestKubernetesClient(t *testing.T) {
 				},
 			},
 		}
-		apps, err := k8sClient.ListApplications(context.TODO(), cr)
+		apps, err := k8sClient.ListApplications(context.Background(), cr)
 		require.NoError(t, err)
 		require.Len(t, apps, 2)
 		assert.ElementsMatch(t, []string{"test-app1", "test-app2"}, []string{apps[0].Name, apps[1].Name})
 	})
 
 	t.Run("Get application successful", func(t *testing.T) {
-		app, err := k8sClient.GetApplication(context.TODO(), "testns", "test-app1")
+		app, err := k8sClient.GetApplication(context.Background(), "testns", "test-app1")
 		require.NoError(t, err)
 		assert.Equal(t, "test-app1", app.GetName())
 	})
 
 	t.Run("Get application not found", func(t *testing.T) {
-		_, err := k8sClient.GetApplication(context.TODO(), "test-ns-non-existent", "test-app-non-existent")
+		_, err := k8sClient.GetApplication(context.Background(), "test-ns-non-existent", "test-app-non-existent")
 		require.Error(t, err)
 		assert.True(t, errors.IsNotFound(err), "error should be a 'Not Found' error")
 	})
@@ -997,50 +999,15 @@ func TestKubernetesClient(t *testing.T) {
 				},
 			},
 		}
-		apps, err := k8sClient.ListApplications(context.TODO(), cr)
+		apps, err := k8sClient.ListApplications(context.Background(), cr)
 		require.NoError(t, err)
 		require.NotNil(t, apps)
 		assert.Len(t, apps, 0)
 	})
 }
 
+// Assisted-by: Gemini AI
 func TestKubernetesClientUpdateSpec(t *testing.T) {
-	// TODO: I don't want to remove "conflict" tests now as they can be a useful for inspiration in future.
-
-	//app := &v1alpha1.Application{
-	//	ObjectMeta: v1.ObjectMeta{Name: "test-app", Namespace: "testns"},
-	//}
-	// clientset := fake.NewSimpleClientset(app)
-
-	//t.Run("Successful update after conflict retry", func(t *testing.T) {
-	//	attempts := 0
-	//	clientset.PrependReactor("update", "*", func(action k8stesting.Action) (handled bool, ret runtime.Object, err error) {
-	//		if attempts == 0 {
-	//			attempts++
-	//			return true, nil, errors.NewConflict(
-	//				schema.GroupResource{Group: "argoproj.io", Resource: "Application"}, app.Name, fmt.Errorf("conflict updating %s", app.Name))
-	//		} else {
-	//			return false, nil, nil
-	//		}
-	//	})
-	//
-	//	client, err := NewK8SClient(&kube.ImageUpdaterKubernetesClient{
-	//		ApplicationsClientset: clientset,
-	//	}, nil)
-	//	require.NoError(t, err)
-	//
-	//	appName := "test-app"
-	//	spec, err := client.UpdateSpec(context.TODO(), &application.ApplicationUpdateSpecRequest{
-	//		Name: &appName,
-	//		Spec: &v1alpha1.ApplicationSpec{Source: &v1alpha1.ApplicationSource{
-	//			RepoURL: "https://github.com/argoproj/argocd-example-apps",
-	//		}},
-	//	})
-	//
-	//	require.NoError(t, err)
-	//	assert.Equal(t, "https://github.com/argoproj/argocd-example-apps", spec.Source.RepoURL)
-	//})
-
 	t.Run("Successful update of an application spec", func(t *testing.T) {
 		// Initial state of the application
 		initialApp := &v1alpha1.Application{
@@ -1070,13 +1037,13 @@ func TestKubernetesClientUpdateSpec(t *testing.T) {
 		}
 
 		// Call the UpdateSpec method
-		updatedSpec, err := fakeClient.UpdateSpec(context.TODO(), updateRequest)
+		updatedSpec, err := fakeClient.UpdateSpec(context.Background(), updateRequest)
 		require.NoError(t, err)
 		// Assert that the returned spec has the new value
 		assert.Equal(t, "https://github.com/updated/repo", updatedSpec.Source.RepoURL)
 
 		// Also, verify the object in the fake cluster was actually updated
-		updatedApp, err := fakeClient.GetApplication(context.TODO(), "testns", "test-app")
+		updatedApp, err := fakeClient.GetApplication(context.Background(), "testns", "test-app")
 		require.NoError(t, err)
 		assert.Equal(t, "https://github.com/updated/repo", updatedApp.Spec.Source.RepoURL)
 	})
@@ -1094,84 +1061,222 @@ func TestKubernetesClientUpdateSpec(t *testing.T) {
 			Spec:         &v1alpha1.ApplicationSpec{},
 		}
 
-		_, err = fakeClient.UpdateSpec(context.TODO(), updateRequest)
+		_, err = fakeClient.UpdateSpec(context.Background(), updateRequest)
 		require.Error(t, err)
 		assert.True(t, errors.IsNotFound(err), "error should be a 'Not Found' error because Get fails")
 	})
 
-	//t.Run("UpdateSpec errors - conflict failing retries", func(t *testing.T) {
-	//	clientset := fake.NewSimpleClientset(&v1alpha1.Application{
-	//		ObjectMeta: v1.ObjectMeta{Name: "test-app", Namespace: "testns"},
-	//		Spec:       v1alpha1.ApplicationSpec{},
-	//	})
-	//
-	//	initialApp := &v1alpha1.Application{
-	//		ObjectMeta: v1.ObjectMeta{Name: "test-app", Namespace: "testns"},
-	//		Spec: v1alpha1.ApplicationSpec{
-	//			Source: &v1alpha1.ApplicationSource{
-	//				RepoURL: "https://github.com/original/repo", // Original value
-	//			},
-	//		},
-	//	}
-	//
-	//	// Create a client pre-loaded with this application
-	//	fakeClient, err := newTestK8sClient(initialApp)
-	//	require.NoError(t, err)
-	//
-	//	clientset.PrependReactor("update", "applications", func(action k8stesting.Action) (handled bool, ret runtime.Object, err error) {
-	//		return true, nil, errors.NewConflict(v1alpha1.Resource("applications"), "test-app", fmt.Errorf("conflict error"))
-	//	})
-	//
-	//	os.Setenv("OVERRIDE_MAX_RETRIES", "0")
-	//	defer os.Unsetenv("OVERRIDE_MAX_RETRIES")
-	//
-	//	appName := "test-app"
-	//	spec := &application.ApplicationUpdateSpecRequest{
-	//		Name: &appName,
-	//		Spec: &v1alpha1.ApplicationSpec{},
-	//	}
-	//
-	//	_, err = fakeClient.UpdateSpec(context.TODO(), spec)
-	//	assert.Error(t, err)
-	//	assert.Contains(t, err.Error(), "max retries(0) reached while updating application: test-app")
-	//})
+	t.Run("Successful update after conflict retry", func(t *testing.T) {
+		// Initial state of the application
+		initialApp := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{Name: "test-app", Namespace: "testns"},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: &v1alpha1.ApplicationSource{
+					RepoURL: "https://github.com/original/repo",
+				},
+			},
+		}
 
-	//t.Run("UpdateSpec errors - non-conflict update error", func(t *testing.T) {
-	//	clientset := fake.NewSimpleClientset(&v1alpha1.Application{
-	//		ObjectMeta: v1.ObjectMeta{Name: "test-app", Namespace: "testns"},
-	//		Spec:       v1alpha1.ApplicationSpec{},
-	//	})
-	//
-	//	initialApp := &v1alpha1.Application{
-	//		ObjectMeta: v1.ObjectMeta{Name: "test-app", Namespace: "testns"},
-	//		Spec: v1alpha1.ApplicationSpec{
-	//			Source: &v1alpha1.ApplicationSource{
-	//				RepoURL: "https://github.com/original/repo", // Original value
-	//			},
-	//		},
-	//	}
-	//
-	//	// Create a client pre-loaded with this application
-	//	fakeClient, err := newTestK8sClient(initialApp)
-	//
-	//	require.NoError(t, err)
-	//
-	//	clientset.PrependReactor("update", "applications", func(action k8stesting.Action) (handled bool, ret runtime.Object, err error) {
-	//		return true, nil, fmt.Errorf("non-conflict error")
-	//	})
-	//
-	//	appName := "test-app"
-	//	appNamespace := "testns"
-	//	spec := &application.ApplicationUpdateSpecRequest{
-	//		Name:         &appName,
-	//		AppNamespace: &appNamespace,
-	//		Spec:         &v1alpha1.ApplicationSpec{},
-	//	}
-	//
-	//	_, err = fakeClient.UpdateSpec(context.TODO(), spec)
-	//	assert.Error(t, err)
-	//	assert.Contains(t, err.Error(), "error updating application: non-conflict error")
-	//})
+		// Create a client pre-loaded with this application
+		fakeClient, err := newTestK8sClient(initialApp)
+		require.NoError(t, err)
+
+		// Create a custom client that will simulate a conflict on the first update attempt
+		conflictClient := &conflictSimulatingClient{
+			ArgoCDK8sClient: *fakeClient,
+			attempts:        0,
+			maxConflicts:    1, // Will conflict once, then succeed
+		}
+
+		// Define the update request
+		appName := "test-app"
+		appNamespace := "testns"
+		updateRequest := &application.ApplicationUpdateSpecRequest{
+			Name:         &appName,
+			AppNamespace: &appNamespace,
+			Spec: &v1alpha1.ApplicationSpec{
+				Source: &v1alpha1.ApplicationSource{
+					RepoURL: "https://github.com/argoproj/argocd-example-apps",
+				},
+			},
+		}
+
+		// Call the UpdateSpec method
+		updatedSpec, err := conflictClient.UpdateSpec(context.Background(), updateRequest)
+		require.NoError(t, err)
+		assert.Equal(t, "https://github.com/argoproj/argocd-example-apps", updatedSpec.Source.RepoURL)
+		assert.Equal(t, 2, conflictClient.attempts, "Should have attempted 2 times (1 conflict + 1 success)")
+	})
+
+	t.Run("UpdateSpec errors - conflict failing retries", func(t *testing.T) {
+		// Initial state of the application
+		initialApp := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{Name: "test-app", Namespace: "testns"},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: &v1alpha1.ApplicationSource{
+					RepoURL: "https://github.com/original/repo",
+				},
+			},
+		}
+
+		// Create a client pre-loaded with this application
+		fakeClient, err := newTestK8sClient(initialApp)
+		require.NoError(t, err)
+
+		// Create a custom client that will always conflict
+		conflictClient := &conflictSimulatingClient{
+			ArgoCDK8sClient: *fakeClient,
+			attempts:        0,
+			maxConflicts:    10, // Will always conflict, exceeding retry limit
+		}
+
+		appName := "test-app"
+		appNamespace := "testns"
+		updateRequest := &application.ApplicationUpdateSpecRequest{
+			Name:         &appName,
+			AppNamespace: &appNamespace,
+			Spec: &v1alpha1.ApplicationSpec{
+				Source: &v1alpha1.ApplicationSource{
+					RepoURL: "https://github.com/updated/repo",
+				},
+			},
+		}
+
+		_, err = conflictClient.UpdateSpec(context.Background(), updateRequest)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "failed to update application spec for test-app after retries")
+		assert.True(t, conflictClient.attempts > 1, "Should have attempted multiple times before giving up")
+	})
+
+	t.Run("UpdateSpec errors - non-conflict update error", func(t *testing.T) {
+		// Initial state of the application
+		initialApp := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{Name: "test-app", Namespace: "testns"},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: &v1alpha1.ApplicationSource{
+					RepoURL: "https://github.com/original/repo",
+				},
+			},
+		}
+
+		// Create a client pre-loaded with this application
+		fakeClient, err := newTestK8sClient(initialApp)
+		require.NoError(t, err)
+
+		// Create a custom client that will return a non-conflict error
+		errorClient := &errorSimulatingClient{
+			ArgoCDK8sClient: *fakeClient,
+			updateError:     fmt.Errorf("non-conflict error"),
+		}
+
+		appName := "test-app"
+		appNamespace := "testns"
+		updateRequest := &application.ApplicationUpdateSpecRequest{
+			Name:         &appName,
+			AppNamespace: &appNamespace,
+			Spec: &v1alpha1.ApplicationSpec{
+				Source: &v1alpha1.ApplicationSource{
+					RepoURL: "https://github.com/updated/repo",
+				},
+			},
+		}
+
+		_, err = errorClient.UpdateSpec(context.Background(), updateRequest)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "failed to update application spec for test-app after retries")
+		assert.Contains(t, err.Error(), "non-conflict error")
+	})
+}
+
+// conflictSimulatingClient is a test client that simulates conflicts during updates
+type conflictSimulatingClient struct {
+	ArgoCDK8sClient
+	attempts     int
+	maxConflicts int
+}
+
+func (c *conflictSimulatingClient) Update(ctx context.Context, obj client.Object, opts ...client.UpdateOption) error {
+	c.attempts++
+	if c.attempts <= c.maxConflicts {
+		return errors.NewConflict(
+			v1alpha1.Resource("applications"),
+			obj.GetName(),
+			fmt.Errorf("conflict updating %s", obj.GetName()),
+		)
+	}
+	return c.ArgoCDK8sClient.Update(ctx, obj, opts...)
+}
+
+// Override UpdateSpec to track attempts properly
+func (c *conflictSimulatingClient) UpdateSpec(ctx context.Context, spec *application.ApplicationUpdateSpecRequest) (*v1alpha1.ApplicationSpec, error) {
+	log := log.LoggerFromContext(ctx)
+	app := &v1alpha1.Application{}
+	var err error
+
+	// Use RetryOnConflict to handle potential conflicts gracefully.
+	err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		// Get the latest version of the Application within the retry loop.
+		app, err = c.GetApplication(ctx, spec.GetAppNamespace(), spec.GetName())
+		if err != nil {
+			log.Errorf("could not get application: %s, error: %v", spec.GetName(), err)
+			return err
+		}
+
+		app.Spec = *spec.Spec
+
+		// Attempt to update the object. If there is a conflict,
+		// RetryOnConflict will automatically re-fetch and re-apply the changes.
+		return c.Update(ctx, app)
+	})
+
+	if err != nil {
+		log.Errorf("could not update application spec for %s: %v", spec.GetName(), err)
+		return nil, fmt.Errorf("failed to update application spec for %s after retries: %w", spec.GetName(), err)
+	}
+
+	log.Infof("Successfully updated application spec for %s", spec.GetName())
+	return &app.Spec, nil
+}
+
+// errorSimulatingClient is a test client that returns a specific error during updates
+type errorSimulatingClient struct {
+	ArgoCDK8sClient
+	updateError error
+}
+
+func (e *errorSimulatingClient) Update(ctx context.Context, obj client.Object, opts ...client.UpdateOption) error {
+	return e.updateError
+}
+
+// Override UpdateSpec to use our custom Update method
+func (e *errorSimulatingClient) UpdateSpec(ctx context.Context, spec *application.ApplicationUpdateSpecRequest) (*v1alpha1.ApplicationSpec, error) {
+	log := log.LoggerFromContext(ctx)
+	app := &v1alpha1.Application{}
+	var err error
+
+	// Use RetryOnConflict to handle potential conflicts gracefully.
+	err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		// Get the latest version of the Application within the retry loop.
+		app, err = e.GetApplication(ctx, spec.GetAppNamespace(), spec.GetName())
+		if err != nil {
+			log.Errorf("could not get application: %s, error: %v", spec.GetName(), err)
+			return err
+		}
+
+		app.Spec = *spec.Spec
+
+		// Attempt to update the object. If there is a conflict,
+		// RetryOnConflict will automatically re-fetch and re-apply the changes.
+		return e.Update(ctx, app)
+	})
+
+	if err != nil {
+		log.Errorf("could not update application spec for %s: %v", spec.GetName(), err)
+		return nil, fmt.Errorf("failed to update application spec for %s after retries: %w", spec.GetName(), err)
+	}
+
+	log.Infof("Successfully updated application spec for %s", spec.GetName())
+	return &app.Spec, nil
 }
 
 // Assisted-by: Gemini AI
@@ -2488,7 +2593,7 @@ func Test_GetParameterPullSecret(t *testing.T) {
 }
 
 // Helper function to create a new fake client for tests
-func newTestK8sClient(initObjs ...client.Object) (*K8sClient, error) {
+func newTestK8sClient(initObjs ...client.Object) (*ArgoCDK8sClient, error) {
 	// Register the Argo CD Application scheme so the fake client knows about it
 	scheme := runtime.NewScheme()
 	err := v1alpha1.AddToScheme(scheme)
@@ -2506,7 +2611,21 @@ func newTestK8sClient(initObjs ...client.Object) (*K8sClient, error) {
 	fakeClient := builder.Build()
 
 	// Use constructor to create the k8sClient instance
-	return &K8sClient{
+	return &ArgoCDK8sClient{
 		fakeClient,
 	}, nil
+}
+
+// String returns a string representation of the application type
+func (a ApplicationType) String() string {
+	switch a {
+	case ApplicationTypeKustomize:
+		return "Kustomize"
+	case ApplicationTypeHelm:
+		return "Helm"
+	case ApplicationTypeUnsupported:
+		return "Unsupported"
+	default:
+		return "Unknown"
+	}
 }

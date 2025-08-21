@@ -25,8 +25,7 @@ func GetPrintableHealthPort(port int) string {
 }
 
 func GetKubeConfig(ctx context.Context, namespace string, kubeConfig string) (*kube.ImageUpdaterKubernetesClient, error) {
-
-	kubeClient, err := kube.NewKubernetesClient(ctx, kubeConfig, namespace)
+	kubeClient, err := kube.NewImageUpdaterKubernetesClient(ctx, kubeConfig, namespace)
 	if err != nil {
 		return nil, err
 	}

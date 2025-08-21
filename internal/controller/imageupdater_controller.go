@@ -23,26 +23,22 @@ import (
 	"text/template"
 	"time"
 
-	"k8s.io/apimachinery/pkg/runtime"
-
-	"github.com/argoproj-labs/argocd-image-updater/ext/git"
-	"github.com/argoproj-labs/argocd-image-updater/pkg/argocd"
-	"github.com/argoproj-labs/argocd-image-updater/pkg/kube"
-
 	"github.com/sirupsen/logrus"
+	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 
 	api "github.com/argoproj-labs/argocd-image-updater/api/v1alpha1"
+	"github.com/argoproj-labs/argocd-image-updater/ext/git"
+	"github.com/argoproj-labs/argocd-image-updater/pkg/argocd"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
+	"github.com/argoproj-labs/argocd-image-updater/pkg/kube"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
 )
 
 // ImageUpdaterConfig contains global configuration and required runtime data
 type ImageUpdaterConfig struct {
-	ApplicationsAPIKind    string
-	ClientOpts             argocd.ClientOptions
 	ArgocdNamespace        string
 	AppNamespace           string
 	DryRun                 bool
@@ -54,8 +50,6 @@ type ImageUpdaterConfig struct {
 	HealthPort             int
 	MetricsPort            int
 	RegistriesConf         string
-	AppNamePatterns        []string
-	AppLabel               string
 	GitCommitUser          string
 	GitCommitMail          string
 	GitCommitMessage       *template.Template
