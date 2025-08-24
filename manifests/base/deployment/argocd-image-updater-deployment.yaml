@@ -23,42 +23,6 @@ spec:
         image: quay.io/argoprojlabs/argocd-image-updater:latest
         imagePullPolicy: Always
         env:
-        - name: APPLICATIONS_API
-          valueFrom:
-            configMapKeyRef:
-              name: argocd-image-updater-config
-              key: applications_api
-              optional: true
-        - name: ARGOCD_GRPC_WEB
-          valueFrom:
-            configMapKeyRef:
-              name: argocd-image-updater-config
-              key: argocd.grpc_web
-              optional: true
-        - name: ARGOCD_SERVER
-          valueFrom:
-            configMapKeyRef:
-              name: argocd-image-updater-config
-              key: argocd.server_addr
-              optional: true
-        - name: ARGOCD_INSECURE
-          valueFrom:
-            configMapKeyRef:
-              name: argocd-image-updater-config
-              key: argocd.insecure
-              optional: true
-        - name: ARGOCD_PLAINTEXT
-          valueFrom:
-            configMapKeyRef:
-              name: argocd-image-updater-config
-              key: argocd.plaintext
-              optional: true
-        - name: ARGOCD_TOKEN
-          valueFrom:
-            secretKeyRef:
-              name: argocd-image-updater-secret
-              key: argocd.token
-              optional: true
         - name: IMAGE_UPDATER_INTERVAL
           valueFrom:
             configMapKeyRef:

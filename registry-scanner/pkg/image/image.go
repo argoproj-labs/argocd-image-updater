@@ -261,7 +261,6 @@ func getImageDigestFromTag(tagStr string) (string, string) {
 
 // LogContext returns a log context for the given image, with required fields
 // set to the image's information.
-// TODO: deprecate and remove. Replace with GetLogFields() if necessary
 func (img *ContainerImage) LogContext() *log.LogContext {
 	logCtx := log.WithContext()
 	logCtx.AddField("image_name", img.GetFullNameWithoutTag())

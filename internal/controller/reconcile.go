@@ -18,34 +18,19 @@ func (r *ImageUpdaterReconciler) RunImageUpdater(ctx context.Context, cr *iuapi.
 
 	result := argocd.ImageUpdaterResult{}
 
-	//TODO: This is a temporary solution. In GITOPS-7123 we will remove ArgoCD client together with this switch.
-	//var argoClient argocd.ArgoCD
-	//switch r.Config.ApplicationsAPIKind {
-	//case common.ApplicationsAPIKindK8S:
-	//	argoClient, err = argocd.NewK8SClient(r.Client)
-	//case common.ApplicationsAPIKindArgoCD:
-	//	argoClient, err = argocd.NewAPIClient(&r.Config.ClientOpts)
-	//default:
-	//	return argocd.ImageUpdaterResult{}, fmt.Errorf("application api '%s' is not supported", r.Config.ApplicationsAPIKind)
-	//}
-	//if err != nil {
-	//	return result, err
-	//}
-
-	k8sClient, err := argocd.NewK8SClient(r.Client)
+	argoClient, err := argocd.NewArgoCDK8sClient(r.Client)
 	if err != nil {
 		return result, err
 	}
-	r.Config.ArgoClient = k8sClient
+	r.Config.ArgoClient = argoClient
 
 	// Get the list of applications that are allowed for updates.
-	// TODO: Two k8sClient and KubeClient structures will be simplified in GITOPS-7357
-	appList, err := argocd.FilterApplicationsForUpdate(ctx, k8sClient, r.Config.KubeClient, cr)
+	appList, err := argocd.FilterApplicationsForUpdate(ctx, argoClient, r.Config.KubeClient, cr)
 	if err != nil {
 		return result, err
 	}
 
-	// TODO: metrics will be implemnted in GITOPS-7113
+	// TODO: metrics will be implemented in GITOPS-7113
 	//metrics.Applications().SetNumberOfApplications(len(appList))
 
 	if !warmUp {

@@ -69,6 +69,10 @@ Flags can configure its metrics, health probes, and leader election.
 This enables a CRD-driven approach to automated image updates with Argo CD.
 `,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// Create a single context for the entire command execution
+			// This context will be cancelled when the command is interrupted
+			ctx := ctrl.SetupSignalHandler()
+
 			if err := log.SetLogLevel(cfg.LogLevel); err != nil {
 				return err
 			}
@@ -127,7 +131,7 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 				if err != nil || st.IsDir() {
 					setupLogger.Info("Registry configuration not found or is a directory, using default configuration", "path", cfg.RegistriesConf, "error", err)
 				} else {
-					err = registry.LoadRegistryConfiguration(context.Background(), cfg.RegistriesConf, false)
+					err = registry.LoadRegistryConfiguration(ctx, cfg.RegistriesConf, false)
 					if err != nil {
 						setupLogger.Error(err, "could not load registry configuration", "path", cfg.RegistriesConf)
 						return nil
@@ -141,23 +145,11 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 
 			var err error
 			if !disableKubernetes {
-				ctx := context.Background()
 				cfg.KubeClient, err = argocd.GetKubeConfig(ctx, cfg.ArgocdNamespace, kubeConfig)
 				if err != nil {
 					setupLogger.Error(err, "could not create K8s client")
 					return err
 				}
-				if cfg.ClientOpts.ServerAddr == "" {
-					cfg.ClientOpts.ServerAddr = fmt.Sprintf("argocd-server.%s", cfg.KubeClient.KubeClient.Namespace)
-				}
-			}
-			if cfg.ClientOpts.ServerAddr == "" {
-				cfg.ClientOpts.ServerAddr = common.DefaultArgoCDServerAddr
-			}
-
-			if token := os.Getenv("ARGOCD_TOKEN"); token != "" && cfg.ClientOpts.AuthToken == "" {
-				setupLogger.V(1).Info("Using ArgoCD API credentials from environment", "variable", "ARGOCD_TOKEN")
-				cfg.ClientOpts.AuthToken = token
 			}
 
 			// Start up the credentials store server
@@ -175,15 +167,6 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 			}
 
 			cfg.GitCreds = cs
-
-			setupLogger.Info("ArgoCD configuration loaded",
-				"apiKind", cfg.ApplicationsAPIKind,
-				"server", cfg.ClientOpts.ServerAddr,
-				"has_auth_token", cfg.ClientOpts.AuthToken != "",
-				"insecure", cfg.ClientOpts.Insecure,
-				"grpc_web", cfg.ClientOpts.GRPCWeb,
-				"plaintext", cfg.ClientOpts.Plaintext,
-			)
 
 			// if the enable-http2 flag is false (the default), http/2 should be disabled
 			// due to its vulnerabilities. More specifically, disabling http/2 will
@@ -320,7 +303,7 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 			setupLogger.Info("starting manager")
 
 			// Create a context that can be cancelled by the stop channel
-			ctx, cancel := context.WithCancel(ctrl.SetupSignalHandler())
+			ctx, cancel := context.WithCancel(ctx)
 			defer cancel()
 
 			// Start a goroutine to listen for stop signal from reconciler
@@ -348,12 +331,6 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 	controllerCmd.Flags().StringVar(&leaderElectionNamespace, "leader-election-namespace", "", "The namespace used for the leader election lease. If empty, the controller will use the namespace of the pod it is running in. When running locally this value must be set.")
 	controllerCmd.Flags().BoolVar(&secureMetrics, "metrics-secure", true, "If set, the metrics endpoint is served securely via HTTPS. Use --metrics-secure=false to use HTTP instead.")
 	controllerCmd.Flags().BoolVar(&enableHTTP2, "enable-http2", false, "If set, HTTP/2 will be enabled for the metrics and webhook servers")
-	controllerCmd.Flags().StringVar(&cfg.ApplicationsAPIKind, "applications-api", env.GetStringVal("APPLICATIONS_API", common.ApplicationsAPIKindK8S), "API kind that is used to manage Argo CD applications ('kubernetes' or 'argocd')")
-	controllerCmd.Flags().StringVar(&cfg.ClientOpts.ServerAddr, "argocd-server-addr", env.GetStringVal("ARGOCD_SERVER", ""), "address of ArgoCD API server")
-	controllerCmd.Flags().BoolVar(&cfg.ClientOpts.GRPCWeb, "argocd-grpc-web", env.GetBoolVal("ARGOCD_GRPC_WEB", false), "use grpc-web for connection to ArgoCD")
-	controllerCmd.Flags().BoolVar(&cfg.ClientOpts.Insecure, "argocd-insecure", env.GetBoolVal("ARGOCD_INSECURE", false), "(INSECURE) ignore invalid TLS certs for ArgoCD server")
-	controllerCmd.Flags().BoolVar(&cfg.ClientOpts.Plaintext, "argocd-plaintext", env.GetBoolVal("ARGOCD_PLAINTEXT", false), "(INSECURE) connect without TLS to ArgoCD server")
-	controllerCmd.Flags().StringVar(&cfg.ClientOpts.AuthToken, "argocd-auth-token", "", "use token for authenticating to ArgoCD (unsafe - consider setting ARGOCD_TOKEN env var instead)")
 
 	controllerCmd.Flags().BoolVar(&cfg.DryRun, "dry-run", false, "run in dry-run mode. If set to true, do not perform any changes")
 	controllerCmd.Flags().DurationVar(&cfg.CheckInterval, "interval", env.GetDurationVal("IMAGE_UPDATER_INTERVAL", 2*time.Minute), "interval for how often to check for updates")
@@ -367,8 +344,6 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 	controllerCmd.Flags().IntVar(&cfg.MaxConcurrentApps, "max-concurrent-apps", env.ParseNumFromEnv("MAX_CONCURRENT_APPS", 10, 1, 100), "maximum number of ArgoCD applications that can be updated concurrently (must be >= 1)")
 	controllerCmd.Flags().IntVar(&MaxConcurrentReconciles, "max-concurrent-reconciles", env.ParseNumFromEnv("MAX_CONCURRENT_RECONCILES", 1, 1, 10), "maximum number of concurrent Reconciles which can be run (must be >= 1)")
 	controllerCmd.Flags().StringVar(&cfg.ArgocdNamespace, "argocd-namespace", "", "namespace where ArgoCD runs in (current namespace by default)")
-	controllerCmd.Flags().StringSliceVar(&cfg.AppNamePatterns, "match-application-name", nil, "patterns to match application name against")
-	controllerCmd.Flags().StringVar(&cfg.AppLabel, "match-application-label", "", "label selector to match application labels against")
 	controllerCmd.Flags().BoolVar(&warmUpCache, "warmup-cache", true, "whether to perform a cache warm-up on startup")
 
 	controllerCmd.Flags().StringVar(&cfg.GitCommitUser, "git-commit-user", env.GetStringVal("GIT_COMMIT_USER", "argocd-image-updater"), "Username to use for Git commits")

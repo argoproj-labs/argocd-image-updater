@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"errors"
-	"fmt"
 	"os"
 	"os/signal"
 	"strconv"
@@ -114,27 +113,7 @@ Supported registries:
 				if err != nil {
 					log.Fatalf("could not create K8s client: %v", err)
 				}
-				if cfg.ClientOpts.ServerAddr == "" {
-					cfg.ClientOpts.ServerAddr = fmt.Sprintf("argocd-server.%s", cfg.KubeClient.KubeClient.Namespace)
-				}
 			}
-			if cfg.ClientOpts.ServerAddr == "" {
-				cfg.ClientOpts.ServerAddr = common.DefaultArgoCDServerAddr
-			}
-
-			if token := os.Getenv("ARGOCD_TOKEN"); token != "" && cfg.ClientOpts.AuthToken == "" {
-				log.Debugf("Using ArgoCD API credentials from environment ARGOCD_TOKEN")
-				cfg.ClientOpts.AuthToken = token
-			}
-
-			log.Infof("ArgoCD configuration: [apiKind=%s, server=%s, auth_token=%v, insecure=%v, grpc_web=%v, plaintext=%v]",
-				cfg.ApplicationsAPIKind,
-				cfg.ClientOpts.ServerAddr,
-				cfg.ClientOpts.AuthToken != "",
-				cfg.ClientOpts.Insecure,
-				cfg.ClientOpts.GRPCWeb,
-				cfg.ClientOpts.Plaintext,
-			)
 
 			// Start up the credentials store server
 			cs := askpass.NewServer(askpass.SocketPath)
@@ -159,12 +138,6 @@ Supported registries:
 	}
 
 	// Set Image Updater flags
-	webhookCmd.Flags().StringVar(&cfg.ApplicationsAPIKind, "applications-api", env.GetStringVal("APPLICATIONS_API", common.ApplicationsAPIKindK8S), "API kind that is used to manage Argo CD applications ('kubernetes' or 'argocd')")
-	webhookCmd.Flags().StringVar(&cfg.ClientOpts.ServerAddr, "argocd-server-addr", env.GetStringVal("ARGOCD_SERVER", ""), "address of ArgoCD API server")
-	webhookCmd.Flags().BoolVar(&cfg.ClientOpts.GRPCWeb, "argocd-grpc-web", env.GetBoolVal("ARGOCD_GRPC_WEB", false), "use grpc-web for connection to ArgoCD")
-	webhookCmd.Flags().BoolVar(&cfg.ClientOpts.Insecure, "argocd-insecure", env.GetBoolVal("ARGOCD_INSECURE", false), "(INSECURE) ignore invalid TLS certs for ArgoCD server")
-	webhookCmd.Flags().BoolVar(&cfg.ClientOpts.Plaintext, "argocd-plaintext", env.GetBoolVal("ARGOCD_PLAINTEXT", false), "(INSECURE) connect without TLS to ArgoCD server")
-	webhookCmd.Flags().StringVar(&cfg.ClientOpts.AuthToken, "argocd-auth-token", "", "use token for authenticating to ArgoCD (unsafe - consider setting ARGOCD_TOKEN env var instead)")
 	webhookCmd.Flags().StringVar(&cfg.LogLevel, "loglevel", env.GetStringVal("IMAGE_UPDATER_LOGLEVEL", "info"), "set the loglevel to one of trace|debug|info|warn|error")
 	webhookCmd.Flags().StringVar(&kubeConfig, "kubeconfig", "", "full path to kubernetes client configuration, i.e. ~/.kube/config")
 	webhookCmd.Flags().StringVar(&cfg.RegistriesConf, "registries-conf-path", common.DefaultRegistriesConfPath, "path to registries configuration file")
@@ -172,8 +145,6 @@ Supported registries:
 	webhookCmd.Flags().IntVar(&cfg.MaxConcurrentApps, "max-concurrent-apps", env.ParseNumFromEnv("MAX_CONCURRENT_APPS", 10, 1, 100), "maximum number of ArgoCD applications that can be updated concurrently (must be >= 1)")
 	webhookCmd.Flags().StringVar(&cfg.ArgocdNamespace, "argocd-namespace", "", "namespace where ArgoCD runs in (current namespace by default)")
 	webhookCmd.Flags().StringVar(&cfg.AppNamespace, "application-namespace", v1.NamespaceAll, "namespace where Argo Image Updater will manage applications (all namespaces by default)")
-	webhookCmd.Flags().StringSliceVar(&cfg.AppNamePatterns, "match-application-name", nil, "patterns to match application name against")
-	webhookCmd.Flags().StringVar(&cfg.AppLabel, "match-application-label", "", "label selector to match application labels against")
 	webhookCmd.Flags().StringVar(&cfg.GitCommitUser, "git-commit-user", env.GetStringVal("GIT_COMMIT_USER", "argocd-image-updater"), "Username to use for Git commits")
 	webhookCmd.Flags().StringVar(&cfg.GitCommitMail, "git-commit-email", env.GetStringVal("GIT_COMMIT_EMAIL", "noreply@argoproj.io"), "E-Mail address to use for Git commits")
 	webhookCmd.Flags().StringVar(&cfg.GitCommitSigningKey, "git-commit-signing-key", env.GetStringVal("GIT_COMMIT_SIGNING_KEY", ""), "GnuPG key ID or path to Private SSH Key used to sign the commits")
@@ -205,14 +176,8 @@ func runWebhook(cfg *controller.ImageUpdaterConfig, webhookCfg *WebhookConfig) e
 		return err
 	}
 
-	// Set up based on application API kind
-	if cfg.ApplicationsAPIKind == common.ApplicationsAPIKindK8S {
-		// TODO: webhook for CRD will be refactored in GITOPS-7336
-		// TODO: k8s client will be refactored in GITOPS-7357
-		cfg.ArgoClient, err = argocd.NewK8SClient(controller.ImageUpdaterReconciler{}.Client)
-	} else {
-		cfg.ArgoClient, err = argocd.NewAPIClient(&cfg.ClientOpts)
-	}
+	// TODO: webhook for CRD will be refactored in GITOPS-7336
+	cfg.ArgoClient, err = argocd.NewArgoCDK8sClient(controller.ImageUpdaterReconciler{}.Client)
 
 	if err != nil {
 		log.Fatalf("Could not create ArgoCD client: %v", err)
