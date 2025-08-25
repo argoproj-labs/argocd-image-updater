@@ -10,6 +10,8 @@ import (
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/options"
 )
 
+// DEPRECATED: This function has been removed in the CRD branch and will be deprecated in a future release.
+// The CRD branch introduces a new architecture that eliminates the need for this annotation-based approach.
 // GetParameterHelmImageName gets the value for image-name option for the image
 // from a set of annotations
 func (img *ContainerImage) GetParameterHelmImageName(annotations map[string]string, annotationPrefix string) string {
@@ -21,6 +23,8 @@ func (img *ContainerImage) GetParameterHelmImageName(annotations map[string]stri
 	return val
 }
 
+// DEPRECATED: This function has been removed in the CRD branch and will be deprecated in a future release.
+// The CRD branch introduces a new architecture that eliminates the need for this annotation-based approach.
 // GetParameterHelmImageTag gets the value for image-tag option for the image
 // from a set of annotations
 func (img *ContainerImage) GetParameterHelmImageTag(annotations map[string]string, annotationPrefix string) string {
@@ -32,6 +36,8 @@ func (img *ContainerImage) GetParameterHelmImageTag(annotations map[string]strin
 	return val
 }
 
+// DEPRECATED: This function has been removed in the CRD branch and will be deprecated in a future release.
+// The CRD branch introduces a new architecture that eliminates the need for this annotation-based approach.
 // GetParameterHelmImageSpec gets the value for image-spec option for the image
 // from a set of annotations
 func (img *ContainerImage) GetParameterHelmImageSpec(annotations map[string]string, annotationPrefix string) string {
@@ -43,6 +49,8 @@ func (img *ContainerImage) GetParameterHelmImageSpec(annotations map[string]stri
 	return val
 }
 
+// DEPRECATED: This function has been removed in the CRD branch and will be deprecated in a future release.
+// The CRD branch introduces a new architecture that eliminates the need for this annotation-based approach.
 // GetParameterKustomizeImageName gets the value for image-spec option for the
 // image from a set of annotations
 func (img *ContainerImage) GetParameterKustomizeImageName(annotations map[string]string, annotationPrefix string) string {
@@ -54,6 +62,8 @@ func (img *ContainerImage) GetParameterKustomizeImageName(annotations map[string
 	return val
 }
 
+// DEPRECATED: This function has been removed in the CRD branch and will be deprecated in a future release.
+// The CRD branch introduces a new architecture that eliminates the need for this annotation-based approach.
 // HasForceUpdateOptionAnnotation gets the value for force-update option for the
 // image from a set of annotations
 func (img *ContainerImage) HasForceUpdateOptionAnnotation(annotations map[string]string, annotationPrefix string) bool {
@@ -71,6 +81,8 @@ func (img *ContainerImage) HasForceUpdateOptionAnnotation(annotations map[string
 	return forceUpdateVal == "true"
 }
 
+// DEPRECATED: This function has been removed in the CRD branch and will be deprecated in a future release.
+// The CRD branch introduces a new architecture that eliminates the need for this annotation-based approach.
 // GetParameterSort gets and validates the value for the sort option for the
 // image from a set of annotations
 func (img *ContainerImage) GetParameterUpdateStrategy(annotations map[string]string, annotationPrefix string) UpdateStrategy {
@@ -118,6 +130,8 @@ func (img *ContainerImage) ParseUpdateStrategy(val string) UpdateStrategy {
 	}
 }
 
+// DEPRECATED: This function has been removed in the CRD branch and will be deprecated in a future release.
+// The CRD branch introduces a new architecture that eliminates the need for this annotation-based approach.
 // GetParameterMatch returns the match function and pattern to use for matching
 // tag names. If an invalid option is found, it returns MatchFuncNone as the
 // default, to prevent accidental matches.
@@ -179,6 +193,8 @@ func (img *ContainerImage) ParseMatchfunc(val string) (MatchFuncFn, interface{})
 	}
 }
 
+// DEPRECATED: This function has been removed in the CRD branch and will be deprecated in a future release.
+// The CRD branch introduces a new architecture that eliminates the need for this annotation-based approach.
 // GetParameterPullSecret retrieves an image's pull secret credentials
 func (img *ContainerImage) GetParameterPullSecret(annotations map[string]string, annotationPrefix string) *CredentialSource {
 	pullSecretAnnotations := []string{
@@ -205,6 +221,8 @@ func (img *ContainerImage) GetParameterPullSecret(annotations map[string]string,
 	return credSrc
 }
 
+// DEPRECATED: This function has been removed in the CRD branch and will be deprecated in a future release.
+// The CRD branch introduces a new architecture that eliminates the need for this annotation-based approach.
 // GetParameterIgnoreTags retrieves a list of tags to ignore from a comma-separated string
 func (img *ContainerImage) GetParameterIgnoreTags(annotations map[string]string, annotationPrefix string) []string {
 	ignoreTagsAnnotations := []string{
