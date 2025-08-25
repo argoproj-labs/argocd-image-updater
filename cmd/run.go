@@ -47,7 +47,6 @@ func newRunCommand() *cobra.Command {
 	var webhookCfg *WebhookConfig = &WebhookConfig{}
 	var once bool
 	var kubeConfig string
-	var disableKubernetes bool
 	var warmUpCache bool
 	var commitMessagePath string
 	var commitMessageTpl string
@@ -144,12 +143,11 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 			}
 
 			var err error
-			if !disableKubernetes {
-				cfg.KubeClient, err = argocd.GetKubeConfig(ctx, cfg.ArgocdNamespace, kubeConfig)
-				if err != nil {
-					setupLogger.Error(err, "could not create K8s client")
-					return err
-				}
+
+			cfg.KubeClient, err = argocd.GetKubeConfig(ctx, cfg.ArgocdNamespace, kubeConfig)
+			if err != nil {
+				setupLogger.Error(err, "could not create K8s client")
+				return err
 			}
 
 			// Start up the credentials store server
@@ -340,7 +338,6 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 	controllerCmd.Flags().IntVar(&cfg.MetricsPort, "metrics-port", 8081, "port to start the metrics server on, 0 to disable")
 	controllerCmd.Flags().BoolVar(&once, "once", false, "run only once, same as specifying --interval=0 and --health-port=0")
 	controllerCmd.Flags().StringVar(&cfg.RegistriesConf, "registries-conf-path", common.DefaultRegistriesConfPath, "path to registries configuration file")
-	controllerCmd.Flags().BoolVar(&disableKubernetes, "disable-kubernetes", false, "do not create and use a Kubernetes client")
 	controllerCmd.Flags().IntVar(&cfg.MaxConcurrentApps, "max-concurrent-apps", env.ParseNumFromEnv("MAX_CONCURRENT_APPS", 10, 1, 100), "maximum number of ArgoCD applications that can be updated concurrently (must be >= 1)")
 	controllerCmd.Flags().IntVar(&MaxConcurrentReconciles, "max-concurrent-reconciles", env.ParseNumFromEnv("MAX_CONCURRENT_RECONCILES", 1, 1, 10), "maximum number of concurrent Reconciles which can be run (must be >= 1)")
 	controllerCmd.Flags().StringVar(&cfg.ArgocdNamespace, "argocd-namespace", "", "namespace where ArgoCD runs in (current namespace by default)")

@@ -24,13 +24,6 @@ Disable kubernetes events
 
 Can also be set with the *IMAGE_UPDATER_KUBE_EVENTS* environment variable.
 
-**--disable-kubernetes**
-
-If running locally, and you do not have a working connection to any Kubernetes
-cluster, this flag will prevent Argo CD Image Updater from creating a client
-to interact with Kubernetes. When Kubernetes access is disabled, pull secrets
-for images can only be specified from an environment variable.
-
 **--dry-run**
 
 If this flag is set, Argo CD Image Updater won't actually perform any changes

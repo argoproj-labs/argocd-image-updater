@@ -40,7 +40,6 @@ func TestNewRunCommand(t *testing.T) {
 	asser.Equal("8081", controllerCommand.Flag("metrics-port").Value.String())
 	asser.Equal("false", controllerCommand.Flag("once").Value.String())
 	asser.Equal(common.DefaultRegistriesConfPath, controllerCommand.Flag("registries-conf-path").Value.String())
-	asser.Equal("false", controllerCommand.Flag("disable-kubernetes").Value.String())
 	asser.Equal(strconv.Itoa(env.ParseNumFromEnv("MAX_CONCURRENT_APPS", 10, 1, 100)), controllerCommand.Flag("max-concurrent-apps").Value.String())
 	asser.Equal(strconv.Itoa(env.ParseNumFromEnv("MAX_CONCURRENT_RECONCILES", 1, 1, 10)), controllerCommand.Flag("max-concurrent-reconciles").Value.String())
 	asser.Equal("", controllerCommand.Flag("argocd-namespace").Value.String())

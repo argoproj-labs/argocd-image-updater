@@ -20,14 +20,6 @@ Only consider tags in registry that satisfy the match function
 **--credentials *defintion***            
 
 The credentials definition for the test (overrides registry config)
-      
-**--disable-kubernetes**
-
-Whether to disable the Kubernetes client
-
-**--disable-kubernetes-events**
-
-Disable kubernetes events
 
 **-h, --help**
 

@@ -38,7 +38,6 @@ func NewWebhookCommand() *cobra.Command {
 	var cfg *controller.ImageUpdaterConfig = &controller.ImageUpdaterConfig{}
 	var webhookCfg *WebhookConfig = &WebhookConfig{}
 	var kubeConfig string
-	var disableKubernetes bool
 	var commitMessagePath string
 	var commitMessageTpl string
 	var webhookCmd = &cobra.Command{
@@ -107,12 +106,11 @@ Supported registries:
 			}
 
 			var err error
-			if !disableKubernetes {
-				ctx := context.Background()
-				cfg.KubeClient, err = argocd.GetKubeConfig(ctx, cfg.ArgocdNamespace, kubeConfig)
-				if err != nil {
-					log.Fatalf("could not create K8s client: %v", err)
-				}
+
+			ctx := context.Background()
+			cfg.KubeClient, err = argocd.GetKubeConfig(ctx, cfg.ArgocdNamespace, kubeConfig)
+			if err != nil {
+				log.Fatalf("could not create K8s client: %v", err)
 			}
 
 			// Start up the credentials store server
@@ -141,7 +139,6 @@ Supported registries:
 	webhookCmd.Flags().StringVar(&cfg.LogLevel, "loglevel", env.GetStringVal("IMAGE_UPDATER_LOGLEVEL", "info"), "set the loglevel to one of trace|debug|info|warn|error")
 	webhookCmd.Flags().StringVar(&kubeConfig, "kubeconfig", "", "full path to kubernetes client configuration, i.e. ~/.kube/config")
 	webhookCmd.Flags().StringVar(&cfg.RegistriesConf, "registries-conf-path", common.DefaultRegistriesConfPath, "path to registries configuration file")
-	webhookCmd.Flags().BoolVar(&disableKubernetes, "disable-kubernetes", false, "do not create and use a Kubernetes client")
 	webhookCmd.Flags().IntVar(&cfg.MaxConcurrentApps, "max-concurrent-apps", env.ParseNumFromEnv("MAX_CONCURRENT_APPS", 10, 1, 100), "maximum number of ArgoCD applications that can be updated concurrently (must be >= 1)")
 	webhookCmd.Flags().StringVar(&cfg.ArgocdNamespace, "argocd-namespace", "", "namespace where ArgoCD runs in (current namespace by default)")
 	webhookCmd.Flags().StringVar(&cfg.AppNamespace, "application-namespace", v1.NamespaceAll, "namespace where Argo Image Updater will manage applications (all namespaces by default)")
