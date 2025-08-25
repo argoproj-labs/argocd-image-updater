@@ -27,7 +27,7 @@ func NewKubernetesClient(ctx context.Context, client kubernetes.Interface, names
 	return kc
 }
 
-// NewKubernetesClient creates a new Kubernetes client object from given
+// NewKubernetesClientFromConfig creates a new Kubernetes client object from given
 // configuration file. If configuration file is the empty string, in-cluster
 // client will be created.
 func NewKubernetesClientFromConfig(ctx context.Context, namespace string, kubeconfig string) (*KubernetesClient, error) {

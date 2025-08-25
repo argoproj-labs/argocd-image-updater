@@ -254,6 +254,13 @@ func UpdateApplication(ctx context.Context, updateConf *UpdateConfiguration, sta
 					if err != nil {
 						baseLogger.Warnf("Event could not be sent: %v", err)
 					}
+				} else {
+					if updateConf.DisableKubeEvents {
+						baseLogger.Debugf("Kubernetes events disabled for application '%s'", app)
+					}
+					if updateConf.KubeClient == nil {
+						baseLogger.Debugf("KubeClient is nil, skipping Kubernetes event creation for application '%s'", app)
+					}
 				}
 			}
 		} else {

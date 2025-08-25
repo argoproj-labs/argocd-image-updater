@@ -26,9 +26,7 @@ func newTestCommand() *cobra.Command {
 		allowTags          string
 		credentials        string
 		kubeConfig         string
-		disableKubernetes  bool
 		ignoreTags         []string
-		disableKubeEvents  bool
 		rateLimit          int
 		platforms          []string
 	)
@@ -73,11 +71,9 @@ argocd-image-updater test nginx --allow-tags '^1.19.\d+(\-.*)*$' --update-strate
 			var kubeClient *kube.ImageUpdaterKubernetesClient
 			var err error
 
-			if !disableKubernetes {
-				kubeClient, err = argocd.GetKubeConfig(ctx, "", kubeConfig)
-				if err != nil {
-					logger.Fatalf("could not create K8s client: %v", err)
-				}
+			kubeClient, err = argocd.GetKubeConfig(ctx, "", kubeConfig)
+			if err != nil {
+				logger.Fatalf("could not create K8s client: %v", err)
 			}
 
 			img := image.NewFromIdentifier(args[0])
@@ -186,11 +182,9 @@ argocd-image-updater test nginx --allow-tags '^1.19.\d+(\-.*)*$' --update-strate
 	runCmd.Flags().StringVar(&strategy, "update-strategy", "semver", "update strategy to use (one of semver, newest-build, alphabetical, digest)")
 	runCmd.Flags().StringVar(&registriesConfPath, "registries-conf-path", "", "path to registries configuration")
 	runCmd.Flags().StringVar(&logLevel, "loglevel", "debug", "log level to use (one of trace, debug, info, warn, error)")
-	runCmd.Flags().BoolVar(&disableKubernetes, "disable-kubernetes", false, "whether to disable the Kubernetes client")
 	runCmd.Flags().StringVar(&kubeConfig, "kubeconfig", "", "path to your Kubernetes client configuration")
 	runCmd.Flags().StringVar(&credentials, "credentials", "", "the credentials definition for the test (overrides registry config)")
 	runCmd.Flags().StringSliceVar(&platforms, "platforms", []string{fmt.Sprintf("%s/%s", runtime.GOOS, runtime.GOARCH)}, "limit images to given platforms")
-	runCmd.Flags().BoolVar(&disableKubeEvents, "disable-kubernetes-events", false, "Disable kubernetes events")
 	runCmd.Flags().IntVar(&rateLimit, "rate-limit", 20, "specific registry rate limit (overrides registry.conf)")
 	return runCmd
 }

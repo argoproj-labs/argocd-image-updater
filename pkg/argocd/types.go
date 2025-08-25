@@ -51,6 +51,15 @@ const (
 
 const defaultIndent = 2
 
+// ApplicationType Type of the application
+type ApplicationType int
+
+const (
+	ApplicationTypeUnsupported ApplicationType = 0
+	ApplicationTypeHelm        ApplicationType = 1
+	ApplicationTypeKustomize   ApplicationType = 2
+)
+
 // WriteBackConfig holds information on how to write back the changes to an Application
 type WriteBackConfig struct {
 	Method     WriteBackMethod

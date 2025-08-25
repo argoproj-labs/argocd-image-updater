@@ -203,17 +203,6 @@ export ARGOCD_TOKEN=<yourtoken>
   --once
 ```
 
-or use `--applications-api` flag if you prefer to connect using Argo CD API
-
-```bash
-export ARGOCD_TOKEN=<yourtoken>
-./argocd-image-updater run \
-  --kubeconfig ~/.kube/config
-  --applications-api argocd
-  --argocd-server-addr argo-cd.example.com
-  --once
-```
-
 Note: The `--once` flag disables the health server and the check interval, so
 the tool will not regularly check for updates but exit after the first run.
 

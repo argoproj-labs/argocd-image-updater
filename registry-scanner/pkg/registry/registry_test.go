@@ -167,6 +167,7 @@ registries:
 
 func Test_ConcurrentCredentialFetching(t *testing.T) {
 	t.Run("Multiple goroutines fetching credentials should only call once", func(t *testing.T) {
+		ctx := context.Background()
 		// Create a mock script that counts how many times it's called
 		scriptContent := `#!/bin/sh
 echo "counter" >> /tmp/test_ecr_calls.log
@@ -176,7 +177,7 @@ echo "AWS:mock-token-12345"
 		err := os.WriteFile(scriptPath, []byte(scriptContent), 0755)
 		require.NoError(t, err)
 		defer os.Remove(scriptPath)
-		
+
 		// Clean up any existing log file
 		os.Remove("/tmp/test_ecr_calls.log")
 		defer os.Remove("/tmp/test_ecr_calls.log")
@@ -194,9 +195,9 @@ registries:
 		require.Len(t, epl.Items, 1)
 
 		// Add registry configuration
-		err = AddRegistryEndpointFromConfig(epl.Items[0])
+		err = AddRegistryEndpointFromConfig(ctx, epl.Items[0])
 		require.NoError(t, err)
-		ep, err := GetRegistryEndpoint("123456789.dkr.ecr.us-east-1.amazonaws.com")
+		ep, err := GetRegistryEndpoint(ctx, "123456789.dkr.ecr.us-east-1.amazonaws.com")
 		require.NoError(t, err)
 
 		// Force credentials to be expired
@@ -211,7 +212,7 @@ registries:
 			wg.Add(1)
 			go func(idx int) {
 				defer wg.Done()
-				errors[idx] = ep.SetEndpointCredentials(nil)
+				errors[idx] = ep.SetEndpointCredentials(ctx, nil)
 			}(i)
 		}
 
@@ -238,8 +239,9 @@ registries:
 	})
 
 	t.Run("Concurrent calls with unexpired credentials should not refetch", func(t *testing.T) {
+		ctx := context.Background()
 		var callCount int32
-		
+
 		epYAML := `
 registries:
 - name: Test Registry
@@ -250,17 +252,17 @@ registries:
 `
 		epl, err := ParseRegistryConfiguration(epYAML)
 		require.NoError(t, err)
-		
-		err = AddRegistryEndpointFromConfig(epl.Items[0])
+
+		err = AddRegistryEndpointFromConfig(ctx, epl.Items[0])
 		require.NoError(t, err)
-		ep, err := GetRegistryEndpoint("test.registry.io")
+		ep, err := GetRegistryEndpoint(ctx, "test.registry.io")
 		require.NoError(t, err)
 
 		// Set environment variable
 		os.Setenv("TEST_CONCURRENT_CREDS", "user:pass")
-		
+
 		// First call to set credentials
-		err = ep.SetEndpointCredentials(nil)
+		err = ep.SetEndpointCredentials(ctx, nil)
 		require.NoError(t, err)
 		atomic.AddInt32(&callCount, 1)
 
@@ -270,7 +272,7 @@ registries:
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				err := ep.SetEndpointCredentials(nil)
+				err := ep.SetEndpointCredentials(ctx, nil)
 				assert.NoError(t, err)
 			}()
 		}

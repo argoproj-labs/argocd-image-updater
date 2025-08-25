@@ -4,13 +4,11 @@ import (
 	"cmp"
 	"context"
 	"fmt"
-	"os"
 	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
 
-	argocdclient "github.com/argoproj/argo-cd/v2/pkg/apiclient"
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/application"
 	argocdapi "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -23,18 +21,35 @@ import (
 	iuapi "github.com/argoproj-labs/argocd-image-updater/api/v1alpha1"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/kube"
-	"github.com/argoproj-labs/argocd-image-updater/pkg/metrics"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/image"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
 )
 
-// Kubernetes based client
-type K8sClient struct {
+// ArgoCDK8sClient is a controller-runtime based client specifically for ArgoCD application operations.
+// It wraps ctrlclient.Client to provide ArgoCD-specific functionality like getting, listing,
+// and updating ArgoCD Application resources.
+type ArgoCDK8sClient struct {
 	ctrlclient.Client
 }
 
+// NewArgoCDK8sClient creates a new ArgoCD-specific Kubernetes client for managing ArgoCD applications.
+// This client is designed to work with controller-runtime and provides methods for
+// ArgoCD Application CRUD operations.
+func NewArgoCDK8sClient(ctrlClient ctrlclient.Client) (*ArgoCDK8sClient, error) {
+	return &ArgoCDK8sClient{ctrlClient}, nil
+}
+
+// ArgoCD is the interface for accessing Argo CD functions we need
+//
+//go:generate mockery --name ArgoCD --output ./mocks --outpkg mocks
+type ArgoCD interface {
+	GetApplication(ctx context.Context, appNamespace string, appName string) (*argocdapi.Application, error)
+	ListApplications(ctx context.Context, iuCR *iuapi.ImageUpdater) ([]argocdapi.Application, error)
+	UpdateSpec(ctx context.Context, spec *application.ApplicationUpdateSpecRequest) (*argocdapi.ApplicationSpec, error)
+}
+
 // GetApplication retrieves a single application by its name and namespace.
-func (client *K8sClient) GetApplication(ctx context.Context, appNamespace string, appName string) (*argocdapi.Application, error) {
+func (client *ArgoCDK8sClient) GetApplication(ctx context.Context, appNamespace string, appName string) (*argocdapi.Application, error) {
 	app := &argocdapi.Application{}
 
 	if err := client.Get(ctx, types.NamespacedName{Namespace: appNamespace, Name: appName}, app); err != nil {
@@ -44,7 +59,7 @@ func (client *K8sClient) GetApplication(ctx context.Context, appNamespace string
 }
 
 // ListApplications lists all applications for the current ImageUpdater CR in the namespace.
-func (client *K8sClient) ListApplications(ctx context.Context, iuCR *iuapi.ImageUpdater) ([]argocdapi.Application, error) {
+func (client *ArgoCDK8sClient) ListApplications(ctx context.Context, iuCR *iuapi.ImageUpdater) ([]argocdapi.Application, error) {
 	log := log.LoggerFromContext(ctx)
 
 	// A list to hold the successfully found applications.
@@ -85,7 +100,7 @@ func (client *K8sClient) ListApplications(ctx context.Context, iuCR *iuapi.Image
 }
 
 // UpdateSpec updates the spec for given application
-func (client *K8sClient) UpdateSpec(ctx context.Context, spec *application.ApplicationUpdateSpecRequest) (*argocdapi.ApplicationSpec, error) {
+func (client *ArgoCDK8sClient) UpdateSpec(ctx context.Context, spec *application.ApplicationUpdateSpecRequest) (*argocdapi.ApplicationSpec, error) {
 	log := log.LoggerFromContext(ctx)
 	app := &argocdapi.Application{}
 	var err error
@@ -113,76 +128,6 @@ func (client *K8sClient) UpdateSpec(ctx context.Context, spec *application.Appli
 
 	log.Infof("Successfully updated application spec for %s", spec.GetName())
 	return &app.Spec, nil
-}
-
-type K8SClientOptions struct {
-	AppNamespace string
-}
-
-// NewK8SClient creates a new kubernetes client to interact with kubernetes api-server.
-func NewK8SClient(ctrlClient ctrlclient.Client) (*K8sClient, error) {
-	return &K8sClient{
-		ctrlClient,
-	}, nil
-}
-
-// Native
-type argoCD struct {
-	Client argocdclient.Client
-}
-
-// ArgoCD is the interface for accessing Argo CD functions we need
-//
-//go:generate mockery --name ArgoCD --output ./mocks --outpkg mocks
-type ArgoCD interface {
-	GetApplication(ctx context.Context, appNamespace string, appName string) (*argocdapi.Application, error)
-	ListApplications(ctx context.Context, iuCR *iuapi.ImageUpdater) ([]argocdapi.Application, error)
-	UpdateSpec(ctx context.Context, spec *application.ApplicationUpdateSpecRequest) (*argocdapi.ApplicationSpec, error)
-}
-
-// ApplicationType Type of the application
-type ApplicationType int
-
-const (
-	ApplicationTypeUnsupported ApplicationType = 0
-	ApplicationTypeHelm        ApplicationType = 1
-	ApplicationTypeKustomize   ApplicationType = 2
-)
-
-// Basic wrapper struct for ArgoCD client options
-type ClientOptions struct {
-	ServerAddr      string
-	Insecure        bool
-	Plaintext       bool
-	Certfile        string
-	GRPCWeb         bool
-	GRPCWebRootPath string
-	AuthToken       string
-}
-
-// NewAPIClient creates a new API client for ArgoCD and connects to the ArgoCD
-// API server.
-func NewAPIClient(opts *ClientOptions) (ArgoCD, error) {
-
-	envAuthToken := os.Getenv("ARGOCD_TOKEN")
-	if envAuthToken != "" && opts.AuthToken == "" {
-		opts.AuthToken = envAuthToken
-	}
-
-	rOpts := argocdclient.ClientOptions{
-		ServerAddr:      opts.ServerAddr,
-		PlainText:       opts.Plaintext,
-		Insecure:        opts.Insecure,
-		CertFile:        opts.Certfile,
-		GRPCWeb:         opts.GRPCWeb,
-		GRPCWebRootPath: opts.GRPCWebRootPath,
-		AuthToken:       opts.AuthToken,
-	}
-	client, err := argocdclient.NewClient(&rOpts)
-	if err != nil {
-		return nil, err
-	}
-	return &argoCD{Client: client}, nil
 }
 
 // nameMatchesPatterns Matches a name against a list of patterns
@@ -314,7 +259,7 @@ func sortApplicationRefs(applicationRefs []iuapi.ApplicationRef) []iuapi.Applica
 
 // FilterApplicationsForUpdate Retrieve a list of applications from ArgoCD that qualify for image updates
 // Application needs either to be of type Kustomize or Helm.
-func FilterApplicationsForUpdate(ctx context.Context, ctrlClient *K8sClient, kubeClient *kube.ImageUpdaterKubernetesClient, cr *iuapi.ImageUpdater) (map[string]ApplicationImages, error) {
+func FilterApplicationsForUpdate(ctx context.Context, ctrlClient *ArgoCDK8sClient, kubeClient *kube.ImageUpdaterKubernetesClient, cr *iuapi.ImageUpdater) (map[string]ApplicationImages, error) {
 	log := log.LoggerFromContext(ctx)
 
 	// Validate CR configuration
@@ -612,68 +557,6 @@ func parseImageList(ctx context.Context, images []iuapi.ImageConfig, appSettings
 	}
 
 	return &results
-}
-
-// GetApplication gets the application named appName from Argo CD API
-func (client *argoCD) GetApplication(ctx context.Context, appNamespace string, appName string) (*argocdapi.Application, error) {
-	conn, appClient, err := client.Client.NewApplicationClient()
-	metrics.Clients().IncreaseArgoCDClientRequest(client.Client.ClientOptions().ServerAddr, 1)
-	if err != nil {
-		metrics.Clients().IncreaseArgoCDClientError(client.Client.ClientOptions().ServerAddr, 1)
-		return nil, err
-	}
-	defer conn.Close()
-
-	metrics.Clients().IncreaseArgoCDClientRequest(client.Client.ClientOptions().ServerAddr, 1)
-	app, err := appClient.Get(ctx, &application.ApplicationQuery{Name: &appName})
-	if err != nil {
-		metrics.Clients().IncreaseArgoCDClientError(client.Client.ClientOptions().ServerAddr, 1)
-		return nil, err
-	}
-
-	return app, nil
-}
-
-// ListApplications returns a list of all application names that the API user
-// has access to.
-func (client *argoCD) ListApplications(ctx context.Context, cr *iuapi.ImageUpdater) ([]argocdapi.Application, error) {
-	conn, appClient, err := client.Client.NewApplicationClient()
-	metrics.Clients().IncreaseArgoCDClientRequest(client.Client.ClientOptions().ServerAddr, 1)
-	if err != nil {
-		metrics.Clients().IncreaseArgoCDClientError(client.Client.ClientOptions().ServerAddr, 1)
-		return nil, err
-	}
-	defer conn.Close()
-
-	metrics.Clients().IncreaseArgoCDClientRequest(client.Client.ClientOptions().ServerAddr, 1)
-	tmpSelector := "tmpSelector"
-	apps, err := appClient.List(ctx, &application.ApplicationQuery{Selector: &tmpSelector})
-	if err != nil {
-		metrics.Clients().IncreaseArgoCDClientError(client.Client.ClientOptions().ServerAddr, 1)
-		return nil, err
-	}
-
-	return apps.Items, nil
-}
-
-// UpdateSpec updates the spec for given application
-func (client *argoCD) UpdateSpec(ctx context.Context, in *application.ApplicationUpdateSpecRequest) (*argocdapi.ApplicationSpec, error) {
-	conn, appClient, err := client.Client.NewApplicationClient()
-	metrics.Clients().IncreaseArgoCDClientRequest(client.Client.ClientOptions().ServerAddr, 1)
-	if err != nil {
-		metrics.Clients().IncreaseArgoCDClientError(client.Client.ClientOptions().ServerAddr, 1)
-		return nil, err
-	}
-	defer conn.Close()
-
-	metrics.Clients().IncreaseArgoCDClientRequest(client.Client.ClientOptions().ServerAddr, 1)
-	spec, err := appClient.UpdateSpec(ctx, in)
-	if err != nil {
-		metrics.Clients().IncreaseArgoCDClientError(client.Client.ClientOptions().ServerAddr, 1)
-		return nil, err
-	}
-
-	return spec, nil
 }
 
 // getHelmParamNames inspects the given image for whether
@@ -1065,18 +948,4 @@ func GetParameterPullSecret(ctx context.Context, img *Image) *image.CredentialSo
 		return nil
 	}
 	return credSrc
-}
-
-// String returns a string representation of the application type
-func (a ApplicationType) String() string {
-	switch a {
-	case ApplicationTypeKustomize:
-		return "Kustomize"
-	case ApplicationTypeHelm:
-		return "Helm"
-	case ApplicationTypeUnsupported:
-		return "Unsupported"
-	default:
-		return "Unknown"
-	}
 }

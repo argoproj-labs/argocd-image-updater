@@ -152,7 +152,6 @@ run-test:
 		-e ARGOCD_TOKEN \
 		${IMAGE_PREFIX}${IMAGE_NAME}:${IMAGE_TAG} \
 		--kubeconfig /kube/config \
-		--argocd-server-addr $(ARGOCD_SERVER) \
 		--grpc-web
 
 .PHONY: serve-docs
