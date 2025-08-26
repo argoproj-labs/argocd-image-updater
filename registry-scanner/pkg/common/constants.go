@@ -8,7 +8,7 @@ const (
 	DefaultHelmImageTag  = "image.tag"
 )
 
-// DEPRECATED: These constants have been removed in the CRD branch and will be deprecated in a future release.
+// DEPRECATED: These constants have been removed in the CRD branch and will be deprecated and removed  in a future release.
 // The CRD branch introduces a new architecture that eliminates the need for these annotation-based constants.
 // Helm related annotations
 const (
@@ -17,14 +17,14 @@ const (
 	HelmParamImageSpecAnnotationSuffix = "/%s.helm.image-spec"
 )
 
-// DEPRECATED: These constants have been removed in the CRD branch and will be deprecated in a future release.
+// DEPRECATED: These constants have been removed in the CRD branch and will be deprecated and removed in a future release.
 // The CRD branch introduces a new architecture that eliminates the need for these annotation-based constants.
 // Kustomize related annotations
 const (
 	KustomizeApplicationNameAnnotationSuffix = "/%s.kustomize.image-name"
 )
 
-// DEPRECATED: These constants have been removed in the CRD branch and will be deprecated in a future release.
+// DEPRECATED: These constants have been removed in the CRD branch and will be deprecated and removed in a future release.
 // The CRD branch introduces a new architecture that eliminates the need for these annotation-based constants.
 // Image specific configuration annotations
 const (
@@ -37,7 +37,7 @@ const (
 	PlatformsAnnotationSuffix         = "/%s.platforms"
 )
 
-// DEPRECATED: These constants have been removed in the CRD branch and will be deprecated in a future release.
+// DEPRECATED: These constants have been removed in the CRD branch and will be deprecated and removed in a future release.
 // The CRD branch introduces a new architecture that eliminates the need for these annotation-based constants.
 // Application-wide update strategy related annotations
 const (

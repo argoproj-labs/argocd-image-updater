@@ -126,7 +126,7 @@ func NewK8SClient(kubeClient *kube.ImageUpdaterKubernetesClient, opts *K8SClient
 	}, nil
 }
 
-// DEPRECATED: This struct and its associated client have been removed in the CRD branch and will be deprecated in a future release.
+// DEPRECATED: This struct and its associated client have been removed in the CRD branch and will be deprecated and removed in a future release.
 // The CRD branch introduces a new architecture that eliminates the need for this native ArgoCD client approach.
 // Native
 type argoCD struct {
@@ -149,7 +149,7 @@ const (
 	ApplicationTypeKustomize   ApplicationType = 2
 )
 
-// DEPRECATED: This struct and its associated client have been removed in the CRD branch and will be deprecated in a future release.
+// DEPRECATED: This struct and its associated client have been removed in the CRD branch and will be deprecated and removed in a future release.
 // The CRD branch introduces a new architecture that eliminates the need for this native ArgoCD client approach.
 // Basic wrapper struct for ArgoCD client options
 type ClientOptions struct {
@@ -162,7 +162,7 @@ type ClientOptions struct {
 	AuthToken       string
 }
 
-// DEPRECATED: This function has been removed in the CRD branch and will be deprecated in a future release.
+// DEPRECATED: This function has been removed in the CRD branch and will be deprecated and removed in a future release.
 // The CRD branch introduces a new architecture that eliminates the need for this native ArgoCD client approach.
 // NewAPIClient creates a new API client for ArgoCD and connects to the ArgoCD
 // API server.
@@ -270,7 +270,7 @@ func parseImageList(annotations map[string]string) *image.ContainerImageList {
 	return &results
 }
 
-// DEPRECATED: This struct and its associated client have been removed in the CRD branch and will be deprecated in a future release.
+// DEPRECATED: This struct and its associated client have been removed in the CRD branch and will be deprecated and removed in a future release.
 // The CRD branch introduces a new architecture that eliminates the need for this native ArgoCD client approach.
 // GetApplication gets the application named appName from Argo CD API
 func (client *argoCD) GetApplication(ctx context.Context, appName string) (*v1alpha1.Application, error) {
@@ -292,7 +292,7 @@ func (client *argoCD) GetApplication(ctx context.Context, appName string) (*v1al
 	return app, nil
 }
 
-// DEPRECATED: This struct and its associated client have been removed in the CRD branch and will be deprecated in a future release.
+// DEPRECATED: This struct and its associated client have been removed in the CRD branch and will be deprecated and removed in a future release.
 // The CRD branch introduces a new architecture that eliminates the need for this native ArgoCD client approach.
 // ListApplications returns a list of all application names that the API user
 // has access to.
@@ -315,7 +315,7 @@ func (client *argoCD) ListApplications(labelSelector string) ([]v1alpha1.Applica
 	return apps.Items, nil
 }
 
-// DEPRECATED: This struct and its associated client have been removed in the CRD branch and will be deprecated in a future release.
+// DEPRECATED: This struct and its associated client have been removed in the CRD branch and will be deprecated and removed in a future release.
 // The CRD branch introduces a new architecture that eliminates the need for this native ArgoCD client approach.
 // UpdateSpec updates the spec for given application
 func (client *argoCD) UpdateSpec(ctx context.Context, in *application.ApplicationUpdateSpecRequest) (*v1alpha1.ApplicationSpec, error) {
