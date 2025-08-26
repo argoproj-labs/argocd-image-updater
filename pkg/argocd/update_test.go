@@ -2323,13 +2323,6 @@ replicas: 1
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
 				Name: "testapp",
-				Annotations: map[string]string{
-					"argocd-image-updater.argoproj.io/image-list":            "nginx",
-					"argocd-image-updater.argoproj.io/write-back-method":     "git",
-					"argocd-image-updater.argoproj.io/write-back-target":     "helmvalues:./test-values.yaml",
-					"argocd-image-updater.argoproj.io/nginx.helm.image-name": "image.name",
-					"argocd-image-updater.argoproj.io/nginx.helm.image-tag":  "image.tag",
-				},
 			},
 			Spec: v1alpha1.ApplicationSpec{
 				Source: &v1alpha1.ApplicationSource{
@@ -2360,8 +2353,19 @@ replicas: 1
 				},
 			},
 		}
-
-		_, err := marshalParamsOverride(&app, nil)
+		im := NewImage(
+			image.NewFromIdentifier("nginx"))
+		im.HelmImageName = "image.name"
+		im.HelmImageTag = "image.tag"
+		applicationImages := &ApplicationImages{
+			Application: app,
+			Images:      ImageList{im},
+			WriteBackConfig: &WriteBackConfig{
+				Method: WriteBackGit,
+				Target: "helmvalues:./test-values.yaml",
+			},
+		}
+		_, err := marshalParamsOverride(context.Background(), applicationImages, nil)
 		assert.NoError(t, err)
 	})
 

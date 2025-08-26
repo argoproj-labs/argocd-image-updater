@@ -34,8 +34,6 @@ import (
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/env"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/registry"
-
-	"go.uber.org/ratelimit"
 )
 
 // newRunCommand implements "controller" command
@@ -192,9 +190,10 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 				webhookServer = webhook.NewServer(webhook.Options{
 					TLSOpts: tlsOpts,
 				})
-				if webhookCfg.RateLimitNumAllowedRequests > 0 {
-					webhookServer.RateLimiter = ratelimit.New(webhookCfg.RateLimitNumAllowedRequests, ratelimit.Per(time.Hour))
-				}
+				// TODO: webhook for CRD will be refactored in GITOPS-7336
+				//if webhookCfg.RateLimitNumAllowedRequests > 0 {
+				//	webhookServer.RateLimiter = ratelimit.New(webhookCfg.RateLimitNumAllowedRequests, ratelimit.Per(time.Hour))
+				//}
 			} else {
 				setupLogger.Info("webhook server is disabled")
 			}
