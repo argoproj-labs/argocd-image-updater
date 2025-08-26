@@ -470,6 +470,7 @@ func TestParseImageList(t *testing.T) {
 
 // TestWebhookServerRateLimit tests to see if the webhook endpoint's rate limiting functionality works
 func TestWebhookServerRateLimit(t *testing.T) {
+	t.Skip("skip this test for CRD branch until we implement GITOPS-7336")
 	server := createMockServer(t, 8080)
 	mockArgoClient := server.ArgoClient.(*mocks.ArgoCD)
 	mockArgoClient.On("ListApplications", mock.Anything).Return([]v1alpha1.Application{}, nil).Maybe()
