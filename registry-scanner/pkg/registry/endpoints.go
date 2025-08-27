@@ -121,6 +121,10 @@ var registryLock sync.RWMutex
 // credentialGroup ensures only one credential refresh happens per registry
 var credentialGroup singleflight.Group
 
+// Transport cache to avoid creating new transports for each request
+var transportCache = make(map[string]*http.Transport)
+var transportCacheLock sync.RWMutex
+
 func AddRegistryEndpointFromConfig(epc RegistryConfiguration) error {
 	ep := NewRegistryEndpoint(epc.Prefix, epc.Name, epc.ApiURL, epc.Credentials, epc.DefaultNS, epc.Insecure, TagListSortFromString(epc.TagSortMode), epc.Limit, epc.CredsExpire)
 	return AddRegistryEndpoint(ep)
@@ -282,16 +286,65 @@ func (ep *RegistryEndpoint) DeepCopy() *RegistryEndpoint {
 	return newEp
 }
 
+// ClearTransportCache clears the transport cache
+// This is useful when registry configuration changes
+func ClearTransportCache() {
+	transportCacheLock.Lock()
+	transportCache = make(map[string]*http.Transport)
+	transportCacheLock.Unlock()
+}
+
 // GetTransport returns a transport object for this endpoint
-func (ep *RegistryEndpoint) GetTransport() *http.Transport {
+// Implements connection pooling and reuse to avoid creating new transports for each request
+func (ep *RegistryEndpoint) GetTransport() *http.Transport {	
+	// Check if we have a cached transport for this registry
+	transportCacheLock.RLock()
+	if transport, exists := transportCache[ep.RegistryAPI]; exists {
+		log.Debugf("Transport cache HIT for %s: %p", ep.RegistryAPI, transport)
+		transportCacheLock.RUnlock()
+		return transport
+	}
+	log.Debugf("Transport cache MISS for %s", ep.RegistryAPI)
+	transportCacheLock.RUnlock()
+
+	// Create a new transport with optimized connection pool settings
+	transportCacheLock.Lock()
+	defer transportCacheLock.Unlock()
+
+	// Double-check after acquiring write lock
+	if transport, exists := transportCache[ep.RegistryAPI]; exists {
+		log.Debugf("Transport cache double-check HIT for %s: %p", ep.RegistryAPI, transport)
+		return transport
+	}
+
+	log.Debugf("Creating NEW transport for %s", ep.RegistryAPI)
+
 	tlsC := &tls.Config{}
 	if ep.Insecure {
 		tlsC.InsecureSkipVerify = true
 	}
-	return &http.Transport{
-		Proxy:           http.ProxyFromEnvironment,
-		TLSClientConfig: tlsC,
+
+	// Create transport with aggressive timeout and connection management
+	transport := &http.Transport{
+		Proxy:                 http.ProxyFromEnvironment,
+		TLSClientConfig:       tlsC,
+		MaxIdleConns:          20,                     // Reduced global max idle connections
+		MaxIdleConnsPerHost:   5,                      // Reduced per-host connections
+		IdleConnTimeout:       30 * time.Second,       // Reduced idle timeout
+		TLSHandshakeTimeout:   5 * time.Second,        // Reduced TLS timeout
+		ExpectContinueTimeout: 1 * time.Second,        // Expect-Continue timeout
+		DisableKeepAlives:     false,                  // Enable HTTP Keep-Alive
+		ForceAttemptHTTP2:     true,                   // Enable HTTP/2 if available
+		// Critical timeout settings to prevent hanging connections
+		ResponseHeaderTimeout: 10 * time.Second,       // Response header timeout
+		MaxConnsPerHost:       10,                     // Limit total connections per host
 	}
+
+	// Cache the transport for reuse
+	transportCache[ep.RegistryAPI] = transport
+	log.Debugf("Cached NEW transport for %s: %p", ep.RegistryAPI, transport)
+
+	return transport
 }
 
 // init initializes the registry configuration
