@@ -28,6 +28,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	api "github.com/argoproj-labs/argocd-image-updater/api/v1alpha1"
 	"github.com/argoproj-labs/argocd-image-updater/ext/git"
@@ -73,6 +74,11 @@ type ImageUpdaterReconciler struct {
 	// For run-once mode: wait for all CRs to complete
 	Wg sync.WaitGroup
 }
+
+const (
+	// ResourcesFinalizerName is the name of the finalizer used by the ImageUpdater controller.
+	ResourcesFinalizerName = "resources-finalizer.argocd-image-updater.argoproj.io"
+)
 
 // +kubebuilder:rbac:groups=argocd-image-updater.argoproj.io,resources=imageupdaters,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=argocd-image-updater.argoproj.io,resources=imageupdaters/status,verbs=get;update;patch
@@ -121,7 +127,37 @@ func (r *ImageUpdaterReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	}
 	reqLogger.Infof("Successfully fetched ImageUpdater resource: %s, namespace: %s", imageUpdater.Name, imageUpdater.Namespace)
 
-	// 2. Add finalizer logic if needed for cleanup before deletion.
+	// 2. Handle finalizer logic for graceful deletion.
+	isBeingDeleted := !imageUpdater.ObjectMeta.DeletionTimestamp.IsZero()
+	hasFinalizer := controllerutil.ContainsFinalizer(&imageUpdater, ResourcesFinalizerName)
+
+	if isBeingDeleted {
+		if hasFinalizer {
+			reqLogger.Debugf("ImageUpdater resource is being deleted, running finalizer.")
+			// --- FINALIZER LOGIC ---
+			// Currently, there is nothing to clean up.
+
+			// Remove the finalizer from the list and update the object.
+			reqLogger.Debugf("Finalizer logic complete, removing finalizer from the resource.")
+			controllerutil.RemoveFinalizer(&imageUpdater, ResourcesFinalizerName)
+			if err := r.Update(ctx, &imageUpdater); err != nil {
+				reqLogger.Errorf("Failed to remove finalizer: %v", err)
+				return ctrl.Result{}, err
+			}
+		}
+		// Stop reconciliation as the item is being deleted
+		return ctrl.Result{}, nil
+	}
+
+	// If the object is not being deleted, add the finalizer if it's not present.
+	if !hasFinalizer {
+		reqLogger.Debugf("Finalizer not found, adding it to the ImageUpdater resource.")
+		controllerutil.AddFinalizer(&imageUpdater, ResourcesFinalizerName)
+		if err := r.Update(ctx, &imageUpdater); err != nil {
+			reqLogger.Errorf("Failed to add finalizer: %v", err)
+			return ctrl.Result{}, err
+		}
+	}
 
 	if r.Config.CheckInterval < 0 {
 		reqLogger.Debugf("Requeue interval is not configured or below zero; will not requeue based on time unless an error occurs or explicitly requested.")

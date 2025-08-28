@@ -12,6 +12,7 @@ import (
 	"k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	argocdapi "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
@@ -1581,6 +1582,450 @@ func TestImageUpdaterReconciler_Reconcile_MultipleCRs_CheckIntervalZero(t *testi
 
 		// Verify that the reconciliation loop only ended after all CRs were processed
 		t.Log("Reconciliation loop ended only after all CRs completed their work")
+	})
+}
+
+// TestImageUpdaterReconciler_Reconcile_Finalizer tests the finalizer functionality
+func TestImageUpdaterReconciler_Reconcile_Finalizer(t *testing.T) {
+	t.Run("resource without finalizer - should add finalizer", func(t *testing.T) {
+		ctx := context.Background()
+		cacheChan := make(chan struct{})
+		close(cacheChan) // Cache is warmed
+
+		// Create fake client
+		s := scheme.Scheme
+		err := argocdimageupdaterv1alpha1.AddToScheme(s)
+		require.NoError(t, err)
+		// Add ArgoCD Application types to the scheme
+		err = argocdapi.AddToScheme(s)
+		require.NoError(t, err)
+
+		fakeClient := fake.NewClientBuilder().WithScheme(s).Build()
+
+		// Create reconciler
+		reconciler := &ImageUpdaterReconciler{
+			Client:                  fakeClient,
+			Scheme:                  s,
+			MaxConcurrentReconciles: 1,
+			CacheWarmed:             cacheChan,
+			StopChan:                make(chan struct{}),
+			Wg:                      sync.WaitGroup{},
+			Config: &ImageUpdaterConfig{
+				CheckInterval:     30 * time.Second,
+				MaxConcurrentApps: 1,
+				DryRun:            true,
+				KubeClient:        &kube.ImageUpdaterKubernetesClient{},
+			},
+		}
+
+		// Create ImageUpdater resource without finalizer
+		imageUpdater := &argocdimageupdaterv1alpha1.ImageUpdater{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "finalizer-test",
+				Namespace: "default",
+			},
+			Spec: argocdimageupdaterv1alpha1.ImageUpdaterSpec{
+				Namespace: "argocd",
+				ApplicationRefs: []argocdimageupdaterv1alpha1.ApplicationRef{
+					{
+						NamePattern: "test-app",
+						Images: []argocdimageupdaterv1alpha1.ImageConfig{
+							{
+								Alias:     "nginx",
+								ImageName: "nginx:latest",
+							},
+						},
+					},
+				},
+			},
+		}
+
+		// Create the resource in the fake client
+		require.NoError(t, fakeClient.Create(ctx, imageUpdater))
+
+		// Execute reconciliation
+		result, err := reconciler.Reconcile(ctx, reconcile.Request{
+			NamespacedName: types.NamespacedName{
+				Name:      "finalizer-test",
+				Namespace: "default",
+			},
+		})
+
+		// Assert
+		assert.NoError(t, err)
+		// After adding finalizer, reconciliation should continue and requeue after interval
+		assert.Equal(t, reconcile.Result{RequeueAfter: 30 * time.Second}, result)
+
+		// Verify that the finalizer was added
+		var updatedImageUpdater argocdimageupdaterv1alpha1.ImageUpdater
+		err = fakeClient.Get(ctx, types.NamespacedName{
+			Name:      "finalizer-test",
+			Namespace: "default",
+		}, &updatedImageUpdater)
+		assert.NoError(t, err)
+		assert.Contains(t, updatedImageUpdater.Finalizers, ResourcesFinalizerName, "Finalizer should be added")
+	})
+
+	t.Run("resource with finalizer already present - should not add duplicate", func(t *testing.T) {
+		ctx := context.Background()
+		cacheChan := make(chan struct{})
+		close(cacheChan) // Cache is warmed
+
+		// Create fake client
+		s := scheme.Scheme
+		err := argocdimageupdaterv1alpha1.AddToScheme(s)
+		require.NoError(t, err)
+		// Add ArgoCD Application types to the scheme
+		err = argocdapi.AddToScheme(s)
+		require.NoError(t, err)
+
+		fakeClient := fake.NewClientBuilder().WithScheme(s).Build()
+
+		// Create reconciler
+		reconciler := &ImageUpdaterReconciler{
+			Client:                  fakeClient,
+			Scheme:                  s,
+			MaxConcurrentReconciles: 1,
+			CacheWarmed:             cacheChan,
+			StopChan:                make(chan struct{}),
+			Wg:                      sync.WaitGroup{},
+			Config: &ImageUpdaterConfig{
+				CheckInterval:     30 * time.Second,
+				MaxConcurrentApps: 1,
+				DryRun:            true,
+				KubeClient:        &kube.ImageUpdaterKubernetesClient{},
+			},
+		}
+
+		// Create ImageUpdater resource with finalizer already present
+		imageUpdater := &argocdimageupdaterv1alpha1.ImageUpdater{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:       "finalizer-test-existing",
+				Namespace:  "default",
+				Finalizers: []string{ResourcesFinalizerName},
+			},
+			Spec: argocdimageupdaterv1alpha1.ImageUpdaterSpec{
+				Namespace: "argocd",
+				ApplicationRefs: []argocdimageupdaterv1alpha1.ApplicationRef{
+					{
+						NamePattern: "test-app",
+						Images: []argocdimageupdaterv1alpha1.ImageConfig{
+							{
+								Alias:     "nginx",
+								ImageName: "nginx:latest",
+							},
+						},
+					},
+				},
+			},
+		}
+
+		// Create the resource in the fake client
+		require.NoError(t, fakeClient.Create(ctx, imageUpdater))
+
+		// Execute reconciliation
+		result, err := reconciler.Reconcile(ctx, reconcile.Request{
+			NamespacedName: types.NamespacedName{
+				Name:      "finalizer-test-existing",
+				Namespace: "default",
+			},
+		})
+
+		// Assert
+		assert.NoError(t, err)
+		// Should continue with normal reconciliation since finalizer already exists
+		assert.Equal(t, reconcile.Result{RequeueAfter: 30 * time.Second}, result)
+
+		// Verify that the finalizer is still present (not duplicated)
+		var updatedImageUpdater argocdimageupdaterv1alpha1.ImageUpdater
+		err = fakeClient.Get(ctx, types.NamespacedName{
+			Name:      "finalizer-test-existing",
+			Namespace: "default",
+		}, &updatedImageUpdater)
+		assert.NoError(t, err)
+		assert.Contains(t, updatedImageUpdater.Finalizers, ResourcesFinalizerName, "Finalizer should still be present")
+		assert.Len(t, updatedImageUpdater.Finalizers, 1, "Should have exactly one finalizer")
+	})
+
+	t.Run("resource with multiple finalizers - should preserve existing finalizers", func(t *testing.T) {
+		ctx := context.Background()
+		cacheChan := make(chan struct{})
+		close(cacheChan) // Cache is warmed
+
+		// Create fake client
+		s := scheme.Scheme
+		err := argocdimageupdaterv1alpha1.AddToScheme(s)
+		require.NoError(t, err)
+		// Add ArgoCD Application types to the scheme
+		err = argocdapi.AddToScheme(s)
+		require.NoError(t, err)
+
+		fakeClient := fake.NewClientBuilder().WithScheme(s).Build()
+
+		// Create reconciler
+		reconciler := &ImageUpdaterReconciler{
+			Client:                  fakeClient,
+			Scheme:                  s,
+			MaxConcurrentReconciles: 1,
+			CacheWarmed:             cacheChan,
+			StopChan:                make(chan struct{}),
+			Wg:                      sync.WaitGroup{},
+			Config: &ImageUpdaterConfig{
+				CheckInterval:     30 * time.Second,
+				MaxConcurrentApps: 1,
+				DryRun:            true,
+				KubeClient:        &kube.ImageUpdaterKubernetesClient{},
+			},
+		}
+
+		// Create ImageUpdater resource with multiple finalizers
+		imageUpdater := &argocdimageupdaterv1alpha1.ImageUpdater{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:       "finalizer-test-multiple",
+				Namespace:  "default",
+				Finalizers: []string{"other-finalizer", ResourcesFinalizerName, "another-finalizer"},
+			},
+			Spec: argocdimageupdaterv1alpha1.ImageUpdaterSpec{
+				Namespace: "argocd",
+				ApplicationRefs: []argocdimageupdaterv1alpha1.ApplicationRef{
+					{
+						NamePattern: "test-app",
+						Images: []argocdimageupdaterv1alpha1.ImageConfig{
+							{
+								Alias:     "nginx",
+								ImageName: "nginx:latest",
+							},
+						},
+					},
+				},
+			},
+		}
+
+		// Create the resource in the fake client
+		require.NoError(t, fakeClient.Create(ctx, imageUpdater))
+
+		// Execute reconciliation
+		result, err := reconciler.Reconcile(ctx, reconcile.Request{
+			NamespacedName: types.NamespacedName{
+				Name:      "finalizer-test-multiple",
+				Namespace: "default",
+			},
+		})
+
+		// Assert
+		assert.NoError(t, err)
+		// Should continue with normal reconciliation since finalizer already exists
+		assert.Equal(t, reconcile.Result{RequeueAfter: 30 * time.Second}, result)
+
+		// Verify that all finalizers are preserved
+		var updatedImageUpdater argocdimageupdaterv1alpha1.ImageUpdater
+		err = fakeClient.Get(ctx, types.NamespacedName{
+			Name:      "finalizer-test-multiple",
+			Namespace: "default",
+		}, &updatedImageUpdater)
+		assert.NoError(t, err)
+		assert.Contains(t, updatedImageUpdater.Finalizers, ResourcesFinalizerName, "Our finalizer should be present")
+		assert.Contains(t, updatedImageUpdater.Finalizers, "other-finalizer", "Other finalizer should be preserved")
+		assert.Contains(t, updatedImageUpdater.Finalizers, "another-finalizer", "Another finalizer should be preserved")
+		assert.Len(t, updatedImageUpdater.Finalizers, 3, "Should have exactly three finalizers")
+	})
+
+	t.Run("resource with different finalizer - should add our finalizer", func(t *testing.T) {
+		ctx := context.Background()
+		cacheChan := make(chan struct{})
+		close(cacheChan) // Cache is warmed
+
+		// Create fake client
+		s := scheme.Scheme
+		err := argocdimageupdaterv1alpha1.AddToScheme(s)
+		require.NoError(t, err)
+		// Add ArgoCD Application types to the scheme
+		err = argocdapi.AddToScheme(s)
+		require.NoError(t, err)
+
+		fakeClient := fake.NewClientBuilder().WithScheme(s).Build()
+
+		// Create reconciler
+		reconciler := &ImageUpdaterReconciler{
+			Client:                  fakeClient,
+			Scheme:                  s,
+			MaxConcurrentReconciles: 1,
+			CacheWarmed:             cacheChan,
+			StopChan:                make(chan struct{}),
+			Wg:                      sync.WaitGroup{},
+			Config: &ImageUpdaterConfig{
+				CheckInterval:     30 * time.Second,
+				MaxConcurrentApps: 1,
+				DryRun:            true,
+				KubeClient:        &kube.ImageUpdaterKubernetesClient{},
+			},
+		}
+
+		// Create ImageUpdater resource with a different finalizer
+		imageUpdater := &argocdimageupdaterv1alpha1.ImageUpdater{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:       "finalizer-test-different",
+				Namespace:  "default",
+				Finalizers: []string{"different-finalizer"},
+			},
+			Spec: argocdimageupdaterv1alpha1.ImageUpdaterSpec{
+				Namespace: "argocd",
+				ApplicationRefs: []argocdimageupdaterv1alpha1.ApplicationRef{
+					{
+						NamePattern: "test-app",
+						Images: []argocdimageupdaterv1alpha1.ImageConfig{
+							{
+								Alias:     "nginx",
+								ImageName: "nginx:latest",
+							},
+						},
+					},
+				},
+			},
+		}
+
+		// Create the resource in the fake client
+		require.NoError(t, fakeClient.Create(ctx, imageUpdater))
+
+		// Execute reconciliation
+		result, err := reconciler.Reconcile(ctx, reconcile.Request{
+			NamespacedName: types.NamespacedName{
+				Name:      "finalizer-test-different",
+				Namespace: "default",
+			},
+		})
+
+		// Assert
+		assert.NoError(t, err)
+		// After adding finalizer, reconciliation should continue and requeue after interval
+		assert.Equal(t, reconcile.Result{RequeueAfter: 30 * time.Second}, result)
+
+		// Verify that our finalizer was added while preserving the existing one
+		var updatedImageUpdater argocdimageupdaterv1alpha1.ImageUpdater
+		err = fakeClient.Get(ctx, types.NamespacedName{
+			Name:      "finalizer-test-different",
+			Namespace: "default",
+		}, &updatedImageUpdater)
+		assert.NoError(t, err)
+		assert.Contains(t, updatedImageUpdater.Finalizers, ResourcesFinalizerName, "Our finalizer should be added")
+		assert.Contains(t, updatedImageUpdater.Finalizers, "different-finalizer", "Existing finalizer should be preserved")
+		assert.Len(t, updatedImageUpdater.Finalizers, 2, "Should have exactly two finalizers")
+	})
+
+	t.Run("finalizer removal functionality - should remove our finalizer", func(t *testing.T) {
+		// Test the controllerutil.RemoveFinalizer functionality directly
+		imageUpdater := &argocdimageupdaterv1alpha1.ImageUpdater{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:       "finalizer-removal-test",
+				Namespace:  "default",
+				Finalizers: []string{ResourcesFinalizerName, "other-finalizer"},
+			},
+		}
+
+		// Verify initial state
+		assert.Contains(t, imageUpdater.Finalizers, ResourcesFinalizerName, "Initial state should have our finalizer")
+		assert.Contains(t, imageUpdater.Finalizers, "other-finalizer", "Initial state should have other finalizer")
+		assert.Len(t, imageUpdater.Finalizers, 2, "Initial state should have exactly two finalizers")
+
+		// Remove our finalizer
+		controllerutil.RemoveFinalizer(imageUpdater, ResourcesFinalizerName)
+
+		// Verify finalizer was removed
+		assert.NotContains(t, imageUpdater.Finalizers, ResourcesFinalizerName, "Our finalizer should be removed")
+		assert.Contains(t, imageUpdater.Finalizers, "other-finalizer", "Other finalizer should be preserved")
+		assert.Len(t, imageUpdater.Finalizers, 1, "Should have exactly one finalizer remaining")
+	})
+
+	t.Run("finalizer removal functionality - should handle non-existent finalizer", func(t *testing.T) {
+		// Test removing a finalizer that doesn't exist
+		imageUpdater := &argocdimageupdaterv1alpha1.ImageUpdater{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:       "finalizer-removal-nonexistent-test",
+				Namespace:  "default",
+				Finalizers: []string{"other-finalizer"},
+			},
+		}
+
+		// Verify initial state
+		assert.NotContains(t, imageUpdater.Finalizers, ResourcesFinalizerName, "Initial state should not have our finalizer")
+		assert.Contains(t, imageUpdater.Finalizers, "other-finalizer", "Initial state should have other finalizer")
+		assert.Len(t, imageUpdater.Finalizers, 1, "Initial state should have exactly one finalizer")
+
+		// Try to remove our finalizer (which doesn't exist)
+		controllerutil.RemoveFinalizer(imageUpdater, ResourcesFinalizerName)
+
+		// Verify state remains unchanged
+		assert.NotContains(t, imageUpdater.Finalizers, ResourcesFinalizerName, "Should still not have our finalizer")
+		assert.Contains(t, imageUpdater.Finalizers, "other-finalizer", "Other finalizer should still be present")
+		assert.Len(t, imageUpdater.Finalizers, 1, "Should still have exactly one finalizer")
+	})
+
+	t.Run("finalizer removal functionality - should handle empty finalizers list", func(t *testing.T) {
+		// Test removing finalizer from empty list
+		imageUpdater := &argocdimageupdaterv1alpha1.ImageUpdater{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:       "finalizer-removal-empty-test",
+				Namespace:  "default",
+				Finalizers: []string{},
+			},
+		}
+
+		// Verify initial state
+		assert.Empty(t, imageUpdater.Finalizers, "Initial state should have empty finalizers list")
+
+		// Try to remove our finalizer from empty list
+		controllerutil.RemoveFinalizer(imageUpdater, ResourcesFinalizerName)
+
+		// Verify state remains unchanged
+		assert.Empty(t, imageUpdater.Finalizers, "Finalizers list should remain empty")
+	})
+
+	t.Run("finalizer removal functionality - should handle nil finalizers list", func(t *testing.T) {
+		// Test removing finalizer from nil list
+		imageUpdater := &argocdimageupdaterv1alpha1.ImageUpdater{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "finalizer-removal-nil-test",
+				Namespace: "default",
+				// Finalizers field is nil by default
+			},
+		}
+
+		// Verify initial state
+		assert.Nil(t, imageUpdater.Finalizers, "Initial state should have nil finalizers list")
+
+		// Try to remove our finalizer from nil list
+		controllerutil.RemoveFinalizer(imageUpdater, ResourcesFinalizerName)
+
+		// Verify state remains unchanged
+		assert.Nil(t, imageUpdater.Finalizers, "Finalizers list should remain nil")
+	})
+
+	t.Run("finalizer removal functionality - should remove only our finalizer from multiple", func(t *testing.T) {
+		// Test removing our finalizer when multiple finalizers exist
+		imageUpdater := &argocdimageupdaterv1alpha1.ImageUpdater{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:       "finalizer-removal-multiple-test",
+				Namespace:  "default",
+				Finalizers: []string{"first-finalizer", ResourcesFinalizerName, "second-finalizer", "third-finalizer"},
+			},
+		}
+
+		// Verify initial state
+		assert.Contains(t, imageUpdater.Finalizers, ResourcesFinalizerName, "Initial state should have our finalizer")
+		assert.Contains(t, imageUpdater.Finalizers, "first-finalizer", "Initial state should have first finalizer")
+		assert.Contains(t, imageUpdater.Finalizers, "second-finalizer", "Initial state should have second finalizer")
+		assert.Contains(t, imageUpdater.Finalizers, "third-finalizer", "Initial state should have third finalizer")
+		assert.Len(t, imageUpdater.Finalizers, 4, "Initial state should have exactly four finalizers")
+
+		// Remove our finalizer
+		controllerutil.RemoveFinalizer(imageUpdater, ResourcesFinalizerName)
+
+		// Verify only our finalizer was removed
+		assert.NotContains(t, imageUpdater.Finalizers, ResourcesFinalizerName, "Our finalizer should be removed")
+		assert.Contains(t, imageUpdater.Finalizers, "first-finalizer", "First finalizer should be preserved")
+		assert.Contains(t, imageUpdater.Finalizers, "second-finalizer", "Second finalizer should be preserved")
+		assert.Contains(t, imageUpdater.Finalizers, "third-finalizer", "Third finalizer should be preserved")
+		assert.Len(t, imageUpdater.Finalizers, 3, "Should have exactly three finalizers remaining")
 	})
 }
 

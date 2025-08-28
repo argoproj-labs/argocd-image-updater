@@ -407,11 +407,6 @@ func (cw *CacheWarmer) Start(ctx context.Context) error {
 	})
 	ctx = log.ContextWithLogger(ctx, warmUpCacheLogger)
 
-	// TODO: WaitForCacheSync
-	//if !cache.WaitForCacheSync(ctx, ...) {
-	//   return fmt.Errorf("failed to sync caches for warm-up")
-	//}
-
 	warmUpCacheLogger.Debugf("Caches are synced. Warming up image cache...")
 	imageList := &api.ImageUpdaterList{}
 
