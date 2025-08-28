@@ -1663,7 +1663,7 @@ func TestImageUpdaterReconciler_Reconcile_Finalizer(t *testing.T) {
 			Namespace: "default",
 		}, &updatedImageUpdater)
 		assert.NoError(t, err)
-		assert.Contains(t, updatedImageUpdater.Finalizers, imageUpdaterFinalizer, "Finalizer should be added")
+		assert.Contains(t, updatedImageUpdater.Finalizers, ResourcesFinalizerName, "Finalizer should be added")
 	})
 
 	t.Run("resource with finalizer already present - should not add duplicate", func(t *testing.T) {
@@ -1702,7 +1702,7 @@ func TestImageUpdaterReconciler_Reconcile_Finalizer(t *testing.T) {
 			ObjectMeta: metav1.ObjectMeta{
 				Name:       "finalizer-test-existing",
 				Namespace:  "default",
-				Finalizers: []string{imageUpdaterFinalizer},
+				Finalizers: []string{ResourcesFinalizerName},
 			},
 			Spec: argocdimageupdaterv1alpha1.ImageUpdaterSpec{
 				Namespace: "argocd",
@@ -1743,7 +1743,7 @@ func TestImageUpdaterReconciler_Reconcile_Finalizer(t *testing.T) {
 			Namespace: "default",
 		}, &updatedImageUpdater)
 		assert.NoError(t, err)
-		assert.Contains(t, updatedImageUpdater.Finalizers, imageUpdaterFinalizer, "Finalizer should still be present")
+		assert.Contains(t, updatedImageUpdater.Finalizers, ResourcesFinalizerName, "Finalizer should still be present")
 		assert.Len(t, updatedImageUpdater.Finalizers, 1, "Should have exactly one finalizer")
 	})
 
@@ -1783,7 +1783,7 @@ func TestImageUpdaterReconciler_Reconcile_Finalizer(t *testing.T) {
 			ObjectMeta: metav1.ObjectMeta{
 				Name:       "finalizer-test-multiple",
 				Namespace:  "default",
-				Finalizers: []string{"other-finalizer", imageUpdaterFinalizer, "another-finalizer"},
+				Finalizers: []string{"other-finalizer", ResourcesFinalizerName, "another-finalizer"},
 			},
 			Spec: argocdimageupdaterv1alpha1.ImageUpdaterSpec{
 				Namespace: "argocd",
@@ -1824,7 +1824,7 @@ func TestImageUpdaterReconciler_Reconcile_Finalizer(t *testing.T) {
 			Namespace: "default",
 		}, &updatedImageUpdater)
 		assert.NoError(t, err)
-		assert.Contains(t, updatedImageUpdater.Finalizers, imageUpdaterFinalizer, "Our finalizer should be present")
+		assert.Contains(t, updatedImageUpdater.Finalizers, ResourcesFinalizerName, "Our finalizer should be present")
 		assert.Contains(t, updatedImageUpdater.Finalizers, "other-finalizer", "Other finalizer should be preserved")
 		assert.Contains(t, updatedImageUpdater.Finalizers, "another-finalizer", "Another finalizer should be preserved")
 		assert.Len(t, updatedImageUpdater.Finalizers, 3, "Should have exactly three finalizers")
@@ -1907,7 +1907,7 @@ func TestImageUpdaterReconciler_Reconcile_Finalizer(t *testing.T) {
 			Namespace: "default",
 		}, &updatedImageUpdater)
 		assert.NoError(t, err)
-		assert.Contains(t, updatedImageUpdater.Finalizers, imageUpdaterFinalizer, "Our finalizer should be added")
+		assert.Contains(t, updatedImageUpdater.Finalizers, ResourcesFinalizerName, "Our finalizer should be added")
 		assert.Contains(t, updatedImageUpdater.Finalizers, "different-finalizer", "Existing finalizer should be preserved")
 		assert.Len(t, updatedImageUpdater.Finalizers, 2, "Should have exactly two finalizers")
 	})
@@ -1918,20 +1918,20 @@ func TestImageUpdaterReconciler_Reconcile_Finalizer(t *testing.T) {
 			ObjectMeta: metav1.ObjectMeta{
 				Name:       "finalizer-removal-test",
 				Namespace:  "default",
-				Finalizers: []string{imageUpdaterFinalizer, "other-finalizer"},
+				Finalizers: []string{ResourcesFinalizerName, "other-finalizer"},
 			},
 		}
 
 		// Verify initial state
-		assert.Contains(t, imageUpdater.Finalizers, imageUpdaterFinalizer, "Initial state should have our finalizer")
+		assert.Contains(t, imageUpdater.Finalizers, ResourcesFinalizerName, "Initial state should have our finalizer")
 		assert.Contains(t, imageUpdater.Finalizers, "other-finalizer", "Initial state should have other finalizer")
 		assert.Len(t, imageUpdater.Finalizers, 2, "Initial state should have exactly two finalizers")
 
 		// Remove our finalizer
-		controllerutil.RemoveFinalizer(imageUpdater, imageUpdaterFinalizer)
+		controllerutil.RemoveFinalizer(imageUpdater, ResourcesFinalizerName)
 
 		// Verify finalizer was removed
-		assert.NotContains(t, imageUpdater.Finalizers, imageUpdaterFinalizer, "Our finalizer should be removed")
+		assert.NotContains(t, imageUpdater.Finalizers, ResourcesFinalizerName, "Our finalizer should be removed")
 		assert.Contains(t, imageUpdater.Finalizers, "other-finalizer", "Other finalizer should be preserved")
 		assert.Len(t, imageUpdater.Finalizers, 1, "Should have exactly one finalizer remaining")
 	})
@@ -1947,15 +1947,15 @@ func TestImageUpdaterReconciler_Reconcile_Finalizer(t *testing.T) {
 		}
 
 		// Verify initial state
-		assert.NotContains(t, imageUpdater.Finalizers, imageUpdaterFinalizer, "Initial state should not have our finalizer")
+		assert.NotContains(t, imageUpdater.Finalizers, ResourcesFinalizerName, "Initial state should not have our finalizer")
 		assert.Contains(t, imageUpdater.Finalizers, "other-finalizer", "Initial state should have other finalizer")
 		assert.Len(t, imageUpdater.Finalizers, 1, "Initial state should have exactly one finalizer")
 
 		// Try to remove our finalizer (which doesn't exist)
-		controllerutil.RemoveFinalizer(imageUpdater, imageUpdaterFinalizer)
+		controllerutil.RemoveFinalizer(imageUpdater, ResourcesFinalizerName)
 
 		// Verify state remains unchanged
-		assert.NotContains(t, imageUpdater.Finalizers, imageUpdaterFinalizer, "Should still not have our finalizer")
+		assert.NotContains(t, imageUpdater.Finalizers, ResourcesFinalizerName, "Should still not have our finalizer")
 		assert.Contains(t, imageUpdater.Finalizers, "other-finalizer", "Other finalizer should still be present")
 		assert.Len(t, imageUpdater.Finalizers, 1, "Should still have exactly one finalizer")
 	})
@@ -1974,7 +1974,7 @@ func TestImageUpdaterReconciler_Reconcile_Finalizer(t *testing.T) {
 		assert.Empty(t, imageUpdater.Finalizers, "Initial state should have empty finalizers list")
 
 		// Try to remove our finalizer from empty list
-		controllerutil.RemoveFinalizer(imageUpdater, imageUpdaterFinalizer)
+		controllerutil.RemoveFinalizer(imageUpdater, ResourcesFinalizerName)
 
 		// Verify state remains unchanged
 		assert.Empty(t, imageUpdater.Finalizers, "Finalizers list should remain empty")
@@ -1994,7 +1994,7 @@ func TestImageUpdaterReconciler_Reconcile_Finalizer(t *testing.T) {
 		assert.Nil(t, imageUpdater.Finalizers, "Initial state should have nil finalizers list")
 
 		// Try to remove our finalizer from nil list
-		controllerutil.RemoveFinalizer(imageUpdater, imageUpdaterFinalizer)
+		controllerutil.RemoveFinalizer(imageUpdater, ResourcesFinalizerName)
 
 		// Verify state remains unchanged
 		assert.Nil(t, imageUpdater.Finalizers, "Finalizers list should remain nil")
@@ -2006,22 +2006,22 @@ func TestImageUpdaterReconciler_Reconcile_Finalizer(t *testing.T) {
 			ObjectMeta: metav1.ObjectMeta{
 				Name:       "finalizer-removal-multiple-test",
 				Namespace:  "default",
-				Finalizers: []string{"first-finalizer", imageUpdaterFinalizer, "second-finalizer", "third-finalizer"},
+				Finalizers: []string{"first-finalizer", ResourcesFinalizerName, "second-finalizer", "third-finalizer"},
 			},
 		}
 
 		// Verify initial state
-		assert.Contains(t, imageUpdater.Finalizers, imageUpdaterFinalizer, "Initial state should have our finalizer")
+		assert.Contains(t, imageUpdater.Finalizers, ResourcesFinalizerName, "Initial state should have our finalizer")
 		assert.Contains(t, imageUpdater.Finalizers, "first-finalizer", "Initial state should have first finalizer")
 		assert.Contains(t, imageUpdater.Finalizers, "second-finalizer", "Initial state should have second finalizer")
 		assert.Contains(t, imageUpdater.Finalizers, "third-finalizer", "Initial state should have third finalizer")
 		assert.Len(t, imageUpdater.Finalizers, 4, "Initial state should have exactly four finalizers")
 
 		// Remove our finalizer
-		controllerutil.RemoveFinalizer(imageUpdater, imageUpdaterFinalizer)
+		controllerutil.RemoveFinalizer(imageUpdater, ResourcesFinalizerName)
 
 		// Verify only our finalizer was removed
-		assert.NotContains(t, imageUpdater.Finalizers, imageUpdaterFinalizer, "Our finalizer should be removed")
+		assert.NotContains(t, imageUpdater.Finalizers, ResourcesFinalizerName, "Our finalizer should be removed")
 		assert.Contains(t, imageUpdater.Finalizers, "first-finalizer", "First finalizer should be preserved")
 		assert.Contains(t, imageUpdater.Finalizers, "second-finalizer", "Second finalizer should be preserved")
 		assert.Contains(t, imageUpdater.Finalizers, "third-finalizer", "Third finalizer should be preserved")

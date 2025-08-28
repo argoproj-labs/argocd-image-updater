@@ -76,8 +76,8 @@ type ImageUpdaterReconciler struct {
 }
 
 const (
-	// imageUpdaterFinalizer is the name of the finalizer used by the ImageUpdater controller.
-	imageUpdaterFinalizer = "argocd-image-updater.argoproj.io/finalizer"
+	// ResourcesFinalizerName is the name of the finalizer used by the ImageUpdater controller.
+	ResourcesFinalizerName = "resources-finalizer.argocd-image-updater.argoproj.io"
 )
 
 // +kubebuilder:rbac:groups=argocd-image-updater.argoproj.io,resources=imageupdaters,verbs=get;list;watch;create;update;patch;delete
@@ -129,7 +129,7 @@ func (r *ImageUpdaterReconciler) Reconcile(ctx context.Context, req ctrl.Request
 
 	// 2. Handle finalizer logic for graceful deletion.
 	isBeingDeleted := !imageUpdater.ObjectMeta.DeletionTimestamp.IsZero()
-	hasFinalizer := controllerutil.ContainsFinalizer(&imageUpdater, imageUpdaterFinalizer)
+	hasFinalizer := controllerutil.ContainsFinalizer(&imageUpdater, ResourcesFinalizerName)
 
 	if isBeingDeleted {
 		if hasFinalizer {
@@ -139,7 +139,7 @@ func (r *ImageUpdaterReconciler) Reconcile(ctx context.Context, req ctrl.Request
 
 			// Remove the finalizer from the list and update the object.
 			reqLogger.Debugf("Finalizer logic complete, removing finalizer from the resource.")
-			controllerutil.RemoveFinalizer(&imageUpdater, imageUpdaterFinalizer)
+			controllerutil.RemoveFinalizer(&imageUpdater, ResourcesFinalizerName)
 			if err := r.Update(ctx, &imageUpdater); err != nil {
 				reqLogger.Errorf("Failed to remove finalizer: %v", err)
 				return ctrl.Result{}, err
@@ -152,7 +152,7 @@ func (r *ImageUpdaterReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	// If the object is not being deleted, add the finalizer if it's not present.
 	if !hasFinalizer {
 		reqLogger.Debugf("Finalizer not found, adding it to the ImageUpdater resource.")
-		controllerutil.AddFinalizer(&imageUpdater, imageUpdaterFinalizer)
+		controllerutil.AddFinalizer(&imageUpdater, ResourcesFinalizerName)
 		if err := r.Update(ctx, &imageUpdater); err != nil {
 			reqLogger.Errorf("Failed to add finalizer: %v", err)
 			return ctrl.Result{}, err
