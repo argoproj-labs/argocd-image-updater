@@ -1,9 +1,20 @@
-# VERSION defines the project version for the bundle.
-# Update this value when you upgrade the version of your project.
-# To re-generate a bundle for another specific version without changing the standard setup, you can:
-# - use the VERSION as arg of the bundle target (e.g make bundle VERSION=0.0.2)
-# - use environment variables to overwrite this value (e.g export VERSION=0.0.2)
-VERSION ?= 0.0.1
+OS?=$(shell go env GOOS)
+ARCH?=$(shell go env GOARCH)
+OUTDIR?=dist
+BINNAME?=argocd-image-updater
+
+CURRENT_DIR=$(shell pwd)
+VERSION=$(shell cat ${CURRENT_DIR}/VERSION)
+GIT_COMMIT=$(shell git rev-parse HEAD)
+BUILD_DATE=$(shell date -u +'%Y-%m-%dT%H:%M:%SZ')
+
+LDFLAGS=
+VERSION_PACKAGE=github.com/argoproj-labs/argocd-image-updater/pkg/version
+override LDFLAGS += -extldflags "-static"
+override LDFLAGS += \
+	-X ${VERSION_PACKAGE}.version=${VERSION} \
+	-X ${VERSION_PACKAGE}.gitCommit=${GIT_COMMIT} \
+	-X ${VERSION_PACKAGE}.buildDate=${BUILD_DATE}
 
 # CHANNELS define the bundle channels used in the bundle.
 # Add a new line here if you would like to change its default config. (E.g CHANNELS = "candidate,fast,stable")
@@ -130,8 +141,8 @@ lint-fix: golangci-lint ## Run golangci-lint linter and perform fixes
 ##@ Build
 
 .PHONY: build
-build: manifests generate fmt vet ## Build manager binary.
-	go build -o bin/manager cmd/main.go
+build: manifests generate fmt vet
+	CGO_ENABLED=0 GOOS=${OS} GOARCH=${ARCH} go build -ldflags '${LDFLAGS}' -o ${OUTDIR}/${BINNAME} cmd/*.go
 
 .PHONY: run
 run: manifests generate fmt vet ## Run a controller from your host.

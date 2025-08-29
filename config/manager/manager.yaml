@@ -3,7 +3,7 @@ kind: Namespace
 metadata:
   labels:
     control-plane: controller-manager
-    app.kubernetes.io/name: image-updater
+    app.kubernetes.io/name: image-updater-system
     app.kubernetes.io/managed-by: kustomize
   name: system
 ---
@@ -14,7 +14,7 @@ metadata:
   namespace: system
   labels:
     control-plane: controller-manager
-    app.kubernetes.io/name: image-updater
+    app.kubernetes.io/name: image-updater-controller-manager
     app.kubernetes.io/managed-by: kustomize
 spec:
   selector:
@@ -59,17 +59,125 @@ spec:
         #   type: RuntimeDefault
       containers:
       - command:
-        - /manager
-#        args:
+          - /manager
+        args:
+          - run
 #          - --leader-elect
 #          - --health-probe-bind-address=:8081
         image: controller:latest
         name: manager
+        env:
+          - name: IMAGE_UPDATER_INTERVAL
+            valueFrom:
+              configMapKeyRef:
+                key: interval
+                name: image-updater-config
+                optional: true
+          - name: IMAGE_UPDATER_LOGLEVEL
+            valueFrom:
+              configMapKeyRef:
+                name: image-updater-config
+                key: log.level
+                optional: true
+          - name: MAX_CONCURRENT_APPS
+            valueFrom:
+              configMapKeyRef:
+                name: image-updater-config
+                key: max_concurrent_apps
+                optional: true
+          - name: MAX_CONCURRENT_RECONCILES
+            valueFrom:
+              configMapKeyRef:
+                name: image-updater-config
+                key: max_concurrent_reconciles
+                optional: true
+          - name: GIT_COMMIT_USER
+            valueFrom:
+              configMapKeyRef:
+                name: image-updater-config
+                key: git.user
+                optional: true
+          - name: GIT_COMMIT_EMAIL
+            valueFrom:
+              configMapKeyRef:
+                name: image-updater-config
+                key: git.email
+                optional: true
+          - name: GIT_COMMIT_SIGNING_KEY
+            valueFrom:
+              configMapKeyRef:
+                key: git.commit-signing-key
+                name: image-updater-config
+                optional: true
+          - name: GIT_COMMIT_SIGNING_METHOD
+            valueFrom:
+              configMapKeyRef:
+                key: git.commit-signing-method
+                name: image-updater-config
+                optional: true
+          - name: GIT_COMMIT_SIGN_OFF
+            valueFrom:
+              configMapKeyRef:
+                key: git.commit-sign-off
+                name: image-updater-config
+                optional: true
+          - name: IMAGE_UPDATER_KUBE_EVENTS
+            valueFrom:
+              configMapKeyRef:
+                name: image-updater-config
+                key: kube.events
+                optional: true
+          - name: ENABLE_WEBHOOK
+            valueFrom:
+              configMapKeyRef:
+                name: image-updater-config
+                key: webhook.enable
+                optional: true
+          - name: WEBHOOK_PORT
+            valueFrom:
+              configMapKeyRef:
+                name: image-updater-config
+                key: webhook.port
+                optional: true
+          - name: QUAY_WEBHOOK_SECRET
+            valueFrom:
+              configMapKeyRef:
+                name: image-updater-secret
+                key: webhook.quay-secret
+                optional: true
+          - name: DOCKER_WEBHOOK_SECRET
+            valueFrom:
+              secretKeyRef:
+                name: image-updater-secret
+                key: webhook.docker-secret
+                optional: true
+          - name: GHCR_WEBHOOK_SECRET
+            valueFrom:
+              secretKeyRef:
+                name: image-updater-secret
+                key: webhook.ghcr-secret
+                optional: true
+          - name: HARBOR_WEBHOOK_SECRET
+            valueFrom:
+              secretKeyRef:
+                name: image-updater-secret
+                key: webhook.harbor-secret
+                optional: true
+          - name: WEBHOOK_RATELIMIT_ALLOWED
+            valueFrom:
+              configMapKeyRef:
+                name: image-updater-config
+                key: webhook.ratelimit-allowed
+                optional: true
         securityContext:
           allowPrivilegeEscalation: false
           capabilities:
             drop:
             - "ALL"
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          seccompProfile:
+            type: RuntimeDefault
         livenessProbe:
           httpGet:
             path: /healthz
@@ -91,5 +199,42 @@ spec:
           requests:
             cpu: 10m
             memory: 64Mi
+        volumeMounts:
+          - mountPath: /app/config
+            name: image-updater-conf
+          - mountPath: /app/config/ssh
+            name: ssh-known-hosts
+          - mountPath: /app/.ssh
+            name: ssh-config
+          - mountPath: /tmp
+            name: tmp
+          - name: ssh-signing-key
+            mountPath: /app/ssh-keys/id_rsa
+            readOnly: true
+            subPath: sshPrivateKey
       serviceAccountName: controller-manager
       terminationGracePeriodSeconds: 10
+      volumes:
+        - configMap:
+            items:
+              - key: registries.conf
+                path: registries.conf
+              - key: git.commit-message-template
+                path: commit.template
+            name: image-updater-config
+            optional: true
+          name: image-updater-conf
+        - configMap:
+            name: argocd-ssh-known-hosts-cm
+            optional: true
+          name: ssh-known-hosts
+        - configMap:
+            name: image-updater-ssh-config
+            optional: true
+          name: ssh-config
+        - name: ssh-signing-key
+          secret:
+            secretName: ssh-git-creds
+            optional: true
+        - emptyDir: {}
+          name: tmp

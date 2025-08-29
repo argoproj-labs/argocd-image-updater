@@ -15,6 +15,9 @@ namePrefix: image-updater-
 #    someName: someValue
 
 resources:
+- image-updater-cm.yaml
+- image-updater-secret.yaml
+- image-updater-ssh-config.yaml
 - ../crd
 - ../rbac
 - ../manager
