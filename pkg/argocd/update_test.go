@@ -2241,7 +2241,7 @@ replicas: 1
 		_, err := marshalParamsOverride(&app, nil)
 		assert.Error(t, err)
 	})
-	
+
 	t.Run("Whitespace Helm sources with Helm values file with multiple images", func(t *testing.T) {
 		expected := `
 nginx.image.name: nginx
