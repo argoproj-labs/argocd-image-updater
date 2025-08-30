@@ -878,6 +878,9 @@ func commitChanges(app *v1alpha1.Application, wbc *WriteBackConfig, changeList [
 }
 
 func isOnlyWhitespace(data []byte) bool {
+	if len(data) == 0 {
+		return true
+	}
 	for i := 0; i < len(data); {
 		r, size := utf8.DecodeRune(data[i:])
 		if !unicode.IsSpace(r) {
