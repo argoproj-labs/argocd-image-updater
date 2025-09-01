@@ -2,40 +2,25 @@ package main
 
 import (
 	"context"
-	"errors"
 	"math"
 	"os"
 	"os/signal"
 	"strconv"
 	"strings"
 	"syscall"
-	"text/template"
-	"time"
+
+	"github.com/bombsimon/logrusr/v2"
+	"github.com/sirupsen/logrus"
+	"github.com/spf13/cobra"
+	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/argoproj-labs/argocd-image-updater/internal/controller"
-	"github.com/argoproj-labs/argocd-image-updater/pkg/argocd"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/version"
-	"github.com/argoproj-labs/argocd-image-updater/pkg/webhook"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/env"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
-	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/registry"
-
-	"github.com/argoproj/argo-cd/v2/util/askpass"
-	"github.com/spf13/cobra"
-	"go.uber.org/ratelimit"
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
-
-// WebhookConfig holds the options for the webhook server
-type WebhookConfig struct {
-	Port                        int
-	DockerSecret                string
-	GHCRSecret                  string
-	QuaySecret                  string
-	HarborSecret                string
-	RateLimitNumAllowedRequests int
-}
 
 // NewWebhookCommand creates a new webhook command
 func NewWebhookCommand() *cobra.Command {
@@ -43,7 +28,7 @@ func NewWebhookCommand() *cobra.Command {
 	var webhookCfg *WebhookConfig = &WebhookConfig{}
 	var kubeConfig string
 	var commitMessagePath string
-	var commitMessageTpl string
+	var MaxConcurrentReconciles int
 	var webhookCmd = &cobra.Command{
 		Use:   "webhook",
 		Short: "Start webhook server to receive registry events",
@@ -62,79 +47,23 @@ Supported registries:
 			if err := log.SetLogLevel(cfg.LogLevel); err != nil {
 				return err
 			}
+			ctrl.SetLogger(logrusr.New(log.Log()))
+			setupLogger := ctrl.Log.WithName("webhook-setup")
 
-			log.Infof("%s %s starting [loglevel:%s, webhookport:%s]",
-				version.BinaryName(),
-				version.Version(),
-				strings.ToUpper(cfg.LogLevel),
-				strconv.Itoa(webhookCfg.Port),
+			setupLogger.Info("Webhook logger initialized.", "setLogLevel", cfg.LogLevel)
+			setupLogger.Info("starting",
+				"app", version.BinaryName()+": "+version.Version(),
+				"loglevel", strings.ToUpper(cfg.LogLevel),
+				"webhookPort", strconv.Itoa(webhookCfg.Port),
 			)
 
-			if commitMessagePath != "" {
-				tpl, err := os.ReadFile(commitMessagePath)
-				if err != nil {
-					if errors.Is(err, os.ErrNotExist) {
-						log.Warnf("commit message template at %s does not exist, using default", commitMessagePath)
-						commitMessageTpl = common.DefaultGitCommitMessage
-					} else {
-						log.Fatalf("could not read commit message template: %v", err)
-					}
-				} else {
-					commitMessageTpl = string(tpl)
-				}
-			}
-
-			if commitMessageTpl == "" {
-				log.Infof("Using default Git commit messages")
-				commitMessageTpl = common.DefaultGitCommitMessage
-			}
-
-			if tpl, err := template.New("commitMessage").Parse(commitMessageTpl); err != nil {
-				log.Fatalf("could not parse commit message template: %v", err)
-			} else {
-				log.Debugf("Successfully parsed commit messege template")
-				cfg.GitCommitMessage = tpl
-			}
-
-			if cfg.RegistriesConf != "" {
-				st, err := os.Stat(cfg.RegistriesConf)
-				if err != nil || st.IsDir() {
-					log.Warnf("Registry configuration at %s could not be read: %v -- using default configuration", cfg.RegistriesConf, err)
-				} else {
-					err = registry.LoadRegistryConfiguration(context.Background(), cfg.RegistriesConf, false)
-					if err != nil {
-						log.Errorf("Could not load registry configuration from %s: %v", cfg.RegistriesConf, err)
-						return nil
-					}
-				}
-			}
-
-			var err error
-
-			ctx := context.Background()
-			cfg.KubeClient, err = argocd.GetKubeConfig(ctx, cfg.ArgocdNamespace, kubeConfig)
+			ctx := ctrl.SetupSignalHandler()
+			err := SetupCommon(ctx, cfg, setupLogger, commitMessagePath, kubeConfig)
 			if err != nil {
-				log.Fatalf("could not create K8s client: %v", err)
-			}
-
-			// Start up the credentials store server
-			cs := askpass.NewServer(askpass.SocketPath)
-			csErrCh := make(chan error)
-			go func() {
-				log.Debugf("Starting askpass server")
-				csErrCh <- cs.Run()
-			}()
-
-			// Wait for cred server to be started, just in case
-			err = <-csErrCh
-			if err != nil {
-				log.Errorf("Error running askpass server: %v", err)
 				return err
 			}
 
-			cfg.GitCreds = cs
-
-			err = runWebhook(cfg, webhookCfg)
+			err = runWebhook(ctx, cfg, webhookCfg, MaxConcurrentReconciles)
 			return err
 		},
 	}
@@ -144,8 +73,9 @@ Supported registries:
 	webhookCmd.Flags().StringVar(&kubeConfig, "kubeconfig", "", "full path to kubernetes client configuration, i.e. ~/.kube/config")
 	webhookCmd.Flags().StringVar(&cfg.RegistriesConf, "registries-conf-path", common.DefaultRegistriesConfPath, "path to registries configuration file")
 	webhookCmd.Flags().IntVar(&cfg.MaxConcurrentApps, "max-concurrent-apps", env.ParseNumFromEnv("MAX_CONCURRENT_APPS", 10, 1, 100), "maximum number of ArgoCD applications that can be updated concurrently (must be >= 1)")
+	webhookCmd.Flags().IntVar(&MaxConcurrentReconciles, "max-concurrent-reconciles", env.ParseNumFromEnv("MAX_CONCURRENT_RECONCILES", 1, 1, 10), "maximum number of concurrent Reconciles which can be run (must be >= 1)")
 	webhookCmd.Flags().StringVar(&cfg.ArgocdNamespace, "argocd-namespace", "", "namespace where ArgoCD runs in (current namespace by default)")
-	webhookCmd.Flags().StringVar(&cfg.AppNamespace, "application-namespace", v1.NamespaceAll, "namespace where Argo Image Updater will manage applications (all namespaces by default)")
+
 	webhookCmd.Flags().StringVar(&cfg.GitCommitUser, "git-commit-user", env.GetStringVal("GIT_COMMIT_USER", "argocd-image-updater"), "Username to use for Git commits")
 	webhookCmd.Flags().StringVar(&cfg.GitCommitMail, "git-commit-email", env.GetStringVal("GIT_COMMIT_EMAIL", "noreply@argoproj.io"), "E-Mail address to use for Git commits")
 	webhookCmd.Flags().StringVar(&cfg.GitCommitSigningKey, "git-commit-signing-key", env.GetStringVal("GIT_COMMIT_SIGNING_KEY", ""), "GnuPG key ID or path to Private SSH Key used to sign the commits")
@@ -165,84 +95,36 @@ Supported registries:
 }
 
 // runWebhook starts the webhook server
-func runWebhook(cfg *controller.ImageUpdaterConfig, webhookCfg *WebhookConfig) error {
-	log.Infof("Starting webhook server on port %d", webhookCfg.Port)
+func runWebhook(ctx context.Context, cfg *controller.ImageUpdaterConfig, webhookCfg *WebhookConfig, maxConcurrentReconciles int) error {
+	webhookLogger := log.Log().WithFields(logrus.Fields{
+		"logger": "webhook-command",
+	})
+	ctx = log.ContextWithLogger(ctx, webhookLogger)
 
-	// Initialize the ArgoCD client
-	var err error
-
-	// Create Kubernetes client
-	cfg.KubeClient, err = argocd.GetKubeConfig(context.TODO(), "", "")
+	config, err := ctrl.GetConfig()
 	if err != nil {
-		log.Fatalf("Could not create Kubernetes client: %v", err)
+		webhookLogger.Errorf("could not get k8s config: %v", err)
 		return err
 	}
 
-	// TODO: webhook for CRD will be refactored in GITOPS-7336
-	cfg.ArgoClient, err = argocd.NewArgoCDK8sClient(controller.ImageUpdaterReconciler{}.Client)
-
+	k8sClient, err := client.New(config, client.Options{Scheme: scheme})
 	if err != nil {
-		log.Fatalf("Could not create ArgoCD client: %v", err)
+		webhookLogger.Errorf("could not create ks client: %v", err)
+		return err
 	}
 
-	// Create webhook handler
-	handler := webhook.NewWebhookHandler()
-
-	// Register supported webhook handlers
-	dockerHandler := webhook.NewDockerHubWebhook(webhookCfg.DockerSecret)
-	handler.RegisterHandler(dockerHandler)
-
-	ghcrHandler := webhook.NewGHCRWebhook(webhookCfg.GHCRSecret)
-	handler.RegisterHandler(ghcrHandler)
-
-	quayHandler := webhook.NewQuayWebhook(webhookCfg.QuaySecret)
-	handler.RegisterHandler(quayHandler)
-
-	harborHandler := webhook.NewHarborWebhook(webhookCfg.HarborSecret)
-	handler.RegisterHandler(harborHandler)
-
-	// Create webhook server
-	server := webhook.NewWebhookServer(webhookCfg.Port, handler, cfg.KubeClient, cfg.ArgoClient)
-
-	if webhookCfg.RateLimitNumAllowedRequests > 0 {
-		server.RateLimiter = ratelimit.New(webhookCfg.RateLimitNumAllowedRequests, ratelimit.Per(time.Hour))
+	reconciler := &controller.ImageUpdaterReconciler{
+		Client:                  k8sClient,
+		Scheme:                  scheme,
+		Config:                  cfg,
+		MaxConcurrentReconciles: maxConcurrentReconciles,
 	}
 
-	// Set updater config
-	server.UpdaterConfig = &argocd.UpdateConfiguration{
-		NewRegFN:               registry.NewClient,
-		ArgoClient:             cfg.ArgoClient,
-		KubeClient:             cfg.KubeClient,
-		DryRun:                 cfg.DryRun,
-		GitCommitUser:          cfg.GitCommitUser,
-		GitCommitEmail:         cfg.GitCommitMail,
-		GitCommitMessage:       cfg.GitCommitMessage,
-		GitCommitSigningKey:    cfg.GitCommitSigningKey,
-		GitCommitSigningMethod: cfg.GitCommitSigningMethod,
-		GitCommitSignOff:       cfg.GitCommitSignOff,
-		DisableKubeEvents:      cfg.DisableKubeEvents,
-		GitCreds:               cfg.GitCreds,
-	}
+	server := SetupWebhookServer(webhookCfg, reconciler)
 
-	// Set up graceful shutdown
-	stop := make(chan os.Signal, 1)
-	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+	// Create a context that is cancelled on an interrupt signal
+	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
+	defer stop()
 
-	// Start the server in a separate goroutine
-	go func() {
-		if err := server.Start(); err != nil {
-			log.Fatalf("Failed to start webhook server: %v", err)
-		}
-	}()
-
-	// Wait for interrupt signal
-	<-stop
-
-	// Gracefully shut down the server
-	log.Infof("Shutting down webhook server")
-	if err := server.Stop(); err != nil {
-		log.Errorf("Error stopping webhook server: %v", err)
-	}
-
-	return nil
+	return server.Start(ctx)
 }

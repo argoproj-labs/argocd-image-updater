@@ -9,6 +9,8 @@ import (
 	"io"
 	"net/http"
 	"strings"
+
+	"github.com/argoproj-labs/argocd-image-updater/pkg/argocd"
 )
 
 // GHCRWebhook handles GitHub Container Registry webhook events
@@ -69,7 +71,7 @@ func (g *GHCRWebhook) Validate(r *http.Request) error {
 }
 
 // Parse processes the GHCR webhook payload and returns a WebhookEvent
-func (g *GHCRWebhook) Parse(r *http.Request) (*WebhookEvent, error) {
+func (g *GHCRWebhook) Parse(r *http.Request) (*argocd.WebhookEvent, error) {
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read request body: %w", err)
@@ -136,7 +138,7 @@ func (g *GHCRWebhook) Parse(r *http.Request) (*WebhookEvent, error) {
 	// Construct repository name: owner/package
 	repository := fmt.Sprintf("%s/%s", payload.Package.Owner.Login, payload.Package.Name)
 
-	return &WebhookEvent{
+	return &argocd.WebhookEvent{
 		RegistryURL: "ghcr.io",
 		Repository:  repository,
 		Tag:         tagName,

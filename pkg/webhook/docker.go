@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+
+	"github.com/argoproj-labs/argocd-image-updater/pkg/argocd"
 )
 
 // DockerHubWebhook handles Docker Hub webhook events
@@ -47,7 +49,7 @@ func (d *DockerHubWebhook) Validate(r *http.Request) error {
 }
 
 // Parse processes the Docker Hub webhook payload and returns a WebhookEvent
-func (d *DockerHubWebhook) Parse(r *http.Request) (*WebhookEvent, error) {
+func (d *DockerHubWebhook) Parse(r *http.Request) (*argocd.WebhookEvent, error) {
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read request body: %w", err)
@@ -86,7 +88,7 @@ func (d *DockerHubWebhook) Parse(r *http.Request) (*WebhookEvent, error) {
 		return nil, fmt.Errorf("tag not found in webhook payload")
 	}
 
-	return &WebhookEvent{
+	return &argocd.WebhookEvent{
 		RegistryURL: "docker.io",
 		Repository:  repository,
 		Tag:         payload.PushData.Tag,

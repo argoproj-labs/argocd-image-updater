@@ -6,23 +6,26 @@ import (
 	"testing"
 	"time"
 
+	argocdapi "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	clifake "sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	argocdapi "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
 	argocdimageupdaterv1alpha1 "github.com/argoproj-labs/argocd-image-updater/api/v1alpha1"
+	"github.com/argoproj-labs/argocd-image-updater/pkg/argocd"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/argocd/mocks"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/kube"
+	regokube "github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/kube"
 )
 
+// Assisted-by: Gemini AI
 // TestImageUpdaterReconciler_Reconcile tests the main Reconcile function
 func TestImageUpdaterReconciler_Reconcile(t *testing.T) {
 	tests := []struct {
@@ -31,6 +34,7 @@ func TestImageUpdaterReconciler_Reconcile(t *testing.T) {
 		request        reconcile.Request
 		expectedResult reconcile.Result
 		expectedError  bool
+		postCheck      func(t *testing.T, reconciler *ImageUpdaterReconciler)
 	}{
 		{
 			name: "cache not warmed - should requeue after 5 seconds",
@@ -99,11 +103,12 @@ func TestImageUpdaterReconciler_Reconcile(t *testing.T) {
 			expectedError:  false,
 		},
 		{
-			name: "cache warmed, resource exists, CheckInterval = 0 - should requeue once",
+			name: "cache warmed, resource exists, CheckInterval = 0, Once = true - should run once and call Wg.Done",
 			setupTest: func(reconciler *ImageUpdaterReconciler, fakeClient client.Client, mockArgoClient *mocks.ArgoCD, cacheChan chan struct{}) {
 				close(cacheChan)
 				reconciler.Config.CheckInterval = 0
-				// Add to WaitGroup since CheckInterval = 0 will call Wg.Done()
+				reconciler.Once = true
+				// Add to WaitGroup since Once = true will call Wg.Done()
 				reconciler.Wg.Add(1)
 				imageUpdater := &argocdimageupdaterv1alpha1.ImageUpdater{
 					ObjectMeta: metav1.ObjectMeta{
@@ -126,7 +131,6 @@ func TestImageUpdaterReconciler_Reconcile(t *testing.T) {
 					},
 				}
 				require.NoError(t, fakeClient.Create(context.Background(), imageUpdater))
-				// No mock expectations needed since the code uses the Kubernetes client directly
 			},
 			request: reconcile.Request{
 				NamespacedName: types.NamespacedName{
@@ -136,6 +140,70 @@ func TestImageUpdaterReconciler_Reconcile(t *testing.T) {
 			},
 			expectedResult: reconcile.Result{},
 			expectedError:  false,
+			postCheck: func(t *testing.T, reconciler *ImageUpdaterReconciler) {
+				doneCh := make(chan struct{})
+				go func() {
+					reconciler.Wg.Wait()
+					close(doneCh)
+				}()
+				select {
+				case <-doneCh:
+					// Success, WaitGroup was decremented
+				case <-time.After(100 * time.Millisecond):
+					t.Error("Wg.Done() was not called but should have been when Once is true")
+				}
+			},
+		},
+		{
+			name: "cache warmed, resource exists, CheckInterval = 0, Once = false - should run once and not call Wg.Done",
+			setupTest: func(reconciler *ImageUpdaterReconciler, fakeClient client.Client, mockArgoClient *mocks.ArgoCD, cacheChan chan struct{}) {
+				close(cacheChan)
+				reconciler.Config.CheckInterval = 0
+				reconciler.Once = false
+				reconciler.Wg.Add(1)
+				imageUpdater := &argocdimageupdaterv1alpha1.ImageUpdater{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "test-once-false",
+						Namespace: "default",
+					},
+					Spec: argocdimageupdaterv1alpha1.ImageUpdaterSpec{
+						Namespace: "argocd",
+						ApplicationRefs: []argocdimageupdaterv1alpha1.ApplicationRef{
+							{
+								NamePattern: "test-app",
+								Images: []argocdimageupdaterv1alpha1.ImageConfig{
+									{
+										Alias:     "nginx",
+										ImageName: "nginx:latest",
+									},
+								},
+							},
+						},
+					},
+				}
+				require.NoError(t, fakeClient.Create(context.Background(), imageUpdater))
+			},
+			request: reconcile.Request{
+				NamespacedName: types.NamespacedName{
+					Name:      "test-once-false",
+					Namespace: "default",
+				},
+			},
+			expectedResult: reconcile.Result{},
+			expectedError:  false,
+			postCheck: func(t *testing.T, reconciler *ImageUpdaterReconciler) {
+				doneCh := make(chan struct{})
+				go func() {
+					reconciler.Wg.Wait()
+					close(doneCh)
+				}()
+				select {
+				case <-doneCh:
+					t.Error("Wg.Done() was called but should not have been when Once is false")
+				case <-time.After(100 * time.Millisecond):
+					// Success, WaitGroup was not decremented, so Wait timed out
+				}
+			},
 		},
 		{
 			name: "cache warmed, resource exists, CheckInterval > 0 - should requeue after interval",
@@ -190,7 +258,7 @@ func TestImageUpdaterReconciler_Reconcile(t *testing.T) {
 			err = argocdapi.AddToScheme(s)
 			require.NoError(t, err)
 
-			fakeClient := fake.NewClientBuilder().WithScheme(s).Build()
+			fakeClient := clifake.NewClientBuilder().WithScheme(s).Build()
 
 			// Create mock ArgoCD client
 			mockArgoClient := &mocks.ArgoCD{}
@@ -225,12 +293,17 @@ func TestImageUpdaterReconciler_Reconcile(t *testing.T) {
 			}
 			assert.Equal(t, tt.expectedResult, result)
 
+			if tt.postCheck != nil {
+				tt.postCheck(t, reconciler)
+			}
+
 			// Verify mock expectations
 			mockArgoClient.AssertExpectations(t)
 		})
 	}
 }
 
+// Assisted-by: Gemini AI
 // TestImageUpdaterReconciler_Reconcile_ComplexScenarios tests more complex scenarios
 func TestImageUpdaterReconciler_Reconcile_ComplexScenarios(t *testing.T) {
 	tests := []struct {
@@ -365,7 +438,7 @@ func TestImageUpdaterReconciler_Reconcile_ComplexScenarios(t *testing.T) {
 			err = argocdapi.AddToScheme(s)
 			require.NoError(t, err)
 
-			fakeClient := fake.NewClientBuilder().WithScheme(s).Build()
+			fakeClient := clifake.NewClientBuilder().WithScheme(s).Build()
 
 			// Create mock ArgoCD client (not used in these tests since the code uses Kubernetes client directly)
 			mockArgoClient := &mocks.ArgoCD{}
@@ -411,6 +484,7 @@ func TestImageUpdaterReconciler_Reconcile_ComplexScenarios(t *testing.T) {
 	}
 }
 
+// Assisted-by: Gemini AI
 // TestImageUpdaterReconciler_Reconcile_AdvancedScenarios tests advanced scenarios with complex configurations
 func TestImageUpdaterReconciler_Reconcile_AdvancedScenarios(t *testing.T) {
 	t.Run("ImageUpdater with CommonUpdateSettings and WriteBackConfig", func(t *testing.T) {
@@ -426,7 +500,7 @@ func TestImageUpdaterReconciler_Reconcile_AdvancedScenarios(t *testing.T) {
 		err = argocdapi.AddToScheme(s)
 		require.NoError(t, err)
 
-		fakeClient := fake.NewClientBuilder().WithScheme(s).Build()
+		fakeClient := clifake.NewClientBuilder().WithScheme(s).Build()
 
 		// Create mock ArgoCD client
 		mockArgoClient := &mocks.ArgoCD{}
@@ -516,7 +590,7 @@ func TestImageUpdaterReconciler_Reconcile_AdvancedScenarios(t *testing.T) {
 		err := argocdimageupdaterv1alpha1.AddToScheme(s)
 		require.NoError(t, err)
 
-		fakeClient := fake.NewClientBuilder().WithScheme(s).Build()
+		fakeClient := clifake.NewClientBuilder().WithScheme(s).Build()
 
 		// Create mock ArgoCD client
 		mockArgoClient := &mocks.ArgoCD{}
@@ -588,6 +662,7 @@ func TestImageUpdaterReconciler_Reconcile_AdvancedScenarios(t *testing.T) {
 	})
 }
 
+// Assisted-by: Gemini AI
 // TestImageUpdaterReconciler_Reconcile_CacheWarmup tests the cache warm-up behavior
 func TestImageUpdaterReconciler_Reconcile_CacheWarmup(t *testing.T) {
 	t.Run("cache not warmed - should requeue after 5 seconds", func(t *testing.T) {
@@ -653,6 +728,7 @@ func TestImageUpdaterReconciler_Reconcile_CacheWarmup(t *testing.T) {
 	})
 }
 
+// Assisted-by: Gemini AI
 // TestImageUpdaterReconciler_Reconcile_CheckInterval tests the CheckInterval behavior
 func TestImageUpdaterReconciler_Reconcile_CheckInterval(t *testing.T) {
 	tests := []struct {
@@ -718,6 +794,7 @@ func TestImageUpdaterReconciler_Reconcile_CheckInterval(t *testing.T) {
 	}
 }
 
+// Assisted-by: Gemini AI
 // TestImageUpdaterReconciler_Reconcile_ErrorHandling tests error handling scenarios
 func TestImageUpdaterReconciler_Reconcile_ErrorHandling(t *testing.T) {
 	t.Run("nil client should return error", func(t *testing.T) {
@@ -751,6 +828,7 @@ func TestImageUpdaterReconciler_Reconcile_ErrorHandling(t *testing.T) {
 	})
 }
 
+// Assisted-by: Gemini AI
 // TestImageUpdaterReconciler_Reconcile_Integration tests integration scenarios
 func TestImageUpdaterReconciler_Reconcile_Integration(t *testing.T) {
 	t.Run("full reconciliation flow with proper setup", func(t *testing.T) {
@@ -810,7 +888,7 @@ func TestImageUpdaterReconciler_Reconcile_MultipleCRs_CheckIntervalZero(t *testi
 		err = argocdapi.AddToScheme(s)
 		require.NoError(t, err)
 
-		fakeClient := fake.NewClientBuilder().WithScheme(s).Build()
+		fakeClient := clifake.NewClientBuilder().WithScheme(s).Build()
 
 		// Create reconciler with CheckInterval = 0 (run-once mode)
 		reconciler := &ImageUpdaterReconciler{
@@ -820,6 +898,7 @@ func TestImageUpdaterReconciler_Reconcile_MultipleCRs_CheckIntervalZero(t *testi
 			CacheWarmed:             cacheChan,
 			StopChan:                make(chan struct{}),
 			Wg:                      sync.WaitGroup{},
+			Once:                    true,
 			Config: &ImageUpdaterConfig{
 				CheckInterval:     0, // Run-once mode
 				MaxConcurrentApps: 1,
@@ -975,7 +1054,7 @@ func TestImageUpdaterReconciler_Reconcile_MultipleCRs_CheckIntervalZero(t *testi
 		err = argocdapi.AddToScheme(s)
 		require.NoError(t, err)
 
-		fakeClient := fake.NewClientBuilder().WithScheme(s).Build()
+		fakeClient := clifake.NewClientBuilder().WithScheme(s).Build()
 
 		// Create reconciler with CheckInterval = 0 (run-once mode)
 		reconciler := &ImageUpdaterReconciler{
@@ -985,6 +1064,7 @@ func TestImageUpdaterReconciler_Reconcile_MultipleCRs_CheckIntervalZero(t *testi
 			CacheWarmed:             cacheChan,
 			StopChan:                make(chan struct{}),
 			Wg:                      sync.WaitGroup{},
+			Once:                    true,
 			Config: &ImageUpdaterConfig{
 				CheckInterval:     0, // Run-once mode
 				MaxConcurrentApps: 1,
@@ -1103,7 +1183,7 @@ func TestImageUpdaterReconciler_Reconcile_MultipleCRs_CheckIntervalZero(t *testi
 		err = argocdapi.AddToScheme(s)
 		require.NoError(t, err)
 
-		fakeClient := fake.NewClientBuilder().WithScheme(s).Build()
+		fakeClient := clifake.NewClientBuilder().WithScheme(s).Build()
 
 		// Create reconciler with CheckInterval = 0 and higher concurrency
 		reconciler := &ImageUpdaterReconciler{
@@ -1113,6 +1193,7 @@ func TestImageUpdaterReconciler_Reconcile_MultipleCRs_CheckIntervalZero(t *testi
 			CacheWarmed:             cacheChan,
 			StopChan:                make(chan struct{}),
 			Wg:                      sync.WaitGroup{},
+			Once:                    true,
 			Config: &ImageUpdaterConfig{
 				CheckInterval:     0, // Run-once mode
 				MaxConcurrentApps: 3,
@@ -1253,7 +1334,7 @@ func TestImageUpdaterReconciler_Reconcile_MultipleCRs_CheckIntervalZero(t *testi
 		err = argocdapi.AddToScheme(s)
 		require.NoError(t, err)
 
-		fakeClient := fake.NewClientBuilder().WithScheme(s).Build()
+		fakeClient := clifake.NewClientBuilder().WithScheme(s).Build()
 
 		// Create reconciler with CheckInterval = 0 (run-once mode)
 		reconciler := &ImageUpdaterReconciler{
@@ -1263,6 +1344,7 @@ func TestImageUpdaterReconciler_Reconcile_MultipleCRs_CheckIntervalZero(t *testi
 			CacheWarmed:             cacheChan,
 			StopChan:                make(chan struct{}),
 			Wg:                      sync.WaitGroup{},
+			Once:                    true,
 			Config: &ImageUpdaterConfig{
 				CheckInterval:     0, // Run-once mode
 				MaxConcurrentApps: 1,
@@ -1422,7 +1504,7 @@ func TestImageUpdaterReconciler_Reconcile_MultipleCRs_CheckIntervalZero(t *testi
 		err = argocdapi.AddToScheme(s)
 		require.NoError(t, err)
 
-		fakeClient := fake.NewClientBuilder().WithScheme(s).Build()
+		fakeClient := clifake.NewClientBuilder().WithScheme(s).Build()
 
 		// Create reconciler with CheckInterval = 0 (run-once mode)
 		reconciler := &ImageUpdaterReconciler{
@@ -1432,6 +1514,7 @@ func TestImageUpdaterReconciler_Reconcile_MultipleCRs_CheckIntervalZero(t *testi
 			CacheWarmed:             cacheChan,
 			StopChan:                make(chan struct{}),
 			Wg:                      sync.WaitGroup{},
+			Once:                    true,
 			Config: &ImageUpdaterConfig{
 				CheckInterval:     0, // Run-once mode
 				MaxConcurrentApps: 1,
@@ -1585,6 +1668,7 @@ func TestImageUpdaterReconciler_Reconcile_MultipleCRs_CheckIntervalZero(t *testi
 	})
 }
 
+// Assisted-by: Gemini AI
 // TestImageUpdaterReconciler_Reconcile_Finalizer tests the finalizer functionality
 func TestImageUpdaterReconciler_Reconcile_Finalizer(t *testing.T) {
 	t.Run("resource without finalizer - should add finalizer", func(t *testing.T) {
@@ -1600,7 +1684,7 @@ func TestImageUpdaterReconciler_Reconcile_Finalizer(t *testing.T) {
 		err = argocdapi.AddToScheme(s)
 		require.NoError(t, err)
 
-		fakeClient := fake.NewClientBuilder().WithScheme(s).Build()
+		fakeClient := clifake.NewClientBuilder().WithScheme(s).Build()
 
 		// Create reconciler
 		reconciler := &ImageUpdaterReconciler{
@@ -1679,7 +1763,7 @@ func TestImageUpdaterReconciler_Reconcile_Finalizer(t *testing.T) {
 		err = argocdapi.AddToScheme(s)
 		require.NoError(t, err)
 
-		fakeClient := fake.NewClientBuilder().WithScheme(s).Build()
+		fakeClient := clifake.NewClientBuilder().WithScheme(s).Build()
 
 		// Create reconciler
 		reconciler := &ImageUpdaterReconciler{
@@ -1760,7 +1844,7 @@ func TestImageUpdaterReconciler_Reconcile_Finalizer(t *testing.T) {
 		err = argocdapi.AddToScheme(s)
 		require.NoError(t, err)
 
-		fakeClient := fake.NewClientBuilder().WithScheme(s).Build()
+		fakeClient := clifake.NewClientBuilder().WithScheme(s).Build()
 
 		// Create reconciler
 		reconciler := &ImageUpdaterReconciler{
@@ -1843,7 +1927,7 @@ func TestImageUpdaterReconciler_Reconcile_Finalizer(t *testing.T) {
 		err = argocdapi.AddToScheme(s)
 		require.NoError(t, err)
 
-		fakeClient := fake.NewClientBuilder().WithScheme(s).Build()
+		fakeClient := clifake.NewClientBuilder().WithScheme(s).Build()
 
 		// Create reconciler
 		reconciler := &ImageUpdaterReconciler{
@@ -2031,4 +2115,378 @@ func TestImageUpdaterReconciler_Reconcile_Finalizer(t *testing.T) {
 
 func stringPtr(s string) *string {
 	return &s
+}
+
+// Assisted-by: Gemini AI
+// TestImageUpdaterReconciler_RunImageUpdater tests the RunImageUpdater function
+func TestImageUpdaterReconciler_RunImageUpdater(t *testing.T) {
+	s := scheme.Scheme
+	err := argocdimageupdaterv1alpha1.AddToScheme(s)
+	require.NoError(t, err)
+	err = argocdapi.AddToScheme(s)
+	require.NoError(t, err)
+	ctx := context.Background()
+	fakeClientset := fake.NewClientset()
+
+	// Base CR for tests
+	baseCr := &argocdimageupdaterv1alpha1.ImageUpdater{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-cr",
+			Namespace: "default",
+		},
+		Spec: argocdimageupdaterv1alpha1.ImageUpdaterSpec{
+			Namespace: "argocd",
+			ApplicationRefs: []argocdimageupdaterv1alpha1.ApplicationRef{
+				{
+					NamePattern: "matching-app",
+					Images: []argocdimageupdaterv1alpha1.ImageConfig{
+						{
+							Alias:     "nginx",
+							ImageName: "nginx",
+						},
+					},
+				},
+			},
+		},
+	}
+
+	// Base apps for tests
+	matchingApp := &argocdapi.Application{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "matching-app",
+			Namespace: "argocd",
+			Labels:    map[string]string{"app": "nginx"},
+		},
+		Spec: argocdapi.ApplicationSpec{
+			Source: &argocdapi.ApplicationSource{
+				Kustomize: &argocdapi.ApplicationSourceKustomize{},
+				Path:      "some/path",
+			},
+		},
+		Status: argocdapi.ApplicationStatus{
+			Summary: argocdapi.ApplicationSummary{
+				Images: []string{"nginx:1.21.0"},
+			},
+			SourceType: argocdapi.ApplicationSourceTypeKustomize,
+		},
+	}
+	nonMatchingApp := &argocdapi.Application{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "non-matching-app",
+			Namespace: "argocd",
+		},
+		Spec: argocdapi.ApplicationSpec{
+			Source: &argocdapi.ApplicationSource{
+				Kustomize: &argocdapi.ApplicationSourceKustomize{},
+			},
+		},
+		Status: argocdapi.ApplicationStatus{
+			Summary: argocdapi.ApplicationSummary{
+				Images: []string{"redis:6.0"},
+			},
+			SourceType: argocdapi.ApplicationSourceTypeKustomize,
+		},
+	}
+
+	appInOtherNs := &argocdapi.Application{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "app-other-ns",
+			Namespace: "other-ns",
+		},
+	}
+
+	tests := []struct {
+		name                string
+		cr                  *argocdimageupdaterv1alpha1.ImageUpdater
+		apps                []client.Object
+		dryRun              bool
+		webhookEvent        *argocd.WebhookEvent
+		warmUp              bool
+		expectedResult      argocd.ImageUpdaterResult
+		expectErr           bool
+		expectedErrContains string
+	}{
+		{
+			name: "one matching application",
+			cr:   baseCr,
+			apps: []client.Object{matchingApp, nonMatchingApp},
+			expectedResult: argocd.ImageUpdaterResult{
+				NumApplicationsProcessed: 1,
+				NumImagesConsidered:      1,
+				NumErrors:                0,
+				NumImagesUpdated:         1,
+			},
+		},
+		{
+			name:   "dry run false",
+			cr:     baseCr,
+			apps:   []client.Object{matchingApp, nonMatchingApp},
+			dryRun: false,
+			expectedResult: argocd.ImageUpdaterResult{
+				NumApplicationsProcessed: 1,
+				NumImagesConsidered:      1,
+				NumErrors:                0,
+				NumImagesUpdated:         1,
+			},
+		},
+		{
+			name: "no matching applications",
+			cr: &argocdimageupdaterv1alpha1.ImageUpdater{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-cr", Namespace: "default"},
+				Spec: argocdimageupdaterv1alpha1.ImageUpdaterSpec{
+					Namespace: "argocd",
+					ApplicationRefs: []argocdimageupdaterv1alpha1.ApplicationRef{
+						{NamePattern: "no-match"},
+					},
+				},
+			},
+			apps:           []client.Object{matchingApp, nonMatchingApp},
+			expectedResult: argocd.ImageUpdaterResult{},
+		},
+		{
+			name: "multiple matching applications",
+			cr: &argocdimageupdaterv1alpha1.ImageUpdater{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-cr", Namespace: "default"},
+				Spec: argocdimageupdaterv1alpha1.ImageUpdaterSpec{
+					Namespace: "argocd",
+					ApplicationRefs: []argocdimageupdaterv1alpha1.ApplicationRef{
+						{
+							NamePattern: "matching-*",
+							Images: []argocdimageupdaterv1alpha1.ImageConfig{
+								{ImageName: "nginx"},
+							},
+						},
+					},
+				},
+			},
+			apps: []client.Object{matchingApp, nonMatchingApp},
+			expectedResult: argocd.ImageUpdaterResult{
+				NumApplicationsProcessed: 1,
+				NumImagesConsidered:      1,
+				NumImagesUpdated:         1,
+			},
+		},
+		{
+			name: "application with label selector",
+			cr: &argocdimageupdaterv1alpha1.ImageUpdater{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-cr", Namespace: "default"},
+				Spec: argocdimageupdaterv1alpha1.ImageUpdaterSpec{
+					Namespace: "argocd",
+					ApplicationRefs: []argocdimageupdaterv1alpha1.ApplicationRef{
+						{
+							NamePattern: "matching-app",
+							LabelSelectors: &metav1.LabelSelector{
+								MatchLabels: map[string]string{"app": "nginx"},
+							},
+							Images: []argocdimageupdaterv1alpha1.ImageConfig{
+								{ImageName: "nginx"},
+							},
+						},
+					},
+				},
+			},
+			apps: []client.Object{matchingApp},
+			expectedResult: argocd.ImageUpdaterResult{
+				NumApplicationsProcessed: 1,
+				NumImagesConsidered:      1,
+				NumImagesUpdated:         1,
+			},
+		},
+		{
+			name: "application in different namespace",
+			cr: &argocdimageupdaterv1alpha1.ImageUpdater{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-cr", Namespace: "default"},
+				Spec: argocdimageupdaterv1alpha1.ImageUpdaterSpec{
+					Namespace: "other-ns",
+					ApplicationRefs: []argocdimageupdaterv1alpha1.ApplicationRef{
+						{NamePattern: "app-other-ns"},
+					},
+				},
+			},
+			apps:           []client.Object{appInOtherNs},
+			expectedResult: argocd.ImageUpdaterResult{},
+		},
+		{
+			name: "error with invalid regex",
+			cr: &argocdimageupdaterv1alpha1.ImageUpdater{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-cr", Namespace: "default"},
+				Spec: argocdimageupdaterv1alpha1.ImageUpdaterSpec{
+					Namespace: "argocd",
+					ApplicationRefs: []argocdimageupdaterv1alpha1.ApplicationRef{
+						{NamePattern: "["},
+					},
+				},
+			},
+			apps:                []client.Object{matchingApp},
+			expectErr:           true,
+			expectedErrContains: "invalid application name pattern",
+		},
+		{
+			name: "with webhook event filtering application",
+			cr:   baseCr,
+			apps: []client.Object{matchingApp, nonMatchingApp},
+			webhookEvent: &argocd.WebhookEvent{
+				Repository: "nginx",
+			},
+			expectedResult: argocd.ImageUpdaterResult{
+				NumApplicationsProcessed: 1,
+				NumImagesConsidered:      1,
+				NumImagesUpdated:         1,
+			},
+		},
+		{
+			name: "with webhook event not matching",
+			cr:   baseCr,
+			apps: []client.Object{matchingApp, nonMatchingApp},
+			webhookEvent: &argocd.WebhookEvent{
+				Repository: "redis",
+			},
+			expectedResult: argocd.ImageUpdaterResult{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fakeKubeClient := clifake.NewClientBuilder().WithScheme(s).WithObjects(tt.apps...).Build()
+			reconciler := &ImageUpdaterReconciler{
+				Client: fakeKubeClient,
+				Scheme: s,
+				Config: &ImageUpdaterConfig{
+					CheckInterval:     30 * time.Second,
+					MaxConcurrentApps: 1,
+					DryRun:            tt.dryRun,
+					KubeClient: &kube.ImageUpdaterKubernetesClient{
+						KubeClient: regokube.NewKubernetesClient(ctx, fakeClientset, "default"),
+					},
+				},
+			}
+
+			result, err := reconciler.RunImageUpdater(ctx, tt.cr, tt.warmUp, tt.webhookEvent)
+
+			if tt.expectErr {
+				require.Error(t, err)
+				if tt.expectedErrContains != "" {
+					assert.Contains(t, err.Error(), tt.expectedErrContains)
+				}
+			} else {
+				require.NoError(t, err)
+				assert.Equal(t, tt.expectedResult, result)
+			}
+		})
+	}
+}
+
+// Assisted-by: Gemini AI
+// TestImageUpdaterReconciler_ProcessImageUpdaterCRs tests the ProcessImageUpdaterCRs function to ensure it correctly handles various scenarios,
+// including processing multiple CRs, handling failures, and running in warm-up mode.
+func TestImageUpdaterReconciler_ProcessImageUpdaterCRs(t *testing.T) {
+	// Common setup for all tests in this suite
+	s := scheme.Scheme
+	err := argocdimageupdaterv1alpha1.AddToScheme(s)
+	require.NoError(t, err)
+	err = argocdapi.AddToScheme(s)
+	require.NoError(t, err)
+	ctx := context.Background()
+	fakeClientset := fake.NewClientset()
+
+	// A helper function to create a new reconciler for each test run
+	newTestReconciler := func(cli client.Client) *ImageUpdaterReconciler {
+		return &ImageUpdaterReconciler{
+			Client:                  cli,
+			Scheme:                  s,
+			MaxConcurrentReconciles: 2,
+			Config: &ImageUpdaterConfig{
+				KubeClient: &kube.ImageUpdaterKubernetesClient{
+					KubeClient: regokube.NewKubernetesClient(ctx, fakeClientset, "default"),
+				},
+			},
+		}
+	}
+
+	cr1 := &argocdimageupdaterv1alpha1.ImageUpdater{
+		ObjectMeta: metav1.ObjectMeta{Name: "cr1", Namespace: "default"},
+		Spec: argocdimageupdaterv1alpha1.ImageUpdaterSpec{
+			ApplicationRefs: []argocdimageupdaterv1alpha1.ApplicationRef{{NamePattern: "app1"}},
+			Namespace:       "argocd",
+		},
+	}
+
+	cr2 := &argocdimageupdaterv1alpha1.ImageUpdater{
+		ObjectMeta: metav1.ObjectMeta{Name: "cr2", Namespace: "default"},
+		Spec: argocdimageupdaterv1alpha1.ImageUpdaterSpec{
+			ApplicationRefs: []argocdimageupdaterv1alpha1.ApplicationRef{{NamePattern: "app2"}},
+			Namespace:       "argocd",
+		},
+	}
+
+	crInvalid := &argocdimageupdaterv1alpha1.ImageUpdater{
+		ObjectMeta: metav1.ObjectMeta{Name: "cr-invalid", Namespace: "default"},
+		Spec: argocdimageupdaterv1alpha1.ImageUpdaterSpec{
+			ApplicationRefs: []argocdimageupdaterv1alpha1.ApplicationRef{{NamePattern: "["}}, // Invalid regex
+			Namespace:       "argocd",
+		},
+	}
+
+	app1 := &argocdapi.Application{
+		ObjectMeta: metav1.ObjectMeta{Name: "app1", Namespace: "argocd"},
+	}
+
+	app2 := &argocdapi.Application{
+		ObjectMeta: metav1.ObjectMeta{Name: "app2", Namespace: "argocd"},
+	}
+
+	t.Run("no CRs to process", func(t *testing.T) {
+		fakeClient := clifake.NewClientBuilder().WithScheme(s).Build()
+		reconciler := newTestReconciler(fakeClient)
+		err := reconciler.ProcessImageUpdaterCRs(ctx, []argocdimageupdaterv1alpha1.ImageUpdater{}, false, nil)
+		assert.NoError(t, err)
+	})
+
+	t.Run("one successful CR", func(t *testing.T) {
+		fakeClient := clifake.NewClientBuilder().WithScheme(s).WithObjects(app1).Build()
+		reconciler := newTestReconciler(fakeClient)
+		err := reconciler.ProcessImageUpdaterCRs(ctx, []argocdimageupdaterv1alpha1.ImageUpdater{*cr1}, false, nil)
+		assert.NoError(t, err)
+	})
+
+	t.Run("multiple successful CRs", func(t *testing.T) {
+		fakeClient := clifake.NewClientBuilder().WithScheme(s).WithObjects(app1, app2).Build()
+		reconciler := newTestReconciler(fakeClient)
+		err := reconciler.ProcessImageUpdaterCRs(ctx, []argocdimageupdaterv1alpha1.ImageUpdater{*cr1, *cr2}, false, nil)
+		assert.NoError(t, err)
+	})
+
+	t.Run("one failing CR", func(t *testing.T) {
+		fakeClient := clifake.NewClientBuilder().WithScheme(s).WithObjects(app1).Build()
+		reconciler := newTestReconciler(fakeClient)
+		err := reconciler.ProcessImageUpdaterCRs(ctx, []argocdimageupdaterv1alpha1.ImageUpdater{*crInvalid}, false, nil)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "invalid application name pattern")
+	})
+
+	t.Run("multiple CRs, one failing", func(t *testing.T) {
+		fakeClient := clifake.NewClientBuilder().WithScheme(s).WithObjects(app1).Build()
+		reconciler := newTestReconciler(fakeClient)
+		err := reconciler.ProcessImageUpdaterCRs(ctx, []argocdimageupdaterv1alpha1.ImageUpdater{*cr1, *crInvalid}, false, nil)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "invalid application name pattern")
+		assert.Contains(t, err.Error(), "failed to process 1 ImageUpdater CRs")
+	})
+
+	t.Run("warmUp mode", func(t *testing.T) {
+		fakeClient := clifake.NewClientBuilder().WithScheme(s).WithObjects(app1).Build()
+		reconciler := newTestReconciler(fakeClient)
+		err := reconciler.ProcessImageUpdaterCRs(ctx, []argocdimageupdaterv1alpha1.ImageUpdater{*cr1}, true, nil)
+		assert.NoError(t, err)
+	})
+
+	t.Run("with webhook event", func(t *testing.T) {
+		fakeClient := clifake.NewClientBuilder().WithScheme(s).WithObjects(app1).Build()
+		reconciler := newTestReconciler(fakeClient)
+		webhookEvent := &argocd.WebhookEvent{
+			Repository: "some-repo",
+		}
+		err := reconciler.ProcessImageUpdaterCRs(ctx, []argocdimageupdaterv1alpha1.ImageUpdater{*cr1}, false, webhookEvent)
+		assert.NoError(t, err)
+	})
 }

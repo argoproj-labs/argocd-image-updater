@@ -2,6 +2,7 @@ package webhook
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -12,61 +13,12 @@ import (
 
 	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
+	imageupdaterapi "github.com/argoproj-labs/argocd-image-updater/api/v1alpha1"
+	"github.com/argoproj-labs/argocd-image-updater/internal/controller"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/argocd"
-	"github.com/argoproj-labs/argocd-image-updater/pkg/argocd/mocks"
-	"github.com/argoproj-labs/argocd-image-updater/pkg/kube"
-	registryKube "github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/kube"
-	"github.com/argoproj-labs/argocd-image-updater/test/fake"
-)
-
-var (
-	mockApps = []v1alpha1.Application{
-		{
-			ObjectMeta: v1.ObjectMeta{
-				Name:      "test-appA",
-				Namespace: "argocd",
-				Annotations: map[string]string{
-					ImageUpdaterAnnotation: "quay.io/argoprojlabs/argocd-image-updater:1.X.X",
-				},
-			},
-			Spec: v1alpha1.ApplicationSpec{},
-			Status: v1alpha1.ApplicationStatus{
-				Summary: v1alpha1.ApplicationSummary{
-					Images: []string{"quay.io/argoprojlabs/argocd-image-updater:1.16.0"},
-				},
-			},
-		},
-		{
-			ObjectMeta: v1.ObjectMeta{
-				Name:      "test-appB",
-				Namespace: "argocd",
-				Annotations: map[string]string{
-					ImageUpdaterAnnotation: "localhost/testimage:12.0.X",
-				},
-			},
-			Spec: v1alpha1.ApplicationSpec{},
-			Status: v1alpha1.ApplicationStatus{
-				Summary: v1alpha1.ApplicationSummary{
-					Images: []string{"localhost/testimage:12.0.9"},
-				},
-			},
-		},
-		{
-			ObjectMeta: v1.ObjectMeta{
-				Name:      "test-appC",
-				Namespace: "argocd",
-			},
-			Spec: v1alpha1.ApplicationSpec{},
-			Status: v1alpha1.ApplicationStatus{
-				Summary: v1alpha1.ApplicationSummary{
-					Images: []string{"quay.io/centos-bootc/centos-bootc:stream10"},
-				},
-			},
-		},
-	}
 )
 
 type mockRateLimiter struct {
@@ -78,18 +30,28 @@ func (m *mockRateLimiter) Take() time.Time {
 	return time.Now()
 }
 
+// Helper function to create a mock reconciler for testing
+func createMockReconciler(t *testing.T) *controller.ImageUpdaterReconciler {
+	s := runtime.NewScheme()
+	err := imageupdaterapi.AddToScheme(s)
+	assert.NoError(t, err)
+	err = v1alpha1.AddToScheme(s)
+	assert.NoError(t, err)
+
+	cl := fake.NewClientBuilder().WithScheme(s).Build()
+
+	return &controller.ImageUpdaterReconciler{
+		Client: cl,
+		Scheme: s,
+		Config: &controller.ImageUpdaterConfig{},
+	}
+}
+
 // Helper function to create a mock server
 func createMockServer(t *testing.T, port int) *WebhookServer {
 	handler := NewWebhookHandler()
-	kubeClient := &kube.ImageUpdaterKubernetesClient{
-		KubeClient: &registryKube.KubernetesClient{
-			Clientset: fake.NewFakeKubeClient(),
-			Namespace: "test",
-		},
-	}
-	argoClient := mocks.NewArgoCD(t)
-
-	server := NewWebhookServer(port, handler, kubeClient, argoClient)
+	reconciler := createMockReconciler(t)
+	server := NewWebhookServer(port, handler, reconciler)
 	assert.NotNil(t, server, "Mock server created is nil")
 	return server
 }
@@ -126,30 +88,21 @@ func testEndpointConnectivity(t *testing.T, url string, expectedStatus int) {
 // TestNewWebhookServer ensures that WebhookServer struct is inited properly
 func TestNewWebhookServer(t *testing.T) {
 	handler := NewWebhookHandler()
-
-	kubeClient := &kube.ImageUpdaterKubernetesClient{
-		KubeClient: &registryKube.KubernetesClient{
-			Clientset: fake.NewFakeKubeClient(),
-			Namespace: "test",
-		},
-	}
-
-	argoClient := mocks.NewArgoCD(t)
-
-	server := NewWebhookServer(8080, handler, kubeClient, argoClient)
+	reconciler := createMockReconciler(t)
+	server := NewWebhookServer(8080, handler, reconciler)
 
 	assert.NotNil(t, server, "Server was nil")
 	assert.Equal(t, server.Port, 8080, "Port is not 8080 got %d", server.Port)
 	assert.Equal(t, server.Handler, handler, "Handler is not equal")
-	assert.Equal(t, server.KubeClient, kubeClient, "KubeClient is not equal")
-	assert.Equal(t, server.ArgoClient, argoClient, "ArgoClient is not equal")
+	assert.NotNil(t, server.Reconciler, "Reconciler was nil")
+
 }
 
 // TestWebhookServerStart ensures that the server is created with the correct endpoints
 func TestWebhookServerStart(t *testing.T) {
 	server := createMockServer(t, 8080)
 	go func() {
-		err := server.Start()
+		err := server.Start(context.Background())
 		if err != http.ErrServerClosed {
 			assert.NoError(t, err, "Start returned error: %s", err.Error())
 		}
@@ -168,25 +121,26 @@ func TestWebhookServerStart(t *testing.T) {
 func TestWebhookServerStop(t *testing.T) {
 	server := createMockServer(t, 8080)
 	errorChannel := make(chan error)
+	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
-		err := server.Start()
+		err := server.Start(ctx)
 		errorChannel <- err
 	}()
 
 	address := fmt.Sprintf("http://localhost:%d/", server.Port)
-	err := waitForServerToStart(address, 5*time.Second)
+	err := waitForServerToStart(address+"webhook", 5*time.Second)
 	assert.NoError(t, err, "Server failed to start")
 
 	testEndpointConnectivity(t, address+"webhook", http.StatusBadRequest)
 
-	err = server.Stop()
+	cancel()
+
 	select {
 	case err := <-errorChannel:
-		assert.Equal(t, http.ErrServerClosed.Error(), err.Error())
+		assert.NoError(t, err, "Server shutdown with error: %v", err)
 	case <-time.After(3 * time.Second):
 		t.Fatal("Server did not shut down properly")
 	}
-	assert.NoError(t, err)
 
 	client := http.Client{Timeout: 5 * time.Second}
 	_, err = client.Get("http://localhost:8080/webhook")
@@ -214,8 +168,9 @@ func TestWebhookServerHandleHealth(t *testing.T) {
 // TestWebhookServerHealthEndpoint ensures that the health endpoint of the server is working properly
 func TestWebhookServerHealthEndpoint(t *testing.T) {
 	server := createMockServer(t, 8080)
+	ctx := context.Background()
 	go func() {
-		err := server.Start()
+		err := server.Start(ctx)
 		if err != http.ErrServerClosed {
 			assert.NoError(t, err, "Start returned error: %s", err.Error())
 		}
@@ -242,10 +197,7 @@ func TestWebhookServerHealthEndpoint(t *testing.T) {
 
 // TestWebhookServerHandleWebhook tests the webhook handler
 func TestWebhookServerHandleWebhook(t *testing.T) {
-	t.Skip("skip this test for CRD branch until we implement GITOPS-7336")
 	server := createMockServer(t, 8080)
-	mockArgoClient := server.ArgoClient.(*mocks.ArgoCD)
-	mockArgoClient.On("ListApplications", mock.Anything).Return([]v1alpha1.Application{}, nil).Maybe()
 
 	handler := NewDockerHubWebhook("")
 	assert.NotNil(t, handler, "Docker handler was nil")
@@ -299,36 +251,30 @@ func TestWebhookServerHandleWebhook(t *testing.T) {
 
 // TestProcessWebhookEvent tests the processWebhookEvent helper function
 func TestProcessWebhookEvent(t *testing.T) {
-	t.Skip("skip this test for CRD branch until we implement GITOPS-7336")
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		server := createMockServer(t, 8080)
-		mockArgoClient := server.ArgoClient.(*mocks.ArgoCD)
-		mockArgoClient.On("ListApplications", mock.Anything).Return(mockApps, nil).Once()
 
-		event := &WebhookEvent{
+		event := &argocd.WebhookEvent{
 			RegistryURL: "",
 			Repository:  "nginx",
 			Tag:         "1.21.0",
 			Digest:      "sha256:thisisatestingsha256value",
 		}
 
-		err := server.processWebhookEvent(event)
+		err := server.processWebhookEvent(context.Background(), event)
 		assert.NoError(t, err)
 
-		mockArgoClient.AssertExpectations(t)
 	}()
 	wg.Wait()
 }
 
 // TestWebhookServerWebhookEndpoint ensures that the webhook endpoint of the server is working properly
 func TestWebhookServerWebhookEndpoint(t *testing.T) {
-	t.Skip("skip this test for CRD branch until we implement GITOPS-7336")
 	server := createMockServer(t, 8080)
-	mockArgoClient := server.ArgoClient.(*mocks.ArgoCD)
-	mockArgoClient.On("ListApplications", mock.Anything).Return(mockApps, nil).Once()
+	ctx := context.Background()
 
 	handler := NewDockerHubWebhook("")
 	assert.NotNil(t, handler, "Docker handler was nil")
@@ -336,7 +282,7 @@ func TestWebhookServerWebhookEndpoint(t *testing.T) {
 	server.Handler.RegisterHandler(handler)
 
 	go func() {
-		err := server.Start()
+		err := server.Start(ctx)
 		if err != http.ErrServerClosed {
 			assert.NoError(t, err, "Start returned error: %s", err.Error())
 		}
@@ -382,98 +328,9 @@ func TestWebhookServerWebhookEndpoint(t *testing.T) {
 	}
 }
 
-// TestFindMatchingApplications tests the helper function used in processWebhookEvent
-func TestFindMatchingApplications(t *testing.T) {
-	t.Skip("skip this test for CRD branch until we implement GITOPS-7336")
-
-	server := createMockServer(t, 8080)
-
-	tests := []struct {
-		name            string
-		apps            []v1alpha1.Application
-		event           *WebhookEvent
-		expectedMatches map[string]argocd.ApplicationImages
-	}{
-		{
-			name: "find single in many",
-			apps: mockApps,
-			event: &WebhookEvent{
-				RegistryURL: "quay.io",
-				Repository:  "argoprojlabs/argocd-image-updater",
-				Tag:         "1.17.0",
-				Digest:      "sha256:thisisatestingsha256value",
-			},
-			expectedMatches: map[string]argocd.ApplicationImages{
-				"argocd/test-appA": {
-					Application: v1alpha1.Application{
-						ObjectMeta: v1.ObjectMeta{
-							Name:      "test-appA",
-							Namespace: "argocd",
-							Annotations: map[string]string{
-								ImageUpdaterAnnotation: "quay.io/argoprojlabs/argocd-image-updater:1.X.X",
-							},
-						},
-						Spec: v1alpha1.ApplicationSpec{},
-						Status: v1alpha1.ApplicationStatus{
-							Summary: v1alpha1.ApplicationSummary{
-								Images: []string{"quay.io/argoprojlabs/argocd-image-updater:1.16.0"},
-							},
-						},
-					},
-					// TODO: webhook for CRD will be refactored in GITOPS-7336
-					//Images: image.ContainerImageList{
-					//	image.NewFromIdentifier("quay.io/argoprojlabs/argocd-image-updater:1.X.X"),
-					//},
-				},
-			},
-		},
-		{
-			name: "find none",
-			apps: mockApps,
-			event: &WebhookEvent{
-				RegistryURL: "",
-				Repository:  "nginx",
-				Tag:         "1.21.0",
-				Digest:      "sha256:thisisatestingsha256value",
-			},
-			expectedMatches: map[string]argocd.ApplicationImages{},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			matchedApps := server.findMatchingApplications(tt.apps, tt.event)
-			assert.Equal(t, matchedApps, tt.expectedMatches, "Matched apps were not equal")
-		})
-	}
-}
-
-// TestParseImageList tests the helper function
-// The tests are an exact duplicate of the ones in the Argocd package
-func TestParseImageList(t *testing.T) {
-
-	t.Run("Test basic parsing", func(t *testing.T) {
-		assert.Equal(t, []string{"foo", "bar"}, parseImageList(map[string]string{ImageUpdaterAnnotation: " foo, bar "}).Originals())
-		// should whitespace inside the spec be preserved?
-		assert.Equal(t, []string{"foo", "bar", "baz = qux"}, parseImageList(map[string]string{ImageUpdaterAnnotation: " foo, bar,baz = qux "}).Originals())
-		assert.Equal(t, []string{"foo", "bar", "baz=qux"}, parseImageList(map[string]string{ImageUpdaterAnnotation: "foo,bar,baz=qux"}).Originals())
-	})
-	t.Run("Test kustomize override", func(t *testing.T) {
-		imgs := *parseImageList(map[string]string{
-			ImageUpdaterAnnotation: "foo=bar",
-			fmt.Sprintf(Prefixed(ImageUpdaterAnnotationPrefix, KustomizeApplicationNameAnnotationSuffix), "foo"): "baz",
-		})
-		assert.Equal(t, "bar", imgs[0].ImageName)
-		assert.Equal(t, "baz", imgs[0].KustomizeImage.ImageName)
-	})
-}
-
 // TestWebhookServerRateLimit tests to see if the webhook endpoint's rate limiting functionality works
 func TestWebhookServerRateLimit(t *testing.T) {
-	t.Skip("skip this test for CRD branch until we implement GITOPS-7336")
 	server := createMockServer(t, 8080)
-	mockArgoClient := server.ArgoClient.(*mocks.ArgoCD)
-	mockArgoClient.On("ListApplications", mock.Anything).Return([]v1alpha1.Application{}, nil).Maybe()
 
 	handler := NewDockerHubWebhook("")
 	assert.NotNil(t, handler, "Docker handler was nil")
