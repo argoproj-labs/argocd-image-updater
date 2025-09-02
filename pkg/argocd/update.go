@@ -888,5 +888,5 @@ func isOnlyWhitespace(data []byte) bool {
 		}
 		i += size
 	}
-	return len(data) > 0
+	return true
 }
