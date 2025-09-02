@@ -11,6 +11,8 @@ import (
 	"sync"
 	"text/template"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"golang.org/x/exp/slices"
 
@@ -486,7 +488,7 @@ func marshalParamsOverride(app *v1alpha1.Application, originalData []byte) ([]by
 			images := GetImagesAndAliasesFromApplication(app)
 
 			var helmNewValues yaml.Node
-			if len(originalData) == 0 {
+			if isOnlyWhitespace(originalData) {
 				// allow non-exists target file
 				helmNewValues = yaml.Node{
 					Kind:        yaml.DocumentNode,
@@ -873,4 +875,18 @@ func commitChanges(app *v1alpha1.Application, wbc *WriteBackConfig, changeList [
 		return fmt.Errorf("unknown write back method set: %d", wbc.Method)
 	}
 	return nil
+}
+
+func isOnlyWhitespace(data []byte) bool {
+	if len(data) == 0 {
+		return true
+	}
+	for i := 0; i < len(data); {
+		r, size := utf8.DecodeRune(data[i:])
+		if !unicode.IsSpace(r) {
+			return false
+		}
+		i += size
+	}
+	return true
 }
