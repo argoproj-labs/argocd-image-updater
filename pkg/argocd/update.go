@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"golang.org/x/exp/slices"
 	yaml "sigs.k8s.io/yaml/goyaml.v3"
@@ -381,7 +383,7 @@ func marshalParamsOverride(ctx context.Context, applicationImages *ApplicationIm
 			images := GetImagesAndAliasesFromApplication(applicationImages)
 
 			var helmNewValues yaml.Node
-			if len(originalData) == 0 {
+			if isOnlyWhitespace(originalData) {
 				// allow non-exists target file
 				helmNewValues = yaml.Node{
 					Kind:        yaml.DocumentNode,
@@ -734,4 +736,18 @@ func commitChanges(ctx context.Context, applicationImages *ApplicationImages, ch
 		return fmt.Errorf("unknown write back method set: %d", wbc.Method)
 	}
 	return nil
+}
+
+func isOnlyWhitespace(data []byte) bool {
+	if len(data) == 0 {
+		return true
+	}
+	for i := 0; i < len(data); {
+		r, size := utf8.DecodeRune(data[i:])
+		if !unicode.IsSpace(r) {
+			return false
+		}
+		i += size
+	}
+	return true
 }
