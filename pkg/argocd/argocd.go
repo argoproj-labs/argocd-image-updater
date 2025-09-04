@@ -494,16 +494,49 @@ func SetHelmImage(app *v1alpha1.Application, newImage *image.ContainerImage) err
 	// we simply ignore any image-name and image-tag parameters that might be
 	// there.
 	if hpImageSpec != "" {
-		p := v1alpha1.HelmParameter{Name: hpImageSpec, Value: newImage.GetFullNameWithTag(), ForceString: true}
-		mergeParams = append(mergeParams, p)
-	} else {
-		if hpImageName != "" {
-			p := v1alpha1.HelmParameter{Name: hpImageName, Value: newImage.GetFullNameWithoutTag(), ForceString: true}
+		// Here is the case value1,value2
+		if strings.Contains(hpImageSpec, ",") {
+			var parameters = strings.Split(strings.ReplaceAll(hpImageSpec, " ", ""), ",")
+			for _, parameterName := range parameters {
+				if parameterName != "" {
+					p := v1alpha1.HelmParameter{Name: parameterName, Value: newImage.GetFullNameWithTag(), ForceString: true}
+					mergeParams = append(mergeParams, p)
+				}
+			}
+		} else {
+			p := v1alpha1.HelmParameter{Name: hpImageSpec, Value: newImage.GetFullNameWithTag(), ForceString: true}
 			mergeParams = append(mergeParams, p)
 		}
+	} else {
+		if hpImageName != "" {
+			// Here is the case value1,value2
+			if strings.Contains(hpImageName, ",") {
+				var parameters = strings.Split(strings.ReplaceAll(hpImageName, " ", ""), ",")
+				for _, parameterName := range parameters {
+					if parameterName != "" {
+						p := v1alpha1.HelmParameter{Name: parameterName, Value: newImage.GetFullNameWithoutTag(), ForceString: true}
+						mergeParams = append(mergeParams, p)
+					}
+				}
+			} else {
+				p := v1alpha1.HelmParameter{Name: hpImageName, Value: newImage.GetFullNameWithoutTag(), ForceString: true}
+				mergeParams = append(mergeParams, p)
+			}
+		}
 		if hpImageTag != "" {
-			p := v1alpha1.HelmParameter{Name: hpImageTag, Value: newImage.GetTagWithDigest(), ForceString: true}
-			mergeParams = append(mergeParams, p)
+			// Here is the case value1,value2
+			if strings.Contains(hpImageTag, ",") {
+				var parameters = strings.Split(strings.ReplaceAll(hpImageTag, " ", ""), ",")
+				for _, parameterName := range parameters {
+					if parameterName != "" {
+						p := v1alpha1.HelmParameter{Name: parameterName, Value: newImage.GetTagWithDigest(), ForceString: true}
+						mergeParams = append(mergeParams, p)
+					}
+				}
+			} else {
+				p := v1alpha1.HelmParameter{Name: hpImageTag, Value: newImage.GetTagWithDigest(), ForceString: true}
+				mergeParams = append(mergeParams, p)
+			}
 		}
 	}
 
