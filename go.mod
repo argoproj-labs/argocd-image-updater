@@ -1,10 +1,10 @@
 module github.com/argoproj-labs/argocd-image-updater
 
-go 1.24.4
+go 1.24.6
 
 require (
 	github.com/argoproj-labs/argocd-image-updater/registry-scanner v0.0.0-20250624020913-398db53f47e4
-	github.com/argoproj/argo-cd/v2 v2.14.15
+	github.com/argoproj/argo-cd/v2 v2.14.16
 	github.com/argoproj/gitops-engine v0.7.1-0.20250521000818-c08b0a72c1f1
 	github.com/argoproj/pkg v0.13.7-0.20230627120311-a4dd357b057e
 	github.com/bmatcuk/doublestar/v4 v4.9.1
