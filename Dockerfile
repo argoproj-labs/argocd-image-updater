@@ -4,6 +4,7 @@ RUN mkdir -p /src/argocd-image-updater
 WORKDIR /src/argocd-image-updater
 # cache dependencies as a layer for faster rebuilds
 COPY go.mod go.sum ./
+COPY registry-scanner ./
 RUN go mod download
 COPY . .
 

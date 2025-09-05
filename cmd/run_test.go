@@ -26,6 +26,7 @@ func TestNewRunCommand(t *testing.T) {
 	asser.Equal("false", runCmd.Flag("dry-run").Value.String())
 	asser.Equal(env.GetDurationVal("IMAGE_UPDATER_INTERVAL", 2*time.Minute).String(), runCmd.Flag("interval").Value.String())
 	asser.Equal(env.GetStringVal("IMAGE_UPDATER_LOGLEVEL", "info"), runCmd.Flag("loglevel").Value.String())
+	asser.Equal(env.GetStringVal("IMAGE_UPDATER_LOG_FORMAT", "text"), runCmd.Flag("log-format").Value.String())
 	asser.Equal("", runCmd.Flag("kubeconfig").Value.String())
 	asser.Equal("8080", runCmd.Flag("health-port").Value.String())
 	asser.Equal("8081", runCmd.Flag("metrics-port").Value.String())
