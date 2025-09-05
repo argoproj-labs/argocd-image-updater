@@ -1,6 +1,7 @@
 package log
 
 import (
+	"encoding/json"
 	"fmt"
 	"testing"
 
@@ -152,5 +153,33 @@ func Test_LogLevel(t *testing.T) {
 	t.Run("Test set invalid loglevel", func(t *testing.T) {
 		err := SetLogLevel("invalid")
 		assert.Error(t, err)
+	})
+}
+
+func Test_LogFormatJSON(t *testing.T) {
+	// We need tracing level
+	Log().SetLevel(logrus.TraceLevel)
+
+	t.Run("Test set text log format", func(t *testing.T) {
+		SetLogFormat(LogFormatText)
+		out, err := fixture.CaptureStdout(func() {
+			WithContext().AddField("foo", "bar").Infof("this is a test")
+		})
+		assert.NoError(t, err)
+		assert.Contains(t, out, "foo=bar")
+		assert.Contains(t, out, "msg=\"this is a test\"")
+	})
+	t.Run("Test set JSON log format", func(t *testing.T) {
+		SetLogFormat(LogFormatJSON)
+		out, err := fixture.CaptureStdout(func() {
+			WithContext().AddField("foo", "bar").Warnf("this is a test")
+		})
+		assert.NoError(t, err)
+
+		var data map[string]any
+		err = json.Unmarshal([]byte(out), &data)
+		assert.NoError(t, err)
+		assert.Equal(t, "bar", data["foo"])
+		assert.Equal(t, "this is a test", data["msg"])
 	})
 }
