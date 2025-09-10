@@ -46,6 +46,7 @@ nav:
     - Images: configuration/images.md
     - Container Registries: configuration/registries.md
     - Webhook: configuration/webhook.md
+    - Migration Guide: configuration/migration.md
   - Contributing:
     - Overview: contributing/start.md
     - Developing: contributing/development.md

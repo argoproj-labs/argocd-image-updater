@@ -8,8 +8,18 @@ an image that is to be updated.
 Argo CD Image Updater supports different update strategies for the images that
 are configured to be tracked and updated.
 
-You can configure the update strategy to be used for each image individually,
-with the default being the `semver` strategy.
+You can configure the update strategy to be used at multiple levels in the
+`ImageUpdater` custom resource, with the default being the `semver` strategy:
+
+* **Global level**: In `spec.commonUpdateSettings` - applies to all applications
+  unless overridden at a more specific level
+* **Per application level**: In `spec.applicationRefs[].commonUpdateSettings` -
+  overrides the global configuration for specific applications
+* **Per image level**: In `spec.applicationRefs[].images[].commonUpdateSettings` -
+  overrides both global and application-level configuration for specific images
+
+Image-level configuration takes precedence over application-level configuration,
+which takes precedence over global configuration.
 
 The following update strategies are currently supported:
 
@@ -45,9 +55,12 @@ Strategy name: `semver`
 Basic configuration:
 
 ```yaml
-argocd-image-updater.argoproj.io/image-list: some/image[:<version_constraint>]
-# Specifying update-strategy is optional, because semver is the default
-argocd-image-updater.argoproj.io/<image>.update-strategy: semver
+images:
+  - alias: "someImage"
+    imageName: "some/image[:<version_constraint>]"
+    commonUpdateSettings:
+      # Specifying update-strategy is optional, because semver is the default
+      updateStrategy: "semver"
 ```
 
 The `semver` strategy allows you to track & update images which use tags that
@@ -65,38 +78,45 @@ This will allow you to update to the latest version of an image within a given
 patch branch or minor release, or just to the latest version that has is tagged
 with a valid semantic version identifier.
 
-To tell Argo CD Image Updater which versions are allowed, simply give a semver
-version as a constraint in the `image-list` annotation. For example, to allow
-updates to the latest patch release within the `1.2` minor release branch, use
+To tell Argo CD Image Updater which versions are allowed, simply specify a semver
+version constraint in the `imageName` field. For example,
+to allow updates to the latest patch release within the `1.2` minor release
+branch, use
 
-```
-argocd-image-updater.argoproj.io/image-list: some/image:1.2.x
+```yaml
+images:
+  - alias: "someImage"
+    imageName: "some/image:1.2.x"
 ```
 
 The above example would update to any new tag pushed to the registry matching
-this constraint, e.g. `1.2.5`, `1.2.12` etc, but not to a new minor version
+this constraint, e.g. `1.2.5`, `1.2.12` etc., but not to a new minor version
 (e.g. `1.3`).
 
 !!!warning "A note on the current image tag"
     For semver strategy to work, the current application tag must already follow
-    semver. Otherwise no comparison can happen by the updater. See discussion at [#270](https://github.com/argoproj-labs/argocd-image-updater/issues/270) for more details.
+    semver. Otherwise, no comparison can happen by the updater. See discussion at [#270](https://github.com/argoproj-labs/argocd-image-updater/issues/270) for more details.
 
 Likewise, to allow updates to any minor release within the major version `1`,
 use
 
 ```yaml
-argocd-image-updater.argoproj.io/image-list: some/image:1.x
+images:
+  - alias: "someImage"
+    imageName: "some/image:1.x"
 ```
 
 The above example would update to any new tag pushed to the registry matching
-this constraint, e.g. `1.2.12`, `1.3.0`, `1.15.2` etc, but not to a new major
+this constraint, e.g. `1.2.12`, `1.3.0`, `1.15.2` etc., but not to a new major
 version (e.g. `2.0`).
 
 If you also want to allow updates to pre-release versions (e.g. `v2.0-rc1`),
 you need to append the suffix `-0` to the constraint, for example
 
-```
-argocd-image-updater.argoproj.io/image-list: some/image:2.x-0
+```yaml
+images:
+  - alias: "someImage"
+    imageName: "some/image:2.x-0"
 ```
 
 If no version constraint is specified in the list of allowed images, Argo CD
@@ -134,14 +154,11 @@ Strategy name: `latest` or `newest-build`
 Basic configuration:
 
 ```yaml
-argocd-image-updater.argoproj.io/image-list: <alias>=some/image
-argocd-image-updater.argoproj.io/<alias>.update-strategy: latest
-```
-or
-
-```yaml
-argocd-image-updater.argoproj.io/image-list: <alias>=some/image
-argocd-image-updater.argoproj.io/<alias>.update-strategy: newest-build
+images:
+  - alias: "alias"
+    imageName: "some/image"
+    commonUpdateSettings:
+      updateStrategy: "newest-build"
 ```
 
 Argo CD Image Updater can update to the image that has the most recent build
@@ -159,22 +176,17 @@ application, but Image Updater will pick the `latest` tag name. In order to
 prevent such a situation, you need to further restrict the tags that Image
 Updater will inspect, see below.
 
-By default, this update strategy will inspect all of the tags it found in the
+By default, this update strategy will inspect all the tags it found in the
 image's repository. If you wish to allow only certain tags to be considered
 for update, you will need additional configuration. For example,
 
 ```yaml
-argocd-image-updater.argoproj.io/image-list: myimage=some/image
-argocd-image-updater.argoproj.io/myimage.update-strategy: latest
-argocd-image-updater.argoproj.io/myimage.allow-tags: regexp:^[0-9a-f]{7}$
-```
-
-or 
-
-```yaml
-argocd-image-updater.argoproj.io/image-list: myimage=some/image
-argocd-image-updater.argoproj.io/myimage.update-strategy: newest-build
-argocd-image-updater.argoproj.io/myimage.allow-tags: regexp:^[0-9a-f]{7}$
+images:
+  - alias: "myimage"
+    imageName: "some/image"
+    commonUpdateSettings:
+      updateStrategy: "newest-build"
+      allowTags: "regexp:^[0-9a-f]{7}$"
 ```
 
 would only consider tags that match a given regular expression for update. In
@@ -185,17 +197,12 @@ like `a5fb3d3` or `f7bb2e3`, but not `latest` or `master`.
 Likewise, you can ignore a certain list of tags from your repository:
 
 ```yaml
-argocd-image-updater.argoproj.io/image-list: myimage=some/image
-argocd-image-updater.argoproj.io/myimage.update-strategy: latest
-argocd-image-updater.argoproj.io/myimage.ignore-tags: latest, master
-```
-
-or 
-
-```yaml
-argocd-image-updater.argoproj.io/image-list: myimage=some/image
-argocd-image-updater.argoproj.io/myimage.update-strategy: newest-build
-argocd-image-updater.argoproj.io/myimage.ignore-tags: latest, master
+images:
+  - alias: "myimage"
+    imageName: "some/image"
+    commonUpdateSettings:
+      updateStrategy: "newest-build"
+      ignoreTags: [ "latest", "master" ]
 ```
 
 This would allow for considering all tags found but `latest` and `master`. You
@@ -209,8 +216,11 @@ Strategy name: `digest`
 Basic configuration:
 
 ```yaml
-argocd-image-updater.argoproj.io/image-list: <alias>=some/image:<tag_name>
-argocd-image-updater.argoproj.io/<alias>.update-strategy: digest
+images:
+  - alias: "alias"
+    imageName: "some/image:<tag_name>"
+    commonUpdateSettings:
+      updateStrategy: "digest"
 ```
 
 This update strategy inspects a single tag in the registry for changes, and
@@ -238,8 +248,11 @@ For example, the following specification would always update the image for an
 application on each new push of the image `some/image` with the tag `latest`:
 
 ```yaml
-argocd-image-updater.argoproj.io/image-list: myimage=some/image:latest
-argocd-image-updater.argoproj.io/myimage.update-strategy: digest
+images:
+  - alias: "myimage"
+    imageName: "some/image:latest"
+    commonUpdateSettings:
+      updateStrategy: "digest"
 ```
 
 ### <a name="strategy-name"></a>Update according to lexical sort
@@ -255,14 +268,20 @@ Strategy name: `name` or `alphabetical`
 Basic configuration:
 
 ```yaml
-argocd-image-updater.argoproj.io/image-list: <alias>=some/image
-argocd-image-updater.argoproj.io/<alias>.update-strategy: name
+images:
+  - alias: "alias"
+    imageName: "some/image"
+    commonUpdateSettings:
+      updateStrategy: "name"
 ```
 or
 
 ```yaml
-argocd-image-updater.argoproj.io/image-list: <alias>=some/image
-argocd-image-updater.argoproj.io/<alias>.update-strategy: alphabetical
+images:
+  - alias: "alias"
+    imageName: "some/image"
+    commonUpdateSettings:
+      updateStrategy: "alphabetical"
 ```
 
 This update strategy sorts the tags returned by the registry in a lexical way
@@ -275,18 +294,14 @@ By default, this update strategy will inspect all of the tags it found in the
 image's repository. If you wish to allow only certain tags to be considered
 for update, you will need additional configuration. For example,
 
-```yaml
-argocd-image-updater.argoproj.io/image-list: myimage=some/image
-argocd-image-updater.argoproj.io/myimage.update-strategy: name
-argocd-image-updater.argoproj.io/myimage.allow-tags: regexp:^[0-9]{4}-[0-9]{2}-[0-9]{2}$
-```
-
-or 
 
 ```yaml
-argocd-image-updater.argoproj.io/image-list: myimage=some/image
-argocd-image-updater.argoproj.io/myimage.update-strategy: alphabetical
-argocd-image-updater.argoproj.io/myimage.allow-tags: regexp:^[0-9]{4}-[0-9]{2}-[0-9]{2}$
+images:
+  - alias: "myimage"
+    imageName: "some/image"
+    commonUpdateSettings:
+      updateStrategy: "alphabetical"
+      allowTags: "regexp:^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
 ```
 
 would only consider tags that match a given regular expression for update. In

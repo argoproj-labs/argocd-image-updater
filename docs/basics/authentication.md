@@ -5,9 +5,9 @@ to external systems in order to fulfill its duties.
 
 ## <a name="auth-kubernetes"></a>Authentication to Kubernetes
 
-If you are running Argo CD Image Updater as a Kubernetes workload in the
-`kubernetes` API access mode (which is the default), it uses the token of a
-ServiceAccount mounted to its pod to authenticate at the Kubernetes API.
+If you are running Argo CD Image Updater as a Kubernetes workload, it uses the
+token of a ServiceAccount mounted to its pod to authenticate at the Kubernetes
+API.
 
 The name of this ServiceAccount is `argocd-image-updater`, and it gets
 created through the installation manifests in the installation namespace.
@@ -21,24 +21,6 @@ for Argo CD Image Updater to access the Kubernetes API. If your Argo CD
 installation is in a different namespace than `argocd`, you would have
 to adapt the RoleBinding to bind to the ServiceAccount in the correct
 namespace.
-
-## <a name="auth-argocd"></a>Authentication to Argo CD
-
-If you are using Argo CD Image Updater to connect to Argo CD via its API,
-you will need to create credentials in Argo CD and provide them to the
-Image Updater.
-
-This usually involves the following steps:
-
-1. Create a local user with `apiKey` capabilities in Argo CD
-1. Generate an authentication token for that user
-1. Create appropriate RBAC permissions for that user in Argo CD
-1. Configure Argo CD Image Updater to connect to the Argo CD API endpoint
-   instead of the Kubernetes API
-1. Configure Argo CD Image Updater to use the credentials created in steps 1
-   and 2 for authenticating at the Argo CD API
-
-A complete walk-through can be found in the installation guide.
 
 ## <a name="auth-registries"></a>Authentication to container registries
 
