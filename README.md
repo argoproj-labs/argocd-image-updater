@@ -75,7 +75,7 @@ The following things are on the roadmap until the `v1.0` release
 
 * [x] Extend Argo CD functionality to write back to Git
 
-* [ ] Provide web hook support to trigger update check for a given image
+* [x] Provide web hook support to trigger update check for a given image
 
 * [x] Use concurrency for updating multiple applications at once
 

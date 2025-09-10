@@ -3,27 +3,28 @@
 ## General process overview
 
 Argo CD Image Updater can update container images managed by one or more of
-your Argo CD applications, according to how it is configured.
+your Argo CD applications, according to how it is configured using `ImageUpdater`
+custom resources.
 
 The workflow of Argo CD Image Updater can be described as follows:
 
-* It scans for currently configured Argo CD `Application` resources either
-  using the Kubernetes or the Argo CD API (depending on how you installed
-  the Argo CD Image Updater). The `Applications` to consider can be further
-  limited by having Argo CD Image Updater selecting only those applications
-  whose name match a given pattern, or match a given label.
+* The controller uses a reconciliation loop that monitors `ImageUpdater` custom
+  resources. Each `ImageUpdater` CR defines which Argo CD applications should
+  be monitored for image updates through the `applicationRefs` field, which can
+  specify applications by name patterns or label selectors.
 
-* It then goes through the list of `Applications` found and inspects each
-  for the annotation `argocd-image-updater.argoproj.io/image-list`. This
-  annotation holds a list of image names that should be updated, and is a
-  mandatory annotation for Argo CD Image Updater to indicate it should
-  process this `Application`. Read more about the syntax expected in this
-  annotation's value in the [marking images for update](../configuration/images.md)
-  section in this doc.
+* For each `ImageUpdater` CR, the controller lists all Argo CD `Application`
+  resources in the specified namespace and matches them against the
+  `applicationRefs` patterns and label selectors defined in the CR.
 
-* For each image found in the list, Argo CD Image Updater will first check
-  if this image is actually deployed with the application. It does a strict
-  check for the complete image name, including the registry the image is
+* The controller then processes each matching application according to the
+  image configurations defined in the `ImageUpdater` CR. Each image
+  configuration specifies the image name, update strategy, and other
+  constraints like allowed tags, ignore tags, and platform requirements.
+
+* For each image found in the configuration, Argo CD Image Updater will first
+  check if this image is actually deployed with the application. It does a
+  strict check for the complete image name, including the registry the image is
   pulled from. For example, `docker.io/some/image` and `quay.io/some/image`,
   while both referring to `some/image`, are not considered equal. This strict
   behavior can be relaxed, however. See [forcing image updates](../configuration/images.md#forcing-image-updates) for
