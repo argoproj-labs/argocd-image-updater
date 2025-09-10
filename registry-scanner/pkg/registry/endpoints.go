@@ -184,20 +184,21 @@ func inferRegistryEndpointFromPrefix(prefix string) *RegistryEndpoint {
 	return NewRegistryEndpoint(prefix, prefix, apiURL, "", "", false, TagListSortUnsorted, 20, 0)
 }
 
-// find registry by prefix based on full image name
+// findRegistryEndpointByImage finds registry by prefix based on full image name
 func findRegistryEndpointByImage(img *image.ContainerImage) (ep *RegistryEndpoint) {
-	log.Debugf("Try to find endpoint by image: %s/%s", img.RegistryURL, img.ImageName)
-	registryLock.RLock()
 	imgName := fmt.Sprintf("%s/%s", img.RegistryURL, img.ImageName)
+	log.Debugf("Try to find endpoint by image: %s", imgName)
+	registryLock.RLock()
+	defer registryLock.RUnlock()
 
 	for _, registry := range registries {
-		if (ep == nil && strings.HasPrefix(imgName, registry.RegistryPrefix)) || (strings.HasPrefix(imgName, registry.RegistryPrefix) && len(registry.RegistryPrefix) > len(ep.RegistryPrefix)) {
+		matchRegistryPrefix := strings.HasPrefix(imgName, registry.RegistryPrefix)
+		if (ep == nil && matchRegistryPrefix) || (matchRegistryPrefix && len(registry.RegistryPrefix) > len(ep.RegistryPrefix)) {
 			log.Debugf("Selected registry: '%s' (last selection in log - final)", registry.RegistryName)
 			ep = registry
 		}
 	}
 
-	registryLock.RUnlock()
 	return
 }
 
@@ -220,12 +221,12 @@ func GetRegistryEndpoint(img *image.ContainerImage) (*RegistryEndpoint, error) {
 	if ok {
 		return registry, nil
 	} else {
-		var err error
 		ep := findRegistryEndpointByImage(img)
 		if ep != nil {
-			return ep, err
+			return ep, nil
 		}
 
+		var err error
 		ep = inferRegistryEndpointFromPrefix(prefix)
 		if ep != nil {
 			err = AddRegistryEndpoint(ep)
