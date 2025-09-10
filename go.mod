@@ -3,7 +3,7 @@ module github.com/argoproj-labs/argocd-image-updater
 go 1.24.6
 
 require (
-	github.com/argoproj-labs/argocd-image-updater/registry-scanner v0.0.0-20250624020913-398db53f47e4
+	github.com/argoproj-labs/argocd-image-updater/registry-scanner v0.0.0-20250908234756-5f7bb2916132
 	github.com/argoproj/argo-cd/v2 v2.14.16
 	github.com/argoproj/gitops-engine v0.7.1-0.20250521000818-c08b0a72c1f1
 	github.com/argoproj/pkg v0.13.7-0.20230627120311-a4dd357b057e
@@ -37,7 +37,7 @@ require (
 	dario.cat/mergo v1.0.1 // indirect
 	github.com/Azure/go-ansiterm v0.0.0-20230124172434-306776ec8161 // indirect
 	github.com/MakeNowJust/heredoc v1.0.0 // indirect
-	github.com/Masterminds/semver/v3 v3.3.1 // indirect
+	github.com/Masterminds/semver/v3 v3.4.0 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/ProtonMail/go-crypto v1.1.6 // indirect
 	github.com/benbjohnson/clock v1.3.0 // indirect
@@ -174,9 +174,9 @@ require (
 )
 
 replace (
+	// Uncomment for development and local testing, and comment out for releases
+	github.com/argoproj-labs/argocd-image-updater/registry-scanner => ./registry-scanner/
 	github.com/cyphar/filepath-securejoin => github.com/cyphar/filepath-securejoin v0.3.6
-	// Uncomment for local testing
-	// github.com/argoproj-labs/argocd-image-updater/registry-scanner => ./registry-scanner/
 	github.com/golang/protobuf => github.com/golang/protobuf v1.5.4
 
 	k8s.io/api => k8s.io/api v0.32.2
