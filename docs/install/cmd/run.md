@@ -195,11 +195,11 @@ Set the log level to *level*, where *level* can be one of `trace`, `debug`,
 
 Can also be set using the *IMAGE_UPDATER_LOGLEVEL* environment variable.
 
-**--log-format *format***
+**--logformat *format***
 
-Set the log format to *format*, where *level* can be one of `text` or `json`
+Set the log format to *format*, where *format* can be one of `text` or `json`
 
-Can also be set using the *IMAGE_UPDATER_LOG_FORMAT* environment variable.
+Can also be set using the *IMAGE_UPDATER_LOGFORMAT* environment variable.
 
 **--match-application-label *selector***
 
