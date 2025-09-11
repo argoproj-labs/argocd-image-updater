@@ -954,23 +954,6 @@ func TestKubernetesClient(t *testing.T) {
 	k8sClient, err := newTestK8sClient(app1, app2)
 	require.NoError(t, err)
 
-	t.Run("List applications", func(t *testing.T) {
-		cr := &api.ImageUpdater{
-			Spec: api.ImageUpdaterSpec{
-				Namespace: "testns", // Target namespace
-				ApplicationRefs: []api.ApplicationRef{
-					{NamePattern: "test-app1"},
-					{NamePattern: "test-app2"},
-					{NamePattern: "non-existent-app"},
-				},
-			},
-		}
-		apps, err := k8sClient.ListApplications(context.Background(), cr)
-		require.NoError(t, err)
-		require.Len(t, apps, 2)
-		assert.ElementsMatch(t, []string{"test-app1", "test-app2"}, []string{apps[0].Name, apps[1].Name})
-	})
-
 	t.Run("Get application successful", func(t *testing.T) {
 		app, err := k8sClient.GetApplication(context.Background(), "testns", "test-app1")
 		require.NoError(t, err)
@@ -981,28 +964,6 @@ func TestKubernetesClient(t *testing.T) {
 		_, err := k8sClient.GetApplication(context.Background(), "test-ns-non-existent", "test-app-non-existent")
 		require.Error(t, err)
 		assert.True(t, errors.IsNotFound(err), "error should be a 'Not Found' error")
-	})
-
-	t.Run("List applications when none are found", func(t *testing.T) {
-		// Create the fake client without test applications
-		k8sClient, err := newTestK8sClient()
-		require.NoError(t, err)
-
-		// Define an ImageUpdater CR that targets applications that don't exist
-		cr := &api.ImageUpdater{
-			ObjectMeta: v1.ObjectMeta{Name: "test-cr"},
-			Spec: api.ImageUpdaterSpec{
-				Namespace: "testns",
-				ApplicationRefs: []api.ApplicationRef{
-					{NamePattern: "test-app1"},
-					{NamePattern: "non-existent-app"},
-				},
-			},
-		}
-		apps, err := k8sClient.ListApplications(context.Background(), cr)
-		require.NoError(t, err)
-		require.NotNil(t, apps)
-		assert.Len(t, apps, 0)
 	})
 }
 
@@ -1377,11 +1338,59 @@ func Test_parseImageList(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := parseImageList(context.Background(), tc.inputImages, nil)
+			got := parseImageList(context.Background(), tc.inputImages, nil, nil)
 			require.NotNil(t, got)
 			assert.ElementsMatch(t, tc.expectedImages, *got, "The parsed image list should match the expected list")
 		})
 	}
+
+	// Webhook filtering behavior
+	t.Run("Webhook: match by repository with empty registry", func(t *testing.T) {
+		images := []api.ImageConfig{{Alias: "web", ImageName: "nginx:1.21.0"}}
+		event := &WebhookEvent{RegistryURL: "ghcr.io", Repository: "nginx"}
+		got := parseImageList(context.Background(), images, nil, event)
+		require.NotNil(t, got)
+		expected := ImageList{newExpectedImageForIuCR("web=nginx:1.21.0", "")}
+		assert.ElementsMatch(t, expected, *got)
+	})
+
+	t.Run("Webhook: skip on repository mismatch", func(t *testing.T) {
+		images := []api.ImageConfig{{Alias: "web", ImageName: "nginx:1.21.0"}}
+		event := &WebhookEvent{RegistryURL: "ghcr.io", Repository: "redis"}
+		got := parseImageList(context.Background(), images, nil, event)
+		require.NotNil(t, got)
+		assert.Len(t, *got, 0)
+	})
+
+	t.Run("Webhook: skip on registry mismatch", func(t *testing.T) {
+		images := []api.ImageConfig{{Alias: "idp", ImageName: "quay.io/dexidp/dex:v1.23.0"}}
+		event := &WebhookEvent{RegistryURL: "ghcr.io", Repository: "dexidp/dex"}
+		got := parseImageList(context.Background(), images, nil, event)
+		require.NotNil(t, got)
+		assert.Len(t, *got, 0)
+	})
+
+	t.Run("Webhook: match with explicit registry and repository", func(t *testing.T) {
+		images := []api.ImageConfig{{Alias: "app", ImageName: "ghcr.io/myorg/app:1.0"}}
+		event := &WebhookEvent{RegistryURL: "ghcr.io", Repository: "myorg/app"}
+		got := parseImageList(context.Background(), images, nil, event)
+		require.NotNil(t, got)
+		expected := ImageList{newExpectedImageForIuCR("app=ghcr.io/myorg/app:1.0", "")}
+		assert.ElementsMatch(t, expected, *got)
+	})
+
+	t.Run("Webhook: multiple images only matching kept", func(t *testing.T) {
+		images := []api.ImageConfig{
+			{Alias: "web", ImageName: "nginx:1.21.0"},
+			{Alias: "db", ImageName: "redis:6"},
+			{Alias: "app", ImageName: "ghcr.io/myorg/app:2.0"},
+		}
+		event := &WebhookEvent{RegistryURL: "ghcr.io", Repository: "myorg/app"}
+		got := parseImageList(context.Background(), images, nil, event)
+		require.NotNil(t, got)
+		expected := ImageList{newExpectedImageForIuCR("app=ghcr.io/myorg/app:2.0", "")}
+		assert.ElementsMatch(t, expected, *got)
+	})
 }
 
 // Helper functions to create pointers for test data, making the test setup cleaner.
@@ -1763,6 +1772,7 @@ func Test_nameMatchesPattern(t *testing.T) {
 		appName string
 		pattern string
 		want    bool
+		wantErr bool
 	}{
 		{
 			name:    "Exact match",
@@ -1829,12 +1839,17 @@ func Test_nameMatchesPattern(t *testing.T) {
 			appName: "any-app",
 			pattern: "my-app-[", // This is an invalid glob pattern
 			want:    false,
+			wantErr: true,
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := nameMatchesPattern(context.Background(), tc.appName, tc.pattern)
+			got, err := nameMatchesPattern(context.Background(), tc.appName, tc.pattern)
+			if (err != nil) != tc.wantErr {
+				t.Errorf("nameMatchesPattern() error = %v, wantErr %v", err, tc.wantErr)
+				return
+			}
 			if got != tc.want {
 				t.Errorf("nameMatchesPattern(%q, %q) = %v; want %v", tc.appName, tc.pattern, got, tc.want)
 			}
@@ -2144,13 +2159,13 @@ func Test_processApplicationForUpdate(t *testing.T) {
 			expectKey:         false,
 		},
 		{
-			name:              "Supported app with no images in ref should be added with empty image list",
+			name:              "Supported app with no images in ref should be skipped",
 			app:               kustomizeApp,
 			appRef:            appRefWithoutImages,
 			appNSName:         "testns/kustomize-app-no-images",
 			initialApps:       make(map[string]ApplicationImages),
-			expectedAppsCount: 1,
-			expectKey:         true,
+			expectedAppsCount: 0,
+			expectKey:         false,
 			expectedImagesLen: 0,
 		},
 		{
@@ -2172,7 +2187,7 @@ func Test_processApplicationForUpdate(t *testing.T) {
 			ctx := context.Background()
 			appsForUpdate := tc.initialApps
 
-			processApplicationForUpdate(ctx, tc.app, tc.appRef, nil, nil, tc.appNSName, appsForUpdate)
+			processApplicationForUpdate(ctx, tc.app, tc.appRef, nil, nil, tc.appNSName, appsForUpdate, nil)
 
 			assert.Len(t, appsForUpdate, tc.expectedAppsCount, "The final map should have the expected number of applications")
 
@@ -2192,6 +2207,19 @@ func Test_processApplicationForUpdate(t *testing.T) {
 			}
 		})
 	}
+
+	// Ensure early return when webhook filters out all images (empty imageList)
+	t.Run("Should skip adding app when webhook filters out all images", func(t *testing.T) {
+		ctx := context.Background()
+		appsForUpdate := make(map[string]ApplicationImages)
+		webhook := &WebhookEvent{RegistryURL: "ghcr.io", Repository: "redis"}
+		appNSName := "testns/kustomize-app"
+
+		processApplicationForUpdate(ctx, kustomizeApp, appRefWithImages, nil, nil, appNSName, appsForUpdate, webhook)
+
+		assert.Len(t, appsForUpdate, 0)
+		assert.NotContains(t, appsForUpdate, appNSName)
+	})
 }
 
 // Assisted-by: Gemini AI
@@ -2461,7 +2489,7 @@ func Test_FilterApplicationsForUpdate(t *testing.T) {
 				Spec: api.ImageUpdaterSpec{
 					Namespace: "testns",
 					ApplicationRefs: []api.ApplicationRef{
-						{NamePattern: "*", LabelSelectors: &v1.LabelSelector{MatchLabels: map[string]string{"env": "prod"}}},
+						{NamePattern: "*", LabelSelectors: &v1.LabelSelector{MatchLabels: map[string]string{"env": "prod"}}, Images: []api.ImageConfig{{Alias: "nginx", ImageName: "nginx:1.0"}}},
 					},
 				},
 			},
@@ -2491,7 +2519,7 @@ func Test_FilterApplicationsForUpdate(t *testing.T) {
 				Spec: api.ImageUpdaterSpec{
 					Namespace: "testns",
 					ApplicationRefs: []api.ApplicationRef{
-						{NamePattern: "*", LabelSelectors: &v1.LabelSelector{MatchLabels: map[string]string{"env": "prod"}}},
+						{NamePattern: "*", LabelSelectors: &v1.LabelSelector{MatchLabels: map[string]string{"env": "prod"}}, Images: []api.ImageConfig{{Alias: "nginx", ImageName: "nginx:1.0"}}},
 					},
 				},
 			},
@@ -2523,6 +2551,19 @@ func Test_FilterApplicationsForUpdate(t *testing.T) {
 			},
 			expectedKeys: []string{},
 		},
+		{
+			name:        "Error on invalid name pattern",
+			initialApps: []client.Object{appProd, appStaging},
+			imageUpdaterCR: &api.ImageUpdater{
+				Spec: api.ImageUpdaterSpec{
+					Namespace: "testns",
+					ApplicationRefs: []api.ApplicationRef{
+						{NamePattern: "app-[", Images: []api.ImageConfig{{Alias: "nginx", ImageName: "nginx:1.0"}}},
+					},
+				},
+			},
+			expectError: true,
+		},
 	}
 
 	for _, tc := range testCases {
@@ -2537,7 +2578,7 @@ func Test_FilterApplicationsForUpdate(t *testing.T) {
 				},
 			}
 			// Execute
-			appsForUpdate, err := FilterApplicationsForUpdate(ctx, client, &kubeClient, tc.imageUpdaterCR)
+			appsForUpdate, err := FilterApplicationsForUpdate(ctx, client, &kubeClient, tc.imageUpdaterCR, nil)
 
 			// Assert
 			if tc.expectError {

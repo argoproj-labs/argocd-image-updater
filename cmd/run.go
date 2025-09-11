@@ -3,21 +3,14 @@ package main
 import (
 	"context"
 	"crypto/tls"
-	"errors"
 	"fmt"
 	"math"
 	"net/http"
-	"os"
 	"strings"
 	"sync/atomic"
-	"text/template"
 	"time"
 
 	"github.com/bombsimon/logrusr/v2"
-
-	"github.com/argoproj-labs/argocd-image-updater/internal/controller"
-
-	"github.com/argoproj/argo-cd/v2/util/askpass"
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -25,15 +18,15 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
-	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
 	api "github.com/argoproj-labs/argocd-image-updater/api/v1alpha1"
+	"github.com/argoproj-labs/argocd-image-updater/internal/controller"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/argocd"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/version"
+	"github.com/argoproj-labs/argocd-image-updater/pkg/webhook"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/env"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
-	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/registry"
 )
 
 // newRunCommand implements "controller" command
@@ -50,7 +43,6 @@ func newRunCommand() *cobra.Command {
 	var kubeConfig string
 	var warmUpCache bool
 	var commitMessagePath string
-	var commitMessageTpl string
 	var MaxConcurrentReconciles int
 
 	var controllerCmd = &cobra.Command{
@@ -69,18 +61,20 @@ Flags can configure its metrics, health probes, and leader election.
 This enables a CRD-driven approach to automated image updates with Argo CD.
 `,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			// Create a single context for the entire command execution
-			// This context will be cancelled when the command is interrupted
-			ctx := ctrl.SetupSignalHandler()
-
 			if err := log.SetLogLevel(cfg.LogLevel); err != nil {
 				return err
 			}
-			logrLogger := logrusr.New(log.Log())
-			ctrl.SetLogger(logrLogger)
+			ctrl.SetLogger(logrusr.New(log.Log()))
 			setupLogger := ctrl.Log.WithName("controller-setup").
 				WithValues(logrusFieldsToLogrValues(common.ControllerLogFields)...)
+
 			setupLogger.Info("Controller runtime logger initialized.", "setAppLogLevel", cfg.LogLevel)
+			setupLogger.Info("starting",
+				"app", version.BinaryName()+": "+version.Version(),
+				"loglevel", strings.ToUpper(cfg.LogLevel),
+				"interval", argocd.GetPrintableInterval(cfg.CheckInterval),
+				"healthPort", argocd.GetPrintableHealthPort(cfg.HealthPort),
+			)
 
 			if once {
 				cfg.CheckInterval = 0
@@ -88,84 +82,16 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 				warmUpCache = true
 			}
 
-			setupLogger.Info("starting",
-				"app", version.BinaryName()+": "+version.Version(),
-				"loglevel", strings.ToUpper(cfg.LogLevel),
-				"interval", argocd.GetPrintableInterval(cfg.CheckInterval),
-				"healthport", argocd.GetPrintableHealthPort(cfg.HealthPort),
-			)
-
-			// User can specify a path to a template used for Git commit messages
-			if commitMessagePath != "" {
-				tpl, err := os.ReadFile(commitMessagePath)
-				if err != nil {
-					if errors.Is(err, os.ErrNotExist) {
-						setupLogger.Info("commit message template not found, using default", "path", commitMessagePath)
-						commitMessageTpl = common.DefaultGitCommitMessage
-					} else {
-						setupLogger.Error(err, "could not read commit message template", "path", commitMessagePath)
-						return err
-					}
-				} else {
-					commitMessageTpl = string(tpl)
-				}
-			}
-
-			if commitMessageTpl == "" {
-				setupLogger.Info("Using default Git commit message template")
-				commitMessageTpl = common.DefaultGitCommitMessage
-			}
-
-			if tpl, err := template.New("commitMessage").Parse(commitMessageTpl); err != nil {
-				setupLogger.Error(err, "could not parse commit message template")
+			// Create context with signal handling
+			ctx := ctrl.SetupSignalHandler()
+			err := SetupCommon(ctx, cfg, setupLogger, commitMessagePath, kubeConfig)
+			if err != nil {
 				return err
-			} else {
-				setupLogger.V(1).Info("Successfully parsed commit message template")
-				cfg.GitCommitMessage = tpl
-			}
-
-			// Load registries configuration early on. We do not consider it a fatal
-			// error when the file does not exist, but we emit a warning.
-			if cfg.RegistriesConf != "" {
-				st, err := os.Stat(cfg.RegistriesConf)
-				if err != nil || st.IsDir() {
-					setupLogger.Info("Registry configuration not found or is a directory, using default configuration", "path", cfg.RegistriesConf, "error", err)
-				} else {
-					err = registry.LoadRegistryConfiguration(ctx, cfg.RegistriesConf, false)
-					if err != nil {
-						setupLogger.Error(err, "could not load registry configuration", "path", cfg.RegistriesConf)
-						return nil
-					}
-				}
 			}
 
 			if cfg.CheckInterval > 0 && cfg.CheckInterval < 60*time.Second {
 				setupLogger.Info("Warning: Check interval is very low. It is not recommended to run below 1m0s", "interval", cfg.CheckInterval)
 			}
-
-			var err error
-
-			cfg.KubeClient, err = argocd.GetKubeConfig(ctx, cfg.ArgocdNamespace, kubeConfig)
-			if err != nil {
-				setupLogger.Error(err, "could not create K8s client")
-				return err
-			}
-
-			// Start up the credentials store server
-			cs := askpass.NewServer(askpass.SocketPath)
-			csErrCh := make(chan error)
-			go func() {
-				setupLogger.V(1).Info("Starting askpass server")
-				csErrCh <- cs.Run()
-			}()
-
-			// Wait for cred server to be started, just in case
-			if err := <-csErrCh; err != nil {
-				setupLogger.Error(err, "Error running askpass server")
-				return err
-			}
-
-			cfg.GitCreds = cs
 
 			// if the enable-http2 flag is false (the default), http/2 should be disabled
 			// due to its vulnerabilities. More specifically, disabling http/2 will
@@ -181,21 +107,6 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 
 			if !enableHTTP2 {
 				tlsOpts = append(tlsOpts, disableHTTP2)
-			}
-
-			// TODO: webhook for CRD will be refactored in GITOPS-7336
-			var webhookServer webhook.Server
-			if cfg.EnableWebhook && webhookCfg.Port > 0 {
-				setupLogger.Info("enabling webhook server")
-				webhookServer = webhook.NewServer(webhook.Options{
-					TLSOpts: tlsOpts,
-				})
-				// TODO: webhook for CRD will be refactored in GITOPS-7336
-				//if webhookCfg.RateLimitNumAllowedRequests > 0 {
-				//	webhookServer.RateLimiter = ratelimit.New(webhookCfg.RateLimitNumAllowedRequests, ratelimit.Per(time.Hour))
-				//}
-			} else {
-				setupLogger.Info("webhook server is disabled")
 			}
 
 			// Metrics endpoint is enabled in 'config/default/kustomization.yaml'. The Metrics options configure the server.
@@ -225,7 +136,6 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 			mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 				Scheme:                  scheme,
 				Metrics:                 metricsServerOptions,
-				WebhookServer:           webhookServer,
 				HealthProbeBindAddress:  probeAddr,
 				LeaderElection:          enableLeaderElection,
 				LeaderElectionID:        "c21b75f2.argoproj.io",
@@ -261,9 +171,10 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 				Client:                  mgr.GetClient(),
 				Scheme:                  mgr.GetScheme(),
 				Config:                  cfg,
-				MaxConcurrentReconciles: cfg.MaxConcurrentApps,
+				MaxConcurrentReconciles: MaxConcurrentReconciles,
 				CacheWarmed:             warmupState.Done,
 				StopChan:                stopChan,
+				Once:                    once,
 			}
 
 			if warmUpCache {
@@ -278,6 +189,21 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 				setupLogger.Info("Cache warm-up disabled, skipping cache warmer")
 				// If warm-up is disabled, we need to signal that cache is warmed
 				close(warmupState.Done)
+			}
+
+			// Start the webhook server if enabled
+			setupLogger.Info("Adding Webhook Server as a Runnable to the manager.")
+			if cfg.EnableWebhook && webhookCfg.Port > 0 {
+				if err := mgr.Add(&WebhookServerRunnable{
+					Reconciler:    reconciler,
+					WebhookConfig: webhookCfg,
+				}); err != nil {
+					setupLogger.Error(err, "unable to add webhook server to manager")
+					return err
+				}
+				setupLogger.Info("Webhook server runnable added to manager")
+			} else {
+				setupLogger.Info("webhook server is disabled, skip adding webhook server runnable to manager")
 			}
 
 			if err = reconciler.SetupWithManager(mgr); err != nil {
@@ -341,7 +267,7 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 	controllerCmd.Flags().StringVar(&kubeConfig, "kubeconfig", "", "full path to kubernetes client configuration, i.e. ~/.kube/config")
 	controllerCmd.Flags().IntVar(&cfg.HealthPort, "health-port", 8080, "port to start the health server on, 0 to disable")
 	controllerCmd.Flags().IntVar(&cfg.MetricsPort, "metrics-port", 8081, "port to start the metrics server on, 0 to disable")
-	controllerCmd.Flags().BoolVar(&once, "once", false, "run only once, same as specifying --interval=0 and --health-port=0")
+	controllerCmd.Flags().BoolVar(&once, "once", false, "run only once, same as specifying --warmup-cache=true, --interval=0 and --health-port=0")
 	controllerCmd.Flags().StringVar(&cfg.RegistriesConf, "registries-conf-path", common.DefaultRegistriesConfPath, "path to registries configuration file")
 	controllerCmd.Flags().IntVar(&cfg.MaxConcurrentApps, "max-concurrent-apps", env.ParseNumFromEnv("MAX_CONCURRENT_APPS", 10, 1, 100), "maximum number of ArgoCD applications that can be updated concurrently (must be >= 1)")
 	controllerCmd.Flags().IntVar(&MaxConcurrentReconciles, "max-concurrent-reconciles", env.ParseNumFromEnv("MAX_CONCURRENT_RECONCILES", 1, 1, 10), "maximum number of concurrent Reconciles which can be run (must be >= 1)")
@@ -399,7 +325,7 @@ type CacheWarmer struct {
 	Status     *WarmupStatus
 }
 
-// Start contains the logic that will be executed by the manager.
+// Start contains the logic for Warmup Cache that will be executed by the manager.
 func (cw *CacheWarmer) Start(ctx context.Context) error {
 	defer close(cw.Status.Done)
 	warmUpCacheLogger := common.LogFields(logrus.Fields{
@@ -419,7 +345,7 @@ func (cw *CacheWarmer) Start(ctx context.Context) error {
 	warmUpCacheLogger.Debugf("Found %d ImageUpdater CRs to process for cache warm-up.", len(imageList.Items))
 
 	// If we're in run-once mode, count the total CRs and set up WaitGroup
-	if cw.Reconciler.Config.CheckInterval == 0 {
+	if cw.Reconciler.Once {
 		cw.Reconciler.Wg.Add(len(imageList.Items))
 
 		warmUpCacheLogger.Infof("Run-once mode: will process %d CRs before stopping", len(imageList.Items))
@@ -441,28 +367,9 @@ func (cw *CacheWarmer) Start(ctx context.Context) error {
 		}
 	}
 
-	for _, imageUpdater := range imageList.Items {
-		warmUpCacheLogger = common.LogFields(logrus.Fields{
-			"logger":                 "warmup-cache",
-			"imageUpdater_namespace": imageUpdater.Namespace,
-			"imageUpdater_name":      imageUpdater.Name,
-		})
-		ctx = log.ContextWithLogger(ctx, warmUpCacheLogger)
-
-		warmUpCacheLogger.Debugf("Found CR %s, namespace=%s", imageUpdater.Name, imageUpdater.Namespace)
-		_, err := cw.Reconciler.RunImageUpdater(ctx, &imageUpdater, true)
-		if err != nil {
-			return nil
-		}
-		entries := 0
-		eps := registry.ConfiguredEndpoints()
-		for _, ep := range eps {
-			r, err := registry.GetRegistryEndpoint(ctx, ep)
-			if err == nil {
-				entries += r.Cache.NumEntries()
-			}
-		}
-		warmUpCacheLogger.Infof("Finished cache warm-up for CR=%s, namespace=%s. Pre-loaded %d meta data entries from %d registries", imageUpdater.Name, imageUpdater.Namespace, entries, len(eps))
+	if err := cw.Reconciler.ProcessImageUpdaterCRs(ctx, imageList.Items, true, nil); err != nil {
+		warmUpCacheLogger.Errorf("Failed to process ImageUpdater CRs during warm-up: %v", err)
+		return err
 	}
 
 	cw.Status.isCacheWarmed.Store(true)
@@ -474,5 +381,29 @@ func (cw *CacheWarmer) Start(ctx context.Context) error {
 // NeedLeaderElection tells the manager that this runnable should only be
 // run on the leader replica.
 func (cw *CacheWarmer) NeedLeaderElection() bool {
+	return true
+}
+
+// WebhookServerRunnable implements manager.Runnable to update an app after event was triggered.
+type WebhookServerRunnable struct {
+	Reconciler    *controller.ImageUpdaterReconciler
+	WebhookConfig *WebhookConfig
+	webhookServer *webhook.WebhookServer
+}
+
+// Start contains the logic for Webhook that will be executed by the manager.
+func (ws *WebhookServerRunnable) Start(ctx context.Context) error {
+	webhookLogger := common.LogFields(logrus.Fields{
+		"logger": "webhook-runnable",
+	})
+	ctx = log.ContextWithLogger(ctx, webhookLogger)
+
+	ws.webhookServer = SetupWebhookServer(ws.WebhookConfig, ws.Reconciler)
+
+	// Start webhook server in goroutine with context handling
+	return ws.webhookServer.Start(ctx)
+}
+
+func (ws *WebhookServerRunnable) NeedLeaderElection() bool {
 	return true
 }

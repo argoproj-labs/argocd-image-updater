@@ -191,3 +191,15 @@ func (list ImageList) ToContainerImageList() image.ContainerImageList {
 	}
 	return cil
 }
+
+// WebhookEvent represents a generic webhook payload
+type WebhookEvent struct {
+	// RegistryURL is the URL of the registry that sent the webhook
+	RegistryURL string `json:"registryUrl,omitempty"`
+	// Repository is the repository name
+	Repository string `json:"repository,omitempty"`
+	// Tag is the image tag
+	Tag string `json:"tag,omitempty"`
+	// Digest is the content digest of the image
+	Digest string `json:"digest,omitempty"`
+}

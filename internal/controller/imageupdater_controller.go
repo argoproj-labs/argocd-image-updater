@@ -41,7 +41,6 @@ import (
 // ImageUpdaterConfig contains global configuration and required runtime data
 type ImageUpdaterConfig struct {
 	ArgocdNamespace        string
-	AppNamespace           string
 	DryRun                 bool
 	CheckInterval          time.Duration
 	ArgoClient             argocd.ArgoCD
@@ -72,7 +71,8 @@ type ImageUpdaterReconciler struct {
 	// Channel to signal manager to stop
 	StopChan chan struct{}
 	// For run-once mode: wait for all CRs to complete
-	Wg sync.WaitGroup
+	Once bool
+	Wg   sync.WaitGroup
 }
 
 const (
@@ -125,7 +125,7 @@ func (r *ImageUpdaterReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		reqLogger.Infof("ImageUpdater resource not found. Ignoring since object must be deleted.")
 		return ctrl.Result{}, nil
 	}
-	reqLogger.Infof("Successfully fetched ImageUpdater resource: %s, namespace: %s", imageUpdater.Name, imageUpdater.Namespace)
+	reqLogger.Infof("Successfully fetched ImageUpdater resource.")
 
 	// 2. Handle finalizer logic for graceful deletion.
 	isBeingDeleted := !imageUpdater.ObjectMeta.DeletionTimestamp.IsZero()
@@ -145,7 +145,7 @@ func (r *ImageUpdaterReconciler) Reconcile(ctx context.Context, req ctrl.Request
 				return ctrl.Result{}, err
 			}
 		}
-		// Stop reconciliation as the item is being deleted
+		reqLogger.Debugf("Stop reconciliation as the ImageUpdater is being deleted.")
 		return ctrl.Result{}, nil
 	}
 
@@ -166,7 +166,7 @@ func (r *ImageUpdaterReconciler) Reconcile(ctx context.Context, req ctrl.Request
 
 	if r.Config.CheckInterval == 0 {
 		reqLogger.Debugf("Requeue interval is zero; will run once and stop.")
-		_, err := r.RunImageUpdater(ctx, &imageUpdater, false)
+		_, err := r.RunImageUpdater(ctx, &imageUpdater, false, nil)
 		if err != nil {
 			reqLogger.Errorf("Error processing CR %s/%s: %v", imageUpdater.Namespace, imageUpdater.Name, err)
 		} else {
@@ -174,12 +174,14 @@ func (r *ImageUpdaterReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		}
 
 		// Signal that this CR is complete (regardless of success/failure)
-		r.Wg.Done()
+		if r.Once {
+			r.Wg.Done()
+		}
 
 		return ctrl.Result{}, nil
 	}
 
-	_, err := r.RunImageUpdater(ctx, &imageUpdater, false)
+	_, err := r.RunImageUpdater(ctx, &imageUpdater, false, nil)
 	if err != nil {
 		return ctrl.Result{}, err
 	}

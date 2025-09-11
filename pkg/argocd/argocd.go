@@ -11,7 +11,6 @@ import (
 
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/application"
 	argocdapi "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
-	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
@@ -44,7 +43,6 @@ func NewArgoCDK8sClient(ctrlClient ctrlclient.Client) (*ArgoCDK8sClient, error) 
 //go:generate mockery --name ArgoCD --output ./mocks --outpkg mocks
 type ArgoCD interface {
 	GetApplication(ctx context.Context, appNamespace string, appName string) (*argocdapi.Application, error)
-	ListApplications(ctx context.Context, iuCR *iuapi.ImageUpdater) ([]argocdapi.Application, error)
 	UpdateSpec(ctx context.Context, spec *application.ApplicationUpdateSpecRequest) (*argocdapi.ApplicationSpec, error)
 }
 
@@ -56,47 +54,6 @@ func (client *ArgoCDK8sClient) GetApplication(ctx context.Context, appNamespace 
 		return nil, err
 	}
 	return app, nil
-}
-
-// ListApplications lists all applications for the current ImageUpdater CR in the namespace.
-func (client *ArgoCDK8sClient) ListApplications(ctx context.Context, iuCR *iuapi.ImageUpdater) ([]argocdapi.Application, error) {
-	log := log.LoggerFromContext(ctx)
-
-	// A list to hold the successfully found applications.
-	foundApps := make([]argocdapi.Application, 0)
-	// A map to prevent processing the same application name twice if it appears in multiple refs.
-	seenApps := make(map[string]bool)
-	// The target namespace is defined once in the spec.
-	targetNamespace := iuCR.Spec.Namespace
-
-	// Iterate through each application reference in the spec.
-	for _, appRef := range iuCR.Spec.ApplicationRefs {
-		// We are now treating NamePattern as an exact name.
-		appName := appRef.NamePattern
-
-		appKey := fmt.Sprintf("%s/%s", targetNamespace, appName)
-		if seenApps[appKey] {
-			continue // Already fetched this app, skip to the next ref.
-		}
-
-		log.Debugf("Attempting to fetch application '%s' in namespace '%s'", appName, targetNamespace)
-		app, err := client.GetApplication(ctx, targetNamespace, appName)
-
-		if err != nil {
-			if errors.IsNotFound(err) {
-				log.Warnf("Application '%s' in namespace '%s' specified in ImageUpdater '%s' was not found, skipping.", appName, targetNamespace, iuCR.Name)
-				seenApps[appKey] = true // Mark as seen so we don't try again.
-				continue
-			}
-			return nil, fmt.Errorf("failed to get application '%s' in namespace '%s': %w", appName, targetNamespace, err)
-		}
-		log.Debugf("Application '%s' in namespace '%s' found", appName, targetNamespace)
-		foundApps = append(foundApps, *app)
-		seenApps[appKey] = true
-	}
-
-	log.Debugf("Applications listed: %d", len(foundApps))
-	return foundApps, nil
 }
 
 // UpdateSpec updates the spec for given application
@@ -136,7 +93,7 @@ func nameMatchesPatterns(ctx context.Context, name string, patterns []string) bo
 		return true
 	}
 	for _, p := range patterns {
-		if nameMatchesPattern(ctx, name, p) {
+		if m, _ := nameMatchesPattern(ctx, name, p); m {
 			return true
 		}
 	}
@@ -144,16 +101,16 @@ func nameMatchesPatterns(ctx context.Context, name string, patterns []string) bo
 }
 
 // nameMatchesPattern Matches a name against a pattern
-func nameMatchesPattern(ctx context.Context, name string, pattern string) bool {
+func nameMatchesPattern(ctx context.Context, name string, pattern string) (bool, error) {
 	log := log.LoggerFromContext(ctx)
 	log.Tracef("Matching application name %s against pattern %s", name, pattern)
 
 	m, err := filepath.Match(pattern, name)
 	if err != nil {
 		log.Warnf("Invalid application name pattern '%s': %v", pattern, err)
-		return false
+		return false, fmt.Errorf("could not compile name pattern '%s': %w", pattern, err)
 	}
-	return m
+	return m, nil
 }
 
 // nameMatchesLabels checks if the given labels match the provided LabelSelector.
@@ -176,7 +133,7 @@ func nameMatchesLabels(appLabels map[string]string, selectors *metav1.LabelSelec
 
 // processApplicationForUpdate checks if an application is of a supported type,
 // and if so, creates an ApplicationImages struct and adds it to the update map.
-func processApplicationForUpdate(ctx context.Context, app *argocdapi.Application, appRef iuapi.ApplicationRef, appCommonUpdateSettings *iuapi.CommonUpdateSettings, appWBCSettings *WriteBackConfig, appNSName string, appsForUpdate map[string]ApplicationImages) {
+func processApplicationForUpdate(ctx context.Context, app *argocdapi.Application, appRef iuapi.ApplicationRef, appCommonUpdateSettings *iuapi.CommonUpdateSettings, appWBCSettings *WriteBackConfig, appNSName string, appsForUpdate map[string]ApplicationImages, webhookEvent *WebhookEvent) {
 	log := log.LoggerFromContext(ctx)
 	sourceType := getApplicationSourceType(app, appWBCSettings)
 
@@ -187,7 +144,12 @@ func processApplicationForUpdate(ctx context.Context, app *argocdapi.Application
 	}
 	log.Tracef("processing app '%s' of type '%v'", appNSName, sourceType)
 
-	imageList := parseImageList(ctx, appRef.Images, appCommonUpdateSettings)
+	imageList := parseImageList(ctx, appRef.Images, appCommonUpdateSettings, webhookEvent)
+
+	if imageList == nil || len(*imageList) == 0 {
+		return
+	}
+
 	appImages := ApplicationImages{
 		Application:     *app,
 		WriteBackConfig: appWBCSettings,
@@ -259,12 +221,20 @@ func sortApplicationRefs(applicationRefs []iuapi.ApplicationRef) []iuapi.Applica
 
 // FilterApplicationsForUpdate Retrieve a list of applications from ArgoCD that qualify for image updates
 // Application needs either to be of type Kustomize or Helm.
-func FilterApplicationsForUpdate(ctx context.Context, ctrlClient *ArgoCDK8sClient, kubeClient *kube.ImageUpdaterKubernetesClient, cr *iuapi.ImageUpdater) (map[string]ApplicationImages, error) {
+func FilterApplicationsForUpdate(ctx context.Context, ctrlClient *ArgoCDK8sClient, kubeClient *kube.ImageUpdaterKubernetesClient, cr *iuapi.ImageUpdater, webhookEvent *WebhookEvent) (map[string]ApplicationImages, error) {
 	log := log.LoggerFromContext(ctx)
 
 	// Validate CR configuration
 	if len(cr.Spec.ApplicationRefs) == 0 {
 		return nil, fmt.Errorf("no application references defined in ImageUpdater CR")
+	}
+
+	// Pre-validate all name patterns in the CR to fail fast on misconfiguration.
+	for _, appRef := range cr.Spec.ApplicationRefs {
+		if _, err := filepath.Match(appRef.NamePattern, "validation"); err != nil {
+			// Wrap the error to provide context about which pattern is invalid.
+			return nil, fmt.Errorf("invalid application name pattern '%s': %w", appRef.NamePattern, err)
+		}
 	}
 
 	allAppsInNamespace := &argocdapi.ApplicationList{}
@@ -296,7 +266,10 @@ func FilterApplicationsForUpdate(ctx context.Context, ctrlClient *ArgoCDK8sClien
 	for _, app := range allAppsInNamespace.Items {
 		// Find the first matching rule for this application
 		for _, applicationRef := range applicationRefsSorted {
-			if nameMatchesPattern(ctx, app.Name, applicationRef.NamePattern) && nameMatchesLabels(app.Labels, applicationRef.LabelSelectors) {
+			// We can ignore the error here because we pre-validated all patterns above.
+			// An error from filepath.Match is the only error condition.
+			matches, _ := nameMatchesPattern(ctx, app.Name, applicationRef.NamePattern)
+			if matches && nameMatchesLabels(app.Labels, applicationRef.LabelSelectors) {
 				// Calculate the effective settings for this ApplicationRef by layering on top of global.
 				mergedCommonUpdateSettings := mergeCommonUpdateSettings(globalUpdateSettings, applicationRef.CommonUpdateSettings)
 				mergedWBCSettings := mergeWBCSettings(cr.Spec.WriteBackConfig, applicationRef.WriteBackConfig)
@@ -307,7 +280,7 @@ func FilterApplicationsForUpdate(ctx context.Context, ctrlClient *ArgoCDK8sClien
 				}
 
 				appNSName := fmt.Sprintf("%s/%s", cr.Spec.Namespace, app.Name)
-				processApplicationForUpdate(ctx, &app, applicationRef, mergedCommonUpdateSettings, appWBCSettings, appNSName, appsForUpdate)
+				processApplicationForUpdate(ctx, &app, applicationRef, mergedCommonUpdateSettings, appWBCSettings, appNSName, appsForUpdate, webhookEvent)
 				break // Found the best match, move to the next app
 			}
 		}
@@ -530,8 +503,8 @@ func newImageFromManifestTargetSettings(settings *iuapi.ManifestTarget, img *Ima
 }
 
 // parseImageList parses a list of ImageConfig objects from the ImageUpdater CR
-// into a ContainerImageList, which is used internally for image management.
-func parseImageList(ctx context.Context, images []iuapi.ImageConfig, appSettings *iuapi.CommonUpdateSettings) *ImageList {
+// into a ImageList, which is used internally for image management.
+func parseImageList(ctx context.Context, images []iuapi.ImageConfig, appSettings *iuapi.CommonUpdateSettings, webhookEvent *WebhookEvent) *ImageList {
 	log := log.LoggerFromContext(ctx)
 	results := make(ImageList, 0)
 	for _, im := range images {
@@ -547,6 +520,27 @@ func parseImageList(ctx context.Context, images []iuapi.ImageConfig, appSettings
 		}
 
 		img.ContainerImage = image.NewFromIdentifier(im.Alias + "=" + im.ImageName)
+
+		// Check if any of the images match the webhook event
+		if webhookEvent != nil {
+			log.Debugf("Checking webhook match for image `%s`: event=(%s/%s), image=(%s/%s)",
+				im.Alias, webhookEvent.RegistryURL, webhookEvent.Repository,
+				img.ContainerImage.RegistryURL, img.ContainerImage.ImageName)
+
+			// Skip if registry doesn't match
+			if img.ContainerImage.RegistryURL != "" && img.ContainerImage.RegistryURL != webhookEvent.RegistryURL {
+				log.Debugf("Registry mismatch for image `%s`: %s != %s", im.Alias, img.ContainerImage.RegistryURL, webhookEvent.RegistryURL)
+				continue
+			}
+
+			// Check if repository matches
+			if img.ContainerImage.ImageName != webhookEvent.Repository {
+				log.Debugf("Repository mismatch for image `%s`: %s != %s", im.Alias, img.ContainerImage.ImageName, webhookEvent.Repository)
+				continue
+			}
+
+			log.Infof("Image `%s` matches webhook event=(%s/%s)", im.Alias, webhookEvent.RegistryURL, webhookEvent.Repository)
+		}
 
 		if im.ManifestTarget != nil && im.ManifestTarget.Kustomize != nil && im.ManifestTarget.Kustomize.Name != nil {
 			if kustomizeImage := im.ManifestTarget.Kustomize.Name; *kustomizeImage != "" {

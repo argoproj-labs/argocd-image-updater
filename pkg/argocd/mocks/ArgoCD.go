@@ -3,7 +3,6 @@
 package mocks
 
 import (
-	apiv1alpha1 "github.com/argoproj-labs/argocd-image-updater/api/v1alpha1"
 	application "github.com/argoproj/argo-cd/v2/pkg/apiclient/application"
 
 	context "context"
@@ -41,36 +40,6 @@ func (_m *ArgoCD) GetApplication(ctx context.Context, appNamespace string, appNa
 
 	if rf, ok := ret.Get(1).(func(context.Context, string, string) error); ok {
 		r1 = rf(ctx, appNamespace, appName)
-	} else {
-		r1 = ret.Error(1)
-	}
-
-	return r0, r1
-}
-
-// ListApplications provides a mock function with given fields: ctx, iuCR
-func (_m *ArgoCD) ListApplications(ctx context.Context, iuCR *apiv1alpha1.ImageUpdater) ([]v1alpha1.Application, error) {
-	ret := _m.Called(ctx, iuCR)
-
-	if len(ret) == 0 {
-		panic("no return value specified for ListApplications")
-	}
-
-	var r0 []v1alpha1.Application
-	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, *apiv1alpha1.ImageUpdater) ([]v1alpha1.Application, error)); ok {
-		return rf(ctx, iuCR)
-	}
-	if rf, ok := ret.Get(0).(func(context.Context, *apiv1alpha1.ImageUpdater) []v1alpha1.Application); ok {
-		r0 = rf(ctx, iuCR)
-	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]v1alpha1.Application)
-		}
-	}
-
-	if rf, ok := ret.Get(1).(func(context.Context, *apiv1alpha1.ImageUpdater) error); ok {
-		r1 = rf(ctx, iuCR)
 	} else {
 		r1 = ret.Error(1)
 	}

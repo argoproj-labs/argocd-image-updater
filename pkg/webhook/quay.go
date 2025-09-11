@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+
+	"github.com/argoproj-labs/argocd-image-updater/pkg/argocd"
 )
 
 type QuayWebhook struct {
@@ -22,7 +24,7 @@ func (q *QuayWebhook) GetRegistryType() string {
 	return "quay.io"
 }
 
-// Validates checks the Quay webhook payload to see if its valid
+// Validate checks the Quay webhook payload to see if its valid
 func (q *QuayWebhook) Validate(r *http.Request) error {
 	if r.Method != http.MethodPost {
 		return fmt.Errorf("invalid HTTP method: %s", r.Method)
@@ -33,11 +35,11 @@ func (q *QuayWebhook) Validate(r *http.Request) error {
 	if q.secret != "" {
 		secret := r.URL.Query().Get("secret")
 		if secret == "" {
-			return fmt.Errorf("Missing webhook secret")
+			return fmt.Errorf("missing webhook secret")
 		}
 
 		if secret != q.secret {
-			return fmt.Errorf("Incorrect webhook secret")
+			return fmt.Errorf("incorrect webhook secret")
 		}
 	}
 
@@ -45,7 +47,7 @@ func (q *QuayWebhook) Validate(r *http.Request) error {
 }
 
 // Parse process the Quay webhook and returns a Webhook event from the event
-func (q *QuayWebhook) Parse(r *http.Request) (*WebhookEvent, error) {
+func (q *QuayWebhook) Parse(r *http.Request) (*argocd.WebhookEvent, error) {
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read request body: %w", err)
@@ -73,7 +75,7 @@ func (q *QuayWebhook) Parse(r *http.Request) (*WebhookEvent, error) {
 	}
 	tag = payload.UpdatedTags[0]
 
-	return &WebhookEvent{
+	return &argocd.WebhookEvent{
 		RegistryURL: "quay.io",
 		Repository:  payload.Repository,
 		Tag:         tag,
