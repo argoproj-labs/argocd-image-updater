@@ -316,8 +316,8 @@ By default, credentials specified in registry configuration are read once on
 startup and then cached until `argocd-image-updater` is restarted. There are
 two strategies to overcome this:
 
-* Use per-image credentials in annotations - credentials will be read from
-  their source every time an image update cycle is performed, and your
+* Use per-image credentials in the `ImageUpdater` CR - credentials will be read
+  from their source every time an image update cycle is performed, and your
   credentials will always be up-to-date (i.e. if you update a secret).
 
 * Specify credential expiry time in the registry configuration - if set, the
@@ -405,6 +405,9 @@ kind: Deployment
 metadata:
   name: argocd-image-updater
 spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: argocd-image-updater
   template:
     metadata:
       labels:

@@ -30,13 +30,15 @@ application parameters for Argo CD applications, i.e. similar to
 `argocd app set --helm-set image.tag=v1.0.1` - but in a fully automated
 manner.
 
-Usage is simple: You annotate your Argo CD `Application` resources with a list
-of images to be considered for update, along with a version constraint to
-restrict the maximum allowed new version for each image. Argo CD Image Updater
-then regularly polls the configured applications from Argo CD and queries the
-corresponding container registry for possible new versions. If a new version of
-the image is found in the registry, and the version constraint is met, Argo CD
-Image Updater instructs Argo CD to update the application with the new image.
+Usage is simple: You create `ImageUpdater` custom resources that define which
+Argo CD applications should be monitored for image updates, along with the images
+to be considered for update and version constraints to restrict the maximum
+allowed new version for each image. Argo CD Image Updater then uses a
+reconciliation loop to monitor the configured applications from Argo CD and
+queries the corresponding container registry for possible new versions. If a new
+version of the image is found in the registry, and the version constraint is met,
+Argo CD Image Updater instructs Argo CD to update the application with the new
+image.
 
 Depending on your Automatic Sync Policy for the Application, Argo CD will either
 automatically deploy the new image version or mark the Application as Out Of
@@ -73,6 +75,8 @@ RBAC authorization on Application resources etc. are fully supported.
   [Kubernetes cluster](./install/installation.md#install-kubernetes) or can be
   used stand-alone from the command line
 * Ability to perform parallel update of applications
+* Webhook server to receive registry events and trigger immediate image updates
+  for supported registries (Docker Hub, GitHub Container Registry, Quay, Harbor)
 
 ## Limitations
 

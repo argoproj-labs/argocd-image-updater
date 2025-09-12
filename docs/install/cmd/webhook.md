@@ -17,10 +17,6 @@ Supported Registries:
 
 ### Flags
 
-**--application-namespace *namespace***
-
-Specifies the Kubernetes namespace in which Argo CD Image Updater will manage Argo CD Applications when using the Kubernetes-based Application API. By default, applications in all namespaces are considered. This flag can be used to limit scope to a single namespace for performance, security, or organizational reasons.
-
 **-argocd-namespace *namespace***
 
 namespace where ArgoCD runs in (current namespace by default)
@@ -105,6 +101,14 @@ Process a maximum of *number* applications concurrently. To disable concurrent
 application processing, specify a number of `1`.
 
 Can also be set using the *MAX_CONCURRENT_APPS* environment variable.
+
+**--max-concurrent-updaters *number***
+
+Process a maximum of *number* ImageUpdater custom resources concurrently.
+To disable concurrent processing, specify a number of 1.
+Higher values may improve throughput but could increase resource usage and API load.
+
+Can also be set using the *MAX_CONCURRENT_UPDATERS* environment variable.
 
 **--quay-webhook-secret *secret***
 
