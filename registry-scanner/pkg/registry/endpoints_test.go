@@ -7,8 +7,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/image"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
 )
 
 func TestInferRegistryEndpointFromPrefix(t *testing.T) {
@@ -116,21 +119,21 @@ func Test_GetEndpoints(t *testing.T) {
 	RestoreDefaultRegistryConfiguration()
 
 	t.Run("Get default endpoint", func(t *testing.T) {
-		ep, err := GetRegistryEndpoint("")
+		ep, err := GetRegistryEndpoint(&image.ContainerImage{RegistryURL: ""})
 		require.NoError(t, err)
 		require.NotNil(t, ep)
 		assert.Equal(t, "docker.io", ep.RegistryPrefix)
 	})
 
 	t.Run("Get GCR endpoint", func(t *testing.T) {
-		ep, err := GetRegistryEndpoint("gcr.io")
+		ep, err := GetRegistryEndpoint(&image.ContainerImage{RegistryURL: "gcr.io"})
 		require.NoError(t, err)
 		require.NotNil(t, ep)
 		assert.Equal(t, ep.RegistryPrefix, "gcr.io")
 	})
 
 	t.Run("Infer endpoint", func(t *testing.T) {
-		ep, err := GetRegistryEndpoint("foobar.com")
+		ep, err := GetRegistryEndpoint(&image.ContainerImage{RegistryURL: "foobar.com"})
 		require.NoError(t, err)
 		require.NotNil(t, ep)
 		assert.Equal(t, "foobar.com", ep.RegistryPrefix)
@@ -146,7 +149,7 @@ func Test_AddEndpoint(t *testing.T) {
 		require.NoError(t, err)
 	})
 	t.Run("Get example.com endpoint", func(t *testing.T) {
-		ep, err := GetRegistryEndpoint("example.com")
+		ep, err := GetRegistryEndpoint(&image.ContainerImage{RegistryURL: "example.com"})
 		require.NoError(t, err)
 		require.NotNil(t, ep)
 		assert.Equal(t, ep.RegistryPrefix, "example.com")
@@ -159,7 +162,7 @@ func Test_AddEndpoint(t *testing.T) {
 	t.Run("Change existing endpoint", func(t *testing.T) {
 		err := AddRegistryEndpoint(NewRegistryEndpoint("example.com", "Example", "https://example.com", "", "library", true, TagListSortLatestFirst, 5, 0))
 		require.NoError(t, err)
-		ep, err := GetRegistryEndpoint("example.com")
+		ep, err := GetRegistryEndpoint(&image.ContainerImage{RegistryURL: "example.com"})
 		require.NoError(t, err)
 		require.NotNil(t, ep)
 		assert.Equal(t, ep.Insecure, true)
@@ -174,7 +177,7 @@ func Test_SetEndpointCredentials(t *testing.T) {
 	t.Run("Set credentials on default registry", func(t *testing.T) {
 		err := SetRegistryEndpointCredentials("", "env:FOOBAR")
 		require.NoError(t, err)
-		ep, err := GetRegistryEndpoint("")
+		ep, err := GetRegistryEndpoint(&image.ContainerImage{RegistryURL: ""})
 		require.NoError(t, err)
 		require.NotNil(t, ep)
 		assert.Equal(t, ep.Credentials, "env:FOOBAR")
@@ -183,10 +186,28 @@ func Test_SetEndpointCredentials(t *testing.T) {
 	t.Run("Unset credentials on default registry", func(t *testing.T) {
 		err := SetRegistryEndpointCredentials("", "")
 		require.NoError(t, err)
-		ep, err := GetRegistryEndpoint("")
+		ep, err := GetRegistryEndpoint(&image.ContainerImage{RegistryURL: ""})
 		require.NoError(t, err)
 		require.NotNil(t, ep)
 		assert.Equal(t, ep.Credentials, "")
+	})
+}
+
+func Test_SelectRegistryBasedOnMaxPrefixContains(t *testing.T) {
+	RestoreDefaultRegistryConfiguration()
+
+	t.Run("Set credentials on default registry", func(t *testing.T) {
+		err := SetRegistryEndpointCredentials("foo.bar/prefix1", "env:FOOBAR_1")
+		require.NoError(t, err)
+		err = SetRegistryEndpointCredentials("foo.bar/prefix2", "env:FOOBAR_2")
+		require.NoError(t, err)
+		err = SetRegistryEndpointCredentials("foo.bar/prefix1/sub-prefix", "env:FOOBAR_SUB_1")
+		require.NoError(t, err)
+
+		ep, err := GetRegistryEndpoint(&image.ContainerImage{RegistryURL: "foo.bar", ImageName: "prefix1/sub-prefix/image"})
+		require.NoError(t, err)
+		require.NotNil(t, ep)
+		assert.Equal(t, ep.Credentials, "env:FOOBAR_SUB_1")
 	})
 }
 
@@ -199,7 +220,7 @@ func Test_EndpointConcurrentAccess(t *testing.T) {
 		wg.Add(numRuns)
 		for i := 0; i < numRuns; i++ {
 			go func() {
-				ep, err := GetRegistryEndpoint("gcr.io")
+				ep, err := GetRegistryEndpoint(&image.ContainerImage{RegistryURL: "gcr.io"})
 				require.NoError(t, err)
 				require.NotNil(t, ep)
 				wg.Done()
@@ -217,7 +238,7 @@ func Test_EndpointConcurrentAccess(t *testing.T) {
 				creds := fmt.Sprintf("secret:foo/secret-%d", i)
 				err := SetRegistryEndpointCredentials("", creds)
 				require.NoError(t, err)
-				ep, err := GetRegistryEndpoint("")
+				ep, err := GetRegistryEndpoint(&image.ContainerImage{RegistryURL: ""})
 				require.NoError(t, err)
 				require.NotNil(t, ep)
 				wg.Done()
@@ -235,7 +256,7 @@ func Test_SetDefault(t *testing.T) {
 	assert.Equal(t, "docker.io", dep.RegistryPrefix)
 	assert.True(t, dep.IsDefault)
 
-	ep, err := GetRegistryEndpoint("ghcr.io")
+	ep, err := GetRegistryEndpoint(&image.ContainerImage{RegistryURL: "ghcr.io"})
 	require.NoError(t, err)
 	require.NotNil(t, ep)
 	require.False(t, ep.IsDefault)
@@ -249,7 +270,7 @@ func Test_SetDefault(t *testing.T) {
 
 func Test_DeepCopy(t *testing.T) {
 	t.Run("DeepCopy endpoint object", func(t *testing.T) {
-		ep, err := GetRegistryEndpoint("docker.pkg.github.com")
+		ep, err := GetRegistryEndpoint(&image.ContainerImage{RegistryURL: "docker.pkg.github.com"})
 		require.NoError(t, err)
 		require.NotNil(t, ep)
 		newEp := ep.DeepCopy()
