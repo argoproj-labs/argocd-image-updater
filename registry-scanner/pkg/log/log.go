@@ -61,6 +61,22 @@ func SetLogLevel(logLevel string) error {
 	return nil
 }
 
+type LogFormat int
+
+const (
+	LogFormatText LogFormat = iota
+	LogFormatJSON
+)
+
+func SetLogFormat(logFormat LogFormat) {
+	switch logFormat {
+	case LogFormatText:
+		logger.SetFormatter(&logrus.TextFormatter{DisableColors: disableLogColors()})
+	case LogFormatJSON:
+		logger.SetFormatter(&logrus.JSONFormatter{})
+	}
+}
+
 // WithContext is an alias for NewContext
 func WithContext() *LogContext {
 	return NewContext()

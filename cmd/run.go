@@ -64,6 +64,18 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 			if err := log.SetLogLevel(cfg.LogLevel); err != nil {
 				return err
 			}
+
+			var logFormat log.LogFormat
+			switch cfg.LogFormat {
+			case "text":
+				logFormat = log.LogFormatText
+			case "json":
+				logFormat = log.LogFormatJSON
+			default:
+				return fmt.Errorf("invalid log format '%s'", cfg.LogFormat)
+			}
+			log.SetLogFormat(logFormat)
+
 			ctrl.SetLogger(logrusr.New(log.Log()))
 			setupLogger := ctrl.Log.WithName("controller-setup").
 				WithValues(logrusFieldsToLogrValues(common.ControllerLogFields)...)
@@ -264,6 +276,7 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 	controllerCmd.Flags().BoolVar(&cfg.DryRun, "dry-run", false, "run in dry-run mode. If set to true, do not perform any changes")
 	controllerCmd.Flags().DurationVar(&cfg.CheckInterval, "interval", env.GetDurationVal("IMAGE_UPDATER_INTERVAL", 2*time.Minute), "interval for how often to check for updates")
 	controllerCmd.Flags().StringVar(&cfg.LogLevel, "loglevel", env.GetStringVal("IMAGE_UPDATER_LOGLEVEL", "info"), "set the loglevel to one of trace|debug|info|warn|error")
+	controllerCmd.Flags().StringVar(&cfg.LogFormat, "logformat", env.GetStringVal("IMAGE_UPDATER_LOGFORMAT", "text"), "set the log format to one of text|json")
 	controllerCmd.Flags().StringVar(&kubeConfig, "kubeconfig", "", "full path to kubernetes client configuration, i.e. ~/.kube/config")
 	controllerCmd.Flags().IntVar(&cfg.HealthPort, "health-port", 8080, "port to start the health server on, 0 to disable")
 	controllerCmd.Flags().IntVar(&cfg.MetricsPort, "metrics-port", 8081, "port to start the metrics server on, 0 to disable")
