@@ -2460,7 +2460,19 @@ nginx:
 
 		originalData := []byte(`
 `)
-		yaml, err := marshalParamsOverride(&app, originalData)
+		im := NewImage(image.NewFromIdentifier("nginx"))
+		im.ImageAlias = "nginx"
+		im.HelmImageName = "nginx.image.name"
+		im.HelmImageTag = "nginx.image.tag"
+
+		applicationImages := &ApplicationImages{
+			Application: app,
+			Images:      ImageList{im},
+			WriteBackConfig: &WriteBackConfig{
+				Target: "helmvalues:./test-values.yaml",
+			},
+		}
+		yaml, err := marshalParamsOverride(context.Background(), applicationImages, originalData)
 		require.NoError(t, err)
 		assert.NotEmpty(t, yaml)
 		assert.Equal(t, strings.TrimSpace(strings.ReplaceAll(expected, "\t", "  ")), strings.TrimSpace(string(yaml)))

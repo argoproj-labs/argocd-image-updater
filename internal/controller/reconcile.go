@@ -10,6 +10,7 @@ import (
 
 	iuapi "github.com/argoproj-labs/argocd-image-updater/api/v1alpha1"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/argocd"
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/image"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/registry"
 )
@@ -169,7 +170,7 @@ func (r *ImageUpdaterReconciler) ProcessImageUpdaterCRs(ctx context.Context, crs
 					entries := 0
 					eps := registry.ConfiguredEndpoints()
 					for _, ep := range eps {
-						r, err := registry.GetRegistryEndpoint(crCtx, ep)
+						r, err := registry.GetRegistryEndpoint(crCtx, &image.ContainerImage{RegistryURL: ep})
 						if err == nil {
 							entries += r.Cache.NumEntries()
 						}
