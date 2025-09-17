@@ -1,0 +1,9 @@
+include:
+  - project: 'platform/templates/gitlab-ci-cd-templates'
+    ref: 'v5'
+    file: 'docker-build-push.yml'
+
+build-image:
+  extends: .image-build-push
+  variables:
+    DOCKERFILE_PATH: 'Dockerfile'
