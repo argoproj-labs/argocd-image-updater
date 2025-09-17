@@ -43,8 +43,8 @@ func Test_UpdateApplication(t *testing.T) {
 			return &regMock, nil
 		}
 
-		argoClient := argomock.ArgoCD{}
-		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+        argoClient := argomock.ArgoCD{}
+        argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
 
 		kubeClient := kube.ImageUpdaterKubernetesClient{
 			KubeClient: &registryKube.KubernetesClient{
@@ -83,15 +83,15 @@ func Test_UpdateApplication(t *testing.T) {
 			},
 			Images: *parseImageList(annotations),
 		}
-		res := UpdateApplication(&UpdateConfiguration{
+        res := UpdateApplication(&UpdateConfiguration{
 			NewRegFN:   mockClientFn,
 			ArgoClient: &argoClient,
 			KubeClient: &kubeClient,
 			UpdateApp:  appImages,
 			DryRun:     false,
 		}, NewSyncIterationState())
-		assert.Equal(t, v1alpha1.KustomizeImage("gcr.io/jannfis/foobar:1.0.3"), appImages.Application.Spec.Source.Kustomize.Images[0])
-		assert.Equal(t, v1alpha1.KustomizeImage("gcr.io/jannfis/barbar:1.0.3"), appImages.Application.Spec.Source.Kustomize.Images[1])
+        assert.Equal(t, v1alpha1.KustomizeImage("gcr.io/jannfis/foobar:1.0.3"), appImages.Application.Spec.Source.Kustomize.Images[0])
+        assert.Equal(t, v1alpha1.KustomizeImage("gcr.io/jannfis/barbar:1.0.3"), appImages.Application.Spec.Source.Kustomize.Images[1])
 		assert.Equal(t, 0, res.NumErrors)
 		assert.Equal(t, 0, res.NumSkipped)
 		assert.Equal(t, 1, res.NumApplicationsProcessed)

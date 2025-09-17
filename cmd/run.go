@@ -10,6 +10,7 @@ import (
 	"sync"
 	"text/template"
 	"time"
+    "sort"
 
 	"github.com/argoproj-labs/argocd-image-updater/pkg/argocd"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
