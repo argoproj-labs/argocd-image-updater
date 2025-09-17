@@ -177,6 +177,7 @@ var repoAuthTransportCacheLock sync.RWMutex
 
 // singleflight-style maps for deduping concurrent identical calls
 var tagsInFlight sync.Map // key string -> chan result
+var manifestInFlight sync.Map // key string -> chan result
 
 type tagsResult struct {
     tags []string
@@ -229,34 +230,64 @@ func (clt *registryClient) Tags() ([]string, error) {
 
 // Manifest  returns a Manifest for a given tag in repository
 func (clt *registryClient) ManifestForTag(tagStr string) (distribution.Manifest, error) {
-	manService, err := clt.regClient.Manifests(context.Background())
-	if err != nil {
-		return nil, err
-	}
-	manifest, err := manService.Get(
-		context.Background(),
-		digest.FromString(tagStr),
-		distribution.WithTag(tagStr), distribution.WithManifestMediaTypes(knownMediaTypes))
-	if err != nil {
-		return nil, err
-	}
-	return manifest, nil
+    key := clt.endpoint.RegistryAPI + "|manifest|" + clt.repoName + "|tag=" + tagStr
+    if ch, loaded := manifestInFlight.Load(key); loaded {
+        res := (<-ch.(chan struct{m distribution.Manifest; e error}))
+        return res.m, res.e
+    }
+    ch := make(chan struct{m distribution.Manifest; e error}, 1)
+    actual, loaded := manifestInFlight.LoadOrStore(key, ch)
+    if loaded { res := (<-actual.(chan struct{m distribution.Manifest; e error})); return res.m, res.e }
+    defer func(){ manifestInFlight.Delete(key); close(ch) }()
+
+    manService, err := clt.regClient.Manifests(context.Background())
+    if err != nil { ch <- struct{m distribution.Manifest; e error}{nil, err}; return nil, err }
+    var manifest distribution.Manifest
+    base := 200 * time.Millisecond
+    maxDelay := 3 * time.Second
+    for attempt := 0; attempt < 3; attempt++ {
+        ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+        manifest, err = manService.Get(ctx, digest.FromString(tagStr), distribution.WithTag(tagStr), distribution.WithManifestMediaTypes(knownMediaTypes))
+        cancel()
+        if err == nil { break }
+        d := time.Duration(float64(base) * (1 << attempt) * (0.7 + 0.6*rand.Float64()))
+        if d > maxDelay { d = maxDelay }
+        time.Sleep(d)
+    }
+    ch <- struct{m distribution.Manifest; e error}{manifest, err}
+    if err != nil { return nil, err }
+    return manifest, nil
 }
 
 // ManifestForDigest  returns a Manifest for a given digest in repository
 func (clt *registryClient) ManifestForDigest(dgst digest.Digest) (distribution.Manifest, error) {
-	manService, err := clt.regClient.Manifests(context.Background())
-	if err != nil {
-		return nil, err
-	}
-	manifest, err := manService.Get(
-		context.Background(),
-		dgst,
-		distribution.WithManifestMediaTypes(knownMediaTypes))
-	if err != nil {
-		return nil, err
-	}
-	return manifest, nil
+    key := clt.endpoint.RegistryAPI + "|manifest|" + clt.repoName + "|dgst=" + dgst.String()
+    if ch, loaded := manifestInFlight.Load(key); loaded {
+        res := (<-ch.(chan struct{m distribution.Manifest; e error}))
+        return res.m, res.e
+    }
+    ch := make(chan struct{m distribution.Manifest; e error}, 1)
+    actual, loaded := manifestInFlight.LoadOrStore(key, ch)
+    if loaded { res := (<-actual.(chan struct{m distribution.Manifest; e error})); return res.m, res.e }
+    defer func(){ manifestInFlight.Delete(key); close(ch) }()
+
+    manService, err := clt.regClient.Manifests(context.Background())
+    if err != nil { ch <- struct{m distribution.Manifest; e error}{nil, err}; return nil, err }
+    var manifest distribution.Manifest
+    base := 200 * time.Millisecond
+    maxDelay := 3 * time.Second
+    for attempt := 0; attempt < 3; attempt++ {
+        ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+        manifest, err = manService.Get(ctx, dgst, distribution.WithManifestMediaTypes(knownMediaTypes))
+        cancel()
+        if err == nil { break }
+        d := time.Duration(float64(base) * (1 << attempt) * (0.7 + 0.6*rand.Float64()))
+        if d > maxDelay { d = maxDelay }
+        time.Sleep(d)
+    }
+    ch <- struct{m distribution.Manifest; e error}{manifest, err}
+    if err != nil { return nil, err }
+    return manifest, nil
 }
 
 // TagMetadata retrieves metadata for a given manifest of given repository

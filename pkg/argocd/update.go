@@ -23,6 +23,7 @@ import (
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/registry"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/tag"
+    "github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/env"
 
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/application"
 	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
@@ -361,11 +362,15 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 		log.Debugf("Using commit message: %s", wbc.GitCommitMessage)
 		if !updateConf.DryRun {
 			logCtx.Infof("Committing %d parameter update(s) for application %s", result.NumImagesUpdated, app)
-            // Enqueue batched write intent; writer will coalesce per repo and branch
-            wi := writeIntent{app: &updateConf.UpdateApp.Application, wbc: wbc, changeList: changeList, writeFn: writeOverrides}
-            if wbc.KustomizeBase != "" { wi.writeFn = writeKustomization }
-            enqueueWriteIntent(wi)
-            err := error(nil)
+            // Enqueue batched write intent unless tests explicitly disable batching
+            var err error
+            if env.GetBoolVal("GIT_BATCH_DISABLE", false) {
+                err = commitChangesLocked(&updateConf.UpdateApp.Application, wbc, state, changeList)
+            } else {
+                wi := writeIntent{app: &updateConf.UpdateApp.Application, wbc: wbc, changeList: changeList, writeFn: writeOverrides}
+                if wbc.KustomizeBase != "" { wi.writeFn = writeKustomization }
+                enqueueWriteIntent(wi)
+            }
 			if err != nil {
 				logCtx.Errorf("Could not update application spec: %v", err)
 				result.NumErrors += 1
