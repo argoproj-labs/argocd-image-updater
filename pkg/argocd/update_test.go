@@ -154,6 +154,9 @@ func Test_UpdateApplication(t *testing.T) {
 			},
 			Images: *parseImageList(annotations),
 		}
+		// Disable batching to preserve legacy immediate write-back semantics for this test
+		_ = os.Setenv("GIT_BATCH_DISABLE", "true")
+		defer os.Unsetenv("GIT_BATCH_DISABLE")
 		res := UpdateApplication(&UpdateConfiguration{
 			NewRegFN:   mockClientFn,
 			ArgoClient: &argoClient,
