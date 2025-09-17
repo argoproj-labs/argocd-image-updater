@@ -11,13 +11,9 @@ func TestNewWebhookHandler(t *testing.T) {
 
 	if handler == nil {
 		t.Fatal("expected handler to be non-nil")
-	}
-
-	if handler.handlers == nil {
+	} else if handler.handlers == nil {
 		t.Fatal("expected handlers map to be initialized")
-	}
-
-	if len(handler.handlers) != 0 {
+	} else if len(handler.handlers) != 0 {
 		t.Errorf("expected handlers map to be empty, got %d handlers", len(handler.handlers))
 	}
 }
@@ -167,13 +163,9 @@ func TestWebhookHandler_ProcessWebhook(t *testing.T) {
 
 			if event == nil {
 				t.Fatal("expected event to be non-nil")
-			}
-
-			if event.Repository != tt.expectedRepo {
+			} else if event.Repository != tt.expectedRepo {
 				t.Errorf("expected repository to be %q, got %q", tt.expectedRepo, event.Repository)
-			}
-
-			if event.Tag != tt.expectedTag {
+			} else if event.Tag != tt.expectedTag {
 				t.Errorf("expected tag to be %q, got %q", tt.expectedTag, event.Tag)
 			}
 		})
@@ -206,13 +198,9 @@ func TestWebhookHandler_ProcessWebhookWithHeader(t *testing.T) {
 
 	if event == nil {
 		t.Fatal("expected event to be non-nil")
-	}
-
-	if event.Repository != "myuser/myapp" {
+	} else if event.Repository != "myuser/myapp" {
 		t.Errorf("expected repository to be 'myuser/myapp', got %q", event.Repository)
-	}
-
-	if event.Tag != "v2.0.0" {
+	} else if event.Tag != "v2.0.0" {
 		t.Errorf("expected tag to be 'v2.0.0', got %q", event.Tag)
 	}
 }

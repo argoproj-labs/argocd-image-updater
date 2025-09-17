@@ -6,13 +6,9 @@
 
 ### Description
 
-Runs the Argo CD Image Updater, possibly in an endless loop with a set of options. 
+Runs the Argo CD Image Updater in a reconciliation loop with a set of options. 
 
 ### Flags
-
-**--application-namespace *namespace***
-
-Specifies the Kubernetes namespace in which Argo CD Image Updater will manage Argo CD Applications when using the Kubernetes-based Application API. By default, applications in all namespaces are considered. This flag can be used to limit scope to a single namespace for performance, security, or organizational reasons.
 
 **-argocd-namespace *namespace***
 
@@ -101,7 +97,8 @@ Sets the interval for checking whether there are new images available to
 *duration*. *duration* must be given as a valid duration identifier with
 a unit suffix, i.e. `2m` for 2 minutes or `30s` for 30 seconds. If no unit
 is given, milliseconds will be assumed. If set to `0`, ArgoCD Image Updater
-will exit after the first run, effectively disabling the interval. Default
+will run the reconciliation once and stop for that specific ImageUpdater CR,
+effectively disabling the interval for that resource. Default
 value is `2m0s`.
 
 Can also be set using the *IMAGE_UPDATER_INTERVAL* environment variable.
@@ -155,7 +152,7 @@ port to start the metrics server on, 0 to disable (default 8081)
 
 **--once**
 
-A shortcut for specifying `--interval 0 --health-port 0`. If given,
+A shortcut for specifying `--interval 0 --health-port 0 --warmUpCache=true`. If given,
 Argo CD Image Updater will exit after the first update cycle.
 
 **--quay-webhook-secret *secret***

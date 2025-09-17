@@ -17,9 +17,7 @@ func TestNewHarborWebhook(t *testing.T) {
 
 	if webhook == nil {
 		t.Fatal("expected webhook to be non-nil")
-	}
-
-	if webhook.secret != secret {
+	} else if webhook.secret != secret {
 		t.Errorf("expected secret to be %q, got %q", secret, webhook.secret)
 	}
 }
@@ -335,17 +333,11 @@ func TestHarborWebhook_Parse(t *testing.T) {
 
 			if event == nil {
 				t.Fatal("expected event to be non-nil")
-			}
-
-			if event.RegistryURL != tt.expectedURL {
+			} else if event.RegistryURL != tt.expectedURL {
 				t.Errorf("expected registry URL to be %q, got %q", tt.expectedURL, event.RegistryURL)
-			}
-
-			if event.Repository != tt.expectedRepo {
+			} else if event.Repository != tt.expectedRepo {
 				t.Errorf("expected repository to be %q, got %q", tt.expectedRepo, event.Repository)
-			}
-
-			if event.Tag != tt.expectedTag {
+			} else if event.Tag != tt.expectedTag {
 				t.Errorf("expected tag to be %q, got %q", tt.expectedTag, event.Tag)
 			}
 		})

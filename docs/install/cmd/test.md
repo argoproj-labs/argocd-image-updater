@@ -71,4 +71,4 @@ updated to, using the default semver strategy
 
 Check for the latest built image for a tag that matches a pattern
 
-`argocd-image-updater test nginx --allow-tags '^1.19.\d+(\-.*)*$' --update-strategy latest`
+`argocd-image-updater test nginx --allow-tags '^1.19.\d+(\-.*)*$' --update-strategy newest-build`

@@ -8,8 +8,8 @@ images to Argo CD. These methods are also referred to as *write back methods*.
 Currently, the following methods are supported:
 
 * [argocd](../configuration/applications.md#method-argocd)
-  directly modifies the Argo CD *Application* resource, either using Kubernetes
-  or via Argo CD API, depending on Argo CD Image Updater's configuration.
+  directly modifies the Argo CD *Application* resource, using Kubernetes
+  API, depending on Argo CD Image Updater's configuration.
 
 * [git](../configuration/applications.md#method-git)
   will create a Git commit in your Application's Git repository that holds the
@@ -17,13 +17,22 @@ Currently, the following methods are supported:
 
 Depending on the write back method, further configuration may be possible.
 
-The write back method and its configuration is specified per Application.
+The write back method and its configuration can be specified at multiple levels
+in the `ImageUpdater` custom resource:
+
+* **Global level**: In `spec.writeBackConfig` - applies to all applications
+  unless overridden at the application level
+* **Per application level**: In `spec.applicationRefs[].writeBackConfig` -
+  overrides the global configuration for specific applications
+
+Application-level configuration takes precedence over global configuration.
 
 ## <a name="method-argocd"></a>`argocd` write-back method
 
-When using the Argo CD API to write back changes, Argo CD Image Updater will
-perform a similar action as `argocd app set --parameter ...` to instruct
-Argo CD to re-render the manifests using those parameters.
+The `argocd` write-back method directly modifies the Argo CD `Application` resource
+in the cluster, updating the application's source parameters (similar to what
+`argocd app set --parameter ...` would do) to instruct Argo CD to re-render the
+manifests using those parameters.
 
 This method is pseudo-persistent. If you delete the `Application` resource
 from the cluster and re-create it, changes made by Image Updater will be gone.
@@ -55,31 +64,34 @@ as no other party in your CI will modify this file.
 !!!note "A note on the application's target revision"
     Due to the nature of how Git write-back works, your application really
     should track a *branch* instead of a revision. If you track `HEAD`, a tag
-    or a certain revision with your application, you **must** override the
-    branch in an annotation (see below). But in order for Argo CD to pick up
-    the change after Image Updater has committed & pushed the change, you
-    really want to set it up so it tracks a branch.
+    or a certain revision with your application, you **must** specify the
+    branch in the `writeBackConfig.gitConfig.branch` field. But in order for
+    Argo CD to pick up the change after Image Updater has committed & pushed
+    the change, you really want to set it up so it tracks a branch.
 
-To use the Git write-back method, annotate your `Application` with the right
-write-back method:
+To use the Git write-back method, configure the `writeBackConfig` in your
+`ImageUpdater` custom resource:
 
 ```yaml
-argocd-image-updater.argoproj.io/write-back-method: git
+spec:
+  writeBackConfig:
+    method: "git"
 ```
 
 In order to better decide whether this method is suitable for your use-case,
 this is the workflow how Argo CD Image Updater performs change to Git:
 
 * Fetch the remote repository from location specified by `.spec.source.repoURL`
-  in the Argo CD Application manifest, using credentials specified as annotation
-  (see below)
-* Check-out the target branch on the local copy. The target branch is either
-  taken from an annotation (see below), or if no annotation is set, taken from
-  `.spec.source.targetRevision` in the Application manifest
+  in the Argo CD Application manifest, or if overridden, from the
+  `gitConfig.repository` field in the `ImageUpdater` CR, using credentials
+  specified in the `writeBackConfig.method` field
+* Check-out the target branch on the local copy. The target branch is taken
+  from the `writeBackConfig.gitConfig.branch` field in the `ImageUpdater` CR, or if not
+  specified, from the Argo CD Application manifest `.spec.source.targetRevision`
 * Create or update `.argocd-source-<appName>.yaml` in the local repository
 * Commit the changed file to the local repository
-* Push the commit to the remote repository, using credentials specified as
-  annotation (see below)
+* Push the commit to the remote repository, using credentials specified in the
+  `ImageUpdater` CR
 
 The important pieces to this workflow are:
 
@@ -100,18 +112,18 @@ Configuration for the Git write-back method comes from two sources:
   are defined in `.spec.source.repoURL` and `.spec.source.path` fields,
   respectively. Additionally, `.spec.source.targetRevision` is used to define
   the branch to commit and push the changes to. The branch to use can be
-  overridden by an annotation, see below.
+  overridden by configuration in `ImageUpdater` CR, see below.
 
-* A set of annotations on the `Application` manifest, see below
+* An `ImageUpdater` CR, see below
 
 ### <a name="method-git-credentials"></a>Specifying Git credentials
 
-By default Argo CD Image Updater re-uses the credentials you have configured
+By default, Argo CD Image Updater re-uses the credentials you have configured
 in Argo CD for accessing the repository.
 
 If you don't want to use credentials configured for Argo CD you can use other credentials stored in a Kubernetes secret,
 which needs to be accessible by the Argo CD Image Updater's Service Account. The secret should be specified in 
-`argocd-image-updater.argoproj.io/write-back-method` annotation using `git:<credref>` format. Where `<credref>` might
+the `writeBackConfig.method` field using `git:<credref>` format. Where `<credref>` might
 take one of following values:
 
 * `repocreds` (default) - Git repository credentials configured in Argo CD settings
@@ -120,7 +132,9 @@ take one of following values:
 Example:
 
 ```yaml
-argocd-image-updater.argoproj.io/write-back-method: git:secret:argocd-image-updater/git-creds
+spec:
+  writeBackConfig:
+    method: "git:secret:argocd-image-updater/git-creds"
 ```
 
 If the repository is accessed using HTTPS, the secret must contain either user credentials or GitHub app credentials.
@@ -159,33 +173,39 @@ kubectl -n argocd-image-updater create secret generic git-creds \
 ### <a name="method-git-repository"></a>Specifying a repository when using a Helm repository in repoURL
 
 By default, Argo CD Image Updater will use the value found in the Application
-spec at `.spec.source.repoURL` as Git repository to checkout. But when using
+spec at `.spec.source.repoURL` as Git repository to check out. But when using
 a Helm repository as `.spec.source.repoURL` GIT will simply fail. To manually
-specify the repository to push the changes, specify the 
-annotation `argocd-image-updater.argoproj.io/git-repository` on the Application
-manifest.
+specify the repository to push the changes, specify the
+`writeBackConfig.gitConfig.repository` field.
 
-The value of this annotation will define the Git repository to use, for example the
+This value will define the Git repository to use, for example the
 following would use a GitHub's repository:
 
 ```yaml
-argocd-image-updater.argoproj.io/git-repository: git@github.com:example/example.git
+spec:
+  writeBackConfig:
+    method: "git"
+    gitConfig:
+      repository: "git@github.com:example/example.git"
 ```
 
 ### <a name="method-git-branch"></a>Specifying a branch to commit to
 
 By default, Argo CD Image Updater will use the value found in the Application
-spec at `.spec.source.targetRevision` as Git branch to checkout, commit to
+spec at `.spec.source.targetRevision` as Git branch to check out, commit to
 and push back the changes it made. In some scenarios, this might not be what
 is desired, and you can (and maybe have to) override the branch to use by
-specifying the annotation `argocd-image-updater.argoproj.io/git-branch` on the
-Application manifest.
+specifying the `writeBackConfig.gitConfig.branch` field.
 
-The value of this annotation will define the Git branch to use, for example the
+This value will define the Git branch to use, for example the
 following would use GitHub's default `main` branch:
 
 ```yaml
-argocd-image-updater.argoproj.io/git-branch: main
+spec:
+  writeBackConfig:
+    method: "git"
+    gitConfig:
+      branch: "main"
 ```
 
 ### <a name="method-git-base-commit-branch"></a>Specifying a separate base and commit branch
@@ -193,35 +213,51 @@ argocd-image-updater.argoproj.io/git-branch: main
 By default, Argo CD Image Updater will checkout, commit, and push back to the
 same branch specified above. There are many scenarios where this is not
 desired or possible, such as when the default branch is protected. You can
-add a separate write-branch by modifying `argocd-image-updater.argoproj.io/git-branch`
-with additional data, which will create a new branch from the base branch, and
-push to this new branch instead:
+add a separate write-branch by modifying the `writeBackConfig.gitConfig.branch`
+field with additional data, which will create a new branch from the base
+branch, and push to this new branch instead:
 
 ```yaml
-argocd-image-updater.argoproj.io/git-branch: base:target
+spec:
+  writeBackConfig:
+    method: "git"
+    gitConfig:
+      branch: "base:target"
 ```
 
 If you want to specify a write-branch but continue to use the target revision from the application
 specification, just omit the base branch name:
 
 ```yaml
-argocd-image-updater.argoproj.io/git-branch: :target
+spec:
+  writeBackConfig:
+    method: "git"
+    gitConfig:
+      branch: ":target"
 ```
 
 A static branch name may not be desired for this value, so a simple template
 can be created (evaluating using the `text/template` Golang package) within
-the annotation. For example, the following would create a branch named
+the configuration. For example, the following would create a branch named
 `image-updater-foo/bar-1.1` based on `main` in the event an image with
 the name `foo/bar` was updated to the new tag `1.1`.
 
 ```yaml
-argocd-image-updater.argoproj.io/git-branch: main:image-updater{{range .Images}}-{{.Name}}-{{.NewTag}}{{end}}
+spec:
+  writeBackConfig:
+    method: "git"
+    gitConfig:
+      branch: "main:image-updater{{range .Images}}-{{.Name}}-{{.NewTag}}{{end}}"
 ```
 
 Alternatively, to assure unique branch names you could use the SHA256 representation of the changes:
 
 ```yaml
-argocd-image-updater.argoproj.io/git-branch: main:image-updater-{{.SHA256}}
+spec:
+  writeBackConfig:
+    method: "git"
+    gitConfig:
+      branch: "main:image-updater-{{.SHA256}}"
 ```
 
 The following variables are provided for this template:
@@ -337,52 +373,74 @@ template using pre-defined data and see its outcome on the terminal.
 By default, git write-back will create or update `.argocd-source-<appName>.yaml`.
 
 If you are using Kustomize and want the image updates available for normal use with `kustomize`,
-you may set the `write-back-target` to `kustomization`. This method commits changes to the Kustomization
+you may set the `writeBackConfig.gitConfig.writeBackTarget` to `kustomization`. This method commits changes to the Kustomization
 file back to git as though you ran `kustomize edit set image`.
 
 ```yaml
-argocd-image-updater.argoproj.io/write-back-method: git  # all git options are supported
-argocd-image-updater.argoproj.io/write-back-target: kustomization
+spec:
+  writeBackConfig:
+    method: "git" # all git options are supported
+    gitConfig:
+      writeBackTarget: "kustomization"
 ```
 
 You may also specify which kustomization to update with either a path relative to the project source path...
 
 ```yaml
-argocd-image-updater.argoproj.io/write-back-target: "kustomization:../../base"
-# if the Application spec.source.path = config/overlays/foo, this would update the kustomization in config/base 
+spec:
+  writeBackConfig:
+    method: "git"
+    gitConfig:
+      writeBackTarget: "kustomization:../../base"
+# if the Application spec.source.path = config/overlays/foo, this would update the kustomization in config/base
 ```
 
 ...or absolute with respect to the repository:
 
 ```yaml
-# absolute paths start with /
-argocd-image-updater.argoproj.io/write-back-target: "kustomization:/config/overlays/bar"
+spec:
+  writeBackConfig:
+    method: "git"
+    gitConfig:
+      # absolute paths start with /
+      writeBackTarget: "kustomization:/config/overlays/bar"
 ```
 
 Note that the Kustomization directory needs to be specified, not a file, like when using Kustomize.
 
 If you are using Helm and want the image updates parameters available in your values files,
-you may set the `write-back-target` to `helmvalues:<full path to your values file>`. This method commits changes to the values
+you may set the `writeBackConfig.gitConfig.writeBackTarget` to `helmvalues:<full path to your values file>`. This method commits changes to the values
 file back that is used to render the Helm template.
 
 ```yaml
-argocd-image-updater.argoproj.io/write-back-method: git  # all git options are supported
-argocd-image-updater.argoproj.io/write-back-target: helmvalues
+spec:
+  writeBackConfig:
+    method: "git" # all git options are supported
+    gitConfig:
+      writeBackTarget: "helmvalues"
 ```
 
 You may also specify which helmvalues to update with either a path relative to the project source path...
 
 ```yaml
-argocd-image-updater.argoproj.io/write-back-target: "helmvalues:../../values.yaml"
-# if the Application spec.source.path = config/overlays/foo, this would update the helmvalues in config/base 
+spec:
+  writeBackConfig:
+    method: "git"
+    gitConfig:
+      writeBackTarget: "helmvalues:../../values.yaml"
+# if the Application spec.source.path = config/overlays/foo, this would update the helmvalues in config/base
 ```
 
 ...or absolute with respect to the repository:
 
 ```yaml
-# absolute paths start with /
-argocd-image-updater.argoproj.io/write-back-target: "helmvalues:/helm/config/test-values.yaml"
+spec:
+  writeBackConfig:
+    method: "git"
+    gitConfig:
+      # absolute paths start with /
+      writeBackTarget: "helmvalues:/helm/config/test-values.yaml"
 ```
 
 Note that using the helmvalues option needs the Helm values filename to be specified in the
-write-back-target annotation.
+`writeBackConfig.gitConfig.writeBackTarget`.

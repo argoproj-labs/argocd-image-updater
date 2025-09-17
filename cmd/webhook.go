@@ -28,7 +28,7 @@ func NewWebhookCommand() *cobra.Command {
 	var webhookCfg *WebhookConfig = &WebhookConfig{}
 	var kubeConfig string
 	var commitMessagePath string
-	var MaxConcurrentReconciles int
+	var MaxConcurrentUpdaters int
 	var webhookCmd = &cobra.Command{
 		Use:   "webhook",
 		Short: "Start webhook server to receive registry events",
@@ -63,7 +63,7 @@ Supported registries:
 				return err
 			}
 
-			err = runWebhook(ctx, cfg, webhookCfg, MaxConcurrentReconciles)
+			err = runWebhook(ctx, cfg, webhookCfg, MaxConcurrentUpdaters)
 			return err
 		},
 	}
@@ -73,7 +73,7 @@ Supported registries:
 	webhookCmd.Flags().StringVar(&kubeConfig, "kubeconfig", "", "full path to kubernetes client configuration, i.e. ~/.kube/config")
 	webhookCmd.Flags().StringVar(&cfg.RegistriesConf, "registries-conf-path", common.DefaultRegistriesConfPath, "path to registries configuration file")
 	webhookCmd.Flags().IntVar(&cfg.MaxConcurrentApps, "max-concurrent-apps", env.ParseNumFromEnv("MAX_CONCURRENT_APPS", 10, 1, 100), "maximum number of ArgoCD applications that can be updated concurrently (must be >= 1)")
-	webhookCmd.Flags().IntVar(&MaxConcurrentReconciles, "max-concurrent-reconciles", env.ParseNumFromEnv("MAX_CONCURRENT_RECONCILES", 1, 1, 10), "maximum number of concurrent Reconciles which can be run (must be >= 1)")
+	webhookCmd.Flags().IntVar(&MaxConcurrentUpdaters, "max-concurrent-updaters", env.ParseNumFromEnv("MAX_CONCURRENT_UPDATERS", 1, 1, 10), "maximum number of concurrent ImageUpdater CRs that can be processed (must be >= 1)")
 	webhookCmd.Flags().StringVar(&cfg.ArgocdNamespace, "argocd-namespace", "", "namespace where ArgoCD runs in (current namespace by default)")
 
 	webhookCmd.Flags().StringVar(&cfg.GitCommitUser, "git-commit-user", env.GetStringVal("GIT_COMMIT_USER", "argocd-image-updater"), "Username to use for Git commits")
@@ -95,7 +95,7 @@ Supported registries:
 }
 
 // runWebhook starts the webhook server
-func runWebhook(ctx context.Context, cfg *controller.ImageUpdaterConfig, webhookCfg *WebhookConfig, maxConcurrentReconciles int) error {
+func runWebhook(ctx context.Context, cfg *controller.ImageUpdaterConfig, webhookCfg *WebhookConfig, maxConcurrentUpdaters int) error {
 	webhookLogger := log.Log().WithFields(logrus.Fields{
 		"logger": "webhook-command",
 	})
@@ -117,7 +117,7 @@ func runWebhook(ctx context.Context, cfg *controller.ImageUpdaterConfig, webhook
 		Client:                  k8sClient,
 		Scheme:                  scheme,
 		Config:                  cfg,
-		MaxConcurrentReconciles: maxConcurrentReconciles,
+		MaxConcurrentReconciles: maxConcurrentUpdaters,
 	}
 
 	server := SetupWebhookServer(webhookCfg, reconciler)
