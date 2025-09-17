@@ -369,12 +369,24 @@ func (m *nativeGitClient) Fetch(revision string) error {
 		defer done()
 	}
 
-	err := m.fetch(revision)
+	var err error
+	for attempt := 0; attempt < maxAttemptsCount; attempt++ {
+		err = m.fetch(revision)
+		if err == nil {
+			break
+		}
+		// exponential backoff before retrying
+		timeToWait := float64(retryDuration) * (math.Pow(float64(factor), float64(attempt)))
+		if maxRetryDuration > 0 {
+			timeToWait = math.Min(float64(maxRetryDuration), timeToWait)
+		}
+		time.Sleep(time.Duration(timeToWait))
+	}
 
 	// When we have LFS support enabled, check for large files and fetch them too.
 	if err == nil && m.IsLFSEnabled() {
-		largeFiles, err := m.LsLargeFiles()
-		if err == nil && len(largeFiles) > 0 {
+		largeFiles, lerr := m.LsLargeFiles()
+		if lerr == nil && len(largeFiles) > 0 {
 			err = m.runCredentialedCmd("lfs", "fetch", "--all")
 			if err != nil {
 				return err

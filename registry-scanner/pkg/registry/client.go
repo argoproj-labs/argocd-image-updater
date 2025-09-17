@@ -141,9 +141,12 @@ func NewClient(endpoint *RegistryEndpoint, username, password string) (RegistryC
 	if password == "" && endpoint.Password != "" {
 		password = endpoint.Password
 	}
+	// Initialize refreshTokens to enable reusing registry-issued refresh tokens
+	// across requests for the same service (e.g., container_registry).
 	creds := credentials{
-		username: username,
-		password: password,
+		username:      username,
+		password:      password,
+		refreshTokens: make(map[string]string),
 	}
 	return &registryClient{
 		creds:    creds,
@@ -154,7 +157,17 @@ func NewClient(endpoint *RegistryEndpoint, username, password string) (RegistryC
 // Tags returns a list of tags for given name in repository
 func (clt *registryClient) Tags() ([]string, error) {
 	tagService := clt.regClient.Tags(context.Background())
-	tTags, err := tagService.All(context.Background())
+	var tTags []string
+	var err error
+	// simple bounded retry for transient registry/token hiccups
+	for attempt := 0; attempt < 3; attempt++ {
+		tTags, err = tagService.All(context.Background())
+		if err == nil {
+			break
+		}
+		// backoff: 200ms, 400ms, 800ms
+		time.Sleep(time.Duration(200*(1<<attempt)) * time.Millisecond)
+	}
 	if err != nil {
 		return nil, err
 	}

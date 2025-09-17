@@ -5,6 +5,8 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"math"
+	"time"
 
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
 )
@@ -93,7 +95,20 @@ func (m *nativeGitClient) Push(remote string, branch string, force bool) error {
 		args = append(args, "-f")
 	}
 	args = append(args, remote, branch)
-	err := m.runCredentialedCmd(args...)
+
+	var err error
+	for attempt := 0; attempt < maxAttemptsCount; attempt++ {
+		err = m.runCredentialedCmd(args...)
+		if err == nil {
+			return nil
+		}
+		// exponential backoff before retrying
+		timeToWait := float64(retryDuration) * (math.Pow(float64(factor), float64(attempt)))
+		if maxRetryDuration > 0 {
+			timeToWait = math.Min(float64(maxRetryDuration), timeToWait)
+		}
+		time.Sleep(time.Duration(timeToWait))
+	}
 	if err != nil {
 		return fmt.Errorf("could not push %s to %s: %v", branch, remote, err)
 	}

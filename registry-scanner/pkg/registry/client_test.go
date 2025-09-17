@@ -168,6 +168,15 @@ func TestNewClient(t *testing.T) {
 	})
 }
 
+func TestNewClient_InitializesRefreshTokenMap(t *testing.T) {
+    ep := &RegistryEndpoint{}
+    rc, err := NewClient(ep, "", "")
+    require.NoError(t, err)
+    c := rc.(*registryClient)
+    // Ensure the map is not nil so SetRefreshToken can store values
+    require.NotNil(t, c.creds.refreshTokens)
+}
+
 func TestTags(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		mockRegClient := new(mocks.Repository)
