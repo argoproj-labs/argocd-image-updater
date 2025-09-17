@@ -29,6 +29,33 @@ handling on your side.
 
 * refactor: make argocd-image-updater-config volume mapping optional (#145)
 
+## 2025-09-17 - Release v99.9.9
+
+### New features
+
+* feat: Reuse HTTP transports for registries with keep-alives and timeouts
+* feat: Initialize registry refresh-token map to enable token reuse
+* feat: Add Makefile `DOCKER` variable to support `podman`
+
+### Improvements
+
+* perf: Cache transports per registry+TLS mode; add sensible connection/timeouts
+* resiliency: Retry/backoff for registry tag listing
+* resiliency: Retry/backoff for git fetch/shallow-fetch/push during write-back
+
+### Tests/Docs
+
+* test: Add unit tests for transport caching and token map init
+* docs: Requirements/notes updates
+
+### Upgrade notes
+
+* None
+
+### Bug fixes
+
+* None
+
 ## 2020-12-06 - Release v0.8.0
 
 ### Upgrade notes (no really, you MUST read this)
