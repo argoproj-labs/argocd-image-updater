@@ -212,9 +212,9 @@ func (rw *repoWriter) flushBatch(batch []writeIntent) {
 func groupIntentsByBranch(batch []writeIntent) map[string][]writeIntent {
     byBranch := map[string][]writeIntent{}
     for _, wi := range batch {
-        branch := getWriteBackBranch(wi.app)
-        if wi.wbc.GitWriteBranch != "" {
-            branch = wi.wbc.GitWriteBranch
+        branch := wi.wbc.GitWriteBranch
+        if branch == "" {
+            branch = getWriteBackBranch(wi.app)
         }
         byBranch[branch] = append(byBranch[branch], wi)
     }
