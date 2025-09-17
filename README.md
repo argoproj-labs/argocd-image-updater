@@ -111,3 +111,31 @@ see how we can make this happen.
 
 There is [an open proposal](https://github.com/argoproj/argo-cd/issues/7385) to migrate this project into the `argoproj` org (out
 of the `argoproj-labs` org) and include it in the installation of Argo CD.
+
+## Engineering notes (recent changes)
+
+- Registry client hardening
+  - HTTP transport reuse per registry with sane timeouts (keep-alives, capped TLS and response header timeouts) to cut connection churn under load.
+  - Singleflight-style deduplication and jittered retries (tags, manifests) with per-attempt deadlines to avoid thundering herds and reduce /jwt/auth pressure.
+
+- Git write-back throughput
+  - Per-repo serialization to eliminate races in monorepos, plus a batched writer that coalesces multiple intents into a single commit/push per repo/branch.
+  - Multi-branch grouping: intents for different write branches never mix; each branch flushes independently.
+  - Logs reflect queued writes: look for "Queuing N parameter update(s) … (git write pending)" and the subsequent commit/push logs.
+
+- Scheduling and fairness
+  - Optional scheduler flags to prioritize apps: `--schedule` (default|lru|fail-first), `--cooldown` (deprioritize recently successful apps), and `--per-repo-cap` (cap updates per repo per cycle).
+  - Goal: prevent a hot monorepo from starving others while keeping high concurrency.
+
+- Operational guidance
+  - Concurrency: set `--max-concurrency` roughly ≥ number of active repos; monorepos serialize on their writer, others proceed in parallel.
+  - Registry RPS: tune `limit` in `registries.conf` (e.g., 30–50 RPS) and monitor latency/429s.
+  - Monorepos: prefer per-app write branches or rely on batching to reduce fetch/commit/push churn.
+
+Flags added
+- `--schedule` (env: IMAGE_UPDATER_SCHEDULE): default|lru|fail-first
+- `--cooldown` (env: IMAGE_UPDATER_COOLDOWN): duration (e.g., 30s)
+- `--per-repo-cap` (env: IMAGE_UPDATER_PER_REPO_CAP): integer (0 = unlimited)
+
+Notes
+- For tests or legacy behavior, set `GIT_BATCH_DISABLE=true` to perform immediate (non-batched) write-back.
