@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"text/template"
     "sync"
+    "time"
 
 	"sigs.k8s.io/kustomize/api/konfig"
 	"sigs.k8s.io/kustomize/api/types"
@@ -20,6 +21,7 @@ import (
 
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/image"
+    "github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/env"
 
 	"github.com/argoproj-labs/argocd-image-updater/ext/git"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
@@ -140,6 +142,147 @@ func getRepoMutex(repo string) *sync.Mutex {
     m := &sync.Mutex{}
     actual, _ := repoMu.LoadOrStore(repo, m)
     return actual.(*sync.Mutex)
+}
+
+// -----------------------
+// Batched repo writer
+// -----------------------
+
+type writeIntent struct {
+    app        *v1alpha1.Application
+    wbc        *WriteBackConfig
+    changeList []ChangeEntry
+    writeFn    changeWriter
+}
+
+type repoWriter struct {
+    repoURL    string
+    intentsCh  chan writeIntent
+    flushEvery time.Duration
+    maxBatch   int
+    stopCh     chan struct{}
+}
+
+var writers sync.Map // map[string]*repoWriter
+
+func getOrCreateWriter(repo string) *repoWriter {
+    if v, ok := writers.Load(repo); ok {
+        return v.(*repoWriter)
+    }
+    rw := &repoWriter{
+        repoURL:    repo,
+        intentsCh:  make(chan writeIntent, 1024),
+        flushEvery: env.GetDurationVal("GIT_BATCH_FLUSH_INTERVAL", 2*time.Second),
+        maxBatch:   env.ParseNumFromEnv("GIT_BATCH_MAX", 10, 1, 1000),
+        stopCh:     make(chan struct{}),
+    }
+    go rw.loop()
+    actual, _ := writers.LoadOrStore(repo, rw)
+    return actual.(*repoWriter)
+}
+
+func (rw *repoWriter) loop() {
+    ticker := time.NewTicker(rw.flushEvery)
+    defer ticker.Stop()
+    batch := make([]writeIntent, 0, rw.maxBatch)
+    flush := func() { if len(batch) > 0 { rw.flushBatch(batch); batch = batch[:0] } }
+    for {
+        select {
+        case wi := <-rw.intentsCh:
+            batch = append(batch, wi)
+            if len(batch) >= rw.maxBatch { flush() }
+        case <-ticker.C:
+            flush()
+        case <-rw.stopCh:
+            flush(); return
+        }
+    }
+}
+
+func (rw *repoWriter) flushBatch(batch []writeIntent) {
+    // Group intents by resolved push branch to avoid mixing branches
+    byBranch := map[string][]writeIntent{}
+    for _, wi := range batch {
+        branch := getWriteBackBranch(wi.app)
+        if wi.wbc.GitWriteBranch != "" {
+            // honor template-derived write branch if set already on wbc
+            branch = wi.wbc.GitWriteBranch
+        }
+        byBranch[branch] = append(byBranch[branch], wi)
+    }
+    for branch, intents := range byBranch {
+        rw.commitBatch(branch, intents)
+    }
+}
+
+func (rw *repoWriter) commitBatch(branch string, intents []writeIntent) {
+    if len(intents) == 0 { return }
+    // Use creds and identity from first intent
+    first := intents[0]
+    logCtx := log.WithContext().AddField("repository", rw.repoURL)
+
+    creds, err := first.wbc.GetCreds(first.app)
+    if err != nil { logCtx.Errorf("could not get creds: %v", err); return }
+
+    tempRoot, err := os.MkdirTemp(os.TempDir(), "git-batch-")
+    if err != nil { logCtx.Errorf("temp dir: %v", err); return }
+    defer func(){ _ = os.RemoveAll(tempRoot) }()
+
+    gitC, err := git.NewClientExt(rw.repoURL, tempRoot, creds, false, false, "")
+    if err != nil { logCtx.Errorf("git client: %v", err); return }
+    if err = gitC.Init(); err != nil { logCtx.Errorf("git init: %v", err); return }
+
+    // Resolve checkout and push branch similarly to commitChangesGit
+    checkOutBranch := getWriteBackBranch(first.app)
+    if first.wbc.GitBranch != "" { checkOutBranch = first.wbc.GitBranch }
+    if checkOutBranch == "" || checkOutBranch == "HEAD" {
+        b, err := gitC.SymRefToBranch(checkOutBranch)
+        if err != nil { logCtx.Errorf("resolve branch: %v", err); return }
+        checkOutBranch = b
+    }
+    pushBranch := branch
+
+    // Ensure the branch exists locally
+    if pushBranch != checkOutBranch {
+        if err := gitC.ShallowFetch(pushBranch, 1); err != nil {
+            if err2 := gitC.ShallowFetch(checkOutBranch, 1); err2 != nil { logCtx.Errorf("fetch: %v", err2); return }
+            if err := gitC.Branch(checkOutBranch, pushBranch); err != nil { logCtx.Errorf("branch: %v", err); return }
+        }
+    } else {
+        if err := gitC.ShallowFetch(checkOutBranch, 1); err != nil { logCtx.Errorf("fetch: %v", err); return }
+    }
+    if err := gitC.Checkout(pushBranch, false); err != nil { logCtx.Errorf("checkout: %v", err); return }
+
+    // Apply writes for each intent using shared repo
+    combinedChanges := 0
+    for _, wi := range intents {
+        if wi.wbc.GitCommitUser != "" && wi.wbc.GitCommitEmail != "" {
+            _ = gitC.Config(wi.wbc.GitCommitUser, wi.wbc.GitCommitEmail)
+        }
+        if err, skip := wi.writeFn(wi.app, wi.wbc, gitC); err != nil {
+            logCtx.Errorf("write failed for app %s: %v", wi.app.GetName(), err)
+            continue
+        } else if skip {
+            continue
+        }
+        combinedChanges += len(wi.changeList)
+    }
+    if combinedChanges == 0 { return }
+
+    // Compose a commit message summarizing apps
+    msg := "Update parameters for "
+    for i, wi := range intents {
+        if i > 0 { msg += ", " }
+        msg += wi.app.GetName()
+    }
+
+    commitOpts := &git.CommitOptions{ CommitMessageText: msg, SigningKey: first.wbc.GitCommitSigningKey, SigningMethod: first.wbc.GitCommitSigningMethod, SignOff: first.wbc.GitCommitSignOff }
+    if err := gitC.Commit("", commitOpts); err != nil { logCtx.Errorf("commit: %v", err); return }
+    if err := gitC.Push("origin", pushBranch, pushBranch != checkOutBranch); err != nil { logCtx.Errorf("push: %v", err); return }
+}
+
+func enqueueWriteIntent(wi writeIntent) {
+    getOrCreateWriter(wi.wbc.GitRepo).intentsCh <- wi
 }
 
 // getWriteBackBranch returns the branch to use for write-back operations.

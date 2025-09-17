@@ -361,7 +361,11 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 		log.Debugf("Using commit message: %s", wbc.GitCommitMessage)
 		if !updateConf.DryRun {
 			logCtx.Infof("Committing %d parameter update(s) for application %s", result.NumImagesUpdated, app)
-			err := commitChangesLocked(&updateConf.UpdateApp.Application, wbc, state, changeList)
+            // Enqueue batched write intent; writer will coalesce per repo and branch
+            wi := writeIntent{app: &updateConf.UpdateApp.Application, wbc: wbc, changeList: changeList, writeFn: writeOverrides}
+            if wbc.KustomizeBase != "" { wi.writeFn = writeKustomization }
+            enqueueWriteIntent(wi)
+            err := error(nil)
 			if err != nil {
 				logCtx.Errorf("Could not update application spec: %v", err)
 				result.NumErrors += 1
