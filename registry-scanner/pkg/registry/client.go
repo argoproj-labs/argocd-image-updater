@@ -31,6 +31,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 )
 
 // TODO: Check image's architecture and OS
@@ -60,6 +61,7 @@ type registryClient struct {
 	regClient distribution.Repository
 	endpoint  *RegistryEndpoint
 	creds     credentials
+    repoName  string
 }
 
 // credentials is an implementation of distribution/V3/session struct
@@ -110,15 +112,28 @@ func (clt *registryClient) NewRepository(nameInRepository string) error {
 		return err
 	}
 
-	authTransport := transport.NewTransport(
-		clt.endpoint.GetTransport(), auth.NewAuthorizer(
-			challengeManager1,
-			auth.NewTokenHandler(clt.endpoint.GetTransport(), clt.creds, nameInRepository, "pull"),
-			auth.NewBasicHandler(clt.creds)))
+	cacheKey := clt.endpoint.RegistryAPI + "|" + nameInRepository
+	// Check for cached auth transport to reuse bearer tokens
+	repoAuthTransportCacheLock.RLock()
+	cached, ok := repoAuthTransportCache[cacheKey]
+	repoAuthTransportCacheLock.RUnlock()
+	var baseRT http.RoundTripper
+	if ok {
+		baseRT = cached
+	} else {
+		baseRT = transport.NewTransport(
+			clt.endpoint.GetTransport(), auth.NewAuthorizer(
+				challengeManager1,
+				auth.NewTokenHandler(clt.endpoint.GetTransport(), clt.creds, nameInRepository, "pull"),
+				auth.NewBasicHandler(clt.creds)))
+		repoAuthTransportCacheLock.Lock()
+		repoAuthTransportCache[cacheKey] = baseRT
+		repoAuthTransportCacheLock.Unlock()
+	}
 
 	rlt := &rateLimitTransport{
 		limiter:   clt.endpoint.Limiter,
-		transport: authTransport,
+		transport: baseRT,
 		endpoint:  clt.endpoint,
 	}
 
@@ -130,6 +145,7 @@ func (clt *registryClient) NewRepository(nameInRepository string) error {
 	if err != nil {
 		return err
 	}
+	clt.repoName = nameInRepository
 	return nil
 }
 
@@ -154,24 +170,26 @@ func NewClient(endpoint *RegistryEndpoint, username, password string) (RegistryC
 	}, nil
 }
 
+// cache for per-repository auth transports so we reuse bearer tokens across runtime
+var repoAuthTransportCache = make(map[string]http.RoundTripper)
+var repoAuthTransportCacheLock sync.RWMutex
+
 // Tags returns a list of tags for given name in repository
 func (clt *registryClient) Tags() ([]string, error) {
-	tagService := clt.regClient.Tags(context.Background())
-	var tTags []string
-	var err error
-	// simple bounded retry for transient registry/token hiccups
-	for attempt := 0; attempt < 3; attempt++ {
-		tTags, err = tagService.All(context.Background())
-		if err == nil {
-			break
-		}
-		// backoff: 200ms, 400ms, 800ms
-		time.Sleep(time.Duration(200*(1<<attempt)) * time.Millisecond)
-	}
-	if err != nil {
-		return nil, err
-	}
-	return tTags, nil
+    tagService := clt.regClient.Tags(context.Background())
+    var tTags []string
+    var err error
+    for attempt := 0; attempt < 3; attempt++ {
+        tTags, err = tagService.All(context.Background())
+        if err == nil {
+            break
+        }
+        time.Sleep(time.Duration(200*(1<<attempt)) * time.Millisecond)
+    }
+    if err != nil {
+        return nil, err
+    }
+    return tTags, nil
 }
 
 // Manifest  returns a Manifest for a given tag in repository

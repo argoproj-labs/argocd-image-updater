@@ -118,7 +118,7 @@ type runOpts struct {
 }
 
 var (
-	maxAttemptsCount = 1
+	maxAttemptsCount = 3
 	maxRetryDuration time.Duration
 	retryDuration    time.Duration
 	factor           int64
@@ -133,9 +133,10 @@ func init() {
 		}
 	}
 
-	maxRetryDuration = env.ParseDurationFromEnv(common.EnvGitRetryMaxDuration, common.DefaultGitRetryMaxDuration, 0, math.MaxInt64)
-	retryDuration = env.ParseDurationFromEnv(common.EnvGitRetryDuration, common.DefaultGitRetryDuration, 0, math.MaxInt64)
-	factor = env.ParseInt64FromEnv(common.EnvGitRetryFactor, common.DefaultGitRetryFactor, 0, math.MaxInt64)
+	// Defaults if env not set: maxRetries backoff settings per request
+	maxRetryDuration = env.ParseDurationFromEnv(common.EnvGitRetryMaxDuration, 10*time.Second, 0, math.MaxInt64)
+	retryDuration = env.ParseDurationFromEnv(common.EnvGitRetryDuration, 500*time.Millisecond, 0, math.MaxInt64)
+	factor = env.ParseInt64FromEnv(common.EnvGitRetryFactor, 2, 0, math.MaxInt64)
 
 }
 
