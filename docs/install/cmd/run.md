@@ -127,6 +127,12 @@ Set the log level to *level*, where *level* can be one of `trace`, `debug`,
 
 Can also be set using the *IMAGE_UPDATER_LOGLEVEL* environment variable.
 
+**--logformat *format***
+
+Set the log format to *format*, where *format* can be one of `text` or `json`
+
+Can also be set using the *IMAGE_UPDATER_LOGFORMAT* environment variable.
+
 **--max-concurrent-apps *number***
 
 Process a maximum of *number* applications concurrently. To disable concurrent

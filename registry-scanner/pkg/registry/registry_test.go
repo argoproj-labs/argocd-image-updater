@@ -28,7 +28,7 @@ func Test_GetTags(t *testing.T) {
 		regClient.On("NewRepository", mock.Anything).Return(nil)
 		regClient.On("Tags", mock.Anything).Return([]string{"1.2.0", "1.2.1", "1.2.2"}, nil)
 
-		ep, err := GetRegistryEndpoint(context.Background(), "")
+		ep, err := GetRegistryEndpoint(context.Background(), &image.ContainerImage{RegistryURL: ""})
 		require.NoError(t, err)
 
 		img := image.NewFromIdentifier("foo/bar:1.2.0")
@@ -47,7 +47,7 @@ func Test_GetTags(t *testing.T) {
 		regClient.On("NewRepository", mock.Anything).Return(nil)
 		regClient.On("Tags", mock.Anything).Return([]string{"1.2.0", "1.2.1", "1.2.2"}, nil)
 		ctx := context.Background()
-		ep, err := GetRegistryEndpoint(ctx, "")
+		ep, err := GetRegistryEndpoint(ctx, &image.ContainerImage{RegistryURL: ""})
 		require.NoError(t, err)
 
 		img := image.NewFromIdentifier("foo/bar:1.2.0")
@@ -70,7 +70,7 @@ func Test_GetTags(t *testing.T) {
 		regClient.On("NewRepository", mock.Anything).Return(nil)
 		regClient.On("Tags", mock.Anything).Return([]string{"1.2.0", "1.2.1", "1.2.2"}, nil)
 
-		ep, err := GetRegistryEndpoint(context.Background(), "")
+		ep, err := GetRegistryEndpoint(context.Background(), &image.ContainerImage{RegistryURL: ""})
 		require.NoError(t, err)
 
 		img := image.NewFromIdentifier("foo/bar:1.2.0")
@@ -101,7 +101,7 @@ func Test_GetTags(t *testing.T) {
 		regClient.On("Tags", mock.Anything).Return([]string{"1.2.0", "1.2.1", "1.2.2"}, nil)
 		regClient.On("ManifestForTag", mock.Anything, mock.Anything).Return(meta1, nil)
 		regClient.On("TagMetadata", mock.Anything, mock.Anything, mock.Anything).Return(&tag.TagInfo{}, nil)
-		ep, err := GetRegistryEndpoint(ctx, "")
+		ep, err := GetRegistryEndpoint(ctx, &image.ContainerImage{RegistryURL: ""})
 		require.NoError(t, err)
 		ep.Cache.ClearCache()
 
@@ -136,7 +136,7 @@ registries:
 		// New registry configuration
 		err = AddRegistryEndpointFromConfig(context.Background(), epl.Items[0])
 		require.NoError(t, err)
-		ep, err := GetRegistryEndpoint(context.Background(), "ghcr.io")
+		ep, err := GetRegistryEndpoint(context.Background(), &image.ContainerImage{RegistryURL: "ghcr.io"})
 		require.NoError(t, err)
 		require.NotEqual(t, 0, ep.CredsExpire)
 
@@ -197,7 +197,7 @@ registries:
 		// Add registry configuration
 		err = AddRegistryEndpointFromConfig(ctx, epl.Items[0])
 		require.NoError(t, err)
-		ep, err := GetRegistryEndpoint(ctx, "123456789.dkr.ecr.us-east-1.amazonaws.com")
+		ep, err := GetRegistryEndpoint(ctx, &image.ContainerImage{RegistryURL: "123456789.dkr.ecr.us-east-1.amazonaws.com"})
 		require.NoError(t, err)
 
 		// Force credentials to be expired
@@ -255,7 +255,7 @@ registries:
 
 		err = AddRegistryEndpointFromConfig(ctx, epl.Items[0])
 		require.NoError(t, err)
-		ep, err := GetRegistryEndpoint(ctx, "test.registry.io")
+		ep, err := GetRegistryEndpoint(ctx, &image.ContainerImage{RegistryURL: "test.registry.io"})
 		require.NoError(t, err)
 
 		// Set environment variable

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/cache"
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/image"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
 
 	"go.uber.org/ratelimit"
@@ -183,9 +184,31 @@ func inferRegistryEndpointFromPrefix(prefix string) *RegistryEndpoint {
 	return NewRegistryEndpoint(prefix, prefix, apiURL, "", "", false, TagListSortUnsorted, 20, 0)
 }
 
-// GetRegistryEndpoint retrieves the endpoint information for the given prefix
-func GetRegistryEndpoint(ctx context.Context, prefix string) (*RegistryEndpoint, error) {
+// findRegistryEndpointByImage finds registry by prefix based on full image name
+func findRegistryEndpointByImage(ctx context.Context, img *image.ContainerImage) (ep *RegistryEndpoint) {
 	log := log.LoggerFromContext(ctx)
+
+	imgName := fmt.Sprintf("%s/%s", img.RegistryURL, img.ImageName)
+	log.Debugf("Try to find endpoint by image: %s", imgName)
+	registryLock.RLock()
+	defer registryLock.RUnlock()
+
+	for _, registry := range registries {
+		matchRegistryPrefix := strings.HasPrefix(imgName, registry.RegistryPrefix)
+		if (ep == nil && matchRegistryPrefix) || (matchRegistryPrefix && len(registry.RegistryPrefix) > len(ep.RegistryPrefix)) {
+			log.Debugf("Selected registry: '%s' (last selection in log - final)", registry.RegistryName)
+			ep = registry
+		}
+	}
+
+	return
+}
+
+// GetRegistryEndpoint retrieves the endpoint information for the given image
+func GetRegistryEndpoint(ctx context.Context, img *image.ContainerImage) (*RegistryEndpoint, error) {
+	log := log.LoggerFromContext(ctx)
+
+	prefix := img.RegistryURL
 	if prefix == "" {
 		if defaultRegistry == nil {
 			return nil, fmt.Errorf("no default endpoint configured")
@@ -201,8 +224,13 @@ func GetRegistryEndpoint(ctx context.Context, prefix string) (*RegistryEndpoint,
 	if ok {
 		return registry, nil
 	} else {
+		ep := findRegistryEndpointByImage(ctx, img)
+		if ep != nil {
+			return ep, nil
+		}
+
 		var err error
-		ep := inferRegistryEndpointFromPrefix(prefix)
+		ep = inferRegistryEndpointFromPrefix(prefix)
 		if ep != nil {
 			err = AddRegistryEndpoint(ctx, ep)
 		} else {
@@ -240,7 +268,7 @@ func GetDefaultRegistry() *RegistryEndpoint {
 // SetRegistryEndpointCredentials allows to change the credentials used for
 // endpoint access for existing RegistryEndpoint configuration
 func SetRegistryEndpointCredentials(ctx context.Context, prefix, credentials string) error {
-	registry, err := GetRegistryEndpoint(ctx, prefix)
+	registry, err := GetRegistryEndpoint(ctx, &image.ContainerImage{RegistryURL: prefix})
 	if err != nil {
 		return err
 	}
