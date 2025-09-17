@@ -7,12 +7,3 @@ build-image:
   extends: .image-build-push
   variables:
     DOCKERFILE_PATH: 'Dockerfile'
-    DOCKER_CONTEXT: '${CI_PROJECT_DIR}'
-    DESTINATION: '${CI_REGISTRY_IMAGE}'
-  before_script:
-    - |
-      set -e
-      tag="$(grep -m1 '^FROM ' "$DOCKERFILE_PATH" | sed 's/.*://; s/ .*//')"
-      tag="${tag#v}"
-      [ -n "$tag" ] && export IMAGE_TAG_SUFFIX="$tag"
-      echo "Using IMAGE_TAG_SUFFIX=${IMAGE_TAG_SUFFIX}"
