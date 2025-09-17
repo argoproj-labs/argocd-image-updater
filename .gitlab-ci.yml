@@ -8,5 +8,5 @@ build-image:
   variables:
     DOCKERFILE_PATH: 'Dockerfile'
   after_script:
-    - docker tag ${DESTINATION}:${IMAGE_TAG_SUFFIX} harbor.stage.private.oxyplatform.io/platform-internal/argocd-image-updater:${IMAGE_TAG_SUFFIX}
+    - docker tag ${DESTINATION}:${IMAGE_TAG_SUFFIX} harbor.stage.private.oxyplatform.io/platform-internal/argocd-image-updater:${IMAGE_TAG_SUFFIX} harbor-ext.stage.private.oxyplatform.io/platform-internal/argocd-image-updater:${IMAGE_TAG_SUFFIX}
     - docker push harbor-ext.stage.private.oxyplatform.io/platform-internal/argocd-image-updater:${IMAGE_TAG_SUFFIX}
