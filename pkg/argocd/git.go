@@ -201,18 +201,24 @@ func (rw *repoWriter) loop() {
 
 func (rw *repoWriter) flushBatch(batch []writeIntent) {
     // Group intents by resolved push branch to avoid mixing branches
+    byBranch := groupIntentsByBranch(batch)
+    for branch, intents := range byBranch {
+        rw.commitBatch(branch, intents)
+    }
+}
+
+// groupIntentsByBranch groups write intents by their resolved push branch.
+// This is a pure function intended for testing and reuse.
+func groupIntentsByBranch(batch []writeIntent) map[string][]writeIntent {
     byBranch := map[string][]writeIntent{}
     for _, wi := range batch {
         branch := getWriteBackBranch(wi.app)
         if wi.wbc.GitWriteBranch != "" {
-            // honor template-derived write branch if set already on wbc
             branch = wi.wbc.GitWriteBranch
         }
         byBranch[branch] = append(byBranch[branch], wi)
     }
-    for branch, intents := range byBranch {
-        rw.commitBatch(branch, intents)
-    }
+    return byBranch
 }
 
 func (rw *repoWriter) commitBatch(branch string, intents []writeIntent) {

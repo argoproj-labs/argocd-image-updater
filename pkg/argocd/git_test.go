@@ -2,49 +2,28 @@ package argocd
 
 import (
     "testing"
-    gitm "github.com/argoproj-labs/argocd-image-updater/ext/git/mocks"
     "github.com/argoproj-labs/argocd-image-updater/pkg/common"
     v1alpha1 "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 )
 
-// Test that batched writer does not mix different branches in one commit/push
-func TestRepoWriter_GroupsByBranch(t *testing.T) {
-    // Build two apps targeting different write branches via annotation
-    appA := &v1alpha1.Application{}
-    appA.Annotations = map[string]string{
-        common.WriteBackMethodAnnotation: "git",
-        common.GitBranchAnnotation:       "main:appA-branch",
-    }
-    appB := &v1alpha1.Application{}
-    appB.Annotations = map[string]string{
-        common.WriteBackMethodAnnotation: "git",
-        common.GitBranchAnnotation:       "main:appB-branch",
-    }
+// Test that grouping does not mix different branches in one commit/push
+func Test_groupIntentsByBranch(t *testing.T) {
+    appA := &v1alpha1.Application{Annotations: map[string]string{common.GitBranchAnnotation: "main:appA-branch"}}
+    appB := &v1alpha1.Application{Annotations: map[string]string{common.GitBranchAnnotation: "main:appB-branch"}}
+    wbcA := &WriteBackConfig{GitRepo: "https://example/repo.git", GitWriteBranch: "appA-branch"}
+    wbcB := &WriteBackConfig{GitRepo: "https://example/repo.git", GitWriteBranch: "appB-branch"}
 
-    // Minimal wbc for both
-    wbcA := &WriteBackConfig{GitRepo: "https://example/repo.git", GitCommitUser: "u", GitCommitEmail: "e"}
-    wbcB := &WriteBackConfig{GitRepo: "https://example/repo.git", GitCommitUser: "u", GitCommitEmail: "e"}
-    // bind write-branch via parseGitConfig path expectation (we rely on getWriteBackBranch during grouping)
-    wbcA.GitWriteBranch = "appA-branch"
-    wbcB.GitWriteBranch = "appB-branch"
-
-    // Use mocks for git client by intercepting commitChangesGit is hard; instead, exercise grouping directly.
-    rw := &repoWriter{repoURL: wbcA.GitRepo}
-    // Replace commitBatch with an interceptor
-    got := make(map[string]int)
-    rw.commitBatch = func(branch string, intents []writeIntent) { got[branch] = len(intents) }
-
-    rw.flushBatch([]writeIntent{
+    by := groupIntentsByBranch([]writeIntent{
         {app: appA, wbc: wbcA, changeList: []ChangeEntry{{}}, writeFn: writeOverrides},
         {app: appB, wbc: wbcB, changeList: []ChangeEntry{{}}, writeFn: writeOverrides},
         {app: appA, wbc: wbcA, changeList: []ChangeEntry{{}}, writeFn: writeOverrides},
     })
 
-    if got["appA-branch"] != 2 {
-        t.Fatalf("expected 2 intents for appA-branch, got %d", got["appA-branch"])
+    if len(by["appA-branch"]) != 2 {
+        t.Fatalf("expected 2 intents for appA-branch, got %d", len(by["appA-branch"]))
     }
-    if got["appB-branch"] != 1 {
-        t.Fatalf("expected 1 intent for appB-branch, got %d", got["appB-branch"])
+    if len(by["appB-branch"]) != 1 {
+        t.Fatalf("expected 1 intent for appB-branch, got %d", len(by["appB-branch"]))
     }
 }
 
