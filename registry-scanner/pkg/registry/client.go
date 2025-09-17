@@ -32,6 +32,7 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+    "math/rand"
 )
 
 // TODO: Check image's architecture and OS
@@ -174,21 +175,55 @@ func NewClient(endpoint *RegistryEndpoint, username, password string) (RegistryC
 var repoAuthTransportCache = make(map[string]http.RoundTripper)
 var repoAuthTransportCacheLock sync.RWMutex
 
+// singleflight-style maps for deduping concurrent identical calls
+var tagsInFlight sync.Map // key string -> chan result
+
+type tagsResult struct {
+    tags []string
+    err  error
+}
+
 // Tags returns a list of tags for given name in repository
 func (clt *registryClient) Tags() ([]string, error) {
+    key := clt.endpoint.RegistryAPI + "|tags|" + clt.repoName
+    if ch, loaded := tagsInFlight.Load(key); loaded {
+        // wait for the leader's result
+        res := (<-ch.(chan tagsResult))
+        return res.tags, res.err
+    }
+    ch := make(chan tagsResult, 1)
+    actual, loaded := tagsInFlight.LoadOrStore(key, ch)
+    if loaded {
+        res := (<-actual.(chan tagsResult))
+        return res.tags, res.err
+    }
+
+    // leader path
+    defer func() {
+        tagsInFlight.Delete(key)
+        close(ch)
+    }()
+
     tagService := clt.regClient.Tags(context.Background())
     var tTags []string
     var err error
+    // jittered exponential backoff with per-attempt deadline
+    base := 200 * time.Millisecond
+    maxDelay := 3 * time.Second
     for attempt := 0; attempt < 3; attempt++ {
-        tTags, err = tagService.All(context.Background())
+        ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+        tTags, err = tagService.All(ctx)
+        cancel()
         if err == nil {
             break
         }
-        time.Sleep(time.Duration(200*(1<<attempt)) * time.Millisecond)
+        // jittered backoff
+        d := time.Duration(float64(base) * (1 << attempt) * (0.7 + 0.6*rand.Float64()))
+        if d > maxDelay { d = maxDelay }
+        time.Sleep(d)
     }
-    if err != nil {
-        return nil, err
-    }
+    ch <- tagsResult{tags: tTags, err: err}
+    if err != nil { return nil, err }
     return tTags, nil
 }
 

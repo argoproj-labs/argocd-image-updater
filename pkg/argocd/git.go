@@ -10,6 +10,7 @@ import (
 	"path"
 	"path/filepath"
 	"text/template"
+    "sync"
 
 	"sigs.k8s.io/kustomize/api/konfig"
 	"sigs.k8s.io/kustomize/api/types"
@@ -129,6 +130,18 @@ func TemplateBranchName(branchName string, changeList []ChangeEntry) string {
 
 type changeWriter func(app *v1alpha1.Application, wbc *WriteBackConfig, gitC git.Client) (err error, skip bool)
 
+// repoMu serializes git operations per repository URL to reduce contention in monorepos
+var repoMu sync.Map // map[string]*sync.Mutex
+
+func getRepoMutex(repo string) *sync.Mutex {
+    if v, ok := repoMu.Load(repo); ok {
+        return v.(*sync.Mutex)
+    }
+    m := &sync.Mutex{}
+    actual, _ := repoMu.LoadOrStore(repo, m)
+    return actual.(*sync.Mutex)
+}
+
 // getWriteBackBranch returns the branch to use for write-back operations.
 // It first checks for a branch specified in annotations, then uses the
 // targetRevision from the matching git source, falling back to getApplicationSource.
@@ -159,7 +172,11 @@ func getWriteBackBranch(app *v1alpha1.Application) string {
 // commitChanges commits any changes required for updating one or more images
 // after the UpdateApplication cycle has finished.
 func commitChangesGit(app *v1alpha1.Application, wbc *WriteBackConfig, changeList []ChangeEntry, write changeWriter) error {
-	logCtx := log.WithContext().AddField("application", app.GetName())
+    logCtx := log.WithContext().AddField("application", app.GetName())
+    // Serialize per repo to avoid many workers hammering the same monorepo
+    repoLock := getRepoMutex(wbc.GitRepo)
+    repoLock.Lock()
+    defer repoLock.Unlock()
 	creds, err := wbc.GetCreds(app)
 	if err != nil {
 		return fmt.Errorf("could not get creds for repo '%s': %v", wbc.GitRepo, err)
