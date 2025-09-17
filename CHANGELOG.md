@@ -6,37 +6,35 @@ handling on your side.
 
 ## Unreleased
 
-### New features
+### Upgrade notes (no really, you MUST read this)
 
-* feat: Reuse HTTP transports for registries with keep-alives and timeouts
-* feat: Initialize registry refresh-token map to enable token reuse
-* feat: Add Makefile `DOCKER` variable to support `podman`
-* feat: Optional GitLab CI config (separate branch) to build Dockerfile
+* **Attention**: By default, `argocd-image-updater` now uses the K8s API to retrieve applications, instead of the Argo CD API. Also, it is now recommended to install in the same namespace as Argo CD is running in (`argocd` by default). For existing installations, which are running in a dedicated namespace.
 
-### Improvements
+  To retain previous behaviour, set `applications_api: argocd` in `argocd-image-updater-config` ConfigMap before updating. However, it is recommended to move your installation into the `argocd` namespace (or wherever your Argo CD is installed to)
 
-* perf: Cache transports per registry+TLS mode; add sensible connection/timeouts
-* resiliency: Retry/backoff for registry tag listing
-* resiliency: Retry/backoff for git fetch/shallow-fetch/push during write-back
-
-### Tests/Docs
-
-* test: Add unit tests for transport caching and token map init
-* docs: Add requirements and small README/registry-scanner notes
-
-### Upgrade notes
-
-* None
+* The permissions for the `argocd-image-updater-sa` ServiceAccount have been adapted to allow read access to resources of type `Secret` and `argoproj.io/Application`
 
 ### Bug fixes
 
-* None
+* fix: install missing git binary (#148)
+* fix: run 'git add' for create files before pushing back (#143)
+
+### New features
+
+* feat: support managing Application CRD using K8S client (#144)
+* feat: Allow reuse of Argo CD repo credentials
+* feat: Git write-back of parameters (#133)
+
+### Other changes
+
+* refactor: make argocd-image-updater-config volume mapping optional (#145)
 
 ## 2020-12-06 - Release v0.8.0
 
 ### Upgrade notes (no really, you MUST read this)
 
 * **Attention**: For the `latest` update-strategy, `argocd-image-updater` now fetches v2 manifests by default, instead of the v1 manifests in previous versions. This is to improve compatibility with registry APIs, but may result in a significant higher number of manifest pulls. Due to the recent pull limits imposed by Docker Hub, it is **not recommended** to use `latest` updated strategy with Docker Hub registry anymore if those pull limits are enforced on your account and/or images, especially if you have more than a couple of tags in your image's repository. Fetching meta data for any given tag counts as two pulls from the view point of Docker Hub.
+
 * The default rate limit for API requests is 20 requests per second per registry. If this is too much for your registry, please lower this value in the `registries.conf` by setting `ratelimit` to a lower value.
 
 ### Bug fixes
