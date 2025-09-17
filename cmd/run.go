@@ -10,6 +10,7 @@ import (
 	"sync"
 	"text/template"
 	"time"
+    "sort"
 
 	"github.com/argoproj-labs/argocd-image-updater/pkg/argocd"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
@@ -32,6 +33,36 @@ import (
 
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
+
+// orderApplications reorders apps by schedule policy: lru (least-recent success first),
+// fail-first (recent failures first), with optional cooldown to deprioritize recently
+// successful apps.
+func orderApplications(names []string, appList map[string]argocd.ApplicationImages, state *argocd.SyncIterationState, cfg *ImageUpdaterConfig) []string {
+    stats := state.GetStats()
+    type item struct{ name string; score int64 }
+    items := make([]item, 0, len(names))
+    now := time.Now()
+    for _, n := range names {
+        s := stats[n]
+        score := int64(0)
+        switch cfg.Schedule {
+        case "lru":
+            // Older success => higher priority (lower score)
+            if !s.LastSuccess.IsZero() { score -= int64(now.Sub(s.LastSuccess).Milliseconds()) }
+        case "fail-first":
+            score += int64(s.FailCount) * 1_000_000 // dominate by failures
+            if !s.LastAttempt.IsZero() { score -= int64(now.Sub(s.LastAttempt).Milliseconds()) }
+        }
+        if cfg.Cooldown > 0 && !s.LastSuccess.IsZero() && now.Sub(s.LastSuccess) < cfg.Cooldown {
+            score -= 1 // slight deprioritization
+        }
+        items = append(items, item{name: n, score: score})
+    }
+    sort.Slice(items, func(i, j int) bool { return items[i].score > items[j].score })
+    out := make([]string, len(items))
+    for i := range items { out[i] = items[i].name }
+    return out
+}
 
 // newRunCommand implements "run" command
 func newRunCommand() *cobra.Command {
@@ -72,7 +103,7 @@ func newRunCommand() *cobra.Command {
 				return fmt.Errorf("--max-concurrency must be greater than 1")
 			}
 
-			log.Infof("%s %s starting [loglevel:%s, interval:%s, healthport:%s]",
+            log.Infof("%s %s starting [loglevel:%s, interval:%s, healthport:%s]",
 				version.BinaryName(),
 				version.Version(),
 				strings.ToUpper(cfg.LogLevel),
@@ -156,7 +187,7 @@ func newRunCommand() *cobra.Command {
 			)
 
 			// Initialize metrics before starting the metrics server or using any counters
-			metrics.InitMetrics()
+            metrics.InitMetrics()
 
 			// Health server will start in a go routine and run asynchronously
 			var hsErrCh chan error
@@ -225,6 +256,8 @@ func newRunCommand() *cobra.Command {
 				harborHandler := webhook.NewHarborWebhook(webhookCfg.HarborSecret)
 				handler.RegisterHandler(harborHandler)
 
+                // GitLab Container Registry webhooks are not supported upstream
+
 				quayHandler := webhook.NewQuayWebhook(webhookCfg.QuaySecret)
 				handler.RegisterHandler(quayHandler)
 
@@ -264,7 +297,7 @@ func newRunCommand() *cobra.Command {
 
 			// This is our main loop. We leave it only when our health probe server
 			// returns an error.
-			for {
+            for {
 				select {
 				case err := <-hsErrCh:
 					if err != nil {
@@ -297,7 +330,7 @@ func newRunCommand() *cobra.Command {
 					return nil
 				default:
 					if lastRun.IsZero() || time.Since(lastRun) > cfg.CheckInterval {
-						result, err := runImageUpdater(cfg, false)
+                        result, err := runImageUpdater(cfg, false)
 						if err != nil {
 							log.Errorf("Error: %v", err)
 						} else {
@@ -350,6 +383,9 @@ func newRunCommand() *cobra.Command {
 	runCmd.Flags().StringVar(&cfg.AppLabel, "match-application-label", "", "label selector to match application labels against. DEPRECATED: this flag will be removed in a future version.")
 
 	runCmd.Flags().BoolVar(&warmUpCache, "warmup-cache", true, "whether to perform a cache warm-up on startup")
+	runCmd.Flags().StringVar(&cfg.Schedule, "schedule", env.GetStringVal("IMAGE_UPDATER_SCHEDULE", "default"), "scheduling policy: default|lru|fail-first")
+	runCmd.Flags().DurationVar(&cfg.Cooldown, "cooldown", env.GetDurationVal("IMAGE_UPDATER_COOLDOWN", 0), "deprioritize apps updated within this duration")
+	runCmd.Flags().IntVar(&cfg.PerRepoCap, "per-repo-cap", env.ParseNumFromEnv("IMAGE_UPDATER_PER_REPO_CAP", 0, 0, 100000), "max updates per repo per cycle (0 = unlimited)")
 	runCmd.Flags().StringVar(&cfg.GitCommitUser, "git-commit-user", env.GetStringVal("GIT_COMMIT_USER", "argocd-image-updater"), "Username to use for Git commits")
 	runCmd.Flags().StringVar(&cfg.GitCommitMail, "git-commit-email", env.GetStringVal("GIT_COMMIT_EMAIL", "noreply@argoproj.io"), "E-Mail address to use for Git commits")
 	runCmd.Flags().StringVar(&cfg.GitCommitSigningKey, "git-commit-signing-key", env.GetStringVal("GIT_COMMIT_SIGNING_KEY", ""), "GnuPG key ID or path to Private SSH Key used to sign the commits")
@@ -365,6 +401,7 @@ func newRunCommand() *cobra.Command {
 	runCmd.Flags().StringVar(&webhookCfg.QuaySecret, "quay-webhook-secret", env.GetStringVal("QUAY_WEBHOOK_SECRET", ""), "Secret for validating Quay webhooks")
 	runCmd.Flags().StringVar(&webhookCfg.HarborSecret, "harbor-webhook-secret", env.GetStringVal("HARBOR_WEBHOOK_SECRET", ""), "Secret for validating Harbor webhooks")
 	runCmd.Flags().IntVar(&webhookCfg.RateLimitNumAllowedRequests, "webhook-ratelimit-allowed", env.ParseNumFromEnv("WEBHOOK_RATELIMIT_ALLOWED", 0, 0, math.MaxInt), "The number of allowed requests in an hour for webhook rate limiting, setting to 0 disables ratelimiting")
+    // GitLab Container Registry webhooks are not supported upstream
 
 	return runCmd
 }
@@ -412,7 +449,7 @@ func runImageUpdater(cfg *ImageUpdaterConfig, warmUp bool) (argocd.ImageUpdaterR
 		log.Infof("Starting image update cycle, considering %d annotated application(s) for update", len(appList))
 	}
 
-	syncState := argocd.NewSyncIterationState()
+            syncState := argocd.NewSyncIterationState()
 
 	// Allow a maximum of MaxConcurrency number of goroutines to exist at the
 	// same time. If in warm-up mode, set to 1 explicitly.
@@ -429,7 +466,25 @@ func runImageUpdater(cfg *ImageUpdaterConfig, warmUp bool) (argocd.ImageUpdaterR
 	var wg sync.WaitGroup
 	wg.Add(len(appList))
 
-	for app, curApplication := range appList {
+            // Optionally reorder apps by scheduling policy
+            ordered := make([]string, 0, len(appList))
+            for app := range appList { ordered = append(ordered, app) }
+            if cfg.Schedule != "default" || cfg.Cooldown > 0 || cfg.PerRepoCap > 0 {
+                ordered = orderApplications(ordered, appList, syncState, cfg)
+            }
+
+            perRepoCounter := map[string]int{}
+
+            for _, app := range ordered {
+                curApplication := appList[app]
+                // Per-repo cap if configured
+                if cfg.PerRepoCap > 0 {
+                    repo := argocd.GetApplicationSource(&curApplication.Application).RepoURL
+                    if perRepoCounter[repo] >= cfg.PerRepoCap {
+                        continue
+                    }
+                }
+                syncState.RecordAttempt(app)
 		lockErr := sem.Acquire(context.Background(), 1)
 		if lockErr != nil {
 			log.Errorf("Could not acquire semaphore for application %s: %v", app, lockErr)
@@ -456,7 +511,12 @@ func runImageUpdater(cfg *ImageUpdaterConfig, warmUp bool) (argocd.ImageUpdaterR
 				DisableKubeEvents:      cfg.DisableKubeEvents,
 				GitCreds:               cfg.GitCreds,
 			}
-			res := argocd.UpdateApplication(upconf, syncState)
+            res := argocd.UpdateApplication(upconf, syncState)
+            syncState.RecordResult(app, res.NumErrors > 0)
+            if cfg.PerRepoCap > 0 {
+                repo := argocd.GetApplicationSource(&curApplication.Application).RepoURL
+                perRepoCounter[repo] = perRepoCounter[repo] + 1
+            }
 			result.NumApplicationsProcessed += 1
 			result.NumErrors += res.NumErrors
 			result.NumImagesConsidered += res.NumImagesConsidered

@@ -53,6 +53,10 @@ type ImageUpdaterConfig struct {
 	DisableKubeEvents      bool
 	GitCreds               git.CredsStore
 	EnableWebhook          bool
+    // Scheduler options
+    Schedule              string
+    Cooldown              time.Duration
+    PerRepoCap            int
 }
 
 // newRootCommand implements the root command of argocd-image-updater

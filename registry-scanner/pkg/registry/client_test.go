@@ -20,6 +20,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+    // singleflight not used in simplified token reuse approach
 
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/image"
@@ -169,12 +170,25 @@ func TestNewClient(t *testing.T) {
 	})
 }
 
+// removed singleflight test
+
+func TestNewClient_InitializesRefreshTokenMap(t *testing.T) {
+    ep := &RegistryEndpoint{}
+    rc, err := NewClient(ep, "", "")
+    require.NoError(t, err)
+    c := rc.(*registryClient)
+    // Ensure the map is not nil so SetRefreshToken can store values
+    require.NotNil(t, c.creds.refreshTokens)
+}
+
 func TestTags(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		mockRegClient := new(mocks.Repository)
-		client := registryClient{
-			regClient: mockRegClient,
-		}
+        client := registryClient{
+            regClient: mockRegClient,
+            endpoint:  &RegistryEndpoint{RegistryAPI: "https://example.com"},
+            repoName:  "org/repo",
+        }
 		mockTagService := new(mocks.TagService)
 		mockTagService.On("All", mock.Anything).Return([]string{"testTag-1", "testTag-2"}, nil)
 		mockRegClient.On("Tags", mock.Anything).Return(mockTagService)
@@ -185,9 +199,11 @@ func TestTags(t *testing.T) {
 	})
 	t.Run("Fail", func(t *testing.T) {
 		mockRegClient := new(mocks.Repository)
-		client := registryClient{
-			regClient: mockRegClient,
-		}
+        client := registryClient{
+            regClient: mockRegClient,
+            endpoint:  &RegistryEndpoint{RegistryAPI: "https://example.com"},
+            repoName:  "org/repo",
+        }
 		mockTagService := new(mocks.TagService)
 		mockTagService.On("All", mock.Anything).Return([]string{}, errors.New("Error on caling func All"))
 		mockRegClient.On("Tags", mock.Anything).Return(mockTagService)

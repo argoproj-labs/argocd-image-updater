@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"strconv"
 
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/cache"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/image"
@@ -121,6 +122,12 @@ var registryLock sync.RWMutex
 
 // credentialGroup ensures only one credential refresh happens per registry
 var credentialGroup singleflight.Group
+
+// transportCache stores reusable HTTP transports per registry API URL.
+// Reusing transports enables HTTP keep-alives/connection pooling and avoids
+// excessive TLS handshakes when the updater queries registries frequently.
+var transportCache = make(map[string]*http.Transport)
+var transportCacheLock sync.RWMutex
 
 func AddRegistryEndpointFromConfig(epc RegistryConfiguration) error {
 	ep := NewRegistryEndpoint(epc.Prefix, epc.Name, epc.ApiURL, epc.Credentials, epc.DefaultNS, epc.Insecure, TagListSortFromString(epc.TagSortMode), epc.Limit, epc.CredsExpire)
@@ -308,16 +315,50 @@ func (ep *RegistryEndpoint) DeepCopy() *RegistryEndpoint {
 	return newEp
 }
 
-// GetTransport returns a transport object for this endpoint
+// ClearTransportCache clears cached transports (e.g., after registry config reload)
+func ClearTransportCache() {
+	transportCacheLock.Lock()
+	defer transportCacheLock.Unlock()
+	transportCache = make(map[string]*http.Transport)
+	log.Debugf("Transport cache cleared.")
+}
+
+// GetTransport returns a cached transport configured with sane defaults.
+// The transport is keyed by the endpoint's RegistryAPI and shared by callers
+// to maximize connection reuse and apply timeouts consistently.
 func (ep *RegistryEndpoint) GetTransport() *http.Transport {
+	// Cache key must account for TLS mode to avoid reusing a secure transport for insecure endpoints
+	key := ep.RegistryAPI + "|insecure=" + strconv.FormatBool(ep.Insecure)
+	// Fast path: return cached transport if present
+	transportCacheLock.RLock()
+	if tr, ok := transportCache[key]; ok {
+		transportCacheLock.RUnlock()
+		return tr
+	}
+	transportCacheLock.RUnlock()
+
 	tlsC := &tls.Config{}
 	if ep.Insecure {
 		tlsC.InsecureSkipVerify = true
 	}
-	return &http.Transport{
-		Proxy:           http.ProxyFromEnvironment,
-		TLSClientConfig: tlsC,
+
+	// Create and cache a transport with sane defaults
+	tr := &http.Transport{
+		Proxy:                 http.ProxyFromEnvironment,
+		TLSClientConfig:       tlsC,
+		MaxIdleConns:          100,
+		MaxIdleConnsPerHost:   20,
+		MaxConnsPerHost:       50,
+		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+		ForceAttemptHTTP2:     true,
+		ResponseHeaderTimeout: 15 * time.Second,
 	}
+	transportCacheLock.Lock()
+	transportCache[key] = tr
+	transportCacheLock.Unlock()
+	return tr
 }
 
 // init initializes the registry configuration

@@ -331,6 +331,30 @@ func TestGetTransport(t *testing.T) {
 	})
 }
 
+func TestGetTransport_CachesPerAPI(t *testing.T) {
+    ep1 := &RegistryEndpoint{RegistryAPI: "https://r1.example", Insecure: false}
+    ep2 := &RegistryEndpoint{RegistryAPI: "https://r1.example", Insecure: false}
+    ep3 := &RegistryEndpoint{RegistryAPI: "https://r2.example", Insecure: true}
+
+    // Clear any previous cache state
+    ClearTransportCache()
+
+    tr1 := ep1.GetTransport()
+    require.NotNil(t, tr1)
+
+    tr2 := ep2.GetTransport()
+    require.NotNil(t, tr2)
+
+    // Same API URL should reuse the same pointer
+    assert.Equal(t, tr1, tr2)
+
+    tr3 := ep3.GetTransport()
+    require.NotNil(t, tr3)
+
+    // Different API URL should create a different transport
+    assert.NotEqual(t, tr1, tr3)
+}
+
 func Test_RestoreDefaultRegistryConfiguration(t *testing.T) {
 	// Call the function to restore default configuration
 	RestoreDefaultRegistryConfiguration()
