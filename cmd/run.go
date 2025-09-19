@@ -74,6 +74,13 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 			default:
 				return fmt.Errorf("invalid log format '%s'", cfg.LogFormat)
 			}
+
+			if once {
+				cfg.CheckInterval = 0
+				probeAddr = "0"
+				warmUpCache = true
+			}
+
 			log.SetLogFormat(logFormat)
 
 			ctrl.SetLogger(logrusr.New(log.Log()))
@@ -85,14 +92,8 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 				"app", version.BinaryName()+": "+version.Version(),
 				"loglevel", strings.ToUpper(cfg.LogLevel),
 				"interval", argocd.GetPrintableInterval(cfg.CheckInterval),
-				"healthPort", argocd.GetPrintableHealthPort(cfg.HealthPort),
+				"healthPort", probeAddr,
 			)
-
-			if once {
-				cfg.CheckInterval = 0
-				cfg.HealthPort = 0
-				warmUpCache = true
-			}
 
 			// Create context with signal handling
 			ctx := ctrl.SetupSignalHandler()
@@ -152,18 +153,6 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 				LeaderElection:          enableLeaderElection,
 				LeaderElectionID:        "c21b75f2.argoproj.io",
 				LeaderElectionNamespace: leaderElectionNamespace,
-
-				// LeaderElectionReleaseOnCancel defines if the leader should step down voluntarily
-				// when the Manager ends. This requires the binary to immediately end when the
-				// Manager is stopped, otherwise, this setting is unsafe. Setting this significantly
-				// speeds up voluntary leader transitions as the new leader don't have to wait
-				// LeaseDuration time first.
-				//
-				// In the default scaffold provided, the program ends immediately after
-				// the manager stops, so would be fine to enable this option. However,
-				// if you are doing or is intended to do any operation such as perform cleanups
-				// after the manager stops then its usage might be unsafe.
-				// LeaderElectionReleaseOnCancel: true,
 			})
 			if err != nil {
 				setupLogger.Error(err, "unable to start manager")
@@ -201,6 +190,7 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 				setupLogger.Info("Cache warm-up disabled, skipping cache warmer")
 				// If warm-up is disabled, we need to signal that cache is warmed
 				close(warmupState.Done)
+				warmupState.isCacheWarmed.Store(true)
 			}
 
 			// Start the webhook server if enabled
@@ -267,15 +257,10 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 		},
 	}
 
-	// TODO: flags below are not documented yet and don't have env vars yet. Metrics and health checks will be implemented in GITOPS-7113
 	controllerCmd.Flags().StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
-	controllerCmd.Flags().StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
+	controllerCmd.Flags().StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to. Change to 0 to disable the probe service.")
 	controllerCmd.Flags().BoolVar(&secureMetrics, "metrics-secure", true, "If set, the metrics endpoint is served securely via HTTPS. Use --metrics-secure=false to use HTTP instead.")
 	controllerCmd.Flags().BoolVar(&enableHTTP2, "enable-http2", false, "If set, HTTP/2 will be enabled for the metrics and webhook servers")
-
-	// TODO: most probably legacy flags. Will be checked in GITOPS-7113
-	controllerCmd.Flags().IntVar(&cfg.HealthPort, "health-port", 8080, "port to start the health server on, 0 to disable")
-	controllerCmd.Flags().IntVar(&cfg.MetricsPort, "metrics-port", 8081, "port to start the metrics server on, 0 to disable")
 
 	controllerCmd.Flags().BoolVar(&enableLeaderElection, "leader-election", true, "Enable leader election for controller manager. Enabling this will ensure there is only one active controller manager.")
 	controllerCmd.Flags().StringVar(&leaderElectionNamespace, "leader-election-namespace", "", "The namespace used for the leader election lease. If empty, the controller will use the namespace of the pod it is running in. When running locally this value must be set.")
@@ -285,21 +270,23 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 	controllerCmd.Flags().StringVar(&cfg.LogFormat, "logformat", env.GetStringVal("IMAGE_UPDATER_LOGFORMAT", "text"), "set the log format to one of text|json")
 	controllerCmd.Flags().StringVar(&kubeConfig, "kubeconfig", "", "full path to kubernetes client configuration, i.e. ~/.kube/config")
 
-	controllerCmd.Flags().BoolVar(&once, "once", false, "run only once, same as specifying --warmup-cache=true, --interval=0 and --health-port=0")
+	controllerCmd.Flags().BoolVar(&once, "once", false, "run only once, same as specifying --warmup-cache=true, --interval=0 and --health-probe-bind-address=0")
 	controllerCmd.Flags().StringVar(&cfg.RegistriesConf, "registries-conf-path", common.DefaultRegistriesConfPath, "path to registries configuration file")
 	controllerCmd.Flags().IntVar(&cfg.MaxConcurrentApps, "max-concurrent-apps", env.ParseNumFromEnv("MAX_CONCURRENT_APPS", 10, 1, 100), "maximum number of ArgoCD applications that can be updated concurrently (must be >= 1)")
 	controllerCmd.Flags().IntVar(&MaxConcurrentReconciles, "max-concurrent-reconciles", env.ParseNumFromEnv("MAX_CONCURRENT_RECONCILES", 1, 1, 10), "maximum number of concurrent Reconciles which can be run (must be >= 1)")
 	controllerCmd.Flags().StringVar(&cfg.ArgocdNamespace, "argocd-namespace", "", "namespace where ArgoCD runs in (current namespace by default)")
 	controllerCmd.Flags().BoolVar(&warmUpCache, "warmup-cache", true, "whether to perform a cache warm-up on startup")
+	controllerCmd.Flags().BoolVar(&cfg.DisableKubeEvents, "disable-kube-events", env.GetBoolVal("IMAGE_UPDATER_KUBE_EVENTS", false), "Disable kubernetes events")
 
+	// Git flags
 	controllerCmd.Flags().StringVar(&cfg.GitCommitUser, "git-commit-user", env.GetStringVal("GIT_COMMIT_USER", "argocd-image-updater"), "Username to use for Git commits")
 	controllerCmd.Flags().StringVar(&cfg.GitCommitMail, "git-commit-email", env.GetStringVal("GIT_COMMIT_EMAIL", "noreply@argoproj.io"), "E-Mail address to use for Git commits")
 	controllerCmd.Flags().StringVar(&cfg.GitCommitSigningKey, "git-commit-signing-key", env.GetStringVal("GIT_COMMIT_SIGNING_KEY", ""), "GnuPG key ID or path to Private SSH Key used to sign the commits")
 	controllerCmd.Flags().StringVar(&cfg.GitCommitSigningMethod, "git-commit-signing-method", env.GetStringVal("GIT_COMMIT_SIGNING_METHOD", "openpgp"), "Method used to sign Git commits ('openpgp' or 'ssh')")
 	controllerCmd.Flags().BoolVar(&cfg.GitCommitSignOff, "git-commit-sign-off", env.GetBoolVal("GIT_COMMIT_SIGN_OFF", false), "Whether to sign-off git commits")
 	controllerCmd.Flags().StringVar(&commitMessagePath, "git-commit-message-path", common.DefaultCommitTemplatePath, "Path to a template to use for Git commit messages")
-	controllerCmd.Flags().BoolVar(&cfg.DisableKubeEvents, "disable-kube-events", env.GetBoolVal("IMAGE_UPDATER_KUBE_EVENTS", false), "Disable kubernetes events")
 
+	// Webhook flags
 	controllerCmd.Flags().BoolVar(&cfg.EnableWebhook, "enable-webhook", env.GetBoolVal("ENABLE_WEBHOOK", false), "Enable webhook server for receiving registry events")
 	controllerCmd.Flags().IntVar(&webhookCfg.Port, "webhook-port", env.ParseNumFromEnv("WEBHOOK_PORT", 8082, 0, 65535), "Port to listen on for webhook events")
 	controllerCmd.Flags().StringVar(&webhookCfg.DockerSecret, "docker-webhook-secret", env.GetStringVal("DOCKER_WEBHOOK_SECRET", ""), "Secret for validating Docker Hub webhooks")

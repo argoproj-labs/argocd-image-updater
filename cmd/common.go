@@ -14,6 +14,7 @@ import (
 	"github.com/argoproj-labs/argocd-image-updater/internal/controller"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/argocd"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
+	"github.com/argoproj-labs/argocd-image-updater/pkg/metrics"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/webhook"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/registry"
 )
@@ -30,6 +31,9 @@ type WebhookConfig struct {
 
 // SetupCommon initializes common components (logging, context, etc.)
 func SetupCommon(ctx context.Context, cfg *controller.ImageUpdaterConfig, setupLogger logr.Logger, commitMessagePath, kubeConfig string) error {
+	// Initialize metrics before starting the metrics server or using any counters
+	metrics.InitMetrics()
+
 	var commitMessageTpl string
 
 	// User can specify a path to a template used for Git commit messages

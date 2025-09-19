@@ -31,6 +31,10 @@ Secret for validating Docker Hub webhooks.
 
 Can also be set with the `DOCKER_WEBHOOK_SECRET` environment variable.
 
+**--enable-http2 *disabled***
+
+If set, HTTP/2 will be enabled for the metrics and webhook servers.
+
 **--enable-webhook *enabled***
 
 Enable webhook server for receiving registry events.
@@ -81,7 +85,7 @@ Secret for validating Harbor webhooks
 
 Can also be set with the `HARBOR_WEBHOOK_SECRET` environment variable.
 
-**--health-port *port***
+**--health-probe-bind-address *port***
 
 Specifies the local port to bind the health server to. The health server is
 used to provide health and readiness probes when running as K8s workload.
@@ -117,6 +121,16 @@ Kubernetes cluster, i.e. `~/.kube/config`. When specified, Argo CD Image
 Updater will use the currently active context in the configuration to connect
 to the Kubernetes cluster.
 
+**--leader-election *enabled***
+
+Enable leader election for controller manager. Enabling this will ensure 
+there is only one active controller manager.
+
+**--leader-election-namespace *namespace***
+
+The namespace used for the leader election lease. If empty, the controller will
+use the namespace of the pod it is running in. When running locally this value must be set.
+
 **--loglevel *level***
 
 Set the log level to *level*, where *level* can be one of `trace`, `debug`,
@@ -146,13 +160,17 @@ Higher values may improve throughput but could increase resource usage and API l
 
 Can also be set using the *MAX_CONCURRENT_RECONCILES* environment variable.
 
-**--metrics-port *port***
+**--metrics-bind-address *port***
 
-port to start the metrics server on, 0 to disable (default 8081)
+port to start the metrics server on, "0" to disable (default "0")
+
+**--metrics-secure *enabled***
+
+If set, the metrics endpoint is served securely via HTTPS. Use `--metrics-secure="false"` to use HTTP instead.
 
 **--once**
 
-A shortcut for specifying `--interval 0 --health-port 0 --warmUpCache=true`. If given,
+A shortcut for specifying `--interval 0 --health-probe-bind-address 0 --warmUpCache=true`. If given,
 Argo CD Image Updater will exit after the first update cycle.
 
 **--quay-webhook-secret *secret***

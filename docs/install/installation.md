@@ -70,43 +70,29 @@ If opting for such an approach, you should make sure that:
 
 ## Metrics
 
-!!!note "Under Construction"
-    Please note that Prometheus metrics are not available in the initial CRD-based versions of Argo CD Image Updater. The functionality described below is planned for a future release. We are keeping this section as a reference for when metrics are re-introduced.
-
 Starting with v0.8.0, Argo CD Image Updater exports Prometheus-compatible
-metrics on a dedicated endpoint, which by default listens on TCP port 8081
-and serves data from `/metrics` path. This endpoint is exposed by a service
-named `argocd-image-updater` on a port named `metrics`.
+metrics. This feature is disabled by default but can be enabled using the
+`--metrics-bind-address` flag to specify a listening address (e.g., `:8080`).
+Metrics are then served on the `/metrics` path.
 
-The following metrics are being made available:
+The following metric is currently available and populated with data:
 
-* Number of applications processed (i.e. those with an annotation)
+*   `argocd_image_updater_applications_watched_total` - A gauge that shows the
+    number of applications watched per `ImageUpdater` CR.
 
-    * `argocd_image_updater_applications_watched_total`
+!!! note "Other Defined Metrics"
+    The metrics listed below are also defined within the application. However,
+    for various reasons, they are either not populated with data or have been
+    temporarily disabled. They may not appear on the `/metrics` endpoint or may
+    always report a value of `0`.
 
-* Number of images watched for new tags
-
-    * `argocd_image_updater_images_watched_total`
-
-* Number of images updated (successful and failed)
-
-    * `argocd_image_updater_images_updated_total`
-    * `argocd_image_updater_images_errors_total`
-
-* Number of requests to Argo CD API (successful and failed)
-
-    * `argocd_image_updater_argocd_api_requests_total`
-    * `argocd_image_updater_argocd_api_errors_total`
-
-* Number of requests to K8s API (successful and failed)
-
-    * `argocd_image_updater_k8s_api_requests_total`
-    * `argocd_image_updater_k8s_api_errors_total`
-
-* Number of requests to the container registries (successful and failed)
-
-    * `argocd_image_updater_registry_requests_total`
-    * `argocd_image_updater_registry_requests_failed_total`
+*   `argocd_image_updater_images_watched_total`
+*   `argocd_image_updater_images_updated_total`
+*   `argocd_image_updater_images_errors_total`
+*   `argocd_image_updater_k8s_api_requests_total`
+*   `argocd_image_updater_k8s_api_errors_total`
+*   `argocd_image_updater_registry_requests_total`
+*   `argocd_image_updater_registry_requests_failed_total`
 
 A (very) rudimentary example dashboard definition for Grafana is provided
 [here](https://github.com/argoproj-labs/argocd-image-updater/tree/master/config)

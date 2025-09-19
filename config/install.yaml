@@ -5,6 +5,7 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: argocd-image-updater-system
     control-plane: argocd-image-updater-controller
+    metrics: enabled
   name: argocd-image-updater-system
 ---
 apiVersion: apiextensions.k8s.io/v1
@@ -661,6 +662,34 @@ rules:
   - watch
 ---
 apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: argocd-image-updater-metrics-auth-role
+rules:
+- apiGroups:
+  - authentication.k8s.io
+  resources:
+  - tokenreviews
+  verbs:
+  - create
+- apiGroups:
+  - authorization.k8s.io
+  resources:
+  - subjectaccessreviews
+  verbs:
+  - create
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: argocd-image-updater-metrics-reader
+rules:
+- nonResourceURLs:
+  - /metrics
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   labels:
@@ -711,6 +740,32 @@ subjects:
   name: argocd-image-updater-controller
   namespace: argocd-image-updater-system
 ---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: argocd-image-updater-metrics-auth-rolebinding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: argocd-image-updater-metrics-auth-role
+subjects:
+- kind: ServiceAccount
+  name: argocd-image-updater-controller
+  namespace: argocd-image-updater-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: argocd-image-updater-metrics-reader-rolebinding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: argocd-image-updater-metrics-reader
+subjects:
+- kind: ServiceAccount
+  name: argocd-image-updater-controller
+  namespace: argocd-image-updater-system
+---
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -738,6 +793,24 @@ metadata:
   name: argocd-image-updater-secret
   namespace: argocd-image-updater-system
 ---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: argocd-image-updater
+    control-plane: argocd-image-updater-controller
+  name: argocd-image-updater-controller-metrics-service
+  namespace: argocd-image-updater-system
+spec:
+  ports:
+  - name: https
+    port: 8443
+    protocol: TCP
+    targetPort: 8443
+  selector:
+    control-plane: argocd-image-updater-controller
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -762,6 +835,7 @@ spec:
     spec:
       containers:
       - args:
+        - --metrics-bind-address=:8443
         - run
         command:
         - /manager
@@ -945,3 +1019,27 @@ spec:
           secretName: ssh-git-creds
       - emptyDir: {}
         name: tmp
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: argocd-image-updater-controller
+    control-plane: argocd-image-updater-controller
+  name: allow-metrics-traffic
+  namespace: argocd-image-updater-system
+spec:
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          metrics: enabled
+    ports:
+    - port: 8443
+      protocol: TCP
+  podSelector:
+    matchLabels:
+      control-plane: argocd-image-updater-controller
+  policyTypes:
+  - Ingress

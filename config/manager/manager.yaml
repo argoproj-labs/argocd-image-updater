@@ -5,6 +5,7 @@ metadata:
     control-plane: argocd-image-updater-controller
     app.kubernetes.io/name: argocd-image-updater-system
     app.kubernetes.io/managed-by: kustomize
+    metrics: enabled
   name: argocd-image-updater-system
 ---
 apiVersion: apps/v1

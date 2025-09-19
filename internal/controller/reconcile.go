@@ -10,6 +10,7 @@ import (
 
 	iuapi "github.com/argoproj-labs/argocd-image-updater/api/v1alpha1"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/argocd"
+	"github.com/argoproj-labs/argocd-image-updater/pkg/metrics"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/image"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/registry"
@@ -33,10 +34,10 @@ func (r *ImageUpdaterReconciler) RunImageUpdater(ctx context.Context, cr *iuapi.
 		return result, err
 	}
 
-	// TODO: metrics will be implemented in GITOPS-7113
-	//metrics.Applications().SetNumberOfApplications(len(appList))
-
 	if !warmUp {
+		if metrics.Applications() != nil {
+			metrics.Applications().SetNumberOfApplications(cr.Name, cr.Namespace, len(appList))
+		}
 		baseLogger.Infof("Starting image update cycle, considering %d application(s) for update", len(appList))
 	}
 
@@ -95,7 +96,8 @@ func (r *ImageUpdaterReconciler) RunImageUpdater(ctx context.Context, cr *iuapi.
 			result.NumImagesConsidered += res.NumImagesConsidered
 			result.NumImagesUpdated += res.NumImagesUpdated
 			result.NumSkipped += res.NumSkipped
-			// TODO: metrics will be implemnted in GITOPS-7113
+			// TODO: images metrics will be implemented in GITOPS-8068
+			// TODO: these metrics were commented out because there is no proper cabbage collector that will handle metrics deletion
 			//if !warmUp && !r.Config.DryRun {
 			//	metrics.Applications().IncreaseImageUpdate(app, res.NumImagesUpdated)
 			//}

@@ -35,6 +35,7 @@ import (
 	"github.com/argoproj-labs/argocd-image-updater/pkg/argocd"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/kube"
+	"github.com/argoproj-labs/argocd-image-updater/pkg/metrics"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
 )
 
@@ -48,8 +49,6 @@ type ImageUpdaterConfig struct {
 	LogFormat              string
 	KubeClient             *kube.ImageUpdaterKubernetesClient
 	MaxConcurrentApps      int
-	HealthPort             int
-	MetricsPort            int
 	RegistriesConf         string
 	GitCommitUser          string
 	GitCommitMail          string
@@ -138,7 +137,7 @@ func (r *ImageUpdaterReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		if hasFinalizer {
 			reqLogger.Debugf("ImageUpdater resource is being deleted, running finalizer.")
 			// --- FINALIZER LOGIC ---
-			// Currently, there is nothing to clean up.
+			metrics.Applications().RemoveNumberOfApplications(imageUpdater.Name, imageUpdater.Namespace)
 
 			// Remove the finalizer from the list and update the object.
 			reqLogger.Debugf("Finalizer logic complete, removing finalizer from the resource.")

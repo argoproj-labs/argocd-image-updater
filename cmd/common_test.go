@@ -18,6 +18,7 @@ import (
 	"github.com/argoproj-labs/argocd-image-updater/internal/controller"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
 	aiukube "github.com/argoproj-labs/argocd-image-updater/pkg/kube"
+	"github.com/argoproj-labs/argocd-image-updater/pkg/metrics"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/registry"
 )
 
@@ -64,6 +65,8 @@ var setupCommonMutex sync.Mutex
 
 // setupCommonStub mirrors SetupCommon behavior without starting the askpass server and without interactive kube client.
 func setupCommonStub(ctx context.Context, cfg *controller.ImageUpdaterConfig, setupLogger logr.Logger, commitMessagePath, kubeConfig string) error {
+	metrics.InitMetrics()
+
 	var commitMessageTpl string
 
 	// User can specify a path to a template used for Git commit messages
@@ -230,5 +233,16 @@ func TestSetupCommon(t *testing.T) {
 		cfg := &controller.ImageUpdaterConfig{}
 		err = setupCommonStub(context.Background(), cfg, logr.Discard(), "", invalidKubeconfigFile)
 		assert.Nil(t, err)
+	})
+
+	t.Run("should initialize metrics and kube client", func(t *testing.T) {
+		cfg := &controller.ImageUpdaterConfig{}
+		err := callSetupCommonWithMocks(t, cfg, logr.Discard(), "", kubeconfigFile)
+		require.NoError(t, err)
+		assert.NotNil(t, metrics.Endpoint())
+		assert.NotNil(t, metrics.Applications())
+		assert.NotNil(t, metrics.Clients())
+		assert.NotNil(t, cfg.KubeClient)
+		assert.IsType(t, &aiukube.ImageUpdaterKubernetesClient{}, cfg.KubeClient)
 	})
 }
