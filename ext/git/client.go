@@ -118,7 +118,7 @@ type runOpts struct {
 }
 
 var (
-	maxAttemptsCount = 1
+	maxAttemptsCount = 3
 	maxRetryDuration time.Duration
 	retryDuration    time.Duration
 	factor           int64
@@ -133,9 +133,10 @@ func init() {
 		}
 	}
 
-	maxRetryDuration = env.ParseDurationFromEnv(common.EnvGitRetryMaxDuration, common.DefaultGitRetryMaxDuration, 0, math.MaxInt64)
-	retryDuration = env.ParseDurationFromEnv(common.EnvGitRetryDuration, common.DefaultGitRetryDuration, 0, math.MaxInt64)
-	factor = env.ParseInt64FromEnv(common.EnvGitRetryFactor, common.DefaultGitRetryFactor, 0, math.MaxInt64)
+	// Defaults if env not set: maxRetries backoff settings per request
+	maxRetryDuration = env.ParseDurationFromEnv(common.EnvGitRetryMaxDuration, 10*time.Second, 0, math.MaxInt64)
+	retryDuration = env.ParseDurationFromEnv(common.EnvGitRetryDuration, 500*time.Millisecond, 0, math.MaxInt64)
+	factor = env.ParseInt64FromEnv(common.EnvGitRetryFactor, 2, 0, math.MaxInt64)
 
 }
 
@@ -369,12 +370,24 @@ func (m *nativeGitClient) Fetch(revision string) error {
 		defer done()
 	}
 
-	err := m.fetch(revision)
+	var err error
+	for attempt := 0; attempt < maxAttemptsCount; attempt++ {
+		err = m.fetch(revision)
+		if err == nil {
+			break
+		}
+		// exponential backoff before retrying
+		timeToWait := float64(retryDuration) * (math.Pow(float64(factor), float64(attempt)))
+		if maxRetryDuration > 0 {
+			timeToWait = math.Min(float64(maxRetryDuration), timeToWait)
+		}
+		time.Sleep(time.Duration(timeToWait))
+	}
 
 	// When we have LFS support enabled, check for large files and fetch them too.
 	if err == nil && m.IsLFSEnabled() {
-		largeFiles, err := m.LsLargeFiles()
-		if err == nil && len(largeFiles) > 0 {
+		largeFiles, lerr := m.LsLargeFiles()
+		if lerr == nil && len(largeFiles) > 0 {
 			err = m.runCredentialedCmd("lfs", "fetch", "--all")
 			if err != nil {
 				return err

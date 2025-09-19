@@ -12,6 +12,9 @@ ARCH?=$(shell go env GOARCH)
 OUTDIR?=dist
 BINNAME?=argocd-image-updater
 
+# Container runtime (override with DOCKER=podman)
+DOCKER?=docker
+
 CURRENT_DIR=$(shell pwd)
 VERSION=$(shell cat ${CURRENT_DIR}/VERSION)
 GIT_COMMIT=$(shell git rev-parse HEAD)
@@ -87,14 +90,14 @@ controller:
 
 .PHONY: image
 image: clean-image
-	docker build \
+	${DOCKER} build \
 		-t ${IMAGE_PREFIX}${IMAGE_NAME}:${IMAGE_TAG} \
 		--pull \
 		.
 
 .PHONY: multiarch-image
 multiarch-image:
-	docker buildx build \
+	${DOCKER} buildx build \
 		-t ${IMAGE_PREFIX}${IMAGE_NAME}:${IMAGE_TAG} \
 		--progress plain \
 		--pull \
@@ -103,7 +106,7 @@ multiarch-image:
 
 .PHONY: multiarch-image-push
 multiarch-image-push:
-	docker buildx build \
+	${DOCKER} buildx build \
 		-t ${IMAGE_PREFIX}${IMAGE_NAME}:${IMAGE_TAG} \
 		--progress plain \
 		--pull \
@@ -113,7 +116,7 @@ multiarch-image-push:
 
 .PHONY: image-push
 image-push: image
-	docker push ${IMAGE_PREFIX}${IMAGE_NAME}:${IMAGE_TAG}
+	${DOCKER} push ${IMAGE_PREFIX}${IMAGE_NAME}:${IMAGE_TAG}
 
 .PHONY: release-binaries
 release-binaries:
@@ -130,10 +133,10 @@ release-binaries:
 
 .PHONY: extract-binary
 extract-binary:
-	docker rm argocd-image-updater-${IMAGE_TAG} || true
-	docker create --name argocd-image-updater-${IMAGE_TAG} ${IMAGE_PREFIX}${IMAGE_NAME}:${IMAGE_TAG}
-	docker cp argocd-image-updater-${IMAGE_TAG}:/usr/local/bin/argocd-image-updater /tmp/argocd-image-updater_${IMAGE_TAG}_linux-amd64
-	docker rm argocd-image-updater-${IMAGE_TAG}
+	${DOCKER} rm argocd-image-updater-${IMAGE_TAG} || true
+	${DOCKER} create --name argocd-image-updater-${IMAGE_TAG} ${IMAGE_PREFIX}${IMAGE_NAME}:${IMAGE_TAG}
+	${DOCKER} cp argocd-image-updater-${IMAGE_TAG}:/usr/local/bin/argocd-image-updater /tmp/argocd-image-updater_${IMAGE_TAG}_linux-amd64
+	${DOCKER} rm argocd-image-updater-${IMAGE_TAG}
 
 .PHONY: lint
 lint:
@@ -148,7 +151,7 @@ codegen: manifests
 
 .PHONY: run-test
 run-test:
-	docker run -v $(HOME)/.kube:/kube --rm -it \
+	${DOCKER} run -v $(HOME)/.kube:/kube --rm -it \
 		-e ARGOCD_TOKEN \
 		${IMAGE_PREFIX}${IMAGE_NAME}:${IMAGE_TAG} \
 		--kubeconfig /kube/config \
@@ -157,5 +160,5 @@ run-test:
 
 .PHONY: serve-docs
 serve-docs:
-	docker run ${MKDOCS_RUN_ARGS} --rm -it -p 8000:8000 -v ${CURRENT_DIR}:/docs ${MKDOCS_DOCKER_IMAGE} serve -a 0.0.0.0:8000
+	${DOCKER} run ${MKDOCS_RUN_ARGS} --rm -it -p 8000:8000 -v ${CURRENT_DIR}:/docs ${MKDOCS_DOCKER_IMAGE} serve -a 0.0.0.0:8000
 

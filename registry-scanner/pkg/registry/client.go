@@ -9,6 +9,7 @@ import (
 	"github.com/argoproj/pkg/json"
 
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
+    "github.com/argoproj-labs/argocd-image-updater/pkg/metrics"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/options"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/tag"
 
@@ -28,9 +29,16 @@ import (
 
 	"go.uber.org/ratelimit"
 
+    "bytes"
 	"net/http"
 	"net/url"
+    "io"
+    "strconv"
 	"strings"
+	"sync"
+    "math/rand"
+    sf "golang.org/x/sync/singleflight"
+    "github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/env"
 )
 
 // TODO: Check image's architecture and OS
@@ -60,6 +68,7 @@ type registryClient struct {
 	regClient distribution.Repository
 	endpoint  *RegistryEndpoint
 	creds     credentials
+    repoName  string
 }
 
 // credentials is an implementation of distribution/V3/session struct
@@ -92,12 +101,122 @@ type rateLimitTransport struct {
 	endpoint  *RegistryEndpoint
 }
 
+// jwtObservingTransport wraps the underlying transport for token fetches
+// and records JWT auth metrics (duration, TTL, errors).
+type jwtObservingTransport struct {
+    endpoint *RegistryEndpoint
+    base     http.RoundTripper
+    singleflight *sf.Group
+}
+
+func getJWTRetrySettings() (int, time.Duration, time.Duration) {
+    attempts := env.ParseNumFromEnv("REGISTRY_JWT_ATTEMPTS", 7, 1, 100)
+    base := env.ParseDurationFromEnv("REGISTRY_JWT_RETRY_BASE", 200*time.Millisecond, 0, time.Hour)
+    max := env.ParseDurationFromEnv("REGISTRY_JWT_RETRY_MAX", 3*time.Second, 0, time.Hour)
+    return attempts, base, max
+}
+
+func (j *jwtObservingTransport) doAuthWithRetry(req *http.Request, reg, service, scope string) (*http.Response, error) {
+    attempts, base, maxDelay := getJWTRetrySettings()
+    var lastResp *http.Response
+    var lastErr error
+    for attempt := 0; attempt < attempts; attempt++ {
+        start := time.Now()
+        resp, err := j.base.RoundTrip(req)
+        metrics.Endpoint().IncreaseJWTAuthRequest(reg, service, scope)
+        metrics.Endpoint().ObserveJWTAuthDuration(reg, service, scope, time.Since(start))
+        lastResp, lastErr = resp, err
+        if err == nil && resp != nil && resp.StatusCode >= 200 && resp.StatusCode < 300 {
+            if resp.Body != nil {
+                body, rerr := io.ReadAll(resp.Body)
+                if rerr == nil {
+                    resp.Body = io.NopCloser(bytes.NewBuffer(body))
+                    type tokenResp struct { ExpiresIn int `json:"expires_in"` }
+                    var tr tokenResp
+                    if jerr := json.Unmarshal(body, &tr); jerr == nil && tr.ExpiresIn > 0 {
+                        metrics.Endpoint().ObserveJWTTokenTTL(reg, service, scope, float64(tr.ExpiresIn))
+                    } else if jerr != nil {
+                        metrics.Endpoint().IncreaseJWTAuthError(reg, service, scope, "parse_json_error")
+                    }
+                } else {
+                    metrics.Endpoint().IncreaseJWTAuthError(reg, service, scope, "read_body_error")
+                }
+            }
+            return resp, nil
+        }
+        if err != nil {
+            metrics.Endpoint().IncreaseJWTAuthError(reg, service, scope, "roundtrip_error")
+        } else if resp != nil {
+            metrics.Endpoint().IncreaseJWTAuthError(reg, service, scope, "http_"+strconv.Itoa(resp.StatusCode))
+            if resp.Body != nil { io.Copy(io.Discard, resp.Body); resp.Body.Close() }
+        }
+        metrics.Endpoint().IncreaseRetry(reg, "auth")
+        d := time.Duration(float64(base) * (1 << attempt) * (0.7 + 0.6*rand.Float64()))
+        if d > maxDelay { d = maxDelay }
+        time.Sleep(d)
+    }
+    return lastResp, lastErr
+}
+
+func (j *jwtObservingTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+    // Only intercept /jwt/auth; otherwise pass-through
+    if !strings.Contains(req.URL.Path, "/jwt/auth") || j.singleflight == nil {
+        reg := j.endpoint.RegistryAPI
+        q := req.URL.Query()
+        service := q.Get("service")
+        scope := q.Get("scope")
+        return j.doAuthWithRetry(req, reg, service, scope)
+    }
+    // Deduplicate concurrent token fetches for the same (service,scope)
+    reg := j.endpoint.RegistryAPI
+    q := req.URL.Query()
+    service := q.Get("service")
+    scope := q.Get("scope")
+    key := reg + "|auth|" + service + "|" + scope
+    v, err, _ := j.singleflight.Do(key, func() (any, error) {
+        return j.doAuthWithRetry(req, reg, service, scope)
+    })
+    if err != nil {
+        return v.(*http.Response), err
+    }
+    return v.(*http.Response), nil
+}
+
 // RoundTrip is a custom RoundTrip method with rate-limiter
 func (rlt *rateLimitTransport) RoundTrip(r *http.Request) (*http.Response, error) {
-	rlt.limiter.Take()
-	log.Tracef("Performing HTTP %s %s", r.Method, r.URL)
-	resp, err := rlt.transport.RoundTrip(r)
-	return resp, err
+    rlt.limiter.Take()
+    reg := rlt.endpoint.RegistryAPI
+    // per-registry inflight cap
+    inflight := rlt.endpoint.getInflightChan()
+    select { case inflight <- struct{}{}: default: inflight <- struct{}{} }
+    start := time.Now()
+    log.Tracef("Performing HTTP %s %s", r.Method, r.URL)
+    // Detect JWT auth endpoint query params if any
+    service := r.URL.Query().Get("service")
+    scope := r.URL.Query().Get("scope")
+    isJWT := strings.Contains(r.URL.Path, "/jwt/auth")
+    if isJWT {
+        metrics.Endpoint().IncreaseJWTAuthRequest(reg, service, scope)
+    }
+    resp, err := rlt.transport.RoundTrip(r)
+    // metrics
+    metrics.Endpoint().IncInFlight(reg)
+    defer func() { metrics.Endpoint().DecInFlight(reg) }()
+    d := time.Since(start)
+    metrics.Endpoint().ObserveRequestDuration(reg, d)
+    if isJWT {
+        metrics.Endpoint().ObserveJWTAuthDuration(reg, service, scope, d)
+        if err != nil {
+            metrics.Endpoint().IncreaseJWTAuthError(reg, service, scope, "roundtrip_error")
+        }
+    }
+    // classify /jwt/auth for auth metrics later (placeholder)
+    // increase request counters
+    metrics.Endpoint().IncreaseRequest(reg, err != nil)
+    // record status if available
+    if resp != nil { metrics.Endpoint().ObserveHTTPStatus(reg, resp.StatusCode) }
+    <-inflight
+    return resp, err
 }
 
 // NewRepository is a wrapper for creating a registry client that is possibly
@@ -110,17 +229,38 @@ func (clt *registryClient) NewRepository(nameInRepository string) error {
 		return err
 	}
 
-	authTransport := transport.NewTransport(
-		clt.endpoint.GetTransport(), auth.NewAuthorizer(
-			challengeManager1,
-			auth.NewTokenHandler(clt.endpoint.GetTransport(), clt.creds, nameInRepository, "pull"),
-			auth.NewBasicHandler(clt.creds)))
-
-	rlt := &rateLimitTransport{
-		limiter:   clt.endpoint.Limiter,
-		transport: authTransport,
-		endpoint:  clt.endpoint,
+    // Normalize repo key to improve cache hits
+    repo := strings.TrimPrefix(nameInRepository, "/")
+    cacheKey := clt.endpoint.RegistryAPI + "|" + repo
+	// Check for cached auth transport to reuse bearer tokens
+	repoAuthTransportCacheLock.RLock()
+	cached, ok := repoAuthTransportCache[cacheKey]
+	repoAuthTransportCacheLock.RUnlock()
+	var baseRT http.RoundTripper
+	if ok {
+        log.Debugf("authorizer cache HIT key=%s", cacheKey)
+		baseRT = cached
+	} else {
+        log.Debugf("authorizer cache MISS key=%s", cacheKey)
+        // Wrap the underlying transport to observe JWT auth responses
+        base := clt.endpoint.GetTransport()
+        // tokenTransport is used by the token handler to fetch tokens
+        tokenTransport := &jwtObservingTransport{endpoint: clt.endpoint, base: base, singleflight: &jwtAuthSingleflight}
+        baseRT = transport.NewTransport(
+            base, auth.NewAuthorizer(
+                challengeManager1,
+                auth.NewTokenHandler(tokenTransport, clt.creds, nameInRepository, "pull"),
+                auth.NewBasicHandler(clt.creds)))
+		repoAuthTransportCacheLock.Lock()
+		repoAuthTransportCache[cacheKey] = baseRT
+		repoAuthTransportCacheLock.Unlock()
 	}
+
+    rlt := &rateLimitTransport{
+        limiter:   clt.endpoint.Limiter,
+        transport: baseRT,
+        endpoint:  clt.endpoint,
+    }
 
 	named, err := reference.WithName(nameInRepository)
 	if err != nil {
@@ -130,6 +270,7 @@ func (clt *registryClient) NewRepository(nameInRepository string) error {
 	if err != nil {
 		return err
 	}
+    clt.repoName = repo
 	return nil
 }
 
@@ -141,9 +282,12 @@ func NewClient(endpoint *RegistryEndpoint, username, password string) (RegistryC
 	if password == "" && endpoint.Password != "" {
 		password = endpoint.Password
 	}
+	// Initialize refreshTokens to enable reusing registry-issued refresh tokens
+	// across requests for the same service (e.g., container_registry).
 	creds := credentials{
-		username: username,
-		password: password,
+		username:      username,
+		password:      password,
+		refreshTokens: make(map[string]string),
 	}
 	return &registryClient{
 		creds:    creds,
@@ -151,46 +295,124 @@ func NewClient(endpoint *RegistryEndpoint, username, password string) (RegistryC
 	}, nil
 }
 
+// cache for per-repository auth transports so we reuse bearer tokens across runtime
+var repoAuthTransportCache = make(map[string]http.RoundTripper)
+var repoAuthTransportCacheLock sync.RWMutex
+var jwtAuthSingleflight sf.Group
+
+// singleflight-style maps for deduping concurrent identical calls
+var tagsInFlight sync.Map // key string -> chan result
+var manifestInFlight sync.Map // key string -> chan result
+
+type tagsResult struct {
+    tags []string
+    err  error
+}
+
 // Tags returns a list of tags for given name in repository
 func (clt *registryClient) Tags() ([]string, error) {
-	tagService := clt.regClient.Tags(context.Background())
-	tTags, err := tagService.All(context.Background())
-	if err != nil {
-		return nil, err
-	}
-	return tTags, nil
+    key := clt.endpoint.RegistryAPI + "|tags|" + clt.repoName
+    if ch, loaded := tagsInFlight.Load(key); loaded {
+        // wait for the leader's result
+        res := (<-ch.(chan tagsResult))
+        return res.tags, res.err
+    }
+    ch := make(chan tagsResult, 1)
+    actual, loaded := tagsInFlight.LoadOrStore(key, ch)
+    if loaded {
+        res := (<-actual.(chan tagsResult))
+        return res.tags, res.err
+    }
+
+    // leader path
+    defer func() {
+        tagsInFlight.Delete(key)
+        close(ch)
+    }()
+
+    tagService := clt.regClient.Tags(context.Background())
+    var tTags []string
+    var err error
+    // jittered exponential backoff with per-attempt deadline
+    base := 200 * time.Millisecond
+    maxDelay := 3 * time.Second
+    for attempt := 0; attempt < 3; attempt++ {
+        ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+        tTags, err = tagService.All(ctx)
+        cancel()
+        if err == nil {
+            break
+        }
+        // jittered backoff
+        d := time.Duration(float64(base) * (1 << attempt) * (0.7 + 0.6*rand.Float64()))
+        if d > maxDelay { d = maxDelay }
+        time.Sleep(d)
+    }
+    ch <- tagsResult{tags: tTags, err: err}
+    if err != nil { return nil, err }
+    return tTags, nil
 }
 
 // Manifest  returns a Manifest for a given tag in repository
 func (clt *registryClient) ManifestForTag(tagStr string) (distribution.Manifest, error) {
-	manService, err := clt.regClient.Manifests(context.Background())
-	if err != nil {
-		return nil, err
-	}
-	manifest, err := manService.Get(
-		context.Background(),
-		digest.FromString(tagStr),
-		distribution.WithTag(tagStr), distribution.WithManifestMediaTypes(knownMediaTypes))
-	if err != nil {
-		return nil, err
-	}
-	return manifest, nil
+    key := clt.endpoint.RegistryAPI + "|manifest|" + clt.repoName + "|tag=" + tagStr
+    if ch, loaded := manifestInFlight.Load(key); loaded {
+        res := (<-ch.(chan struct{m distribution.Manifest; e error}))
+        return res.m, res.e
+    }
+    ch := make(chan struct{m distribution.Manifest; e error}, 1)
+    actual, loaded := manifestInFlight.LoadOrStore(key, ch)
+    if loaded { res := (<-actual.(chan struct{m distribution.Manifest; e error})); return res.m, res.e }
+    defer func(){ manifestInFlight.Delete(key); close(ch) }()
+
+    manService, err := clt.regClient.Manifests(context.Background())
+    if err != nil { ch <- struct{m distribution.Manifest; e error}{nil, err}; return nil, err }
+    var manifest distribution.Manifest
+    base := 200 * time.Millisecond
+    maxDelay := 3 * time.Second
+    for attempt := 0; attempt < 3; attempt++ {
+        ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+        manifest, err = manService.Get(ctx, digest.FromString(tagStr), distribution.WithTag(tagStr), distribution.WithManifestMediaTypes(knownMediaTypes))
+        cancel()
+        if err == nil { break }
+        d := time.Duration(float64(base) * (1 << attempt) * (0.7 + 0.6*rand.Float64()))
+        if d > maxDelay { d = maxDelay }
+        time.Sleep(d)
+    }
+    ch <- struct{m distribution.Manifest; e error}{manifest, err}
+    if err != nil { return nil, err }
+    return manifest, nil
 }
 
 // ManifestForDigest  returns a Manifest for a given digest in repository
 func (clt *registryClient) ManifestForDigest(dgst digest.Digest) (distribution.Manifest, error) {
-	manService, err := clt.regClient.Manifests(context.Background())
-	if err != nil {
-		return nil, err
-	}
-	manifest, err := manService.Get(
-		context.Background(),
-		dgst,
-		distribution.WithManifestMediaTypes(knownMediaTypes))
-	if err != nil {
-		return nil, err
-	}
-	return manifest, nil
+    key := clt.endpoint.RegistryAPI + "|manifest|" + clt.repoName + "|dgst=" + dgst.String()
+    if ch, loaded := manifestInFlight.Load(key); loaded {
+        res := (<-ch.(chan struct{m distribution.Manifest; e error}))
+        return res.m, res.e
+    }
+    ch := make(chan struct{m distribution.Manifest; e error}, 1)
+    actual, loaded := manifestInFlight.LoadOrStore(key, ch)
+    if loaded { res := (<-actual.(chan struct{m distribution.Manifest; e error})); return res.m, res.e }
+    defer func(){ manifestInFlight.Delete(key); close(ch) }()
+
+    manService, err := clt.regClient.Manifests(context.Background())
+    if err != nil { ch <- struct{m distribution.Manifest; e error}{nil, err}; return nil, err }
+    var manifest distribution.Manifest
+    base := 200 * time.Millisecond
+    maxDelay := 3 * time.Second
+    for attempt := 0; attempt < 3; attempt++ {
+        ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+        manifest, err = manService.Get(ctx, dgst, distribution.WithManifestMediaTypes(knownMediaTypes))
+        cancel()
+        if err == nil { break }
+        d := time.Duration(float64(base) * (1 << attempt) * (0.7 + 0.6*rand.Float64()))
+        if d > maxDelay { d = maxDelay }
+        time.Sleep(d)
+    }
+    ch <- struct{m distribution.Manifest; e error}{manifest, err}
+    if err != nil { return nil, err }
+    return manifest, nil
 }
 
 // TagMetadata retrieves metadata for a given manifest of given repository

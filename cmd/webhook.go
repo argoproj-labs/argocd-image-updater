@@ -201,7 +201,7 @@ Supported registries:
 	webhookCmd.Flags().StringVar(&webhookCfg.GHCRSecret, "ghcr-webhook-secret", env.GetStringVal("GHCR_WEBHOOK_SECRET", ""), "Secret for validating GitHub Container Registry webhooks")
 	webhookCmd.Flags().StringVar(&webhookCfg.QuaySecret, "quay-webhook-secret", env.GetStringVal("QUAY_WEBHOOK_SECRET", ""), "Secret for validating Quay webhooks")
 	webhookCmd.Flags().StringVar(&webhookCfg.HarborSecret, "harbor-webhook-secret", env.GetStringVal("HARBOR_WEBHOOK_SECRET", ""), "Secret for validating Harbor webhooks")
-	webhookCmd.Flags().IntVar(&webhookCfg.RateLimitNumAllowedRequests, "webhook-ratelimit-allowed", env.ParseNumFromEnv("WEBHOOK_RATELIMIT_ALLOWED", 0, 0, math.MaxInt), "The number of allowed requests in an hour for webhook rate limiting, setting to 0 disables ratelimiting")
+    webhookCmd.Flags().IntVar(&webhookCfg.RateLimitNumAllowedRequests, "webhook-ratelimit-allowed", env.ParseNumFromEnv("WEBHOOK_RATELIMIT_ALLOWED", 0, 0, math.MaxInt), "The number of allowed requests in an hour for webhook rate limiting, setting to 0 disables ratelimiting")
 
 	return webhookCmd
 }
@@ -241,11 +241,11 @@ func runWebhook(cfg *ImageUpdaterConfig, webhookCfg *WebhookConfig) error {
 	ghcrHandler := webhook.NewGHCRWebhook(webhookCfg.GHCRSecret)
 	handler.RegisterHandler(ghcrHandler)
 
-	quayHandler := webhook.NewQuayWebhook(webhookCfg.QuaySecret)
-	handler.RegisterHandler(quayHandler)
+    quayHandler := webhook.NewQuayWebhook(webhookCfg.QuaySecret)
+    handler.RegisterHandler(quayHandler)
 
-	harborHandler := webhook.NewHarborWebhook(webhookCfg.HarborSecret)
-	handler.RegisterHandler(harborHandler)
+    harborHandler := webhook.NewHarborWebhook(webhookCfg.HarborSecret)
+    handler.RegisterHandler(harborHandler)
 
 	// Create webhook server
 	server := webhook.NewWebhookServer(webhookCfg.Port, handler, cfg.KubeClient, cfg.ArgoClient)

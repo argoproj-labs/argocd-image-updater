@@ -4,10 +4,16 @@ import (
 	"os"
 	"testing"
 	"time"
+	"context"
 
 	"github.com/stretchr/testify/assert"
 
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/env"
+	"github.com/argoproj-labs/argocd-image-updater/pkg/argocd"
+	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	v1alpha1 "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
+	"github.com/argoproj/argo-cd/v2/pkg/apiclient/application"
 )
 
 // TestNewRunCommand tests various flags and their default values.
@@ -55,3 +61,56 @@ func TestRootCmd(t *testing.T) {
 	err := newRootCommand()
 	assert.Nil(t, err)
 }
+
+// TestContinuousScheduling ensures that due apps are launched independently and respect interval.
+func TestContinuousScheduling(t *testing.T) {
+    t.Cleanup(func(){ updateAppFn = argocd.UpdateApplication })
+    // stub updater: sleep based on app name prefix to simulate slow/fast
+    var fastRuns, slowRuns int
+    updateAppFn = func(conf *argocd.UpdateConfiguration, state *argocd.SyncIterationState) argocd.ImageUpdaterResult {
+        app := conf.UpdateApp.Application.GetName()
+        if app == "slow" {
+            slowRuns++
+            time.Sleep(250 * time.Millisecond)
+        } else {
+            fastRuns++
+            time.Sleep(10 * time.Millisecond)
+        }
+        return argocd.ImageUpdaterResult{}
+    }
+
+    cfg := &ImageUpdaterConfig{
+        ApplicationsAPIKind: applicationsAPIKindK8S,
+        CheckInterval: 100 * time.Millisecond,
+        MaxConcurrency: 2,
+        Mode: "continuous",
+    }
+    cfg.ArgoClient = &fakeArgo{apps: []string{"slow", "fast"}}
+
+    // Kick scheduler a few times within ~400ms window
+    deadline := time.Now().Add(400 * time.Millisecond)
+    for time.Now().Before(deadline) {
+        runContinuousOnce(cfg)
+        time.Sleep(20 * time.Millisecond)
+    }
+
+    // Expect fast to have run more than slow
+    if !(fastRuns > slowRuns) {
+        t.Fatalf("expected fast runs > slow runs; got fast=%d slow=%d", fastRuns, slowRuns)
+    }
+}
+
+type fakeArgo struct{ apps []string }
+func (f *fakeArgo) GetApplication(ctx context.Context, name string) (*v1alpha1.Application, error) { return nil, nil }
+func (f *fakeArgo) ListApplications(_ string) ([]v1alpha1.Application, error) {
+    out := make([]v1alpha1.Application, 0, len(f.apps))
+    for _, n := range f.apps {
+        out = append(out, v1alpha1.Application{
+            ObjectMeta: v1.ObjectMeta{Name: n, Annotations: map[string]string{common.ImageUpdaterAnnotation: ""}},
+            Spec: v1alpha1.ApplicationSpec{Source: &v1alpha1.ApplicationSource{Kustomize: &v1alpha1.ApplicationSourceKustomize{}}},
+            Status: v1alpha1.ApplicationStatus{SourceType: v1alpha1.ApplicationSourceTypeKustomize},
+        })
+    }
+    return out, nil
+}
+func (f *fakeArgo) UpdateSpec(ctx context.Context, _ *application.ApplicationUpdateSpecRequest) (*v1alpha1.ApplicationSpec, error) { return nil, nil }

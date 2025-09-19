@@ -271,5 +271,75 @@ The following metrics are being made available:
     * `argocd_image_updater_registry_requests_total`
     * `argocd_image_updater_registry_requests_failed_total`
 
+### Additional metrics (performance and troubleshooting)
+
+* Per-application timings and state
+    * `argocd_image_updater_application_update_duration_seconds{application}`
+    * `argocd_image_updater_application_last_attempt_timestamp{application}`
+    * `argocd_image_updater_application_last_success_timestamp{application}`
+    * `argocd_image_updater_images_considered_total{application}`
+    * `argocd_image_updater_images_skipped_total{application}`
+    * `argocd_image_updater_scheduler_skipped_total{reason}` (e.g., cooldown, per-repo-cap)
+
+* Update cycle timing
+    * `argocd_image_updater_update_cycle_duration_seconds`
+    * `argocd_image_updater_update_cycle_last_end_timestamp`
+
+* Registry request health
+    * `argocd_image_updater_registry_in_flight_requests{registry}`
+    * `argocd_image_updater_registry_request_duration_seconds{registry}`
+    * `argocd_image_updater_registry_http_status_total{registry,code}`
+    * `argocd_image_updater_registry_request_retries_total{registry,op}` (auth|tags|manifest)
+    * `argocd_image_updater_registry_errors_total{registry,kind}` (timeout, dial_error, auth_error, 429, 5xx, ctx_deadline)
+
+* Singleflight (deduplication effectiveness)
+    * `argocd_image_updater_singleflight_leaders_total{kind}` (tags|manifest)
+    * `argocd_image_updater_singleflight_followers_total{kind}`
+
+Notes:
+* Metrics are exposed at `/metrics` (see `--metrics-port`, default 8081).
+* Labels like `{application}`, `{registry}`, `{repo}`, `{op}`, `{kind}` enable fine-grained dashboards.
+
 A (very) rudimentary example dashboard definition for Grafana is provided
 [here](https://github.com/argoproj-labs/argocd-image-updater/tree/master/config)
+
+## Performance flags (recommended)
+
+For large fleets and monorepos, enable continuous scheduling and auto concurrency:
+
+```bash
+args:
+  - run
+  - --mode=continuous           # per-app timers, no full-cycle waits
+  - --interval=15s              # minimum gap per app
+  - --max-concurrency=0         # auto (≈ 8× CPUs, capped by app count)
+  # optional, recommended for monorepos fairness:
+  - --schedule=lru
+  - --per-repo-cap=20
+  - --cooldown=30s
+  # optional env (JWT auth retries):
+  # REGISTRY_JWT_ATTEMPTS=7           # total attempts (default 7)
+  # REGISTRY_JWT_RETRY_BASE=200ms     # base backoff (default 200ms)
+  # REGISTRY_JWT_RETRY_MAX=3s         # max per-backoff delay (default 3s)
+```
+
+Notes:
+- Continuous mode preserves all shared protections (per‑registry in‑flight cap, retries, singleflight, git batching).
+- Keep per‑registry rate limits tuned in `registries.conf` to match registry capacity.
+- `--per-repo-cap`: maximum apps from the same Git repository processed in one pass. Prevents a single monorepo from monopolizing workers; improves fleet fairness.
+- `--cooldown`: deprioritizes apps successfully updated within this duration so other apps get slots first. Reduces thrash on hot apps.
+ 
+
+### Defaults enabled without flags
+
+The following performance features are ON by default (no flags required):
+
+- HTTP transport reuse with tuned timeouts (keep‑alive pools, sane phase timeouts)
+- Per‑registry in‑flight cap (default 15 concurrent requests per registry)
+- Authorizer cache per (registry, repo) for bearer/JWT reuse
+- Singleflight deduplication for tags, manifests, and /jwt/auth
+- Retries: tags/manifests (3 attempts with jitter)
+- JWT auth retries (defaults: 7 attempts; see REGISTRY_JWT_* above to tune)
+- Git retries (fetch/shallow/push) with sane defaults (env overridable)
+- Batched Git writer (coalesces per‑repo writes; disable via GIT_BATCH_DISABLE=true)
+- Expanded Prometheus metrics for apps, cycles, registry, JWT

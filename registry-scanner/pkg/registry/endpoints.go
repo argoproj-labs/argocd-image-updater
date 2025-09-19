@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"strconv"
 
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/cache"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
@@ -89,6 +90,11 @@ type RegistryEndpoint struct {
 	IsDefault      bool
 	lock           sync.RWMutex
 	limit          int
+    // in-flight limiter channel (nil until first use). Controls concurrent HTTP
+    // requests per registry to prevent socket/port exhaustion under bursts.
+    inflightCh     chan struct{}
+    // desired capacity for inflight channel
+    inflightCap    int
 }
 
 // registryTweaks should contain a list of registries whose settings cannot be
@@ -121,6 +127,12 @@ var registryLock sync.RWMutex
 // credentialGroup ensures only one credential refresh happens per registry
 var credentialGroup singleflight.Group
 
+// transportCache stores reusable HTTP transports per registry API URL.
+// Reusing transports enables HTTP keep-alives/connection pooling and avoids
+// excessive TLS handshakes when the updater queries registries frequently.
+var transportCache = make(map[string]*http.Transport)
+var transportCacheLock sync.RWMutex
+
 func AddRegistryEndpointFromConfig(epc RegistryConfiguration) error {
 	ep := NewRegistryEndpoint(epc.Prefix, epc.Name, epc.ApiURL, epc.Credentials, epc.DefaultNS, epc.Insecure, TagListSortFromString(epc.TagSortMode), epc.Limit, epc.CredsExpire)
 	return AddRegistryEndpoint(ep)
@@ -144,6 +156,7 @@ func NewRegistryEndpoint(prefix, name, apiUrl, credentials, defaultNS string, in
 		TagListSort:    tagListSort,
 		Limiter:        ratelimit.New(limit),
 		limit:          limit,
+        inflightCap:    15,
 	}
 	return ep
 }
@@ -278,20 +291,73 @@ func (ep *RegistryEndpoint) DeepCopy() *RegistryEndpoint {
 	newEp.CredsUpdated = ep.CredsUpdated
 	newEp.IsDefault = ep.IsDefault
 	newEp.limit = ep.limit
+    newEp.inflightCap = ep.inflightCap
 	ep.lock.RUnlock()
 	return newEp
 }
 
-// GetTransport returns a transport object for this endpoint
+// ClearTransportCache clears cached transports (e.g., after registry config reload)
+func ClearTransportCache() {
+	transportCacheLock.Lock()
+	defer transportCacheLock.Unlock()
+    // Proactively close idle connections on existing transports before clearing
+    for _, tr := range transportCache {
+        tr.CloseIdleConnections()
+    }
+    transportCache = make(map[string]*http.Transport)
+	log.Debugf("Transport cache cleared.")
+}
+
+// GetTransport returns a cached transport configured with sane defaults.
+// The transport is keyed by the endpoint's RegistryAPI and shared by callers
+// to maximize connection reuse and apply timeouts consistently.
 func (ep *RegistryEndpoint) GetTransport() *http.Transport {
+	// Cache key must account for TLS mode to avoid reusing a secure transport for insecure endpoints
+	key := ep.RegistryAPI + "|insecure=" + strconv.FormatBool(ep.Insecure)
+	// Fast path: return cached transport if present
+	transportCacheLock.RLock()
+	if tr, ok := transportCache[key]; ok {
+		transportCacheLock.RUnlock()
+		return tr
+	}
+	transportCacheLock.RUnlock()
+
 	tlsC := &tls.Config{}
 	if ep.Insecure {
 		tlsC.InsecureSkipVerify = true
 	}
-	return &http.Transport{
-		Proxy:           http.ProxyFromEnvironment,
-		TLSClientConfig: tlsC,
+
+	// Create and cache a transport with sane defaults
+    tr := &http.Transport{
+		Proxy:                 http.ProxyFromEnvironment,
+		TLSClientConfig:       tlsC,
+        // Prefer reuse of a larger idle pool to minimize new dials under load
+        MaxIdleConns:          1000,
+        MaxIdleConnsPerHost:   200,
+        // Cap parallel dials per host to avoid ephemeral port exhaustion
+        MaxConnsPerHost:       30,
+		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+		ForceAttemptHTTP2:     true,
+		ResponseHeaderTimeout: 15 * time.Second,
 	}
+	transportCacheLock.Lock()
+	transportCache[key] = tr
+	transportCacheLock.Unlock()
+	return tr
+}
+
+// getInflightChan returns the per-registry inflight channel, creating it on first use.
+func (ep *RegistryEndpoint) getInflightChan() chan struct{} {
+    ep.lock.Lock()
+    defer ep.lock.Unlock()
+    if ep.inflightCh == nil {
+        cap := ep.inflightCap
+        if cap <= 0 { cap = 15 }
+        ep.inflightCh = make(chan struct{}, cap)
+    }
+    return ep.inflightCh
 }
 
 // init initializes the registry configuration

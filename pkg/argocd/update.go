@@ -23,6 +23,7 @@ import (
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/registry"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/tag"
+    "github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/env"
 
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/application"
 	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
@@ -122,13 +123,63 @@ type ChangeEntry struct {
 type SyncIterationState struct {
 	lock            sync.Mutex
 	repositoryLocks map[string]*sync.Mutex
+    lastSuccess     map[string]time.Time
+    lastAttempt     map[string]time.Time
+    failCount       map[string]int
 }
 
 // NewSyncIterationState returns a new instance of SyncIterationState
 func NewSyncIterationState() *SyncIterationState {
 	return &SyncIterationState{
-		repositoryLocks: make(map[string]*sync.Mutex),
+        repositoryLocks: make(map[string]*sync.Mutex),
+        lastSuccess:     make(map[string]time.Time),
+        lastAttempt:     make(map[string]time.Time),
+        failCount:       make(map[string]int),
 	}
+}
+
+// AppStats is a snapshot of per-application scheduling stats
+type AppStats struct {
+    LastSuccess time.Time
+    LastAttempt time.Time
+    FailCount   int
+}
+
+// RecordAttempt notes that an attempt was made to process the application
+func (state *SyncIterationState) RecordAttempt(app string) {
+    state.lock.Lock()
+    state.lastAttempt[app] = time.Now()
+    state.lock.Unlock()
+}
+
+// RecordResult records the outcome for an application
+func (state *SyncIterationState) RecordResult(app string, hadErrors bool) {
+    state.lock.Lock()
+    defer state.lock.Unlock()
+    if hadErrors {
+        state.failCount[app] = state.failCount[app] + 1
+    } else {
+        state.failCount[app] = 0
+        state.lastSuccess[app] = time.Now()
+    }
+}
+
+// GetStats returns a copy of current stats for scheduling decisions
+func (state *SyncIterationState) GetStats() map[string]AppStats {
+    state.lock.Lock()
+    defer state.lock.Unlock()
+    out := make(map[string]AppStats, len(state.lastAttempt))
+    // Union of keys
+    for k := range state.lastAttempt { out[k] = AppStats{} }
+    for k := range state.lastSuccess { out[k] = AppStats{} }
+    for k := range state.failCount { out[k] = AppStats{} }
+    for k, v := range out {
+        v.LastAttempt = state.lastAttempt[k]
+        v.LastSuccess = state.lastSuccess[k]
+        v.FailCount = state.failCount[k]
+        out[k] = v
+    }
+    return out
 }
 
 // GetRepositoryLock returns the lock for a specified repository
@@ -168,7 +219,7 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 
 	result.NumApplicationsProcessed += 1
 
-	// Loop through all images of current application, and check whether one of
+    // Loop through all images of current application, and check whether one of
 	// its images is eligible for updating.
 	//
 	// Whether an image qualifies for update is dependent on semantic version
@@ -249,7 +300,7 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 				imgCtx.Warnf("Could not fetch credentials: %v", err)
 				result.NumErrors += 1
 				continue
-			}
+        }
 		}
 
 		regClient, err := updateConf.NewRegFN(rep, creds.Username, creds.Password)
@@ -356,18 +407,32 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 		wbc.GitCommitSignOff = updateConf.GitCommitSignOff
 	}
 
-	if needUpdate {
+    if needUpdate {
 		logCtx := log.WithContext().AddField("application", app)
-		log.Debugf("Using commit message: %s", wbc.GitCommitMessage)
-		if !updateConf.DryRun {
-			logCtx.Infof("Committing %d parameter update(s) for application %s", result.NumImagesUpdated, app)
-			err := commitChangesLocked(&updateConf.UpdateApp.Application, wbc, state, changeList)
+        log.Debugf("Using commit message: %s", wbc.GitCommitMessage)
+        if !updateConf.DryRun {
+            // If write-back is Git, we can batch; otherwise commit directly via Argo CD API
+            var err error
+            if wbc.Method != WriteBackGit || env.GetBoolVal("GIT_BATCH_DISABLE", false) {
+                err = commitChangesLocked(&updateConf.UpdateApp.Application, wbc, state, changeList)
+            } else {
+                logCtx.Infof("Queuing %d parameter update(s) for application %s (git write pending)", result.NumImagesUpdated, app)
+                // Ensure Git credentials resolver is set for batched writer
+                if wbc.GetCreds == nil {
+                    if perr := parseGitConfig(&updateConf.UpdateApp.Application, updateConf.KubeClient, wbc, "repocreds"); perr != nil {
+                        logCtx.Warnf("could not prepare git credentials for batched write: %v", perr)
+                    }
+                }
+                wi := writeIntent{app: &updateConf.UpdateApp.Application, wbc: wbc, changeList: changeList, writeFn: writeOverrides}
+                if wbc.KustomizeBase != "" { wi.writeFn = writeKustomization }
+                enqueueWriteIntent(wi)
+            }
 			if err != nil {
 				logCtx.Errorf("Could not update application spec: %v", err)
 				result.NumErrors += 1
 				result.NumImagesUpdated = 0
-			} else {
-				logCtx.Infof("Successfully updated the live application spec")
+            } else {
+                logCtx.Infof("Application spec updated in-memory; write-back scheduled")
 				if !updateConf.DisableKubeEvents && updateConf.KubeClient != nil {
 					annotations := map[string]string{}
 					for i, c := range changeList {
