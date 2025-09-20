@@ -23,7 +23,6 @@ import (
 	"github.com/argoproj-labs/argocd-image-updater/internal/controller"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/argocd"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
-	"github.com/argoproj-labs/argocd-image-updater/pkg/metrics"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/version"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/webhook"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/env"
@@ -121,9 +120,6 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 			if !enableHTTP2 {
 				tlsOpts = append(tlsOpts, disableHTTP2)
 			}
-
-			// Initialize metrics before starting the metrics server or using any counters
-			metrics.InitMetrics()
 
 			// Metrics endpoint is enabled in 'config/default/kustomization.yaml'. The Metrics options configure the server.
 			// More info:
