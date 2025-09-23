@@ -24,4 +24,7 @@ resources:
 # if you do not want those helpers be installed with your Project.
 - imageupdater_editor_role.yaml
 - imageupdater_viewer_role.yaml
+# argocd-image-updater Role and RoleBinding
+- argocd-image-updater-role.yaml
+- argocd-image-updater-rolebinding.yaml
 

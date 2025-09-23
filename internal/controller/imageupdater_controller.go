@@ -84,6 +84,8 @@ const (
 // +kubebuilder:rbac:groups=argocd-image-updater.argoproj.io,resources=imageupdaters,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=argocd-image-updater.argoproj.io,resources=imageupdaters/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=argocd-image-updater.argoproj.io,resources=imageupdaters/finalizers,verbs=update
+// +kubebuilder:rbac:groups=argoproj.io,resources=applications,verbs=get;list;update;patch
+// +kubebuilder:rbac:groups="",resources=events,verbs=create
 
 // Reconcile is the core operational loop of the ImageUpdater controller.
 // It is invoked in response to events on ImageUpdater custom resources (CRs)

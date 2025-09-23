@@ -62,8 +62,6 @@ spec:
           - /manager
         args:
           - run
-#          - --leader-elect
-#          - --health-probe-bind-address=:8081
         image: controller:latest
         name: manager
         env:
@@ -78,6 +76,12 @@ spec:
               configMapKeyRef:
                 name: image-updater-config
                 key: log.level
+                optional: true
+          - name: IMAGE_UPDATER_LOGFORMAT
+            valueFrom:
+              configMapKeyRef:
+                name: image-updater-config
+                key: log.format
                 optional: true
           - name: MAX_CONCURRENT_APPS
             valueFrom:

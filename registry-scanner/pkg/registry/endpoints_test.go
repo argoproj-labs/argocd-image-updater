@@ -197,14 +197,15 @@ func Test_SelectRegistryBasedOnMaxPrefixContains(t *testing.T) {
 	RestoreDefaultRegistryConfiguration()
 
 	t.Run("Set credentials on default registry", func(t *testing.T) {
-		err := SetRegistryEndpointCredentials("foo.bar/prefix1", "env:FOOBAR_1")
+		ctx := context.Background()
+		err := SetRegistryEndpointCredentials(ctx, "foo.bar/prefix1", "env:FOOBAR_1")
 		require.NoError(t, err)
-		err = SetRegistryEndpointCredentials("foo.bar/prefix2", "env:FOOBAR_2")
+		err = SetRegistryEndpointCredentials(ctx, "foo.bar/prefix2", "env:FOOBAR_2")
 		require.NoError(t, err)
-		err = SetRegistryEndpointCredentials("foo.bar/prefix1/sub-prefix", "env:FOOBAR_SUB_1")
+		err = SetRegistryEndpointCredentials(ctx, "foo.bar/prefix1/sub-prefix", "env:FOOBAR_SUB_1")
 		require.NoError(t, err)
 
-		ep, err := GetRegistryEndpoint(&image.ContainerImage{RegistryURL: "foo.bar", ImageName: "prefix1/sub-prefix/image"})
+		ep, err := GetRegistryEndpoint(ctx, &image.ContainerImage{RegistryURL: "foo.bar", ImageName: "prefix1/sub-prefix/image"})
 		require.NoError(t, err)
 		require.NotNil(t, ep)
 		assert.Equal(t, ep.Credentials, "env:FOOBAR_SUB_1")
