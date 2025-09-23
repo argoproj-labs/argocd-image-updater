@@ -34,6 +34,37 @@
       "type": "row"
     },
     {
+      "collapsed": false,
+      "datasource": null,
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 28},
+      "id": 30,
+      "panels": [],
+      "title": "Lagging applications",
+      "type": "row"
+    },
+    {
+      "datasource": null,
+      "description": "Minutes since last successful update per application; shows only those > 5 minutes.",
+      "fieldConfig": {"defaults": {"unit": "m"}, "overrides": []},
+      "gridPos": {"h": 10, "w": 24, "x": 0, "y": 29},
+      "id": 32,
+      "options": {"showHeader": true},
+      "pluginVersion": "10.x",
+      "targets": [
+        {
+          "expr": "((time() - max by (application) (argocd_image_updater_application_last_success_timestamp)) / 60) > 5",
+          "format": "table",
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Apps lagging > 5 minutes (minutes)",
+      "transformations": [
+        {"id": "labelsToFields", "options": {"mode": "columns"}}
+      ],
+      "type": "table"
+    },
+    {
       "aliasColors": {},
       "bars": false,
       "dashLength": 10,

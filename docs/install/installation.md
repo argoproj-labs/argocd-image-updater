@@ -307,21 +307,9 @@ A (very) rudimentary example dashboard definition for Grafana is provided
 
 For large fleets and monorepos, enable continuous scheduling and auto concurrency:
 
-```bash
-args:
-  - run
-  - --mode=continuous           # per-app timers, no full-cycle waits
-  - --interval=15s              # minimum gap per app
-  - --max-concurrency=0         # auto (≈ 8× CPUs, capped by app count)
-  # optional, recommended for monorepos fairness:
-  - --schedule=lru
-  - --per-repo-cap=20
-  - --cooldown=30s
-  # optional env (JWT auth retries):
-  # REGISTRY_JWT_ATTEMPTS=7           # total attempts (default 7)
-  # REGISTRY_JWT_RETRY_BASE=200ms     # base backoff (default 200ms)
-  # REGISTRY_JWT_RETRY_MAX=3s         # max per-backoff delay (default 3s)
-```
+For a complete example of args and environment variables, see the run command reference. We keep one canonical example there to avoid duplication.
+
+See: [Run command examples](./cmd/run.md#example-kubernetes-deployment-args-and-env)
 
 Notes:
 - Continuous mode preserves all shared protections (per‑registry in‑flight cap, retries, singleflight, git batching).

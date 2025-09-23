@@ -11,6 +11,7 @@ import (
 	"strconv"
 
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/cache"
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/env"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
 
 	"go.uber.org/ratelimit"
@@ -308,6 +309,32 @@ func ClearTransportCache() {
 	log.Debugf("Transport cache cleared.")
 }
 
+// StartTransportJanitor periodically closes idle connections on all cached
+// transports to prevent idle socket accumulation. Returns a stop function.
+func StartTransportJanitor(interval time.Duration) func() {
+    if interval <= 0 {
+        return func() {}
+    }
+    stopCh := make(chan struct{})
+    ticker := time.NewTicker(interval)
+    go func() {
+        for {
+            select {
+            case <-ticker.C:
+                transportCacheLock.RLock()
+                for _, tr := range transportCache {
+                    tr.CloseIdleConnections()
+                }
+                transportCacheLock.RUnlock()
+            case <-stopCh:
+                ticker.Stop()
+                return
+            }
+        }
+    }()
+    return func() { close(stopCh) }
+}
+
 // GetTransport returns a cached transport configured with sane defaults.
 // The transport is keyed by the endpoint's RegistryAPI and shared by callers
 // to maximize connection reuse and apply timeouts consistently.
@@ -328,19 +355,28 @@ func (ep *RegistryEndpoint) GetTransport() *http.Transport {
 	}
 
 	// Create and cache a transport with sane defaults
+    // Allow overriding key HTTP transport timeouts via environment
+    respHdrTimeout := env.ParseDurationFromEnv("REGISTRY_RESPONSE_HEADER_TIMEOUT", 60*time.Second, 1*time.Second, time.Hour)
+    tlsHsTimeout := env.ParseDurationFromEnv("REGISTRY_TLS_HANDSHAKE_TIMEOUT", 10*time.Second, 1*time.Second, time.Hour)
+    idleConnTimeout := env.ParseDurationFromEnv("REGISTRY_IDLE_CONN_TIMEOUT", 90*time.Second, 0, 24*time.Hour)
+    maxConnsPerHost := env.ParseNumFromEnv("REGISTRY_MAX_CONNS_PER_HOST", 30, 1, 10000)
+    maxIdleConns := env.ParseNumFromEnv("REGISTRY_MAX_IDLE_CONNS", 1000, 1, 100000)
+    maxIdleConnsPerHost := env.ParseNumFromEnv("REGISTRY_MAX_IDLE_CONNS_PER_HOST", 200, 1, 100000)
+
     tr := &http.Transport{
 		Proxy:                 http.ProxyFromEnvironment,
 		TLSClientConfig:       tlsC,
         // Prefer reuse of a larger idle pool to minimize new dials under load
-        MaxIdleConns:          1000,
-        MaxIdleConnsPerHost:   200,
+        MaxIdleConns:          maxIdleConns,
+        MaxIdleConnsPerHost:   maxIdleConnsPerHost,
         // Cap parallel dials per host to avoid ephemeral port exhaustion
-        MaxConnsPerHost:       30,
-		IdleConnTimeout:       90 * time.Second,
-		TLSHandshakeTimeout:   10 * time.Second,
+        MaxConnsPerHost:       maxConnsPerHost,
+
+		IdleConnTimeout:       idleConnTimeout,
+		TLSHandshakeTimeout:   tlsHsTimeout,
 		ExpectContinueTimeout: 1 * time.Second,
 		ForceAttemptHTTP2:     true,
-		ResponseHeaderTimeout: 15 * time.Second,
+		ResponseHeaderTimeout: respHdrTimeout,
 	}
 	transportCacheLock.Lock()
 	transportCache[key] = tr

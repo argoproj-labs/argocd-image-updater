@@ -149,7 +149,7 @@ Notes
 - Per-repo cap: `--per-repo-cap` (env `IMAGE_UPDATER_PER_REPO_CAP`), default 0
 - Git retries (env): `ARGOCD_GIT_ATTEMPTS_COUNT`=3, `ARGOCD_GIT_RETRY_DURATION`=500ms, `ARGOCD_GIT_RETRY_MAX_DURATION`=10s, `ARGOCD_GIT_RETRY_FACTOR`=2
 - Registry rate limit: `limit` in `registries.conf` per registry, default 20 rps if unspecified
-- HTTP transport (per registry, defaults): MaxIdleConns=1000, MaxIdleConnsPerHost=200, MaxConnsPerHost=30, IdleConnTimeout=90s, TLSHandshakeTimeout=10s, ResponseHeaderTimeout=15s, ExpectContinueTimeout=1s, HTTP/2 on HTTPS via ALPN
+- HTTP transport (per registry, defaults): MaxIdleConns=1000, MaxIdleConnsPerHost=200, MaxConnsPerHost=30, IdleConnTimeout=90s, TLSHandshakeTimeout=10s, ResponseHeaderTimeout=60s, ExpectContinueTimeout=1s, HTTP/2 on HTTPS via ALPN
 
 ### What each tunable does and affects
 

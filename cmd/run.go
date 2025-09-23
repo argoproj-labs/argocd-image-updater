@@ -148,6 +148,11 @@ func newRunCommand() *cobra.Command {
 				}
 			}
 
+			// Start HTTP transport janitor to close idle connections periodically
+			// Interval is tunable via REGISTRY_TRANSPORT_JANITOR_INTERVAL (0 disables)
+			janitorInterval := env.ParseDurationFromEnv("REGISTRY_TRANSPORT_JANITOR_INTERVAL", 5*time.Minute, 0, 24*time.Hour)
+			stopJanitor := registry.StartTransportJanitor(janitorInterval)
+
 			if cfg.CheckInterval > 0 && cfg.CheckInterval < 60*time.Second && cfg.Mode != "continuous" {
 				log.Warnf("Check interval is very low - it is not recommended to run below 1m0s")
 			}
@@ -305,6 +310,23 @@ func newRunCommand() *cobra.Command {
 
 			// This is our main loop. We leave it only when our health probe server
 			// returns an error.
+	           // Ensure Argo client is initialized when skipping warmup (e.g., --warmup-cache=false) in continuous mode
+	           if cfg.Mode == "continuous" && cfg.ArgoClient == nil {
+	               var err error
+	               switch cfg.ApplicationsAPIKind {
+	               case applicationsAPIKindK8S:
+	                   cfg.ArgoClient, err = argocd.NewK8SClient(cfg.KubeClient, &argocd.K8SClientOptions{AppNamespace: cfg.AppNamespace})
+	               case applicationsAPIKindArgoCD:
+	                   cfg.ArgoClient, err = argocd.NewAPIClient(&cfg.ClientOpts)
+	               default:
+	                   err = fmt.Errorf("application api '%s' is not supported", cfg.ApplicationsAPIKind)
+	               }
+	               if err != nil {
+	                   log.Errorf("Could not initialize Argo client: %v", err)
+	                   return err
+	               }
+	           }
+
 	           for {
 				select {
 				case err := <-hsErrCh:
@@ -319,6 +341,8 @@ func newRunCommand() *cobra.Command {
 							log.Errorf("Error stopping webhook server: %v", err)
 						}
 					}
+					// Stop janitor before exit
+					stopJanitor()
 					return nil
 				case err := <-msErrCh:
 					if err != nil {
@@ -332,9 +356,13 @@ func newRunCommand() *cobra.Command {
 							log.Errorf("Error stopping webhook server: %v", err)
 						}
 					}
+					// Stop janitor before exit
+					stopJanitor()
 					return nil
 				case err := <-whErrCh:
 					log.Errorf("Webhook server exited with error: %v", err)
+					// Stop janitor before exit
+					stopJanitor()
 					return nil
 				default:
                     if cfg.Mode == "continuous" {

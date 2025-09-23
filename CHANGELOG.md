@@ -6,6 +6,82 @@ handling on your side.
 
 ## Unreleased
 
+## 2025-09-23 - Release v100.0.11
+
+### Fixes/Improvements
+
+- health: Fail liveness on sustained port exhaustion to auto-restart pod
+  - /healthz returns 503 when EADDRNOTAVAIL errors exceed threshold within window
+  - Enabled by default; control via envs:
+    - `HEALTH_FAIL_ON_PORT_EXHAUSTION` (default: true)
+    - `PORT_EXHAUSTION_WINDOW` (default: 60s)
+    - `PORT_EXHAUSTION_THRESHOLD` (default: 8)
+- registry: Record EADDRNOTAVAIL in HTTP transport; sliding-window tracker powers health gate
+
+### Notes
+
+- No manifest changes required; your existing livenessProbe on `/healthz` will now trigger restart when ports are exhausted.
+
+## 2025-09-23 - Release v100.0.10a
+
+### Fixes/Improvements
+
+- registry: Add periodic HTTP transport janitor to proactively close idle connections
+  - New helper `StartTransportJanitor(interval)` runs `CloseIdleConnections()` across all cached transports
+  - Wired into both `run` and `webhook` commands; stops gracefully on shutdown
+  - Default interval: 5m; can be tuned via `REGISTRY_TRANSPORT_JANITOR_INTERVAL` (set `0` to disable)
+
+### Rationale
+
+- Mitigates long-running cluster issues where outbound dials eventually fail with
+  `connect: cannot assign requested address` (ephemeral port/SNAT exhaustion) by
+  improving connection reuse and cleaning up idle sockets over time.
+
+### Notes
+
+- This complements existing changes: shared transports per registry, tuned
+  `MaxConnsPerHost`/idle pools/timeouts, and per‑registry in‑flight caps.
+
+## 2025-09-19 - Release v100.0.9a
+
+### Changes
+
+- registry: Increase default per-attempt timeouts to 60s for tag and manifest fetches
+- registry: Make per-attempt timeouts env-tunable via `REGISTRY_TAG_TIMEOUT` and `REGISTRY_MANIFEST_TIMEOUT`
+- http transport: Default `ResponseHeaderTimeout` raised to 60s; env-tunable via `REGISTRY_RESPONSE_HEADER_TIMEOUT`
+- docs: Document new envs and updated defaults
+
+### Notes
+
+- If your registries are occasionally slow under load, you can set `REGISTRY_TAG_TIMEOUT=90s`, `REGISTRY_MANIFEST_TIMEOUT=90s`, and `REGISTRY_RESPONSE_HEADER_TIMEOUT=90s` to tolerate longer server delays. Consider also lowering concurrency and adding per‑registry rate limits.
+
+## 2025-09-19 - Release v100.0.8a
+
+### Changes
+
+- registry-scanner: JWT auth dedupe and retries stabilized; add metrics nil-guards to avoid panics in tests
+- registry-scanner: Fix jittered exponential backoff math for retries
+- tests(registry): Add JWT singleflight, different scopes, and retry/backoff tests; reset Prometheus registry per test
+
+### Notes
+
+- This release contains the JWT singleflight + authorizer transport cache improvements; ensure you update the embedded `registry-scanner` module.
+
+## 2025-09-19 - Release v100.0.7
+
+### Fixes
+
+- fix(continuous): initialize Argo client when warm-up is disabled (`--warmup-cache=false`) to prevent panic in `runContinuousOnce`
+
+### Changes
+
+- scheduler: continuous tick cadence set to ~1s (from ~100ms)
+- docs: clarify boolean flag usage for `--warmup-cache=false`
+
+### Notes
+
+- If you disable warm-up, continuous starts immediately; each ~1s tick lists and filters apps, then dispatches those due. Unsupported apps are skipped.
+
 ## 2025-09-19 - Release v100.0.6a
 
 ### Changes

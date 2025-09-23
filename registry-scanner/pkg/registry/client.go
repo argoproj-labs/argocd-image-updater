@@ -123,8 +123,10 @@ func (j *jwtObservingTransport) doAuthWithRetry(req *http.Request, reg, service,
     for attempt := 0; attempt < attempts; attempt++ {
         start := time.Now()
         resp, err := j.base.RoundTrip(req)
-        metrics.Endpoint().IncreaseJWTAuthRequest(reg, service, scope)
-        metrics.Endpoint().ObserveJWTAuthDuration(reg, service, scope, time.Since(start))
+        if epm := metrics.Endpoint(); epm != nil {
+            epm.IncreaseJWTAuthRequest(reg, service, scope)
+            epm.ObserveJWTAuthDuration(reg, service, scope, time.Since(start))
+        }
         lastResp, lastErr = resp, err
         if err == nil && resp != nil && resp.StatusCode >= 200 && resp.StatusCode < 300 {
             if resp.Body != nil {
@@ -134,24 +136,36 @@ func (j *jwtObservingTransport) doAuthWithRetry(req *http.Request, reg, service,
                     type tokenResp struct { ExpiresIn int `json:"expires_in"` }
                     var tr tokenResp
                     if jerr := json.Unmarshal(body, &tr); jerr == nil && tr.ExpiresIn > 0 {
-                        metrics.Endpoint().ObserveJWTTokenTTL(reg, service, scope, float64(tr.ExpiresIn))
+                        if epm := metrics.Endpoint(); epm != nil {
+                            epm.ObserveJWTTokenTTL(reg, service, scope, float64(tr.ExpiresIn))
+                        }
                     } else if jerr != nil {
-                        metrics.Endpoint().IncreaseJWTAuthError(reg, service, scope, "parse_json_error")
+                        if epm := metrics.Endpoint(); epm != nil {
+                            epm.IncreaseJWTAuthError(reg, service, scope, "parse_json_error")
+                        }
                     }
                 } else {
-                    metrics.Endpoint().IncreaseJWTAuthError(reg, service, scope, "read_body_error")
+                    if epm := metrics.Endpoint(); epm != nil {
+                        epm.IncreaseJWTAuthError(reg, service, scope, "read_body_error")
+                    }
                 }
             }
             return resp, nil
         }
-        if err != nil {
-            metrics.Endpoint().IncreaseJWTAuthError(reg, service, scope, "roundtrip_error")
-        } else if resp != nil {
-            metrics.Endpoint().IncreaseJWTAuthError(reg, service, scope, "http_"+strconv.Itoa(resp.StatusCode))
+        if epm := metrics.Endpoint(); epm != nil {
+            if err != nil {
+                epm.IncreaseJWTAuthError(reg, service, scope, "roundtrip_error")
+            } else if resp != nil {
+                epm.IncreaseJWTAuthError(reg, service, scope, "http_"+strconv.Itoa(resp.StatusCode))
+            }
+        }
+        if resp != nil {
             if resp.Body != nil { io.Copy(io.Discard, resp.Body); resp.Body.Close() }
         }
-        metrics.Endpoint().IncreaseRetry(reg, "auth")
-        d := time.Duration(float64(base) * (1 << attempt) * (0.7 + 0.6*rand.Float64()))
+        if epm := metrics.Endpoint(); epm != nil { epm.IncreaseRetry(reg, "auth") }
+        d := base * time.Duration(1<<uint(attempt))
+        jitter := 0.7 + 0.6*rand.Float64()
+        d = time.Duration(float64(d) * jitter)
         if d > maxDelay { d = maxDelay }
         time.Sleep(d)
     }
@@ -196,25 +210,33 @@ func (rlt *rateLimitTransport) RoundTrip(r *http.Request) (*http.Response, error
     scope := r.URL.Query().Get("scope")
     isJWT := strings.Contains(r.URL.Path, "/jwt/auth")
     if isJWT {
-        metrics.Endpoint().IncreaseJWTAuthRequest(reg, service, scope)
+        if epm := metrics.Endpoint(); epm != nil { epm.IncreaseJWTAuthRequest(reg, service, scope) }
     }
     resp, err := rlt.transport.RoundTrip(r)
+    if err != nil {
+        // detect possible port exhaustion dial failures and record for health
+        MaybeRecordPortExhaustion(err)
+    }
     // metrics
-    metrics.Endpoint().IncInFlight(reg)
-    defer func() { metrics.Endpoint().DecInFlight(reg) }()
+    if epm := metrics.Endpoint(); epm != nil {
+        epm.IncInFlight(reg)
+        defer func() { epm.DecInFlight(reg) }()
+    }
     d := time.Since(start)
-    metrics.Endpoint().ObserveRequestDuration(reg, d)
-    if isJWT {
-        metrics.Endpoint().ObserveJWTAuthDuration(reg, service, scope, d)
-        if err != nil {
-            metrics.Endpoint().IncreaseJWTAuthError(reg, service, scope, "roundtrip_error")
+    if epm := metrics.Endpoint(); epm != nil {
+        epm.ObserveRequestDuration(reg, d)
+        if isJWT {
+            epm.ObserveJWTAuthDuration(reg, service, scope, d)
+            if err != nil { epm.IncreaseJWTAuthError(reg, service, scope, "roundtrip_error") }
         }
     }
     // classify /jwt/auth for auth metrics later (placeholder)
     // increase request counters
-    metrics.Endpoint().IncreaseRequest(reg, err != nil)
+    if epm := metrics.Endpoint(); epm != nil { epm.IncreaseRequest(reg, err != nil) }
     // record status if available
-    if resp != nil { metrics.Endpoint().ObserveHTTPStatus(reg, resp.StatusCode) }
+    if resp != nil {
+        if epm := metrics.Endpoint(); epm != nil { epm.ObserveHTTPStatus(reg, resp.StatusCode) }
+    }
     <-inflight
     return resp, err
 }
@@ -311,7 +333,9 @@ type tagsResult struct {
 
 // Tags returns a list of tags for given name in repository
 func (clt *registryClient) Tags() ([]string, error) {
-    key := clt.endpoint.RegistryAPI + "|tags|" + clt.repoName
+    regURL := ""
+    if clt.endpoint != nil { regURL = clt.endpoint.RegistryAPI }
+    key := regURL + "|tags|" + clt.repoName
     if ch, loaded := tagsInFlight.Load(key); loaded {
         // wait for the leader's result
         res := (<-ch.(chan tagsResult))
@@ -333,18 +357,23 @@ func (clt *registryClient) Tags() ([]string, error) {
     tagService := clt.regClient.Tags(context.Background())
     var tTags []string
     var err error
-    // jittered exponential backoff with per-attempt deadline
+    // jittered exponential backoff with per-attempt deadline (env-tunable)
     base := 200 * time.Millisecond
     maxDelay := 3 * time.Second
-    for attempt := 0; attempt < 3; attempt++ {
-        ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+    // Attempts and per-attempt deadline are configurable via env for high-latency registries
+    attempts := env.ParseNumFromEnv("REGISTRY_TAG_ATTEMPTS", 3, 1, 100)
+    perAttempt := env.ParseDurationFromEnv("REGISTRY_TAG_TIMEOUT", 60*time.Second, 1*time.Second, time.Hour)
+    for attempt := 0; attempt < attempts; attempt++ {
+        ctx, cancel := context.WithTimeout(context.Background(), perAttempt)
         tTags, err = tagService.All(ctx)
         cancel()
         if err == nil {
             break
         }
         // jittered backoff
-        d := time.Duration(float64(base) * (1 << attempt) * (0.7 + 0.6*rand.Float64()))
+        d := base * time.Duration(1<<uint(attempt))
+        jitter := 0.7 + 0.6*rand.Float64()
+        d = time.Duration(float64(d) * jitter)
         if d > maxDelay { d = maxDelay }
         time.Sleep(d)
     }
@@ -355,7 +384,9 @@ func (clt *registryClient) Tags() ([]string, error) {
 
 // Manifest  returns a Manifest for a given tag in repository
 func (clt *registryClient) ManifestForTag(tagStr string) (distribution.Manifest, error) {
-    key := clt.endpoint.RegistryAPI + "|manifest|" + clt.repoName + "|tag=" + tagStr
+    regURL := ""
+    if clt.endpoint != nil { regURL = clt.endpoint.RegistryAPI }
+    key := regURL + "|manifest|" + clt.repoName + "|tag=" + tagStr
     if ch, loaded := manifestInFlight.Load(key); loaded {
         res := (<-ch.(chan struct{m distribution.Manifest; e error}))
         return res.m, res.e
@@ -370,12 +401,16 @@ func (clt *registryClient) ManifestForTag(tagStr string) (distribution.Manifest,
     var manifest distribution.Manifest
     base := 200 * time.Millisecond
     maxDelay := 3 * time.Second
-    for attempt := 0; attempt < 3; attempt++ {
-        ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+    manAttempts := env.ParseNumFromEnv("REGISTRY_MANIFEST_ATTEMPTS", 3, 1, 100)
+    manPerAttempt := env.ParseDurationFromEnv("REGISTRY_MANIFEST_TIMEOUT", 60*time.Second, 1*time.Second, time.Hour)
+    for attempt := 0; attempt < manAttempts; attempt++ {
+        ctx, cancel := context.WithTimeout(context.Background(), manPerAttempt)
         manifest, err = manService.Get(ctx, digest.FromString(tagStr), distribution.WithTag(tagStr), distribution.WithManifestMediaTypes(knownMediaTypes))
         cancel()
         if err == nil { break }
-        d := time.Duration(float64(base) * (1 << attempt) * (0.7 + 0.6*rand.Float64()))
+        d := base * time.Duration(1<<uint(attempt))
+        jitter := 0.7 + 0.6*rand.Float64()
+        d = time.Duration(float64(d) * jitter)
         if d > maxDelay { d = maxDelay }
         time.Sleep(d)
     }
@@ -386,7 +421,9 @@ func (clt *registryClient) ManifestForTag(tagStr string) (distribution.Manifest,
 
 // ManifestForDigest  returns a Manifest for a given digest in repository
 func (clt *registryClient) ManifestForDigest(dgst digest.Digest) (distribution.Manifest, error) {
-    key := clt.endpoint.RegistryAPI + "|manifest|" + clt.repoName + "|dgst=" + dgst.String()
+    regURL := ""
+    if clt.endpoint != nil { regURL = clt.endpoint.RegistryAPI }
+    key := regURL + "|manifest|" + clt.repoName + "|dgst=" + dgst.String()
     if ch, loaded := manifestInFlight.Load(key); loaded {
         res := (<-ch.(chan struct{m distribution.Manifest; e error}))
         return res.m, res.e
@@ -401,12 +438,16 @@ func (clt *registryClient) ManifestForDigest(dgst digest.Digest) (distribution.M
     var manifest distribution.Manifest
     base := 200 * time.Millisecond
     maxDelay := 3 * time.Second
-    for attempt := 0; attempt < 3; attempt++ {
-        ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+    dgstAttempts := env.ParseNumFromEnv("REGISTRY_MANIFEST_ATTEMPTS", 3, 1, 100)
+    dgstPerAttempt := env.ParseDurationFromEnv("REGISTRY_MANIFEST_TIMEOUT", 60*time.Second, 1*time.Second, time.Hour)
+    for attempt := 0; attempt < dgstAttempts; attempt++ {
+        ctx, cancel := context.WithTimeout(context.Background(), dgstPerAttempt)
         manifest, err = manService.Get(ctx, dgst, distribution.WithManifestMediaTypes(knownMediaTypes))
         cancel()
         if err == nil { break }
-        d := time.Duration(float64(base) * (1 << attempt) * (0.7 + 0.6*rand.Float64()))
+        d := base * time.Duration(1<<uint(attempt))
+        jitter := 0.7 + 0.6*rand.Float64()
+        d = time.Duration(float64(d) * jitter)
         if d > maxDelay { d = maxDelay }
         time.Sleep(d)
     }

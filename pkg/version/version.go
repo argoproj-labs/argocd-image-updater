@@ -6,7 +6,7 @@ import (
 )
 
 var (
-    version    = "100.0.6a"
+    version    = "100.0.8"
 	buildDate  = "1970-01-01T00:00:00Z"
 	gitCommit  = "unknown"
 	binaryName = "argocd-image-updater"

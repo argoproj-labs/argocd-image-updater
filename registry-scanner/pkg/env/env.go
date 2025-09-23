@@ -50,6 +50,18 @@ func GetDurationVal(envVar string, defaultValue time.Duration) time.Duration {
 	return defaultValue
 }
 
+// ParseDurationFromEnv retrieves a time.Duration from env with bounds; returns default on error
+func ParseDurationFromEnv(envVar string, defaultValue time.Duration, min, max time.Duration) time.Duration {
+    if val := os.Getenv(envVar); val != "" {
+        d, err := time.ParseDuration(val)
+        if err != nil { return defaultValue }
+        if min > 0 && d < min { return defaultValue }
+        if max > 0 && d > max { return defaultValue }
+        return d
+    }
+    return defaultValue
+}
+
 // Helper function to parse a number from an environment variable. Returns a
 // default if env is not set, is not parseable to a number, exceeds max (if
 // max is greater than 0) or is less than min.

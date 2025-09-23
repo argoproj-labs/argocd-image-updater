@@ -6,6 +6,10 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"path"
+	"strings"
+	"net"
 	"sync"
 	"testing"
 	"time"
@@ -98,12 +102,12 @@ func createMockServer(t *testing.T, port int) *WebhookServer {
 }
 
 // Helper function to wait till server is started
-func waitForServerToStart(url string, timeout time.Duration) error {
+func waitForServerToStart(u string, timeout time.Duration) error {
 	client := &http.Client{Timeout: 1 * time.Second}
 	duration := time.Now().Add(timeout)
 
 	for time.Now().Before(duration) {
-		resp, err := client.Get(url)
+		resp, err := client.Get(cleanURL(u))
 		if err == nil {
 			resp.Body.Close()
 			return nil
@@ -114,16 +118,34 @@ func waitForServerToStart(url string, timeout time.Duration) error {
 }
 
 // Helper function to test connectivity of an endpoint
-func testEndpointConnectivity(t *testing.T, url string, expectedStatus int) {
+func testEndpointConnectivity(t *testing.T, u string, expectedStatus int) {
 	client := http.Client{Timeout: 5 * time.Second}
 
-	res, err := client.Get(url)
-	if res != nil {
-		assert.Equal(t, res.StatusCode, expectedStatus, "Did not receive the expected status of %d got: %d", expectedStatus, res.StatusCode)
+	res, err := client.Get(cleanURL(u))
+    if res != nil {
+        assert.Equal(t, expectedStatus, res.StatusCode, "Did not receive the expected status of %d got: %d", expectedStatus, res.StatusCode)
 		defer res.Body.Close()
 	}
 	assert.NotNil(t, res, "No body received so server is not alive")
 	assert.NoError(t, err)
+}
+
+// cleanURL normalizes path to avoid double-slashes like "//webhook"
+func cleanURL(raw string) string {
+    pu, err := url.Parse(raw)
+    if err != nil { return raw }
+    pu.Path = path.Clean(pu.Path)
+    // Ensure we keep trailing slash semantics only for root
+    if pu.Path == "/" && !strings.HasSuffix(raw, "/") { pu.Path = "" }
+    return pu.String()
+}
+
+// freePort asks the OS for an available TCP port for localhost and returns it
+func freePort() int {
+    l, err := net.Listen("tcp", "127.0.0.1:0")
+    if err != nil { return 8080 }
+    defer l.Close()
+    return l.Addr().(*net.TCPAddr).Port
 }
 
 // TestNewWebhookServer ensures that WebhookServer struct is inited properly
@@ -150,7 +172,8 @@ func TestNewWebhookServer(t *testing.T) {
 
 // TestWebhookServerStart ensures that the server is created with the correct endpoints
 func TestWebhookServerStart(t *testing.T) {
-	server := createMockServer(t, 8080)
+    port := freePort()
+    server := createMockServer(t, port)
 	go func() {
 		err := server.Start()
 		if err != http.ErrServerClosed {
@@ -158,29 +181,30 @@ func TestWebhookServerStart(t *testing.T) {
 		}
 	}()
 
-	address := fmt.Sprintf("http://localhost:%d/", server.Port)
+    address := fmt.Sprintf("http://localhost:%d/", server.Port)
 	err := waitForServerToStart(address+"webhook", 5*time.Second)
 	assert.NoError(t, err, "Server failed to start")
 	defer server.Server.Close()
 
-	testEndpointConnectivity(t, address+"webhook", http.StatusBadRequest)
+    testEndpointConnectivity(t, address+"webhook", http.StatusBadRequest)
 	testEndpointConnectivity(t, address+"healthz", http.StatusOK)
 }
 
 // TestWebhookServerStop ensures that the server is stopped properly
 func TestWebhookServerStop(t *testing.T) {
-	server := createMockServer(t, 8080)
+    port := freePort()
+    server := createMockServer(t, port)
 	errorChannel := make(chan error)
 	go func() {
 		err := server.Start()
 		errorChannel <- err
 	}()
 
-	address := fmt.Sprintf("http://localhost:%d/", server.Port)
+    address := fmt.Sprintf("http://localhost:%d/", server.Port)
 	err := waitForServerToStart(address, 5*time.Second)
 	assert.NoError(t, err, "Server failed to start")
 
-	testEndpointConnectivity(t, address+"webhook", http.StatusBadRequest)
+    testEndpointConnectivity(t, address+"webhook", http.StatusBadRequest)
 
 	err = server.Stop()
 	select {
@@ -191,9 +215,9 @@ func TestWebhookServerStop(t *testing.T) {
 	}
 	assert.NoError(t, err)
 
-	client := http.Client{Timeout: 5 * time.Second}
-	_, err = client.Get("http://localhost:8080/webhook")
-	assert.NotNil(t, err, "Connecting to endpoint did not return error, server did not shut down properly")
+    client := http.Client{Timeout: 500 * time.Millisecond}
+    _, err = client.Get(address + "webhook")
+    assert.NotNil(t, err, "Connecting to endpoint did not return error, server did not shut down properly")
 }
 
 // TestWebhookServerHandleHealth tests the health handler
@@ -216,7 +240,8 @@ func TestWebhookServerHandleHealth(t *testing.T) {
 
 // TestWebhookServerHealthEndpoint ensures that the health endpoint of the server is working properly
 func TestWebhookServerHealthEndpoint(t *testing.T) {
-	server := createMockServer(t, 8080)
+    port := freePort()
+    server := createMockServer(t, port)
 	go func() {
 		err := server.Start()
 		if err != http.ErrServerClosed {
@@ -224,7 +249,7 @@ func TestWebhookServerHealthEndpoint(t *testing.T) {
 		}
 	}()
 
-	address := fmt.Sprintf("http://localhost:%d/", server.Port)
+    address := fmt.Sprintf("http://localhost:%d/", server.Port)
 	err := waitForServerToStart(address, 5*time.Second)
 	assert.NoError(t, err, "Server failed to start")
 	defer server.Server.Close()
@@ -326,7 +351,8 @@ func TestProcessWebhookEvent(t *testing.T) {
 
 // TestWebhookServerWebhookEndpoint ensures that the webhook endpoint of the server is working properly
 func TestWebhookServerWebhookEndpoint(t *testing.T) {
-	server := createMockServer(t, 8080)
+    port := freePort()
+    server := createMockServer(t, port)
 	mockArgoClient := server.ArgoClient.(*mocks.ArgoCD)
 	mockArgoClient.On("ListApplications", mock.Anything).Return(mockApps, nil).Once()
 
@@ -342,7 +368,7 @@ func TestWebhookServerWebhookEndpoint(t *testing.T) {
 		}
 	}()
 
-	address := fmt.Sprintf("http://localhost:%d/", server.Port)
+    address := fmt.Sprintf("http://localhost:%d/", server.Port)
 	err := waitForServerToStart(address, 5*time.Second)
 	assert.NoError(t, err, "Server failed to start")
 	defer server.Server.Close()
@@ -359,7 +385,7 @@ func TestWebhookServerWebhookEndpoint(t *testing.T) {
 			}`
 
 	client := http.Client{Timeout: 3 * time.Second}
-	res, err := client.Post(address+"webhook?type=docker", "application/json", bytes.NewReader([]byte(body)))
+    res, err := client.Post(address+"webhook?type=docker.io", "application/json", bytes.NewReader([]byte(body)))
 	assert.NoError(t, err)
 	assert.NotNil(t, res, "Response received was nil")
 	if res != nil {
@@ -371,7 +397,7 @@ func TestWebhookServerWebhookEndpoint(t *testing.T) {
 
 	body2 := `{}`
 
-	res2, err := client.Post(address+"webhook?type=notarealregistry", "application/json", bytes.NewReader([]byte(body2)))
+    res2, err := client.Post(address+"webhook?type=notarealregistry", "application/json", bytes.NewReader([]byte(body2)))
 	assert.NoError(t, err)
 	assert.NotNil(t, res2, "Response received was nil")
 	if res2 != nil {

@@ -263,3 +263,49 @@ means that the rate limiting is disabled.
 Can also be set with the `WEBHOOK_RATELIMIT_ALLOWED` environment variable.
 
 [label selector syntax]: https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/#label-selectors
+
+### Example: Kubernetes deployment args and env
+
+The following example shows a common way to run the updater in continuous mode with LRU scheduling, limited concurrency, a label selector, and tuned registry HTTP settings.
+
+```yaml
+spec:
+  template:
+    spec:
+      containers:
+      - name: argocd-image-updater
+        args:
+          - run
+          - "--interval"
+          - 60s
+          - "--max-concurrency"
+          - "8"
+          - "--match-application-label"
+          - argocd-project=my-project
+          - "--mode"
+          - continuous
+          - "--schedule"
+          - lru
+          - "--warmup-cache=false"
+        env:
+          - name: REGISTRY_TLS_HANDSHAKE_TIMEOUT
+            value: 30s
+          - name: REGISTRY_JWT_ATTEMPTS
+            value: "10"
+          - name: REGISTRY_JWT_RETRY_BASE
+            value: 500ms
+          - name: REGISTRY_JWT_RETRY_MAX
+            value: 5s
+          - name: REGISTRY_TAG_TIMEOUT
+            value: 120s
+          - name: REGISTRY_MANIFEST_TIMEOUT
+            value: 120s
+          - name: REGISTRY_RESPONSE_HEADER_TIMEOUT
+            value: 120s
+          - name: REGISTRY_MAX_CONNS_PER_HOST
+            value: "10"
+```
+
+Notes:
+- Replace `my-project` with your actual label value.
+- The registry timeouts and limits are safe defaults for busy registries; tune for your environment.
