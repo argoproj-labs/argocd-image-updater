@@ -12,4 +12,4 @@ roleRef:
   name: argocd-image-updater
 subjects:
   - kind: ServiceAccount
-    name: argocd-image-updater
+    name: image-updater-controller-manager

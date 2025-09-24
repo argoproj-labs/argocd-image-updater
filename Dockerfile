@@ -1,17 +1,22 @@
+# Build the manager binary
 FROM golang:1.24 AS builder
+ARG TARGETOS
+ARG TARGETARCH
 
 RUN mkdir -p /src/argocd-image-updater
 WORKDIR /src/argocd-image-updater
-# cache dependencies as a layer for faster rebuilds
+# Copy the Go Modules manifests
 COPY go.mod go.sum ./
 COPY registry-scanner ./
+# cache deps before building and copying source so that we don't need to re-download as much
+# and so that source changes don't invalidate our downloaded layer
 RUN go mod download
 COPY . .
 
 RUN mkdir -p dist && \
-	make controller
+	OS=${TARGETOS:-linux} ARCH=${TARGETARCH} make build
 
-FROM alpine:3.21
+FROM alpine:3.22
 
 RUN apk update && \
     apk upgrade && \
@@ -22,9 +27,9 @@ RUN mkdir -p /usr/local/bin
 RUN mkdir -p /app/config
 RUN adduser --home "/app" --disabled-password --uid 1000 argocd
 
-COPY --from=builder /src/argocd-image-updater/dist/argocd-image-updater /usr/local/bin/
+COPY --from=builder /src/argocd-image-updater/dist/argocd-image-updater /usr/local/bin/manager
 COPY hack/git-ask-pass.sh /usr/local/bin/git-ask-pass.sh
 
 USER 1000
 
-ENTRYPOINT ["/sbin/tini", "--", "/usr/local/bin/argocd-image-updater"]
+ENTRYPOINT ["/sbin/tini", "--", "/usr/local/bin/manager"]

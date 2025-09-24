@@ -5,6 +5,12 @@ metadata:
   name: manager-role
 rules:
 - apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - create
+- apiGroups:
   - argocd-image-updater.argoproj.io
   resources:
   - imageupdaters
@@ -28,5 +34,14 @@ rules:
   - imageupdaters/status
   verbs:
   - get
+  - patch
+  - update
+- apiGroups:
+  - argoproj.io
+  resources:
+  - applications
+  verbs:
+  - get
+  - list
   - patch
   - update
