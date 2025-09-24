@@ -5,6 +5,9 @@ import (
 	"testing"
 	"time"
 	"context"
+	"net"
+	"net/http"
+	"fmt"
 
 	"github.com/stretchr/testify/assert"
 
@@ -98,6 +101,52 @@ func TestContinuousScheduling(t *testing.T) {
     if !(fastRuns > slowRuns) {
         t.Fatalf("expected fast runs > slow runs; got fast=%d slow=%d", fastRuns, slowRuns)
     }
+}
+
+// pickFreePort returns an available TCP port on localhost.
+func pickFreePort(t *testing.T) int {
+    l, err := net.Listen("tcp", "127.0.0.1:0")
+    if err != nil { t.Fatalf("pickFreePort: %v", err) }
+    defer l.Close()
+    return l.Addr().(*net.TCPAddr).Port
+}
+
+// TestRun_StartsWebhookWhenEnabled verifies run mode starts webhook server when enabled via env.
+func TestRun_StartsWebhookWhenEnabled(t *testing.T) {
+    // choose a free port
+    port := pickFreePort(t)
+
+    // Prepare command with flags that avoid external deps and exit quickly
+    cmd := newRunCommand()
+    cmd.SetArgs([]string{
+        "--disable-kubernetes",
+        "--warmup-cache=false",
+        "--once",
+        "--loglevel", "debug",
+    })
+
+    // Set envs to enable webhook
+    t.Setenv("ENABLE_WEBHOOK", "true")
+    t.Setenv("WEBHOOK_PORT",  fmt.Sprintf("%d", port))
+
+    // Run the command; it should return (once-mode) while webhook goroutine keeps listening
+    if err := cmd.Execute(); err != nil {
+        t.Fatalf("run command returned error: %v", err)
+    }
+
+    // Give the server a moment to bind
+    deadline := time.Now().Add(500 * time.Millisecond)
+    var lastErr error
+    for time.Now().Before(deadline) {
+        resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:%d/healthz", port))
+        if err == nil && resp != nil {
+            resp.Body.Close()
+            if resp.StatusCode == http.StatusOK { return }
+        }
+        lastErr = err
+        time.Sleep(50 * time.Millisecond)
+    }
+    t.Fatalf("webhook did not start on port %d: lastErr=%v", port, lastErr)
 }
 
 type fakeArgo struct{ apps []string }
