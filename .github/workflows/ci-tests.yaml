@@ -121,6 +121,9 @@ jobs:
   registry-scanner:
     name: Ensure registry-scanner Go modules synchronicity and run tests
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./registry-scanner
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -130,7 +133,6 @@ jobs:
           go-version-file: go.mod
       - name: Download all Go modules
         run: |
-          cd registry-scanner
           go mod download
       - name: Check for tidyness of go.mod and go.sum
         run: |
