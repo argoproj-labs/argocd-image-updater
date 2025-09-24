@@ -3,6 +3,7 @@ package registry
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"strings"
 	"sync"
 	"testing"
@@ -309,9 +310,12 @@ func Test_GetTagListSortFromString(t *testing.T) {
 }
 
 func TestGetTransport(t *testing.T) {
+	ClearTransportCache()
+	defer ClearTransportCache()
 	t.Run("returns transport with default TLS config when Insecure is false", func(t *testing.T) {
 		endpoint := &RegistryEndpoint{
-			Insecure: false,
+			RegistryAPI: "secure-registry",
+			Insecure:    false,
 		}
 		transport := endpoint.GetTransport()
 
@@ -322,7 +326,8 @@ func TestGetTransport(t *testing.T) {
 
 	t.Run("returns transport with insecure TLS config when Insecure is true", func(t *testing.T) {
 		endpoint := &RegistryEndpoint{
-			Insecure: true,
+			RegistryAPI: "insecure-registry",
+			Insecure:    true,
 		}
 		transport := endpoint.GetTransport()
 
@@ -374,3 +379,52 @@ func TestAddRegistryEndpointFromConfig(t *testing.T) {
 		require.NoError(t, err)
 	})
 }
+
+// Test for transport caching and retrieval
+func TestTransportCache(t *testing.T) {
+	// Clean up cache before and after test
+	ClearTransportCache()
+	defer ClearTransportCache()
+
+	endpoint := &RegistryEndpoint{
+		RegistryAPI: "https://example.com",
+		Insecure:    false,
+	}
+
+	// 1. Test cache MISS and creation of a new transport
+	transport1 := endpoint.GetTransport()
+	assert.NotNil(t, transport1, "Transport should not be nil on cache miss")
+
+	// 2. Test cache HIT
+	transport2 := endpoint.GetTransport()
+	assert.NotNil(t, transport2, "Transport should not be nil on cache hit")
+	assert.Same(t, transport1, transport2, "Should retrieve the same transport instance from cache")
+
+	// 3. Test cache clearing
+	ClearTransportCache()
+	transport3 := endpoint.GetTransport()
+	assert.NotSame(t, transport1, transport3, "Should create a new transport after cache is cleared")
+}
+
+// Test for transport validation logic
+func TestIsTransportValid(t *testing.T) {
+	t.Run("valid transport", func(t *testing.T) {
+		transport := &http.Transport{
+			MaxIdleConns:        10,
+			MaxIdleConnsPerHost: 5,
+		}
+		assert.True(t, isTransportValid(transport), "Should be a valid transport")
+	})
+
+	t.Run("nil transport", func(t *testing.T) {
+		assert.False(t, isTransportValid(nil), "Nil transport should be invalid")
+	})
+
+	t.Run("invalid connection settings", func(t *testing.T) {
+		transport := &http.Transport{
+			MaxIdleConns: -1,
+		}
+		assert.False(t, isTransportValid(transport), "Transport with invalid settings should be invalid")
+	})
+}
+
