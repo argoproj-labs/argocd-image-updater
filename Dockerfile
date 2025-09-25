@@ -27,9 +27,9 @@ RUN mkdir -p /usr/local/bin
 RUN mkdir -p /app/config
 RUN adduser --home "/app" --disabled-password --uid 1000 argocd
 
-COPY --from=builder /src/argocd-image-updater/dist/argocd-image-updater /usr/local/bin/manager
+COPY --from=builder /src/argocd-image-updater/dist/argocd-image-updater /manager
 COPY hack/git-ask-pass.sh /usr/local/bin/git-ask-pass.sh
 
 USER 1000
 
-ENTRYPOINT ["/sbin/tini", "--", "/usr/local/bin/manager"]
+ENTRYPOINT ["/sbin/tini", "--", "/manager"]
