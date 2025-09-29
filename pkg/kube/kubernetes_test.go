@@ -3,7 +3,7 @@ package kube
 import (
 	"testing"
 
-	appv1alpha1 "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
+	appv1alpha1 "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	registryKube "github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/kube"
