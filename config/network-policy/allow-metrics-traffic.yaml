@@ -5,14 +5,14 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   labels:
-    app.kubernetes.io/name: image-updater
+    app.kubernetes.io/name: argocd-image-updater
     app.kubernetes.io/managed-by: kustomize
   name: allow-metrics-traffic
   namespace: system
 spec:
   podSelector:
     matchLabels:
-      control-plane: controller-manager
+      control-plane: argocd-image-updater-controller
   policyTypes:
     - Ingress
   ingress:

@@ -2,31 +2,32 @@ apiVersion: v1
 kind: Namespace
 metadata:
   labels:
-    control-plane: controller-manager
-    app.kubernetes.io/name: image-updater-system
+    control-plane: argocd-image-updater-controller
+    app.kubernetes.io/name: argocd-image-updater-system
     app.kubernetes.io/managed-by: kustomize
-  name: system
+  name: argocd-image-updater-system
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: controller-manager
-  namespace: system
+  name: argocd-image-updater-controller
+  namespace: argocd-image-updater-system
   labels:
-    control-plane: controller-manager
-    app.kubernetes.io/name: image-updater-controller-manager
+    control-plane: argocd-image-updater-controller
+    app.kubernetes.io/name: argocd-image-updater-controller
     app.kubernetes.io/managed-by: kustomize
 spec:
   selector:
     matchLabels:
-      control-plane: controller-manager
+      control-plane: argocd-image-updater-controller
   replicas: 1
   template:
     metadata:
       annotations:
         kubectl.kubernetes.io/default-container: manager
       labels:
-        control-plane: controller-manager
+        control-plane: argocd-image-updater-controller
+        app.kubernetes.io/name: argocd-image-updater
     spec:
       # TODO(user): Uncomment the following code to configure the nodeAffinity expression
       # according to the platforms which are supported by your solution.
@@ -62,115 +63,115 @@ spec:
           - /manager
         args:
           - run
-        image: controller:latest
-        name: manager
+        image: argocd-image-updater-controller:latest
+        name: argocd-image-updater-controller
         env:
           - name: IMAGE_UPDATER_INTERVAL
             valueFrom:
               configMapKeyRef:
                 key: interval
-                name: image-updater-config
+                name: argocd-image-updater-config
                 optional: true
           - name: IMAGE_UPDATER_LOGLEVEL
             valueFrom:
               configMapKeyRef:
-                name: image-updater-config
+                name: argocd-image-updater-config
                 key: log.level
                 optional: true
           - name: IMAGE_UPDATER_LOGFORMAT
             valueFrom:
               configMapKeyRef:
-                name: image-updater-config
+                name: argocd-image-updater-config
                 key: log.format
                 optional: true
           - name: MAX_CONCURRENT_APPS
             valueFrom:
               configMapKeyRef:
-                name: image-updater-config
+                name: argocd-image-updater-config
                 key: max_concurrent_apps
                 optional: true
           - name: MAX_CONCURRENT_RECONCILES
             valueFrom:
               configMapKeyRef:
-                name: image-updater-config
+                name: argocd-image-updater-config
                 key: max_concurrent_reconciles
                 optional: true
           - name: GIT_COMMIT_USER
             valueFrom:
               configMapKeyRef:
-                name: image-updater-config
+                name: argocd-image-updater-config
                 key: git.user
                 optional: true
           - name: GIT_COMMIT_EMAIL
             valueFrom:
               configMapKeyRef:
-                name: image-updater-config
+                name: argocd-image-updater-config
                 key: git.email
                 optional: true
           - name: GIT_COMMIT_SIGNING_KEY
             valueFrom:
               configMapKeyRef:
                 key: git.commit-signing-key
-                name: image-updater-config
+                name: argocd-image-updater-config
                 optional: true
           - name: GIT_COMMIT_SIGNING_METHOD
             valueFrom:
               configMapKeyRef:
                 key: git.commit-signing-method
-                name: image-updater-config
+                name: argocd-image-updater-config
                 optional: true
           - name: GIT_COMMIT_SIGN_OFF
             valueFrom:
               configMapKeyRef:
                 key: git.commit-sign-off
-                name: image-updater-config
+                name: argocd-image-updater-config
                 optional: true
           - name: IMAGE_UPDATER_KUBE_EVENTS
             valueFrom:
               configMapKeyRef:
-                name: image-updater-config
+                name: argocd-image-updater-config
                 key: kube.events
                 optional: true
           - name: ENABLE_WEBHOOK
             valueFrom:
               configMapKeyRef:
-                name: image-updater-config
+                name: argocd-image-updater-config
                 key: webhook.enable
                 optional: true
           - name: WEBHOOK_PORT
             valueFrom:
               configMapKeyRef:
-                name: image-updater-config
+                name: argocd-image-updater-config
                 key: webhook.port
                 optional: true
           - name: QUAY_WEBHOOK_SECRET
             valueFrom:
-              configMapKeyRef:
-                name: image-updater-secret
+              secretKeyRef:
+                name: argocd-image-updater-secret
                 key: webhook.quay-secret
                 optional: true
           - name: DOCKER_WEBHOOK_SECRET
             valueFrom:
               secretKeyRef:
-                name: image-updater-secret
+                name: argocd-image-updater-secret
                 key: webhook.docker-secret
                 optional: true
           - name: GHCR_WEBHOOK_SECRET
             valueFrom:
               secretKeyRef:
-                name: image-updater-secret
+                name: argocd-image-updater-secret
                 key: webhook.ghcr-secret
                 optional: true
           - name: HARBOR_WEBHOOK_SECRET
             valueFrom:
               secretKeyRef:
-                name: image-updater-secret
+                name: argocd-image-updater-secret
                 key: webhook.harbor-secret
                 optional: true
           - name: WEBHOOK_RATELIMIT_ALLOWED
             valueFrom:
               configMapKeyRef:
-                name: image-updater-config
+                name: argocd-image-updater-config
                 key: webhook.ratelimit-allowed
                 optional: true
         securityContext:
@@ -216,7 +217,7 @@ spec:
             mountPath: /app/ssh-keys/id_rsa
             readOnly: true
             subPath: sshPrivateKey
-      serviceAccountName: controller-manager
+      serviceAccountName: argocd-image-updater-controller
       terminationGracePeriodSeconds: 10
       volumes:
         - configMap:
@@ -225,7 +226,7 @@ spec:
                 path: registries.conf
               - key: git.commit-message-template
                 path: commit.template
-            name: image-updater-config
+            name: argocd-image-updater-config
             optional: true
           name: image-updater-conf
         - configMap:
@@ -233,7 +234,7 @@ spec:
             optional: true
           name: ssh-known-hosts
         - configMap:
-            name: image-updater-ssh-config
+            name: argocd-image-updater-ssh-config
             optional: true
           name: ssh-config
         - name: ssh-signing-key

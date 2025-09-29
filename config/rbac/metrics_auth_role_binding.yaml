@@ -1,12 +1,12 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: metrics-auth-rolebinding
+  name: argocd-image-updater-metrics-auth-rolebinding
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: metrics-auth-role
+  name: argocd-image-updater-metrics-auth-role
 subjects:
 - kind: ServiceAccount
-  name: controller-manager
-  namespace: system
+  name: argocd-image-updater-controller
+  namespace: argocd-image-updater-system

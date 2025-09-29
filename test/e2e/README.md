@@ -29,7 +29,7 @@ The end-to-end tests are comprised of the following components:
 
 2. Install CRDs into the K8s cluster specified in ~/.kube/config.
 
-    * `make -f controller.Makefile install`
+    * `make install`
 
 3. Run `./bin/install.sh`. This will
 
@@ -41,7 +41,7 @@ The end-to-end tests are comprised of the following components:
 4. Create required namespaces in the cluster: 
    * `kubectl create ns argocd-image-updater-e2e`
 
-   * `kubectl create ns image-updater-system`
+   * `kubectl create ns argocd-image-updater-system`
 
 ## Pre-requisites
 

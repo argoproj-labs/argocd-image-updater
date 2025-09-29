@@ -4,7 +4,7 @@ metadata:
   labels:
     app.kubernetes.io/name: argocd-image-updater
     app.kubernetes.io/part-of: argocd-image-updater
-    app.kubernetes.io/component: controller
+    app.kubernetes.io/component: argocd-image-updater-controller
   name: argocd-image-updater
 roleRef:
   apiGroup: rbac.authorization.k8s.io
@@ -12,4 +12,4 @@ roleRef:
   name: argocd-image-updater
 subjects:
   - kind: ServiceAccount
-    name: image-updater-controller-manager
+    name: argocd-image-updater-controller

@@ -3,10 +3,10 @@ apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
   labels:
-    control-plane: controller-manager
-    app.kubernetes.io/name: image-updater
+    control-plane: argocd-image-updater-controller
+    app.kubernetes.io/name: argocd-image-updater
     app.kubernetes.io/managed-by: kustomize
-  name: controller-manager-metrics-monitor
+  name: argocd-image-updater-controller-metrics-monitor
   namespace: system
 spec:
   endpoints:
@@ -27,4 +27,4 @@ spec:
         insecureSkipVerify: true
   selector:
     matchLabels:
-      control-plane: controller-manager
+      control-plane: argocd-image-updater-controller
