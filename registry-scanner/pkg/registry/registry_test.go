@@ -176,7 +176,7 @@ echo "AWS:mock-token-12345"
 		err := os.WriteFile(scriptPath, []byte(scriptContent), 0755)
 		require.NoError(t, err)
 		defer os.Remove(scriptPath)
-		
+
 		// Clean up any existing log file
 		os.Remove("/tmp/test_ecr_calls.log")
 		defer os.Remove("/tmp/test_ecr_calls.log")
@@ -239,7 +239,7 @@ registries:
 
 	t.Run("Concurrent calls with unexpired credentials should not refetch", func(t *testing.T) {
 		var callCount int32
-		
+
 		epYAML := `
 registries:
 - name: Test Registry
@@ -250,7 +250,7 @@ registries:
 `
 		epl, err := ParseRegistryConfiguration(epYAML)
 		require.NoError(t, err)
-		
+
 		err = AddRegistryEndpointFromConfig(epl.Items[0])
 		require.NoError(t, err)
 		ep, err := GetRegistryEndpoint(&image.ContainerImage{RegistryURL: "test.registry.io"})
@@ -258,7 +258,7 @@ registries:
 
 		// Set environment variable
 		os.Setenv("TEST_CONCURRENT_CREDS", "user:pass")
-		
+
 		// First call to set credentials
 		err = ep.SetEndpointCredentials(nil)
 		require.NoError(t, err)

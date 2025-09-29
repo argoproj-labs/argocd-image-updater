@@ -12,7 +12,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
 )
 
 func TestInferRegistryEndpointFromPrefix(t *testing.T) {
@@ -426,4 +425,3 @@ func TestIsTransportValid(t *testing.T) {
 		assert.False(t, isTransportValid(transport), "Transport with invalid settings should be invalid")
 	})
 }
-
