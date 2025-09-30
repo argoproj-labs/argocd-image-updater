@@ -25,8 +25,8 @@ import (
 	"github.com/argoproj-labs/argocd-image-updater/test/fake"
 	"github.com/argoproj-labs/argocd-image-updater/test/fixture"
 
-	"github.com/argoproj/argo-cd/v2/pkg/apiclient/application"
-	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
+	"github.com/argoproj/argo-cd/v3/pkg/apiclient/application"
+	"github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1"
 	"github.com/distribution/distribution/v3/manifest/schema1" //nolint:staticcheck
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -3409,25 +3409,23 @@ func Test_GetGitCreds(t *testing.T) {
 	t.Run("HTTP creds from Argo CD settings", func(t *testing.T) {
 		argoClient := argomock.ArgoCD{}
 		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
-		secret := fixture.NewSecret("argocd", "git-creds", map[string][]byte{
+
+		// Create repository secret in Argo CD v3 format
+		repoSecret := fixture.NewSecret("argocd", "repo-https-example-com-example", map[string][]byte{
+			"type":     []byte("git"),
+			"url":      []byte("https://example.com/example"),
 			"username": []byte("foo"),
 			"password": []byte("bar"),
 		})
-		configMap := fixture.NewConfigMap("argocd", "argocd-cm", map[string]string{
-			"repositories": `
-- url: https://example.com/example
-  passwordSecret:
-    name: git-creds
-    key: password
-  usernameSecret:
-    name: git-creds
-    key: username`,
-		})
-		fixture.AddPartOfArgoCDLabel(secret, configMap)
+		// Add the required label for Argo CD v3 repository secrets
+		repoSecret.Labels = map[string]string{
+			"argocd.argoproj.io/secret-type": "repository",
+		}
+		fixture.AddPartOfArgoCDLabel(repoSecret)
 
 		kubeClient := kube.ImageUpdaterKubernetesClient{
 			KubeClient: &registryKube.KubernetesClient{
-				Clientset: fake.NewFakeClientsetWithResources(secret, configMap),
+				Clientset: fake.NewFakeClientsetWithResources(repoSecret),
 				Namespace: "argocd",
 			},
 		}

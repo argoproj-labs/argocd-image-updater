@@ -21,7 +21,7 @@ import (
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/registry"
 
-	"github.com/argoproj/argo-cd/v2/util/askpass"
+	"github.com/argoproj/argo-cd/v3/util/askpass"
 	"github.com/spf13/cobra"
 	"go.uber.org/ratelimit"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
