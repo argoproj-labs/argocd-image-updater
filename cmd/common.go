@@ -7,7 +7,7 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/argoproj/argo-cd/v2/util/askpass"
+	"github.com/argoproj/argo-cd/v3/util/askpass"
 	"github.com/go-logr/logr"
 	"go.uber.org/ratelimit"
 

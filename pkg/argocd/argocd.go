@@ -9,8 +9,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/argoproj/argo-cd/v2/pkg/apiclient/application"
-	argocdapi "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
+	"github.com/argoproj/argo-cd/v3/pkg/apiclient/application"
+	argocdapi "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
