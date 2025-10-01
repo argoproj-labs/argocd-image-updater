@@ -18,7 +18,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
       - name: Setup Golang
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
       - name: Download all Go modules
@@ -62,7 +62,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
       - name: Setup Golang
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
           cache: false
@@ -80,7 +80,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
       - name: Setup Golang
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
       - name: Run tests
@@ -131,7 +131,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
       - name: Setup Golang
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
       - name: Download all Go modules
