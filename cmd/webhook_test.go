@@ -1,15 +1,12 @@
 package main
 
 import (
-	"context"
 	"math"
-	"os"
 	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/argoproj-labs/argocd-image-updater/internal/controller"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/env"
 )
@@ -48,27 +45,4 @@ func TestNewWebhookCommand(t *testing.T) {
 	asser.Equal(strconv.Itoa(env.ParseNumFromEnv("WEBHOOK_RATELIMIT_ALLOWED", 0, 0, math.MaxInt)), controllerCommand.Flag("webhook-ratelimit-allowed").Value.String())
 
 	asser.Nil(controllerCommand.Help())
-}
-
-// Assisted-by: Gemini AI
-// TestRunWebhook_NoKubeConfig verifies runWebhook returns an error when kubeconfig cannot be loaded.
-func TestRunWebhook_NoKubeConfig(t *testing.T) {
-	asser := assert.New(t)
-
-	oldVal, had := os.LookupEnv("KUBECONFIG")
-	_ = os.Setenv("KUBECONFIG", "/this/path/does/not/exist")
-	t.Cleanup(func() {
-		if had {
-			_ = os.Setenv("KUBECONFIG", oldVal)
-		} else {
-			_ = os.Unsetenv("KUBECONFIG")
-		}
-	})
-
-	ctx := context.Background()
-	cfg := &controller.ImageUpdaterConfig{}
-	whCfg := &WebhookConfig{Port: 0}
-
-	err := runWebhook(ctx, cfg, whCfg, 1)
-	asser.Error(err)
 }

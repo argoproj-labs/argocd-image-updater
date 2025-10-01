@@ -4,7 +4,7 @@ import (
 	"sync"
 	"text/template"
 
-	argocdapi "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
+	argocdapi "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1"
 
 	"github.com/argoproj-labs/argocd-image-updater/ext/git"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/kube"
