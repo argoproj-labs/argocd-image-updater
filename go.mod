@@ -21,7 +21,7 @@ require (
 	golang.org/x/crypto v0.40.0
 	golang.org/x/exp v0.0.0-20241108190413-2d47ceb2692f
 	golang.org/x/oauth2 v0.31.0
-	golang.org/x/sync v0.16.0
+	golang.org/x/sync v0.17.0
 	google.golang.org/grpc v1.73.0
 	k8s.io/api v0.33.1
 	k8s.io/apimachinery v0.33.1
@@ -183,7 +183,7 @@ require (
 
 replace (
 	// Uncomment for development and local testing, and comment out for releases
-	// github.com/argoproj-labs/argocd-image-updater/registry-scanner => ./registry-scanner/
+	github.com/argoproj-labs/argocd-image-updater/registry-scanner => ./registry-scanner/
 	github.com/golang/protobuf => github.com/golang/protobuf v1.5.4
 
 	k8s.io/api => k8s.io/api v0.33.1
