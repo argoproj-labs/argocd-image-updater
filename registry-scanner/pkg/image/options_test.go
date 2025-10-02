@@ -7,8 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/options"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/options"
 )
 
 func Test_GetPlatformOptions(t *testing.T) {
