@@ -427,4 +427,3 @@ func TestIsTransportValid(t *testing.T) {
 		assert.False(t, isTransportValid(transport), "Transport with invalid settings should be invalid")
 	})
 }
-
