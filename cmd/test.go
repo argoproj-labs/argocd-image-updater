@@ -5,7 +5,8 @@ import (
 	"fmt"
 	"runtime"
 
-	"github.com/argoproj-labs/argocd-image-updater/pkg/kube"
+	kube "github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/kube"
+
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/image"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/options"
@@ -64,14 +65,14 @@ argocd-image-updater test nginx --allow-tags '^1.19.\d+(\-.*)*$' --update-strate
 				log.Fatalf("could not set log level to %s: %v", logLevel, err)
 			}
 
-			var kubeClient *kube.ImageUpdaterKubernetesClient
-			var err error
+			var kubeClient *kube.KubernetesClient
 			if !disableKubernetes {
 				ctx := context.Background()
-				kubeClient, err = getKubeConfig(ctx, "", kubeConfig)
+				kc, err := getKubeConfig(ctx, "", kubeConfig)
 				if err != nil {
 					log.Fatalf("could not create K8s client: %v", err)
 				}
+				kubeClient = kc.KubeClient
 			}
 
 			img := image.NewFromIdentifier(args[0])
@@ -118,7 +119,7 @@ argocd-image-updater test nginx --allow-tags '^1.19.\d+(\-.*)*$' --update-strate
 				logCtx.Fatalf("could not get registry endpoint: %v", err)
 			}
 
-			if err := ep.SetEndpointCredentials(kubeClient.KubeClient); err != nil {
+			if err := ep.SetEndpointCredentials(kubeClient); err != nil {
 				logCtx.Fatalf("could not set registry credentials: %v", err)
 			}
 
@@ -138,7 +139,7 @@ argocd-image-updater test nginx --allow-tags '^1.19.\d+(\-.*)*$' --update-strate
 				if err != nil {
 					logCtx.Fatalf("could not parse credential definition '%s': %v", credentials, err)
 				}
-				creds, err = credSrc.FetchCredentials(ep.RegistryAPI, kubeClient.KubeClient)
+				creds, err = credSrc.FetchCredentials(ep.RegistryAPI, kubeClient)
 				if err != nil {
 					logCtx.Fatalf("could not fetch credentials: %v", err)
 				}
