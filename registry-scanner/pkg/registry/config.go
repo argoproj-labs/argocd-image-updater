@@ -36,6 +36,10 @@ func clearRegistries() {
 	registryLock.Lock()
 	registries = make(map[string]*RegistryEndpoint)
 	registryLock.Unlock()
+
+	// Also clear transport cache when registries are cleared
+	// This ensures that when registry configuration changes, we use fresh transports
+	ClearTransportCache()
 }
 
 // LoadRegistryConfiguration loads a YAML-formatted registry configuration from

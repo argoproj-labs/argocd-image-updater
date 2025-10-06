@@ -3,12 +3,12 @@ module github.com/argoproj-labs/argocd-image-updater
 go 1.24.6
 
 require (
-	github.com/argoproj-labs/argocd-image-updater/registry-scanner v0.0.0-20250908234756-5f7bb2916132
+	github.com/argoproj-labs/argocd-image-updater/registry-scanner v0.2.0
 	github.com/argoproj/argo-cd/v3 v3.1.8
 	github.com/argoproj/gitops-engine v0.7.1-0.20250905160054-e48120133eec
 	github.com/bmatcuk/doublestar/v4 v4.9.1
 	github.com/bombsimon/logrusr/v2 v2.0.1
-	github.com/bradleyfalzon/ghinstallation/v2 v2.16.0
+	github.com/bradleyfalzon/ghinstallation/v2 v2.17.0
 	github.com/distribution/distribution/v3 v3.0.0-20230722181636-7b502560cad4
 	github.com/go-git/go-git/v5 v5.16.2
 	github.com/go-logr/logr v1.4.3
@@ -18,14 +18,14 @@ require (
 	github.com/patrickmn/go-cache v2.1.1-0.20191004192108-46f407853014+incompatible
 	github.com/prometheus/client_golang v1.23.0
 	github.com/sirupsen/logrus v1.9.3
-	github.com/spf13/cobra v1.9.1
-	github.com/spf13/pflag v1.0.7
-	github.com/stretchr/testify v1.10.0
+	github.com/spf13/cobra v1.10.1
+	github.com/spf13/pflag v1.0.10
+	github.com/stretchr/testify v1.11.1
 	go.uber.org/ratelimit v0.3.1
 	golang.org/x/crypto v0.40.0
 	golang.org/x/exp v0.0.0-20241108190413-2d47ceb2692f
-	golang.org/x/oauth2 v0.30.0
-	golang.org/x/sync v0.16.0
+	golang.org/x/oauth2 v0.31.0
+	golang.org/x/sync v0.17.0
 	google.golang.org/grpc v1.73.0
 	k8s.io/api v0.33.1
 	k8s.io/apimachinery v0.33.1
@@ -98,7 +98,7 @@ require (
 	github.com/google/gnostic-models v0.6.9 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/go-github/v69 v69.2.0 // indirect
-	github.com/google/go-github/v72 v72.0.0 // indirect
+	github.com/google/go-github/v75 v75.0.0 // indirect
 	github.com/google/go-querystring v1.1.0 // indirect
 	github.com/google/pprof v0.0.0-20241029153458-d1b30febd7db // indirect
 	github.com/gorilla/mux v1.8.0 // indirect
