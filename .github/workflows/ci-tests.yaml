@@ -63,14 +63,19 @@ jobs:
         uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
-          cache: false
         env:
           GO111MODULE: off
-      - name: Run golangci-lint
+      - name: Run golangci-lint on main module
         uses: golangci/golangci-lint-action@v8
         with:
-          version: v2.1.6
+          version: v2.5.0
           args: --timeout 5m
+      - name: Run golangci-lint on registry-scanner
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.5.0
+          args: --timeout 5m
+          working-directory: registry-scanner
   test:
     name: Ensure unit tests are passing
     runs-on: ubuntu-latest
