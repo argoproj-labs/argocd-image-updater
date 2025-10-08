@@ -1,0 +1,5 @@
+replicaCount: 1
+image:
+  name: nginx
+  tag: "1.17.0"
+nameOverride: "009-multisource-helm"
