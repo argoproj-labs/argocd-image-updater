@@ -3,18 +3,22 @@ package metrics
 import (
 	"testing"
 
+	crmetrics "sigs.k8s.io/controller-runtime/pkg/metrics"
+
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestMetricsInitialization(t *testing.T) {
 	t.Run("NewEndpointMetrics", func(t *testing.T) {
+		crmetrics.Registry = prometheus.NewRegistry()
 		prometheus.DefaultRegisterer = prometheus.NewRegistry()
 		epm := NewEndpointMetrics()
 		assert.NotNil(t, epm)
 		assert.NotNil(t, epm.requestsTotal)
 		assert.NotNil(t, epm.requestsFailed)
 
+		crmetrics.Registry = prometheus.NewRegistry()
 		prometheus.DefaultRegisterer = nil
 		epm = NewEndpointMetrics()
 		assert.NotNil(t, epm)
@@ -23,6 +27,7 @@ func TestMetricsInitialization(t *testing.T) {
 	})
 
 	t.Run("NewClientMetrics", func(t *testing.T) {
+		crmetrics.Registry = prometheus.NewRegistry()
 		prometheus.DefaultRegisterer = prometheus.NewRegistry()
 		cpm := NewClientMetrics()
 		assert.NotNil(t, cpm)
@@ -31,6 +36,7 @@ func TestMetricsInitialization(t *testing.T) {
 		assert.NotNil(t, cpm.kubeAPIRequestsTotal)
 		assert.NotNil(t, cpm.kubeAPIRequestsErrorsTotal)
 
+		crmetrics.Registry = prometheus.NewRegistry()
 		prometheus.DefaultRegisterer = nil
 		cpm = NewClientMetrics()
 		assert.NotNil(t, cpm)
@@ -41,6 +47,7 @@ func TestMetricsInitialization(t *testing.T) {
 	})
 
 	t.Run("NewApplicationsMetrics", func(t *testing.T) {
+		crmetrics.Registry = prometheus.NewRegistry()
 		apm := NewApplicationsMetrics()
 		assert.NotNil(t, apm)
 		assert.NotNil(t, apm.applicationsTotal)
@@ -51,6 +58,8 @@ func TestMetricsInitialization(t *testing.T) {
 }
 
 func TestMetricsOperations(t *testing.T) {
+	crmetrics.Registry = prometheus.NewRegistry()
+
 	InitMetrics()
 	epm := Endpoint()
 	epm.IncreaseRequest("/registry1", false)
