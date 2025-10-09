@@ -1691,12 +1691,12 @@ replicas: 1
 test-value1: one
 nginx:
   image:
-    tag: v1.0.0
     name: nginx
+    tag: v1.0.0
 redis:
   image:
-    tag: v1.0.0
     name: redis
+    tag: v1.0.0
 `
 		yaml, err = marshalParamsOverride(&app, originalData)
 		require.NoError(t, err)
@@ -1938,7 +1938,7 @@ replicas: 1
 					"argocd-image-updater.argoproj.io/image-list":            "nginx",
 					"argocd-image-updater.argoproj.io/write-back-method":     "git",
 					"argocd-image-updater.argoproj.io/write-back-target":     "helmvalues:./test-values.yaml",
-					"argocd-image-updater.argoproj.io/nginx.helm.image-name": "image.name",
+					"argocd-image-updater.argoproj.io/nginx.helm.image-name": "dockerimage.name",
 				},
 			},
 			Spec: v1alpha1.ApplicationSpec{
@@ -1977,7 +1977,7 @@ replicas: 1
 		assert.Equal(t, "could not find an image-tag annotation for image nginx", err.Error())
 	})
 
-	t.Run("Missing annotation image-name for helmvalues write-back-target", func(t *testing.T) {
+	t.Run("Allow empty annotation image-name for helmvalues write-back-target", func(t *testing.T) {
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
 				Name: "testapp",
@@ -1996,7 +1996,7 @@ replicas: 1
 						Parameters: []v1alpha1.HelmParameter{
 							{
 								Name:        "image.name",
-								Value:       "nginx",
+								Value:       "nginx-other",
 								ForceString: true,
 							},
 							{
@@ -2018,10 +2018,22 @@ replicas: 1
 			},
 		}
 
-		originalData := []byte(`random: yaml`)
-		_, err := marshalParamsOverride(&app, originalData)
-		assert.Error(t, err)
-		assert.Equal(t, "could not find an image-name annotation for image nginx", err.Error())
+		originalData := []byte(`
+image:
+  registry: docker.io
+  repository: nginx
+  tag: v0.0.0
+`)
+		expected := `
+image:
+  registry: docker.io
+  repository: nginx
+  tag: v1.0.0
+`
+		yaml, err := marshalParamsOverride(&app, originalData)
+		assert.NoError(t, err)
+		assert.NotEmpty(t, yaml)
+		assert.Equal(t, strings.TrimSpace(strings.ReplaceAll(expected, "\t", "  ")), strings.TrimSpace(string(yaml)))
 	})
 
 	t.Run("Image-name annotation value not found in Helm source parameters list", func(t *testing.T) {
