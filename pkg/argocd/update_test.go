@@ -9,22 +9,24 @@ import (
 	"testing"
 	"time"
 
-	"gopkg.in/yaml.v2"
+	yaml "sigs.k8s.io/yaml/goyaml.v3"
 
 	"github.com/argoproj-labs/argocd-image-updater/ext/git"
 	gitmock "github.com/argoproj-labs/argocd-image-updater/ext/git/mocks"
 	argomock "github.com/argoproj-labs/argocd-image-updater/pkg/argocd/mocks"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
-	"github.com/argoproj-labs/argocd-image-updater/pkg/image"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/kube"
-	"github.com/argoproj-labs/argocd-image-updater/pkg/registry"
-	regmock "github.com/argoproj-labs/argocd-image-updater/pkg/registry/mocks"
-	"github.com/argoproj-labs/argocd-image-updater/pkg/tag"
+	registryCommon "github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/common"
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/image"
+	registryKube "github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/kube"
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/registry"
+	regmock "github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/registry/mocks"
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/tag"
 	"github.com/argoproj-labs/argocd-image-updater/test/fake"
 	"github.com/argoproj-labs/argocd-image-updater/test/fixture"
 
-	"github.com/argoproj/argo-cd/v2/pkg/apiclient/application"
-	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
+	"github.com/argoproj/argo-cd/v3/pkg/apiclient/application"
+	"github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1"
 	"github.com/distribution/distribution/v3/manifest/schema1" //nolint:staticcheck
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -44,8 +46,10 @@ func Test_UpdateApplication(t *testing.T) {
 		argoClient := argomock.ArgoCD{}
 		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
 
-		kubeClient := kube.KubernetesClient{
-			Clientset: fake.NewFakeKubeClient(),
+		kubeClient := kube.ImageUpdaterKubernetesClient{
+			KubeClient: &registryKube.KubernetesClient{
+				Clientset: fake.NewFakeKubeClient(),
+			},
 		}
 		annotations := map[string]string{
 			common.ImageUpdaterAnnotation: "foobar=gcr.io/jannfis/foobar:>=1.0.1,foobar=gcr.io/jannfis/barbar:>=1.0.1",
@@ -111,8 +115,10 @@ func Test_UpdateApplication(t *testing.T) {
 			"githubAppInstallationID": []byte("87654321"),
 			"githubAppPrivateKey":     []byte("foo"),
 		})
-		kubeClient := kube.KubernetesClient{
-			Clientset: fake.NewFakeClientsetWithResources(secret),
+		kubeClient := kube.ImageUpdaterKubernetesClient{
+			KubeClient: &registryKube.KubernetesClient{
+				Clientset: fake.NewFakeClientsetWithResources(secret),
+			},
 		}
 
 		annotations := map[string]string{
@@ -174,8 +180,10 @@ func Test_UpdateApplication(t *testing.T) {
 			return &regMock, nil
 		}
 
-		kubeClient := kube.KubernetesClient{
-			Clientset: fake.NewFakeKubeClient(),
+		kubeClient := kube.ImageUpdaterKubernetesClient{
+			KubeClient: &registryKube.KubernetesClient{
+				Clientset: fake.NewFakeKubeClient(),
+			},
 		}
 		appImages := &ApplicationImages{
 			Application: v1alpha1.Application{
@@ -240,8 +248,10 @@ func Test_UpdateApplication(t *testing.T) {
 		argoClient := argomock.ArgoCD{}
 		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
 
-		kubeClient := kube.KubernetesClient{
-			Clientset: fake.NewFakeKubeClient(),
+		kubeClient := kube.ImageUpdaterKubernetesClient{
+			KubeClient: &registryKube.KubernetesClient{
+				Clientset: fake.NewFakeKubeClient(),
+			},
 		}
 		appImages := &ApplicationImages{
 			Application: v1alpha1.Application{
@@ -302,8 +312,10 @@ func Test_UpdateApplication(t *testing.T) {
 		argoClient := argomock.ArgoCD{}
 		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
 
-		kubeClient := kube.KubernetesClient{
-			Clientset: fake.NewFakeKubeClient(),
+		kubeClient := kube.ImageUpdaterKubernetesClient{
+			KubeClient: &registryKube.KubernetesClient{
+				Clientset: fake.NewFakeKubeClient(),
+			},
 		}
 		appImages := &ApplicationImages{
 			Application: v1alpha1.Application{
@@ -366,8 +378,10 @@ func Test_UpdateApplication(t *testing.T) {
 		argoClient := argomock.ArgoCD{}
 		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
 
-		kubeClient := kube.KubernetesClient{
-			Clientset: fake.NewFakeKubeClient(),
+		kubeClient := kube.ImageUpdaterKubernetesClient{
+			KubeClient: &registryKube.KubernetesClient{
+				Clientset: fake.NewFakeKubeClient(),
+			},
 		}
 		appImages := &ApplicationImages{
 			Application: v1alpha1.Application{
@@ -427,8 +441,10 @@ func Test_UpdateApplication(t *testing.T) {
 		argoClient := argomock.ArgoCD{}
 		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
 
-		kubeClient := kube.KubernetesClient{
-			Clientset: fake.NewFakeKubeClient(),
+		kubeClient := kube.ImageUpdaterKubernetesClient{
+			KubeClient: &registryKube.KubernetesClient{
+				Clientset: fake.NewFakeKubeClient(),
+			},
 		}
 		appImages := &ApplicationImages{
 			Application: v1alpha1.Application{
@@ -485,8 +501,10 @@ func Test_UpdateApplication(t *testing.T) {
 		argoClient := argomock.ArgoCD{}
 		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
 
-		kubeClient := kube.KubernetesClient{
-			Clientset: fake.NewFakeClientsetWithResources(fixture.NewSecret("foo", "bar", map[string][]byte{"creds": []byte("myuser:mypass")})),
+		kubeClient := kube.ImageUpdaterKubernetesClient{
+			KubeClient: &registryKube.KubernetesClient{
+				Clientset: fake.NewFakeClientsetWithResources(fixture.NewSecret("foo", "bar", map[string][]byte{"creds": []byte("myuser:mypass")})),
+			},
 		}
 		appImages := &ApplicationImages{
 			Application: v1alpha1.Application{
@@ -494,7 +512,7 @@ func Test_UpdateApplication(t *testing.T) {
 					Name:      "guestbook",
 					Namespace: "guestbook",
 					Annotations: map[string]string{
-						fmt.Sprintf(common.PullSecretAnnotation, "dummy"): "secret:foo/bar#creds",
+						fmt.Sprintf(registryCommon.Prefixed(common.ImageUpdaterAnnotationPrefix, registryCommon.PullSecretAnnotationSuffix), "dummy"): "secret:foo/bar#creds",
 					},
 				},
 				Spec: v1alpha1.ApplicationSpec{
@@ -543,8 +561,10 @@ func Test_UpdateApplication(t *testing.T) {
 		argoClient := argomock.ArgoCD{}
 		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
 
-		kubeClient := kube.KubernetesClient{
-			Clientset: fake.NewFakeKubeClient(),
+		kubeClient := kube.ImageUpdaterKubernetesClient{
+			KubeClient: &registryKube.KubernetesClient{
+				Clientset: fake.NewFakeKubeClient(),
+			},
 		}
 		appImages := &ApplicationImages{
 			Application: v1alpha1.Application{
@@ -599,8 +619,10 @@ func Test_UpdateApplication(t *testing.T) {
 		argoClient := argomock.ArgoCD{}
 		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
 
-		kubeClient := kube.KubernetesClient{
-			Clientset: fake.NewFakeKubeClient(),
+		kubeClient := kube.ImageUpdaterKubernetesClient{
+			KubeClient: &registryKube.KubernetesClient{
+				Clientset: fake.NewFakeKubeClient(),
+			},
 		}
 		appImages := &ApplicationImages{
 			Application: v1alpha1.Application{
@@ -655,12 +677,14 @@ func Test_UpdateApplication(t *testing.T) {
 		argoClient := argomock.ArgoCD{}
 		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
 
-		kubeClient := kube.KubernetesClient{
-			Clientset: fake.NewFakeKubeClient(),
+		kubeClient := kube.ImageUpdaterKubernetesClient{
+			KubeClient: &registryKube.KubernetesClient{
+				Clientset: fake.NewFakeKubeClient(),
+			},
 		}
 		annotations := map[string]string{
-			common.ImageUpdaterAnnotation:                                    "foobar=gcr.io/jannfis/foobar:>=1.0.1",
-			fmt.Sprintf(common.KustomizeApplicationNameAnnotation, "foobar"): "jannfis/foobar",
+			common.ImageUpdaterAnnotation: "foobar=gcr.io/jannfis/foobar:>=1.0.1",
+			fmt.Sprintf(registryCommon.Prefixed(common.ImageUpdaterAnnotationPrefix, registryCommon.KustomizeApplicationNameAnnotationSuffix), "foobar"): "jannfis/foobar",
 		}
 		appImages := &ApplicationImages{
 			Application: v1alpha1.Application{
@@ -714,12 +738,14 @@ func Test_UpdateApplication(t *testing.T) {
 		argoClient := argomock.ArgoCD{}
 		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
 
-		kubeClient := kube.KubernetesClient{
-			Clientset: fake.NewFakeKubeClient(),
+		kubeClient := kube.ImageUpdaterKubernetesClient{
+			KubeClient: &registryKube.KubernetesClient{
+				Clientset: fake.NewFakeKubeClient(),
+			},
 		}
 		annotations := map[string]string{
-			common.ImageUpdaterAnnotation:                                    "foobar=gcr.io/jannfis/foobar:>=1.0.1",
-			fmt.Sprintf(common.KustomizeApplicationNameAnnotation, "foobar"): "jannfis/foobar",
+			common.ImageUpdaterAnnotation: "foobar=gcr.io/jannfis/foobar:>=1.0.1",
+			fmt.Sprintf(registryCommon.Prefixed(common.ImageUpdaterAnnotationPrefix, registryCommon.KustomizeApplicationNameAnnotationSuffix), "foobar"): "jannfis/foobar",
 		}
 		appImages := &ApplicationImages{
 			Application: v1alpha1.Application{
@@ -789,8 +815,10 @@ func Test_UpdateApplication(t *testing.T) {
 		argoClient := argomock.ArgoCD{}
 		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
 
-		kubeClient := kube.KubernetesClient{
-			Clientset: fake.NewFakeKubeClient(),
+		kubeClient := kube.ImageUpdaterKubernetesClient{
+			KubeClient: &registryKube.KubernetesClient{
+				Clientset: fake.NewFakeKubeClient(),
+			},
 		}
 		appImages := &ApplicationImages{
 			Application: v1alpha1.Application{
@@ -798,8 +826,8 @@ func Test_UpdateApplication(t *testing.T) {
 					Name:      "guestbook",
 					Namespace: "guestbook",
 					Annotations: map[string]string{
-						fmt.Sprintf(common.AllowTagsOptionAnnotation, "dummy"): "regexp:^foobar$",
-						fmt.Sprintf(common.UpdateStrategyAnnotation, "dummy"):  "name",
+						fmt.Sprintf(registryCommon.Prefixed(common.ImageUpdaterAnnotationPrefix, registryCommon.AllowTagsOptionAnnotationSuffix), "dummy"): "regexp:^foobar$",
+						fmt.Sprintf(registryCommon.Prefixed(common.ImageUpdaterAnnotationPrefix, registryCommon.UpdateStrategyAnnotationSuffix), "dummy"):  "name",
 					},
 				},
 				Spec: v1alpha1.ApplicationSpec{
@@ -865,8 +893,10 @@ func Test_UpdateApplication(t *testing.T) {
 		argoClient := argomock.ArgoCD{}
 		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
 
-		kubeClient := kube.KubernetesClient{
-			Clientset: fake.NewFakeKubeClient(),
+		kubeClient := kube.ImageUpdaterKubernetesClient{
+			KubeClient: &registryKube.KubernetesClient{
+				Clientset: fake.NewFakeKubeClient(),
+			},
 		}
 		appImages := &ApplicationImages{
 			Application: v1alpha1.Application{
@@ -874,8 +904,8 @@ func Test_UpdateApplication(t *testing.T) {
 					Name:      "guestbook",
 					Namespace: "guestbook",
 					Annotations: map[string]string{
-						fmt.Sprintf(common.IgnoreTagsOptionAnnotation, "dummy"): "*",
-						fmt.Sprintf(common.UpdateStrategyAnnotation, "dummy"):   "name",
+						fmt.Sprintf(registryCommon.Prefixed(common.ImageUpdaterAnnotationPrefix, registryCommon.IgnoreTagsOptionAnnotationSuffix), "dummy"): "*",
+						fmt.Sprintf(registryCommon.UpdateStrategyAnnotationSuffix, "dummy"):                                                                 "name",
 					},
 				},
 				Spec: v1alpha1.ApplicationSpec{
@@ -925,8 +955,10 @@ func Test_UpdateApplication(t *testing.T) {
 		argoClient := argomock.ArgoCD{}
 		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
 
-		kubeClient := kube.KubernetesClient{
-			Clientset: fake.NewFakeKubeClient(),
+		kubeClient := kube.ImageUpdaterKubernetesClient{
+			KubeClient: &registryKube.KubernetesClient{
+				Clientset: fake.NewFakeKubeClient(),
+			},
 		}
 		appImages := &ApplicationImages{
 			Application: v1alpha1.Application{
@@ -978,8 +1010,10 @@ func Test_UpdateApplication(t *testing.T) {
 		argoClient := argomock.ArgoCD{}
 		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
 
-		kubeClient := kube.KubernetesClient{
-			Clientset: fake.NewFakeKubeClient(),
+		kubeClient := kube.ImageUpdaterKubernetesClient{
+			KubeClient: &registryKube.KubernetesClient{
+				Clientset: fake.NewFakeKubeClient(),
+			},
 		}
 		appImages := &ApplicationImages{
 			Application: v1alpha1.Application{
@@ -1034,8 +1068,10 @@ func Test_UpdateApplication(t *testing.T) {
 		argoClient := argomock.ArgoCD{}
 		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
 
-		kubeClient := kube.KubernetesClient{
-			Clientset: fake.NewFakeKubeClient(),
+		kubeClient := kube.ImageUpdaterKubernetesClient{
+			KubeClient: &registryKube.KubernetesClient{
+				Clientset: fake.NewFakeKubeClient(),
+			},
 		}
 		appImages := &ApplicationImages{
 			Application: v1alpha1.Application{
@@ -1090,8 +1126,10 @@ func Test_UpdateApplication(t *testing.T) {
 		argoClient := argomock.ArgoCD{}
 		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
 
-		kubeClient := kube.KubernetesClient{
-			Clientset: fake.NewFakeKubeClient(),
+		kubeClient := kube.ImageUpdaterKubernetesClient{
+			KubeClient: &registryKube.KubernetesClient{
+				Clientset: fake.NewFakeKubeClient(),
+			},
 		}
 		appImages := &ApplicationImages{
 			Application: v1alpha1.Application{
@@ -1181,6 +1219,49 @@ kustomize:
 		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(yaml)))
 	})
 
+	t.Run("Merge images param", func(t *testing.T) {
+		expected := `
+kustomize:
+  images:
+  - existing:latest
+  - updated:latest
+  - new
+`
+		app := v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name: "testapp",
+				Annotations: map[string]string{
+					"argocd-image-updater.argoproj.io/image-list": "nginx",
+				},
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: &v1alpha1.ApplicationSource{
+					RepoURL:        "https://example.com/example",
+					TargetRevision: "main",
+					Kustomize: &v1alpha1.ApplicationSourceKustomize{
+						Images: v1alpha1.KustomizeImages{
+							"new",
+							"updated:latest",
+						},
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypeKustomize,
+			},
+		}
+		originalData := []byte(`
+kustomize:
+  images:
+  - existing:latest
+  - updated:old
+`)
+		yaml, err := marshalParamsOverride(&app, originalData)
+		require.NoError(t, err)
+		assert.NotEmpty(t, yaml)
+		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(yaml)))
+	})
+
 	t.Run("Empty Kustomize source", func(t *testing.T) {
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
@@ -1211,15 +1292,15 @@ kustomize:
 		expected := `
 helm:
   parameters:
-	- name: baz
-		value: baz
-		forcestring: false
-	- name: foo
-		value: bar
-		forcestring: true
-	- name: bar
-		value: foo
-		forcestring: true
+  - name: baz
+    value: baz
+    forcestring: false
+  - name: foo
+    value: bar
+    forcestring: true
+  - name: bar
+    value: foo
+    forcestring: true
 `
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
@@ -1257,9 +1338,9 @@ helm:
 		originalData := []byte(`
 helm:
   parameters:
-    - name: baz
-      value: baz
-      forcestring: false
+  - name: baz
+    value: baz
+    forcestring: false
 `)
 		yaml, err := marshalParamsOverride(&app, originalData)
 		require.NoError(t, err)
@@ -1271,12 +1352,12 @@ helm:
 		expected := `
 helm:
   parameters:
-	- name: foo
-		value: bar
-		forcestring: true
-	- name: bar
-		value: foo
-		forcestring: true
+  - name: foo
+    value: bar
+    forcestring: true
+  - name: bar
+    value: foo
+    forcestring: true
 `
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
@@ -1322,12 +1403,12 @@ helm:
 		expected := `
 helm:
   parameters:
-	- name: foo
-		value: bar
-		forcestring: true
-	- name: bar
-		value: foo
-		forcestring: true
+  - name: foo
+    value: bar
+    forcestring: true
+  - name: bar
+    value: foo
+    forcestring: true
 `
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
@@ -2085,6 +2166,52 @@ replicas: 1
 		assert.Error(t, err)
 	})
 
+	t.Run("Nil source merge for Helm source with Helm values file", func(t *testing.T) {
+		app := v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name: "testapp",
+				Annotations: map[string]string{
+					"argocd-image-updater.argoproj.io/image-list":            "nginx",
+					"argocd-image-updater.argoproj.io/write-back-method":     "git",
+					"argocd-image-updater.argoproj.io/write-back-target":     "helmvalues:./test-values.yaml",
+					"argocd-image-updater.argoproj.io/nginx.helm.image-name": "image.name",
+					"argocd-image-updater.argoproj.io/nginx.helm.image-tag":  "image.tag",
+				},
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: &v1alpha1.ApplicationSource{
+					RepoURL:        "https://example.com/example",
+					TargetRevision: "main",
+					Helm: &v1alpha1.ApplicationSourceHelm{
+						Parameters: []v1alpha1.HelmParameter{
+							{
+								Name:        "image.name",
+								Value:       "nginx",
+								ForceString: true,
+							},
+							{
+								Name:        "image.tag",
+								Value:       "v1.0.0",
+								ForceString: true,
+							},
+						},
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypeHelm,
+				Summary: v1alpha1.ApplicationSummary{
+					Images: []string{
+						"nginx:v0.0.0",
+					},
+				},
+			},
+		}
+
+		_, err := marshalParamsOverride(&app, nil)
+		assert.NoError(t, err)
+	})
+
 	t.Run("Unknown source", func(t *testing.T) {
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
@@ -2114,126 +2241,574 @@ replicas: 1
 		_, err := marshalParamsOverride(&app, nil)
 		assert.Error(t, err)
 	})
+
+	t.Run("Whitespace only values file from helm source does not cause error", func(t *testing.T) {
+		expected := `
+# auto generated by argocd image updater
+
+nginx:
+  image:
+    tag: v1.0.0
+    name: nginx
+`
+		app := v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name: "testapp",
+				Annotations: map[string]string{
+					"argocd-image-updater.argoproj.io/image-list":            "nginx=nginx, redis=redis",
+					"argocd-image-updater.argoproj.io/write-back-method":     "git",
+					"argocd-image-updater.argoproj.io/write-back-target":     "helmvalues:./test-values.yaml",
+					"argocd-image-updater.argoproj.io/nginx.helm.image-name": "nginx.image.name",
+					"argocd-image-updater.argoproj.io/nginx.helm.image-tag":  "nginx.image.tag",
+				},
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Sources: []v1alpha1.ApplicationSource{
+					{
+						Chart: "my-app",
+						Helm: &v1alpha1.ApplicationSourceHelm{
+							ReleaseName: "my-app",
+							ValueFiles:  []string{"$values/some/dir/values.yaml"},
+							Parameters: []v1alpha1.HelmParameter{
+								{
+									Name:        "nginx.image.name",
+									Value:       "nginx",
+									ForceString: true,
+								},
+								{
+									Name:        "nginx.image.tag",
+									Value:       "v1.0.0",
+									ForceString: true,
+								},
+							},
+						},
+						RepoURL:        "https://example.com/example",
+						TargetRevision: "main",
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceTypes: []v1alpha1.ApplicationSourceType{
+					v1alpha1.ApplicationSourceTypeHelm,
+					"",
+				},
+				Summary: v1alpha1.ApplicationSummary{
+					Images: []string{
+						"nginx:v0.0.0",
+					},
+				},
+			},
+		}
+
+		originalData := []byte(`
+`)
+		yaml, err := marshalParamsOverride(&app, originalData)
+		require.NoError(t, err)
+		assert.NotEmpty(t, yaml)
+		assert.Equal(t, strings.TrimSpace(strings.ReplaceAll(expected, "\t", "  ")), strings.TrimSpace(string(yaml)))
+	})
 }
 
 func Test_SetHelmValue(t *testing.T) {
 	t.Run("Update existing Key", func(t *testing.T) {
-		expected := yaml.MapSlice{
-			{Key: "image", Value: yaml.MapSlice{
-				{Key: "attributes", Value: yaml.MapSlice{
-					{Key: "name", Value: "repo-name"},
-					{Key: "tag", Value: "v2.0.0"},
-				}},
-			}},
-		}
+		expected := `
+image:
+  attributes:
+    name: repo-name
+    tag: v2.0.0
+`
 
-		input := yaml.MapSlice{
-			{Key: "image", Value: yaml.MapSlice{
-				{Key: "attributes", Value: yaml.MapSlice{
-					{Key: "name", Value: "repo-name"},
-					{Key: "tag", Value: "v1.0.0"},
-				}},
-			}},
-		}
+		inputData := []byte(`
+image:
+  attributes:
+    name: repo-name
+    tag: v1.0.0
+`)
+		input := yaml.Node{}
+		err := yaml.Unmarshal(inputData, &input)
+		require.NoError(t, err)
+
 		key := "image.attributes.tag"
 		value := "v2.0.0"
 
-		err := setHelmValue(&input, key, value)
+		err = setHelmValue(&input, key, value)
 		require.NoError(t, err)
-		assert.Equal(t, expected, input)
+
+		output, err := marshalWithIndent(&input, defaultIndent)
+		require.NoError(t, err)
+		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
 	})
 
 	t.Run("Update Key with dots", func(t *testing.T) {
-		expected := yaml.MapSlice{
-			{Key: "image.attributes.tag", Value: "v2.0.0"},
-		}
+		expected := `image.attributes.tag: v2.0.0`
 
-		input := yaml.MapSlice{
-			{Key: "image.attributes.tag", Value: "v1.0.0"},
-		}
+		inputData := []byte(`image.attributes.tag: v1.0.0`)
+		input := yaml.Node{}
+		err := yaml.Unmarshal(inputData, &input)
+		require.NoError(t, err)
+
 		key := "image.attributes.tag"
 		value := "v2.0.0"
 
-		err := setHelmValue(&input, key, value)
+		err = setHelmValue(&input, key, value)
 		require.NoError(t, err)
-		assert.Equal(t, expected, input)
+
+		output, err := marshalWithIndent(&input, defaultIndent)
+		require.NoError(t, err)
+		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
 	})
 
 	t.Run("Key not found", func(t *testing.T) {
-		expected := yaml.MapSlice{
-			{Key: "image", Value: yaml.MapSlice{
-				{Key: "attributes", Value: yaml.MapSlice{
-					{Key: "name", Value: "repo-name"},
-					{Key: "tag", Value: "v2.0.0"},
-				}},
-			}},
-		}
+		expected := `
+image:
+  attributes:
+    name: repo-name
+    tag: v2.0.0
+`
 
-		input := yaml.MapSlice{
-			{Key: "image", Value: yaml.MapSlice{
-				{Key: "attributes", Value: yaml.MapSlice{
-					{Key: "name", Value: "repo-name"},
-				}},
-			}},
-		}
+		inputData := []byte(`
+image:
+  attributes:
+    name: repo-name
+`)
+		input := yaml.Node{}
+		err := yaml.Unmarshal(inputData, &input)
+		require.NoError(t, err)
 
 		key := "image.attributes.tag"
 		value := "v2.0.0"
 
-		err := setHelmValue(&input, key, value)
+		err = setHelmValue(&input, key, value)
 		require.NoError(t, err)
-		assert.Equal(t, expected, input)
+
+		output, err := marshalWithIndent(&input, defaultIndent)
+		require.NoError(t, err)
+		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
 	})
 
 	t.Run("Root key not found", func(t *testing.T) {
-		expected := yaml.MapSlice{
-			{Key: "name", Value: "repo-name"},
-			{Key: "tag", Value: "v2.0.0"},
-		}
+		expected := `
+name: repo-name
+tag: v2.0.0
+`
 
-		input := yaml.MapSlice{
-			{Key: "name", Value: "repo-name"},
-		}
+		inputData := []byte(`name: repo-name`)
+		input := yaml.Node{}
+		err := yaml.Unmarshal(inputData, &input)
+		require.NoError(t, err)
 
 		key := "tag"
 		value := "v2.0.0"
 
-		err := setHelmValue(&input, key, value)
+		err = setHelmValue(&input, key, value)
 		require.NoError(t, err)
-		assert.Equal(t, expected, input)
+
+		output, err := marshalWithIndent(&input, defaultIndent)
+		require.NoError(t, err)
+		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
 	})
 
 	t.Run("Empty values with deep key", func(t *testing.T) {
-		expected := yaml.MapSlice{
-			{Key: "image", Value: yaml.MapSlice{
-				{Key: "attributes", Value: yaml.MapSlice{
-					{Key: "tag", Value: "v2.0.0"},
-				}},
-			}},
-		}
+		// this uses inline syntax because the input data
+		// needed is an empty map, which can only be expressed as {}.
+		expected := `{image: {attributes: {tag: v2.0.0}}}`
 
-		input := yaml.MapSlice{}
+		inputData := []byte(`{}`)
+		input := yaml.Node{}
+		err := yaml.Unmarshal(inputData, &input)
+		require.NoError(t, err)
 
 		key := "image.attributes.tag"
 		value := "v2.0.0"
 
-		err := setHelmValue(&input, key, value)
+		err = setHelmValue(&input, key, value)
 		require.NoError(t, err)
-		assert.Equal(t, expected, input)
+
+		output, err := marshalWithIndent(&input, defaultIndent)
+		require.NoError(t, err)
+		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
 	})
 
 	t.Run("Unexpected type for key", func(t *testing.T) {
-		input := yaml.MapSlice{
-			{Key: "image", Value: yaml.MapSlice{
-				{Key: "attributes", Value: "v1.0.0"},
-			}},
-		}
+		inputData := []byte(`
+image:
+  attributes: v1.0.0
+`)
+		input := yaml.Node{}
+		err := yaml.Unmarshal(inputData, &input)
+		require.NoError(t, err)
+
 		key := "image.attributes.tag"
 		value := "v2.0.0"
 
-		err := setHelmValue(&input, key, value)
+		err = setHelmValue(&input, key, value)
 		assert.Error(t, err)
-		assert.Equal(t, "unexpected type string for key attributes", err.Error())
+		assert.Equal(t, "unexpected type ScalarNode for key attributes", err.Error())
+	})
+
+	t.Run("Aliases, comments, and multiline strings are preserved", func(t *testing.T) {
+		expected := `
+image:
+  attributes:
+    name: &repo repo-name
+    tag: v2.0.0
+    # this is a comment
+    multiline: |
+      one
+      two
+      three
+    alias: *repo
+`
+
+		inputData := []byte(`
+image:
+  attributes:
+    name: &repo repo-name
+    tag: v1.0.0
+    # this is a comment
+    multiline: |
+      one
+      two
+      three
+    alias: *repo
+`)
+		input := yaml.Node{}
+		err := yaml.Unmarshal(inputData, &input)
+		require.NoError(t, err)
+
+		key := "image.attributes.tag"
+		value := "v2.0.0"
+
+		err = setHelmValue(&input, key, value)
+		require.NoError(t, err)
+
+		output, err := marshalWithIndent(&input, defaultIndent)
+		require.NoError(t, err)
+		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
+	})
+
+	t.Run("Aliases to mappings are followed", func(t *testing.T) {
+		expected := `
+global:
+  attributes: &attrs
+    name: &repo repo-name
+    tag: v2.0.0
+image:
+  attributes: *attrs
+`
+
+		inputData := []byte(`
+global:
+  attributes: &attrs
+    name: &repo repo-name
+    tag: v1.0.0
+image:
+  attributes: *attrs
+`)
+		input := yaml.Node{}
+		err := yaml.Unmarshal(inputData, &input)
+		require.NoError(t, err)
+
+		key := "image.attributes.tag"
+		value := "v2.0.0"
+
+		err = setHelmValue(&input, key, value)
+		require.NoError(t, err)
+
+		output, err := marshalWithIndent(&input, defaultIndent)
+		require.NoError(t, err)
+		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
+	})
+
+	t.Run("Aliases to scalars are followed", func(t *testing.T) {
+		expected := `
+image:
+  attributes:
+    name: repo-name
+    version: &ver v2.0.0
+    tag: *ver
+`
+
+		inputData := []byte(`
+image:
+  attributes:
+    name: repo-name
+    version: &ver v1.0.0
+    tag: *ver
+`)
+		input := yaml.Node{}
+		err := yaml.Unmarshal(inputData, &input)
+		require.NoError(t, err)
+
+		key := "image.attributes.tag"
+		value := "v2.0.0"
+
+		err = setHelmValue(&input, key, value)
+		require.NoError(t, err)
+
+		output, err := marshalWithIndent(&input, defaultIndent)
+		require.NoError(t, err)
+		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
+	})
+
+	t.Run("yaml list is correctly parsed", func(t *testing.T) {
+		expected := `
+images:
+- name: image-1
+  attributes:
+    name: repo-name
+    tag: 2.0.0
+`
+
+		inputData := []byte(`
+images:
+- name: image-1
+  attributes:
+    name: repo-name
+    tag: 1.0.0
+`)
+		input := yaml.Node{}
+		err := yaml.Unmarshal(inputData, &input)
+		require.NoError(t, err)
+
+		key := "images[0].attributes.tag"
+		value := "2.0.0"
+
+		err = setHelmValue(&input, key, value)
+		require.NoError(t, err)
+
+		output, err := marshalWithIndent(&input, defaultIndent)
+		require.NoError(t, err)
+		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
+	})
+
+	t.Run("yaml list is correctly parsed when multiple values", func(t *testing.T) {
+		expected := `
+images:
+- name: image-1
+  attributes:
+    name: repo-name
+    tag: 1.0.0
+- name: image-2
+  attributes:
+    name: repo-name
+    tag: 2.0.0
+`
+
+		inputData := []byte(`
+images:
+- name: image-1
+  attributes:
+    name: repo-name
+    tag: 1.0.0
+- name: image-2
+  attributes:
+    name: repo-name
+    tag: 1.0.0
+`)
+		input := yaml.Node{}
+		err := yaml.Unmarshal(inputData, &input)
+		require.NoError(t, err)
+
+		key := "images[1].attributes.tag"
+		value := "2.0.0"
+
+		err = setHelmValue(&input, key, value)
+		require.NoError(t, err)
+
+		output, err := marshalWithIndent(&input, defaultIndent)
+		require.NoError(t, err)
+		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
+	})
+
+	t.Run("yaml list is correctly parsed when inside map", func(t *testing.T) {
+		expected := `
+extraContainers:
+  images:
+  - name: image-1
+    attributes:
+      name: repo-name
+      tag: 2.0.0
+`
+
+		inputData := []byte(`
+extraContainers:
+  images:
+  - name: image-1
+    attributes:
+      name: repo-name
+      tag: 1.0.0
+`)
+		input := yaml.Node{}
+		err := yaml.Unmarshal(inputData, &input)
+		require.NoError(t, err)
+
+		key := "extraContainers.images[0].attributes.tag"
+		value := "2.0.0"
+
+		err = setHelmValue(&input, key, value)
+		require.NoError(t, err)
+
+		output, err := marshalWithIndent(&input, defaultIndent)
+		require.NoError(t, err)
+		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
+	})
+
+	t.Run("yaml list is correctly parsed when list name contains digits", func(t *testing.T) {
+		expected := `
+extraContainers:
+  images123:
+  - name: image-1
+    attributes:
+      name: repo-name
+      tag: 2.0.0
+`
+
+		inputData := []byte(`
+extraContainers:
+  images123:
+  - name: image-1
+    attributes:
+      name: repo-name
+      tag: 1.0.0
+`)
+		input := yaml.Node{}
+		err := yaml.Unmarshal(inputData, &input)
+		require.NoError(t, err)
+
+		key := "extraContainers.images123[0].attributes.tag"
+		value := "2.0.0"
+
+		err = setHelmValue(&input, key, value)
+		require.NoError(t, err)
+
+		output, err := marshalWithIndent(&input, defaultIndent)
+		require.NoError(t, err)
+		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
+	})
+
+	t.Run("id for yaml list is lower than 0", func(t *testing.T) {
+		inputData := []byte(`
+images:
+- name: image-1
+  attributes:
+    name: repo-name
+    tag: 1.0.0
+`)
+		input := yaml.Node{}
+		err := yaml.Unmarshal(inputData, &input)
+		require.NoError(t, err)
+
+		key := "images[-1].attributes.tag"
+		value := "2.0.0"
+
+		err = setHelmValue(&input, key, value)
+
+		require.Error(t, err)
+		assert.Equal(t, "id -1 is out of range [0, 1)", err.Error())
+	})
+
+	t.Run("id for yaml list is greater than length of list", func(t *testing.T) {
+		inputData := []byte(`
+images:
+- name: image-1
+  attributes:
+    name: repo-name
+    tag: 1.0.0
+`)
+		input := yaml.Node{}
+		err := yaml.Unmarshal(inputData, &input)
+		require.NoError(t, err)
+
+		key := "images[1].attributes.tag"
+		value := "2.0.0"
+
+		err = setHelmValue(&input, key, value)
+
+		require.Error(t, err)
+		assert.Equal(t, "id 1 is out of range [0, 1)", err.Error())
+	})
+
+	t.Run("id for YAML list is not a valid integer", func(t *testing.T) {
+		inputData := []byte(`
+images:
+- name: image-1
+  attributes:
+    name: repo-name
+    tag: 1.0.0
+`)
+		input := yaml.Node{}
+		err := yaml.Unmarshal(inputData, &input)
+		require.NoError(t, err)
+
+		key := "images[invalid].attributes.tag"
+		value := "2.0.0"
+
+		err = setHelmValue(&input, key, value)
+
+		require.Error(t, err)
+		assert.Equal(t, "id \"invalid\" in yaml array must match pattern ^(.*)\\[(.*)\\]$", err.Error())
+	})
+
+	t.Run("no id for yaml list given", func(t *testing.T) {
+		inputData := []byte(`
+images:
+- name: image-1
+  attributes:
+    name: repo-name
+    tag: 1.0.0
+`)
+		input := yaml.Node{}
+		err := yaml.Unmarshal(inputData, &input)
+		require.NoError(t, err)
+
+		key := "images.attributes.tag"
+		value := "2.0.0"
+
+		err = setHelmValue(&input, key, value)
+
+		require.Error(t, err)
+		assert.Equal(t, "no id provided for yaml array \"images\"", err.Error())
+	})
+
+	t.Run("id given when node is not an yaml list", func(t *testing.T) {
+		inputData := []byte(`
+image:
+  attributes:
+    name: repo-name
+    tag: 1.0.0
+`)
+		input := yaml.Node{}
+		err := yaml.Unmarshal(inputData, &input)
+		require.NoError(t, err)
+
+		key := "image[0].attributes.tag"
+		value := "2.0.0"
+
+		err = setHelmValue(&input, key, value)
+
+		require.Error(t, err)
+		assert.Equal(t, "id 0 provided when \"image\" is not an yaml array", err.Error())
+	})
+
+	t.Run("invalid id given when node is not an yaml list", func(t *testing.T) {
+		inputData := []byte(`
+image:
+  attributes:
+    name: repo-name
+    tag: 1.0.0
+`)
+		input := yaml.Node{}
+		err := yaml.Unmarshal(inputData, &input)
+		require.NoError(t, err)
+
+		key := "image[invalid].attributes.tag"
+		value := "2.0.0"
+
+		err = setHelmValue(&input, key, value)
+
+		require.Error(t, err)
+		assert.Equal(t, "id \"invalid\" in yaml array must match pattern ^(.*)\\[(.*)\\]$", err.Error())
 	})
 }
 
@@ -2262,8 +2837,10 @@ func Test_GetWriteBackConfig(t *testing.T) {
 		argoClient := argomock.ArgoCD{}
 		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
 
-		kubeClient := kube.KubernetesClient{
-			Clientset: fake.NewFakeKubeClient(),
+		kubeClient := kube.ImageUpdaterKubernetesClient{
+			KubeClient: &registryKube.KubernetesClient{
+				Clientset: fake.NewFakeKubeClient(),
+			},
 		}
 
 		wbc, err := getWriteBackConfig(&app, &kubeClient, &argoClient)
@@ -2294,8 +2871,10 @@ func Test_GetWriteBackConfig(t *testing.T) {
 		argoClient := argomock.ArgoCD{}
 		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
 
-		kubeClient := kube.KubernetesClient{
-			Clientset: fake.NewFakeKubeClient(),
+		kubeClient := kube.ImageUpdaterKubernetesClient{
+			KubeClient: &registryKube.KubernetesClient{
+				Clientset: fake.NewFakeKubeClient(),
+			},
 		}
 
 		wbc, err := getWriteBackConfig(&app, &kubeClient, &argoClient)
@@ -2325,8 +2904,10 @@ func Test_GetWriteBackConfig(t *testing.T) {
 		argoClient := argomock.ArgoCD{}
 		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
 
-		kubeClient := kube.KubernetesClient{
-			Clientset: fake.NewFakeKubeClient(),
+		kubeClient := kube.ImageUpdaterKubernetesClient{
+			KubeClient: &registryKube.KubernetesClient{
+				Clientset: fake.NewFakeKubeClient(),
+			},
 		}
 
 		wbc, err := getWriteBackConfig(&app, &kubeClient, &argoClient)
@@ -2359,8 +2940,10 @@ func Test_GetWriteBackConfig(t *testing.T) {
 		argoClient := argomock.ArgoCD{}
 		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
 
-		kubeClient := kube.KubernetesClient{
-			Clientset: fake.NewFakeKubeClient(),
+		kubeClient := kube.ImageUpdaterKubernetesClient{
+			KubeClient: &registryKube.KubernetesClient{
+				Clientset: fake.NewFakeKubeClient(),
+			},
 		}
 
 		wbc, err := getWriteBackConfig(&app, &kubeClient, &argoClient)
@@ -2394,8 +2977,10 @@ func Test_GetWriteBackConfig(t *testing.T) {
 		argoClient := argomock.ArgoCD{}
 		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
 
-		kubeClient := kube.KubernetesClient{
-			Clientset: fake.NewFakeKubeClient(),
+		kubeClient := kube.ImageUpdaterKubernetesClient{
+			KubeClient: &registryKube.KubernetesClient{
+				Clientset: fake.NewFakeKubeClient(),
+			},
 		}
 
 		wbc, err := getWriteBackConfig(&app, &kubeClient, &argoClient)
@@ -2430,8 +3015,10 @@ func Test_GetWriteBackConfig(t *testing.T) {
 		argoClient := argomock.ArgoCD{}
 		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
 
-		kubeClient := kube.KubernetesClient{
-			Clientset: fake.NewFakeKubeClient(),
+		kubeClient := kube.ImageUpdaterKubernetesClient{
+			KubeClient: &registryKube.KubernetesClient{
+				Clientset: fake.NewFakeKubeClient(),
+			},
 		}
 
 		wbc, err := getWriteBackConfig(&app, &kubeClient, &argoClient)
@@ -2466,8 +3053,10 @@ func Test_GetWriteBackConfig(t *testing.T) {
 		argoClient := argomock.ArgoCD{}
 		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
 
-		kubeClient := kube.KubernetesClient{
-			Clientset: fake.NewFakeKubeClient(),
+		kubeClient := kube.ImageUpdaterKubernetesClient{
+			KubeClient: &registryKube.KubernetesClient{
+				Clientset: fake.NewFakeKubeClient(),
+			},
 		}
 
 		wbc, err := getWriteBackConfig(&app, &kubeClient, &argoClient)
@@ -2502,8 +3091,10 @@ func Test_GetWriteBackConfig(t *testing.T) {
 		argoClient := argomock.ArgoCD{}
 		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
 
-		kubeClient := kube.KubernetesClient{
-			Clientset: fake.NewFakeKubeClient(),
+		kubeClient := kube.ImageUpdaterKubernetesClient{
+			KubeClient: &registryKube.KubernetesClient{
+				Clientset: fake.NewFakeKubeClient(),
+			},
 		}
 
 		wbc, err := getWriteBackConfig(&app, &kubeClient, &argoClient)
@@ -2538,8 +3129,10 @@ func Test_GetWriteBackConfig(t *testing.T) {
 		argoClient := argomock.ArgoCD{}
 		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
 
-		kubeClient := kube.KubernetesClient{
-			Clientset: fake.NewFakeKubeClient(),
+		kubeClient := kube.ImageUpdaterKubernetesClient{
+			KubeClient: &registryKube.KubernetesClient{
+				Clientset: fake.NewFakeKubeClient(),
+			},
 		}
 
 		wbc, err := getWriteBackConfig(&app, &kubeClient, &argoClient)
@@ -2573,8 +3166,10 @@ func Test_GetWriteBackConfig(t *testing.T) {
 		argoClient := argomock.ArgoCD{}
 		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
 
-		kubeClient := kube.KubernetesClient{
-			Clientset: fake.NewFakeKubeClient(),
+		kubeClient := kube.ImageUpdaterKubernetesClient{
+			KubeClient: &registryKube.KubernetesClient{
+				Clientset: fake.NewFakeKubeClient(),
+			},
 		}
 
 		_, err := getWriteBackConfig(&app, &kubeClient, &argoClient)
@@ -2603,8 +3198,10 @@ func Test_GetWriteBackConfig(t *testing.T) {
 		argoClient := argomock.ArgoCD{}
 		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
 
-		kubeClient := kube.KubernetesClient{
-			Clientset: fake.NewFakeKubeClient(),
+		kubeClient := kube.ImageUpdaterKubernetesClient{
+			KubeClient: &registryKube.KubernetesClient{
+				Clientset: fake.NewFakeKubeClient(),
+			},
 		}
 
 		wbc, err := getWriteBackConfig(&app, &kubeClient, &argoClient)
@@ -2636,8 +3233,10 @@ func Test_GetWriteBackConfig(t *testing.T) {
 		argoClient := argomock.ArgoCD{}
 		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
 
-		kubeClient := kube.KubernetesClient{
-			Clientset: fake.NewFakeKubeClient(),
+		kubeClient := kube.ImageUpdaterKubernetesClient{
+			KubeClient: &registryKube.KubernetesClient{
+				Clientset: fake.NewFakeKubeClient(),
+			},
 		}
 
 		wbc, err := getWriteBackConfig(&app, &kubeClient, &argoClient)
@@ -2655,8 +3254,10 @@ func Test_GetGitCreds(t *testing.T) {
 			"username": []byte("foo"),
 			"password": []byte("bar"),
 		})
-		kubeClient := kube.KubernetesClient{
-			Clientset: fake.NewFakeClientsetWithResources(secret),
+		kubeClient := kube.ImageUpdaterKubernetesClient{
+			KubeClient: &registryKube.KubernetesClient{
+				Clientset: fake.NewFakeClientsetWithResources(secret),
+			},
 		}
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
@@ -2696,8 +3297,10 @@ func Test_GetGitCreds(t *testing.T) {
 			"githubAppInstallationID": []byte("87654321"),
 			"githubAppPrivateKey":     []byte("foo"),
 		})
-		kubeClient := kube.KubernetesClient{
-			Clientset: fake.NewFakeClientsetWithResources(secret),
+		kubeClient := kube.ImageUpdaterKubernetesClient{
+			KubeClient: &registryKube.KubernetesClient{
+				Clientset: fake.NewFakeClientsetWithResources(secret),
+			},
 		}
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
@@ -2751,8 +3354,10 @@ func Test_GetGitCreds(t *testing.T) {
 		}
 		for _, secretEntry := range invalidSecretEntries {
 			secret = fixture.NewSecret("argocd-image-updater", "git-creds", secretEntry)
-			kubeClient = kube.KubernetesClient{
-				Clientset: fake.NewFakeClientsetWithResources(secret),
+			kubeClient = kube.ImageUpdaterKubernetesClient{
+				KubeClient: &registryKube.KubernetesClient{
+					Clientset: fake.NewFakeClientsetWithResources(secret),
+				},
 			}
 			wbc, err = getWriteBackConfig(&app, &kubeClient, &argoClient)
 			require.NoError(t, err)
@@ -2767,8 +3372,10 @@ func Test_GetGitCreds(t *testing.T) {
 		secret := fixture.NewSecret("argocd-image-updater", "git-creds", map[string][]byte{
 			"sshPrivateKey": []byte("foo"),
 		})
-		kubeClient := kube.KubernetesClient{
-			Clientset: fake.NewFakeClientsetWithResources(secret),
+		kubeClient := kube.ImageUpdaterKubernetesClient{
+			KubeClient: &registryKube.KubernetesClient{
+				Clientset: fake.NewFakeClientsetWithResources(secret),
+			},
 		}
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
@@ -2802,25 +3409,25 @@ func Test_GetGitCreds(t *testing.T) {
 	t.Run("HTTP creds from Argo CD settings", func(t *testing.T) {
 		argoClient := argomock.ArgoCD{}
 		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
-		secret := fixture.NewSecret("argocd", "git-creds", map[string][]byte{
+
+		// Create repository secret in Argo CD v3 format
+		repoSecret := fixture.NewSecret("argocd", "repo-https-example-com-example", map[string][]byte{
+			"type":     []byte("git"),
+			"url":      []byte("https://example.com/example"),
 			"username": []byte("foo"),
 			"password": []byte("bar"),
 		})
-		configMap := fixture.NewConfigMap("argocd", "argocd-cm", map[string]string{
-			"repositories": `
-- url: https://example.com/example
-  passwordSecret:
-    name: git-creds
-    key: password
-  usernameSecret:
-    name: git-creds
-    key: username`,
-		})
-		fixture.AddPartOfArgoCDLabel(secret, configMap)
+		// Add the required label for Argo CD v3 repository secrets
+		repoSecret.Labels = map[string]string{
+			"argocd.argoproj.io/secret-type": "repository",
+		}
+		fixture.AddPartOfArgoCDLabel(repoSecret)
 
-		kubeClient := kube.KubernetesClient{
-			Clientset: fake.NewFakeClientsetWithResources(secret, configMap),
-			Namespace: "argocd",
+		kubeClient := kube.ImageUpdaterKubernetesClient{
+			KubeClient: &registryKube.KubernetesClient{
+				Clientset: fake.NewFakeClientsetWithResources(repoSecret),
+				Namespace: "argocd",
+			},
 		}
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
@@ -2857,8 +3464,10 @@ func Test_GetGitCreds(t *testing.T) {
 		secret := fixture.NewSecret("argocd-image-updater", "git-creds", map[string][]byte{
 			"sshPrivateKex": []byte("foo"),
 		})
-		kubeClient := kube.KubernetesClient{
-			Clientset: fake.NewFakeClientsetWithResources(secret),
+		kubeClient := kube.ImageUpdaterKubernetesClient{
+			KubeClient: &registryKube.KubernetesClient{
+				Clientset: fake.NewFakeClientsetWithResources(secret),
+			},
 		}
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
@@ -2892,8 +3501,10 @@ func Test_GetGitCreds(t *testing.T) {
 		secret := fixture.NewSecret("argocd-image-updater", "git-creds", map[string][]byte{
 			"sshPrivateKey": []byte("foo"),
 		})
-		kubeClient := kube.KubernetesClient{
-			Clientset: fake.NewFakeClientsetWithResources(secret),
+		kubeClient := kube.ImageUpdaterKubernetesClient{
+			KubeClient: &registryKube.KubernetesClient{
+				Clientset: fake.NewFakeClientsetWithResources(secret),
+			},
 		}
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
@@ -2928,8 +3539,10 @@ func Test_GetGitCreds(t *testing.T) {
 		secret := fixture.NewSecret("argocd-image-updater", "git-creds", map[string][]byte{
 			"sshPrivateKey": []byte("foo"),
 		})
-		kubeClient := kube.KubernetesClient{
-			Clientset: fake.NewFakeClientsetWithResources(secret),
+		kubeClient := kube.ImageUpdaterKubernetesClient{
+			KubeClient: &registryKube.KubernetesClient{
+				Clientset: fake.NewFakeClientsetWithResources(secret),
+			},
 		}
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
@@ -2964,8 +3577,10 @@ func Test_GetGitCreds(t *testing.T) {
 		secret := fixture.NewSecret("argocd-image-updater", "git-creds", map[string][]byte{
 			"sshPrivateKey": []byte("foo"),
 		})
-		kubeClient := kube.KubernetesClient{
-			Clientset: fake.NewFakeClientsetWithResources(secret),
+		kubeClient := kube.ImageUpdaterKubernetesClient{
+			KubeClient: &registryKube.KubernetesClient{
+				Clientset: fake.NewFakeClientsetWithResources(secret),
+			},
 		}
 
 		app := v1alpha1.Application{
@@ -3007,8 +3622,10 @@ func Test_CommitUpdates(t *testing.T) {
 	secret := fixture.NewSecret("argocd-image-updater", "git-creds", map[string][]byte{
 		"sshPrivateKey": []byte("foo"),
 	})
-	kubeClient := kube.KubernetesClient{
-		Clientset: fake.NewFakeClientsetWithResources(secret),
+	kubeClient := kube.ImageUpdaterKubernetesClient{
+		KubeClient: &registryKube.KubernetesClient{
+			Clientset: fake.NewFakeClientsetWithResources(secret),
+		},
 	}
 	app := v1alpha1.Application{
 		ObjectMeta: v1.ObjectMeta{
@@ -3167,7 +3784,7 @@ helm:
 	})
 
 	t.Run("Good commit to helm override with argocd namespace", func(t *testing.T) {
-		kubeClient.Namespace = "argocd"
+		kubeClient.KubeClient.Namespace = "argocd"
 		app := app.DeepCopy()
 		app.Status.SourceType = "Helm"
 		app.ObjectMeta.Namespace = "argocd"
@@ -3219,7 +3836,7 @@ helm:
 	})
 
 	t.Run("Good commit to helm override with another namespace", func(t *testing.T) {
-		kubeClient.Namespace = "argocd"
+		kubeClient.KubeClient.Namespace = "argocd"
 		app := app.DeepCopy()
 		app.Status.SourceType = "Helm"
 		app.ObjectMeta.Namespace = "testNS"
@@ -3363,6 +3980,7 @@ replacements: []
 		app := app.DeepCopy()
 		gitMock := &gitmock.Client{}
 		gitMock.On("Init").Return(nil)
+		gitMock.On("Root").Return(t.TempDir())
 		gitMock.On("ShallowFetch", mock.Anything, mock.Anything).Return(nil)
 		gitMock.On("Checkout", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
 			args.Assert(t, "mydefaultbranch", false)
@@ -3559,4 +4177,62 @@ func Test_GetRepositoryLock(t *testing.T) {
 	require.NotNil(t, lock3)
 	require.NotNil(t, state.repositoryLocks[repo2])
 	require.Equal(t, lock3, state.repositoryLocks[repo2])
+}
+
+func Test_mergeKustomizeOverride(t *testing.T) {
+	tests := []struct {
+		name     string
+		existing v1alpha1.KustomizeImages
+		new      v1alpha1.KustomizeImages
+		expected v1alpha1.KustomizeImages
+	}{
+		{"with-tag", []v1alpha1.KustomizeImage{"nginx:foo"},
+			[]v1alpha1.KustomizeImage{"nginx:foo"},
+			[]v1alpha1.KustomizeImage{"nginx:foo"}},
+		{"no-tag", []v1alpha1.KustomizeImage{"nginx:foo"},
+			[]v1alpha1.KustomizeImage{"nginx"},
+			[]v1alpha1.KustomizeImage{"nginx:foo"}},
+		{"with-tag-1", []v1alpha1.KustomizeImage{"nginx"},
+			[]v1alpha1.KustomizeImage{"nginx:latest"},
+			[]v1alpha1.KustomizeImage{"nginx:latest"}},
+		{"with-tag-sha", []v1alpha1.KustomizeImage{"nginx:latest"},
+			[]v1alpha1.KustomizeImage{"nginx:latest@sha256:91734281c0ebfc6f1aea979cffeed5079cfe786228a71cc6f1f46a228cde6e34"},
+			[]v1alpha1.KustomizeImage{"nginx:latest@sha256:91734281c0ebfc6f1aea979cffeed5079cfe786228a71cc6f1f46a228cde6e34"}},
+
+		{"2-images", []v1alpha1.KustomizeImage{"nginx:latest",
+			"bitnami/nginx:latest@sha256:1a2fe3f9f6d1d38d5a7ee35af732fdb7d15266ec3dbc79bbc0355742cd24d3ec"},
+			[]v1alpha1.KustomizeImage{"nginx:latest@sha256:91734281c0ebfc6f1aea979cffeed5079cfe786228a71cc6f1f46a228cde6e34",
+				"bitnami/nginx@sha256:1a2fe3f9f6d1d38d5a7ee35af732fdb7d15266ec3dbc79bbc0355742cd24d3ec"},
+			[]v1alpha1.KustomizeImage{"nginx:latest@sha256:91734281c0ebfc6f1aea979cffeed5079cfe786228a71cc6f1f46a228cde6e34",
+				"bitnami/nginx:latest@sha256:1a2fe3f9f6d1d38d5a7ee35af732fdb7d15266ec3dbc79bbc0355742cd24d3ec"}},
+
+		{"with-registry", []v1alpha1.KustomizeImage{"quay.io/nginx:latest"},
+			[]v1alpha1.KustomizeImage{"quay.io/nginx:latest"},
+			[]v1alpha1.KustomizeImage{"quay.io/nginx:latest"}},
+		{"with-registry-1", []v1alpha1.KustomizeImage{"quay.io/nginx:latest"},
+			[]v1alpha1.KustomizeImage{"docker.io/nginx:latest"},
+			[]v1alpha1.KustomizeImage{"docker.io/nginx:latest", "quay.io/nginx:latest"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			existingImages := kustomizeOverride{
+				Kustomize: kustomizeImages{
+					Images: &tt.existing,
+				},
+			}
+			newImages := kustomizeOverride{
+				Kustomize: kustomizeImages{
+					Images: &tt.new,
+				},
+			}
+			expectedImages := kustomizeOverride{
+				Kustomize: kustomizeImages{
+					Images: &tt.expected,
+				},
+			}
+
+			mergeKustomizeOverride(&existingImages, &newImages)
+			assert.ElementsMatch(t, *expectedImages.Kustomize.Images, *existingImages.Kustomize.Images)
+		})
+	}
 }

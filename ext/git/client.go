@@ -16,7 +16,6 @@ import (
 	"syscall"
 	"time"
 
-	argoexec "github.com/argoproj/pkg/exec"
 	"github.com/bmatcuk/doublestar/v4"
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/config"
@@ -31,11 +30,11 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	utilnet "k8s.io/apimachinery/pkg/util/net"
 
-	"github.com/argoproj/argo-cd/v2/common"
-	certutil "github.com/argoproj/argo-cd/v2/util/cert"
-	"github.com/argoproj/argo-cd/v2/util/env"
-	executil "github.com/argoproj/argo-cd/v2/util/exec"
-	"github.com/argoproj/argo-cd/v2/util/proxy"
+	"github.com/argoproj/argo-cd/v3/common"
+	certutil "github.com/argoproj/argo-cd/v3/util/cert"
+	"github.com/argoproj/argo-cd/v3/util/env"
+	executil "github.com/argoproj/argo-cd/v3/util/exec"
+	"github.com/argoproj/argo-cd/v3/util/proxy"
 )
 
 var ErrInvalidRepoURL = fmt.Errorf("repo URL is invalid")
@@ -207,7 +206,7 @@ func GetRepoHTTPClient(repoURL string, insecure bool, creds Creds, proxyURL stri
 		},
 	}
 
-	proxyFunc := proxy.GetCallback(proxyURL)
+	proxyFunc := proxy.GetCallback(proxyURL, "")
 
 	// Callback function to return any configured client certificate
 	// We never return err, but an empty cert instead.
@@ -802,9 +801,9 @@ func (m *nativeGitClient) runCmdOutput(cmd *exec.Cmd, ropts runOpts) (string, er
 			}
 		}
 	}
-	cmd.Env = proxy.UpsertEnv(cmd, m.proxy)
+	cmd.Env = proxy.UpsertEnv(cmd, m.proxy, "")
 	opts := executil.ExecRunOpts{
-		TimeoutBehavior: argoexec.TimeoutBehavior{
+		TimeoutBehavior: executil.TimeoutBehavior{
 			Signal:     syscall.SIGTERM,
 			ShouldWait: true,
 		},

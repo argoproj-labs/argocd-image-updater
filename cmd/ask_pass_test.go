@@ -9,8 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/argoproj/argo-cd/v2/reposerver/askpass"
-	"github.com/argoproj/argo-cd/v2/util/git"
+	"github.com/argoproj/argo-cd/v3/util/askpass"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/grpc"
@@ -51,9 +50,9 @@ func NewTestCommand() *cobra.Command {
 			fmt.Fprintf(c.ErrOrStderr(), "expected 1 argument, got %d\n", len(args))
 			return
 		}
-		nonce := os.Getenv(git.ASKPASS_NONCE_ENV)
+		nonce := os.Getenv(askpass.ASKPASS_NONCE_ENV)
 		if nonce == "" {
-			fmt.Fprintf(c.ErrOrStderr(), "%s is not set\n", git.ASKPASS_NONCE_ENV)
+			fmt.Fprintf(c.ErrOrStderr(), "%s is not set\n", askpass.ASKPASS_NONCE_ENV)
 			return
 		}
 		// nolint:staticcheck
@@ -90,7 +89,7 @@ func TestNewAskPassCommand(t *testing.T) {
 		expectedErr string
 	}{
 		{"no arguments", []string{}, "testnonce", "", "expected 1 argument, got 0"},
-		{"missing nonce", []string{"Username"}, "", "", fmt.Sprintf("%s is not set", git.ASKPASS_NONCE_ENV)},
+		{"missing nonce", []string{"Username"}, "", "", fmt.Sprintf("%s is not set", askpass.ASKPASS_NONCE_ENV)},
 		{"valid username request", []string{"Username"}, "testnonce", "testuser", ""},
 		{"valid password request", []string{"Password"}, "testnonce", "testpassword", ""},
 		{"unknown credential type", []string{"Unknown"}, "testnonce", "", "unknown credential type 'Unknown'"},
@@ -100,7 +99,7 @@ func TestNewAskPassCommand(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			os.Clearenv()
 			if tc.envNonce != "" {
-				os.Setenv(git.ASKPASS_NONCE_ENV, tc.envNonce)
+				os.Setenv(askpass.ASKPASS_NONCE_ENV, tc.envNonce)
 			}
 
 			var stdout, stderr bytes.Buffer

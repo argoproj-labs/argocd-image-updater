@@ -9,64 +9,49 @@ import (
 	"time"
 
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
-	"github.com/argoproj-labs/argocd-image-updater/pkg/env"
-	"github.com/argoproj-labs/argocd-image-updater/pkg/image"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/kube"
-	"github.com/argoproj-labs/argocd-image-updater/pkg/log"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/metrics"
+	registryCommon "github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/common"
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/env"
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/image"
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
 
-	argocdclient "github.com/argoproj/argo-cd/v2/pkg/apiclient"
-	"github.com/argoproj/argo-cd/v2/pkg/apiclient/application"
-	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
+	argocdclient "github.com/argoproj/argo-cd/v3/pkg/apiclient"
+	"github.com/argoproj/argo-cd/v3/pkg/apiclient/application"
+	"github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // Kubernetes based client
 type k8sClient struct {
-	kubeClient *kube.KubernetesClient
+	kubeClient   *kube.ImageUpdaterKubernetesClient
+	appNamespace *string
 }
 
-// GetApplication retrieves an application by name across all namespaces.
+// GetApplication retrieves an application by name, either in a specific namespace or all namespaces depending on client configuration.
 func (client *k8sClient) GetApplication(ctx context.Context, appName string) (*v1alpha1.Application, error) {
-	log.Debugf("Getting application %s across all namespaces", appName)
+	// List all applications across configured namespace or all namespaces (using empty labelSelector)
+	if *client.appNamespace != v1.NamespaceAll {
+		return client.kubeClient.ApplicationsClientset.ArgoprojV1alpha1().Applications(*client.appNamespace).Get(ctx, appName, v1.GetOptions{})
+	}
+	return client.getApplicationInAllNamespaces(appName)
+}
 
-	// List all applications across all namespaces (using empty labelSelector)
-	appList, err := client.ListApplications(v1.NamespaceAll)
+func (client *k8sClient) getApplicationInAllNamespaces(appName string) (*v1alpha1.Application, error) {
+	appList, err := client.ListApplications("")
 	if err != nil {
 		return nil, fmt.Errorf("error listing applications: %w", err)
 	}
 
 	// Filter applications by name using nameMatchesPattern
-	app, err := findApplicationByName(appList, appName)
-	if err != nil {
-		log.Errorf("error getting application: %v", err)
-		return nil, fmt.Errorf("error getting application: %w", err)
-	}
-
-	// Retrieve the application in the specified namespace
-	return app, nil
-}
-
-// ListApplications lists all applications across all namespaces.
-func (client *k8sClient) ListApplications(labelSelector string) ([]v1alpha1.Application, error) {
-	list, err := client.kubeClient.ApplicationsClientset.ArgoprojV1alpha1().Applications(v1.NamespaceAll).List(context.TODO(), v1.ListOptions{LabelSelector: labelSelector})
-	if err != nil {
-		return nil, fmt.Errorf("error listing applications: %w", err)
-	}
-	log.Debugf("Applications listed: %d", len(list.Items))
-	return list.Items, nil
-}
-
-// findApplicationByName filters the list of applications by name using nameMatchesPattern.
-func findApplicationByName(appList []v1alpha1.Application, appName string) (*v1alpha1.Application, error) {
-	var matchedApps []*v1alpha1.Application
+	var matchedApps []v1alpha1.Application
 
 	for _, app := range appList {
 		log.Debugf("Found application: %s in namespace %s", app.Name, app.Namespace)
 		if nameMatchesPattern(app.Name, []string{appName}) {
 			log.Debugf("Application %s matches the pattern", app.Name)
-			matchedApps = append(matchedApps, &app)
+			matchedApps = append(matchedApps, app)
 		}
 	}
 
@@ -78,7 +63,18 @@ func findApplicationByName(appList []v1alpha1.Application, appName string) (*v1a
 		return nil, fmt.Errorf("multiple applications found matching %s", appName)
 	}
 
-	return matchedApps[0], nil
+	// Retrieve the application in the specified namespace
+	return &matchedApps[0], nil
+}
+
+// ListApplications lists all applications across all namespaces.
+func (client *k8sClient) ListApplications(labelSelector string) ([]v1alpha1.Application, error) {
+	list, err := client.kubeClient.ApplicationsClientset.ArgoprojV1alpha1().Applications(*client.appNamespace).List(context.Background(), v1.ListOptions{LabelSelector: labelSelector})
+	if err != nil {
+		return nil, fmt.Errorf("error listing applications: %w", err)
+	}
+	log.Debugf("Applications listed: %d", len(list.Items))
+	return list.Items, nil
 }
 
 func (client *k8sClient) UpdateSpec(ctx context.Context, spec *application.ApplicationUpdateSpecRequest) (*v1alpha1.ApplicationSpec, error) {
@@ -111,11 +107,27 @@ func (client *k8sClient) UpdateSpec(ctx context.Context, spec *application.Appli
 	return nil, fmt.Errorf("max retries(%d) reached while updating application: %s", maxRetries, spec.GetName())
 }
 
-// NewK8SClient creates a new kubernetes client to interact with kubernetes api-server.
-func NewK8SClient(kubeClient *kube.KubernetesClient) (ArgoCD, error) {
-	return &k8sClient{kubeClient: kubeClient}, nil
+type K8SClientOptions struct {
+	AppNamespace string
 }
 
+// NewK8SClient creates a new kubernetes client to interact with kubernetes api-server.
+func NewK8SClient(kubeClient *kube.ImageUpdaterKubernetesClient, opts *K8SClientOptions) (ArgoCD, error) {
+	// Provide default options if nil
+	if opts == nil {
+		opts = &K8SClientOptions{
+			AppNamespace: v1.NamespaceAll,
+		}
+	}
+
+	return &k8sClient{
+		kubeClient:   kubeClient,
+		appNamespace: &opts.AppNamespace,
+	}, nil
+}
+
+// DEPRECATED: This struct and its associated client have been removed in the CRD branch and will be deprecated and removed in a future release.
+// The CRD branch introduces a new architecture that eliminates the need for this native ArgoCD client approach.
 // Native
 type argoCD struct {
 	Client argocdclient.Client
@@ -137,6 +149,8 @@ const (
 	ApplicationTypeKustomize   ApplicationType = 2
 )
 
+// DEPRECATED: This struct and its associated client have been removed in the CRD branch and will be deprecated and removed in a future release.
+// The CRD branch introduces a new architecture that eliminates the need for this native ArgoCD client approach.
 // Basic wrapper struct for ArgoCD client options
 type ClientOptions struct {
 	ServerAddr      string
@@ -148,6 +162,8 @@ type ClientOptions struct {
 	AuthToken       string
 }
 
+// DEPRECATED: This function has been removed in the CRD branch and will be deprecated and removed in a future release.
+// The CRD branch introduces a new architecture that eliminates the need for this native ArgoCD client approach.
 // NewAPIClient creates a new API client for ArgoCD and connects to the ArgoCD
 // API server.
 func NewAPIClient(opts *ClientOptions) (ArgoCD, error) {
@@ -245,7 +261,7 @@ func parseImageList(annotations map[string]string) *image.ContainerImageList {
 		splits := strings.Split(updateImage, ",")
 		for _, s := range splits {
 			img := image.NewFromIdentifier(strings.TrimSpace(s))
-			if kustomizeImage := img.GetParameterKustomizeImageName(annotations); kustomizeImage != "" {
+			if kustomizeImage := img.GetParameterKustomizeImageName(annotations, common.ImageUpdaterAnnotationPrefix); kustomizeImage != "" {
 				img.KustomizeImage = image.NewFromIdentifier(kustomizeImage)
 			}
 			results = append(results, img)
@@ -254,6 +270,8 @@ func parseImageList(annotations map[string]string) *image.ContainerImageList {
 	return &results
 }
 
+// DEPRECATED: This struct and its associated client have been removed in the CRD branch and will be deprecated and removed in a future release.
+// The CRD branch introduces a new architecture that eliminates the need for this native ArgoCD client approach.
 // GetApplication gets the application named appName from Argo CD API
 func (client *argoCD) GetApplication(ctx context.Context, appName string) (*v1alpha1.Application, error) {
 	conn, appClient, err := client.Client.NewApplicationClient()
@@ -274,6 +292,8 @@ func (client *argoCD) GetApplication(ctx context.Context, appName string) (*v1al
 	return app, nil
 }
 
+// DEPRECATED: This struct and its associated client have been removed in the CRD branch and will be deprecated and removed in a future release.
+// The CRD branch introduces a new architecture that eliminates the need for this native ArgoCD client approach.
 // ListApplications returns a list of all application names that the API user
 // has access to.
 func (client *argoCD) ListApplications(labelSelector string) ([]v1alpha1.Application, error) {
@@ -295,6 +315,8 @@ func (client *argoCD) ListApplications(labelSelector string) ([]v1alpha1.Applica
 	return apps.Items, nil
 }
 
+// DEPRECATED: This struct and its associated client have been removed in the CRD branch and will be deprecated and removed in a future release.
+// The CRD branch introduces a new architecture that eliminates the need for this native ArgoCD client approach.
 // UpdateSpec updates the spec for given application
 func (client *argoCD) UpdateSpec(ctx context.Context, in *application.ApplicationUpdateSpecRequest) (*v1alpha1.ApplicationSpec, error) {
 	conn, appClient, err := client.Client.NewApplicationClient()
@@ -327,17 +349,17 @@ func getHelmParamNamesFromAnnotation(annotations map[string]string, img *image.C
 	var annotationName, helmParamName, helmParamVersion string
 
 	// Image spec is a full-qualified specifier, if we have it, we return early
-	if param := img.GetParameterHelmImageSpec(annotations); param != "" {
+	if param := img.GetParameterHelmImageSpec(annotations, common.ImageUpdaterAnnotationPrefix); param != "" {
 		log.Tracef("found annotation %s", annotationName)
 		return strings.TrimSpace(param), ""
 	}
 
-	if param := img.GetParameterHelmImageName(annotations); param != "" {
+	if param := img.GetParameterHelmImageName(annotations, common.ImageUpdaterAnnotationPrefix); param != "" {
 		log.Tracef("found annotation %s", annotationName)
 		helmParamName = param
 	}
 
-	if param := img.GetParameterHelmImageTag(annotations); param != "" {
+	if param := img.GetParameterHelmImageTag(annotations, common.ImageUpdaterAnnotationPrefix); param != "" {
 		log.Tracef("found annotation %s", annotationName)
 		helmParamVersion = param
 	}
@@ -387,6 +409,55 @@ func mergeHelmParams(src []v1alpha1.HelmParameter, merge []v1alpha1.HelmParamete
 	return retParams
 }
 
+// GetHelmImage gets the image set in Application source matching new image
+// or an empty string if match is not found
+func GetHelmImage(app *v1alpha1.Application, newImage *image.ContainerImage) (string, error) {
+
+	if appType := getApplicationType(app); appType != ApplicationTypeHelm {
+		return "", fmt.Errorf("cannot set Helm params on non-Helm application")
+	}
+
+	var hpImageName, hpImageTag, hpImageSpec string
+
+	hpImageSpec = newImage.GetParameterHelmImageSpec(app.Annotations, common.ImageUpdaterAnnotationPrefix)
+	hpImageName = newImage.GetParameterHelmImageName(app.Annotations, common.ImageUpdaterAnnotationPrefix)
+	hpImageTag = newImage.GetParameterHelmImageTag(app.Annotations, common.ImageUpdaterAnnotationPrefix)
+
+	if hpImageSpec == "" {
+		if hpImageName == "" {
+			hpImageName = registryCommon.DefaultHelmImageName
+		}
+		if hpImageTag == "" {
+			hpImageTag = registryCommon.DefaultHelmImageTag
+		}
+	}
+
+	appSource := getApplicationSource(app)
+
+	if appSource.Helm == nil {
+		return "", nil
+	}
+
+	if appSource.Helm.Parameters == nil {
+		return "", nil
+	}
+
+	if hpImageSpec != "" {
+		if p := getHelmParam(appSource.Helm.Parameters, hpImageSpec); p != nil {
+			return p.Value, nil
+		}
+	} else {
+		imageName := getHelmParam(appSource.Helm.Parameters, hpImageName)
+		imageTag := getHelmParam(appSource.Helm.Parameters, hpImageTag)
+		if imageName == nil || imageTag == nil {
+			return "", nil
+		}
+		return imageName.Value + ":" + imageTag.Value, nil
+	}
+
+	return "", nil
+}
+
 // SetHelmImage sets image parameters for a Helm application
 func SetHelmImage(app *v1alpha1.Application, newImage *image.ContainerImage) error {
 	if appType := getApplicationType(app); appType != ApplicationTypeHelm {
@@ -398,16 +469,16 @@ func SetHelmImage(app *v1alpha1.Application, newImage *image.ContainerImage) err
 
 	var hpImageName, hpImageTag, hpImageSpec string
 
-	hpImageSpec = newImage.GetParameterHelmImageSpec(app.Annotations)
-	hpImageName = newImage.GetParameterHelmImageName(app.Annotations)
-	hpImageTag = newImage.GetParameterHelmImageTag(app.Annotations)
+	hpImageSpec = newImage.GetParameterHelmImageSpec(app.Annotations, common.ImageUpdaterAnnotationPrefix)
+	hpImageName = newImage.GetParameterHelmImageName(app.Annotations, common.ImageUpdaterAnnotationPrefix)
+	hpImageTag = newImage.GetParameterHelmImageTag(app.Annotations, common.ImageUpdaterAnnotationPrefix)
 
 	if hpImageSpec == "" {
 		if hpImageName == "" {
-			hpImageName = common.DefaultHelmImageName
+			hpImageName = registryCommon.DefaultHelmImageName
 		}
 		if hpImageTag == "" {
-			hpImageTag = common.DefaultHelmImageTag
+			hpImageTag = registryCommon.DefaultHelmImageTag
 		}
 	}
 
@@ -484,6 +555,36 @@ func SetHelmImage(app *v1alpha1.Application, newImage *image.ContainerImage) err
 	return nil
 }
 
+// GetKustomizeImage gets the image set in Application source matching new image
+// or an empty string if match is not found
+func GetKustomizeImage(app *v1alpha1.Application, newImage *image.ContainerImage) (string, error) {
+	if appType := getApplicationType(app); appType != ApplicationTypeKustomize {
+		return "", fmt.Errorf("cannot set Kustomize image on non-Kustomize application")
+	}
+
+	ksImageName := newImage.GetParameterKustomizeImageName(app.Annotations, common.ImageUpdaterAnnotationPrefix)
+
+	appSource := getApplicationSource(app)
+
+	if appSource.Kustomize == nil {
+		return "", nil
+	}
+
+	ksImages := appSource.Kustomize.Images
+
+	if ksImages == nil {
+		return "", nil
+	}
+
+	for _, a := range ksImages {
+		if a.Match(v1alpha1.KustomizeImage(ksImageName)) {
+			return string(a), nil
+		}
+	}
+
+	return "", nil
+}
+
 // SetKustomizeImage sets a Kustomize image for given application
 func SetKustomizeImage(app *v1alpha1.Application, newImage *image.ContainerImage) error {
 	if appType := getApplicationType(app); appType != ApplicationTypeKustomize {
@@ -491,7 +592,7 @@ func SetKustomizeImage(app *v1alpha1.Application, newImage *image.ContainerImage
 	}
 
 	var ksImageParam string
-	ksImageName := newImage.GetParameterKustomizeImageName(app.Annotations)
+	ksImageName := newImage.GetParameterKustomizeImageName(app.Annotations, common.ImageUpdaterAnnotationPrefix)
 	if ksImageName != "" {
 		ksImageParam = fmt.Sprintf("%s=%s", ksImageName, newImage.GetFullNameWithTag())
 	} else {
@@ -535,7 +636,7 @@ func GetImagesFromApplication(app *v1alpha1.Application) image.ContainerImageLis
 	// Check the image list for images with a force-update annotation, and add them if they are not already present.
 	annotations := app.Annotations
 	for _, img := range *parseImageList(annotations) {
-		if img.HasForceUpdateOptionAnnotation(annotations) {
+		if img.HasForceUpdateOptionAnnotation(annotations, common.ImageUpdaterAnnotationPrefix) {
 			img.ImageTag = nil // the tag from the image list will be a version constraint, which isn't a valid tag
 			images = append(images, img)
 		}

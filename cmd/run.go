@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"strings"
 	"sync"
@@ -12,23 +13,30 @@ import (
 
 	"github.com/argoproj-labs/argocd-image-updater/pkg/argocd"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
-	"github.com/argoproj-labs/argocd-image-updater/pkg/env"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/health"
-	"github.com/argoproj-labs/argocd-image-updater/pkg/log"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/metrics"
-	"github.com/argoproj-labs/argocd-image-updater/pkg/registry"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/version"
+	"github.com/argoproj-labs/argocd-image-updater/pkg/webhook"
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/env"
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/image"
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/registry"
 
-	"github.com/argoproj/argo-cd/v2/reposerver/askpass"
+	"github.com/argoproj/argo-cd/v3/util/askpass"
 
 	"github.com/spf13/cobra"
 
 	"golang.org/x/sync/semaphore"
+
+	"go.uber.org/ratelimit"
+
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // newRunCommand implements "run" command
 func newRunCommand() *cobra.Command {
 	var cfg *ImageUpdaterConfig = &ImageUpdaterConfig{}
+	var webhookCfg *WebhookConfig = &WebhookConfig{}
 	var once bool
 	var kubeConfig string
 	var disableKubernetes bool
@@ -42,6 +50,17 @@ func newRunCommand() *cobra.Command {
 			if err := log.SetLogLevel(cfg.LogLevel); err != nil {
 				return err
 			}
+
+			var logFormat log.LogFormat
+			switch cfg.LogFormat {
+			case "text":
+				logFormat = log.LogFormatText
+			case "json":
+				logFormat = log.LogFormatJSON
+			default:
+				return fmt.Errorf("Invalid log format '%s'", cfg.LogFormat)
+			}
+			log.SetLogFormat(logFormat)
 
 			if once {
 				cfg.CheckInterval = 0
@@ -115,7 +134,7 @@ func newRunCommand() *cobra.Command {
 					log.Fatalf("could not create K8s client: %v", err)
 				}
 				if cfg.ClientOpts.ServerAddr == "" {
-					cfg.ClientOpts.ServerAddr = fmt.Sprintf("argocd-server.%s", cfg.KubeClient.Namespace)
+					cfg.ClientOpts.ServerAddr = fmt.Sprintf("argocd-server.%s", cfg.KubeClient.KubeClient.Namespace)
 				}
 			}
 			if cfg.ClientOpts.ServerAddr == "" {
@@ -136,9 +155,13 @@ func newRunCommand() *cobra.Command {
 				cfg.ClientOpts.Plaintext,
 			)
 
+			// Initialize metrics before starting the metrics server or using any counters
+			metrics.InitMetrics()
+
 			// Health server will start in a go routine and run asynchronously
 			var hsErrCh chan error
 			var msErrCh chan error
+			var whErrCh chan error
 			if cfg.HealthPort > 0 {
 				log.Infof("Starting health probe server TCP port=%d", cfg.HealthPort)
 				hsErrCh = health.StartHealthServer(cfg.HealthPort)
@@ -158,11 +181,11 @@ func newRunCommand() *cobra.Command {
 			}
 
 			// Start up the credentials store server
-			cs := askpass.NewServer()
+			cs := askpass.NewServer(askpass.SocketPath)
 			csErrCh := make(chan error)
 			go func() {
 				log.Debugf("Starting askpass server")
-				csErrCh <- cs.Run(askpass.SocketPath)
+				csErrCh <- cs.Run()
 			}()
 
 			// Wait for cred server to be started, just in case
@@ -174,6 +197,71 @@ func newRunCommand() *cobra.Command {
 
 			cfg.GitCreds = cs
 
+			// Start the webhook server if enabled
+			var webhookServer *webhook.WebhookServer
+			if cfg.EnableWebhook && webhookCfg.Port > 0 {
+				// Initialize the ArgoCD client for webhook server
+				var argoClient argocd.ArgoCD
+				switch cfg.ApplicationsAPIKind {
+				case applicationsAPIKindK8S:
+					argoClient, err = argocd.NewK8SClient(cfg.KubeClient, &argocd.K8SClientOptions{AppNamespace: cfg.AppNamespace})
+				case applicationsAPIKindArgoCD:
+					argoClient, err = argocd.NewAPIClient(&cfg.ClientOpts)
+				}
+				if err != nil {
+					log.Fatalf("Could not create ArgoCD client for webhook server: %v", err)
+				}
+
+				// Create webhook handler
+				handler := webhook.NewWebhookHandler()
+
+				// Register supported webhook handlers with default empty secrets
+				dockerHandler := webhook.NewDockerHubWebhook(webhookCfg.DockerSecret)
+				handler.RegisterHandler(dockerHandler)
+
+				ghcrHandler := webhook.NewGHCRWebhook(webhookCfg.GHCRSecret)
+				handler.RegisterHandler(ghcrHandler)
+
+				harborHandler := webhook.NewHarborWebhook(webhookCfg.HarborSecret)
+				handler.RegisterHandler(harborHandler)
+
+				quayHandler := webhook.NewQuayWebhook(webhookCfg.QuaySecret)
+				handler.RegisterHandler(quayHandler)
+
+				log.Infof("Starting webhook server on port %d", webhookCfg.Port)
+				webhookServer = webhook.NewWebhookServer(webhookCfg.Port, handler, cfg.KubeClient, argoClient)
+
+				if webhookCfg.RateLimitNumAllowedRequests > 0 {
+					webhookServer.RateLimiter = ratelimit.New(webhookCfg.RateLimitNumAllowedRequests, ratelimit.Per(time.Hour))
+				}
+
+				// Set updater config
+				webhookServer.UpdaterConfig = &argocd.UpdateConfiguration{
+					NewRegFN:               registry.NewClient,
+					ArgoClient:             cfg.ArgoClient,
+					KubeClient:             cfg.KubeClient,
+					DryRun:                 cfg.DryRun,
+					GitCommitUser:          cfg.GitCommitUser,
+					GitCommitEmail:         cfg.GitCommitMail,
+					GitCommitMessage:       cfg.GitCommitMessage,
+					GitCommitSigningKey:    cfg.GitCommitSigningKey,
+					GitCommitSigningMethod: cfg.GitCommitSigningMethod,
+					GitCommitSignOff:       cfg.GitCommitSignOff,
+					DisableKubeEvents:      cfg.DisableKubeEvents,
+					GitCreds:               cfg.GitCreds,
+				}
+
+				whErrCh = make(chan error, 1)
+				go func() {
+					if err := webhookServer.Start(); err != nil {
+						log.Errorf("Webhook server error: %v", err)
+						whErrCh <- err
+					}
+				}()
+
+				log.Infof("Webhook server started and listening on port %d", webhookCfg.Port)
+			}
+
 			// This is our main loop. We leave it only when our health probe server
 			// returns an error.
 			for {
@@ -184,6 +272,12 @@ func newRunCommand() *cobra.Command {
 					} else {
 						log.Infof("Health probe server exited gracefully")
 					}
+					// Clean shutdown of webhook server if running
+					if webhookServer != nil {
+						if err := webhookServer.Stop(); err != nil {
+							log.Errorf("Error stopping webhook server: %v", err)
+						}
+					}
 					return nil
 				case err := <-msErrCh:
 					if err != nil {
@@ -191,6 +285,15 @@ func newRunCommand() *cobra.Command {
 					} else {
 						log.Infof("Metrics server exited gracefully")
 					}
+					// Clean shutdown of webhook server if running
+					if webhookServer != nil {
+						if err := webhookServer.Stop(); err != nil {
+							log.Errorf("Error stopping webhook server: %v", err)
+						}
+					}
+					return nil
+				case err := <-whErrCh:
+					log.Errorf("Webhook server exited with error: %v", err)
 					return nil
 				default:
 					if lastRun.IsZero() || time.Since(lastRun) > cfg.CheckInterval {
@@ -218,25 +321,34 @@ func newRunCommand() *cobra.Command {
 		},
 	}
 
-	runCmd.Flags().StringVar(&cfg.ApplicationsAPIKind, "applications-api", env.GetStringVal("APPLICATIONS_API", applicationsAPIKindK8S), "API kind that is used to manage Argo CD applications ('kubernetes' or 'argocd')")
-	runCmd.Flags().StringVar(&cfg.ClientOpts.ServerAddr, "argocd-server-addr", env.GetStringVal("ARGOCD_SERVER", ""), "address of ArgoCD API server")
-	runCmd.Flags().BoolVar(&cfg.ClientOpts.GRPCWeb, "argocd-grpc-web", env.GetBoolVal("ARGOCD_GRPC_WEB", false), "use grpc-web for connection to ArgoCD")
-	runCmd.Flags().BoolVar(&cfg.ClientOpts.Insecure, "argocd-insecure", env.GetBoolVal("ARGOCD_INSECURE", false), "(INSECURE) ignore invalid TLS certs for ArgoCD server")
-	runCmd.Flags().BoolVar(&cfg.ClientOpts.Plaintext, "argocd-plaintext", env.GetBoolVal("ARGOCD_PLAINTEXT", false), "(INSECURE) connect without TLS to ArgoCD server")
-	runCmd.Flags().StringVar(&cfg.ClientOpts.AuthToken, "argocd-auth-token", "", "use token for authenticating to ArgoCD (unsafe - consider setting ARGOCD_TOKEN env var instead)")
+	// DEPRECATED: These flags have been removed in the CRD branch and will be deprecated and removed in a future release.
+	// The CRD branch introduces a new architecture that eliminates the need for these native ArgoCD client configuration flags.
+	runCmd.Flags().StringVar(&cfg.ApplicationsAPIKind, "applications-api", env.GetStringVal("APPLICATIONS_API", applicationsAPIKindK8S), "API kind that is used to manage Argo CD applications ('kubernetes' or 'argocd'). DEPRECATED: this flag will be removed in a future version.")
+	runCmd.Flags().StringVar(&cfg.ClientOpts.ServerAddr, "argocd-server-addr", env.GetStringVal("ARGOCD_SERVER", ""), "address of ArgoCD API server. DEPRECATED: this flag will be removed in a future version.")
+	runCmd.Flags().BoolVar(&cfg.ClientOpts.GRPCWeb, "argocd-grpc-web", env.GetBoolVal("ARGOCD_GRPC_WEB", false), "use grpc-web for connection to ArgoCD. DEPRECATED: this flag will be removed in a future version.")
+	runCmd.Flags().BoolVar(&cfg.ClientOpts.Insecure, "argocd-insecure", env.GetBoolVal("ARGOCD_INSECURE", false), "(INSECURE) ignore invalid TLS certs for ArgoCD server. DEPRECATED: this flag will be removed in a future version.")
+	runCmd.Flags().BoolVar(&cfg.ClientOpts.Plaintext, "argocd-plaintext", env.GetBoolVal("ARGOCD_PLAINTEXT", false), "(INSECURE) connect without TLS to ArgoCD server. DEPRECATED: this flag will be removed in a future version.")
+	runCmd.Flags().StringVar(&cfg.ClientOpts.AuthToken, "argocd-auth-token", "", "use token for authenticating to ArgoCD (unsafe - consider setting ARGOCD_TOKEN env var instead). DEPRECATED: this flag will be removed in a future version.")
+	runCmd.Flags().BoolVar(&disableKubernetes, "disable-kubernetes", false, "do not create and use a Kubernetes client. DEPRECATED: this flag will be removed in a future version.")
+
 	runCmd.Flags().BoolVar(&cfg.DryRun, "dry-run", false, "run in dry-run mode. If set to true, do not perform any changes")
-	runCmd.Flags().DurationVar(&cfg.CheckInterval, "interval", 2*time.Minute, "interval for how often to check for updates")
+	runCmd.Flags().DurationVar(&cfg.CheckInterval, "interval", env.GetDurationVal("IMAGE_UPDATER_INTERVAL", 2*time.Minute), "interval for how often to check for updates")
 	runCmd.Flags().StringVar(&cfg.LogLevel, "loglevel", env.GetStringVal("IMAGE_UPDATER_LOGLEVEL", "info"), "set the loglevel to one of trace|debug|info|warn|error")
+	runCmd.Flags().StringVar(&cfg.LogFormat, "logformat", env.GetStringVal("IMAGE_UPDATER_LOGFORMAT", "text"), "set the log format to one of text|json")
 	runCmd.Flags().StringVar(&kubeConfig, "kubeconfig", "", "full path to kubernetes client configuration, i.e. ~/.kube/config")
 	runCmd.Flags().IntVar(&cfg.HealthPort, "health-port", 8080, "port to start the health server on, 0 to disable")
 	runCmd.Flags().IntVar(&cfg.MetricsPort, "metrics-port", 8081, "port to start the metrics server on, 0 to disable")
 	runCmd.Flags().BoolVar(&once, "once", false, "run only once, same as specifying --interval=0 and --health-port=0")
 	runCmd.Flags().StringVar(&cfg.RegistriesConf, "registries-conf-path", defaultRegistriesConfPath, "path to registries configuration file")
-	runCmd.Flags().BoolVar(&disableKubernetes, "disable-kubernetes", false, "do not create and use a Kubernetes client")
 	runCmd.Flags().IntVar(&cfg.MaxConcurrency, "max-concurrency", 10, "maximum number of update threads to run concurrently")
 	runCmd.Flags().StringVar(&cfg.ArgocdNamespace, "argocd-namespace", "", "namespace where ArgoCD runs in (current namespace by default)")
-	runCmd.Flags().StringSliceVar(&cfg.AppNamePatterns, "match-application-name", nil, "patterns to match application name against")
-	runCmd.Flags().StringVar(&cfg.AppLabel, "match-application-label", "", "label selector to match application labels against")
+	runCmd.Flags().StringVar(&cfg.AppNamespace, "application-namespace", v1.NamespaceAll, "namespace where Argo Image Updater will manage applications (all namespaces by default)")
+
+	// DEPRECATED: These flags have been removed in the CRD branch and will be deprecated and removed in a future release.
+	// The CRD branch introduces a new architecture that eliminates the need for these application matching flags.
+	runCmd.Flags().StringSliceVar(&cfg.AppNamePatterns, "match-application-name", nil, "patterns to match application name against. DEPRECATED: this flag will be removed in a future version.")
+	runCmd.Flags().StringVar(&cfg.AppLabel, "match-application-label", "", "label selector to match application labels against. DEPRECATED: this flag will be removed in a future version.")
+
 	runCmd.Flags().BoolVar(&warmUpCache, "warmup-cache", true, "whether to perform a cache warm-up on startup")
 	runCmd.Flags().StringVar(&cfg.GitCommitUser, "git-commit-user", env.GetStringVal("GIT_COMMIT_USER", "argocd-image-updater"), "Username to use for Git commits")
 	runCmd.Flags().StringVar(&cfg.GitCommitMail, "git-commit-email", env.GetStringVal("GIT_COMMIT_EMAIL", "noreply@argoproj.io"), "E-Mail address to use for Git commits")
@@ -245,6 +357,14 @@ func newRunCommand() *cobra.Command {
 	runCmd.Flags().BoolVar(&cfg.GitCommitSignOff, "git-commit-sign-off", env.GetBoolVal("GIT_COMMIT_SIGN_OFF", false), "Whether to sign-off git commits")
 	runCmd.Flags().StringVar(&commitMessagePath, "git-commit-message-path", defaultCommitTemplatePath, "Path to a template to use for Git commit messages")
 	runCmd.Flags().BoolVar(&cfg.DisableKubeEvents, "disable-kube-events", env.GetBoolVal("IMAGE_UPDATER_KUBE_EVENTS", false), "Disable kubernetes events")
+	runCmd.Flags().BoolVar(&cfg.EnableWebhook, "enable-webhook", env.GetBoolVal("ENABLE_WEBHOOK", false), "Enable webhook server for receiving registry events")
+
+	runCmd.Flags().IntVar(&webhookCfg.Port, "webhook-port", env.ParseNumFromEnv("WEBHOOK_PORT", 8082, 0, 65535), "Port to listen on for webhook events")
+	runCmd.Flags().StringVar(&webhookCfg.DockerSecret, "docker-webhook-secret", env.GetStringVal("DOCKER_WEBHOOK_SECRET", ""), "Secret for validating Docker Hub webhooks")
+	runCmd.Flags().StringVar(&webhookCfg.GHCRSecret, "ghcr-webhook-secret", env.GetStringVal("GHCR_WEBHOOK_SECRET", ""), "Secret for validating GitHub Container Registry webhooks")
+	runCmd.Flags().StringVar(&webhookCfg.QuaySecret, "quay-webhook-secret", env.GetStringVal("QUAY_WEBHOOK_SECRET", ""), "Secret for validating Quay webhooks")
+	runCmd.Flags().StringVar(&webhookCfg.HarborSecret, "harbor-webhook-secret", env.GetStringVal("HARBOR_WEBHOOK_SECRET", ""), "Secret for validating Harbor webhooks")
+	runCmd.Flags().IntVar(&webhookCfg.RateLimitNumAllowedRequests, "webhook-ratelimit-allowed", env.ParseNumFromEnv("WEBHOOK_RATELIMIT_ALLOWED", 0, 0, math.MaxInt), "The number of allowed requests in an hour for webhook rate limiting, setting to 0 disables ratelimiting")
 
 	return runCmd
 }
@@ -256,7 +376,7 @@ func runImageUpdater(cfg *ImageUpdaterConfig, warmUp bool) (argocd.ImageUpdaterR
 	var argoClient argocd.ArgoCD
 	switch cfg.ApplicationsAPIKind {
 	case applicationsAPIKindK8S:
-		argoClient, err = argocd.NewK8SClient(cfg.KubeClient)
+		argoClient, err = argocd.NewK8SClient(cfg.KubeClient, &argocd.K8SClientOptions{AppNamespace: cfg.AppNamespace})
 	case applicationsAPIKindArgoCD:
 		argoClient, err = argocd.NewAPIClient(&cfg.ClientOpts)
 	default:
@@ -310,7 +430,7 @@ func runImageUpdater(cfg *ImageUpdaterConfig, warmUp bool) (argocd.ImageUpdaterR
 	wg.Add(len(appList))
 
 	for app, curApplication := range appList {
-		lockErr := sem.Acquire(context.TODO(), 1)
+		lockErr := sem.Acquire(context.Background(), 1)
 		if lockErr != nil {
 			log.Errorf("Could not acquire semaphore for application %s: %v", app, lockErr)
 			// Release entry in wait group on error, too - we're never gonna execute
@@ -369,7 +489,7 @@ func warmupImageCache(cfg *ImageUpdaterConfig) error {
 	entries := 0
 	eps := registry.ConfiguredEndpoints()
 	for _, ep := range eps {
-		r, err := registry.GetRegistryEndpoint(ep)
+		r, err := registry.GetRegistryEndpoint(&image.ContainerImage{RegistryURL: ep})
 		if err == nil {
 			entries += r.Cache.NumEntries()
 		}

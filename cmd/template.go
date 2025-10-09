@@ -8,8 +8,8 @@ import (
 
 	"github.com/argoproj-labs/argocd-image-updater/pkg/argocd"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
-	"github.com/argoproj-labs/argocd-image-updater/pkg/image"
-	"github.com/argoproj-labs/argocd-image-updater/pkg/tag"
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/image"
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/tag"
 
 	"github.com/spf13/cobra"
 )

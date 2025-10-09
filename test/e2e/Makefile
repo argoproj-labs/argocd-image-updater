@@ -10,6 +10,12 @@ git-container-build: copy-testdata
 git-container-push: git-container-build
 	docker push $(IMAGE_SLUG)
 
+remove-docker-images:
+	docker rmi $$(docker images | grep $(IMAGE_REPO) | awk '{print $$3}')
+
+remove-k3s-images:
+	sudo k3s crictl rmi $$(sudo k3s crictl images | grep $(IMAGE_REPO) | awk '{print $$3}')
+
 copy-testdata:
 	cp -r testdata containers/git
 
@@ -20,6 +26,12 @@ install-prereqs:
 	sleep 5
 	make git-container-push
 	kubectl apply -n argocd-image-updater-e2e -f prereqs/repo/install.yaml
+
+delete-prereqs: 
+	kubectl delete -n argocd-image-updater-e2e -f prereqs/repo/install.yaml
+	kubectl delete -n argocd-image-updater-e2e -f prereqs/registry/registry.yaml
+	kustomize build prereqs/argocd | kubectl -n argocd-image-updater-e2e delete -f -
+	make remove-docker-images
 
 .PHONY: git-container-build
 .PHONY: git-container-push

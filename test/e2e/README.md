@@ -4,11 +4,6 @@ This directory contains the end-to-end tests for Argo CD Image Updater. The
 tests are implemented using [kuttl](https://kuttl.dev) and require some
 prerequisites.
 
-**This is work-in-progress at a very early stage**. The end-to-end tests are
-not yet expected to work flawlessly, and they require an opinionated setup to
-run. If you are going to use the end-to-end tests, it is expected that you are
-prepared to hack on them. Do not ask for support, please.
-
 # Components
 
 The end-to-end tests are comprised of the following components:
@@ -45,3 +40,7 @@ The end-to-end tests are comprised of the following components:
 
 1. Run `make install-prereqs` to install all the pre-requisites on your local
    cluster.
+
+## Run the test suite
+
+1. Run `./e2e-test.sh` to run all the tests located in `./suite`.

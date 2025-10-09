@@ -1,19 +1,51 @@
-run:
-  timeout: 2m
+version: "2"
 linters:
   enable:
-    - gofmt
-    - govet
-    - goimports
-    - ineffassign
     - misspell
     - unconvert
+    - ineffassign
     - unused
-linters-settings:
-  goimports:
-    local-prefixes: github.com/argoproj-labs/argocd-image-updater
-issues:
-  exclude-files:
-    - ".*\\.pb\\.go"
-  exclude-dirs:
-    - vendor/
+    - govet
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    paths:
+      - .*\.pb\.go
+      - vendor/
+      - third_party$
+      - builtin$
+      - examples$
+  settings:
+    staticcheck:
+      checks:
+        - all
+        - '-QF1003'
+        - '-QF1008'
+        - '-QF1011'
+        - '-QF1012'
+        - '-ST1003'
+        - '-ST1005'
+        - '-ST1016'
+        - '-ST1023'
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/argoproj-labs/argocd-image-updater
+  exclusions:
+    generated: lax
+    paths:
+      - .*\.pb\.go
+      - vendor/
+      - third_party$
+      - builtin$
+      - examples$
+run: 
+  timeout: 5m

@@ -5,7 +5,7 @@
 Getting started to develop Argo CD Image Updater shouldn't be too hard. All that
 is required is a simple build toolchain, consisting of:
 
-* Golang v1.14
+* Golang
 * GNU make
 * Docker (for building images, optional)
 * Kustomize (for building K8s manifests, optional)
@@ -38,7 +38,10 @@ If you are running the cmd shell and are running into issues running `make all`,
 To send a pull request, simply fork the
 [GitHub repository](https://github.com/argoproj-labs/argocd-image-updater)
 to your GitHub account, create a new branch, commit & push your changes and then
-send the PR over for review.
+send the PR over for review. Changes should be
+[signed off](https://git-scm.com/docs/git-commit#Documentation/git-commit.txt--s)
+and committed with `-s` or `--signoff` options to meet
+[Developer Certificate of Origin](https://probot.github.io/apps/dco/) requirement.
 
 When developing new features or fixing bugs, please make sure that your code is
 accompanied by appropriate unit tests. If you are fixing a bug, please also

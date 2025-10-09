@@ -51,6 +51,7 @@ func TestMetricsInitialization(t *testing.T) {
 }
 
 func TestMetricsOperations(t *testing.T) {
+	InitMetrics()
 	epm := Endpoint()
 	epm.IncreaseRequest("/registry1", false)
 	epm.IncreaseRequest("/registry1", true)

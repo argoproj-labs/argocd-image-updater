@@ -101,7 +101,7 @@ multiarch-image:
 		--platform ${RELEASE_IMAGE_PLATFORMS} ${DOCKERX_PUSH} \
 		.
 
-.PHONY: multiarch-image
+.PHONY: multiarch-image-push
 multiarch-image-push:
 	docker buildx build \
 		-t ${IMAGE_PREFIX}${IMAGE_NAME}:${IMAGE_TAG} \
@@ -122,6 +122,11 @@ release-binaries:
 	BINNAME=argocd-image-updater-darwin_amd64 OUTDIR=dist/release OS=darwin ARCH=amd64 make controller
 	BINNAME=argocd-image-updater-darwin_arm64 OUTDIR=dist/release OS=darwin ARCH=arm64 make controller
 	BINNAME=argocd-image-updater-win64.exe OUTDIR=dist/release OS=windows ARCH=amd64 make controller
+	rm -f dist/release/release-v${VERSION}.sha256 dist/release/release-v${VERSION}.sha256.asc
+	for bin in dist/release/argocd-image-updater-*; do sha256sum "$$bin" >> dist/release/release-v${VERSION}.sha256; done
+	gpg --batch --generate-key hack/gpg-key.conf
+	gpg --default-key noreply@argoproj.io -a --detach-sign dist/release/release-v${VERSION}.sha256
+	gpg -a --verify dist/release/release-v${VERSION}.sha256.asc
 
 .PHONY: extract-binary
 extract-binary:

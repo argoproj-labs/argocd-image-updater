@@ -1,27 +1,32 @@
 package argocd
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"text/template"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"golang.org/x/exp/slices"
 
 	"github.com/argoproj-labs/argocd-image-updater/ext/git"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
-	"github.com/argoproj-labs/argocd-image-updater/pkg/image"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/kube"
-	"github.com/argoproj-labs/argocd-image-updater/pkg/log"
-	"github.com/argoproj-labs/argocd-image-updater/pkg/registry"
-	"github.com/argoproj-labs/argocd-image-updater/pkg/tag"
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/image"
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/registry"
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/tag"
 
-	"github.com/argoproj/argo-cd/v2/pkg/apiclient/application"
-	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
-	"gopkg.in/yaml.v2"
+	"github.com/argoproj/argo-cd/v3/pkg/apiclient/application"
+	"github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1"
+	yaml "sigs.k8s.io/yaml/goyaml.v3"
 )
 
 // Stores some statistics about the results of a run
@@ -37,7 +42,7 @@ type ImageUpdaterResult struct {
 type UpdateConfiguration struct {
 	NewRegFN               registry.NewRegistryClient
 	ArgoClient             ArgoCD
-	KubeClient             *kube.KubernetesClient
+	KubeClient             *kube.ImageUpdaterKubernetesClient
 	UpdateApp              *ApplicationImages
 	DryRun                 bool
 	GitCommitUser          string
@@ -59,6 +64,14 @@ const (
 	WriteBackApplication WriteBackMethod = 0
 	WriteBackGit         WriteBackMethod = 1
 )
+
+const defaultIndent = 2
+
+// listElementPattern is a regular expression for searching for an element in a yaml array.
+// example: any-string[1]
+const listElementPattern = `^(.*)\[(.*)\]$`
+
+var re = regexp.MustCompile(listElementPattern)
 
 // WriteBackConfig holds information on how to write back the changes to an Application
 type WriteBackConfig struct {
@@ -191,7 +204,7 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 
 		imgCtx.Debugf("Considering this image for update")
 
-		rep, err := registry.GetRegistryEndpoint(applicationImage.RegistryURL)
+		rep, err := registry.GetRegistryEndpoint(applicationImage)
 		if err != nil {
 			imgCtx.Errorf("Could not get registry endpoint from configuration: %v", err)
 			result.NumErrors += 1
@@ -206,11 +219,11 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 			imgCtx.Debugf("Using no version constraint when looking for a new tag")
 		}
 
-		vc.Strategy = applicationImage.GetParameterUpdateStrategy(updateConf.UpdateApp.Application.Annotations)
-		vc.MatchFunc, vc.MatchArgs = applicationImage.GetParameterMatch(updateConf.UpdateApp.Application.Annotations)
-		vc.IgnoreList = applicationImage.GetParameterIgnoreTags(updateConf.UpdateApp.Application.Annotations)
+		vc.Strategy = applicationImage.GetParameterUpdateStrategy(updateConf.UpdateApp.Application.Annotations, common.ImageUpdaterAnnotationPrefix)
+		vc.MatchFunc, vc.MatchArgs = applicationImage.GetParameterMatch(updateConf.UpdateApp.Application.Annotations, common.ImageUpdaterAnnotationPrefix)
+		vc.IgnoreList = applicationImage.GetParameterIgnoreTags(updateConf.UpdateApp.Application.Annotations, common.ImageUpdaterAnnotationPrefix)
 		vc.Options = applicationImage.
-			GetPlatformOptions(updateConf.UpdateApp.Application.Annotations, updateConf.IgnorePlatforms).
+			GetPlatformOptions(updateConf.UpdateApp.Application.Annotations, updateConf.IgnorePlatforms, common.ImageUpdaterAnnotationPrefix).
 			WithMetadata(vc.Strategy.NeedsMetadata()).
 			WithLogger(imgCtx.AddField("application", app))
 
@@ -221,17 +234,17 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 		}
 
 		// The endpoint can provide default credentials for pulling images
-		err = rep.SetEndpointCredentials(updateConf.KubeClient)
+		err = rep.SetEndpointCredentials(updateConf.KubeClient.KubeClient)
 		if err != nil {
 			imgCtx.Errorf("Could not set registry endpoint credentials: %v", err)
 			result.NumErrors += 1
 			continue
 		}
 
-		imgCredSrc := applicationImage.GetParameterPullSecret(updateConf.UpdateApp.Application.Annotations)
+		imgCredSrc := applicationImage.GetParameterPullSecret(updateConf.UpdateApp.Application.Annotations, common.ImageUpdaterAnnotationPrefix)
 		var creds *image.Credential = &image.Credential{}
 		if imgCredSrc != nil {
-			creds, err = imgCredSrc.FetchCredentials(rep.RegistryAPI, updateConf.KubeClient)
+			creds, err = imgCredSrc.FetchCredentials(rep.RegistryAPI, updateConf.KubeClient.KubeClient)
 			if err != nil {
 				imgCtx.Warnf("Could not fetch credentials: %v", err)
 				result.NumErrors += 1
@@ -274,32 +287,33 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 			continue
 		}
 
-		// If the user has specified digest as update strategy, but the running
-		// image is configured to use a tag and no digest, we need to set an
-		// initial dummy digest, so that tag.Equals() will return false.
-		// TODO: Fix this. This is just a workaround.
-		if vc.Strategy == image.StrategyDigest {
-			if !updateableImage.ImageTag.IsDigest() {
-				log.Tracef("Setting dummy digest for image %s", updateableImage.GetFullNameWithTag())
-				updateableImage.ImageTag.TagDigest = "dummy"
+		if needsUpdate(updateableImage, applicationImage, latest, vc.Strategy) {
+			appImageWithTag := applicationImage.WithTag(latest)
+			appImageFullNameWithTag := appImageWithTag.GetFullNameWithTag()
+
+			// Check if new image is already set in Application Spec when write back is set to argocd
+			// and compare with new image
+			appImageSpec, err := getAppImage(&updateConf.UpdateApp.Application, appImageWithTag)
+			if err != nil {
+				continue
 			}
-		}
+			if appImageSpec == appImageFullNameWithTag {
+				imgCtx.Infof("New image %s already set in spec", appImageFullNameWithTag)
+				continue
+			}
 
-		if needsUpdate(updateableImage, applicationImage, latest) {
-
-			imgCtx.Infof("Setting new image to %s", applicationImage.WithTag(latest).GetFullNameWithTag())
 			needUpdate = true
+			imgCtx.Infof("Setting new image to %s", appImageFullNameWithTag)
 
-			err = setAppImage(&updateConf.UpdateApp.Application, applicationImage.WithTag(latest))
+			err = setAppImage(&updateConf.UpdateApp.Application, appImageWithTag)
 
 			if err != nil {
 				imgCtx.Errorf("Error while trying to update image: %v", err)
 				result.NumErrors += 1
 				continue
 			} else {
-				containerImageNew := applicationImage.WithTag(latest)
-				imgCtx.Infof("Successfully updated image '%s' to '%s', but pending spec update (dry run=%v)", updateableImage.GetFullNameWithTag(), containerImageNew.GetFullNameWithTag(), updateConf.DryRun)
-				changeList = append(changeList, ChangeEntry{containerImageNew, updateableImage.ImageTag, containerImageNew.ImageTag})
+				imgCtx.Infof("Successfully updated image '%s' to '%s', but pending spec update (dry run=%v)", updateableImage.GetFullNameWithTag(), appImageFullNameWithTag, updateConf.DryRun)
+				changeList = append(changeList, ChangeEntry{appImageWithTag, updateableImage.ImageTag, appImageWithTag.ImageTag})
 				result.NumImagesUpdated += 1
 			}
 		} else {
@@ -377,9 +391,31 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 	return result
 }
 
-func needsUpdate(updateableImage *image.ContainerImage, applicationImage *image.ContainerImage, latest *tag.ImageTag) bool {
+func needsUpdate(updateableImage *image.ContainerImage, applicationImage *image.ContainerImage, latest *tag.ImageTag, strategy image.UpdateStrategy) bool {
+	if strategy == image.StrategyDigest {
+		if updateableImage.ImageTag == nil {
+			return true
+		}
+		// When using digest strategy, consider the digest even if the current image
+		// was referenced by tag. If either digest is missing or differs, we want an update.
+		if !updateableImage.ImageTag.IsDigest() || updateableImage.ImageTag.TagDigest != latest.TagDigest {
+			return true
+		}
+	}
 	// If the latest tag does not match image's current tag or the kustomize image is different, it means we have an update candidate.
 	return !updateableImage.ImageTag.Equals(latest) || applicationImage.KustomizeImage != nil && applicationImage.DiffersFrom(updateableImage, false)
+}
+
+func getAppImage(app *v1alpha1.Application, img *image.ContainerImage) (string, error) {
+	var err error
+	if appType := GetApplicationType(app); appType == ApplicationTypeKustomize {
+		return GetKustomizeImage(app, img)
+	} else if appType == ApplicationTypeHelm {
+		return GetHelmImage(app, img)
+	} else {
+		err = fmt.Errorf("could not update application %s - neither Helm nor Kustomize application", app)
+		return "", err
+	}
 }
 
 func setAppImage(app *v1alpha1.Application, img *image.ContainerImage) error {
@@ -392,6 +428,22 @@ func setAppImage(app *v1alpha1.Application, img *image.ContainerImage) error {
 		err = fmt.Errorf("could not update application %s - neither Helm nor Kustomize application", app)
 	}
 	return err
+}
+
+func marshalWithIndent(in interface{}, indent int) (out []byte, err error) {
+	var b bytes.Buffer
+	encoder := yaml.NewEncoder(&b)
+	defer encoder.Close()
+	// note: yaml.v3 will only respect indents from 1 to 9 inclusive.
+	encoder.SetIndent(indent)
+	encoder.CompactSeqIndent()
+	if err = encoder.Encode(in); err != nil {
+		return nil, err
+	}
+	if err = encoder.Close(); err != nil {
+		return nil, err
+	}
+	return b.Bytes(), nil
 }
 
 // marshalParamsOverride marshals the parameter overrides of a given application
@@ -417,16 +469,16 @@ func marshalParamsOverride(app *v1alpha1.Application, originalData []byte) ([]by
 		}
 
 		if len(originalData) == 0 {
-			override, err = yaml.Marshal(newParams)
+			override, err = marshalWithIndent(newParams, defaultIndent)
 			break
 		}
 		err = yaml.Unmarshal(originalData, &params)
 		if err != nil {
-			override, err = yaml.Marshal(newParams)
+			override, err = marshalWithIndent(newParams, defaultIndent)
 			break
 		}
 		mergeKustomizeOverride(&params, &newParams)
-		override, err = yaml.Marshal(params)
+		override, err = marshalWithIndent(params, defaultIndent)
 	case ApplicationTypeHelm:
 		if appSource.Helm == nil {
 			return []byte{}, nil
@@ -435,10 +487,27 @@ func marshalParamsOverride(app *v1alpha1.Application, originalData []byte) ([]by
 		if strings.HasPrefix(app.Annotations[common.WriteBackTargetAnnotation], common.HelmPrefix) {
 			images := GetImagesAndAliasesFromApplication(app)
 
-			helmNewValues := yaml.MapSlice{}
-			err = yaml.Unmarshal(originalData, &helmNewValues)
-			if err != nil {
-				return nil, err
+			var helmNewValues yaml.Node
+			if isOnlyWhitespace(originalData) {
+				// allow non-exists target file
+				helmNewValues = yaml.Node{
+					Kind:        yaml.DocumentNode,
+					HeadComment: "auto generated by argocd image updater",
+					Content: []*yaml.Node{
+						{
+							Kind:    yaml.MappingNode,
+							Tag:     "!!map",
+							Content: []*yaml.Node{},
+							Style:   yaml.LiteralStyle,
+						},
+					},
+				}
+			} else {
+				helmNewValues = yaml.Node{}
+				err = yaml.Unmarshal(originalData, &helmNewValues)
+				if err != nil {
+					return nil, err
+				}
 			}
 
 			for _, c := range images {
@@ -454,7 +523,7 @@ func marshalParamsOverride(app *v1alpha1.Application, originalData []byte) ([]by
 				// for image-spec annotation, helmAnnotationParamName holds image-spec annotation value,
 				// and helmAnnotationParamVersion is empty
 				if helmAnnotationParamVersion == "" {
-					if c.GetParameterHelmImageSpec(app.Annotations) == "" {
+					if c.GetParameterHelmImageSpec(app.Annotations, common.ImageUpdaterAnnotationPrefix) == "" {
 						// not a full image-spec, so image-tag is required
 						return nil, fmt.Errorf("could not find an image-tag annotation for image %s", c.ImageName)
 					}
@@ -481,7 +550,7 @@ func marshalParamsOverride(app *v1alpha1.Application, originalData []byte) ([]by
 				}
 			}
 
-			override, err = yaml.Marshal(helmNewValues)
+			override, err = marshalWithIndent(&helmNewValues, defaultIndent)
 		} else {
 			var params helmOverride
 			newParams := helmOverride{
@@ -494,16 +563,16 @@ func marshalParamsOverride(app *v1alpha1.Application, originalData []byte) ([]by
 			log.WithContext().AddField("application", app).Debugf("values: '%s'", outputParams)
 
 			if len(originalData) == 0 {
-				override, err = yaml.Marshal(newParams)
+				override, err = marshalWithIndent(newParams, defaultIndent)
 				break
 			}
 			err = yaml.Unmarshal(originalData, &params)
 			if err != nil {
-				override, err = yaml.Marshal(newParams)
+				override, err = marshalWithIndent(newParams, defaultIndent)
 				break
 			}
 			mergeHelmOverride(&params, &newParams)
-			override, err = yaml.Marshal(params)
+			override, err = marshalWithIndent(params, defaultIndent)
 		}
 	default:
 		err = fmt.Errorf("unsupported application type")
@@ -527,89 +596,153 @@ func mergeHelmOverride(t *helmOverride, o *helmOverride) {
 }
 
 func mergeKustomizeOverride(t *kustomizeOverride, o *kustomizeOverride) {
-	for _, image := range *o.Kustomize.Images {
-		idx := t.Kustomize.Images.Find(image)
-		if idx != -1 {
-			(*t.Kustomize.Images)[idx] = image
-			continue
+	for _, newImage := range *o.Kustomize.Images {
+		found := false
+		newContainerImage := image.NewFromIdentifier(string(newImage))
+		for idx, existingImage := range *t.Kustomize.Images {
+			existingContainerImage := image.NewFromIdentifier(string(existingImage))
+			if newContainerImage.ImageName == existingContainerImage.ImageName &&
+				newContainerImage.RegistryURL == existingContainerImage.RegistryURL {
+				found = true
+				if existingContainerImage.ImageTag == nil ||
+					(newContainerImage.ImageTag != nil && !(existingContainerImage.ImageTag).Equals(newContainerImage.ImageTag)) {
+					(*t.Kustomize.Images)[idx] = newImage
+				}
+				break
+			}
 		}
-		*t.Kustomize.Images = append(*t.Kustomize.Images, image)
+		if !found {
+			*t.Kustomize.Images = append(*t.Kustomize.Images, newImage)
+		}
 	}
 }
 
-// Check if a key exists in a MapSlice and return its index and value
-func findHelmValuesKey(m yaml.MapSlice, key string) (int, bool) {
-	for i, item := range m {
-		if item.Key == key {
-			return i, true
+// Check if a key exists in a MappingNode and return the index of its value
+func findHelmValuesKey(m *yaml.Node, key string) (int, bool) {
+	for i, item := range m.Content {
+		if i%2 == 0 && item.Value == key {
+			return i + 1, true
 		}
 	}
 	return -1, false
 }
 
+func nodeKindString(k yaml.Kind) string {
+	return map[yaml.Kind]string{
+		yaml.DocumentNode: "DocumentNode",
+		yaml.SequenceNode: "SequenceNode",
+		yaml.MappingNode:  "MappingNode",
+		yaml.ScalarNode:   "ScalarNode",
+		yaml.AliasNode:    "AliasNode",
+	}[k]
+}
+
 // set value of the parameter passed from the annotations.
-func setHelmValue(currentValues *yaml.MapSlice, key string, value interface{}) error {
+func setHelmValue(currentValues *yaml.Node, key string, value interface{}) error {
+	current := currentValues
+
+	// an unmarshalled document has a DocumentNode at the root, but
+	// we navigate from a MappingNode.
+	if current.Kind == yaml.DocumentNode {
+		current = current.Content[0]
+	}
+
+	if current.Kind != yaml.MappingNode {
+		return fmt.Errorf("unexpected type %s for root", nodeKindString(current.Kind))
+	}
+
 	// Check if the full key exists
-	if idx, found := findHelmValuesKey(*currentValues, key); found {
-		(*currentValues)[idx].Value = value
+	if idx, found := findHelmValuesKey(current, key); found {
+		(*current).Content[idx].Value = value.(string)
 		return nil
 	}
 
 	var err error
 	keys := strings.Split(key, ".")
-	current := currentValues
-	var parent *yaml.MapSlice
-	parentIdx := -1
-
 	for i, k := range keys {
-		if idx, found := findHelmValuesKey(*current, k); found {
+		// pointer is needed to determine that the id has indeed been passed.
+		var idPtr *int
+		// by default, the search is based on the key without changes, but
+		// if string matches pattern, we consider it is an id in YAML list.
+		key := k
+		matches := re.FindStringSubmatch(k)
+		if matches != nil {
+			idStr := matches[2]
+			id, err := strconv.Atoi(idStr)
+			if err != nil {
+				return fmt.Errorf("id \"%s\" in yaml array must match pattern ^(.*)\\[(.*)\\]$", idStr)
+			}
+			idPtr = &id
+			key = matches[1]
+		}
+		if idx, found := findHelmValuesKey(current, key); found {
+			// Navigate deeper into the map
+			current = (*current).Content[idx]
+			// unpack one level of alias; an alias of an alias is not supported
+			if current.Kind == yaml.AliasNode {
+				current = current.Alias
+			}
+			if current.Kind != yaml.SequenceNode && idPtr != nil {
+				return fmt.Errorf("id %d provided when \"%s\" is not an yaml array", *idPtr, key)
+			}
+			if current.Kind == yaml.SequenceNode {
+				if idPtr == nil {
+					return fmt.Errorf("no id provided for yaml array \"%s\"", key)
+				}
+				currentContent := (*current).Content
+				if *idPtr < 0 || *idPtr >= len(currentContent) {
+					return fmt.Errorf("id %d is out of range [0, %d)", *idPtr, len(currentContent))
+				}
+				current = (*current).Content[*idPtr]
+			}
 			if i == len(keys)-1 {
 				// If we're at the final key, set the value and return
-				(*current)[idx].Value = value
-				return nil
-			} else {
-				// Navigate deeper into the map
-				if nestedMap, ok := (*current)[idx].Value.(yaml.MapSlice); ok {
-					parent = current
-					parentIdx = idx
-					current = &nestedMap
+				if current.Kind == yaml.ScalarNode {
+					current.Value = value.(string)
+					current.Tag = "!!str"
 				} else {
-					return fmt.Errorf("unexpected type %T for key %s", (*current)[idx].Value, k)
+					return fmt.Errorf("unexpected type %s for key %s", nodeKindString(current.Kind), k)
 				}
+				return nil
+			} else if current.Kind != yaml.MappingNode {
+				return fmt.Errorf("unexpected type %s for key %s", nodeKindString(current.Kind), k)
 			}
 		} else {
-			newCurrent := yaml.MapSlice{}
-			var newParent yaml.MapSlice
-
 			if i == len(keys)-1 {
-				newParent = append(*current, yaml.MapItem{Key: k, Value: value})
+				current.Content = append(current.Content,
+					&yaml.Node{
+						Kind:  yaml.ScalarNode,
+						Value: k,
+						Tag:   "!!str",
+					},
+					&yaml.Node{
+						Kind:  yaml.ScalarNode,
+						Value: value.(string),
+						Tag:   "!!str",
+					},
+				)
+				return nil
 			} else {
-				newParent = append(*current, yaml.MapItem{Key: k, Value: newCurrent})
+				current.Content = append(current.Content,
+					&yaml.Node{
+						Kind:  yaml.ScalarNode,
+						Value: k,
+						Tag:   "!!str",
+					},
+					&yaml.Node{
+						Kind:    yaml.MappingNode,
+						Content: []*yaml.Node{},
+					},
+				)
+				current = current.Content[len(current.Content)-1]
 			}
-
-			if parent == nil {
-				*currentValues = newParent
-			} else {
-				// if parentIdx has not been set (parent element is also new), set it to the last element
-				if parentIdx == -1 {
-					parentIdx = len(*parent) - 1
-					if parentIdx < 0 {
-						parentIdx = 0
-					}
-				}
-				(*parent)[parentIdx].Value = newParent
-			}
-
-			parent = &newParent
-			current = &newCurrent
-			parentIdx = -1
 		}
 	}
 
 	return err
 }
 
-func getWriteBackConfig(app *v1alpha1.Application, kubeClient *kube.KubernetesClient, argoClient ArgoCD) (*WriteBackConfig, error) {
+func getWriteBackConfig(app *v1alpha1.Application, kubeClient *kube.ImageUpdaterKubernetesClient, argoClient ArgoCD) (*WriteBackConfig, error) {
 	wbc := &WriteBackConfig{}
 	// Default write-back is to use Argo CD API
 	wbc.Method = WriteBackApplication
@@ -651,8 +784,10 @@ func getWriteBackConfig(app *v1alpha1.Application, kubeClient *kube.KubernetesCl
 	return wbc, nil
 }
 
-func parseDefaultTarget(appNamespace string, appName string, path string, kubeClient *kube.KubernetesClient) string {
-	if (appNamespace == kubeClient.Namespace) || (appNamespace == "") {
+func parseDefaultTarget(appNamespace string, appName string, path string, kubeClient *kube.ImageUpdaterKubernetesClient) string {
+	// when running from command line and argocd-namespace is not set, e.g., via --argocd-namespace option,
+	// kubeClient.Namespace may be resolved to "default". In this case, also use the file name without namespace
+	if appNamespace == kubeClient.KubeClient.Namespace || kubeClient.KubeClient.Namespace == "default" || appNamespace == "" {
 		defaultTargetFile := fmt.Sprintf(common.DefaultTargetFilePatternWithoutNamespace, appName)
 		return filepath.Join(path, defaultTargetFile)
 	} else {
@@ -682,7 +817,7 @@ func parseTarget(writeBackTarget string, sourcePath string) string {
 	}
 }
 
-func parseGitConfig(app *v1alpha1.Application, kubeClient *kube.KubernetesClient, wbc *WriteBackConfig, creds string) error {
+func parseGitConfig(app *v1alpha1.Application, kubeClient *kube.ImageUpdaterKubernetesClient, wbc *WriteBackConfig, creds string) error {
 	branch, ok := app.Annotations[common.GitBranchAnnotation]
 	if ok {
 		branches := strings.Split(strings.TrimSpace(branch), ":")
@@ -740,4 +875,18 @@ func commitChanges(app *v1alpha1.Application, wbc *WriteBackConfig, changeList [
 		return fmt.Errorf("unknown write back method set: %d", wbc.Method)
 	}
 	return nil
+}
+
+func isOnlyWhitespace(data []byte) bool {
+	if len(data) == 0 {
+		return true
+	}
+	for i := 0; i < len(data); {
+		r, size := utf8.DecodeRune(data[i:])
+		if !unicode.IsSpace(r) {
+			return false
+		}
+		i += size
+	}
+	return true
 }

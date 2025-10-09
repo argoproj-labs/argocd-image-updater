@@ -22,7 +22,7 @@ supported yet (and maybe never will).
 Read
 [the documentation](https://argocd-image-updater.readthedocs.io/en/stable/)
 for more information on how to setup and run Argo CD Image Updater and to get
-known to it's features and limitations.
+known to its features and limitations.
 
 Above URL points to the documentation for the current release. If you are
 interested in documentation of upcoming features, check out the

@@ -14,11 +14,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
       - name: Setup Golang
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
-          go-version: '1.22'
+          go-version-file: go.mod
       - name: Download all Go modules
         run: |
           go mod download
@@ -31,7 +31,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
       - name: Install Kustomize v2
         run: |
           set -xo pipefail
@@ -58,46 +58,51 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
       - name: Setup Golang
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
-          go-version: '1.22'
-          cache: false
+          go-version-file: go.mod
         env:
           GO111MODULE: off
-      - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v6
+      - name: Run golangci-lint on main module
+        uses: golangci/golangci-lint-action@v8
         with:
-          version: v1.59.1
+          version: v2.5.0
           args: --timeout 5m
+      - name: Run golangci-lint on registry-scanner
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.5.0
+          args: --timeout 5m
+          working-directory: registry-scanner
   test:
     name: Ensure unit tests are passing
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
       - name: Setup Golang
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
-          go-version: '1.22'
+          go-version-file: go.mod
       - name: Run tests
         env:
           GNUPG_DISABLED: true
         run: |
           make test
       - name: Upload code coverage information to codecov.io
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          file: coverage.out
+          files: coverage.out
 
   test-manifests:
     name: Ensure kubernetes manifests conform to their schema
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
       - name: Install Kubeconform
         run: |
           set -xo pipefail
@@ -117,3 +122,34 @@ jobs:
       - name: Run manifest tests
         run: |
           make test-manifests
+
+  registry-scanner:
+    name: Ensure registry-scanner Go modules synchronicity and run tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./registry-scanner
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+      - name: Setup Golang
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: Download all Go modules
+        run: |
+          go mod download
+      - name: Check for tidyness of go.mod and go.sum
+        run: |
+          go mod tidy
+          git diff --exit-code -- .
+      - name: Run tests
+        env:
+          GNUPG_DISABLED: true
+        run: |
+          make test
+      - name: Upload code coverage information to codecov.io
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: coverage.out

@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/argoproj-labs/argocd-image-updater/pkg/log"
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
 )
 
 // CommitOptions holds options for a git commit operation

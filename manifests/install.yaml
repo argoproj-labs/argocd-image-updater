@@ -167,6 +167,12 @@ spec:
               key: argocd.token
               name: argocd-image-updater-secret
               optional: true
+        - name: IMAGE_UPDATER_INTERVAL
+          valueFrom:
+            configMapKeyRef:
+              key: interval
+              name: argocd-image-updater-config
+              optional: true
         - name: IMAGE_UPDATER_LOGLEVEL
           valueFrom:
             configMapKeyRef:
@@ -207,6 +213,54 @@ spec:
           valueFrom:
             configMapKeyRef:
               key: kube.events
+              name: argocd-image-updater-config
+              optional: true
+        - name: ARGOCD_LOGLEVEL
+          valueFrom:
+            configMapKeyRef:
+              key: log.level
+              name: argocd-image-updater-config
+              optional: true
+        - name: ENABLE_WEBHOOK
+          valueFrom:
+            configMapKeyRef:
+              key: webhook.enable
+              name: argocd-image-updater-config
+              optional: true
+        - name: WEBHOOK_PORT
+          valueFrom:
+            configMapKeyRef:
+              key: webhook.port
+              name: argocd-image-updater-config
+              optional: true
+        - name: QUAY_WEBHOOK_SECRET
+          valueFrom:
+            configMapKeyRef:
+              key: webhook.quay-secret
+              name: argocd-image-updater-secret
+              optional: true
+        - name: DOCKER_WEBHOOK_SECRET
+          valueFrom:
+            secretKeyRef:
+              key: webhook.docker-secret
+              name: argocd-image-updater-secret
+              optional: true
+        - name: GHCR_WEBHOOK_SECRET
+          valueFrom:
+            secretKeyRef:
+              key: webhook.ghcr-secret
+              name: argocd-image-updater-secret
+              optional: true
+        - name: HARBOR_WEBHOOK_SECRET
+          valueFrom:
+            secretKeyRef:
+              key: webhook.harbor-secret
+              name: argocd-image-updater-secret
+              optional: true
+        - name: WEBHOOK_RATELIMIT_ALLOWED
+          valueFrom:
+            configMapKeyRef:
+              key: webhook.ratelimit-allowed
               name: argocd-image-updater-config
               optional: true
         image: quay.io/argoprojlabs/argocd-image-updater:latest

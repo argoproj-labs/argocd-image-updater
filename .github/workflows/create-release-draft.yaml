@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Get version
         id: version
@@ -22,9 +22,9 @@ jobs:
           echo version=$(cat VERSION) >> $GITHUB_OUTPUT
 
       - name: Setup Golang
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
-          go-version: '1.22'
+          go-version-file: go.mod
 
       - name: Build binaries
         id: binaries

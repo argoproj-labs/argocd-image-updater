@@ -3,10 +3,11 @@ package main
 import (
 	"os"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/argoproj-labs/argocd-image-updater/pkg/env"
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/env"
 )
 
 // TestNewRunCommand tests various flags and their default values.
@@ -23,8 +24,9 @@ func TestNewRunCommand(t *testing.T) {
 	asser.Equal(env.GetStringVal("ARGOCD_PLAINTEXT", "false"), runCmd.Flag("argocd-plaintext").Value.String())
 	asser.Equal("", runCmd.Flag("argocd-auth-token").Value.String())
 	asser.Equal("false", runCmd.Flag("dry-run").Value.String())
-	asser.Equal("2m0s", runCmd.Flag("interval").Value.String())
+	asser.Equal(env.GetDurationVal("IMAGE_UPDATER_INTERVAL", 2*time.Minute).String(), runCmd.Flag("interval").Value.String())
 	asser.Equal(env.GetStringVal("IMAGE_UPDATER_LOGLEVEL", "info"), runCmd.Flag("loglevel").Value.String())
+	asser.Equal(env.GetStringVal("IMAGE_UPDATER_LOGFORMAT", "text"), runCmd.Flag("logformat").Value.String())
 	asser.Equal("", runCmd.Flag("kubeconfig").Value.String())
 	asser.Equal("8080", runCmd.Flag("health-port").Value.String())
 	asser.Equal("8081", runCmd.Flag("metrics-port").Value.String())

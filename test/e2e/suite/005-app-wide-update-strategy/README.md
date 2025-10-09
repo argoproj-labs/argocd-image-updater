@@ -6,7 +6,7 @@ To run this individual test case,
 
 * make sure both docker daemon and k8s cluster is running
 * `cd $HOME/go/src/image-updater/test/e2e`
-* `SRC_DIR=$HOME/go/src/image-updater kubectl kuttl test --namespace argocd-image-updater-e2e --timeout 120 --test 005-app-wide-update-strategy`
+* `SRC_DIR=$HOME/go/src/argocd-image-updater kubectl kuttl test --namespace argocd-image-updater-e2e --timeout 120 --test 005-app-wide-update-strategy`
 
 Test output:
 ```bash

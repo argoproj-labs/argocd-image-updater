@@ -59,6 +59,12 @@ spec:
               name: argocd-image-updater-secret
               key: argocd.token
               optional: true
+        - name: IMAGE_UPDATER_INTERVAL
+          valueFrom:
+            configMapKeyRef:
+              key: interval
+              name: argocd-image-updater-config
+              optional: true
         - name: IMAGE_UPDATER_LOGLEVEL
           valueFrom:
             configMapKeyRef:
@@ -101,6 +107,54 @@ spec:
               name: argocd-image-updater-config
               key: kube.events
               optional: true
+        - name: ARGOCD_LOGLEVEL
+          valueFrom:
+            configMapKeyRef:
+              name: argocd-image-updater-config
+              key: log.level
+              optional: true
+        - name: ENABLE_WEBHOOK
+          valueFrom:
+              configMapKeyRef:
+                name: argocd-image-updater-config
+                key: webhook.enable
+                optional: true
+        - name: WEBHOOK_PORT
+          valueFrom:
+            configMapKeyRef:
+                name: argocd-image-updater-config
+                key: webhook.port
+                optional: true
+        - name: QUAY_WEBHOOK_SECRET
+          valueFrom:
+            configMapKeyRef:
+                name: argocd-image-updater-secret
+                key: webhook.quay-secret
+                optional: true
+        - name: DOCKER_WEBHOOK_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: argocd-image-updater-secret
+              key: webhook.docker-secret
+              optional: true
+        - name: GHCR_WEBHOOK_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: argocd-image-updater-secret
+              key: webhook.ghcr-secret
+              optional: true
+        - name: HARBOR_WEBHOOK_SECRET
+          valueFrom:
+              secretKeyRef:
+                name: argocd-image-updater-secret
+                key: webhook.harbor-secret
+                optional: true
+        - name: WEBHOOK_RATELIMIT_ALLOWED
+          valueFrom:
+            configMapKeyRef:
+                name: argocd-image-updater-config
+                key: webhook.ratelimit-allowed
+                optional: true
         livenessProbe:
           httpGet:
             path: /healthz
