@@ -2,9 +2,9 @@ apiVersion: argocd-image-updater.argoproj.io/v1alpha1
 kind: ImageUpdater
 metadata:
   labels:
-    app.kubernetes.io/name: image-updater
+    app.kubernetes.io/name: argocd-image-updater
     app.kubernetes.io/managed-by: kustomize
-  name: imageupdater-sample
+  name: argocd-image-updater-sample
 spec:
   namespace: argocd
   commonUpdateSettings:
@@ -21,11 +21,11 @@ spec:
       branch: "main"
       writeBackTarget: "helmvalues:/helm/config/test-values.yaml" # OR "kustomization:/config/overlays/bar" OR "helmvalues:/{{ .app.path.path }}/values.yaml" - for ApplicationSet.
   applicationRefs:
-    - namePattern: "image-updater-001"
+    - namePattern: "app-001"
       images:
         - alias: "test1"
           imageName: "test:1.1.0"
-    - namePattern: "image-updater-001"
+    - namePattern: "app-002"
       commonUpdateSettings:
         updateStrategy: "latest" # Default strategy if not specified per image
         forceUpdate: true
@@ -61,7 +61,7 @@ spec:
       #        kustomize:
       #          name: "quay.io/argoproj/argocd"
 
-    - namePattern: "image-updater-*"
+    - namePattern: "app-*"
       labelSelectors:
         matchLabels:
           app: "true"
@@ -74,7 +74,7 @@ spec:
       images:
         - alias: "nginx"
           imageName: "nginx:1.17.10"
-    - namePattern: "app3"
+    - namePattern: "app-003"
       images:
         - alias: "nginx"
           imageName: "nginx:1.17.10"

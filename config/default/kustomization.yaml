@@ -1,12 +1,5 @@
 # Adds namespace to all resources.
-namespace: image-updater-system
-
-# Value of this field is prepended to the
-# names of all resources, e.g. a deployment named
-# "wordpress" becomes "alices-wordpress".
-# Note that it should also match with the prefix (text before '-') of the namespace
-# field above.
-namePrefix: image-updater-
+namespace: argocd-image-updater-system
 
 # Labels to add to all resources and selectors.
 #labels:
@@ -15,9 +8,9 @@ namePrefix: image-updater-
 #    someName: someValue
 
 resources:
-- image-updater-cm.yaml
-- image-updater-secret.yaml
-- image-updater-ssh-config.yaml
+- argocd-image-updater-cm.yaml
+- argocd-image-updater-secret.yaml
+- argocd-image-updater-ssh-config.yaml
 - ../crd
 - ../rbac
 - ../manager
@@ -29,7 +22,7 @@ resources:
 # [PROMETHEUS] To enable prometheus monitor, uncomment all sections with 'PROMETHEUS'.
 #- ../prometheus
 # [METRICS] Expose the controller manager metrics service.
-- metrics_service.yaml
+#- metrics_service.yaml
 # [NETWORK POLICY] Protect the /metrics endpoint and Webhook Server with NetworkPolicy.
 # Only Pod(s) running a namespace labeled with 'metrics: enabled' will be able to gather the metrics.
 # Only CR(s) which requires webhooks and are applied on namespaces labeled with 'webhooks: enabled' will

@@ -3,9 +3,9 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
   labels:
-    app.kubernetes.io/name: image-updater
+    app.kubernetes.io/name: argocd-image-updater
     app.kubernetes.io/managed-by: kustomize
-  name: leader-election-role
+  name: argocd-image-updater-leader-election-role
 rules:
 - apiGroups:
   - ""

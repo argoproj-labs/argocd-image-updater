@@ -4,7 +4,7 @@ metadata:
   labels:
     app.kubernetes.io/name: argocd-image-updater
     app.kubernetes.io/part-of: argocd-image-updater
-    app.kubernetes.io/component: controller
+    app.kubernetes.io/component: argocd-image-updater-controller
   name: argocd-image-updater
 rules:
   - apiGroups:
