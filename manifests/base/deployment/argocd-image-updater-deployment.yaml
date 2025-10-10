@@ -127,7 +127,7 @@ spec:
                 optional: true
         - name: QUAY_WEBHOOK_SECRET
           valueFrom:
-            configMapKeyRef:
+            secretKeyRef:
                 name: argocd-image-updater-secret
                 key: webhook.quay-secret
                 optional: true
@@ -170,6 +170,13 @@ spec:
             port: 8080
           initialDelaySeconds: 3
           periodSeconds: 30
+        resources:
+          limits:
+            cpu: 500m
+            memory: 128Mi
+          requests:
+            cpu: 10m
+            memory: 64Mi
         securityContext:
           allowPrivilegeEscalation: false
           capabilities:
