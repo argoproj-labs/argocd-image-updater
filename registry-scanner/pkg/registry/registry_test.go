@@ -27,7 +27,7 @@ func Test_GetTags(t *testing.T) {
 		regClient.On("NewRepository", mock.Anything).Return(nil)
 		regClient.On("Tags", mock.Anything).Return([]string{"1.2.0", "1.2.1", "1.2.2"}, nil)
 
-		ep, err := GetRegistryEndpoint("")
+		ep, err := GetRegistryEndpoint(&image.ContainerImage{RegistryURL: ""})
 		require.NoError(t, err)
 
 		img := image.NewFromIdentifier("foo/bar:1.2.0")
@@ -46,7 +46,7 @@ func Test_GetTags(t *testing.T) {
 		regClient.On("NewRepository", mock.Anything).Return(nil)
 		regClient.On("Tags", mock.Anything).Return([]string{"1.2.0", "1.2.1", "1.2.2"}, nil)
 
-		ep, err := GetRegistryEndpoint("")
+		ep, err := GetRegistryEndpoint(&image.ContainerImage{RegistryURL: ""})
 		require.NoError(t, err)
 
 		img := image.NewFromIdentifier("foo/bar:1.2.0")
@@ -69,7 +69,7 @@ func Test_GetTags(t *testing.T) {
 		regClient.On("NewRepository", mock.Anything).Return(nil)
 		regClient.On("Tags", mock.Anything).Return([]string{"1.2.0", "1.2.1", "1.2.2"}, nil)
 
-		ep, err := GetRegistryEndpoint("")
+		ep, err := GetRegistryEndpoint(&image.ContainerImage{RegistryURL: ""})
 		require.NoError(t, err)
 
 		img := image.NewFromIdentifier("foo/bar:1.2.0")
@@ -101,7 +101,7 @@ func Test_GetTags(t *testing.T) {
 		regClient.On("ManifestForTag", mock.Anything, mock.Anything).Return(meta1, nil)
 		regClient.On("TagMetadata", mock.Anything, mock.Anything).Return(&tag.TagInfo{}, nil)
 
-		ep, err := GetRegistryEndpoint("")
+		ep, err := GetRegistryEndpoint(&image.ContainerImage{RegistryURL: ""})
 		require.NoError(t, err)
 		ep.Cache.ClearCache()
 
@@ -136,7 +136,7 @@ registries:
 		// New registry configuration
 		err = AddRegistryEndpointFromConfig(epl.Items[0])
 		require.NoError(t, err)
-		ep, err := GetRegistryEndpoint("ghcr.io")
+		ep, err := GetRegistryEndpoint(&image.ContainerImage{RegistryURL: "ghcr.io"})
 		require.NoError(t, err)
 		require.NotEqual(t, 0, ep.CredsExpire)
 
@@ -176,7 +176,7 @@ echo "AWS:mock-token-12345"
 		err := os.WriteFile(scriptPath, []byte(scriptContent), 0755)
 		require.NoError(t, err)
 		defer os.Remove(scriptPath)
-		
+
 		// Clean up any existing log file
 		os.Remove("/tmp/test_ecr_calls.log")
 		defer os.Remove("/tmp/test_ecr_calls.log")
@@ -196,7 +196,7 @@ registries:
 		// Add registry configuration
 		err = AddRegistryEndpointFromConfig(epl.Items[0])
 		require.NoError(t, err)
-		ep, err := GetRegistryEndpoint("123456789.dkr.ecr.us-east-1.amazonaws.com")
+		ep, err := GetRegistryEndpoint(&image.ContainerImage{RegistryURL: "123456789.dkr.ecr.us-east-1.amazonaws.com"})
 		require.NoError(t, err)
 
 		// Force credentials to be expired
@@ -239,7 +239,7 @@ registries:
 
 	t.Run("Concurrent calls with unexpired credentials should not refetch", func(t *testing.T) {
 		var callCount int32
-		
+
 		epYAML := `
 registries:
 - name: Test Registry
@@ -250,15 +250,15 @@ registries:
 `
 		epl, err := ParseRegistryConfiguration(epYAML)
 		require.NoError(t, err)
-		
+
 		err = AddRegistryEndpointFromConfig(epl.Items[0])
 		require.NoError(t, err)
-		ep, err := GetRegistryEndpoint("test.registry.io")
+		ep, err := GetRegistryEndpoint(&image.ContainerImage{RegistryURL: "test.registry.io"})
 		require.NoError(t, err)
 
 		// Set environment variable
 		os.Setenv("TEST_CONCURRENT_CREDS", "user:pass")
-		
+
 		// First call to set credentials
 		err = ep.SetEndpointCredentials(nil)
 		require.NoError(t, err)

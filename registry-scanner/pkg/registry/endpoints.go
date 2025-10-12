@@ -10,8 +10,10 @@ import (
 	"time"
 
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/cache"
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/image"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
 
+	memcache "github.com/patrickmn/go-cache"
 	"go.uber.org/ratelimit"
 	"golang.org/x/sync/singleflight"
 )
@@ -121,6 +123,10 @@ var registryLock sync.RWMutex
 // credentialGroup ensures only one credential refresh happens per registry
 var credentialGroup singleflight.Group
 
+// Transport cache to avoid creating new transports for each request
+// Using go-cache with 30 minute expiration and 10 minute cleanup interval
+var transportCache = memcache.New(30*time.Minute, 10*time.Minute)
+
 func AddRegistryEndpointFromConfig(epc RegistryConfiguration) error {
 	ep := NewRegistryEndpoint(epc.Prefix, epc.Name, epc.ApiURL, epc.Credentials, epc.DefaultNS, epc.Insecure, TagListSortFromString(epc.TagSortMode), epc.Limit, epc.CredsExpire)
 	return AddRegistryEndpoint(ep)
@@ -183,8 +189,28 @@ func inferRegistryEndpointFromPrefix(prefix string) *RegistryEndpoint {
 	return NewRegistryEndpoint(prefix, prefix, apiURL, "", "", false, TagListSortUnsorted, 20, 0)
 }
 
-// GetRegistryEndpoint retrieves the endpoint information for the given prefix
-func GetRegistryEndpoint(prefix string) (*RegistryEndpoint, error) {
+// findRegistryEndpointByImage finds registry by prefix based on full image name
+func findRegistryEndpointByImage(img *image.ContainerImage) (ep *RegistryEndpoint) {
+	imgName := fmt.Sprintf("%s/%s", img.RegistryURL, img.ImageName)
+	log.Debugf("Try to find endpoint by image: %s", imgName)
+	registryLock.RLock()
+	defer registryLock.RUnlock()
+
+	for _, registry := range registries {
+		matchRegistryPrefix := strings.HasPrefix(imgName, registry.RegistryPrefix)
+		if (ep == nil && matchRegistryPrefix) || (matchRegistryPrefix && len(registry.RegistryPrefix) > len(ep.RegistryPrefix)) {
+			log.Debugf("Selected registry: '%s' (last selection in log - final)", registry.RegistryName)
+			ep = registry
+		}
+	}
+
+	return
+}
+
+// GetRegistryEndpoint retrieves the endpoint information for the given image
+func GetRegistryEndpoint(img *image.ContainerImage) (*RegistryEndpoint, error) {
+	prefix := img.RegistryURL
+
 	if prefix == "" {
 		if defaultRegistry == nil {
 			return nil, fmt.Errorf("no default endpoint configured")
@@ -200,8 +226,13 @@ func GetRegistryEndpoint(prefix string) (*RegistryEndpoint, error) {
 	if ok {
 		return registry, nil
 	} else {
+		ep := findRegistryEndpointByImage(img)
+		if ep != nil {
+			return ep, nil
+		}
+
 		var err error
-		ep := inferRegistryEndpointFromPrefix(prefix)
+		ep = inferRegistryEndpointFromPrefix(prefix)
 		if ep != nil {
 			err = AddRegistryEndpoint(ep)
 		} else {
@@ -239,7 +270,7 @@ func GetDefaultRegistry() *RegistryEndpoint {
 // SetRegistryEndpointCredentials allows to change the credentials used for
 // endpoint access for existing RegistryEndpoint configuration
 func SetRegistryEndpointCredentials(prefix, credentials string) error {
-	registry, err := GetRegistryEndpoint(prefix)
+	registry, err := GetRegistryEndpoint(&image.ContainerImage{RegistryURL: prefix})
 	if err != nil {
 		return err
 	}
@@ -282,16 +313,76 @@ func (ep *RegistryEndpoint) DeepCopy() *RegistryEndpoint {
 	return newEp
 }
 
+// ClearTransportCache clears the transport cache
+// This is useful when registry configuration changes
+func ClearTransportCache() {
+	transportCache.Flush()
+}
+
 // GetTransport returns a transport object for this endpoint
+// Implements connection pooling and reuse to avoid creating new transports for each request
 func (ep *RegistryEndpoint) GetTransport() *http.Transport {
+	// Check if we have a cached transport for this registry
+	if cachedTransport, found := transportCache.Get(ep.RegistryAPI); found {
+		transport := cachedTransport.(*http.Transport)
+		log.Debugf("Transport cache HIT for %s: %p", ep.RegistryAPI, transport)
+
+		// Validate that the transport is still usable
+		if isTransportValid(transport) {
+			return transport
+		}
+
+		// Transport is stale, remove it from cache
+		log.Debugf("Transport for %s is stale, removing from cache", ep.RegistryAPI)
+		transportCache.Delete(ep.RegistryAPI)
+	}
+
+	log.Debugf("Transport cache MISS for %s", ep.RegistryAPI)
+
+	// Create a new transport with optimized connection pool settings
 	tlsC := &tls.Config{}
 	if ep.Insecure {
 		tlsC.InsecureSkipVerify = true
 	}
-	return &http.Transport{
-		Proxy:           http.ProxyFromEnvironment,
-		TLSClientConfig: tlsC,
+
+	// Create transport with aggressive timeout and connection management
+	transport := &http.Transport{
+		Proxy:                 http.ProxyFromEnvironment,
+		TLSClientConfig:       tlsC,
+		MaxIdleConns:          20,               // Reduced global max idle connections
+		MaxIdleConnsPerHost:   5,                // Reduced per-host connections
+		IdleConnTimeout:       90 * time.Second, // Reduced idle timeout
+		TLSHandshakeTimeout:   10 * time.Second, // Reduced TLS timeout
+		ExpectContinueTimeout: 1 * time.Second,  // Expect-Continue timeout
+		DisableKeepAlives:     false,            // Enable HTTP Keep-Alive
+		ForceAttemptHTTP2:     true,             // Enable HTTP/2 if available
+		// Critical timeout settings to prevent hanging connections
+		ResponseHeaderTimeout: 10 * time.Second, // Response header timeout
+		MaxConnsPerHost:       10,               // Limit total connections per host
 	}
+
+	// Cache the transport for reuse with default expiration (30 minutes)
+	transportCache.Set(ep.RegistryAPI, transport, memcache.DefaultExpiration)
+	log.Debugf("Cached NEW transport for %s: %p", ep.RegistryAPI, transport)
+
+	return transport
+}
+
+// isTransportValid checks if a cached transport is still valid and usable
+func isTransportValid(transport *http.Transport) bool {
+	// Basic validation - check if transport is not nil and has valid configuration
+	if transport == nil {
+		return false
+	}
+
+	// Check if the transport's connection settings are reasonable
+	// This is a simple validation, more sophisticated checks could be added
+	if transport.MaxIdleConns < 0 || transport.MaxIdleConnsPerHost < 0 {
+		return false
+	}
+
+	// Transport appears to be valid
+	return true
 }
 
 // init initializes the registry configuration

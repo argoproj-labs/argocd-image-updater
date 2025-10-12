@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/argoproj/argo-cd/v2/util/askpass"
+	"github.com/argoproj/argo-cd/v3/util/askpass"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/grpc"

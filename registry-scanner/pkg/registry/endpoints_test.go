@@ -2,10 +2,13 @@ package registry
 
 import (
 	"fmt"
+	"net/http"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/image"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -116,21 +119,21 @@ func Test_GetEndpoints(t *testing.T) {
 	RestoreDefaultRegistryConfiguration()
 
 	t.Run("Get default endpoint", func(t *testing.T) {
-		ep, err := GetRegistryEndpoint("")
+		ep, err := GetRegistryEndpoint(&image.ContainerImage{RegistryURL: ""})
 		require.NoError(t, err)
 		require.NotNil(t, ep)
 		assert.Equal(t, "docker.io", ep.RegistryPrefix)
 	})
 
 	t.Run("Get GCR endpoint", func(t *testing.T) {
-		ep, err := GetRegistryEndpoint("gcr.io")
+		ep, err := GetRegistryEndpoint(&image.ContainerImage{RegistryURL: "gcr.io"})
 		require.NoError(t, err)
 		require.NotNil(t, ep)
 		assert.Equal(t, ep.RegistryPrefix, "gcr.io")
 	})
 
 	t.Run("Infer endpoint", func(t *testing.T) {
-		ep, err := GetRegistryEndpoint("foobar.com")
+		ep, err := GetRegistryEndpoint(&image.ContainerImage{RegistryURL: "foobar.com"})
 		require.NoError(t, err)
 		require.NotNil(t, ep)
 		assert.Equal(t, "foobar.com", ep.RegistryPrefix)
@@ -146,7 +149,7 @@ func Test_AddEndpoint(t *testing.T) {
 		require.NoError(t, err)
 	})
 	t.Run("Get example.com endpoint", func(t *testing.T) {
-		ep, err := GetRegistryEndpoint("example.com")
+		ep, err := GetRegistryEndpoint(&image.ContainerImage{RegistryURL: "example.com"})
 		require.NoError(t, err)
 		require.NotNil(t, ep)
 		assert.Equal(t, ep.RegistryPrefix, "example.com")
@@ -159,7 +162,7 @@ func Test_AddEndpoint(t *testing.T) {
 	t.Run("Change existing endpoint", func(t *testing.T) {
 		err := AddRegistryEndpoint(NewRegistryEndpoint("example.com", "Example", "https://example.com", "", "library", true, TagListSortLatestFirst, 5, 0))
 		require.NoError(t, err)
-		ep, err := GetRegistryEndpoint("example.com")
+		ep, err := GetRegistryEndpoint(&image.ContainerImage{RegistryURL: "example.com"})
 		require.NoError(t, err)
 		require.NotNil(t, ep)
 		assert.Equal(t, ep.Insecure, true)
@@ -174,7 +177,7 @@ func Test_SetEndpointCredentials(t *testing.T) {
 	t.Run("Set credentials on default registry", func(t *testing.T) {
 		err := SetRegistryEndpointCredentials("", "env:FOOBAR")
 		require.NoError(t, err)
-		ep, err := GetRegistryEndpoint("")
+		ep, err := GetRegistryEndpoint(&image.ContainerImage{RegistryURL: ""})
 		require.NoError(t, err)
 		require.NotNil(t, ep)
 		assert.Equal(t, ep.Credentials, "env:FOOBAR")
@@ -183,10 +186,28 @@ func Test_SetEndpointCredentials(t *testing.T) {
 	t.Run("Unset credentials on default registry", func(t *testing.T) {
 		err := SetRegistryEndpointCredentials("", "")
 		require.NoError(t, err)
-		ep, err := GetRegistryEndpoint("")
+		ep, err := GetRegistryEndpoint(&image.ContainerImage{RegistryURL: ""})
 		require.NoError(t, err)
 		require.NotNil(t, ep)
 		assert.Equal(t, ep.Credentials, "")
+	})
+}
+
+func Test_SelectRegistryBasedOnMaxPrefixContains(t *testing.T) {
+	RestoreDefaultRegistryConfiguration()
+
+	t.Run("Set credentials on default registry", func(t *testing.T) {
+		err := SetRegistryEndpointCredentials("foo.bar/prefix1", "env:FOOBAR_1")
+		require.NoError(t, err)
+		err = SetRegistryEndpointCredentials("foo.bar/prefix2", "env:FOOBAR_2")
+		require.NoError(t, err)
+		err = SetRegistryEndpointCredentials("foo.bar/prefix1/sub-prefix", "env:FOOBAR_SUB_1")
+		require.NoError(t, err)
+
+		ep, err := GetRegistryEndpoint(&image.ContainerImage{RegistryURL: "foo.bar", ImageName: "prefix1/sub-prefix/image"})
+		require.NoError(t, err)
+		require.NotNil(t, ep)
+		assert.Equal(t, ep.Credentials, "env:FOOBAR_SUB_1")
 	})
 }
 
@@ -199,7 +220,7 @@ func Test_EndpointConcurrentAccess(t *testing.T) {
 		wg.Add(numRuns)
 		for i := 0; i < numRuns; i++ {
 			go func() {
-				ep, err := GetRegistryEndpoint("gcr.io")
+				ep, err := GetRegistryEndpoint(&image.ContainerImage{RegistryURL: "gcr.io"})
 				require.NoError(t, err)
 				require.NotNil(t, ep)
 				wg.Done()
@@ -217,7 +238,7 @@ func Test_EndpointConcurrentAccess(t *testing.T) {
 				creds := fmt.Sprintf("secret:foo/secret-%d", i)
 				err := SetRegistryEndpointCredentials("", creds)
 				require.NoError(t, err)
-				ep, err := GetRegistryEndpoint("")
+				ep, err := GetRegistryEndpoint(&image.ContainerImage{RegistryURL: ""})
 				require.NoError(t, err)
 				require.NotNil(t, ep)
 				wg.Done()
@@ -235,7 +256,7 @@ func Test_SetDefault(t *testing.T) {
 	assert.Equal(t, "docker.io", dep.RegistryPrefix)
 	assert.True(t, dep.IsDefault)
 
-	ep, err := GetRegistryEndpoint("ghcr.io")
+	ep, err := GetRegistryEndpoint(&image.ContainerImage{RegistryURL: "ghcr.io"})
 	require.NoError(t, err)
 	require.NotNil(t, ep)
 	require.False(t, ep.IsDefault)
@@ -249,7 +270,7 @@ func Test_SetDefault(t *testing.T) {
 
 func Test_DeepCopy(t *testing.T) {
 	t.Run("DeepCopy endpoint object", func(t *testing.T) {
-		ep, err := GetRegistryEndpoint("docker.pkg.github.com")
+		ep, err := GetRegistryEndpoint(&image.ContainerImage{RegistryURL: "docker.pkg.github.com"})
 		require.NoError(t, err)
 		require.NotNil(t, ep)
 		newEp := ep.DeepCopy()
@@ -287,9 +308,12 @@ func Test_GetTagListSortFromString(t *testing.T) {
 }
 
 func TestGetTransport(t *testing.T) {
+	ClearTransportCache()
+	defer ClearTransportCache()
 	t.Run("returns transport with default TLS config when Insecure is false", func(t *testing.T) {
 		endpoint := &RegistryEndpoint{
-			Insecure: false,
+			RegistryAPI: "secure-registry",
+			Insecure:    false,
 		}
 		transport := endpoint.GetTransport()
 
@@ -300,7 +324,8 @@ func TestGetTransport(t *testing.T) {
 
 	t.Run("returns transport with insecure TLS config when Insecure is true", func(t *testing.T) {
 		endpoint := &RegistryEndpoint{
-			Insecure: true,
+			RegistryAPI: "insecure-registry",
+			Insecure:    true,
 		}
 		transport := endpoint.GetTransport()
 
@@ -350,5 +375,53 @@ func TestAddRegistryEndpointFromConfig(t *testing.T) {
 		}
 		err := AddRegistryEndpointFromConfig(config)
 		require.NoError(t, err)
+	})
+}
+
+// Test for transport caching and retrieval
+func TestTransportCache(t *testing.T) {
+	// Clean up cache before and after test
+	ClearTransportCache()
+	defer ClearTransportCache()
+
+	endpoint := &RegistryEndpoint{
+		RegistryAPI: "https://example.com",
+		Insecure:    false,
+	}
+
+	// 1. Test cache MISS and creation of a new transport
+	transport1 := endpoint.GetTransport()
+	assert.NotNil(t, transport1, "Transport should not be nil on cache miss")
+
+	// 2. Test cache HIT
+	transport2 := endpoint.GetTransport()
+	assert.NotNil(t, transport2, "Transport should not be nil on cache hit")
+	assert.Same(t, transport1, transport2, "Should retrieve the same transport instance from cache")
+
+	// 3. Test cache clearing
+	ClearTransportCache()
+	transport3 := endpoint.GetTransport()
+	assert.NotSame(t, transport1, transport3, "Should create a new transport after cache is cleared")
+}
+
+// Test for transport validation logic
+func TestIsTransportValid(t *testing.T) {
+	t.Run("valid transport", func(t *testing.T) {
+		transport := &http.Transport{
+			MaxIdleConns:        10,
+			MaxIdleConnsPerHost: 5,
+		}
+		assert.True(t, isTransportValid(transport), "Should be a valid transport")
+	})
+
+	t.Run("nil transport", func(t *testing.T) {
+		assert.False(t, isTransportValid(nil), "Nil transport should be invalid")
+	})
+
+	t.Run("invalid connection settings", func(t *testing.T) {
+		transport := &http.Transport{
+			MaxIdleConns: -1,
+		}
+		assert.False(t, isTransportValid(transport), "Transport with invalid settings should be invalid")
 	})
 }

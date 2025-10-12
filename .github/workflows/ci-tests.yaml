@@ -14,9 +14,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
       - name: Setup Golang
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
       - name: Download all Go modules
@@ -31,7 +31,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
       - name: Install Kustomize v2
         run: |
           set -xo pipefail
@@ -58,27 +58,32 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
       - name: Setup Golang
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
-          cache: false
         env:
           GO111MODULE: off
-      - name: Run golangci-lint
+      - name: Run golangci-lint on main module
         uses: golangci/golangci-lint-action@v8
         with:
-          version: v2.1.6
+          version: v2.5.0
           args: --timeout 5m
+      - name: Run golangci-lint on registry-scanner
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.5.0
+          args: --timeout 5m
+          working-directory: registry-scanner
   test:
     name: Ensure unit tests are passing
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
       - name: Setup Golang
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
       - name: Run tests
@@ -97,7 +102,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
       - name: Install Kubeconform
         run: |
           set -xo pipefail
@@ -121,16 +126,18 @@ jobs:
   registry-scanner:
     name: Ensure registry-scanner Go modules synchronicity and run tests
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./registry-scanner
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
       - name: Setup Golang
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
       - name: Download all Go modules
         run: |
-          cd registry-scanner
           go mod download
       - name: Check for tidyness of go.mod and go.sum
         run: |
