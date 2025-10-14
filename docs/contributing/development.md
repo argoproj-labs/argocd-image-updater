@@ -22,9 +22,9 @@ important targets are:
 
 * `test` - this will run all the unit tests
 
-* `image` - this will build the Docker image
+* `docker-build` - this will build the Docker image
 
-* `manifests` - this will build the installation manifests for Kubernetes from
+* `build-installer` - this will build the installation manifests for Kubernetes from
   the Kustomize sources
 
 * `serve-docs` will render the documentation at localhost:8000 (requires Docker)
