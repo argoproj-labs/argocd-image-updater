@@ -146,12 +146,60 @@ func TestGHCRWebhook_Parse(t *testing.T) {
 		expectError  bool
 	}{
 		{
-			name: "valid registry package published event",
+			name: "valid registry package published event with lower case package_type",
 			payload: `{
 				"action": "published",
 				"package": {
 					"name": "myapp",
 					"package_type": "container",
+					"owner": {
+						"login": "myuser"
+					},
+					"package_version": {
+						"name": "v1.0.0",
+						"container_metadata": {
+							"tag": {
+								"name": "v1.0.0"
+							}
+						}
+					}
+				}
+			}`,
+			expectedRepo: "myuser/myapp",
+			expectedTag:  "v1.0.0",
+			expectError:  false,
+		},
+		{
+			name: "another valid registry package published event with upper case package_type",
+			payload: `{
+				"action": "published",
+				"package": {
+					"name": "myapp",
+					"package_type": "CONTAINER",
+					"owner": {
+						"login": "myuser"
+					},
+					"package_version": {
+						"name": "v1.0.0",
+						"container_metadata": {
+							"tag": {
+								"name": "v1.0.0"
+							}
+						}
+					}
+				}
+			}`,
+			expectedRepo: "myuser/myapp",
+			expectedTag:  "v1.0.0",
+			expectError:  false,
+		},
+		{
+			name: "another valid registry package published event with camel case package_type",
+			payload: `{
+				"action": "published",
+				"package": {
+					"name": "myapp",
+					"package_type": "Container",
 					"owner": {
 						"login": "myuser"
 					},
