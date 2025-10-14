@@ -108,7 +108,7 @@ func (g *GHCRWebhook) Parse(r *http.Request) (*WebhookEvent, error) {
 	}
 
 	// Only process container packages
-	if payload.Package.PackageType != "container" {
+	if strings.ToLower(payload.Package.PackageType) != "container" {
 		return nil, fmt.Errorf("unsupported package type: %s", payload.Package.PackageType)
 	}
 
