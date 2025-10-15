@@ -9,11 +9,12 @@
 
 Argo CD Image Updater is a tool to automatically update the container
 images of Kubernetes workloads which are managed by Argo CD. In a nutshell,
-it will track image versions specified by annotations on the Argo CD
-Application resources and update them by setting parameter overrides using
-the Argo CD API.
+it uses a dedicated ImageUpdater CR to define how to track and
+update image versions for your Argo CD Applications. When a new image is available,
+it updates the application by setting parameter overrides, either through the
+Argo CD API or by committing changes to a Git repository.
 
-Currently it will only work with applications that are built using *Kustomize*
+Currently, it will only work with applications that are built using *Kustomize*
 or *Helm* tooling. Applications built from plain YAML or custom tools are not
 supported yet (and maybe never will). 
 
@@ -21,12 +22,12 @@ supported yet (and maybe never will).
 
 Read
 [the documentation](https://argocd-image-updater.readthedocs.io/en/stable/)
-for more information on how to setup and run Argo CD Image Updater and to get
+for more information on how to set up and run Argo CD Image Updater and to get
 known to its features and limitations.
 
 Above URL points to the documentation for the current release. If you are
 interested in documentation of upcoming features, check out the
-[the latest documentation](https://argocd-image-updater.readthedocs.io/en/latest/)
+[latest documentation](https://argocd-image-updater.readthedocs.io/en/latest/)
 which is up-to-date with the master branch.
 
 ## Current status
@@ -36,11 +37,6 @@ yet for *critical* production workloads, but feel free to give it a spin.
 
 We're very interested in feedback on usability and the user experience as well
 as in bug discoveries and enhancement requests.
-
-**Important note:** Until the first stable version (i.e. `v1.0`) is released,
-breaking changes between the releases must be expected. We will do our best
-to indicate all breaking changes (and how to un-break them) in the
-[Changelog](CHANGELOG.md)
 
 ## Contributing
 
@@ -58,9 +54,6 @@ Also, if you want to contribute code, please make sure that your code
 * is well commented,
 * and last but not least is compatible with our license and CLA
 
-Please note that in the current early phase of development, the code base is
-a fast moving target and lots of refactoring will happen constantly.
-
 ## License
 
 `argocd-image-updater` is open source software, released under the
@@ -68,7 +61,7 @@ a fast moving target and lots of refactoring will happen constantly.
 
 ## Things that are planned (roadmap)
 
-The following things are on the roadmap until the `v1.0` release
+The following things are on the roadmap
 
 * [ ] Extend Argo CD functionality to be able to update images for other types
   of applications.
