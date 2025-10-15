@@ -73,6 +73,9 @@ If opting for such an approach, you should make sure that:
 
 ## Metrics
 
+!!!note "Under Construction"
+    Please note that Prometheus metrics are not available in the initial CRD-based versions of Argo CD Image Updater. The functionality described below is planned for a future release. We are keeping this section as a reference for when metrics are re-introduced.
+
 Starting with v0.8.0, Argo CD Image Updater exports Prometheus-compatible
 metrics on a dedicated endpoint, which by default listens on TCP port 8081
 and serves data from `/metrics` path. This endpoint is exposed by a service
