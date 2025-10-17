@@ -1,9 +1,22 @@
+.github
 .vscode/
 .idea/
 .DS_Store
+bin/
 dist/
+**/docs/
+**/vendor/
+registry-scanner/config
+registry-scanner/hack
+registry-scanner/test
+scripts/
+test/e2e
+test/testdata
+test/utils
 *.iml
 # delve debug binaries
 cmd/**/debug
 debug.test
 **/coverage.out
+**/CHANGELOG.md
+**/README.md

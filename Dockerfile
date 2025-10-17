@@ -7,7 +7,7 @@ RUN mkdir -p /src/argocd-image-updater
 WORKDIR /src/argocd-image-updater
 # Copy the Go Modules manifests
 COPY go.mod go.sum ./
-COPY registry-scanner ./
+COPY registry-scanner/go.mod registry-scanner/go.sum ./registry-scanner/
 # cache deps before building and copying source so that we don't need to re-download as much
 # and so that source changes don't invalidate our downloaded layer
 RUN go mod download
