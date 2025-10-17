@@ -498,7 +498,6 @@ func marshalParamsOverride(app *v1alpha1.Application, originalData []byte) ([]by
 							Kind:    yaml.MappingNode,
 							Tag:     "!!map",
 							Content: []*yaml.Node{},
-							Style:   yaml.LiteralStyle,
 						},
 					},
 				}
