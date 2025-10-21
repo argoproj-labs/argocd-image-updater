@@ -522,6 +522,15 @@ func SetHelmImage(app *v1alpha1.Application, newImage *image.ContainerImage) err
 	return nil
 }
 
+// recordOriginalTag saves the original tag as an annotation (digest strategy only)
+func RecordOriginalTag(app *v1alpha1.Application, imageName, originalTag string) {
+    if app.Annotations == nil {
+        app.Annotations = make(map[string]string)
+    }
+    key := fmt.Sprintf("argocd-image-updater.argoproj.io/original-tag.%s", imageName)
+    app.Annotations[key] = originalTag
+}
+
 // GetKustomizeImage gets the image set in Application source matching new image
 // or an empty string if match is not found
 func GetKustomizeImage(app *v1alpha1.Application, newImage *image.ContainerImage) (string, error) {
