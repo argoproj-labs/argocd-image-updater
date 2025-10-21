@@ -30,7 +30,7 @@ if [[ ! $(git ls-remote --exit-code ${REMOTE_URL} ${RELEASE_BRANCH}) ]]; then
 fi
 
 ### look for latest on-branch tag
-PREVIOUS_TAG=$(git describe --tags --abbrev=0 --match "*${RELEASE_BRANCH##release-}*" 2>/dev/null || true)
+PREVIOUS_TAG=$(git describe --tags --abbrev=0 --match "v${RELEASE_BRANCH##release-}*" 2>/dev/null || true)
 
 if [ -n "$PREVIOUS_TAG" ]; then
     NEW_VERSION=$(semver-cli inc patch $PREVIOUS_TAG)
@@ -41,13 +41,13 @@ fi
 echo $NEW_VERSION > VERSION
 IMAGE_TAG="v${NEW_VERSION}"
 # Update manifests
-make manifests
+make build-installer
 
 # Create PR for the release
 git checkout -b "feat/new-version-${NEW_VERSION}"
 
 # Commit and push the changes
-git commit -m "Release ${NEW_VERSION}" VERSION manifests/
+git commit -m "Release ${NEW_VERSION}" VERSION config/
 git push --set-upstream ${REMOTE} "feat/new-version-${NEW_VERSION}"
 gh label --repo ${REMOTE_URL} create --force release
 gh pr --repo ${REMOTE_URL} \
