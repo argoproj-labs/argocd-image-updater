@@ -37,9 +37,9 @@ jobs:
             docker login --username "${DOCKER_USERNAME}" --password "${DOCKER_PASSWORD}" quay.io
           fi
           if [[ "${MULTIARCH}" = "yes" ]]; then
-            IMAGE_PUSH=${PUSH} make multiarch-image
+            IMAGE_PUSH=${PUSH} make docker-buildx
           else
-            make image
+            make docker-build
           fi
         working-directory: argocd-image-updater
         env:
