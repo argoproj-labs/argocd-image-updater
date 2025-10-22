@@ -2,14 +2,11 @@
 
 ## Installation methods
 
-It is recommended to run Argo CD Image Updater in the same Kubernetes
-cluster that Argo CD is running in, however, this is not a requirement. In fact,
-it is not even a requirement to run Argo CD Image Updater within a Kubernetes
-cluster or with access to any Kubernetes cluster at all.
+The Argo CD Image Updater controller **must** be run in the same Kubernetes cluster where your Argo CD `Application` resources are managed. The current controller architecture does not support connecting to a remote Kubernetes cluster to manage applications.
 
-However, some features might not work without accessing Kubernetes.
+While the `argocd-image-updater` binary can be run locally from your workstation for one-time updates (see `Running locally` section), the standard and supported installation for continuous, automated updates is as a controller inside your cluster.
 
-## <a name="install-kubernetes"></a>Installing as Kubernetes workload in Argo CD namespace
+## <a name="install-kubernetes"></a>Installing as Kubernetes workload
 
 The most straightforward way to run the image updater is to install it as a Kubernetes workload using the provided installation manifests. These manifests will set up the controller in its own dedicated namespace (`argocd-image-updater-system` by default).
 Don't worry, without creating any ImageUpdater custom resources, it will not start modifying your workloads yet.
