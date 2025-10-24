@@ -455,6 +455,21 @@ func marshalParamsOverride(app *v1alpha1.Application, originalData []byte) ([]by
 	appType := GetApplicationType(app)
 	appSource := getApplicationSource(app)
 
+	// Special handling for multi-source applications with helmvalues write-back target
+	// We need to ensure we get the Helm source, not the Kustomize source
+	if strings.HasPrefix(app.Annotations[common.WriteBackTargetAnnotation], common.HelmPrefix) {
+		// For helmvalues write-back, we need the Helm source specifically
+		if app.Spec.HasMultipleSources() {
+			for _, s := range app.Spec.Sources {
+				if s.Helm != nil {
+					appSource = &s
+					appType = ApplicationTypeHelm
+					break
+				}
+			}
+		}
+	}
+
 	switch appType {
 	case ApplicationTypeKustomize:
 		if appSource.Kustomize == nil {
