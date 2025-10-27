@@ -4,11 +4,11 @@ on:
     branches:
     - 'master'
     - 'release-*'
-    - 'crd'
+    - 'master-annotation-based'
   pull_request:
     branches:
     - 'master'
-    - 'crd'
+    - 'master-annotation-based'
 
 jobs:
   check-go:
