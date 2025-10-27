@@ -3,10 +3,10 @@ name: Build and push image
 on:
   push:
     branches:
-      - master
+      - master-annotation-based
   pull_request:
     branches:
-      - master
+      - master-annotation-based
     types: [ labeled, unlabeled, opened, synchronize, reopened ]
 
 jobs:
