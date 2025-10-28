@@ -44,6 +44,7 @@ func (ep *RegistryEndpoint) GetTags(ctx context.Context, img *image.ContainerIma
 	}
 	err = regClient.NewRepository(nameInRegistry)
 	if err != nil {
+		logCtx.Errorf("Failed to create repository for image '%s': %v", nameInRegistry, err)
 		return nil, err
 	}
 	tTags, err := regClient.Tags(ctx)
