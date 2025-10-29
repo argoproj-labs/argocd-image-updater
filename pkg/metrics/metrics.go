@@ -1,12 +1,12 @@
 package metrics
 
 import (
-	"fmt"
-	"net/http"
+	"sync"
+
+	crmetrics "sigs.k8s.io/controller-runtime/pkg/metrics"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 type Metrics struct {
@@ -15,7 +15,10 @@ type Metrics struct {
 	Clients      *ClientMetrics
 }
 
-var defaultMetrics *Metrics
+var (
+	defaultMetrics  *Metrics
+	initMetricsOnce sync.Once
+)
 
 // EndpointMetrics stores metrics for registry endpoints
 type EndpointMetrics struct {
@@ -25,40 +28,27 @@ type EndpointMetrics struct {
 
 // ApplicationMetrics stores metrics for applications
 type ApplicationMetrics struct {
-	applicationsTotal        prometheus.Gauge
+	ApplicationsTotal        *prometheus.GaugeVec
 	imagesWatchedTotal       *prometheus.GaugeVec
 	imagesUpdatedTotal       *prometheus.CounterVec
 	imagesUpdatedErrorsTotal *prometheus.CounterVec
 }
 
-// ClientMetrics stores metrics for K8s and ArgoCD clients
+// ClientMetrics stores metrics for K8s client
 type ClientMetrics struct {
-	argoCDRequestsTotal        *prometheus.CounterVec
-	argoCDRequestsErrorsTotal  *prometheus.CounterVec
 	kubeAPIRequestsTotal       prometheus.Counter
 	kubeAPIRequestsErrorsTotal prometheus.Counter
-}
-
-// StartMetricsServer starts a new HTTP server for metrics on given port
-func StartMetricsServer(port int) chan error {
-	errCh := make(chan error)
-	go func() {
-		sm := http.NewServeMux()
-		sm.Handle("/metrics", promhttp.Handler())
-		errCh <- http.ListenAndServe(fmt.Sprintf(":%d", port), sm)
-	}()
-	return errCh
 }
 
 // NewEndpointMetrics returns a new endpoint metrics object
 func NewEndpointMetrics() *EndpointMetrics {
 	metrics := &EndpointMetrics{}
 
-	metrics.requestsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+	metrics.requestsTotal = promauto.With(crmetrics.Registry).NewCounterVec(prometheus.CounterOpts{
 		Name: "argocd_image_updater_registry_requests_total",
 		Help: "The total number of requests to this endpoint",
 	}, []string{"registry"})
-	metrics.requestsFailed = promauto.NewCounterVec(prometheus.CounterOpts{
+	metrics.requestsFailed = promauto.With(crmetrics.Registry).NewCounterVec(prometheus.CounterOpts{
 		Name: "argocd_image_updater_registry_requests_failed_total",
 		Help: "The number of failed requests to this endpoint",
 	}, []string{"registry"})
@@ -70,22 +60,22 @@ func NewEndpointMetrics() *EndpointMetrics {
 func NewApplicationsMetrics() *ApplicationMetrics {
 	metrics := &ApplicationMetrics{}
 
-	metrics.applicationsTotal = promauto.NewGauge(prometheus.GaugeOpts{
+	metrics.ApplicationsTotal = promauto.With(crmetrics.Registry).NewGaugeVec(prometheus.GaugeOpts{
 		Name: "argocd_image_updater_applications_watched_total",
-		Help: "The total number of applications watched by Argo CD Image Updater",
-	})
+		Help: "The total number of applications watched by Argo CD Image Updater CR",
+	}, []string{"image_updater_cr_name", "image_updater_cr_namespace"})
 
-	metrics.imagesWatchedTotal = promauto.NewGaugeVec(prometheus.GaugeOpts{
+	metrics.imagesWatchedTotal = promauto.With(crmetrics.Registry).NewGaugeVec(prometheus.GaugeOpts{
 		Name: "argocd_image_updater_images_watched_total",
 		Help: "Number of images watched by Argo CD Image Updater",
 	}, []string{"application"})
 
-	metrics.imagesUpdatedTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+	metrics.imagesUpdatedTotal = promauto.With(crmetrics.Registry).NewCounterVec(prometheus.CounterOpts{
 		Name: "argocd_image_updater_images_updated_total",
 		Help: "Number of images updates by Argo CD Image Updater",
 	}, []string{"application"})
 
-	metrics.imagesUpdatedErrorsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+	metrics.imagesUpdatedErrorsTotal = promauto.With(crmetrics.Registry).NewCounterVec(prometheus.CounterOpts{
 		Name: "argocd_image_updater_images_errors_total",
 		Help: "Number of errors reported by Argo CD Image Updater",
 	}, []string{"application"})
@@ -97,24 +87,14 @@ func NewApplicationsMetrics() *ApplicationMetrics {
 func NewClientMetrics() *ClientMetrics {
 	metrics := &ClientMetrics{}
 
-	metrics.argoCDRequestsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
-		Name: "argocd_image_updater_argocd_api_requests_total",
-		Help: "The total number of Argo CD API requests performed by the Argo CD Image Updater",
-	}, []string{"argocd_server"})
-
-	metrics.argoCDRequestsErrorsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
-		Name: "argocd_image_updater_argocd_api_errors_total",
-		Help: "The total number of Argo CD API requests resulting in error",
-	}, []string{"argocd_server"})
-
-	metrics.kubeAPIRequestsTotal = promauto.NewCounter(prometheus.CounterOpts{
+	metrics.kubeAPIRequestsTotal = promauto.With(crmetrics.Registry).NewCounter(prometheus.CounterOpts{
 		Name: "argocd_image_updater_k8s_api_requests_total",
-		Help: "The total number of Argo CD API requests resulting in error",
+		Help: "The total number of K8S API requests performed by the Argo CD Image Updater",
 	})
 
-	metrics.kubeAPIRequestsErrorsTotal = promauto.NewCounter(prometheus.CounterOpts{
+	metrics.kubeAPIRequestsErrorsTotal = promauto.With(crmetrics.Registry).NewCounter(prometheus.CounterOpts{
 		Name: "argocd_image_updater_k8s_api_errors_total",
-		Help: "The total number of Argo CD API requests resulting in error",
+		Help: "The total number of K8S API requests resulting in error",
 	})
 
 	return metrics
@@ -161,8 +141,18 @@ func (epm *EndpointMetrics) IncreaseRequest(registryURL string, isFailed bool) {
 }
 
 // SetNumberOfApplications sets the total number of currently watched applications
-func (apm *ApplicationMetrics) SetNumberOfApplications(num int) {
-	apm.applicationsTotal.Set(float64(num))
+func (apm *ApplicationMetrics) SetNumberOfApplications(name, namespace string, num int) {
+	apm.ApplicationsTotal.WithLabelValues(name, namespace).Set(float64(num))
+}
+
+// RemoveNumberOfApplications removes the application gauge for a given CR
+func (apm *ApplicationMetrics) RemoveNumberOfApplications(name, namespace string) {
+	apm.ApplicationsTotal.DeleteLabelValues(name, namespace)
+}
+
+// ResetApplicationsTotal resets the total number of applications to handle deletion
+func (apm *ApplicationMetrics) ResetApplicationsTotal() {
+	apm.ApplicationsTotal.Reset()
 }
 
 // SetNumberOfImagesWatched sets the total number of currently watched images for given application
@@ -180,14 +170,11 @@ func (apm *ApplicationMetrics) IncreaseUpdateErrors(application string, by int) 
 	apm.imagesUpdatedErrorsTotal.WithLabelValues(application).Add(float64(by))
 }
 
-// IncreaseArgoCDClientRequest increases the number of Argo CD API requests for given server
-func (cpm *ClientMetrics) IncreaseArgoCDClientRequest(server string, by int) {
-	cpm.argoCDRequestsTotal.WithLabelValues(server).Add(float64(by))
-}
-
-// IncreaseArgoCDClientError increases the number of failed Argo CD API requests for given server
-func (cpm *ClientMetrics) IncreaseArgoCDClientError(server string, by int) {
-	cpm.argoCDRequestsErrorsTotal.WithLabelValues(server).Add(float64(by))
+// RemoveNumberOfImages removes the images gauge for a given CR
+func (apm *ApplicationMetrics) RemoveNumberOfImages(application string) {
+	apm.imagesWatchedTotal.DeleteLabelValues(application)
+	apm.imagesUpdatedTotal.DeleteLabelValues(application)
+	apm.imagesUpdatedErrorsTotal.DeleteLabelValues(application)
 }
 
 // IncreaseK8sClientRequest increases the number of K8s API requests
@@ -195,12 +182,14 @@ func (cpm *ClientMetrics) IncreaseK8sClientRequest(by int) {
 	cpm.kubeAPIRequestsTotal.Add(float64(by))
 }
 
-// IncreaseK8sClientRequest increases the number of failed K8s API requests
+// IncreaseK8sClientError increases the number of failed K8s API requests
 func (cpm *ClientMetrics) IncreaseK8sClientError(by int) {
 	cpm.kubeAPIRequestsErrorsTotal.Add(float64(by))
 }
 
 // InitMetrics initializes the global metrics objects
 func InitMetrics() {
-	defaultMetrics = NewMetrics()
+	initMetricsOnce.Do(func() {
+		defaultMetrics = NewMetrics()
+	})
 }

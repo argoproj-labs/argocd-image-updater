@@ -83,9 +83,16 @@ func (s *WebhookServer) Stop(ctx context.Context) error {
 
 // handleHealth handles health check requests
 func (s *WebhookServer) handleHealth(w http.ResponseWriter, r *http.Request) {
+	webhookLogger := log.Log().WithFields(logrus.Fields{
+		"logger": "webhook",
+	})
+	ctx := log.ContextWithLogger(r.Context(), webhookLogger)
+	baseLogger := log.LoggerFromContext(ctx).
+		WithField("webhook_remote", r.RemoteAddr)
+
 	w.WriteHeader(http.StatusOK)
 	if _, err := w.Write([]byte("OK")); err != nil {
-		log.Errorf("Failed to write health check response: %v", err)
+		baseLogger.Errorf("Failed to write health check response: %v", err)
 	}
 }
 

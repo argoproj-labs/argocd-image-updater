@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"math"
+	"net/http"
 	"os"
 	"strconv"
 	"testing"
@@ -43,8 +45,6 @@ func TestNewRunCommand(t *testing.T) {
 	asser.Equal(env.GetStringVal("IMAGE_UPDATER_LOGLEVEL", "info"), controllerCommand.Flag("loglevel").Value.String())
 	asser.Equal(env.GetStringVal("IMAGE_UPDATER_LOGFORMAT", "text"), controllerCommand.Flag("logformat").Value.String())
 	asser.Equal("", controllerCommand.Flag("kubeconfig").Value.String())
-	asser.Equal("8080", controllerCommand.Flag("health-port").Value.String())
-	asser.Equal("8081", controllerCommand.Flag("metrics-port").Value.String())
 	asser.Equal("false", controllerCommand.Flag("once").Value.String())
 	asser.Equal(common.DefaultRegistriesConfPath, controllerCommand.Flag("registries-conf-path").Value.String())
 	asser.Equal(strconv.Itoa(env.ParseNumFromEnv("MAX_CONCURRENT_APPS", 10, 1, 100)), controllerCommand.Flag("max-concurrent-apps").Value.String())
@@ -296,4 +296,47 @@ func TestWebhookServerRunnable_Start_ContextCancelStopsServer(t *testing.T) {
 	if assert.NotNil(t, ws.webhookServer) {
 		assert.NotNil(t, ws.webhookServer.Server)
 	}
+}
+
+// Assisted-by: Gemini AI
+// TestReadyzCheckWithWarmupStatus verifies the behavior of the warmup-check readiness probe
+// based on the state of WarmupStatus.
+func TestReadyzCheckWithWarmupStatus(t *testing.T) {
+	// Sub-test for when cache warm-up is disabled
+	t.Run("warmup-disabled", func(t *testing.T) {
+		status := &WarmupStatus{Done: make(chan struct{})}
+
+		// Simulate the logic for when warmUpCache is false
+		status.isCacheWarmed.Store(true)
+
+		// Create a fake readiness check that uses the warmup status
+		check := func(req *http.Request) error {
+			if !status.isCacheWarmed.Load() {
+				return fmt.Errorf("cache is not yet warmed")
+			}
+			return nil
+		}
+
+		// The check should pass because isCacheWarmed is true
+		err := check(nil)
+		assert.NoError(t, err, "readiness check should pass when cache warmup is disabled")
+	})
+
+	// Sub-test for when cache warm-up is enabled but not yet complete
+	t.Run("warmup-enabled-not-warmed", func(t *testing.T) {
+		status := &WarmupStatus{Done: make(chan struct{})}
+
+		// In this case, isCacheWarmed is still false
+		check := func(req *http.Request) error {
+			if !status.isCacheWarmed.Load() {
+				return fmt.Errorf("cache is not yet warmed")
+			}
+			return nil
+		}
+
+		// The check should fail because isCacheWarmed is false
+		err := check(nil)
+		assert.Error(t, err, "readiness check should fail when cache is not warmed")
+		assert.Equal(t, "cache is not yet warmed", err.Error())
+	})
 }

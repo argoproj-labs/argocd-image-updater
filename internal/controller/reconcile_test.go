@@ -7,6 +7,8 @@ import (
 	"time"
 
 	argocdapi "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -16,12 +18,14 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	clifake "sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	crmetrics "sigs.k8s.io/controller-runtime/pkg/metrics"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	argocdimageupdaterv1alpha1 "github.com/argoproj-labs/argocd-image-updater/api/v1alpha1"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/argocd"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/argocd/mocks"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/kube"
+	"github.com/argoproj-labs/argocd-image-updater/pkg/metrics"
 	regokube "github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/kube"
 )
 
@@ -244,6 +248,7 @@ func TestImageUpdaterReconciler_Reconcile(t *testing.T) {
 		},
 	}
 
+	metrics.InitMetrics()
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Setup
@@ -2127,6 +2132,7 @@ func TestImageUpdaterReconciler_RunImageUpdater(t *testing.T) {
 	require.NoError(t, err)
 	ctx := context.Background()
 	fakeClientset := fake.NewClientset()
+	metrics.InitMetrics()
 
 	// Base CR for tests
 	baseCr := &argocdimageupdaterv1alpha1.ImageUpdater{
@@ -2205,6 +2211,7 @@ func TestImageUpdaterReconciler_RunImageUpdater(t *testing.T) {
 		expectedResult      argocd.ImageUpdaterResult
 		expectErr           bool
 		expectedErrContains string
+		postCheck           func(t *testing.T, r *ImageUpdaterReconciler, cr *argocdimageupdaterv1alpha1.ImageUpdater, res argocd.ImageUpdaterResult)
 	}{
 		{
 			name: "one matching application",
@@ -2214,6 +2221,21 @@ func TestImageUpdaterReconciler_RunImageUpdater(t *testing.T) {
 				NumApplicationsProcessed: 1,
 				NumImagesConsidered:      1,
 				NumErrors:                0,
+				NumImagesUpdated:         1,
+			},
+		},
+		{
+			name: "sets number of applications metric",
+			cr:   baseCr,
+			apps: []client.Object{matchingApp, nonMatchingApp},
+			postCheck: func(t *testing.T, r *ImageUpdaterReconciler, cr *argocdimageupdaterv1alpha1.ImageUpdater, res argocd.ImageUpdaterResult) {
+				expectedVal := float64(1)
+				metricVal := testutil.ToFloat64(metrics.Applications().ApplicationsTotal.WithLabelValues(cr.Name, cr.Namespace))
+				assert.Equal(t, expectedVal, metricVal)
+			},
+			expectedResult: argocd.ImageUpdaterResult{
+				NumApplicationsProcessed: 1,
+				NumImagesConsidered:      1,
 				NumImagesUpdated:         1,
 			},
 		},
@@ -2347,6 +2369,10 @@ func TestImageUpdaterReconciler_RunImageUpdater(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// Reset and re-init metrics for every test run to ensure isolation
+			crmetrics.Registry = prometheus.NewRegistry()
+			metrics.InitMetrics()
+
 			fakeKubeClient := clifake.NewClientBuilder().WithScheme(s).WithObjects(tt.apps...).Build()
 			reconciler := &ImageUpdaterReconciler{
 				Client: fakeKubeClient,
@@ -2372,6 +2398,10 @@ func TestImageUpdaterReconciler_RunImageUpdater(t *testing.T) {
 				require.NoError(t, err)
 				assert.Equal(t, tt.expectedResult, result)
 			}
+
+			if tt.postCheck != nil {
+				tt.postCheck(t, reconciler, tt.cr, result)
+			}
 		})
 	}
 }
@@ -2388,6 +2418,7 @@ func TestImageUpdaterReconciler_ProcessImageUpdaterCRs(t *testing.T) {
 	require.NoError(t, err)
 	ctx := context.Background()
 	fakeClientset := fake.NewClientset()
+	metrics.InitMetrics()
 
 	// A helper function to create a new reconciler for each test run
 	newTestReconciler := func(cli client.Client) *ImageUpdaterReconciler {
