@@ -1,312 +1,291 @@
-# Argo CD Image Updater
+# Argo CD Image Updater - Custom Fork
 
-![Integration tests](https://github.com/argoproj-labs/argocd-image-updater/workflows/Integration%20tests/badge.svg?branch=master&event=push)
-[![Documentation Status](https://readthedocs.org/projects/argocd-image-updater/badge/?version=latest)](https://argocd-image-updater.readthedocs.io/en/latest/?badge=latest)
-[![codecov](https://codecov.io/gh/argoproj-labs/argocd-image-updater/branch/master/graph/badge.svg)](https://codecov.io/gh/argoproj-labs/argocd-image-updater)
-[![Go Report Card](https://goreportcard.com/badge/github.com/argoproj-labs/argocd-image-updater)](https://goreportcard.com/report/github.com/argoproj-labs/argocd-image-updater)
+> **⚠️ Custom Version Notice**  
+> This is a **custom fork** of Argo CD Image Updater, enhanced specifically for **continuous mode** operation in large-scale Kubernetes environments. This fork includes performance optimizations, better resource management, and enhanced observability that are not present in the upstream version.
 
-## Introduction
+## 🎯 Why This Fork?
 
-Argo CD Image Updater is a tool to automatically update the container
-images of Kubernetes workloads which are managed by Argo CD. In a nutshell,
-it will track image versions specified by annotations on the Argo CD
-Application resources and update them by setting parameter overrides using
-the Argo CD API.
+This custom version addresses performance and scalability limitations of the stock Argo CD Image Updater for production workloads with many applications:
 
-Currently it will only work with applications that are built using *Kustomize*
-or *Helm* tooling. Applications built from plain YAML or custom tools are not
-supported yet (and maybe never will). 
+- **⚡ Continuous Mode**: Independent per-application scheduling instead of batch cycles
+- **🔧 Performance Tuning**: Optimized registry connections, retries, and concurrency
+- **📊 Enhanced Metrics**: Better observability for debugging and monitoring
+- **🛡️ Resource Management**: Prevents port exhaustion, connection leaks, and memory issues
+- **🚀 Production Ready**: Battle-tested in large fleets with hundreds of applications
 
-## Documentation
+## 📈 Architecture Comparison
 
-Read
-[the documentation](https://argocd-image-updater.readthedocs.io/en/stable/)
-for more information on how to setup and run Argo CD Image Updater and to get
-known to its features and limitations.
-
-Above URL points to the documentation for the current release. If you are
-interested in documentation of upcoming features, check out the
-[the latest documentation](https://argocd-image-updater.readthedocs.io/en/latest/)
-which is up-to-date with the master branch.
-
-## Current status
-
-Argo CD Image Updater is under active development. We would not recommend it
-yet for *critical* production workloads, but feel free to give it a spin.
-
-We're very interested in feedback on usability and the user experience as well
-as in bug discoveries and enhancement requests.
-
-**Important note:** Until the first stable version (i.e. `v1.0`) is released,
-breaking changes between the releases must be expected. We will do our best
-to indicate all breaking changes (and how to un-break them) in the
-[Changelog](CHANGELOG.md)
-
-## Contributing
-
-You are welcome to contribute to this project by means of raising issues for
-bugs, sending & discussing enhancement ideas or by contributing code via pull
-requests.
-
-In any case, please be sure that you have read & understood the currently known
-design limitations before raising issues.
-
-Also, if you want to contribute code, please make sure that your code
-
-* has its functionality covered by unit tests (coverage goal is 80%),
-* is correctly linted,
-* is well commented,
-* and last but not least is compatible with our license and CLA
-
-Please note that in the current early phase of development, the code base is
-a fast moving target and lots of refactoring will happen constantly.
-
-## License
-
-`argocd-image-updater` is open source software, released under the
-[Apache 2.0 license](https://www.apache.org/licenses/LICENSE-2.0)
-
-## Things that are planned (roadmap)
-
-The following things are on the roadmap until the `v1.0` release
-
-* [ ] Extend Argo CD functionality to be able to update images for other types
-  of applications.
-
-* [x] Extend Argo CD functionality to write back to Git
-
-* [ ] Provide web hook support to trigger update check for a given image
-
-* [x] Use concurrency for updating multiple applications at once
-
-* [x] Improve error handling
-
-* [x] Support for image tags with i.e. Git commit SHAs
-
-For more details, check out the
-[v1.0.0 milestone](https://github.com/argoproj-labs/argocd-image-updater/milestone/1)
-
-## Frequently asked questions
-
-**Does it write back the changes to Git?**
-
-We're happy to announce that as of `v0.9.0` and Argo CD `v1.9.0`, Argo CD
-Image Updater is able to commit changes to Git. It will not modify your
-application's manifests, but instead writes
-[Parameter Overrides](https://argoproj.github.io/argo-cd/user-guide/parameters/#store-overrides-in-git)
-to the repository.
-
-We think that this is a good compromise between functionality (have everything
-in Git) and ease-of-use (minimize conflicts).
-
-**Are there plans to extend functionality beyond Kustomize or Helm?**
-
-Not yet, since we are dependent upon what functionality Argo CD provides for
-these types of applications.
-
-**Will it ever be fully integrated with Argo CD?**
-
-In the current form, probably not. If there is community demand for it, let's
-see how we can make this happen.
-
-There is [an open proposal](https://github.com/argoproj/argo-cd/issues/7385) to migrate this project into the `argoproj` org (out
-of the `argoproj-labs` org) and include it in the installation of Argo CD.
-
-## Engineering notes (recent changes)
-
-- Registry client hardening
-  - HTTP transport reuse per registry with sane timeouts (keep-alives, capped TLS and response header timeouts) to cut connection churn under load.
-  - Singleflight-style deduplication and jittered retries (tags, manifests) with per-attempt deadlines to avoid thundering herds and reduce /jwt/auth pressure.
-
-- Git write-back throughput
-  - Per-repo serialization to eliminate races in monorepos, plus a batched writer that coalesces multiple intents into a single commit/push per repo/branch.
-  - Multi-branch grouping: intents for different write branches never mix; each branch flushes independently.
-  - Logs reflect queued writes: look for "Queuing N parameter update(s) … (git write pending)" and the subsequent commit/push logs.
-
-- Scheduling and fairness
-  - Optional scheduler flags to prioritize apps: `--schedule` (default|lru|fail-first), `--cooldown` (deprioritize recently successful apps), and `--per-repo-cap` (cap updates per repo per cycle).
-  - Goal: prevent a hot monorepo from starving others while keeping high concurrency.
-
-- Operational guidance
-  - Concurrency: set `--max-concurrency` roughly ≥ number of active repos; monorepos serialize on their writer, others proceed in parallel.
-  - Registry RPS: tune `limit` in `registries.conf` (e.g., 30–50 RPS) and monitor latency/429s.
-  - Monorepos: prefer per-app write branches or rely on batching to reduce fetch/commit/push churn.
-
-Flags added
-- `--schedule` (env: IMAGE_UPDATER_SCHEDULE): default|lru|fail-first
-- `--cooldown` (env: IMAGE_UPDATER_COOLDOWN): duration (e.g., 30s)
-- `--per-repo-cap` (env: IMAGE_UPDATER_PER_REPO_CAP): integer (0 = unlimited)
-
-Notes
-- For tests or legacy behavior, set `GIT_BATCH_DISABLE=true` to perform immediate (non-batched) write-back.
-
-## Runtime limits and tunables (quick reference)
-
-- Max concurrency: `--max-concurrency` (env `IMAGE_UPDATER_MAX_CONCURRENCY`), default 10; set `0` for auto sizing
-- Interval: `--interval` (env `IMAGE_UPDATER_INTERVAL`), default 2m
-- Scheduler: `--schedule` (env `IMAGE_UPDATER_SCHEDULE`), default `default` (also `lru|fail-first`)
-- Cooldown: `--cooldown` (env `IMAGE_UPDATER_COOLDOWN`), default 0
-- Per-repo cap: `--per-repo-cap` (env `IMAGE_UPDATER_PER_REPO_CAP`), default 0
-- Git retries (env): `ARGOCD_GIT_ATTEMPTS_COUNT`=3, `ARGOCD_GIT_RETRY_DURATION`=500ms, `ARGOCD_GIT_RETRY_MAX_DURATION`=10s, `ARGOCD_GIT_RETRY_FACTOR`=2
-- Registry rate limit: `limit` in `registries.conf` per registry, default 20 rps if unspecified
-- HTTP transport (per registry, defaults): MaxIdleConns=1000, MaxIdleConnsPerHost=200, MaxConnsPerHost=30, IdleConnTimeout=90s, TLSHandshakeTimeout=10s, ResponseHeaderTimeout=60s, ExpectContinueTimeout=1s, HTTP/2 on HTTPS via ALPN
-
-### What each tunable does and affects
-
-- max-concurrency (env: `IMAGE_UPDATER_MAX_CONCURRENCY`)
-  - What: Number of parallel application update workers.
-  - Affects: CPU, concurrent registry and Git load. Higher = faster coverage but more burst pressure.
-  - Guidance: 100–250 for large fleets; raise cautiously per registry/Git capacity.
-
-- interval (env: `IMAGE_UPDATER_INTERVAL`)
-  - What: Delay between full update cycles (0 = run once).
-  - Affects: How often apps are reconsidered; shorter intervals increase burstiness and port churn.
-  - Guidance: 30–60s is a good balance; 15s can cause synchronized spikes.
-
-- schedule (env: `IMAGE_UPDATER_SCHEDULE`)
-  - What: Processing order: `default` | `lru` | `fail-first`.
-  - Affects: Fairness and recovery. `lru` prioritizes least-recently updated; `fail-first` attacks recent failures first.
-
-- cooldown (env: `IMAGE_UPDATER_COOLDOWN`)
-  - What: Deprioritizes apps updated within this duration.
-  - Affects: Reduces thrash on “hot” apps; spreads work evenly.
-
-- per-repo-cap (env: `IMAGE_UPDATER_PER_REPO_CAP`)
-  - What: Max apps per repository processed per cycle (0 = unlimited).
-  - Affects: Prevents a monorepo from monopolizing a cycle; improves fleet fairness.
-
-- Git retry env (`ARGOCD_GIT_ATTEMPTS_COUNT`, `ARGOCD_GIT_RETRY_DURATION`, `ARGOCD_GIT_RETRY_MAX_DURATION`, `ARGOCD_GIT_RETRY_FACTOR`)
-  - What: Exponential backoff for fetch/shallow-fetch/push.
-  - Affects: Resilience vs. latency on transient failures.
-  - Defaults: attempts=3; base=500ms; max=10s; factor=2.
-
-- registries.conf `limit` (per registry)
-  - What: Requests-per-second cap to a registry.
-  - Affects: Upstream load and rate-limit avoidance. Higher = faster metadata fetches; too high = 429/timeouts.
-  - Guidance: 30–80 RPS typical; tune to registry capacity.
-
-- HTTP transport defaults (per registry)
-  - MaxIdleConns / MaxIdleConnsPerHost: Size of keep-alive pools; larger pools reduce new dials/TLS handshakes.
-  - MaxConnsPerHost: Cap on parallel sockets to a host; lower values reduce ephemeral port exhaustion.
-  - Timeouts: `IdleConnTimeout`, `TLSHandshakeTimeout`, `ResponseHeaderTimeout`, `ExpectContinueTimeout` prevent hangs and free stale resources.
-  - HTTP/2 (HTTPS + ALPN): Multiplexes many requests over few sockets, drastically reducing socket count under load.
-
-- Combined effects (scheduler + limits)
-  - Higher `--max-concurrency` with `--per-repo-cap` and `--cooldown` improves fleet throughput and fairness while avoiding monorepo starvation.
-
-## Rate limiting and backpressure
-
-This fork adds layered controls to protect upstreams and the process under load:
-
-- Global worker pool
-  - Controlled by `--max-concurrency` (or auto with `0`). Limits total concurrent app updates.
-
-- Per-registry request rate (token bucket)
-  - Configured via `registries.conf` `limit` per registry (requests/second).
-  - Requests beyond the budget are delayed locally to smooth spikes; reduces 429/timeouts.
-
-- Per-registry in-flight cap
-  - Socket-level caps via HTTP transport (`MaxConnsPerHost`) plus internal semaphores where applicable.
-  - Prevents connection storms and ephemeral port exhaustion.
-
-- Singleflight de-duplication
-  - Tags/manifests and JWT auth are de-duplicated. One leader performs the call, followers wait for the result.
-  - Cuts redundant upstream traffic during bursts.
-
-- Jittered exponential backoff retries
-  - Applied to tags/manifests and JWT auth. Short, bounded retries with jitter to avoid synchronization.
-
-- Git backpressure (batched writer)
-  - Per-repo queue serializes commit/push; multiple app intents per branch coalesce into one commit.
-  - Retries with backoff for transient fetch/push errors.
-
-- Fair scheduling
-  - `--per-repo-cap` limits apps from one repo per cycle; `--cooldown` deprioritizes recently updated apps.
-
-Observability:
-- Metrics expose queue lengths, in-flight counts, retry counts, singleflight leader/follower, and durations to tune the above without guesswork.
-
-## ASCII architecture (fork-specific)
-
-The same runtime, depicted in ASCII for environments without Mermaid rendering.
-
+### Stock Version (Cycle Mode)
 ```
-                               +-----------------------------------------+
-                               |               Scheduler                 |
-                               |-----------------------------------------|
-  flags: --mode=continuous     |  per-app timers (interval)              |
-         --max-concurrency=0   |  auto concurrency sizing                |
-         --schedule=lru|fail   |  LRU / Fail-first prioritization        |
-         --cooldown=30s        |  cooldown to dampen hot apps            |
-         --per-repo-cap=20     |  fairness cap per Git repo per pass     |
-                               +--------------------+--------------------+
-                                                     |
-                                                     v
-                                      +--------------+--------------+
-                                      |           Worker Pool       |
-                                      +--------------+--------------+
-                                                     |
-                                                     v
-                                         +-----------+-----------+
-                                         |   Worker (per app)   |
-                                         |----------------------|
-                                         | 1) Compute images    |
-                                         | 2) Registry ops      |
-                                         | 3) Patch spec in mem |
-                                         | 4a) WriteBack=Git -> |----+
-                                         |     enqueue intent   |    |
-                                         | 4b) WriteBack=ArgoCD |    |
-                                         |     Update via API   |    |
-                                         +----------------------+    |
-                                                                       |
-                                                                       v
-                             +-----------------------------------+     |
-                             |    Registry Client (per endpoint) |     |
-                             |-----------------------------------|     |
-                             | Transport cache (keep-alive)      |     |
-                             | Sane timeouts, MaxConnsPerHost    |     |
-                             | Per-reg in-flight cap (queue)     |     |
-                             | Singleflight: tags/manifests      |     |
-                             | JWT auth: singleflight + retries  |     |
-                             | HTTP/2 over TLS when available    |     |
-                             +------------------+----------------+     |
-                                                |                      |
-                                                v                      |
-                                   +------------+-----------+          |
-                                   |  Remote registry/API   |          |
-                                   +------------------------+          |
-                                                                       |
-                                                                       v
-                 +-------------------------------------------------------------+
-                 |           Per-repo Batched Git Writer                      |
-                 |-------------------------------------------------------------|
-                 | intent queue (repo)  ->  group by branch  ->  commitBatch  |
-                 | fetch/checkout/commit/push (retries/backoff)                |
-                 +----------------------------+--------------------------------+
-                                              |
-                                              v
-                                       +------+------+
-                                       |    Remote   |
-                                       |     Git     |
-                                       +-------------+
-
-Observability:
-- Metrics: app timings (last attempt/success, durations), cycle duration, registry in-flight/duration/status/retries/errors,
-  JWT auth (requests/errors/duration/TTL), singleflight leader/follower counts.
-- Logs: startup settings; per-app "continuous: start/finished"; queued write-backs; Git and registry error details.
+┌─────────────────────────────────────────────────────────┐
+│                  Cycle Mode (Stock)                      │
+├─────────────────────────────────────────────────────────┤
+│                                                           │
+│  ┌──────────────────────────────────────┐               │
+│  │  Every --interval (e.g., 2 minutes)  │               │
+│  └──────────────────────────────────────┘               │
+│                    │                                      │
+│                    ▼                                      │
+│  ┌──────────────────────────────────────┐               │
+│  │  1. List ALL applications             │               │
+│  │  2. Process ALL in parallel           │               │
+│  │  3. Wait for ALL to finish            │               │
+│  │  4. Sleep until next cycle            │               │
+│  └──────────────────────────────────────┘               │
+│                                                           │
+│  Problems:                                                │
+│  ❌ Starvation: Slow apps block fast ones                 │
+│  ❌ Thrashing: Hot apps get processed repeatedly          │
+│  ❌ Resource spikes: All apps processed at once           │
+│  ❌ Poor fairness: No prioritization                      │
+└─────────────────────────────────────────────────────────┘
 ```
 
-### Phase comparison: stock vs our tuned configuration
+### Custom Version (Continuous Mode)
+```
+┌─────────────────────────────────────────────────────────┐
+│              Continuous Mode (This Fork)                 │
+├─────────────────────────────────────────────────────────┤
+│                                                           │
+│  ┌──────────────────────────────────────┐               │
+│  │  Every ~1 second (lightweight tick)   │               │
+│  └──────────────────────────────────────┘               │
+│                    │                                      │
+│                    ▼                                      │
+│  ┌──────────────────────────────────────┐               │
+│  │  For each application:                │               │
+│  │  • Check if --interval elapsed         │               │
+│  │  • If due: Launch independent worker   │               │
+│  │  • Else: Skip until next tick          │               │
+│  └──────────────────────────────────────┘               │
+│                    │                                      │
+│        ┌───────────┴───────────┐                         │
+│        ▼                       ▼                         │
+│  ┌──────────┐          ┌──────────┐                      │
+│  │ App A    │          │ App B    │                      │
+│  │ Worker   │          │ Worker   │                      │
+│  │ (60s)    │          │ (60s)    │                      │
+│  └──────────┘          └──────────┘                      │
+│                                                           │
+│  Benefits:                                                │
+│  ✅ Fairness: Each app on its own schedule               │
+│  ✅ Efficiency: No blocking, better resource use          │
+│  ✅ Prioritization: LRU/fail-first scheduling            │
+│  ✅ Rate limiting: Per-registry caps prevent overload    │
+└─────────────────────────────────────────────────────────┘
+```
 
-| Phase | Stock defaults (cycle mode, basic concurrency) | Tuned configuration (continuous, auto concurrency, LRU, cooldown, per-repo-cap, singleflight, retries) |
-| --- | --- | --- |
-| Startup | Minimal logging; default transports; limited tuning | Logs full settings; shared transports with timeouts; metrics/health; optional warmup |
-| Scheduling | Global pass every `--interval`; fixed concurrency | Lightweight pass ~1s; per-app due check against `--interval`; auto concurrency sizing |
-| Discovery/filter | List apps every pass; warn on unsupported each pass | Same listing; will throttle/dedupe repeated unsupported warnings; same filters |
-| Prioritization | Default order | LRU or Fail-first; cooldown deprioritizes recent successes; per-repo-cap fairness |
-| Dispatch | Semaphore up to `--max-concurrency` | Same guard; plus per-app in-flight guard to avoid double dispatch in continuous |
-| Registry IO | Direct calls; limited retry semantics | Per-reg RPS limiter and in-flight cap; singleflight for tags/manifests and JWT; jittered backoff retries; shared transports; HTTP/2 |
-| Update decision | Compare live vs candidate; may skip | Same logic, but less flap due to fairness/cooldown |
-| Write-back | Immediate Git per app (can thrash in monorepos) | Per-repo batched writer; group by branch; one commit/push per batch; retries |
-| Non-Git write-back | ArgoCD `UpdateSpec` | Same, with conflict-retry backoff |
-| Observability | Basic metrics/logs | Expanded metrics (JWT, singleflight, durations); per-app continuous start/finish logs; queue and retry metrics |
+## 🆚 Feature Comparison
+
+| Feature | Stock Version | Custom Fork |
+|---------|--------------|-------------|
+| **Scheduling** | Batch cycles (all apps together) | Independent per-app scheduling |
+| **Concurrency** | Fixed `--max-concurrency` | Auto-scaling + fixed cap option |
+| **Prioritization** | None (default order) | LRU, fail-first, cooldown, per-repo-cap |
+| **Resource Management** | Basic | HTTP transport janitor, port exhaustion detection |
+| **Connection Reuse** | Limited | Shared transports, connection pooling |
+| **Retries** | Basic | JWT auth retries, jittered backoff, singleflight |
+| **Git Operations** | Per-app commits | Batched per-repo commits |
+| **Metrics** | Basic | Expanded (JWT, singleflight, durations, GC) |
+| **Health Checks** | Basic | Port exhaustion detection with auto-restart |
+| **Webhook** | Supported | Supported + sidecar deployment pattern |
+
+## 🚀 Quick Start
+
+### Kubernetes Deployment Example
+
+This example shows a production-ready configuration using continuous mode with all performance optimizations:
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: argocd-image-updater
+  namespace: argocd
+spec:
+  replicas: 1
+  template:
+    spec:
+      containers:
+      - name: argocd-image-updater
+        image: your-registry/argocd-image-updater:custom
+        args:
+          - run
+          - "--interval"
+          - 60s
+          - "--max-concurrency"
+          - "8"
+          - "--match-application-label"
+          - argocd-project=my-project
+          - "--mode"
+          - continuous
+          - "--schedule"
+          - lru
+          - "--warmup-cache=false"
+        env:
+          # Registry HTTP timeouts (prevent hangs)
+          - name: REGISTRY_TLS_HANDSHAKE_TIMEOUT
+            value: 30s
+          - name: REGISTRY_RESPONSE_HEADER_TIMEOUT
+            value: 120s
+          
+          # JWT authentication retries (for flaky registries)
+          - name: REGISTRY_JWT_ATTEMPTS
+            value: "10"
+          - name: REGISTRY_JWT_RETRY_BASE
+            value: 500ms
+          - name: REGISTRY_JWT_RETRY_MAX
+            value: 5s
+          
+          # Tag and manifest fetch timeouts
+          - name: REGISTRY_TAG_TIMEOUT
+            value: 120s
+          - name: REGISTRY_MANIFEST_TIMEOUT
+            value: 120s
+          
+          # Connection pooling (prevent port exhaustion)
+          - name: REGISTRY_MAX_CONNS_PER_HOST
+            value: "10"
+          
+          # HTTP transport janitor (cleanup idle connections)
+          - name: REGISTRY_TRANSPORT_JANITOR_INTERVAL
+            value: 5m
+          
+          # Health check for port exhaustion
+          - name: HEALTH_FAIL_ON_PORT_EXHAUSTION
+            value: "true"
+          - name: PORT_EXHAUSTION_WINDOW
+            value: 60s
+          - name: PORT_EXHAUSTION_THRESHOLD
+            value: "8"
+        ports:
+        - containerPort: 8080
+          name: health
+        - containerPort: 8081
+          name: metrics
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8080
+          initialDelaySeconds: 3
+          periodSeconds: 30
+          timeoutSeconds: 1
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: 8080
+          initialDelaySeconds: 3
+          periodSeconds: 10
+```
+
+### Key Configuration Explained
+
+**`--mode continuous`**: Enables independent per-application scheduling  
+**`--schedule lru`**: Processes least-recently-updated apps first (improves fairness)  
+**`--max-concurrency 8`**: Limits parallel workers (adjust based on registry capacity)  
+**`--interval 60s`**: Each app checks for updates every 60 seconds  
+**`--warmup-cache=false`**: Skips startup cache warmup (faster startup in continuous mode)
+
+**Environment Variables**:
+- Registry timeouts prevent hanging requests
+- JWT retries handle flaky authentication
+- Connection limits prevent port exhaustion
+- Transport janitor cleans up idle connections
+- Health checks auto-restart on port exhaustion
+
+## 📊 Monitoring & Observability
+
+### Metrics Endpoints
+
+- **Health**: `http://localhost:8080/healthz`
+- **Metrics**: `http://localhost:8081/metrics`
+
+### Key Metrics
+
+```prometheus
+# Application-level metrics
+argocd_image_updater_application_last_success_timestamp{application="app-name"}
+argocd_image_updater_application_last_attempt_timestamp{application="app-name"}
+argocd_image_updater_application_update_duration_seconds{application="app-name"}
+
+# Registry metrics
+argocd_image_updater_registry_in_flight_requests{registry="registry-url"}
+argocd_image_updater_registry_request_duration_seconds{registry="registry-url"}
+argocd_image_updater_registry_errors_total{registry="registry-url",kind="timeout"}
+
+# JWT authentication metrics
+argocd_image_updater_registry_jwt_auth_requests_total{registry="registry-url"}
+argocd_image_updater_registry_jwt_auth_errors_total{registry="registry-url"}
+```
+
+### Alerts Example
+
+```yaml
+- alert: ImageUpdaterPortExhaustion
+  expr: up{job="argocd-image-updater"} == 0
+  annotations:
+    summary: "Image updater pod restarted due to port exhaustion"
+    description: "Pod was auto-restarted by health check"
+
+- alert: ImageUpdaterHighErrors
+  expr: rate(argocd_image_updater_registry_errors_total[5m]) > 0.1
+  annotations:
+    summary: "High registry error rate detected"
+```
+
+## 🔧 Advanced Features
+
+### Per-Repository Rate Limiting
+
+Prevent a single monorepo from monopolizing workers:
+
+```bash
+--per-repo-cap 5  # Max 5 apps from same repo per cycle
+```
+
+### Cooldown Period
+
+Deprioritize recently updated apps:
+
+```bash
+--cooldown 5m  # Skip apps updated in last 5 minutes
+```
+
+### Auto Concurrency
+
+Let the system automatically size concurrency:
+
+```bash
+--max-concurrency 0  # 0 = auto (8x CPU count, capped to app count)
+```
+
+## 📚 Documentation
+
+- [Runtime Architecture](RUNTIME_ARCHITECTURE.md) - Detailed execution flow
+- [Building from Scratch](BUILDING_FROM_SCRATCH.md) - Guide for developers
+- [Upstream Documentation](https://argocd-image-updater.readthedocs.io/) - Base features
+
+## 🔄 Differences from Upstream
+
+This fork maintains compatibility with upstream Argo CD Image Updater while adding:
+
+1. **Continuous mode scheduler** - Independent per-app scheduling
+2. **HTTP transport janitor** - Prevents connection leaks
+3. **Port exhaustion detection** - Auto-restart via health checks
+4. **Metrics garbage collection** - Prevents false alerts for deleted apps
+5. **Enhanced retry logic** - JWT auth retries with backoff
+6. **Batched Git writes** - Coalesces commits in monorepos
+7. **Performance tuning** - Shared transports, connection pooling, singleflight
+
+## ⚖️ License
+
+This fork maintains the same [Apache 2.0 license](https://www.apache.org/licenses/LICENSE-2.0) as the upstream project.
+
+## 🙏 Acknowledgments
+
+Based on [argoproj-labs/argocd-image-updater](https://github.com/argoproj-labs/argocd-image-updater), enhanced for production workloads.
+
+---
+
+**Note**: This is a custom fork. If you encounter issues, please check upstream documentation first, as this fork focuses on continuous mode optimizations.
