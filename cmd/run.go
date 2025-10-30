@@ -1,5 +1,5 @@
 package main
-
+    
 import (
 	"context"
 	"errors"
@@ -12,7 +12,7 @@ import (
 	"time"
     "sort"
     "runtime"
-
+    
 	"github.com/argoproj-labs/argocd-image-updater/pkg/argocd"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/health"
@@ -22,9 +22,9 @@ import (
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/env"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/registry"
-
+    
 	"github.com/argoproj/argo-cd/v2/util/askpass"
-
+    
 	"github.com/spf13/cobra"
 
 	"golang.org/x/sync/semaphore"
@@ -39,6 +39,27 @@ var updateAppFn = argocd.UpdateApplication
 var contState *argocd.SyncIterationState
 var contMu sync.Mutex
 var contInFlight = map[string]bool{}
+
+// Track known applications to garbage-collect per-app metrics when apps disappear
+var knownAppsMu sync.Mutex
+var knownApps = map[string]struct{}{}
+
+func gcRemovedAppMetrics(current map[string]argocd.ApplicationImages) {
+    m := metrics.Applications()
+    if m == nil { return }
+    knownAppsMu.Lock()
+    defer knownAppsMu.Unlock()
+    for app := range knownApps {
+        if _, ok := current[app]; !ok {
+            m.DeleteAppMetrics(app)
+        }
+    }
+    // replace snapshot
+    next := make(map[string]struct{}, len(current))
+    for a := range current { next[a] = struct{}{} }
+    knownApps = next
+    m.SetNumberOfApplications(len(current))
+}
 
 // orderApplications reorders apps by schedule policy: lru (least-recent success first),
 // fail-first (recent failures first), with optional cooldown to deprioritize recently
@@ -486,7 +507,8 @@ func runImageUpdater(cfg *ImageUpdaterConfig, warmUp bool) (argocd.ImageUpdaterR
 		return result, err
 	}
 
-	metrics.Applications().SetNumberOfApplications(len(appList))
+	// Garbage-collect metrics for apps that no longer exist
+	gcRemovedAppMetrics(appList)
 
 	if !warmUp {
 		log.Infof("Starting image update cycle, considering %d annotated application(s) for update", len(appList))
@@ -605,6 +627,9 @@ func runContinuousOnce(cfg *ImageUpdaterConfig) {
     if err != nil { log.Errorf("continuous: list apps error: %v", err); return }
     appList, err := argocd.FilterApplicationsForUpdate(apps, cfg.AppNamePatterns)
     if err != nil { log.Errorf("continuous: filter apps error: %v", err); return }
+
+    // Garbage-collect metrics for apps that no longer exist
+    gcRemovedAppMetrics(appList)
 
     // Build or fetch per-process state
     if contState == nil { contState = argocd.NewSyncIterationState() }

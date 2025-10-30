@@ -9,11 +9,14 @@ import (
 	"net/http"
 	"fmt"
 
+	"github.com/prometheus/client_golang/prometheus"
+	dto "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/assert"
 
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/env"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/argocd"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
+	"github.com/argoproj-labs/argocd-image-updater/pkg/metrics"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	v1alpha1 "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/application"
@@ -147,6 +150,96 @@ func TestRun_StartsWebhookWhenEnabled(t *testing.T) {
         time.Sleep(50 * time.Millisecond)
     }
     t.Fatalf("webhook did not start on port %d: lastErr=%v", port, lastErr)
+}
+
+// TestGCRemovedAppMetrics verifies that metrics are garbage-collected when apps are deleted
+func TestGCRemovedAppMetrics(t *testing.T) {
+	// Initialize metrics with a fresh registry to avoid cross-test pollution
+	reg := prometheus.NewRegistry()
+	prometheus.DefaultRegisterer = reg
+	defer func() { prometheus.DefaultRegisterer = prometheus.NewRegistry() }()
+
+	metrics.InitMetrics()
+	apm := metrics.Applications()
+
+	app1 := "testns/app1"
+	app2 := "testns/app2"
+
+	// Set metrics for app1 and app2
+	apm.SetNumberOfImagesWatched(app1, 2)
+	apm.SetLastSuccess(app1, time.Now())
+	apm.SetNumberOfImagesWatched(app2, 1)
+	apm.SetLastSuccess(app2, time.Now())
+
+	// First call: simulate both apps existing (populates knownApps)
+	appListBoth := make(map[string]argocd.ApplicationImages)
+	appListBoth[app1] = argocd.ApplicationImages{
+		Application: v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "app1",
+				Namespace: "testns",
+				Annotations: map[string]string{common.ImageUpdaterAnnotation: ""},
+			},
+			Status: v1alpha1.ApplicationStatus{SourceType: v1alpha1.ApplicationSourceTypeKustomize},
+		},
+	}
+	appListBoth[app2] = argocd.ApplicationImages{
+		Application: v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "app2",
+				Namespace: "testns",
+				Annotations: map[string]string{common.ImageUpdaterAnnotation: ""},
+			},
+			Status: v1alpha1.ApplicationStatus{SourceType: v1alpha1.ApplicationSourceTypeKustomize},
+		},
+	}
+	gcRemovedAppMetrics(appListBoth) // First call: just populates knownApps
+
+	// Verify both apps have metrics by checking the registry
+	metricsBefore, _ := reg.Gather()
+	app1Before := countMetricsForApp(metricsBefore, app1)
+	app2Before := countMetricsForApp(metricsBefore, app2)
+	assert.Greater(t, app1Before, 0, "app1 should have metrics before GC")
+	assert.Greater(t, app2Before, 0, "app2 should have metrics before GC")
+
+	// Second call: simulate appList with only app1 (app2 was deleted)
+	appList := make(map[string]argocd.ApplicationImages)
+	appList[app1] = argocd.ApplicationImages{
+		Application: v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "app1",
+				Namespace: "testns",
+				Annotations: map[string]string{common.ImageUpdaterAnnotation: ""},
+			},
+			Status: v1alpha1.ApplicationStatus{SourceType: v1alpha1.ApplicationSourceTypeKustomize},
+		},
+	}
+
+	// Call GC - this should delete app2's metrics since it's no longer in current list
+	gcRemovedAppMetrics(appList)
+
+	// Verify app1 still has metrics, app2 metrics are deleted
+	metricsAfter, _ := reg.Gather()
+	app1After := countMetricsForApp(metricsAfter, app1)
+	app2After := countMetricsForApp(metricsAfter, app2)
+	assert.Greater(t, app1After, 0, "app1 should still have metrics after GC")
+	assert.Equal(t, 0, app2After, "app2 metrics should be deleted after GC")
+}
+
+// Helper to count metrics for an app by inspecting Prometheus registry
+func countMetricsForApp(metricFamilies []*dto.MetricFamily, appName string) int {
+	count := 0
+	for _, mf := range metricFamilies {
+		for _, m := range mf.Metric {
+			for _, label := range m.Label {
+				if label.GetName() == "application" && label.GetValue() == appName {
+					count++
+					break
+				}
+			}
+		}
+	}
+	return count
 }
 
 type fakeArgo struct{ apps []string }

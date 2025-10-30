@@ -6,6 +6,26 @@ handling on your side.
 
 ## Unreleased
 
+## 2025-10-30 - Release v100.0.12
+
+### Fixes/Improvements
+
+- metrics: Garbage-collect stale metrics for deleted applications
+  - Prevents false alerts from deleted apps by removing their metric series
+  - New `DeleteAppMetrics()` function removes all per-application metric series
+  - GC runs automatically at start of each update cycle (both cycle and continuous modes)
+  - Thread-safe implementation with mutex-protected app tracking
+  - Affects all per-application metrics: images_watched_total, images_updated_total, 
+    images_errors_total, application_update_duration_seconds, 
+    application_last_attempt_timestamp, application_last_success_timestamp,
+    images_considered_total, images_skipped_total
+
+### Notes
+
+- No configuration changes required
+- Metrics for deleted applications are automatically cleaned up on next update cycle
+- Old metric series will disappear from Prometheus scrapes after GC runs
+
 ## 2025-09-23 - Release v100.0.11
 
 ### Fixes/Improvements

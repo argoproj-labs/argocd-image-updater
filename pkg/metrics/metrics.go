@@ -408,6 +408,20 @@ func (apm *ApplicationMetrics) SchedulerSkipped(reason string, by int) {
     apm.schedulerSkippedTotal.WithLabelValues(reason).Add(float64(by))
 }
 
+// DeleteAppMetrics removes all per-application metric series for the given app.
+// This helps garbage-collect stale series when applications are deleted.
+func (apm *ApplicationMetrics) DeleteAppMetrics(application string) {
+    // Safe best-effort deletes; ignore return values
+    apm.imagesWatchedTotal.DeleteLabelValues(application)
+    apm.imagesUpdatedTotal.DeleteLabelValues(application)
+    apm.imagesUpdatedErrorsTotal.DeleteLabelValues(application)
+    apm.appUpdateDuration.DeleteLabelValues(application)
+    apm.lastAttemptTs.DeleteLabelValues(application)
+    apm.lastSuccessTs.DeleteLabelValues(application)
+    apm.imagesConsideredTotal.DeleteLabelValues(application)
+    apm.imagesSkippedTotal.DeleteLabelValues(application)
+}
+
 // Singleflight helpers
 func (sfm *SingleflightMetrics) IncreaseLeaders(kind string) {
     sfm.leadersTotal.WithLabelValues(kind).Inc()
