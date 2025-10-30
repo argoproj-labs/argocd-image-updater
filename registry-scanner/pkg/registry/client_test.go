@@ -23,6 +23,7 @@ import (
     // singleflight not used in simplified token reuse approach
 
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/image"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/options"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/registry/mocks"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/tag"
@@ -47,7 +48,7 @@ func TestBasic(t *testing.T) {
 
 func TestNewRepository(t *testing.T) {
 	t.Run("Invalid Reference Format", func(t *testing.T) {
-		ep, err := GetRegistryEndpoint("")
+		ep, err := GetRegistryEndpoint(&image.ContainerImage{RegistryURL: ""})
 		require.NoError(t, err)
 		client, err := NewClient(ep, "", "")
 		require.NoError(t, err)
@@ -57,7 +58,7 @@ func TestNewRepository(t *testing.T) {
 
 	})
 	t.Run("Success Ping", func(t *testing.T) {
-		ep, err := GetRegistryEndpoint("")
+		ep, err := GetRegistryEndpoint(&image.ContainerImage{RegistryURL: ""})
 		require.NoError(t, err)
 		client, err := NewClient(ep, "", "")
 		require.NoError(t, err)
@@ -157,7 +158,7 @@ func TestSetRefreshToken(t *testing.T) {
 }
 func TestNewClient(t *testing.T) {
 	t.Run("Create client with provided username and password", func(t *testing.T) {
-		ep, err := GetRegistryEndpoint("")
+		ep, err := GetRegistryEndpoint(&image.ContainerImage{RegistryURL: ""})
 		require.NoError(t, err)
 		_, err = NewClient(ep, "testuser", "pass")
 		require.NoError(t, err)
@@ -418,7 +419,7 @@ func Test_TagMetadata(t *testing.T) {
 				History: []schema1.History{}, //nolint:staticcheck
 			},
 		}
-		ep, err := GetRegistryEndpoint("")
+		ep, err := GetRegistryEndpoint(&image.ContainerImage{RegistryURL: ""})
 		require.NoError(t, err)
 		client, err := NewClient(ep, "", "")
 		require.NoError(t, err)
@@ -437,7 +438,7 @@ func Test_TagMetadata(t *testing.T) {
 			},
 		}
 
-		ep, err := GetRegistryEndpoint("")
+		ep, err := GetRegistryEndpoint(&image.ContainerImage{RegistryURL: ""})
 		require.NoError(t, err)
 		client, err := NewClient(ep, "", "")
 		require.NoError(t, err)
@@ -456,7 +457,7 @@ func Test_TagMetadata(t *testing.T) {
 			},
 		}
 
-		ep, err := GetRegistryEndpoint("")
+		ep, err := GetRegistryEndpoint(&image.ContainerImage{RegistryURL: ""})
 		require.NoError(t, err)
 		client, err := NewClient(ep, "", "")
 		require.NoError(t, err)
@@ -476,7 +477,7 @@ func Test_TagMetadata(t *testing.T) {
 				},
 			},
 		}
-		ep, err := GetRegistryEndpoint("")
+		ep, err := GetRegistryEndpoint(&image.ContainerImage{RegistryURL: ""})
 		require.NoError(t, err)
 		client, err := NewClient(ep, "", "")
 		require.NoError(t, err)
@@ -506,7 +507,7 @@ func Test_TagMetadata_2(t *testing.T) {
 				},
 			},
 		}
-		ep, err := GetRegistryEndpoint("")
+		ep, err := GetRegistryEndpoint(&image.ContainerImage{RegistryURL: ""})
 		require.NoError(t, err)
 		client, err := NewClient(ep, "", "")
 
@@ -529,7 +530,7 @@ func Test_TagMetadata_2(t *testing.T) {
 				},
 			},
 		}
-		ep, err := GetRegistryEndpoint("")
+		ep, err := GetRegistryEndpoint(&image.ContainerImage{RegistryURL: ""})
 		require.NoError(t, err)
 		client, err := NewClient(ep, "", "")
 
@@ -550,7 +551,7 @@ func Test_TagMetadata_2(t *testing.T) {
 				Annotations: nil,
 			},
 		}
-		ep, err := GetRegistryEndpoint("")
+		ep, err := GetRegistryEndpoint(&image.ContainerImage{RegistryURL: ""})
 		require.NoError(t, err)
 		client, err := NewClient(ep, "", "")
 
@@ -570,7 +571,7 @@ func Test_TagMetadata_2(t *testing.T) {
 				Manifests: nil,
 			},
 		}
-		ep, err := GetRegistryEndpoint("")
+		ep, err := GetRegistryEndpoint(&image.ContainerImage{RegistryURL: ""})
 		require.NoError(t, err)
 		client, err := NewClient(ep, "", "")
 
@@ -585,7 +586,7 @@ func Test_TagMetadata_2(t *testing.T) {
 func TestPing(t *testing.T) {
 	t.Run("fail ping", func(t *testing.T) {
 		mockManager := new(mocks.Manager)
-		ep, err := GetRegistryEndpoint("")
+		ep, err := GetRegistryEndpoint(&image.ContainerImage{RegistryURL: ""})
 		require.NoError(t, err)
 		mockManager.On("AddResponse", mock.Anything).Return(fmt.Errorf("fail ping"))
 		_, err = ping(mockManager, ep, "")
@@ -594,7 +595,7 @@ func TestPing(t *testing.T) {
 
 	t.Run("success ping", func(t *testing.T) {
 		mockManager := new(mocks.Manager)
-		ep, err := GetRegistryEndpoint("")
+		ep, err := GetRegistryEndpoint(&image.ContainerImage{RegistryURL: ""})
 		require.NoError(t, err)
 		mockManager.On("AddResponse", mock.Anything).Return(nil)
 		_, err = ping(mockManager, ep, "")

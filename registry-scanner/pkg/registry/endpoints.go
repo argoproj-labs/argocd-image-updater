@@ -197,8 +197,28 @@ func inferRegistryEndpointFromPrefix(prefix string) *RegistryEndpoint {
 	return NewRegistryEndpoint(prefix, prefix, apiURL, "", "", false, TagListSortUnsorted, 20, 0)
 }
 
-// GetRegistryEndpoint retrieves the endpoint information for the given prefix
-func GetRegistryEndpoint(prefix string) (*RegistryEndpoint, error) {
+// findRegistryEndpointByImage finds registry by prefix based on full image name
+func findRegistryEndpointByImage(img *image.ContainerImage) (ep *RegistryEndpoint) {
+	imgName := fmt.Sprintf("%s/%s", img.RegistryURL, img.ImageName)
+	log.Debugf("Try to find endpoint by image: %s", imgName)
+	registryLock.RLock()
+	defer registryLock.RUnlock()
+
+	for _, registry := range registries {
+		matchRegistryPrefix := strings.HasPrefix(imgName, registry.RegistryPrefix)
+		if (ep == nil && matchRegistryPrefix) || (matchRegistryPrefix && len(registry.RegistryPrefix) > len(ep.RegistryPrefix)) {
+			log.Debugf("Selected registry: '%s' (last selection in log - final)", registry.RegistryName)
+			ep = registry
+		}
+	}
+
+	return
+}
+
+// GetRegistryEndpoint retrieves the endpoint information for the given image
+func GetRegistryEndpoint(img *image.ContainerImage) (*RegistryEndpoint, error) {
+	prefix := img.RegistryURL
+
 	if prefix == "" {
 		if defaultRegistry == nil {
 			return nil, fmt.Errorf("no default endpoint configured")
@@ -214,8 +234,13 @@ func GetRegistryEndpoint(prefix string) (*RegistryEndpoint, error) {
 	if ok {
 		return registry, nil
 	} else {
+		ep := findRegistryEndpointByImage(img)
+		if ep != nil {
+			return ep, nil
+		}
+
 		var err error
-		ep := inferRegistryEndpointFromPrefix(prefix)
+		ep = inferRegistryEndpointFromPrefix(prefix)
 		if ep != nil {
 			err = AddRegistryEndpoint(ep)
 		} else {
@@ -253,7 +278,7 @@ func GetDefaultRegistry() *RegistryEndpoint {
 // SetRegistryEndpointCredentials allows to change the credentials used for
 // endpoint access for existing RegistryEndpoint configuration
 func SetRegistryEndpointCredentials(prefix, credentials string) error {
-	registry, err := GetRegistryEndpoint(prefix)
+	registry, err := GetRegistryEndpoint(&image.ContainerImage{RegistryURL: prefix})
 	if err != nil {
 		return err
 	}
