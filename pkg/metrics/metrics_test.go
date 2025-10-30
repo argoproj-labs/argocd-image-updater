@@ -1,10 +1,16 @@
 package metrics
 
 import (
-	"testing"
+    "io"
+    "net/http"
+    "net/http/httptest"
+    "strings"
+    "testing"
+    "time"
 
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/stretchr/testify/assert"
+    "github.com/prometheus/client_golang/prometheus"
+    "github.com/prometheus/client_golang/prometheus/promhttp"
+    "github.com/stretchr/testify/assert"
 )
 
 func TestMetricsInitialization(t *testing.T) {
@@ -67,4 +73,56 @@ func TestMetricsOperations(t *testing.T) {
 	apm.IncreaseUpdateErrors("app1", 2)
 	apm.SetNumberOfApplications(3)
 	apm.SetNumberOfImagesWatched("app1", 4)
+}
+
+func TestMetricWrappers_NoPanic(t *testing.T) {
+    prometheus.DefaultRegisterer = prometheus.NewRegistry()
+    InitMetrics()
+
+    epm := Endpoint()
+    epm.IncInFlight("reg")
+    epm.DecInFlight("reg")
+    epm.ObserveRequestDuration("reg", 5*time.Millisecond)
+    epm.ObserveHTTPStatus("reg", 200)
+    epm.IncreaseRetry("reg", "tags")
+    epm.IncreaseErrorKind("reg", "timeout")
+
+    apm := Applications()
+    apm.ObserveAppUpdateDuration("app", 7*time.Millisecond)
+    apm.SetLastAttempt("app", time.Now())
+    apm.SetLastSuccess("app", time.Now())
+    apm.ObserveCycleDuration(15 * time.Millisecond)
+    apm.SetCycleLastEnd(time.Now())
+    apm.IncreaseImagesConsidered("app", 2)
+    apm.IncreaseImagesSkipped("app", 1)
+    apm.SchedulerSkipped("cooldown", 1)
+
+    sf := Singleflight()
+    sf.IncreaseLeaders("tags")
+    sf.IncreaseFollowers("tags")
+}
+
+func TestMetricsEndpoint_Serves(t *testing.T) {
+    reg := prometheus.NewRegistry()
+    prometheus.DefaultRegisterer = reg
+    InitMetrics()
+    mux := http.NewServeMux()
+    mux.Handle("/metrics", promhttp.HandlerFor(reg, promhttp.HandlerOpts{}))
+    srv := httptest.NewServer(mux)
+    defer srv.Close()
+
+    resp, err := http.Get(srv.URL + "/metrics")
+    if err != nil {
+        t.Fatalf("GET /metrics failed: %v", err)
+    }
+    defer resp.Body.Close()
+    if resp.StatusCode != http.StatusOK {
+        t.Fatalf("unexpected status: %d", resp.StatusCode)
+    }
+    body, _ := io.ReadAll(resp.Body)
+    // Check a couple of metric names are present
+    b := string(body)
+    if !strings.Contains(b, "argocd_image_updater_applications_watched_total") {
+        t.Fatalf("expected applications_watched_total metric in scrape")
+    }
 }

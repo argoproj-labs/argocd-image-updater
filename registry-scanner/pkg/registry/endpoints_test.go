@@ -2,8 +2,12 @@ package registry
 
 import (
 	"fmt"
+	"net"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -329,6 +333,79 @@ func TestGetTransport(t *testing.T) {
 		assert.NotNil(t, transport.TLSClientConfig)
 		assert.True(t, transport.TLSClientConfig.InsecureSkipVerify)
 	})
+}
+
+func TestGetTransport_CachesPerAPI(t *testing.T) {
+    ep1 := &RegistryEndpoint{RegistryAPI: "https://r1.example", Insecure: false}
+    ep2 := &RegistryEndpoint{RegistryAPI: "https://r1.example", Insecure: false}
+    ep3 := &RegistryEndpoint{RegistryAPI: "https://r2.example", Insecure: true}
+
+    // Clear any previous cache state
+    ClearTransportCache()
+
+    tr1 := ep1.GetTransport()
+    require.NotNil(t, tr1)
+
+    tr2 := ep2.GetTransport()
+    require.NotNil(t, tr2)
+
+    // Same API URL should reuse the same pointer
+    assert.Equal(t, tr1, tr2)
+
+    tr3 := ep3.GetTransport()
+    require.NotNil(t, tr3)
+
+    // Different API URL should create a different transport
+    assert.NotEqual(t, tr1, tr3)
+}
+
+// Test that StartTransportJanitor closes idle client connections so that the
+// next request establishes a new TCP connection instead of reusing the old one.
+func TestStartTransportJanitor_ClosesIdleConns(t *testing.T) {
+    // Create a custom server with ConnState hook to count new TCP connections
+    var newConnCount int32
+    h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        w.WriteHeader(http.StatusOK)
+        _, _ = w.Write([]byte("ok"))
+    })
+    srv := httptest.NewUnstartedServer(h)
+    srv.Config.ConnState = func(c net.Conn, s http.ConnState) {
+        if s == http.StateNew {
+            atomic.AddInt32(&newConnCount, 1)
+        }
+    }
+    srv.Start()
+    defer srv.Close()
+
+    // Map server URL to a registry endpoint and its shared transport
+    ep := &RegistryEndpoint{RegistryAPI: srv.URL, Insecure: false}
+    ClearTransportCache()
+    tr := ep.GetTransport()
+    client := &http.Client{Transport: tr}
+
+    // First request creates a new TCP connection
+    resp1, err := client.Get(srv.URL + "/first")
+    require.NoError(t, err)
+    require.NotNil(t, resp1)
+    _ = resp1.Body.Close()
+
+    // Start janitor with a very short interval so it runs promptly
+    stop := StartTransportJanitor(25 * time.Millisecond)
+    defer stop()
+
+    // Wait for at least one janitor tick
+    time.Sleep(60 * time.Millisecond)
+
+    // Second request should not be able to reuse the old idle conn after janitor
+    resp2, err := client.Get(srv.URL + "/second")
+    require.NoError(t, err)
+    _ = resp2.Body.Close()
+
+    // We expect at least two TCP connections: one per request
+    // If the idle connection had been reused, this would be 1
+    if atomic.LoadInt32(&newConnCount) < 2 {
+        t.Fatalf("expected janitor to force new TCP connection, got newConnCount=%d", newConnCount)
+    }
 }
 
 func Test_RestoreDefaultRegistryConfiguration(t *testing.T) {

@@ -2,11 +2,10 @@ FROM golang:1.24 AS builder
 
 RUN mkdir -p /src/argocd-image-updater
 WORKDIR /src/argocd-image-updater
-# cache dependencies as a layer for faster rebuilds
-COPY go.mod go.sum ./
-COPY registry-scanner ./
-RUN go mod download
+# copy the entire repo first so local replaces (./registry-scanner) exist in context
 COPY . .
+# cache dependencies as a layer for faster rebuilds
+RUN go mod download
 
 RUN mkdir -p dist && \
 	make controller

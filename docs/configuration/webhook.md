@@ -147,6 +147,97 @@ Supported Registries That Use This:
 Also be aware that if the container registry has a built-in secrets method you will
 not be able to use this method.
 
+## Running the webhook as a Kubernetes sidecar
+
+If you prefer not to enable the webhook server inside the main `run` process, you can run
+the dedicated webhook server as a sidecar container in the same Pod. This is often the
+most reliable setup when fronting the server with an Ingress/Gateway and makes
+troubleshooting straightforward (the sidecar will always bind its port independently
+from the main loop).
+
+### Note on run mode vs sidecar
+
+When the webhook is enabled in `run` mode, the server is started after the process
+initializes its Kubernetes/Argo CD clients. If that initialization is slow or fails
+(e.g., API reachability, DNS, RBAC), the execution path may not reach the webhook start,
+so the port will not bind and you will not see the
+"Starting webhook server on port <PORT>" log.
+
+The sidecar approach avoids that dependency and binds immediately, which is often
+preferable when exposing the webhook through a Gateway/Ingress. If you do use the
+`run` mode webhook, ensure cluster connectivity is healthy and verify startup logs
+for the binding message.
+
+### Secret example (Harbor)
+
+If you want the server to validate Harbor webhooks using a shared secret, create or
+update the existing secret as follows:
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: argocd-image-updater-secret
+  namespace: argocd
+type: Opaque
+stringData:
+  webhook.harbor-secret: "<YOUR_SECRET>"
+```
+
+Notes:
+- If you set the secret, the server expects an HMAC-SHA256 signature of the request body
+  in the `Authorization` header (e.g., `sha256=<hex>`). If your registry cannot generate
+  that header, leave the secret empty (validation disabled) and do not send an auth header.
+
+### Sidecar container example
+
+Add this container to your Deployment. It serves the webhook and health endpoints
+on port `8082`.
+
+```yaml
+- name: argocd-image-updater-webhook
+  image: quay.io/argoprojlabs/argocd-image-updater:latest
+  args: ["webhook","--webhook-port","8082"]
+  env:
+    - name: HARBOR_WEBHOOK_SECRET
+      valueFrom:
+        secretKeyRef:
+          name: argocd-image-updater-secret
+          key: webhook.harbor-secret
+  ports:
+    - containerPort: 8082
+      name: webhook
+  # Optional: silence warnings by mounting config (if you already mount it for the main container)
+  volumeMounts:
+    - mountPath: /app/config
+      name: image-updater-conf
+```
+
+Expose the webhook port via your Service and route traffic to `/webhook`:
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: argocd-image-updater
+  namespace: argocd
+spec:
+  selector:
+    app.kubernetes.io/name: argocd-image-updater
+  ports:
+    - name: webhook
+      port: 8082
+      targetPort: 8082
+```
+
+In Harbor, configure the endpoint URL to:
+
+```
+https://<your-host>/webhook?type=harbor
+```
+
+and select the “Artifact pushed” event.
+
 ## Exposing the Server
 
 To expose the webhook server we have provided a service and ingress to get 

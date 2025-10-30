@@ -174,10 +174,10 @@ require (
 )
 
 replace (
-	// Uncomment for development and local testing, and comment out for releases
-	github.com/argoproj-labs/argocd-image-updater/registry-scanner => ./registry-scanner/
-	github.com/cyphar/filepath-securejoin => github.com/cyphar/filepath-securejoin v0.3.6
-	github.com/golang/protobuf => github.com/golang/protobuf v1.5.4
+    github.com/cyphar/filepath-securejoin => github.com/cyphar/filepath-securejoin v0.3.6
+    // Use local registry-scanner during build (Dockerfile copies whole repo before mod download)
+    github.com/argoproj-labs/argocd-image-updater/registry-scanner => ./registry-scanner/
+    github.com/golang/protobuf => github.com/golang/protobuf v1.5.4
 
 	k8s.io/api => k8s.io/api v0.32.2
 	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.32.2
