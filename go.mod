@@ -174,10 +174,17 @@ require (
 )
 
 replace (
+<<<<<<< HEAD
     github.com/cyphar/filepath-securejoin => github.com/cyphar/filepath-securejoin v0.3.6
     // Use local registry-scanner during build (Dockerfile copies whole repo before mod download)
     github.com/argoproj-labs/argocd-image-updater/registry-scanner => ./registry-scanner/
     github.com/golang/protobuf => github.com/golang/protobuf v1.5.4
+=======
+	// Uncomment for local testing
+	github.com/argoproj-labs/argocd-image-updater/registry-scanner => ./registry-scanner/
+	github.com/cyphar/filepath-securejoin => github.com/cyphar/filepath-securejoin v0.3.6
+	github.com/golang/protobuf => github.com/golang/protobuf v1.5.4
+>>>>>>> dff4023 (feat(registry): add transport janitor; tests; docs; bump to v100.0.10\n\n- registry: periodic CloseIdleConnections across cached transports\n- cmd(run): wire janitor via REGISTRY_TRANSPORT_JANITOR_INTERVAL (default 5m)\n- tests: janitor unit test; stabilize webhook tests (ports, status, body)\n- docs: changelog entry\n- version: 100.0.10)
 
 	k8s.io/api => k8s.io/api v0.32.2
 	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.32.2

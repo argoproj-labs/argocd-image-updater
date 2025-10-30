@@ -6,6 +6,7 @@ handling on your side.
 
 ## Unreleased
 
+<<<<<<< HEAD
 ## 2025-10-30 - Release v100.0.12
 
 ### Fixes/Improvements
@@ -42,6 +43,8 @@ handling on your side.
 
 - No manifest changes required; your existing livenessProbe on `/healthz` will now trigger restart when ports are exhausted.
 
+=======
+>>>>>>> dff4023 (feat(registry): add transport janitor; tests; docs; bump to v100.0.10\n\n- registry: periodic CloseIdleConnections across cached transports\n- cmd(run): wire janitor via REGISTRY_TRANSPORT_JANITOR_INTERVAL (default 5m)\n- tests: janitor unit test; stabilize webhook tests (ports, status, body)\n- docs: changelog entry\n- version: 100.0.10)
 ## 2025-09-23 - Release v100.0.10a
 
 ### Fixes/Improvements
