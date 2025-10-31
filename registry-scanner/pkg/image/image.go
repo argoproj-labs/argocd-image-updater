@@ -80,7 +80,9 @@ func (img *ContainerImage) String() string {
 func (img *ContainerImage) GetFullNameWithoutTag() string {
 	str := ""
 	if img.RegistryURL != "" {
-		str += img.RegistryURL + "/"
+		if !strings.HasPrefix(img.ImageName, img.RegistryURL+"/") {
+			str += img.RegistryURL + "/"
+		}
 	}
 	str += img.ImageName
 	return str
@@ -91,7 +93,9 @@ func (img *ContainerImage) GetFullNameWithoutTag() string {
 func (img *ContainerImage) GetFullNameWithTag() string {
 	str := ""
 	if img.RegistryURL != "" {
-		str += img.RegistryURL + "/"
+		if !strings.HasPrefix(img.ImageName, img.RegistryURL+"/") {
+			str += img.RegistryURL + "/"
+		}
 	}
 	str += img.ImageName
 	if img.ImageTag != nil {
