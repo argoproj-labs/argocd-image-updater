@@ -264,6 +264,32 @@ func getImageDigestFromTag(tagStr string) (string, string) {
 	}
 }
 
+// HasRegistryPrefix checks if an image name is in long form (has a registry URL prefix).
+// A long form image name has a registry URL like "docker.io/bitnami/nginx" or "gcr.io/myproject/image".
+// A short form is like "bitnami/nginx".
+func HasRegistryPrefix(imageName string) bool {
+	parts := strings.Split(imageName, "/")
+	if len(parts) > 1 {
+		// Check if the first part contains a dot, which indicates it's a registry domain
+		return strings.Contains(parts[0], ".")
+	}
+	return false
+}
+
+// ExtractShortForm extracts the short form from a long form image name by removing the registry prefix.
+// For example, "docker.io/bitnami/nginx" becomes "bitnami/nginx".
+// If the image is already in short form, it returns the original string.
+func ExtractShortForm(imageName string) string {
+	if !HasRegistryPrefix(imageName) {
+		return imageName
+	}
+	parts := strings.SplitN(imageName, "/", 2)
+	if len(parts) == 2 {
+		return parts[1]
+	}
+	return imageName
+}
+
 // LogContext returns a log context for the given image, with required fields
 // set to the image's information.
 func (img *ContainerImage) LogContext() *log.LogContext {
