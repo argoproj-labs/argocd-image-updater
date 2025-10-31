@@ -1,6 +1,7 @@
 package git
 
 import (
+	"context"
 	"fmt"
 	neturl "net/url"
 
@@ -16,8 +17,8 @@ import (
 // As workaround methods `newUploadPackSession`, `newClient` and `listRemote` were copied from https://github.com/src-d/go-git/blob/master/remote.go and modified to use
 // transport with InsecureSkipVerify flag is verification should be disabled.
 
-func newUploadPackSession(url string, auth transport.AuthMethod, insecure bool, creds Creds, proxy string) (transport.UploadPackSession, error) {
-	c, ep, err := newClient(url, insecure, creds, proxy)
+func newUploadPackSession(ctx context.Context, url string, auth transport.AuthMethod, insecure bool, creds Creds, proxy string) (transport.UploadPackSession, error) {
+	c, ep, err := newClient(ctx, url, insecure, creds, proxy)
 	if err != nil {
 		return nil, err
 	}
@@ -25,7 +26,7 @@ func newUploadPackSession(url string, auth transport.AuthMethod, insecure bool, 
 	return c.NewUploadPackSession(ep, auth)
 }
 
-func newClient(url string, insecure bool, creds Creds, proxy string) (transport.Transport, *transport.Endpoint, error) {
+func newClient(ctx context.Context, url string, insecure bool, creds Creds, proxy string) (transport.Transport, *transport.Endpoint, error) {
 	ep, err := transport.NewEndpoint(url)
 	if err != nil {
 		return nil, nil, err
@@ -57,11 +58,11 @@ func newClient(url string, insecure bool, creds Creds, proxy string) (transport.
 		return c, ep, nil
 	}
 
-	return http.NewClient(GetRepoHTTPClient(url, insecure, creds, proxy)), ep, nil
+	return http.NewClient(GetRepoHTTPClient(ctx, url, insecure, creds, proxy)), ep, nil
 }
 
-func listRemote(r *git.Remote, o *git.ListOptions, insecure bool, creds Creds, proxy string) (rfs []*plumbing.Reference, err error) {
-	s, err := newUploadPackSession(r.Config().URLs[0], o.Auth, insecure, creds, proxy)
+func listRemote(ctx context.Context, r *git.Remote, o *git.ListOptions, insecure bool, creds Creds, proxy string) (rfs []*plumbing.Reference, err error) {
+	s, err := newUploadPackSession(ctx, r.Config().URLs[0], o.Auth, insecure, creds, proxy)
 	if err != nil {
 		return nil, err
 	}

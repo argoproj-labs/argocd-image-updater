@@ -186,7 +186,7 @@ func commitChangesGit(ctx context.Context, applicationImages *ApplicationImages,
 	} else {
 		gitC = wbc.GitClient
 	}
-	err = gitC.Init()
+	err = gitC.Init(ctx)
 	if err != nil {
 		return err
 	}
@@ -203,7 +203,7 @@ func commitChangesGit(ctx context.Context, applicationImages *ApplicationImages,
 	}
 	logCtx.Tracef("targetRevision for update is '%s'", checkOutBranch)
 	if checkOutBranch == "" || checkOutBranch == "HEAD" {
-		checkOutBranch, err = gitC.SymRefToBranch(checkOutBranch)
+		checkOutBranch, err = gitC.SymRefToBranch(ctx, checkOutBranch)
 		logCtx.Infof("resolved remote default branch to '%s' and using that for operations", checkOutBranch)
 		if err != nil {
 			return err
@@ -227,26 +227,26 @@ func commitChangesGit(ctx context.Context, applicationImages *ApplicationImages,
 	// If the pushBranch already exists in the remote origin, directly use it.
 	// Otherwise, create the new pushBranch from checkoutBranch
 	if checkOutBranch != pushBranch {
-		fetchErr := gitC.ShallowFetch(pushBranch, 1)
+		fetchErr := gitC.ShallowFetch(ctx, pushBranch, 1)
 		if fetchErr != nil {
-			err = gitC.ShallowFetch(checkOutBranch, 1)
+			err = gitC.ShallowFetch(ctx, checkOutBranch, 1)
 			if err != nil {
 				return err
 			}
 			logCtx.Debugf("Creating branch '%s' and using that for push operations", pushBranch)
-			err = gitC.Branch(checkOutBranch, pushBranch)
+			err = gitC.Branch(ctx, checkOutBranch, pushBranch)
 			if err != nil {
 				return err
 			}
 		}
 	} else {
-		err = gitC.ShallowFetch(checkOutBranch, 1)
+		err = gitC.ShallowFetch(ctx, checkOutBranch, 1)
 		if err != nil {
 			return err
 		}
 	}
 
-	err = gitC.Checkout(pushBranch, false)
+	err = gitC.Checkout(ctx, pushBranch, false)
 	if err != nil {
 		return err
 	}
@@ -276,7 +276,7 @@ func commitChangesGit(ctx context.Context, applicationImages *ApplicationImages,
 
 	// Set username and e-mail address used to identify the commiter
 	if wbc.GitCommitUser != "" && wbc.GitCommitEmail != "" {
-		err = gitC.Config(wbc.GitCommitUser, wbc.GitCommitEmail)
+		err = gitC.Config(ctx, wbc.GitCommitUser, wbc.GitCommitEmail)
 		if err != nil {
 			return err
 		}
@@ -289,11 +289,11 @@ func commitChangesGit(ctx context.Context, applicationImages *ApplicationImages,
 	commitOpts.SigningMethod = wbc.GitCommitSigningMethod
 	commitOpts.SignOff = wbc.GitCommitSignOff
 
-	err = gitC.Commit("", commitOpts)
+	err = gitC.Commit(ctx, "", commitOpts)
 	if err != nil {
 		return err
 	}
-	err = gitC.Push("origin", pushBranch, pushBranch != checkOutBranch)
+	err = gitC.Push(ctx, "origin", pushBranch, pushBranch != checkOutBranch)
 	if err != nil {
 		return err
 	}
@@ -352,7 +352,7 @@ func writeOverrides(ctx context.Context, applicationImages *ApplicationImages, g
 	}
 
 	if !targetExists {
-		err = gitC.Add(targetFile)
+		err = gitC.Add(ctx, targetFile)
 	}
 	return
 }

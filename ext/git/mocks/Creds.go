@@ -3,6 +3,7 @@
 package mocks
 
 import (
+	"context"
 	io "io"
 
 	mock "github.com/stretchr/testify/mock"
@@ -14,7 +15,7 @@ type Creds struct {
 }
 
 // Environ provides a mock function with given fields:
-func (_m *Creds) Environ() (io.Closer, []string, error) {
+func (_m *Creds) Environ(context.Context) (io.Closer, []string, error) {
 	ret := _m.Called()
 
 	var r0 io.Closer

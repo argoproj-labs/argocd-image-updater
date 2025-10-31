@@ -1,6 +1,7 @@
 package git
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -36,33 +37,36 @@ func _createEmptyGitRepo() (string, error) {
 }
 
 func Test_nativeGitClient_Fetch(t *testing.T) {
+	ctx := context.Background()
 	tempDir, err := _createEmptyGitRepo()
 	require.NoError(t, err)
 
 	client, err := NewClient(fmt.Sprintf("file://%s", tempDir), NopCreds{}, true, false, "")
 	require.NoError(t, err)
 
-	err = client.Init()
+	err = client.Init(ctx)
 	require.NoError(t, err)
 
-	err = client.Fetch("")
+	err = client.Fetch(ctx, "")
 	assert.NoError(t, err)
 }
 
 func Test_nativeGitClient_Fetch_Prune(t *testing.T) {
+	ctx := context.Background()
+
 	tempDir, err := _createEmptyGitRepo()
 	require.NoError(t, err)
 
 	client, err := NewClient(fmt.Sprintf("file://%s", tempDir), NopCreds{}, true, false, "")
 	require.NoError(t, err)
 
-	err = client.Init()
+	err = client.Init(ctx)
 	require.NoError(t, err)
 
 	err = runCmd(tempDir, "git", "branch", "test/foo")
 	require.NoError(t, err)
 
-	err = client.Fetch("")
+	err = client.Fetch(ctx, "")
 	assert.NoError(t, err)
 
 	err = runCmd(tempDir, "git", "branch", "-d", "test/foo")
@@ -70,16 +74,18 @@ func Test_nativeGitClient_Fetch_Prune(t *testing.T) {
 	err = runCmd(tempDir, "git", "branch", "test/foo/bar")
 	require.NoError(t, err)
 
-	err = client.Fetch("")
+	err = client.Fetch(ctx, "")
 	assert.NoError(t, err)
 }
 
 func Test_IsAnnotatedTag(t *testing.T) {
+	ctx := context.Background()
+
 	tempDir := t.TempDir()
 	client, err := NewClient(fmt.Sprintf("file://%s", tempDir), NopCreds{}, true, false, "")
 	require.NoError(t, err)
 
-	err = client.Init()
+	err = client.Init(ctx)
 	require.NoError(t, err)
 
 	p := path.Join(client.Root(), "README")
@@ -96,16 +102,16 @@ func Test_IsAnnotatedTag(t *testing.T) {
 	err = runCmd(client.Root(), "git", "commit", "-m", "Initial commit", "-a")
 	require.NoError(t, err)
 
-	atag := client.IsAnnotatedTag("master")
+	atag := client.IsAnnotatedTag(ctx, "master")
 	assert.False(t, atag)
 
 	err = runCmd(client.Root(), "git", "tag", "some-tag", "-a", "-m", "Create annotated tag")
 	require.NoError(t, err)
-	atag = client.IsAnnotatedTag("some-tag")
+	atag = client.IsAnnotatedTag(ctx, "some-tag")
 	assert.True(t, atag)
 
 	// Tag effectually points to HEAD, so it's considered the same
-	atag = client.IsAnnotatedTag("HEAD")
+	atag = client.IsAnnotatedTag(ctx, "HEAD")
 	assert.True(t, atag)
 
 	err = runCmd(client.Root(), "git", "rm", "README")
@@ -114,17 +120,19 @@ func Test_IsAnnotatedTag(t *testing.T) {
 	assert.NoError(t, err)
 
 	// We moved on, so tag doesn't point to HEAD anymore
-	atag = client.IsAnnotatedTag("HEAD")
+	atag = client.IsAnnotatedTag(ctx, "HEAD")
 	assert.False(t, atag)
 }
 
 func Test_ChangedFiles(t *testing.T) {
+	ctx := context.Background()
+
 	tempDir := t.TempDir()
 
 	client, err := NewClientExt(fmt.Sprintf("file://%s", tempDir), tempDir, NopCreds{}, true, false, "")
 	require.NoError(t, err)
 
-	err = client.Init()
+	err = client.Init(ctx)
 	require.NoError(t, err)
 
 	err = runCmd(client.Root(), "git", "commit", "-m", "Initial commit", "--allow-empty")
@@ -148,32 +156,34 @@ func Test_ChangedFiles(t *testing.T) {
 	err = runCmd(client.Root(), "git", "commit", "-m", "Changes", "-a")
 	require.NoError(t, err)
 
-	previousSHA, err := client.LsRemote("some-tag")
+	previousSHA, err := client.LsRemote(ctx, "some-tag")
 	require.NoError(t, err)
 
-	commitSHA, err := client.LsRemote("HEAD")
+	commitSHA, err := client.LsRemote(ctx, "HEAD")
 	require.NoError(t, err)
 
 	// Invalid commits, error
-	_, err = client.ChangedFiles("0000000000000000000000000000000000000000", "1111111111111111111111111111111111111111")
+	_, err = client.ChangedFiles(ctx, "0000000000000000000000000000000000000000", "1111111111111111111111111111111111111111")
 	require.Error(t, err)
 
 	// Not SHAs, error
-	_, err = client.ChangedFiles(previousSHA, "HEAD")
+	_, err = client.ChangedFiles(ctx, previousSHA, "HEAD")
 	require.Error(t, err)
 
 	// Same commit, no changes
-	changedFiles, err := client.ChangedFiles(commitSHA, commitSHA)
+	changedFiles, err := client.ChangedFiles(ctx, commitSHA, commitSHA)
 	require.NoError(t, err)
 	assert.ElementsMatch(t, []string{}, changedFiles)
 
 	// Different ref, with changes
-	changedFiles, err = client.ChangedFiles(previousSHA, commitSHA)
+	changedFiles, err = client.ChangedFiles(ctx, previousSHA, commitSHA)
 	require.NoError(t, err)
 	assert.ElementsMatch(t, []string{"README"}, changedFiles)
 }
 
 func Test_nativeGitClient_Submodule(t *testing.T) {
+	ctx := context.Background()
+
 	tempDir, err := os.MkdirTemp("", "")
 	require.NoError(t, err)
 
@@ -212,17 +222,17 @@ func Test_nativeGitClient_Submodule(t *testing.T) {
 	client, err := NewClient(fmt.Sprintf("file://%s", foo), NopCreds{}, true, false, "")
 	require.NoError(t, err)
 
-	err = client.Init()
+	err = client.Init(ctx)
 	require.NoError(t, err)
 
-	err = client.Fetch("")
+	err = client.Fetch(ctx, "")
 	assert.NoError(t, err)
 
-	commitSHA, err := client.LsRemote("HEAD")
+	commitSHA, err := client.LsRemote(ctx, "HEAD")
 	assert.NoError(t, err)
 
 	// Call Checkout() with submoduleEnabled=false.
-	err = client.Checkout(commitSHA, false)
+	err = client.Checkout(ctx, commitSHA, false)
 	assert.NoError(t, err)
 
 	// Check if submodule url does not exist in .git/config
@@ -230,7 +240,7 @@ func Test_nativeGitClient_Submodule(t *testing.T) {
 	assert.Error(t, err)
 
 	// Call Submodule() via Checkout() with submoduleEnabled=true.
-	err = client.Checkout(commitSHA, true)
+	err = client.Checkout(ctx, commitSHA, true)
 	assert.NoError(t, err)
 
 	// Check if the .gitmodule URL is reflected in .git/config
@@ -245,7 +255,7 @@ func Test_nativeGitClient_Submodule(t *testing.T) {
 	require.NoError(t, err)
 
 	// Call Submodule()
-	err = client.Submodule()
+	err = client.Submodule(ctx)
 	assert.NoError(t, err)
 
 	// Check if the URL change in .gitmodule is reflected in .git/config

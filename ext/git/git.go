@@ -1,6 +1,7 @@
 package git
 
 import (
+	"context"
 	"net/url"
 	"regexp"
 	"strings"
@@ -83,11 +84,11 @@ func IsHTTPURL(url string) bool {
 }
 
 // TestRepo tests if a repo exists and is accessible with the given credentials
-func TestRepo(repo string, creds Creds, insecure bool, enableLfs bool, proxy string) error {
+func TestRepo(ctx context.Context, repo string, creds Creds, insecure bool, enableLfs bool, proxy string) error {
 	clnt, err := NewClient(repo, creds, insecure, enableLfs, proxy)
 	if err != nil {
 		return err
 	}
-	_, err = clnt.LsRemote("HEAD")
+	_, err = clnt.LsRemote(ctx, "HEAD")
 	return err
 }
