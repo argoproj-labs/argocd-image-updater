@@ -63,6 +63,13 @@ func Test_ParseImageTags(t *testing.T) {
 		assert.Equal(t, "0.1", image.ImageTag.TagName)
 		assert.Equal(t, "docker.io/jannfis/test-image:0.1", image.GetFullNameWithTag())
 		assert.Equal(t, "docker.io/jannfis/test-image", image.GetFullNameWithoutTag())
+
+		// if the image name starts with registryURL, GetFullNameWithoutTag and GetFullNameWithTag
+		// should return the correct full image name without repeating registryURL.
+		// Wrong full image name: docker.io/docker.io/jannfis/test-image
+		image.ImageName = "docker.io/jannfis/test-image"
+		assert.Equal(t, "docker.io/jannfis/test-image:0.1", image.GetFullNameWithTag())
+		assert.Equal(t, "docker.io/jannfis/test-image", image.GetFullNameWithoutTag())
 	})
 
 	t.Run("Parse valid image name with digest tag", func(t *testing.T) {
