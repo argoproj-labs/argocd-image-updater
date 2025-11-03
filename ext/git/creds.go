@@ -22,11 +22,13 @@ import (
 	argoio "github.com/argoproj/gitops-engine/pkg/utils/io"
 	"github.com/argoproj/gitops-engine/pkg/utils/text"
 	"github.com/bradleyfalzon/ghinstallation/v2"
-	log "github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 
 	"github.com/argoproj/argo-cd/v3/common"
 	certutil "github.com/argoproj/argo-cd/v3/util/cert"
 	argoioutils "github.com/argoproj/argo-cd/v3/util/io"
+
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
 )
 
 var (
@@ -73,7 +75,7 @@ type CredsStore interface {
 }
 
 type Creds interface {
-	Environ() (io.Closer, []string, error)
+	Environ(ctx context.Context) (io.Closer, []string, error)
 }
 
 func getGitAskPassEnv(id string) []string {
@@ -105,7 +107,7 @@ var _ Creds = NopCreds{}
 type NopCreds struct {
 }
 
-func (c NopCreds) Environ() (io.Closer, []string, error) {
+func (c NopCreds) Environ(context.Context) (io.Closer, []string, error) {
 	return NopCloser{}, nil, nil
 }
 
@@ -115,7 +117,7 @@ type GenericHTTPSCreds interface {
 	HasClientCert() bool
 	GetClientCertData() string
 	GetClientCertKey() string
-	Environ() (io.Closer, []string, error)
+	Environ(ctx context.Context) (io.Closer, []string, error)
 }
 
 var _ GenericHTTPSCreds = HTTPSCreds{}
@@ -162,7 +164,9 @@ func (c HTTPSCreds) BasicAuthHeader() string {
 
 // Get additional required environment variables for executing git client to
 // access specific repository via HTTPS.
-func (c HTTPSCreds) Environ() (io.Closer, []string, error) {
+func (c HTTPSCreds) Environ(ctx context.Context) (io.Closer, []string, error) {
+	log := log.LoggerFromContext(ctx)
+
 	var env []string
 
 	httpCloser := authFilePaths(make([]string, 0))
@@ -203,7 +207,7 @@ func (c HTTPSCreds) Environ() (io.Closer, []string, error) {
 
 		_, err = certFile.WriteString(c.clientCertData)
 		if err != nil {
-			httpCloser.Close()
+			httpCloser.Close(ctx)
 			return NopCloser{}, nil, err
 		}
 		// GIT_SSL_CERT is the full path to a client certificate to be used
@@ -211,7 +215,7 @@ func (c HTTPSCreds) Environ() (io.Closer, []string, error) {
 
 		_, err = keyFile.WriteString(c.clientCertKey)
 		if err != nil {
-			httpCloser.Close()
+			httpCloser.Close(ctx)
 			return NopCloser{}, nil, err
 		}
 		// GIT_SSL_KEY is the full path to a client certificate's key to be used
@@ -227,7 +231,7 @@ func (c HTTPSCreds) Environ() (io.Closer, []string, error) {
 	env = append(env, getGitAskPassEnv(nonce)...)
 	return argoioutils.NewCloser(func() error {
 		c.store.Remove(nonce)
-		return httpCloser.Close()
+		return httpCloser.Close(ctx)
 	}), env, nil
 }
 
@@ -266,7 +270,9 @@ func (f sshPrivateKeyFile) Close() error {
 
 // Remove a list of files that have been created as temp files while creating
 // HTTPCreds object above.
-func (f authFilePaths) Close() error {
+func (f authFilePaths) Close(ctx context.Context) error {
+	log := log.LoggerFromContext(ctx)
+
 	var retErr error = nil
 	for _, path := range f {
 		err := os.Remove(path)
@@ -278,7 +284,9 @@ func (f authFilePaths) Close() error {
 	return retErr
 }
 
-func (c SSHCreds) Environ() (io.Closer, []string, error) {
+func (c SSHCreds) Environ(ctx context.Context) (io.Closer, []string, error) {
+	log := log.LoggerFromContext(ctx)
+
 	// use the SHM temp dir from util, more secure
 	file, err := os.CreateTemp(argoio.TempDir, "")
 	if err != nil {
@@ -286,7 +294,7 @@ func (c SSHCreds) Environ() (io.Closer, []string, error) {
 	}
 	defer func() {
 		if err = file.Close(); err != nil {
-			log.WithFields(log.Fields{
+			log.WithFields(logrus.Fields{
 				common.SecurityField:    common.SecurityMedium,
 				common.SecurityCWEField: common.SecurityCWEMissingReleaseOfFileDescriptor,
 			}).Errorf("error closing file %q: %v", file.Name(), err)
@@ -353,8 +361,10 @@ func NewGitHubAppCreds(appID int64, appInstallId int64, privateKey string, baseU
 	return GitHubAppCreds{appID: appID, appInstallId: appInstallId, privateKey: privateKey, baseURL: baseURL, repoURL: repoURL, clientCertData: clientCertData, clientCertKey: clientCertKey, insecure: insecure, proxy: proxy, store: store}
 }
 
-func (g GitHubAppCreds) Environ() (io.Closer, []string, error) {
-	token, err := g.getAccessToken()
+func (g GitHubAppCreds) Environ(ctx context.Context) (io.Closer, []string, error) {
+	log := log.LoggerFromContext(ctx)
+
+	token, err := g.getAccessToken(ctx)
 	if err != nil {
 		return NopCloser{}, nil, err
 	}
@@ -397,7 +407,7 @@ func (g GitHubAppCreds) Environ() (io.Closer, []string, error) {
 
 		_, err = certFile.WriteString(g.clientCertData)
 		if err != nil {
-			httpCloser.Close()
+			httpCloser.Close(ctx)
 			return NopCloser{}, nil, err
 		}
 		// GIT_SSL_CERT is the full path to a client certificate to be used
@@ -405,7 +415,7 @@ func (g GitHubAppCreds) Environ() (io.Closer, []string, error) {
 
 		_, err = keyFile.WriteString(g.clientCertKey)
 		if err != nil {
-			httpCloser.Close()
+			httpCloser.Close(ctx)
 			return NopCloser{}, nil, err
 		}
 		// GIT_SSL_KEY is the full path to a client certificate's key to be used
@@ -416,15 +426,15 @@ func (g GitHubAppCreds) Environ() (io.Closer, []string, error) {
 	env = append(env, getGitAskPassEnv(nonce)...)
 	return argoioutils.NewCloser(func() error {
 		g.store.Remove(nonce)
-		return httpCloser.Close()
+		return httpCloser.Close(ctx)
 	}), env, nil
 }
 
 // getAccessToken fetches GitHub token using the app id, install id, and private key.
 // the token is then cached for re-use.
-func (g GitHubAppCreds) getAccessToken() (string, error) {
+func (g GitHubAppCreds) getAccessToken(ctx context.Context) (string, error) {
 	// Timeout
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 
 	// Compute hash of creds for lookup in cache
@@ -450,7 +460,7 @@ func (g GitHubAppCreds) getAccessToken() (string, error) {
 	}
 
 	// Create a new GitHub transport
-	c := GetRepoHTTPClient(baseUrl, g.insecure, g, g.proxy)
+	c := GetRepoHTTPClient(ctx, baseUrl, g.insecure, g, g.proxy)
 	itr, err := ghinstallation.New(c.Transport,
 		g.appID,
 		g.appInstallId,
@@ -495,7 +505,7 @@ func NewGoogleCloudCreds(jsonData string, store CredsStore) GoogleCloudCreds {
 	return GoogleCloudCreds{creds, store}
 }
 
-func (c GoogleCloudCreds) Environ() (io.Closer, []string, error) {
+func (c GoogleCloudCreds) Environ(context.Context) (io.Closer, []string, error) {
 	username, err := c.getUsername()
 	if err != nil {
 		return NopCloser{}, nil, fmt.Errorf("failed to get username from creds: %w", err)

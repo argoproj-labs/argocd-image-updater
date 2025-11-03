@@ -19,6 +19,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
+	argocdlog "github.com/argoproj/argo-cd/v3/util/log"
+
 	api "github.com/argoproj-labs/argocd-image-updater/api/v1alpha1"
 	"github.com/argoproj-labs/argocd-image-updater/internal/controller"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/argocd"
@@ -61,6 +63,21 @@ Flags can configure its metrics, health probes, and leader election.
 This enables a CRD-driven approach to automated image updates with Argo CD.
 `,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// Configure the controller for run once mode
+			if once {
+				cfg.CheckInterval = 0
+				probeAddr = "0"
+				warmUpCache = true
+			}
+
+			// Configure the global logger for vendored argo-cd utilities
+			logLvl, err := logrus.ParseLevel(cfg.LogLevel)
+			if err != nil {
+				return fmt.Errorf("could not parse log level: %w", err)
+			}
+			logrus.SetLevel(logLvl)
+			logrus.SetFormatter(argocdlog.CreateFormatter(cfg.LogFormat))
+
 			if err := log.SetLogLevel(cfg.LogLevel); err != nil {
 				return err
 			}
@@ -73,12 +90,6 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 				logFormat = log.LogFormatJSON
 			default:
 				return fmt.Errorf("invalid log format '%s'", cfg.LogFormat)
-			}
-
-			if once {
-				cfg.CheckInterval = 0
-				probeAddr = "0"
-				warmUpCache = true
 			}
 
 			log.SetLogFormat(logFormat)
@@ -97,7 +108,7 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 
 			// Create context with signal handling
 			ctx := ctrl.SetupSignalHandler()
-			err := SetupCommon(ctx, cfg, setupLogger, commitMessagePath, kubeConfig)
+			err = SetupCommon(ctx, cfg, setupLogger, commitMessagePath, kubeConfig)
 			if err != nil {
 				return err
 			}

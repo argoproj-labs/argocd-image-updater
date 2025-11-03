@@ -3,6 +3,8 @@
 package mocks
 
 import (
+	"context"
+
 	git "github.com/argoproj-labs/argocd-image-updater/ext/git"
 	mock "github.com/stretchr/testify/mock"
 )
@@ -13,7 +15,7 @@ type Client struct {
 }
 
 // Add provides a mock function with given fields: path
-func (_m *Client) Add(path string) error {
+func (_m *Client) Add(ctx context.Context, path string) error {
 	ret := _m.Called(path)
 
 	if len(ret) == 0 {
@@ -31,7 +33,7 @@ func (_m *Client) Add(path string) error {
 }
 
 // Branch provides a mock function with given fields: sourceBranch, targetBranch
-func (_m *Client) Branch(sourceBranch string, targetBranch string) error {
+func (_m *Client) Branch(ctx context.Context, sourceBranch string, targetBranch string) error {
 	ret := _m.Called(sourceBranch, targetBranch)
 
 	if len(ret) == 0 {
@@ -49,7 +51,7 @@ func (_m *Client) Branch(sourceBranch string, targetBranch string) error {
 }
 
 // ChangedFiles provides a mock function with given fields: revision, targetRevision
-func (_m *Client) ChangedFiles(revision string, targetRevision string) ([]string, error) {
+func (_m *Client) ChangedFiles(ctx context.Context, revision string, targetRevision string) ([]string, error) {
 	ret := _m.Called(revision, targetRevision)
 
 	if len(ret) == 0 {
@@ -79,7 +81,7 @@ func (_m *Client) ChangedFiles(revision string, targetRevision string) ([]string
 }
 
 // Checkout provides a mock function with given fields: revision, submoduleEnabled
-func (_m *Client) Checkout(revision string, submoduleEnabled bool) error {
+func (_m *Client) Checkout(ctx context.Context, revision string, submoduleEnabled bool) error {
 	ret := _m.Called(revision, submoduleEnabled)
 
 	if len(ret) == 0 {
@@ -97,7 +99,7 @@ func (_m *Client) Checkout(revision string, submoduleEnabled bool) error {
 }
 
 // Commit provides a mock function with given fields: pathSpec, opts
-func (_m *Client) Commit(pathSpec string, opts *git.CommitOptions) error {
+func (_m *Client) Commit(ctx context.Context, pathSpec string, opts *git.CommitOptions) error {
 	ret := _m.Called(pathSpec, opts)
 
 	if len(ret) == 0 {
@@ -115,7 +117,7 @@ func (_m *Client) Commit(pathSpec string, opts *git.CommitOptions) error {
 }
 
 // CommitSHA provides a mock function with given fields:
-func (_m *Client) CommitSHA() (string, error) {
+func (_m *Client) CommitSHA(context.Context) (string, error) {
 	ret := _m.Called()
 
 	if len(ret) == 0 {
@@ -143,7 +145,7 @@ func (_m *Client) CommitSHA() (string, error) {
 }
 
 // Config provides a mock function with given fields: username, email
-func (_m *Client) Config(username string, email string) error {
+func (_m *Client) Config(ctx context.Context, username string, email string) error {
 	ret := _m.Called(username, email)
 
 	if len(ret) == 0 {
@@ -175,7 +177,7 @@ func (_m *Client) SigningConfig(signingkey string) error {
 }
 
 // Fetch provides a mock function with given fields: revision
-func (_m *Client) Fetch(revision string) error {
+func (_m *Client) Fetch(ctx context.Context, revision string) error {
 	ret := _m.Called(revision)
 
 	if len(ret) == 0 {
@@ -193,7 +195,7 @@ func (_m *Client) Fetch(revision string) error {
 }
 
 // Fetch provides a mock function with given fields: revision
-func (_m *Client) ShallowFetch(revision string, depth int) error {
+func (_m *Client) ShallowFetch(ctx context.Context, revision string, depth int) error {
 	ret := _m.Called(revision)
 
 	if len(ret) == 0 {
@@ -211,7 +213,7 @@ func (_m *Client) ShallowFetch(revision string, depth int) error {
 }
 
 // Init provides a mock function with given fields:
-func (_m *Client) Init() error {
+func (_m *Client) Init(context.Context) error {
 	ret := _m.Called()
 
 	if len(ret) == 0 {
@@ -229,8 +231,8 @@ func (_m *Client) Init() error {
 }
 
 // IsAnnotatedTag provides a mock function with given fields: _a0
-func (_m *Client) IsAnnotatedTag(_a0 string) bool {
-	ret := _m.Called(_a0)
+func (_m *Client) IsAnnotatedTag(ctx context.Context, revision string) bool {
+	ret := _m.Called(revision)
 
 	if len(ret) == 0 {
 		panic("no return value specified for IsAnnotatedTag")
@@ -238,7 +240,7 @@ func (_m *Client) IsAnnotatedTag(_a0 string) bool {
 
 	var r0 bool
 	if rf, ok := ret.Get(0).(func(string) bool); ok {
-		r0 = rf(_a0)
+		r0 = rf(revision)
 	} else {
 		r0 = ret.Get(0).(bool)
 	}
@@ -247,7 +249,7 @@ func (_m *Client) IsAnnotatedTag(_a0 string) bool {
 }
 
 // LsFiles provides a mock function with given fields: path, enableNewGitFileGlobbing
-func (_m *Client) LsFiles(path string, enableNewGitFileGlobbing bool) ([]string, error) {
+func (_m *Client) LsFiles(ctx context.Context, path string, enableNewGitFileGlobbing bool) ([]string, error) {
 	ret := _m.Called(path, enableNewGitFileGlobbing)
 
 	if len(ret) == 0 {
@@ -277,7 +279,7 @@ func (_m *Client) LsFiles(path string, enableNewGitFileGlobbing bool) ([]string,
 }
 
 // LsLargeFiles provides a mock function with given fields:
-func (_m *Client) LsLargeFiles() ([]string, error) {
+func (_m *Client) LsLargeFiles(context.Context) ([]string, error) {
 	ret := _m.Called()
 
 	if len(ret) == 0 {
@@ -307,7 +309,7 @@ func (_m *Client) LsLargeFiles() ([]string, error) {
 }
 
 // LsRefs provides a mock function with given fields:
-func (_m *Client) LsRefs() (*git.Refs, error) {
+func (_m *Client) LsRefs(context.Context) (*git.Refs, error) {
 	ret := _m.Called()
 
 	if len(ret) == 0 {
@@ -337,7 +339,7 @@ func (_m *Client) LsRefs() (*git.Refs, error) {
 }
 
 // LsRemote provides a mock function with given fields: revision
-func (_m *Client) LsRemote(revision string) (string, error) {
+func (_m *Client) LsRemote(ctx context.Context, revision string) (string, error) {
 	ret := _m.Called(revision)
 
 	if len(ret) == 0 {
@@ -365,7 +367,7 @@ func (_m *Client) LsRemote(revision string) (string, error) {
 }
 
 // Push provides a mock function with given fields: remote, branch, force
-func (_m *Client) Push(remote string, branch string, force bool) error {
+func (_m *Client) Push(ctx context.Context, remote string, branch string, force bool) error {
 	ret := _m.Called(remote, branch, force)
 
 	if len(ret) == 0 {
@@ -383,7 +385,7 @@ func (_m *Client) Push(remote string, branch string, force bool) error {
 }
 
 // RevisionMetadata provides a mock function with given fields: revision
-func (_m *Client) RevisionMetadata(revision string) (*git.RevisionMetadata, error) {
+func (_m *Client) RevisionMetadata(ctx context.Context, revision string) (*git.RevisionMetadata, error) {
 	ret := _m.Called(revision)
 
 	if len(ret) == 0 {
@@ -431,7 +433,7 @@ func (_m *Client) Root() string {
 }
 
 // Submodule provides a mock function with given fields:
-func (_m *Client) Submodule() error {
+func (_m *Client) Submodule(context.Context) error {
 	ret := _m.Called()
 
 	if len(ret) == 0 {
@@ -449,7 +451,7 @@ func (_m *Client) Submodule() error {
 }
 
 // SymRefToBranch provides a mock function with given fields: symRef
-func (_m *Client) SymRefToBranch(symRef string) (string, error) {
+func (_m *Client) SymRefToBranch(ctx context.Context, symRef string) (string, error) {
 	ret := _m.Called(symRef)
 
 	if len(ret) == 0 {
@@ -477,8 +479,8 @@ func (_m *Client) SymRefToBranch(symRef string) (string, error) {
 }
 
 // VerifyCommitSignature provides a mock function with given fields: _a0
-func (_m *Client) VerifyCommitSignature(_a0 string) (string, error) {
-	ret := _m.Called(_a0)
+func (_m *Client) VerifyCommitSignature(ctx context.Context, revision string) (string, error) {
+	ret := _m.Called(revision)
 
 	if len(ret) == 0 {
 		panic("no return value specified for VerifyCommitSignature")
@@ -487,16 +489,16 @@ func (_m *Client) VerifyCommitSignature(_a0 string) (string, error) {
 	var r0 string
 	var r1 error
 	if rf, ok := ret.Get(0).(func(string) (string, error)); ok {
-		return rf(_a0)
+		return rf(revision)
 	}
 	if rf, ok := ret.Get(0).(func(string) string); ok {
-		r0 = rf(_a0)
+		r0 = rf(revision)
 	} else {
 		r0 = ret.Get(0).(string)
 	}
 
 	if rf, ok := ret.Get(1).(func(string) error); ok {
-		r1 = rf(_a0)
+		r1 = rf(revision)
 	} else {
 		r1 = ret.Error(1)
 	}

@@ -1,6 +1,7 @@
 package git
 
 import (
+	"context"
 	"fmt"
 	"os/exec"
 	"strconv"
@@ -29,7 +30,9 @@ type CommitOptions struct {
 // used as the commit message, otherwise a default commit message will be used.
 // If signingKey is not the empty string, commit will be signed with the given
 // GPG or SSH key.
-func (m *nativeGitClient) Commit(pathSpec string, opts *CommitOptions) error {
+func (m *nativeGitClient) Commit(ctx context.Context, pathSpec string, opts *CommitOptions) error {
+	log := log.LoggerFromContext(ctx)
+
 	defaultCommitMsg := "Update parameters"
 	// Git configuration
 	config := "gpg.format=" + opts.SigningMethod
@@ -59,7 +62,7 @@ func (m *nativeGitClient) Commit(pathSpec string, opts *CommitOptions) error {
 		args = append(args, "-m", defaultCommitMsg)
 	}
 
-	out, err := m.runCmd(args...)
+	out, err := m.runCmd(ctx, args...)
 	if err != nil {
 		log.Errorf("%s %v", out, err)
 		return err
@@ -69,15 +72,15 @@ func (m *nativeGitClient) Commit(pathSpec string, opts *CommitOptions) error {
 }
 
 // Branch creates a new target branch from a given source branch
-func (m *nativeGitClient) Branch(sourceBranch string, targetBranch string) error {
+func (m *nativeGitClient) Branch(ctx context.Context, sourceBranch string, targetBranch string) error {
 	if sourceBranch != "" {
-		_, err := m.runCmd("checkout", sourceBranch)
+		_, err := m.runCmd(ctx, "checkout", sourceBranch)
 		if err != nil {
 			return fmt.Errorf("could not checkout source branch: %v", err)
 		}
 	}
 
-	_, err := m.runCmd("branch", targetBranch)
+	_, err := m.runCmd(ctx, "branch", targetBranch)
 	if err != nil {
 		return fmt.Errorf("could not create new branch: %v", err)
 	}
@@ -87,13 +90,13 @@ func (m *nativeGitClient) Branch(sourceBranch string, targetBranch string) error
 
 // Push pushes local changes to the remote branch. If force is true, will force
 // the remote to accept the push.
-func (m *nativeGitClient) Push(remote string, branch string, force bool) error {
+func (m *nativeGitClient) Push(ctx context.Context, remote string, branch string, force bool) error {
 	args := []string{"push"}
 	if force {
 		args = append(args, "-f")
 	}
 	args = append(args, remote, branch)
-	err := m.runCredentialedCmd(args...)
+	err := m.runCredentialedCmd(ctx, args...)
 	if err != nil {
 		return fmt.Errorf("could not push %s to %s: %v", branch, remote, err)
 	}
@@ -101,13 +104,13 @@ func (m *nativeGitClient) Push(remote string, branch string, force bool) error {
 }
 
 // Add adds a path spec to the repository
-func (m *nativeGitClient) Add(path string) error {
-	return m.runCredentialedCmd("add", path)
+func (m *nativeGitClient) Add(ctx context.Context, path string) error {
+	return m.runCredentialedCmd(ctx, "add", path)
 }
 
 // SymRefToBranch retrieves the branch name a symbolic ref points to
-func (m *nativeGitClient) SymRefToBranch(symRef string) (string, error) {
-	output, err := m.runCredentialedCmdWithOutput("remote", "show", "origin")
+func (m *nativeGitClient) SymRefToBranch(ctx context.Context, symRef string) (string, error) {
+	output, err := m.runCredentialedCmdWithOutput(ctx, "remote", "show", "origin")
 	if err != nil {
 		return "", fmt.Errorf("error running git: %v", err)
 	}
@@ -124,12 +127,12 @@ func (m *nativeGitClient) SymRefToBranch(symRef string) (string, error) {
 }
 
 // Config configures username and email address for the repository
-func (m *nativeGitClient) Config(username string, email string) error {
-	_, err := m.runCmd("config", "user.name", username)
+func (m *nativeGitClient) Config(ctx context.Context, username string, email string) error {
+	_, err := m.runCmd(ctx, "config", "user.name", username)
 	if err != nil {
 		return fmt.Errorf("could not set git username: %v", err)
 	}
-	_, err = m.runCmd("config", "user.email", email)
+	_, err = m.runCmd(ctx, "config", "user.email", email)
 	if err != nil {
 		return fmt.Errorf("could not set git email: %v", err)
 	}
@@ -141,8 +144,8 @@ func (m *nativeGitClient) Config(username string, email string) error {
 // with username/password credentials while supplying command output to the
 // caller.
 // nolint:unparam
-func (m *nativeGitClient) runCredentialedCmdWithOutput(args ...string) (string, error) {
-	closer, environ, err := m.creds.Environ()
+func (m *nativeGitClient) runCredentialedCmdWithOutput(ctx context.Context, args ...string) (string, error) {
+	closer, environ, err := m.creds.Environ(ctx)
 	if err != nil {
 		return "", err
 	}
@@ -158,34 +161,34 @@ func (m *nativeGitClient) runCredentialedCmdWithOutput(args ...string) (string, 
 
 	cmd := exec.Command("git", args...)
 	cmd.Env = append(cmd.Env, environ...)
-	return m.runCmdOutput(cmd, runOpts{})
+	return m.runCmdOutput(ctx, cmd, runOpts{})
 }
 
-func (m *nativeGitClient) shallowFetch(revision string, depth int) error {
+func (m *nativeGitClient) shallowFetch(ctx context.Context, revision string, depth int) error {
 	var err error
 	if revision != "" {
-		err = m.runCredentialedCmd("fetch", "origin", revision, "--force", "--prune", "--depth", strconv.Itoa(depth))
+		err = m.runCredentialedCmd(ctx, "fetch", "origin", revision, "--force", "--prune", "--depth", strconv.Itoa(depth))
 	} else {
-		err = m.runCredentialedCmd("fetch", "origin", "--force", "--prune", "--depth", strconv.Itoa(depth))
+		err = m.runCredentialedCmd(ctx, "fetch", "origin", "--force", "--prune", "--depth", strconv.Itoa(depth))
 	}
 	return err
 }
 
-// Fetch fetches latest updates from origin
-func (m *nativeGitClient) ShallowFetch(revision string, depth int) error {
+// ShallowFetch fetches latest updates from origin
+func (m *nativeGitClient) ShallowFetch(ctx context.Context, revision string, depth int) error {
 	if m.OnFetch != nil {
 		done := m.OnFetch(m.repoURL)
 		defer done()
 	}
 
-	err := m.shallowFetch(revision, depth)
+	err := m.shallowFetch(ctx, revision, depth)
 
 	// When we have LFS support enabled, check for large files and fetch them too.
 	// No shallow fetch is possible here
 	if err == nil && m.IsLFSEnabled() {
-		largeFiles, err := m.LsLargeFiles()
+		largeFiles, err := m.LsLargeFiles(ctx)
 		if err == nil && len(largeFiles) > 0 {
-			err = m.runCredentialedCmd("lfs", "fetch", "--all")
+			err = m.runCredentialedCmd(ctx, "lfs", "fetch", "--all")
 			if err != nil {
 				return err
 			}
