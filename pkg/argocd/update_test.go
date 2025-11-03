@@ -2395,6 +2395,189 @@ nginx:
 
 		assert.YAMLEq(t, string(yamlOutput), string(roundTripYaml), "round-tripped YAML should be semantically equivalent")
 	})
+
+	t.Run("Original data with short form image name and long form in new - should convert to short form", func(t *testing.T) {
+		expected := `
+image:
+  name: bitnami/nginx
+  tag: v1.0.0
+replicas: 1
+`
+		app := v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name: "testapp",
+				Annotations: map[string]string{
+					"argocd-image-updater.argoproj.io/image-list":            "nginx",
+					"argocd-image-updater.argoproj.io/write-back-method":     "git",
+					"argocd-image-updater.argoproj.io/write-back-target":     "helmvalues:./test-values.yaml",
+					"argocd-image-updater.argoproj.io/nginx.helm.image-name": "image.name",
+					"argocd-image-updater.argoproj.io/nginx.helm.image-tag":  "image.tag",
+				},
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: &v1alpha1.ApplicationSource{
+					RepoURL:        "https://example.com/example",
+					TargetRevision: "main",
+					Helm: &v1alpha1.ApplicationSourceHelm{
+						Parameters: []v1alpha1.HelmParameter{
+							{
+								Name:        "image.name",
+								Value:       "docker.io/bitnami/nginx",
+								ForceString: true,
+							},
+							{
+								Name:        "image.tag",
+								Value:       "v1.0.0",
+								ForceString: true,
+							},
+						},
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypeHelm,
+				Summary: v1alpha1.ApplicationSummary{
+					Images: []string{
+						"nginx:v0.0.0",
+					},
+				},
+			},
+		}
+
+		// Original has short form - should convert long form to short form
+		originalData := []byte(`
+image:
+  name: bitnami/nginx
+  tag: v0.0.0
+replicas: 1
+`)
+		yamlOutput, err := marshalParamsOverride(&app, originalData)
+		require.NoError(t, err)
+		assert.NotEmpty(t, yamlOutput)
+		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(yamlOutput)))
+	})
+
+	t.Run("Original data with long form image name - should use long form", func(t *testing.T) {
+		expected := `
+image:
+  name: docker.io/bitnami/nginx
+  tag: v1.0.0
+replicas: 1
+`
+		app := v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name: "testapp",
+				Annotations: map[string]string{
+					"argocd-image-updater.argoproj.io/image-list":            "nginx",
+					"argocd-image-updater.argoproj.io/write-back-method":     "git",
+					"argocd-image-updater.argoproj.io/write-back-target":     "helmvalues:./test-values.yaml",
+					"argocd-image-updater.argoproj.io/nginx.helm.image-name": "image.name",
+					"argocd-image-updater.argoproj.io/nginx.helm.image-tag":  "image.tag",
+				},
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: &v1alpha1.ApplicationSource{
+					RepoURL:        "https://example.com/example",
+					TargetRevision: "main",
+					Helm: &v1alpha1.ApplicationSourceHelm{
+						Parameters: []v1alpha1.HelmParameter{
+							{
+								Name:        "image.name",
+								Value:       "docker.io/bitnami/nginx",
+								ForceString: true,
+							},
+							{
+								Name:        "image.tag",
+								Value:       "v1.0.0",
+								ForceString: true,
+							},
+						},
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypeHelm,
+				Summary: v1alpha1.ApplicationSummary{
+					Images: []string{
+						"nginx:v0.0.0",
+					},
+				},
+			},
+		}
+
+		// Original has long form - should keep long form
+		originalData := []byte(`
+image:
+  name: docker.io/bitnami/nginx
+  tag: v0.0.0
+replicas: 1
+`)
+		yamlOutput, err := marshalParamsOverride(&app, originalData)
+		require.NoError(t, err)
+		assert.NotEmpty(t, yamlOutput)
+		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(yamlOutput)))
+	})
+
+	t.Run("Non-empty original data with short form in original and short form in new - should use short form", func(t *testing.T) {
+		expected := `
+image:
+  name: bitnami/nginx
+  tag: v1.0.0
+replicas: 1
+`
+		app := v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name: "testapp",
+				Annotations: map[string]string{
+					"argocd-image-updater.argoproj.io/image-list":            "nginx",
+					"argocd-image-updater.argoproj.io/write-back-method":     "git",
+					"argocd-image-updater.argoproj.io/write-back-target":     "helmvalues:./test-values.yaml",
+					"argocd-image-updater.argoproj.io/nginx.helm.image-name": "image.name",
+					"argocd-image-updater.argoproj.io/nginx.helm.image-tag":  "image.tag",
+				},
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: &v1alpha1.ApplicationSource{
+					RepoURL:        "https://example.com/example",
+					TargetRevision: "main",
+					Helm: &v1alpha1.ApplicationSourceHelm{
+						Parameters: []v1alpha1.HelmParameter{
+							{
+								Name:        "image.name",
+								Value:       "bitnami/nginx",
+								ForceString: true,
+							},
+							{
+								Name:        "image.tag",
+								Value:       "v1.0.0",
+								ForceString: true,
+							},
+						},
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypeHelm,
+				Summary: v1alpha1.ApplicationSummary{
+					Images: []string{
+						"nginx:v0.0.0",
+					},
+				},
+			},
+		}
+
+		// Original has short form and new has short form - should use short form
+		originalData := []byte(`
+image:
+  name: bitnami/nginx
+  tag: v0.0.0
+replicas: 1
+`)
+		yamlOutput, err := marshalParamsOverride(&app, originalData)
+		require.NoError(t, err)
+		assert.NotEmpty(t, yamlOutput)
+		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(yamlOutput)))
+	})
 }
 
 func Test_SetHelmValue(t *testing.T) {
@@ -4323,4 +4506,198 @@ func Test_mergeKustomizeOverride(t *testing.T) {
 			assert.ElementsMatch(t, *expectedImages.Kustomize.Images, *existingImages.Kustomize.Images)
 		})
 	}
+}
+
+func Test_GetHelmValue(t *testing.T) {
+	t.Run("Get nested path value", func(t *testing.T) {
+		inputData := []byte(`
+image:
+  attributes:
+    name: repo-name
+    tag: v1.0.0
+`)
+		input := yaml.Node{}
+		err := yaml.Unmarshal(inputData, &input)
+		require.NoError(t, err)
+
+		value, err := getHelmValue(&input, "image.attributes.tag")
+		require.NoError(t, err)
+		assert.Equal(t, "v1.0.0", value)
+	})
+
+	t.Run("Get literal key with dots", func(t *testing.T) {
+		inputData := []byte(`image.attributes.tag: v1.0.0`)
+		input := yaml.Node{}
+		err := yaml.Unmarshal(inputData, &input)
+		require.NoError(t, err)
+
+		value, err := getHelmValue(&input, "image.attributes.tag")
+		require.NoError(t, err)
+		assert.Equal(t, "v1.0.0", value)
+	})
+
+	t.Run("Get root level key", func(t *testing.T) {
+		inputData := []byte(`
+name: repo-name
+tag: v1.0.0
+`)
+		input := yaml.Node{}
+		err := yaml.Unmarshal(inputData, &input)
+		require.NoError(t, err)
+
+		value, err := getHelmValue(&input, "name")
+		require.NoError(t, err)
+		assert.Equal(t, "repo-name", value)
+	})
+
+	t.Run("Get nested path when literal key also exists", func(t *testing.T) {
+		inputData := []byte(`
+image:
+  attributes:
+    tag: nested-value
+image.attributes.tag: literal-value
+`)
+		input := yaml.Node{}
+		err := yaml.Unmarshal(inputData, &input)
+		require.NoError(t, err)
+
+		// Should prefer nested path
+		value, err := getHelmValue(&input, "image.attributes.tag")
+		require.NoError(t, err)
+		assert.Equal(t, "nested-value", value)
+	})
+
+	t.Run("Get literal key when nested path doesn't exist", func(t *testing.T) {
+		inputData := []byte(`
+image.attributes.tag: literal-value
+other:
+  field: value
+`)
+		input := yaml.Node{}
+		err := yaml.Unmarshal(inputData, &input)
+		require.NoError(t, err)
+
+		value, err := getHelmValue(&input, "image.attributes.tag")
+		require.NoError(t, err)
+		assert.Equal(t, "literal-value", value)
+	})
+
+	t.Run("Get value from alias node", func(t *testing.T) {
+		inputData := []byte(`
+image:
+  attributes: &attrs
+    name: repo-name
+    tag: v1.0.0
+other:
+  attributes: *attrs
+`)
+		input := yaml.Node{}
+		err := yaml.Unmarshal(inputData, &input)
+		require.NoError(t, err)
+
+		value, err := getHelmValue(&input, "other.attributes.tag")
+		require.NoError(t, err)
+		assert.Equal(t, "v1.0.0", value)
+	})
+
+	t.Run("Get value from array with index", func(t *testing.T) {
+		inputData := []byte(`
+images:
+  - name: image1
+    tag: v1.0.0
+  - name: image2
+    tag: v2.0.0
+`)
+		input := yaml.Node{}
+		err := yaml.Unmarshal(inputData, &input)
+		require.NoError(t, err)
+
+		value, err := getHelmValue(&input, "images[1].tag")
+		require.NoError(t, err)
+		assert.Equal(t, "v2.0.0", value)
+	})
+
+	t.Run("Key not found returns error", func(t *testing.T) {
+		inputData := []byte(`
+image:
+  attributes:
+    name: repo-name
+`)
+		input := yaml.Node{}
+		err := yaml.Unmarshal(inputData, &input)
+		require.NoError(t, err)
+
+		_, err = getHelmValue(&input, "image.attributes.tag")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "not found")
+	})
+
+	t.Run("Empty document node returns error", func(t *testing.T) {
+		input := yaml.Node{
+			Kind: yaml.DocumentNode,
+		}
+
+		_, err := getHelmValue(&input, "key")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "empty document node")
+	})
+
+	t.Run("Invalid root type returns error", func(t *testing.T) {
+		input := yaml.Node{
+			Kind:  yaml.ScalarNode,
+			Value: "not-a-map",
+		}
+
+		_, err := getHelmValue(&input, "key")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "unexpected type")
+	})
+
+	t.Run("Literal key found but not scalar returns error", func(t *testing.T) {
+		inputData := []byte(`
+image.attributes.tag:
+  nested: value
+`)
+		input := yaml.Node{}
+		err := yaml.Unmarshal(inputData, &input)
+		require.NoError(t, err)
+
+		_, err = getHelmValue(&input, "image.attributes.tag")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "not a scalar value")
+	})
+
+	t.Run("Deep nested path", func(t *testing.T) {
+		inputData := []byte(`
+level1:
+  level2:
+    level3:
+      level4:
+        value: deep-value
+`)
+		input := yaml.Node{}
+		err := yaml.Unmarshal(inputData, &input)
+		require.NoError(t, err)
+
+		value, err := getHelmValue(&input, "level1.level2.level3.level4.value")
+		require.NoError(t, err)
+		assert.Equal(t, "deep-value", value)
+	})
+
+	t.Run("Nested path with non-scalar final value falls back to literal", func(t *testing.T) {
+		inputData := []byte(`
+image:
+  attributes: value-not-nested
+image.attributes.tag: literal-value
+`)
+		input := yaml.Node{}
+		err := yaml.Unmarshal(inputData, &input)
+		require.NoError(t, err)
+
+		// When image.attributes is a scalar (not a map), nested path fails
+		// Should fall back to literal key if it exists
+		value, err := getHelmValue(&input, "image.attributes.tag")
+		require.NoError(t, err)
+		assert.Equal(t, "literal-value", value)
+	})
 }
