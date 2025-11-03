@@ -2395,6 +2395,189 @@ nginx:
 
 		assert.YAMLEq(t, string(yamlOutput), string(roundTripYaml), "round-tripped YAML should be semantically equivalent")
 	})
+
+	t.Run("Original data with short form image name and long form in new - should convert to short form", func(t *testing.T) {
+		expected := `
+image:
+  name: bitnami/nginx
+  tag: v1.0.0
+replicas: 1
+`
+		app := v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name: "testapp",
+				Annotations: map[string]string{
+					"argocd-image-updater.argoproj.io/image-list":            "nginx",
+					"argocd-image-updater.argoproj.io/write-back-method":     "git",
+					"argocd-image-updater.argoproj.io/write-back-target":     "helmvalues:./test-values.yaml",
+					"argocd-image-updater.argoproj.io/nginx.helm.image-name": "image.name",
+					"argocd-image-updater.argoproj.io/nginx.helm.image-tag":  "image.tag",
+				},
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: &v1alpha1.ApplicationSource{
+					RepoURL:        "https://example.com/example",
+					TargetRevision: "main",
+					Helm: &v1alpha1.ApplicationSourceHelm{
+						Parameters: []v1alpha1.HelmParameter{
+							{
+								Name:        "image.name",
+								Value:       "docker.io/bitnami/nginx",
+								ForceString: true,
+							},
+							{
+								Name:        "image.tag",
+								Value:       "v1.0.0",
+								ForceString: true,
+							},
+						},
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypeHelm,
+				Summary: v1alpha1.ApplicationSummary{
+					Images: []string{
+						"nginx:v0.0.0",
+					},
+				},
+			},
+		}
+
+		// Original has short form - should convert long form to short form
+		originalData := []byte(`
+image:
+  name: bitnami/nginx
+  tag: v0.0.0
+replicas: 1
+`)
+		yamlOutput, err := marshalParamsOverride(&app, originalData)
+		require.NoError(t, err)
+		assert.NotEmpty(t, yamlOutput)
+		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(yamlOutput)))
+	})
+
+	t.Run("Original data with long form image name - should use long form", func(t *testing.T) {
+		expected := `
+image:
+  name: docker.io/bitnami/nginx
+  tag: v1.0.0
+replicas: 1
+`
+		app := v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name: "testapp",
+				Annotations: map[string]string{
+					"argocd-image-updater.argoproj.io/image-list":            "nginx",
+					"argocd-image-updater.argoproj.io/write-back-method":     "git",
+					"argocd-image-updater.argoproj.io/write-back-target":     "helmvalues:./test-values.yaml",
+					"argocd-image-updater.argoproj.io/nginx.helm.image-name": "image.name",
+					"argocd-image-updater.argoproj.io/nginx.helm.image-tag":  "image.tag",
+				},
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: &v1alpha1.ApplicationSource{
+					RepoURL:        "https://example.com/example",
+					TargetRevision: "main",
+					Helm: &v1alpha1.ApplicationSourceHelm{
+						Parameters: []v1alpha1.HelmParameter{
+							{
+								Name:        "image.name",
+								Value:       "docker.io/bitnami/nginx",
+								ForceString: true,
+							},
+							{
+								Name:        "image.tag",
+								Value:       "v1.0.0",
+								ForceString: true,
+							},
+						},
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypeHelm,
+				Summary: v1alpha1.ApplicationSummary{
+					Images: []string{
+						"nginx:v0.0.0",
+					},
+				},
+			},
+		}
+
+		// Original has long form - should keep long form
+		originalData := []byte(`
+image:
+  name: docker.io/bitnami/nginx
+  tag: v0.0.0
+replicas: 1
+`)
+		yamlOutput, err := marshalParamsOverride(&app, originalData)
+		require.NoError(t, err)
+		assert.NotEmpty(t, yamlOutput)
+		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(yamlOutput)))
+	})
+
+	t.Run("Non-empty original data with short form in original and short form in new - should use short form", func(t *testing.T) {
+		expected := `
+image:
+  name: bitnami/nginx
+  tag: v1.0.0
+replicas: 1
+`
+		app := v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name: "testapp",
+				Annotations: map[string]string{
+					"argocd-image-updater.argoproj.io/image-list":            "nginx",
+					"argocd-image-updater.argoproj.io/write-back-method":     "git",
+					"argocd-image-updater.argoproj.io/write-back-target":     "helmvalues:./test-values.yaml",
+					"argocd-image-updater.argoproj.io/nginx.helm.image-name": "image.name",
+					"argocd-image-updater.argoproj.io/nginx.helm.image-tag":  "image.tag",
+				},
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: &v1alpha1.ApplicationSource{
+					RepoURL:        "https://example.com/example",
+					TargetRevision: "main",
+					Helm: &v1alpha1.ApplicationSourceHelm{
+						Parameters: []v1alpha1.HelmParameter{
+							{
+								Name:        "image.name",
+								Value:       "bitnami/nginx",
+								ForceString: true,
+							},
+							{
+								Name:        "image.tag",
+								Value:       "v1.0.0",
+								ForceString: true,
+							},
+						},
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypeHelm,
+				Summary: v1alpha1.ApplicationSummary{
+					Images: []string{
+						"nginx:v0.0.0",
+					},
+				},
+			},
+		}
+
+		// Original has short form and new has short form - should use short form
+		originalData := []byte(`
+image:
+  name: bitnami/nginx
+  tag: v0.0.0
+replicas: 1
+`)
+		yamlOutput, err := marshalParamsOverride(&app, originalData)
+		require.NoError(t, err)
+		assert.NotEmpty(t, yamlOutput)
+		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(yamlOutput)))
+	})
 }
 
 func Test_SetHelmValue(t *testing.T) {
