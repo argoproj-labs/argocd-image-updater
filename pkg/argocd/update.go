@@ -383,7 +383,8 @@ func marshalParamsOverride(ctx context.Context, applicationImages *ApplicationIm
 			images := GetImagesAndAliasesFromApplication(applicationImages)
 
 			var helmNewValues yaml.Node
-			if isOnlyWhitespace(originalData) {
+			emptyOriginalData := isOnlyWhitespace(originalData)
+			if emptyOriginalData {
 				// allow non-exists target file
 				helmNewValues = yaml.Node{
 					Kind:        yaml.DocumentNode,
@@ -439,7 +440,26 @@ func marshalParamsOverride(ctx context.Context, applicationImages *ApplicationIm
 					return nil, fmt.Errorf("%s parameter not found", helmParamName)
 				}
 
-				err = setHelmValue(&helmNewValues, helmParamName, helmParamN.Value)
+				// Determine which value to use for the image name parameter
+				valueToSet := helmParamN.Value
+				if !emptyOriginalData && image.HasRegistryPrefix(valueToSet) {
+					// helmParamN.Value is in long form (has registry URL)
+					// Check the original value in helmNewValues to see if it's in short form
+					// Skip this check if originalData is empty
+					originalValue, err := getHelmValue(&helmNewValues, helmParamName)
+					if err == nil {
+						// Original value exists and was found
+						if !image.HasRegistryPrefix(originalValue) {
+							// Original value is in short form, use the short form of the value to set
+							valueToSet = image.ExtractShortForm(valueToSet)
+						}
+						// If originalValue is also in long form, keep using helmParamN.Value
+					}
+					// If getHelmValue returns an error (key not found), use helmParamN.Value as-is
+				}
+				// If helmParamN.Value is already in short form or originalData is empty, use it as-is
+
+				err = setHelmValue(&helmNewValues, helmParamName, valueToSet)
 				if err != nil {
 					return nil, fmt.Errorf("failed to set image parameter name value: %v", err)
 				}
@@ -635,6 +655,98 @@ func setHelmValue(currentValues *yaml.Node, key string, value interface{}) error
 	}
 
 	return err
+}
+
+// getHelmValue retrieves a value from a yaml.Node using a key path.
+// The key can be in the form of "a.b.c" which can be:
+// 1. A nested hierarchy where "a" has "b" which has "c"
+// 2. A literal key "a.b.c" if the nested structure doesn't exist
+// Returns the value as a string and an error if the key is not found.
+func getHelmValue(values *yaml.Node, key string) (string, error) {
+	current := values
+
+	// an unmarshalled document has a DocumentNode at the root, but
+	// we navigate from a MappingNode.
+	if current.Kind == yaml.DocumentNode {
+		if len(current.Content) == 0 {
+			return "", fmt.Errorf("empty document node")
+		}
+		current = current.Content[0]
+	}
+
+	if current.Kind != yaml.MappingNode {
+		return "", fmt.Errorf("unexpected type %s for root", nodeKindString(current.Kind))
+	}
+
+	// First, try to navigate as nested path (a.b.c)
+	keys := strings.Split(key, ".")
+	currentForNested := current
+
+	for i, k := range keys {
+		var idPtr *int
+		// Handle array indexing pattern like "key[0]"
+		keyPart := k
+		matches := re.FindStringSubmatch(k)
+		if matches != nil {
+			idStr := matches[2]
+			id, err := strconv.Atoi(idStr)
+			if err != nil {
+				return "", fmt.Errorf("id \"%s\" in yaml array must match pattern ^(.*)\\[(.*)\\]$", idStr)
+			}
+			idPtr = &id
+			keyPart = matches[1]
+		}
+
+		if idx, found := findHelmValuesKey(currentForNested, keyPart); found {
+			// Navigate deeper into the map
+			currentForNested = currentForNested.Content[idx]
+			// unpack one level of alias; an alias of an alias is not supported
+			if currentForNested.Kind == yaml.AliasNode {
+				currentForNested = currentForNested.Alias
+			}
+
+			if currentForNested.Kind == yaml.SequenceNode {
+				if idPtr == nil {
+					// Can't navigate into sequence without index
+					break
+				}
+				if *idPtr < 0 || *idPtr >= len(currentForNested.Content) {
+					break
+				}
+				currentForNested = currentForNested.Content[*idPtr]
+			}
+
+			if i == len(keys)-1 {
+				// If we're at the final key, return the value
+				if currentForNested.Kind == yaml.ScalarNode {
+					return currentForNested.Value, nil
+				}
+				// If it's not a scalar, the nested path doesn't match, fall through to literal check
+				break
+			} else if currentForNested.Kind != yaml.MappingNode {
+				// Can't navigate further, nested path doesn't exist
+				break
+			}
+		} else {
+			// Key not found in nested path, fall through to literal check
+			break
+		}
+	}
+
+	// If nested path didn't work, try as a literal key "a.b.c"
+	if idx, found := findHelmValuesKey(current, key); found {
+		valueNode := current.Content[idx]
+		// unpack one level of alias
+		if valueNode.Kind == yaml.AliasNode {
+			valueNode = valueNode.Alias
+		}
+		if valueNode.Kind == yaml.ScalarNode {
+			return valueNode.Value, nil
+		}
+		return "", fmt.Errorf("literal key \"%s\" found but is not a scalar value", key)
+	}
+
+	return "", fmt.Errorf("key \"%s\" not found as nested path or literal key", key)
 }
 
 func parseDefaultTarget(appNamespace string, appName string, path string, kubeClient *kube.ImageUpdaterKubernetesClient) string {
