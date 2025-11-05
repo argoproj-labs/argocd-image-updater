@@ -23,7 +23,9 @@ import (
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/registry"
 
 	"github.com/argoproj/argo-cd/v3/util/askpass"
+	argocdlog "github.com/argoproj/argo-cd/v3/util/log"
 
+	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 
 	"golang.org/x/sync/semaphore"
@@ -47,6 +49,14 @@ func newRunCommand() *cobra.Command {
 		Use:   "run",
 		Short: "Runs the argocd-image-updater with a set of options",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// Configure the global logger for vendored argo-cd utilities
+			logLvl, err := logrus.ParseLevel(cfg.LogLevel)
+			if err != nil {
+				return fmt.Errorf("could not parse log level: %w", err)
+			}
+			logrus.SetLevel(logLvl)
+			logrus.SetFormatter(argocdlog.CreateFormatter(cfg.LogFormat))
+
 			if err := log.SetLogLevel(cfg.LogLevel); err != nil {
 				return err
 			}
@@ -126,7 +136,6 @@ func newRunCommand() *cobra.Command {
 				log.Warnf("Check interval is very low - it is not recommended to run below 1m0s")
 			}
 
-			var err error
 			if !disableKubernetes {
 				ctx := context.Background()
 				cfg.KubeClient, err = getKubeConfig(ctx, cfg.ArgocdNamespace, kubeConfig)

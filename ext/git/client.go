@@ -24,7 +24,6 @@ import (
 	githttp "github.com/go-git/go-git/v5/plumbing/transport/http"
 	"github.com/go-git/go-git/v5/storage/memory"
 	"github.com/google/uuid"
-	log "github.com/sirupsen/logrus"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/knownhosts"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -35,6 +34,8 @@ import (
 	"github.com/argoproj/argo-cd/v3/util/env"
 	executil "github.com/argoproj/argo-cd/v3/util/exec"
 	"github.com/argoproj/argo-cd/v3/util/proxy"
+
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
 )
 
 var ErrInvalidRepoURL = fmt.Errorf("repo URL is invalid")
@@ -489,7 +490,7 @@ func (m *nativeGitClient) getRefs() ([]*plumbing.Reference, error) {
 	myLockUUID, err := uuid.NewRandom()
 	myLockId := ""
 	if err != nil {
-		log.Debug("Error generating git references cache lock id: ", err)
+		log.Debugf("Error generating git references cache lock id: %v", err)
 	} else {
 		myLockId = myLockUUID.String()
 	}
