@@ -154,7 +154,7 @@ docker-buildx: ## Build and push docker image for the manager for cross-platform
 	- $(CONTAINER_TOOL) buildx create --name image-updater-builder
 	$(CONTAINER_TOOL) buildx use image-updater-builder
 	- $(CONTAINER_TOOL) buildx build --push --platform=$(PLATFORMS) --tag ${IMG} -f Dockerfile.cross .
-	- $(CONTAINER_TOOL) buildx rm image-updater-builder
+	- $(CONTAINER_TOOL) buildx rm --force image-updater-builder
 	rm Dockerfile.cross
 
 .PHONY: build-installer

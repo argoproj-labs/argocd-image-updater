@@ -41,6 +41,10 @@ Once you are happy with the result, approve/merge the Pull Request.
 Merging the Pull Request will start an [automated release process](https://github.com/argoproj-labs/argocd-image-updater/blob/master/.github/workflows/create-release-draft.yaml) that will build all the artifacts
 and create a draft release.
 
+The above workflow will also build and push multi-arch container images to
+[argocd-image-updater quay.io repository](https://quay.io/repository/argoprojlabs/argocd-image-updater). In case of workflow glitch and the images are not published,
+you can run workflow [docker-build-and-push-images](https://github.com/argoproj-labs/argocd-image-updater/blob/master/.github/workflows/build-push-images.yaml) in GitHub UI to build and publish the specified images.
+
 ## Publish the release
 
 You should now have a draft release or Argo Image Updater with all required artifacts attached as binaries.
