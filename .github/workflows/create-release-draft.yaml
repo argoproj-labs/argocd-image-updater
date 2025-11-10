@@ -12,6 +12,7 @@ jobs:
     if: github.event.pull_request.merged == true && contains(github.event.pull_request.labels.*.name, 'release')
     name: Create release draft
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - name: Checkout code
         uses: actions/checkout@v5

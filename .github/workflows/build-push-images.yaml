@@ -1,0 +1,43 @@
+name: docker-build-and-push-images
+on:
+  workflow_dispatch:
+    inputs:
+      runners:
+        description: 'Runners to use (JSON array, e.g., ["ubuntu-latest", "ubuntu-24.04-arm"] or ["ubuntu-latest"])'
+        required: true
+        type: string
+        default: '["ubuntu-latest", "ubuntu-24.04-arm"]'
+  
+jobs:
+  build-push-images:
+    name: Build and push images (${{ matrix.runner }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      matrix:
+        runner: ${{ fromJSON(inputs.runners) }}
+    steps:
+      - name: Delete tool cache to preserve space
+        run: rm -rf /opt/hostedtoolcache || true
+
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Get version
+        id: version
+        run: |
+          echo version=$(cat VERSION) >> $GITHUB_OUTPUT
+
+      - name: Setup Golang
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Build and push image
+        run: |
+          set -ex
+          docker login --username "${DOCKER_USERNAME}" --password "${DOCKER_PASSWORD}" quay.io
+          IMAGE_TAG=v${{ steps.version.outputs.version }} make docker-build docker-push
+        env:
+          DOCKER_USERNAME: ${{ secrets.QUAY_USERNAME }}
+          DOCKER_PASSWORD: ${{ secrets.QUAY_TOKEN }}
