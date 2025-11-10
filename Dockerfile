@@ -20,8 +20,7 @@ FROM alpine:3.22
 
 RUN apk update && \
     apk upgrade && \
-    apk add --no-cache ca-certificates git openssh-client tini gpg gpg-agent && \
-    (apk add --no-cache aws-cli || (apk add --no-cache python3 py3-pip && pip3 install --no-cache-dir --break-system-packages awscli)) && \
+    apk add ca-certificates git openssh-client aws-cli tini gpg gpg-agent && \
     rm -rf /var/cache/apk/*
 
 RUN mkdir -p /usr/local/bin
@@ -32,5 +31,6 @@ COPY --from=builder /src/argocd-image-updater/dist/argocd-image-updater /manager
 COPY hack/git-ask-pass.sh /usr/local/bin/git-ask-pass.sh
 
 USER 1000
+WORKDIR /app
 
 ENTRYPOINT ["/sbin/tini", "--", "/manager"]
