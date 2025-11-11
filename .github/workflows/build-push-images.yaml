@@ -46,9 +46,9 @@ jobs:
 
       - name: Build and push platform-specific image
         run: |
-          set -ex
-          docker login --username "${DOCKER_USERNAME}" --password "${DOCKER_PASSWORD}" quay.io
-          IMAGE_TAG=v${{ steps.version.outputs.version }}-${{ steps.platform.outputs.arch-tag }} make docker-build docker-push
+          set -euo pipefail
+          echo "${DOCKER_PASSWORD}" | docker login --username "${DOCKER_USERNAME}" --password-stdin quay.io
+          IMAGE_TAG="v${{ steps.version.outputs.version }}-${{ steps.platform.outputs.arch-tag }}" make docker-build docker-push
         env:
           DOCKER_USERNAME: ${{ secrets.QUAY_USERNAME }}
           DOCKER_PASSWORD: ${{ secrets.QUAY_TOKEN }}
@@ -70,7 +70,8 @@ jobs:
 
       - name: Login to registry
         run: |
-          docker login --username "${DOCKER_USERNAME}" --password "${DOCKER_PASSWORD}" quay.io
+          set -euo pipefail
+          echo "${DOCKER_PASSWORD}" | docker login --username "${DOCKER_USERNAME}" --password-stdin quay.io
         env:
           DOCKER_USERNAME: ${{ secrets.QUAY_USERNAME }}
           DOCKER_PASSWORD: ${{ secrets.QUAY_TOKEN }}
