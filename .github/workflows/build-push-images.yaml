@@ -23,10 +23,16 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v5
 
-      - name: Get version
-        id: version
+      - name: Get version-tag
+        id: version-tag
         run: |
-          echo version=$(cat VERSION) >> $GITHUB_OUTPUT
+          VERSION=$(cat VERSION)
+          if [ "$VERSION" = "99.9.9" ]; then
+            VERSION_TAG="latest"
+          else
+            VERSION_TAG="v${VERSION}"
+          fi
+          echo version-tag=${VERSION_TAG} >> $GITHUB_OUTPUT
 
       - name: Detect platform
         id: platform
@@ -48,7 +54,7 @@ jobs:
         run: |
           set -euo pipefail
           echo "${DOCKER_PASSWORD}" | docker login --username "${DOCKER_USERNAME}" --password-stdin quay.io
-          IMAGE_TAG="v${{ steps.version.outputs.version }}-${{ steps.platform.outputs.arch-tag }}" make docker-build docker-push
+          IMAGE_TAG="${{ steps.version-tag.outputs.version-tag }}-${{ steps.platform.outputs.arch-tag }}" make docker-build docker-push
         env:
           DOCKER_USERNAME: ${{ secrets.QUAY_USERNAME }}
           DOCKER_PASSWORD: ${{ secrets.QUAY_TOKEN }}
@@ -63,10 +69,16 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v5
 
-      - name: Get version
-        id: version
+      - name: Get version-tag
+        id: version-tag
         run: |
-          echo version=$(cat VERSION) >> $GITHUB_OUTPUT
+          VERSION=$(cat VERSION)
+          if [ "$VERSION" = "99.9.9" ]; then
+            VERSION_TAG="latest"
+          else
+            VERSION_TAG="v${VERSION}"
+          fi
+          echo version-tag=${VERSION_TAG} >> $GITHUB_OUTPUT
 
       - name: Login to registry
         run: |
@@ -80,7 +92,7 @@ jobs:
         run: |
           set -ex
           IMAGE_NAME="quay.io/argoprojlabs/argocd-image-updater"
-          VERSION_TAG="v${{ steps.version.outputs.version }}"
+          VERSION_TAG="${{ steps.version-tag.outputs.version-tag }}"
 
           # Build list of platform-specific tags that exist
           MANIFEST_TAGS=""
