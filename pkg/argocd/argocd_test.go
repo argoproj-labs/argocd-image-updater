@@ -221,7 +221,7 @@ func Test_GetApplicationType(t *testing.T) {
 		}
 		// Create a WriteBackConfig with kustomization target to test the logic
 		wbc := &WriteBackConfig{
-			Target: "kustomization:.",
+			KustomizeBase: ".",
 		}
 		appType := GetApplicationType(application, wbc)
 		assert.Equal(t, ApplicationTypeKustomize, appType)
@@ -302,7 +302,7 @@ func Test_GetApplicationSourceType(t *testing.T) {
 
 		// Create a WriteBackConfig with kustomization target to test the logic
 		wbc := &WriteBackConfig{
-			Target: "kustomization:.",
+			KustomizeBase: ".",
 		}
 
 		appType := GetApplicationSourceType(application, wbc)

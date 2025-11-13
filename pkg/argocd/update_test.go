@@ -1617,7 +1617,7 @@ replicas: 1
 			Application: app,
 			Images:      ImageList{im},
 			WriteBackConfig: &WriteBackConfig{
-				Target: "helmvalues:./test-values.yaml",
+				Target: "./test-values.yaml",
 			},
 		}
 
@@ -1672,7 +1672,7 @@ replicas: 1
 			Application: app,
 			Images:      ImageList{im},
 			WriteBackConfig: &WriteBackConfig{
-				Target: "helmvalues:./test-values.yaml",
+				Target: "./test-values.yaml",
 			},
 		}
 
@@ -1782,7 +1782,7 @@ replicas: 1
 			Application: app,
 			Images:      ImageList{imNginx, imRedis},
 			WriteBackConfig: &WriteBackConfig{
-				Target: "helmvalues:./test-values.yaml",
+				Target: "./test-values.yaml",
 			},
 		}
 
@@ -1913,7 +1913,7 @@ replicas: 1
 			Application: app,
 			Images:      ImageList{imFoo, imBar, imBbb},
 			WriteBackConfig: &WriteBackConfig{
-				Target: "helmvalues:./test-values.yaml",
+				Target: "./test-values.yaml",
 			},
 		}
 
@@ -1981,7 +1981,7 @@ replicas: 1
 			Application: app,
 			Images:      ImageList{im},
 			WriteBackConfig: &WriteBackConfig{
-				Target: "helmvalues:./test-values.yaml",
+				Target: "./test-values.yaml",
 			},
 		}
 
@@ -2046,7 +2046,7 @@ replicas: 1
 			Application: app,
 			Images:      ImageList{im},
 			WriteBackConfig: &WriteBackConfig{
-				Target: "helmvalues:./test-values.yaml",
+				Target: "./test-values.yaml",
 			},
 		}
 
@@ -2100,7 +2100,7 @@ replicas: 1
 			Application: app,
 			Images:      ImageList{im},
 			WriteBackConfig: &WriteBackConfig{
-				Target: "helmvalues:./test-values.yaml",
+				Target: "./test-values.yaml",
 			},
 		}
 
@@ -2152,7 +2152,7 @@ replicas: 1
 			Application: app,
 			Images:      ImageList{im},
 			WriteBackConfig: &WriteBackConfig{
-				Target: "helmvalues:./test-values.yaml",
+				Target: "./test-values.yaml",
 			},
 		}
 
@@ -2205,7 +2205,7 @@ replicas: 1
 			Application: app,
 			Images:      ImageList{im},
 			WriteBackConfig: &WriteBackConfig{
-				Target: "helmvalues:./test-values.yaml",
+				Target: "./test-values.yaml",
 			},
 		}
 
@@ -2257,7 +2257,7 @@ replicas: 1
 			Application: app,
 			Images:      ImageList{im},
 			WriteBackConfig: &WriteBackConfig{
-				Target: "helmvalues:./test-values.yaml",
+				Target: "./test-values.yaml",
 			},
 		}
 
@@ -2311,7 +2311,7 @@ replicas: 1
 			Images:      ImageList{im},
 			WriteBackConfig: &WriteBackConfig{
 				Method: WriteBackGit,
-				Target: "helmvalues:./test-values.yaml",
+				Target: "./test-values.yaml",
 			},
 		}
 
@@ -2362,7 +2362,7 @@ replicas: 1
 			Images:      ImageList{im},
 			WriteBackConfig: &WriteBackConfig{
 				Method: WriteBackGit,
-				Target: "helmvalues:./test-values.yaml",
+				Target: "./test-values.yaml",
 			},
 		}
 		_, err := marshalParamsOverride(context.Background(), applicationImages, nil)
@@ -2469,7 +2469,7 @@ nginx:
 			Application: app,
 			Images:      ImageList{im},
 			WriteBackConfig: &WriteBackConfig{
-				Target: "helmvalues:./test-values.yaml",
+				Target: "./test-values.yaml",
 			},
 		}
 		yaml, err := marshalParamsOverride(context.Background(), applicationImages, originalData)
@@ -2537,7 +2537,7 @@ replicas: 1
 			Images:      ImageList{im},
 			WriteBackConfig: &WriteBackConfig{
 				Method: WriteBackGit,
-				Target: "helmvalues:./test-values.yaml",
+				Target: "./test-values.yaml",
 			},
 		}
 
@@ -2604,7 +2604,7 @@ replicas: 1
 			Images:      ImageList{im},
 			WriteBackConfig: &WriteBackConfig{
 				Method: WriteBackGit,
-				Target: "helmvalues:./test-values.yaml",
+				Target: "./test-values.yaml",
 			},
 		}
 
@@ -2673,7 +2673,7 @@ replicas: 1
 			Images:      ImageList{im},
 			WriteBackConfig: &WriteBackConfig{
 				Method: WriteBackGit,
-				Target: "helmvalues:./test-values.yaml",
+				Target: "./test-values.yaml",
 			},
 		}
 
