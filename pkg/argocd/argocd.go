@@ -890,7 +890,7 @@ func getApplicationType(app *argocdapi.Application, wbc *WriteBackConfig) Applic
 // getApplicationSourceType returns the source type of the application
 func getApplicationSourceType(app *argocdapi.Application, wbc *WriteBackConfig) argocdapi.ApplicationSourceType {
 	if wbc != nil {
-		if target := wbc.Target; strings.HasPrefix(target, common.KustomizationPrefix) {
+		if wbc.KustomizeBase != "" {
 			return argocdapi.ApplicationSourceTypeKustomize
 		}
 	}
