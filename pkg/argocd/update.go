@@ -379,7 +379,7 @@ func marshalParamsOverride(ctx context.Context, applicationImages *ApplicationIm
 			return []byte{}, nil
 		}
 
-		if wbc != nil && strings.HasPrefix(wbc.Target, common.HelmPrefix) {
+		if wbc != nil && !strings.HasPrefix(filepath.Base(wbc.Target), common.DefaultTargetFilePrefix) {
 			images := GetImagesAndAliasesFromApplication(applicationImages)
 
 			var helmNewValues yaml.Node
