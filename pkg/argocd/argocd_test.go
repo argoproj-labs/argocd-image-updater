@@ -93,6 +93,85 @@ func Test_GetImagesFromApplication(t *testing.T) {
 		assert.Equal(t, "nginx", imageList[0].ImageName)
 		assert.Nil(t, imageList[0].ImageTag)
 	})
+
+	t.Run("Force-update with digest strategy preserves constraint (issue #1344)", func(t *testing.T) {
+		application := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "test-app",
+				Namespace: "argocd",
+			},
+			Spec: v1alpha1.ApplicationSpec{},
+			Status: v1alpha1.ApplicationStatus{
+				Summary: v1alpha1.ApplicationSummary{},
+			},
+		}
+		// Create image with tag (which will be used as constraint for digest strategy)
+		// This mimics the scenario: forceUpdate=true + updateStrategy=digest + tag as version constraint
+		imgToUpdate := image.NewFromIdentifier("nginx:1.14")
+		img := NewImage(imgToUpdate)
+		img.ForceUpdate = true
+		img.UpdateStrategy = image.StrategyDigest
+
+		applicationImages := &ApplicationImages{
+			Application: *application,
+			Images:      ImageList{img},
+		}
+
+		// Get the live images list
+		imageList := GetImagesFromApplication(applicationImages)
+		require.Len(t, imageList, 1)
+		assert.Equal(t, "nginx", imageList[0].ImageName)
+		// The returned image should have nil tag (it's for matching with live images)
+		assert.Nil(t, imageList[0].ImageTag)
+		// Ensure a copy was created (no in-place mutation of the original).
+		require.NotSame(t, img.ContainerImage, imageList[0])
+
+		// CRITICAL: The original image's tag should be preserved for use as version constraint
+		// This is the fix for issue #1344 - without the fix, img.ImageTag would be nil here
+		require.NotNil(t, img.ImageTag, "Original image tag should be preserved for constraint")
+		assert.Equal(t, "1.14", img.ImageTag.TagName, "Constraint tag should be available")
+
+		// Verify the update strategy is still set correctly
+		assert.Equal(t, image.StrategyDigest, img.UpdateStrategy, "Update strategy should remain digest")
+
+		// Verify that the constraint would work with digest strategy validation
+		// Digest strategy requires a non-empty constraint (vc.Constraint != "")
+		assert.NotEmpty(t, img.ImageTag.TagName, "Constraint must be non-empty for digest strategy")
+	})
+
+	t.Run("Force-update avoids duplicates when image already in status", func(t *testing.T) {
+		application := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "test-app",
+				Namespace: "argocd",
+			},
+			Spec: v1alpha1.ApplicationSpec{},
+			Status: v1alpha1.ApplicationStatus{
+				Summary: v1alpha1.ApplicationSummary{
+					// Image already exists in the application status
+					Images: []string{
+						"nginx:1.14",
+					},
+				},
+			},
+		}
+		// Create image with forceUpdate that has the same name/registry as the status image
+		imgToUpdate := image.NewFromIdentifier("nginx:1.14")
+		img := NewImage(imgToUpdate)
+		img.ForceUpdate = true
+
+		applicationImages := &ApplicationImages{
+			Application: *application,
+			Images:      ImageList{img},
+		}
+
+		// Get the live images list
+		imageList := GetImagesFromApplication(applicationImages)
+
+		// Should only have 1 image (from status), not 2 (duplicate prevented)
+		require.Len(t, imageList, 1, "Should not create duplicate entry for image already in status")
+		assert.Equal(t, "nginx", imageList[0].ImageName)
+	})
 }
 
 func Test_GetImagesAndAliasesFromApplication(t *testing.T) {
