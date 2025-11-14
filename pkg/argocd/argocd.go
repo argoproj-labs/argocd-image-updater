@@ -807,8 +807,14 @@ func GetImagesFromApplication(applicationImages *ApplicationImages) image.Contai
 
 	for _, img := range applicationImages.Images {
 		if img.ForceUpdate {
-			img.ImageTag = nil // the tag from the image list will be a version constraint, which isn't a valid tag
-			images = append(images, img.ContainerImage)
+			// Create a copy of the container image with nil tag to add to the live images list.
+			// The tag from the image list will be a version constraint, which isn't a valid tag.
+			// We preserve the original img.ContainerImage so the constraint is available later.
+			imgCopy := img.ContainerImage.WithTag(nil)
+			// Avoid duplicates if an entry already exists for this image (ignore tag for match).
+			if images.ContainsImage(img.ContainerImage, false) == nil {
+				images = append(images, imgCopy)
+			}
 		}
 	}
 
