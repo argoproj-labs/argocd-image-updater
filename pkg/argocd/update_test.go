@@ -1236,6 +1236,114 @@ func Test_UpdateApplication(t *testing.T) {
 		assert.Equal(t, 0, res.NumImagesUpdated)
 	})
 
+	t.Run("Test Kubernetes Job with forceUpdate and digest strategy (issue #1344)", func(t *testing.T) {
+		// This test reproduces the scenario from issue #1344:
+		// - Application uses a Kubernetes Job (not in app.Status.Summary.Images)
+		// - forceUpdate: true is set
+		// - updateStrategy: "digest" is used
+		// - A version constraint (tag) is provided
+
+		mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
+			regMock := regmock.RegistryClient{}
+			regMock.On("NewRepository", mock.MatchedBy(func(s string) bool {
+				return s == "org/job-image"
+			})).Return(nil)
+			// Return the tag that matches our version constraint
+			regMock.On("Tags", mock.Anything).Return([]string{"latest"}, nil)
+
+			// For digest strategy, we need to mock ManifestForTag and TagMetadata
+			meta1 := &schema1.SignedManifest{} //nolint:staticcheck
+			meta1.Name = "org/job-image"
+			meta1.Tag = "latest"
+			regMock.On("ManifestForTag", mock.Anything, "latest").Return(meta1, nil)
+			// Create a digest as [32]byte array
+			var digest [32]byte
+			copy(digest[:], []byte("abcdef1234567890"))
+			regMock.On("TagMetadata", mock.Anything, mock.Anything, mock.Anything).Return(&tag.TagInfo{
+				CreatedAt: time.Unix(1234567890, 0),
+				Digest:    digest,
+			}, nil)
+
+			return &regMock, nil
+		}
+
+		argoClient := argomock.ArgoCD{}
+		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+
+		kubeClient := kube.ImageUpdaterKubernetesClient{
+			KubeClient: &registryKube.KubernetesClient{
+				Clientset: fake.NewFakeKubeClient(),
+			},
+		}
+
+		// Image configuration with forceUpdate and digest strategy
+		// The tag "latest" serves as the version constraint for digest strategy
+		containerImg := image.NewFromIdentifier("job-image=gcr.io/org/job-image:latest")
+		iuImg := NewImage(containerImg)
+		iuImg.KustomizeImageName = "org/job-image"
+		iuImg.ForceUpdate = true
+		iuImg.UpdateStrategy = image.StrategyDigest
+
+		imageList := ImageList{iuImg}
+
+		appImages := &ApplicationImages{
+			Application: v1alpha1.Application{
+				ObjectMeta: v1.ObjectMeta{
+					Name:      "job-app",
+					Namespace: "default",
+				},
+				Spec: v1alpha1.ApplicationSpec{
+					Source: &v1alpha1.ApplicationSource{
+						Kustomize: &v1alpha1.ApplicationSourceKustomize{
+							Images: v1alpha1.KustomizeImages{},
+						},
+					},
+				},
+				Status: v1alpha1.ApplicationStatus{
+					SourceType: v1alpha1.ApplicationSourceTypeKustomize,
+					Summary: v1alpha1.ApplicationSummary{
+						// Empty images list - simulating a Kubernetes Job that doesn't
+						// appear in the application status
+						Images: []string{},
+					},
+				},
+			},
+			Images: imageList,
+			WriteBackConfig: &WriteBackConfig{
+				Method: WriteBackApplication,
+			},
+		}
+
+		// Before the fix for issue #1344, this would fail with:
+		// "cannot use update strategy 'digest' for image... without a version constraint"
+		// because the constraint was lost when setting ImageTag to nil
+		res := UpdateApplication(context.Background(), &UpdateConfiguration{
+			NewRegFN:   mockClientFn,
+			ArgoClient: &argoClient,
+			KubeClient: &kubeClient,
+			UpdateApp:  appImages,
+			DryRun:     false,
+		}, NewSyncIterationState())
+
+		// Verify the update succeeded
+		assert.Equal(t, 0, res.NumErrors, "Should not have errors with forceUpdate + digest strategy")
+		assert.Equal(t, 0, res.NumSkipped)
+		assert.Equal(t, 1, res.NumApplicationsProcessed)
+		assert.Equal(t, 1, res.NumImagesConsidered)
+		assert.Equal(t, 1, res.NumImagesUpdated, "Image should be updated with digest")
+
+		// Verify the kustomize image was updated with the digest
+		require.Len(t, appImages.Application.Spec.Source.Kustomize.Images, 1)
+		updatedImage := string(appImages.Application.Spec.Source.Kustomize.Images[0])
+		assert.Contains(t, updatedImage, "gcr.io/org/job-image")
+		assert.Contains(t, updatedImage, "latest")
+		assert.Contains(t, updatedImage, "sha256:", "Image should include digest")
+
+		// The constraint on the original image must still be present.
+		require.NotNil(t, iuImg.ContainerImage.ImageTag)
+		assert.Equal(t, "latest", iuImg.ContainerImage.ImageTag.TagName)
+	})
+
 }
 
 func Test_MarshalParamsOverride(t *testing.T) {
