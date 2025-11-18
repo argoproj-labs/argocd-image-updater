@@ -828,7 +828,7 @@ spec:
   template:
     metadata:
       annotations:
-        kubectl.kubernetes.io/default-container: manager
+        kubectl.kubernetes.io/default-container: argocd-image-updater-controller
       labels:
         app.kubernetes.io/name: argocd-image-updater
         control-plane: argocd-image-updater-controller
