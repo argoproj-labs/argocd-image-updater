@@ -4453,57 +4453,74 @@ func Test_GetRepositoryLock(t *testing.T) {
 func Test_mergeKustomizeOverride(t *testing.T) {
 	tests := []struct {
 		name     string
-		existing v1alpha1.KustomizeImages
-		new      v1alpha1.KustomizeImages
-		expected v1alpha1.KustomizeImages
+		existing *v1alpha1.KustomizeImages
+		new      *v1alpha1.KustomizeImages
+		expected *v1alpha1.KustomizeImages
 	}{
-		{"with-tag", []v1alpha1.KustomizeImage{"nginx:foo"},
-			[]v1alpha1.KustomizeImage{"nginx:foo"},
-			[]v1alpha1.KustomizeImage{"nginx:foo"}},
-		{"no-tag", []v1alpha1.KustomizeImage{"nginx:foo"},
-			[]v1alpha1.KustomizeImage{"nginx"},
-			[]v1alpha1.KustomizeImage{"nginx:foo"}},
-		{"with-tag-1", []v1alpha1.KustomizeImage{"nginx"},
-			[]v1alpha1.KustomizeImage{"nginx:latest"},
-			[]v1alpha1.KustomizeImage{"nginx:latest"}},
-		{"with-tag-sha", []v1alpha1.KustomizeImage{"nginx:latest"},
-			[]v1alpha1.KustomizeImage{"nginx:latest@sha256:91734281c0ebfc6f1aea979cffeed5079cfe786228a71cc6f1f46a228cde6e34"},
-			[]v1alpha1.KustomizeImage{"nginx:latest@sha256:91734281c0ebfc6f1aea979cffeed5079cfe786228a71cc6f1f46a228cde6e34"}},
+		{"with-tag", &v1alpha1.KustomizeImages{"nginx:foo"},
+			&v1alpha1.KustomizeImages{"nginx:foo"},
+			&v1alpha1.KustomizeImages{"nginx:foo"}},
+		{"no-tag", &v1alpha1.KustomizeImages{"nginx:foo"},
+			&v1alpha1.KustomizeImages{"nginx"},
+			&v1alpha1.KustomizeImages{"nginx:foo"}},
+		{"with-tag-1", &v1alpha1.KustomizeImages{"nginx"},
+			&v1alpha1.KustomizeImages{"nginx:latest"},
+			&v1alpha1.KustomizeImages{"nginx:latest"}},
+		{"with-tag-sha", &v1alpha1.KustomizeImages{"nginx:latest"},
+			&v1alpha1.KustomizeImages{"nginx:latest@sha256:91734281c0ebfc6f1aea979cffeed5079cfe786228a71cc6f1f46a228cde6e34"},
+			&v1alpha1.KustomizeImages{"nginx:latest@sha256:91734281c0ebfc6f1aea979cffeed5079cfe786228a71cc6f1f46a228cde6e34"}},
 
-		{"2-images", []v1alpha1.KustomizeImage{"nginx:latest",
+		{"2-images", &v1alpha1.KustomizeImages{"nginx:latest",
 			"bitnami/nginx:latest@sha256:1a2fe3f9f6d1d38d5a7ee35af732fdb7d15266ec3dbc79bbc0355742cd24d3ec"},
-			[]v1alpha1.KustomizeImage{"nginx:latest@sha256:91734281c0ebfc6f1aea979cffeed5079cfe786228a71cc6f1f46a228cde6e34",
+			&v1alpha1.KustomizeImages{"nginx:latest@sha256:91734281c0ebfc6f1aea979cffeed5079cfe786228a71cc6f1f46a228cde6e34",
 				"bitnami/nginx@sha256:1a2fe3f9f6d1d38d5a7ee35af732fdb7d15266ec3dbc79bbc0355742cd24d3ec"},
-			[]v1alpha1.KustomizeImage{"nginx:latest@sha256:91734281c0ebfc6f1aea979cffeed5079cfe786228a71cc6f1f46a228cde6e34",
+			&v1alpha1.KustomizeImages{"nginx:latest@sha256:91734281c0ebfc6f1aea979cffeed5079cfe786228a71cc6f1f46a228cde6e34",
 				"bitnami/nginx:latest@sha256:1a2fe3f9f6d1d38d5a7ee35af732fdb7d15266ec3dbc79bbc0355742cd24d3ec"}},
 
-		{"with-registry", []v1alpha1.KustomizeImage{"quay.io/nginx:latest"},
-			[]v1alpha1.KustomizeImage{"quay.io/nginx:latest"},
-			[]v1alpha1.KustomizeImage{"quay.io/nginx:latest"}},
-		{"with-registry-1", []v1alpha1.KustomizeImage{"quay.io/nginx:latest"},
-			[]v1alpha1.KustomizeImage{"docker.io/nginx:latest"},
-			[]v1alpha1.KustomizeImage{"docker.io/nginx:latest", "quay.io/nginx:latest"}},
+		{"with-registry", &v1alpha1.KustomizeImages{"quay.io/nginx:latest"},
+			&v1alpha1.KustomizeImages{"quay.io/nginx:latest"},
+			&v1alpha1.KustomizeImages{"quay.io/nginx:latest"}},
+		{"with-registry-1", &v1alpha1.KustomizeImages{"quay.io/nginx:latest"},
+			&v1alpha1.KustomizeImages{"docker.io/nginx:latest"},
+			&v1alpha1.KustomizeImages{"docker.io/nginx:latest", "quay.io/nginx:latest"}},
+		{"o_is_nil", &v1alpha1.KustomizeImages{"nginx:foo"},
+			nil,
+			&v1alpha1.KustomizeImages{"nginx:foo"}},
+		{"t_is_nil", nil,
+			&v1alpha1.KustomizeImages{"nginx:foo"},
+			&v1alpha1.KustomizeImages{"nginx:foo"}},
+		{"both_are_nil", nil,
+			nil,
+			nil},
+		{"add_to_empty", &v1alpha1.KustomizeImages{},
+			&v1alpha1.KustomizeImages{"nginx:foo"},
+			&v1alpha1.KustomizeImages{"nginx:foo"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			existingImages := kustomizeOverride{
 				Kustomize: kustomizeImages{
-					Images: &tt.existing,
+					Images: tt.existing,
 				},
 			}
 			newImages := kustomizeOverride{
 				Kustomize: kustomizeImages{
-					Images: &tt.new,
+					Images: tt.new,
 				},
 			}
 			expectedImages := kustomizeOverride{
 				Kustomize: kustomizeImages{
-					Images: &tt.expected,
+					Images: tt.expected,
 				},
 			}
 
 			mergeKustomizeOverride(&existingImages, &newImages)
-			assert.ElementsMatch(t, *expectedImages.Kustomize.Images, *existingImages.Kustomize.Images)
+			if expectedImages.Kustomize.Images == nil {
+				assert.Nil(t, existingImages.Kustomize.Images)
+			} else {
+				require.NotNil(t, existingImages.Kustomize.Images)
+				assert.ElementsMatch(t, *expectedImages.Kustomize.Images, *existingImages.Kustomize.Images)
+			}
 		})
 	}
 }
