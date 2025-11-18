@@ -511,6 +511,13 @@ func mergeHelmOverride(t *helmOverride, o *helmOverride) {
 }
 
 func mergeKustomizeOverride(t *kustomizeOverride, o *kustomizeOverride) {
+	if o.Kustomize.Images == nil {
+		return
+	}
+	if t.Kustomize.Images == nil {
+		emptyImages := make(v1alpha1.KustomizeImages, 0)
+		t.Kustomize.Images = &emptyImages
+	}
 	for _, newImage := range *o.Kustomize.Images {
 		found := false
 		newContainerImage := image.NewFromIdentifier(string(newImage))
