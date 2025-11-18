@@ -29,7 +29,7 @@ func TestNewWebhookCommand(t *testing.T) {
 	asser.Equal(common.DefaultRegistriesConfPath, controllerCommand.Flag("registries-conf-path").Value.String())
 	asser.Equal(strconv.Itoa(env.ParseNumFromEnv("MAX_CONCURRENT_APPS", 10, 1, 100)), controllerCommand.Flag("max-concurrent-apps").Value.String())
 	asser.Equal(strconv.Itoa(env.ParseNumFromEnv("MAX_CONCURRENT_UPDATERS", 1, 1, 10)), controllerCommand.Flag("max-concurrent-updaters").Value.String())
-	asser.Equal("", controllerCommand.Flag("argocd-namespace").Value.String())
+	asser.Equal(env.GetStringVal("ARGOCD_NAMESPACE", ""), controllerCommand.Flag("argocd-namespace").Value.String())
 	asser.Equal(env.GetStringVal("GIT_COMMIT_USER", "argocd-image-updater"), controllerCommand.Flag("git-commit-user").Value.String())
 	asser.Equal(env.GetStringVal("GIT_COMMIT_EMAIL", "noreply@argoproj.io"), controllerCommand.Flag("git-commit-email").Value.String())
 	asser.Equal(env.GetStringVal("GIT_COMMIT_SIGNING_KEY", ""), controllerCommand.Flag("git-commit-signing-key").Value.String())
