@@ -16,10 +16,6 @@ that are managed by
     respective
     [release notes](https://github.com/argoproj-labs/argocd-image-updater/releases).
 
-    Argo CD Image Updater is not currently compatible with
-    [Argo CD Applications in any namespace](https://argo-cd.readthedocs.io/en/stable/operator-manual/app-any-namespace/).
-
-
 ## Overview
 
 The Argo CD Image Updater can check for new versions of the container images
