@@ -39,13 +39,22 @@ Let's assume Argo CD runs in `<argocd_namespace>` and you are installing the ima
 
 2.  **Configure the Argo CD Namespace**
 
-    The controller needs to know where to find Argo CD resources. Edit the `argocd-image-updater-controller` deployment manifest and add the `ARGOCD_NAMESPACE` environment variable to the `argocd-image-updater` container, pointing to the namespace where Argo CD is installed.
+    The controller needs to know where to find Argo CD resources. Edit the `argocd-image-updater-controller` deployment manifest and add the `ARGOCD_NAMESPACE` environment variable to the `argocd-image-updater-controller` container or add `argocd.namespace` key to the ConfigMap `argocd-image-updater-config`, pointing to the namespace where Argo CD is installed.
 
     ```yaml
     ...
           env:
           - name: ARGOCD_NAMESPACE
             value: <argocd_namespace>
+    ...
+    ```
+
+    or
+
+    ```yaml
+    ...
+          data:
+            argocd.namespace: <argocd_namespace>
     ...
     ```
 
