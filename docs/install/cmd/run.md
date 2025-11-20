@@ -10,9 +10,12 @@ Runs the Argo CD Image Updater in a reconciliation loop with a set of options.
 
 ### Flags
 
-**-argocd-namespace *namespace***
+**--argocd-namespace *namespace***
 
-namespace where ArgoCD runs in (current namespace by default)
+The namespace where Argo CD is running. Required only if the Image Updater runs in a different namespace than Argo CD.
+Defaults to the namespace the controller is running in.
+
+Can also be set with the `ARGOCD_NAMESPACE` environment variable.
 
 **--disable-kube-events**
 

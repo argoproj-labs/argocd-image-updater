@@ -12,4 +12,3 @@ roleRef:
 subjects:
 - kind: ServiceAccount
   name: argocd-image-updater-controller
-  namespace: argocd-image-updater-system

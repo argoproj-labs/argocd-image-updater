@@ -1,6 +1,3 @@
-# Adds namespace to all resources.
-namespace: argocd-image-updater-system
-
 # Labels to add to all resources and selectors.
 #labels:
 #- includeSelectors: true
