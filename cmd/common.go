@@ -26,6 +26,7 @@ type WebhookConfig struct {
 	GHCRSecret                  string
 	QuaySecret                  string
 	HarborSecret                string
+	CloudEventsSecret           string
 	RateLimitNumAllowedRequests int
 }
 
@@ -117,6 +118,7 @@ func SetupWebhookServer(webhookCfg *WebhookConfig, reconciler *controller.ImageU
 	handler.RegisterHandler(webhook.NewGHCRWebhook(webhookCfg.GHCRSecret))
 	handler.RegisterHandler(webhook.NewHarborWebhook(webhookCfg.HarborSecret))
 	handler.RegisterHandler(webhook.NewQuayWebhook(webhookCfg.QuaySecret))
+	handler.RegisterHandler(webhook.NewCloudEventsWebhook(webhookCfg.CloudEventsSecret))
 
 	// Create webhook server
 	server := webhook.NewWebhookServer(webhookCfg.Port, handler, reconciler)
