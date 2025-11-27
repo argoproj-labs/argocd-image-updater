@@ -33,7 +33,7 @@ type WebhookConfig struct {
 	HarborSecret string
 	// CloudEventsSecret is the secret for validating CloudEvents webhooks
 	CloudEventsSecret string
-	// RateLimitNumAllowedRequests is the number of allowed requests per hour for rate limiting
+	// RateLimitNumAllowedRequests is the number of allowed requests per hour for rate limiting (0 disables rate limiting)
 	RateLimitNumAllowedRequests int
 }
 
