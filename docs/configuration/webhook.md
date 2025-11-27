@@ -249,7 +249,7 @@ environment variables. Below is the list of which variables correspond to which 
 |`ENABLE_WEBHOOK`|`--enable-webhook`|
 |`WEBHOOK_PORT`|`--webhook-port`|
 |`DOCKER_WEBHOOK_SECRET` |`--docker-webhook-secret`|
-|`GHCR_WEBHOOK_SECRET` |`--gchr-webhook-secret`|
+|`GHCR_WEBHOOK_SECRET` |`--ghcr-webhook-secret`|
 |`HARBOR_WEBHOOK_SECRET` |`--harbor-webhook-secret`|
 |`QUAY_WEBHOOK_SECRET` |`--quay-webhook-secret`|
 |`CLOUDEVENTS_WEBHOOK_SECRET` |`--cloudevents-webhook-secret`|
