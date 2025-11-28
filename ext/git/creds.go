@@ -22,11 +22,12 @@ import (
 	argoio "github.com/argoproj/gitops-engine/pkg/utils/io"
 	"github.com/argoproj/gitops-engine/pkg/utils/text"
 	"github.com/bradleyfalzon/ghinstallation/v2"
-	log "github.com/sirupsen/logrus"
 
 	"github.com/argoproj/argo-cd/v3/common"
 	certutil "github.com/argoproj/argo-cd/v3/util/cert"
 	argoioutils "github.com/argoproj/argo-cd/v3/util/io"
+
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
 )
 
 var (
@@ -286,10 +287,10 @@ func (c SSHCreds) Environ() (io.Closer, []string, error) {
 	}
 	defer func() {
 		if err = file.Close(); err != nil {
-			log.WithFields(log.Fields{
-				common.SecurityField:    common.SecurityMedium,
-				common.SecurityCWEField: common.SecurityCWEMissingReleaseOfFileDescriptor,
-			}).Errorf("error closing file %q: %v", file.Name(), err)
+			log.WithContext().
+				AddField(common.SecurityField, common.SecurityMedium).
+				AddField(common.SecurityCWEField, common.SecurityCWEMissingReleaseOfFileDescriptor).
+				Errorf("error closing file %q: %v", file.Name(), err)
 		}
 	}()
 
@@ -304,7 +305,7 @@ func (c SSHCreds) Environ() (io.Closer, []string, error) {
 		env = append(env, fmt.Sprintf("GIT_SSL_CAINFO=%s", c.caPath))
 	}
 	if c.insecure {
-		log.Warn("temporarily disabling strict host key checking (i.e. '-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'), please don't use in production")
+		log.Warnf("temporarily disabling strict host key checking (i.e. '-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'), please don't use in production")
 		// StrictHostKeyChecking will add the host to the knownhosts file,  we don't want that - a security issue really,
 		// UserKnownHostsFile=/dev/null is therefore used so we write the new insecure host to /dev/null
 		args = append(args, "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null")

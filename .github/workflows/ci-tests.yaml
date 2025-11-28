@@ -2,11 +2,11 @@ name: Integration tests
 on:
   push:
     branches:
-    - 'master'
+    - 'master-annotation-based'
     - 'release-*'
   pull_request:
     branches:
-    - 'master'
+    - 'master-annotation-based'
 
 jobs:
   check-go:
