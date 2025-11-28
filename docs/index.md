@@ -5,6 +5,11 @@ that are managed by
 [Argo CD](https://github.com/argoproj/argo-cd).
 
 !!!warning "A note on the current status"
+    This documentation covers the legacy, annotation-based configuration for
+    versions v0.x of Argo CD Image Updater. A newer, CRD-based configuration
+    is available for versions v1.x and later, which is covered in separate
+    documentation.
+
     Argo CD Image Updater is under active development.
 
     You are welcome to test it out on non-critical environments, and of
