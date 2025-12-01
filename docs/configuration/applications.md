@@ -9,11 +9,6 @@ Argo CD applications.
 
 ## <a name="imageupdater-cr"></a>Creating an ImageUpdater custom resource
 
-!!!warning
-  Argo CD Image Updater is not currently compatible with the
-  [Argo CD Applications in any namespace](https://argo-cd.readthedocs.io/en/stable/operator-manual/app-any-namespace/)
-  feature. All `Application` resources must be declared in Argo CD control plane's namespace (which is usually argocd.)
-
 To configure Argo CD Image Updater, you create an `ImageUpdater` custom resource
 that defines which applications to monitor and how to update their images.
 
