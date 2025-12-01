@@ -6,6 +6,17 @@ The Argo CD Image Updater controller **must** be run in the same Kubernetes clus
 
 While the `argocd-image-updater` binary can be run locally from your workstation for one-time updates (see `Running locally` section), the standard and supported installation for continuous, automated updates is as a controller inside your cluster.
 
+### Multi-Cluster Environments
+
+In a multi-cluster setup where Argo CD, running on a central control plane cluster (let's call it cluster A), manages `Application` resources that are deployed to another cluster (cluster B), there is one important restriction:
+
+*   The Image Updater controller **must** be installed on cluster A.
+*   All `ImageUpdater` custom resources (CRs) must also be created on cluster A.
+
+The controller cannot discover or process `ImageUpdater` CRs created on cluster B.
+
+In short: The Image Updater controller and its `ImageUpdater` CRs must reside with your Argo CD `Application` resources, not with the deployed application workloads.
+
 ## <a name="install-kubernetes"></a>Installing as Kubernetes workload
 
 The most straightforward way to run the image updater is to install it as a Kubernetes workload using the provided installation manifests. These manifests will set up the controller in its own dedicated namespace (`argocd-image-updater-system` by default).
