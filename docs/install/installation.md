@@ -11,6 +11,14 @@ While the `argocd-image-updater` binary can be run locally from your workstation
 The most straightforward way to run the image updater is to install it as a Kubernetes workload using the provided installation manifests. These manifests will set up the controller in its own dedicated namespace (`argocd-image-updater-system` by default).
 Don't worry, without creating any ImageUpdater custom resources, it will not start modifying your workloads yet.
 
+!!!note
+    We also provide a Kustomize base in addition to the plain Kubernetes YAML
+    manifests. You can use it as remote base and create overlays with your
+    configuration on top of it. The remote base's URL is
+    `https://github.com/argoproj-labs/argocd-image-updater/config/default`.
+    You can view the manifests [here](https://github.com/argoproj-labs/argocd-image-updater/tree/stable/config/default)
+
+
 ### Apply the installation manifests
 
 ```shell
