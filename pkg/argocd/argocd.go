@@ -706,8 +706,15 @@ func SetHelmImage(ctx context.Context, app *argocdapi.Application, newImage *ima
 	} else {
 		mergeParams = append(mergeParams,
 			argocdapi.HelmParameter{Name: hpImageName, Value: newImage.GetFullNameWithoutTag(), ForceString: true},
-			argocdapi.HelmParameter{Name: hpImageTag, Value: newImage.GetTagWithDigest(), ForceString: true},
 		)
+		// Only set the tag parameter if we have a non-empty tag value.
+		// When forceUpdate is enabled and no tag is specified, the tag can be empty.
+		// Setting an empty tag would overwrite existing tag values and cause invalid image references.
+		if tagValue := newImage.GetTagWithDigest(); tagValue != "" {
+			mergeParams = append(mergeParams,
+				argocdapi.HelmParameter{Name: hpImageTag, Value: tagValue, ForceString: true},
+			)
+		}
 	}
 
 	appSource := getApplicationSource(ctx, app)
