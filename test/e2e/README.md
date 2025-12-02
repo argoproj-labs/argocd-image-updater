@@ -41,8 +41,6 @@ The end-to-end tests are comprised of the following components:
 4. Create required namespaces in the cluster: 
    * `kubectl create ns argocd-image-updater-e2e`
 
-   * `kubectl create ns argocd-image-updater-system`
-
 ## Pre-requisites
 
 1. Run `make install-prereqs` to install all the pre-requisites on your local

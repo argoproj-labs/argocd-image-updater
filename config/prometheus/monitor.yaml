@@ -7,7 +7,7 @@ metadata:
     app.kubernetes.io/name: argocd-image-updater
     app.kubernetes.io/managed-by: kustomize
   name: argocd-image-updater-controller-metrics-monitor
-  namespace: system
+  namespace: argocd
 spec:
   endpoints:
     - path: /metrics
