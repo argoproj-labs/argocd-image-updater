@@ -4,6 +4,7 @@ import (
 	"regexp"
 
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
+	"github.com/k1LoW/calver"
 )
 
 // MatchFuncAny matches any pattern, i.e. always returns true
@@ -24,4 +25,14 @@ func MatchFuncRegexp(tagName string, args interface{}) bool {
 		return false
 	}
 	return pattern.Match([]byte(tagName))
+}
+
+// MatchFuncCalVer checks if a tag matches the specified CalVer layout
+func MatchFuncCalVer(tagName string, args interface{}) bool {
+	layoutStr, ok := args.(string)
+	if !ok {
+		return false
+	}
+	_, err := calver.Parse(layoutStr, tagName)
+	return err == nil
 }
