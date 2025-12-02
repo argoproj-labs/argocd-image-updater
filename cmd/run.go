@@ -174,6 +174,16 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 				return err
 			}
 
+			// isLeader is an atomic bool that will be set to true when the controller
+			// becomes the leader.
+			var isLeader atomic.Bool
+
+			// Start a goroutine that sets isLeader to true when leadership is acquired.
+			go func() {
+				<-mgr.Elected()
+				isLeader.Store(true)
+			}()
+
 			// Add the CacheWarmer as a Runnable to the manager.
 			setupLogger.Info("Adding cache warmer to the manager.")
 			warmupState := &WarmupStatus{
@@ -235,11 +245,11 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 			}
 
 			if err := mgr.AddReadyzCheck("warmup-check", func(req *http.Request) error {
-				if !warmupState.isCacheWarmed.Load() {
-					// If the cache is not yet warmed, the check fails.
+				// If we are the leader, we are ready only if the cache is warmed.
+				if isLeader.Load() && !warmupState.isCacheWarmed.Load() {
 					return fmt.Errorf("cache is not yet warmed")
 				}
-				// Once warmed, the check passes.
+				// If we are not the leader, we are always ready.
 				return nil
 			}); err != nil {
 				setupLogger.Error(err, "unable to set up ready check")
@@ -424,6 +434,8 @@ func (ws *WebhookServerRunnable) Start(ctx context.Context) error {
 	return ws.webhookServer.Start(ctx)
 }
 
+// NeedLeaderElection tells the manager that this runnable should only be
+// run on the leader replica.
 func (ws *WebhookServerRunnable) NeedLeaderElection() bool {
 	return true
 }
