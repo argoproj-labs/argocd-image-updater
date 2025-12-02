@@ -1008,6 +1008,149 @@ func Test_SetHelmImage(t *testing.T) {
 		require.Error(t, err)
 	})
 
+	t.Run("Test set Helm image parameters when two paths are provided with name and tag", func(t *testing.T) {
+		app := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "test-app",
+				Namespace: "testns",
+				Annotations: map[string]string{
+					fmt.Sprintf(common.HelmParamImageNameAnnotation, "foobar"): "foobar.image.name,,, foobar2.image.name",
+					fmt.Sprintf(common.HelmParamImageTagAnnotation, "foobar"):  "foobar.image.tag,,, foobar2.image.tag",
+				},
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: &v1alpha1.ApplicationSource{
+					Helm: &v1alpha1.ApplicationSourceHelm{
+						Parameters: []v1alpha1.HelmParameter{
+							{
+								Name:  "image.tag",
+								Value: "1.0.0",
+							},
+							{
+								Name:  "image.name",
+								Value: "jannfis/dummy",
+							},
+						},
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypeHelm,
+				Summary: v1alpha1.ApplicationSummary{
+					Images: []string{
+						"jannfis/foobar:1.0.0",
+					},
+				},
+			},
+		}
+
+		img := image.NewFromIdentifier("foobar=jannfis/foobar:1.0.1")
+
+		err := SetHelmImage(app, img)
+		require.NoError(t, err)
+		require.NotNil(t, app.Spec.Source.Helm)
+		assert.Len(t, app.Spec.Source.Helm.Parameters, 6)
+
+		// Find first correct parameter
+		var tagParam v1alpha1.HelmParameter
+		for _, p := range app.Spec.Source.Helm.Parameters {
+			if p.Name == "foobar.image.tag" {
+				tagParam = p
+				break
+			}
+		}
+		assert.Equal(t, "1.0.1", tagParam.Value)
+
+		// Find second correct parameter
+		var tagParamTwo v1alpha1.HelmParameter
+		for _, p := range app.Spec.Source.Helm.Parameters {
+			if p.Name == "foobar2.image.tag" {
+				tagParamTwo = p
+				break
+			}
+		}
+		assert.Equal(t, "1.0.1", tagParamTwo.Value)
+
+		// Find first correct parameter
+		var nameParam v1alpha1.HelmParameter
+		for _, p := range app.Spec.Source.Helm.Parameters {
+			if p.Name == "foobar.image.name" {
+				nameParam = p
+				break
+			}
+		}
+		assert.Equal(t, "jannfis/foobar", nameParam.Value)
+
+		// Find second correct parameter
+		var nameParamTwo v1alpha1.HelmParameter
+		for _, p := range app.Spec.Source.Helm.Parameters {
+			if p.Name == "foobar2.image.name" {
+				nameParamTwo = p
+				break
+			}
+		}
+		assert.Equal(t, "jannfis/foobar", nameParamTwo.Value)
+	})
+
+	t.Run("Test set Helm image parameters when two paths are provided with image spec", func(t *testing.T) {
+		app := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "test-app",
+				Namespace: "testns",
+				Annotations: map[string]string{
+					fmt.Sprintf(common.HelmParamImageSpecAnnotation, "foobar"): "foobar.image.spec,,, foobar2.image.spec",
+				},
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: &v1alpha1.ApplicationSource{
+					Helm: &v1alpha1.ApplicationSourceHelm{
+						Parameters: []v1alpha1.HelmParameter{
+							{
+								Name:  "image.spec",
+								Value: "jannfis/dummy:1.0.0",
+							},
+						},
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypeHelm,
+				Summary: v1alpha1.ApplicationSummary{
+					Images: []string{
+						"jannfis/foobar:1.0.0",
+					},
+				},
+			},
+		}
+
+		img := image.NewFromIdentifier("foobar=jannfis/foobar:1.0.1")
+
+		err := SetHelmImage(app, img)
+		require.NoError(t, err)
+		require.NotNil(t, app.Spec.Source.Helm)
+		assert.Len(t, app.Spec.Source.Helm.Parameters, 3)
+
+		// Find first correct parameter
+		var specParam v1alpha1.HelmParameter
+		for _, p := range app.Spec.Source.Helm.Parameters {
+			fmt.Println(p.Name)
+			if p.Name == "foobar.image.spec" {
+				specParam = p
+				break
+			}
+		}
+		assert.Equal(t, "jannfis/foobar:1.0.1", specParam.Value)
+
+		// Find second correct parameter
+		var specParamTwo v1alpha1.HelmParameter
+		for _, p := range app.Spec.Source.Helm.Parameters {
+			if p.Name == "foobar2.image.spec" {
+				specParamTwo = p
+				break
+			}
+		}
+		assert.Equal(t, "jannfis/foobar:1.0.1", specParamTwo.Value)
+	})
 }
 
 func TestKubernetesClient(t *testing.T) {
