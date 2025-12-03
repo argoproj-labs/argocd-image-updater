@@ -501,9 +501,14 @@ func SetHelmImage(app *v1alpha1.Application, newImage *image.ContainerImage) err
 			p := v1alpha1.HelmParameter{Name: hpImageName, Value: newImage.GetFullNameWithoutTag(), ForceString: true}
 			mergeParams = append(mergeParams, p)
 		}
+		// Only set the tag parameter if we have a non-empty tag value.
+		// When forceUpdate is enabled and no tag is specified, the tag can be empty.
+		// Setting an empty tag would overwrite existing tag values and cause invalid image references.
 		if hpImageTag != "" {
-			p := v1alpha1.HelmParameter{Name: hpImageTag, Value: newImage.GetTagWithDigest(), ForceString: true}
-			mergeParams = append(mergeParams, p)
+			if tagValue := newImage.GetTagWithDigest(); tagValue != "" {
+				p := v1alpha1.HelmParameter{Name: hpImageTag, Value: tagValue, ForceString: true}
+				mergeParams = append(mergeParams, p)
+			}
 		}
 	}
 
