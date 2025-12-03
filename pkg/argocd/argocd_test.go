@@ -1019,6 +1019,81 @@ func Test_SetHelmImage(t *testing.T) {
 		require.Error(t, err)
 	})
 
+	t.Run("Test set Helm image with empty tag preserves existing tag (issue #1351)", func(t *testing.T) {
+		// This test verifies the fix for issue #1351:
+		// https://github.com/argoproj-labs/argocd-image-updater/issues/1351
+		//
+		// Scenario from the issue:
+		// - User has a Helm application with global.image.tag set to "mq@sha256:123456"
+		// - ImageUpdater CRD specifies:
+		//   - imageName: "example-registry/docker/frontend-partners" (NO TAG!)
+		//   - forceUpdate: true
+		//   - updateStrategy: digest
+		// - Bug: SetHelmImage was setting global.image.tag to empty string "",
+		//   causing "invalid reference format" error when parsing "example-registry/docker/frontend-partners:"
+		// - Fix: When the new image has no tag, preserve the existing tag parameter value
+		//
+		// This test simulates the SetHelmImage call with an image that has no tag
+		// and verifies the existing tag parameter is NOT overwritten with empty string.
+		app := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "frontend-partners",
+				Namespace: "argocd",
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: &v1alpha1.ApplicationSource{
+					Helm: &v1alpha1.ApplicationSourceHelm{
+						Parameters: []v1alpha1.HelmParameter{
+							{
+								Name:  "global.image.tag",
+								Value: "mq@sha256:123456", // Existing tag from the issue
+							},
+							{
+								Name:  "global.image.name",
+								Value: "example-registry/docker/frontend-partners",
+							},
+						},
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypeHelm,
+				Summary: v1alpha1.ApplicationSummary{
+					// Empty - simulating a Job that doesn't appear in app status
+					Images: []string{},
+				},
+			},
+		}
+
+		// Create an image WITHOUT a tag - exactly as in the issue
+		// User specified: imageName: "example-registry/docker/frontend-partners"
+		img := image.NewFromIdentifier("example-registry/docker/frontend-partners")
+		wbc := &WriteBackConfig{
+			Target: "helmvalues:.",
+		}
+		appImage := &Image{
+			HelmImageName: "global.image.name",
+			HelmImageTag:  "global.image.tag",
+		}
+		err := SetHelmImage(context.Background(), app, img, wbc, appImage)
+		require.NoError(t, err)
+		require.NotNil(t, app.Spec.Source.Helm)
+
+		// Find the tag parameter - it should still have the original value
+		var tagParam *v1alpha1.HelmParameter
+		for i, p := range app.Spec.Source.Helm.Parameters {
+			if p.Name == "global.image.tag" {
+				tagParam = &app.Spec.Source.Helm.Parameters[i]
+				break
+			}
+		}
+
+		// CRITICAL: The tag parameter should still exist with its original value "mq@sha256:123456"
+		// Before the fix, this would be "" causing "invalid reference format" error
+		require.NotNil(t, tagParam, "Tag parameter should be preserved")
+		assert.Equal(t, "mq@sha256:123456", tagParam.Value, "Existing tag value should not be overwritten with empty string")
+	})
+
 }
 
 func TestKubernetesClient(t *testing.T) {
