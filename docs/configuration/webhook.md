@@ -85,7 +85,6 @@ can be found here:
 - [GitHub Container Registry](https://docs.github.com/en/webhooks/webhook-events-and-payloads)
 - [Harbor](https://goharbor.io/docs/1.10/working-with-projects/project-configuration/configure-webhooks/)
 - [Quay](https://docs.quay.io/guides/notifications.html)
-- [CloudEvents Specification](https://github.com/cloudevents/spec/blob/v1.0.2/cloudevents/spec.md)
 - [AWS ECR via EventBridge](#aws-ecr-via-eventbridge-cloudevents) (see below)
 
 For the URL that you set for the webhook, your link should go as the following:
@@ -104,6 +103,8 @@ https://app1.example.com/webhook?type=<YOUR_REGISTRY_TYPE>
 
 AWS ECR doesn't have built-in webhook support, but you can use AWS EventBridge to
 transform ECR push events into CloudEvents format and send them to the webhook server.
+
+For more information about the CloudEvents specification, see the [CloudEvents v1.0 spec](https://github.com/cloudevents/spec/blob/v1.0.2/cloudevents/spec.md).
 
 #### Prerequisites
 
@@ -274,6 +275,7 @@ registries supported.
 (View JSON Payload Format Section)
 - [Quay](https://docs.quay.io/guides/notifications.html)
 (View Repository Push Section)
+- [CloudEvents](#aws-ecr-via-eventbridge-cloudevents) (AWS ECR via EventBridge)
 
 ## Troubleshooting
 
