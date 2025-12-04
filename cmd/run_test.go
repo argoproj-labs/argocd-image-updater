@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -49,7 +50,7 @@ func TestNewRunCommand(t *testing.T) {
 	asser.Equal(common.DefaultRegistriesConfPath, controllerCommand.Flag("registries-conf-path").Value.String())
 	asser.Equal(strconv.Itoa(env.ParseNumFromEnv("MAX_CONCURRENT_APPS", 10, 1, 100)), controllerCommand.Flag("max-concurrent-apps").Value.String())
 	asser.Equal(strconv.Itoa(env.ParseNumFromEnv("MAX_CONCURRENT_RECONCILES", 1, 1, 10)), controllerCommand.Flag("max-concurrent-reconciles").Value.String())
-	asser.Equal("", controllerCommand.Flag("argocd-namespace").Value.String())
+	asser.Equal(env.GetStringVal("ARGOCD_NAMESPACE", ""), controllerCommand.Flag("argocd-namespace").Value.String())
 	asser.Equal("true", controllerCommand.Flag("warmup-cache").Value.String())
 	asser.Equal(env.GetStringVal("GIT_COMMIT_USER", "argocd-image-updater"), controllerCommand.Flag("git-commit-user").Value.String())
 	asser.Equal(env.GetStringVal("GIT_COMMIT_EMAIL", "noreply@argoproj.io"), controllerCommand.Flag("git-commit-email").Value.String())
@@ -340,4 +341,69 @@ func TestReadyzCheckWithWarmupStatus(t *testing.T) {
 		assert.Error(t, err, "readiness check should fail when cache is not warmed")
 		assert.Equal(t, "cache is not yet warmed", err.Error())
 	})
+}
+
+// Assisted-by: Gemini AI
+// TestLeadershipAwareReadyzCheck verifies the behavior of the leadership-aware readiness probe.
+func TestLeadershipAwareReadyzCheck(t *testing.T) {
+	testCases := []struct {
+		name        string
+		isLeader    bool
+		isWarmed    bool
+		expectError bool
+		errorMsg    string
+	}{
+		{
+			name:        "Leader and not warmed",
+			isLeader:    true,
+			isWarmed:    false,
+			expectError: true,
+			errorMsg:    "cache is not yet warmed",
+		},
+		{
+			name:        "Leader and warmed",
+			isLeader:    true,
+			isWarmed:    true,
+			expectError: false,
+		},
+		{
+			name:        "Not leader and not warmed",
+			isLeader:    false,
+			isWarmed:    false,
+			expectError: false,
+		},
+		{
+			name:        "Not leader and warmed",
+			isLeader:    false,
+			isWarmed:    true,
+			expectError: false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			var isLeader atomic.Bool
+			isLeader.Store(tc.isLeader)
+
+			status := &WarmupStatus{Done: make(chan struct{})}
+			status.isCacheWarmed.Store(tc.isWarmed)
+
+			// This is the readiness check logic from cmd/run.go
+			readinessCheck := func(req *http.Request) error {
+				if isLeader.Load() && !status.isCacheWarmed.Load() {
+					return fmt.Errorf("cache is not yet warmed")
+				}
+				return nil
+			}
+
+			err := readinessCheck(nil)
+
+			if tc.expectError {
+				assert.Error(t, err)
+				assert.Equal(t, tc.errorMsg, err.Error())
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
 }

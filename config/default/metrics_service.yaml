@@ -6,7 +6,6 @@ metadata:
     app.kubernetes.io/name: argocd-image-updater
     app.kubernetes.io/managed-by: kustomize
   name: argocd-image-updater-controller-metrics-service
-  namespace: argocd-image-updater-system
 spec:
   ports:
   - name: https
