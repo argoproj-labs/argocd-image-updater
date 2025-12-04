@@ -115,7 +115,7 @@ For more information about the CloudEvents specification, see the [CloudEvents v
 #### Setup Steps
 
 1. **Create an EventBridge Rule** to capture ECR push events
-2. **Configure an Input Transformer** to convert to CloudEvents format  
+2. **Configure an Input Transformer** to convert to CloudEvents format
 3. **Create an API Destination** pointing to your webhook endpoint
 4. **Set up IAM permissions** for EventBridge to invoke the API destination
 
