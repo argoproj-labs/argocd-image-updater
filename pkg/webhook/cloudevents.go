@@ -9,9 +9,10 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/sirupsen/logrus"
+
 	"github.com/argoproj-labs/argocd-image-updater/pkg/argocd"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
-	"github.com/sirupsen/logrus"
 )
 
 // CloudEventsWebhook handles CloudEvents webhook events
