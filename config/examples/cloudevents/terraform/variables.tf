@@ -5,9 +5,14 @@ variable "aws_region" {
 }
 
 variable "webhook_url" {
-  description = "ArgoCD Image Updater webhook endpoint URL"
+  description = "ArgoCD Image Updater webhook endpoint URL (must use HTTPS)"
   type        = string
   # Example: "https://image-updater-webhook.example.com/webhook?type=cloudevents"
+
+  validation {
+    condition     = can(regex("^https://", var.webhook_url))
+    error_message = "webhook_url must use HTTPS protocol for secure credential transmission."
+  }
 }
 
 variable "webhook_secret" {
