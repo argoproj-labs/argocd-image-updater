@@ -57,36 +57,40 @@ curl -X POST "${WEBHOOK_URL}" \
 
 # Test 3: Missing secret (should fail)
 echo "Test 3: Missing secret (expected to fail)"
-curl -X POST "${WEBHOOK_URL}" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "specversion": "1.0",
-    "id": "test-fail-event-001",
-    "type": "com.amazon.ecr.image.push",
-    "source": "urn:aws:ecr:us-east-1:123456789012:repository/test",
-    "subject": "test:latest",
-    "data": {
-      "repositoryName": "test",
-      "imageTag": "latest",
-      "registryId": "123456789012"
-    }
-  }' \
-  -w "\nHTTP Status: %{http_code}\n\n" || echo "Expected failure"
+(
+  curl -X POST "${WEBHOOK_URL}" \
+    -H "Content-Type: application/json" \
+    -d '{
+      "specversion": "1.0",
+      "id": "test-fail-event-001",
+      "type": "com.amazon.ecr.image.push",
+      "source": "urn:aws:ecr:us-east-1:123456789012:repository/test",
+      "subject": "test:latest",
+      "data": {
+        "repositoryName": "test",
+        "imageTag": "latest",
+        "registryId": "123456789012"
+      }
+    }' \
+    -w "\nHTTP Status: %{http_code}\n\n"
+) || echo "Expected failure"
 
 # Test 4: Invalid event type (should fail)
 echo "Test 4: Invalid event type (expected to fail)"
-curl -X POST "${WEBHOOK_URL}" \
-  -H "Content-Type: application/json" \
-  -H "X-Webhook-Secret: ${SECRET}" \
-  -d '{
-    "specversion": "1.0",
-    "id": "test-invalid-event-001",
-    "type": "com.example.database.updated",
-    "source": "https://db.example.com",
-    "data": {
-      "table": "users"
-    }
-  }' \
-  -w "\nHTTP Status: %{http_code}\n\n" || echo "Expected failure"
+(
+  curl -X POST "${WEBHOOK_URL}" \
+    -H "Content-Type: application/json" \
+    -H "X-Webhook-Secret: ${SECRET}" \
+    -d '{
+      "specversion": "1.0",
+      "id": "test-invalid-event-001",
+      "type": "com.example.database.updated",
+      "source": "https://db.example.com",
+      "data": {
+        "table": "users"
+      }
+    }' \
+    -w "\nHTTP Status: %{http_code}\n\n"
+) || echo "Expected failure"
 
 echo "Testing complete!"
