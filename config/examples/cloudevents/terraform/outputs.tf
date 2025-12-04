@@ -16,4 +16,5 @@ output "eventbridge_role_arn" {
 output "webhook_endpoint" {
   description = "Configured webhook endpoint URL"
   value       = var.webhook_url
+  sensitive   = true
 }
