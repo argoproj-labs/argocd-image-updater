@@ -162,7 +162,6 @@ Connection authentication).
 For complete setup instructions and examples, see:
 - `config/examples/cloudevents/terraform/` - Terraform configuration
 
-
 ## Secrets
 
 To help secure the webhook server you can apply a secret that is used to 
