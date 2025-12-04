@@ -92,8 +92,6 @@ func (c *CloudEventsWebhook) Parse(r *http.Request) (*argocd.WebhookEvent, error
 		return nil, fmt.Errorf("failed to read request body: %w", err)
 	}
 
-	logCtx.Tracef("Received payload: %s", string(body))
-
 	// CloudEvents specification: https://github.com/cloudevents/spec/blob/v1.0.2/cloudevents/spec.md
 	var payload struct {
 		SpecVersion     string                 `json:"specversion"`
@@ -238,10 +236,10 @@ func (c *CloudEventsWebhook) parseEvent(payload *struct {
 }
 
 // extractECRRegistryURL extracts ECR registry URL from CloudEvents source
-// Source format: urn:aws:ecr:<region>:<account>:repository/<repo>
+// Source format: urn:aws:ecr:<region>:<account>:repository/<repo> or arn:aws:ecr:<region>:<account>:repository/<repo>
 func (c *CloudEventsWebhook) extractECRRegistryURL(source string, data map[string]interface{}) string {
-	// Try to extract from source URN
-	if strings.HasPrefix(source, "urn:aws:ecr:") {
+	// Try to extract from source URN/ARN
+	if strings.HasPrefix(source, "urn:aws:ecr:") || strings.HasPrefix(source, "arn:aws:ecr:") {
 		parts := strings.Split(source, ":")
 		if len(parts) >= 5 {
 			region := parts[3]
