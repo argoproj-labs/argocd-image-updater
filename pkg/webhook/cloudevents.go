@@ -1,6 +1,7 @@
 package webhook
 
 import (
+	"context"
 	"crypto/subtle"
 	"encoding/json"
 	"fmt"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/argoproj-labs/argocd-image-updater/pkg/argocd"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
+	"github.com/sirupsen/logrus"
 )
 
 // CloudEventsWebhook handles CloudEvents webhook events
@@ -33,7 +35,11 @@ func (c *CloudEventsWebhook) GetRegistryType() string {
 
 // Validate validates the CloudEvents webhook payload
 func (c *CloudEventsWebhook) Validate(r *http.Request) error {
-	logCtx := log.NewContext().AddField("logger", "cloudevents-webhook")
+	webhookLogger := log.Log().WithFields(logrus.Fields{
+		"logger": "cloudevents-webhook",
+	})
+	ctx := log.ContextWithLogger(r.Context(), webhookLogger)
+	logCtx := log.LoggerFromContext(ctx)
 
 	logCtx.Tracef("Validating request: method=%s, content-type=%s", r.Method, r.Header.Get("Content-Type"))
 
@@ -74,7 +80,11 @@ func (c *CloudEventsWebhook) Validate(r *http.Request) error {
 
 // Parse processes the CloudEvents webhook payload and returns a WebhookEvent
 func (c *CloudEventsWebhook) Parse(r *http.Request) (*argocd.WebhookEvent, error) {
-	logCtx := log.NewContext().AddField("logger", "cloudevents-webhook")
+	webhookLogger := log.Log().WithFields(logrus.Fields{
+		"logger": "cloudevents-webhook",
+	})
+	ctx := log.ContextWithLogger(r.Context(), webhookLogger)
+	logCtx := log.LoggerFromContext(ctx)
 
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -112,7 +122,7 @@ func (c *CloudEventsWebhook) Parse(r *http.Request) (*argocd.WebhookEvent, error
 	}
 
 	// Parse the event based on the type
-	return c.parseEvent(&payload, logCtx)
+	return c.parseEvent(&payload, ctx)
 }
 
 // parseEvent extracts webhook event data from CloudEvents payload
@@ -125,7 +135,9 @@ func (c *CloudEventsWebhook) parseEvent(payload *struct {
 	Time            string                 `json:"time"`
 	DataContentType string                 `json:"datacontenttype"`
 	Data            map[string]interface{} `json:"data"`
-}, logCtx *log.LogContext) (*argocd.WebhookEvent, error) {
+}, ctx context.Context) (*argocd.WebhookEvent, error) {
+	logCtx := log.LoggerFromContext(ctx)
+
 	var repository, tag, digest, registryURL string
 
 	// If subject is in format "repo:tag", parse it first as fallback

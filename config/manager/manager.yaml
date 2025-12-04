@@ -169,6 +169,12 @@ spec:
                 name: argocd-image-updater-secret
                 key: webhook.harbor-secret
                 optional: true
+          - name: CLOUDEVENTS_WEBHOOK_SECRET
+            valueFrom:
+              secretKeyRef:
+                name: argocd-image-updater-secret
+                key: webhook.cloudevents-secret
+                optional: true
           - name: WEBHOOK_RATELIMIT_ALLOWED
             valueFrom:
               configMapKeyRef:

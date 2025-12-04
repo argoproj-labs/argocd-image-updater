@@ -85,6 +85,7 @@ can be found here:
 - [GitHub Container Registry](https://docs.github.com/en/webhooks/webhook-events-and-payloads)
 - [Harbor](https://goharbor.io/docs/1.10/working-with-projects/project-configuration/configure-webhooks/)
 - [Quay](https://docs.quay.io/guides/notifications.html)
+- [CloudEvents Specification](https://github.com/cloudevents/spec/blob/v1.0.2/cloudevents/spec.md)
 - [AWS ECR via EventBridge](#aws-ecr-via-eventbridge-cloudevents) (see below)
 
 For the URL that you set for the webhook, your link should go as the following:
@@ -159,7 +160,6 @@ Connection authentication).
 
 For complete setup instructions and examples, see:
 - `config/examples/cloudevents/terraform/` - Terraform configuration
-- `config/examples/cloudevents/kubernetes/` - Kubernetes manifests
 
 
 ## Secrets

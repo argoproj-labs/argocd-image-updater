@@ -31,6 +31,12 @@ Secret for validating Docker Hub webhooks.
 
 Can also be set with the `DOCKER_WEBHOOK_SECRET` environment variable.
 
+**--cloudevents-webhook-secret *secret***
+
+Secret for validating CloudEvents webhooks from AWS EventBridge and other CloudEvents sources.
+
+Can also be set with the `CLOUDEVENTS_WEBHOOK_SECRET` environment variable.
+
 **--enable-http2 *disabled***
 
 If set, HTTP/2 will be enabled for the metrics and webhook servers.
