@@ -1,6 +1,9 @@
 #!/bin/bash
 # Test script for CloudEvents webhook
-# Usage: ./test-webhook.sh <webhook-url> <secret>
+# Usage: 
+#   1. Make the script executable: chmod +x test-webhook.sh
+#      Then run: ./test-webhook.sh <webhook-url> <secret>
+#   2. Or run directly: bash test-webhook.sh <webhook-url> <secret>
 
 set -e
 
