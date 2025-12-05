@@ -243,6 +243,22 @@ golangci-lint: $(GOLANGCI_LINT) ## Download golangci-lint locally if necessary.
 $(GOLANGCI_LINT): $(LOCALBIN)
 	$(call go-install-tool,$(GOLANGCI_LINT),github.com/golangci/golangci-lint/v2/cmd/golangci-lint,$(GOLANGCI_LINT_VERSION))
 
+## E2E
+.PHONY: e2e-tests-sequential-ginkgo
+e2e-tests-sequential-ginkgo: ginkgo
+	@echo "Running operator sequential Ginkgo E2E tests..."
+	$(GINKGO_CLI) -v --trace --timeout 90m -r ./test/ginkgo/sequential
+
+.PHONY: e2e-tests-parallel-ginkgo
+e2e-tests-parallel-ginkgo: ginkgo
+	@echo "Running operator parallel Ginkgo E2E tests..."
+	$(GINKGO_CLI) -p -v -procs=1 --trace --timeout 90m -r ./test/ginkgo/parallel
+
+GINKGO_CLI = $(shell pwd)/bin/ginkgo
+.PHONY: ginkgo
+ginkgo: ## Download ginkgo locally if necessary.
+	$(call go-install-tool,$(GINKGO_CLI),github.com/onsi/ginkgo/v2/ginkgo,v2.27.2)
+
 # go-install-tool will 'go install' any package with custom target and name of binary, if it doesn't exist
 # $1 - target path with name of binary
 # $2 - package url which can be installed
