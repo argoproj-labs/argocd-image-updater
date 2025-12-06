@@ -29,6 +29,18 @@ func NewCloudEventsWebhook(secret string) *CloudEventsWebhook {
 	}
 }
 
+// cloudEventsPayload represents the structure of a CloudEvents v1.0 payload
+type cloudEventsPayload struct {
+	SpecVersion     string                 `json:"specversion"`
+	Type            string                 `json:"type"`
+	Source          string                 `json:"source"`
+	Subject         string                 `json:"subject"`
+	ID              string                 `json:"id"`
+	Time            string                 `json:"time"`
+	DataContentType string                 `json:"datacontenttype"`
+	Data            map[string]interface{} `json:"data"`
+}
+
 // GetRegistryType returns the registry type this handler supports
 func (c *CloudEventsWebhook) GetRegistryType() string {
 	return "cloudevents"
@@ -51,7 +63,7 @@ func (c *CloudEventsWebhook) Validate(r *http.Request) error {
 	// CloudEvents can use either structured or binary content mode
 	// For structured mode, check Content-Type
 	contentType := r.Header.Get("Content-Type")
-	if contentType != "" && !strings.Contains(contentType, "application/json") &&
+	if !strings.Contains(contentType, "application/json") &&
 		!strings.Contains(contentType, "application/cloudevents+json") {
 		return fmt.Errorf("invalid content type: %s", contentType)
 	}
@@ -93,16 +105,7 @@ func (c *CloudEventsWebhook) Parse(r *http.Request) (*argocd.WebhookEvent, error
 	}
 
 	// CloudEvents specification: https://github.com/cloudevents/spec/blob/v1.0.2/cloudevents/spec.md
-	var payload struct {
-		SpecVersion     string                 `json:"specversion"`
-		Type            string                 `json:"type"`
-		Source          string                 `json:"source"`
-		Subject         string                 `json:"subject"`
-		ID              string                 `json:"id"`
-		Time            string                 `json:"time"`
-		DataContentType string                 `json:"datacontenttype"`
-		Data            map[string]interface{} `json:"data"`
-	}
+	var payload cloudEventsPayload
 
 	if err := json.Unmarshal(body, &payload); err != nil {
 		return nil, fmt.Errorf("failed to parse webhook payload: %w", err)
@@ -125,16 +128,7 @@ func (c *CloudEventsWebhook) Parse(r *http.Request) (*argocd.WebhookEvent, error
 }
 
 // parseEvent extracts webhook event data from CloudEvents payload
-func (c *CloudEventsWebhook) parseEvent(payload *struct {
-	SpecVersion     string                 `json:"specversion"`
-	Type            string                 `json:"type"`
-	Source          string                 `json:"source"`
-	Subject         string                 `json:"subject"`
-	ID              string                 `json:"id"`
-	Time            string                 `json:"time"`
-	DataContentType string                 `json:"datacontenttype"`
-	Data            map[string]interface{} `json:"data"`
-}, ctx context.Context) (*argocd.WebhookEvent, error) {
+func (c *CloudEventsWebhook) parseEvent(payload *cloudEventsPayload, ctx context.Context) (*argocd.WebhookEvent, error) {
 	logCtx := log.LoggerFromContext(ctx)
 
 	var repository, tag, digest, registryURL string
