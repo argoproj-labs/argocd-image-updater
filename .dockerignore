@@ -11,6 +11,7 @@ registry-scanner/hack
 registry-scanner/test
 scripts/
 test/e2e
+test/ginkgo
 test/testdata
 test/utils
 *.iml
