@@ -22,6 +22,12 @@ Supported Registries:
 
 namespace where ArgoCD runs in (current namespace by default)
 
+**--cloudevents-webhook-secret *secret***
+
+Secret for validating CloudEvents webhooks from AWS EventBridge and other CloudEvents sources.
+
+Can also be set with the `CLOUDEVENTS_WEBHOOK_SECRET` environment variable.
+
 **--disable-kube-events**
 
 Disable kubernetes events
@@ -33,12 +39,6 @@ Can also be set with the *IMAGE_UPDATER_KUBE_EVENTS* environment variable.
 Secret for validating Docker Hub webhooks.
 
 Can also be set with the `DOCKER_WEBHOOK_SECRET` environment variable.
-
-**--cloudevents-webhook-secret *secret***
-
-Secret for validating CloudEvents webhooks from AWS EventBridge and other CloudEvents sources.
-
-Can also be set with the `CLOUDEVENTS_WEBHOOK_SECRET` environment variable.
 
 **--ghcr-webhook-secret *secret***
 

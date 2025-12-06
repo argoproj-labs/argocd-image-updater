@@ -159,8 +159,7 @@ https://your-webhook.example.com/webhook?type=cloudevents&secret=<YOUR_SECRET>
 Or use the `X-Webhook-Secret` header for authentication (recommended with EventBridge
 Connection authentication).
 
-For complete setup instructions and examples, see:
-- `config/examples/cloudevents/terraform/` - Terraform configuration
+For complete setup instructions and examples, see `config/examples/cloudevents/terraform/` for Terraform configuration.
 
 ## Secrets
 
