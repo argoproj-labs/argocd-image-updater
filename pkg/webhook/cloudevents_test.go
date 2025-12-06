@@ -441,6 +441,12 @@ func TestCloudEventsWebhook_ExtractECRRegistryURL(t *testing.T) {
 			want: "987654321098.dkr.ecr.eu-west-1.amazonaws.com",
 		},
 		{
+			name:   "valid ARN format (arn:aws:ecr)",
+			source: "arn:aws:ecr:us-west-2:987654321098:repository/my-app",
+			data:   map[string]interface{}{},
+			want:   "987654321098.dkr.ecr.us-west-2.amazonaws.com",
+		},
+		{
 			name:   "invalid source format",
 			source: "invalid-source",
 			data:   map[string]interface{}{},
