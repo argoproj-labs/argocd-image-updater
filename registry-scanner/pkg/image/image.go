@@ -46,9 +46,15 @@ func NewFromIdentifier(identifier string) *ContainerImage {
 		if !strings.HasPrefix(imgRef, "library/") {
 			img.ImageName = strings.TrimPrefix(img.ImageName, "library/")
 		}
+		// Check for both tag and digest - an image can have both (e.g., image:tag@sha256:...)
+		// We need to handle both cases, not use else-if which would miss the tag when digest is present
 		if digested, ok := parsed.(reference.Digested); ok {
 			img.ImageTag = &tag.ImageTag{
 				TagDigest: string(digested.Digest()),
+			}
+			// Also check if there's a tag along with the digest
+			if tagged, ok := parsed.(reference.Tagged); ok {
+				img.ImageTag.TagName = tagged.Tag()
 			}
 		} else if tagged, ok := parsed.(reference.Tagged); ok {
 			img.ImageTag = &tag.ImageTag{
