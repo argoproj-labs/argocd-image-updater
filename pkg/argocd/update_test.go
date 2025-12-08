@@ -1173,6 +1173,169 @@ func Test_UpdateApplication(t *testing.T) {
 		assert.Equal(t, 0, res.NumImagesUpdated)
 	})
 
+	// Test for issue #1357: digest update strategy with suffixed tags (e.g., "latest-bookworm")
+	// Previously, when an image like "nginx:latest-bookworm@sha256:..." was parsed, the tag name
+	// "latest-bookworm" was lost, causing alternating commits between the correct tag and "latest".
+	// This test verifies that the tag name is preserved correctly across multiple update cycles.
+	t.Run("Test digest update strategy with suffixed tag preserves tag name (issue #1357)", func(t *testing.T) {
+		// Use a proper 32-byte hash that when hex-encoded becomes a valid SHA256 digest
+		// The bytes 0x12, 0x34, 0x56, 0x78... become "1234567890abcdef..." when hex-encoded
+		digestBytes := [32]byte{
+			0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef,
+			0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef,
+			0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef,
+			0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef,
+		}
+		testDigest := "sha256:1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+
+		mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
+			regMock := regmock.RegistryClient{}
+			regMock.On("NewRepository", mock.Anything).Return(nil)
+			regMock.On("Tags", mock.Anything).Return([]string{"latest-bookworm"}, nil)
+			// Mock ManifestForTag to return metadata with the digest
+			regMock.On("ManifestForTag", "latest-bookworm").Return(nil, nil)
+			// Mock TagMetadata to return the tag info with digest
+			regMock.On("TagMetadata", mock.Anything, mock.Anything).Return(&tag.TagInfo{
+				CreatedAt: time.Now(),
+				Digest:    digestBytes,
+			}, nil)
+			return &regMock, nil
+		}
+
+		argoClient := argomock.ArgoCD{}
+		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+
+		kubeClient := kube.ImageUpdaterKubernetesClient{
+			KubeClient: &registryKube.KubernetesClient{
+				Clientset: fake.NewFakeKubeClient(),
+			},
+		}
+
+		// Annotation to use digest update strategy
+		annotations := map[string]string{
+			common.ImageUpdaterAnnotation: "nginx=docker.io/library/nginx:latest-bookworm",
+			fmt.Sprintf(registryCommon.Prefixed(common.ImageUpdaterAnnotationPrefix, registryCommon.UpdateStrategyAnnotationSuffix), "nginx"): "digest",
+		}
+
+		appImages := &ApplicationImages{
+			Application: v1alpha1.Application{
+				ObjectMeta: v1.ObjectMeta{
+					Name:        "guestbook",
+					Namespace:   "guestbook",
+					Annotations: annotations,
+				},
+				Spec: v1alpha1.ApplicationSpec{
+					Source: &v1alpha1.ApplicationSource{
+						Kustomize: &v1alpha1.ApplicationSourceKustomize{
+							Images: v1alpha1.KustomizeImages{
+								// Initial state: just the tag without digest
+								"docker.io/library/nginx:latest-bookworm",
+							},
+						},
+					},
+				},
+				Status: v1alpha1.ApplicationStatus{
+					SourceType: v1alpha1.ApplicationSourceTypeKustomize,
+					Summary: v1alpha1.ApplicationSummary{
+						Images: []string{
+							"docker.io/library/nginx:latest-bookworm",
+						},
+					},
+				},
+			},
+			Images: *parseImageList(annotations),
+		}
+
+		res := UpdateApplication(&UpdateConfiguration{
+			NewRegFN:   mockClientFn,
+			ArgoClient: &argoClient,
+			KubeClient: &kubeClient,
+			UpdateApp:  appImages,
+			DryRun:     false,
+		}, NewSyncIterationState())
+
+		assert.Equal(t, 0, res.NumErrors)
+		assert.Equal(t, 0, res.NumSkipped)
+		assert.Equal(t, 1, res.NumApplicationsProcessed)
+		assert.Equal(t, 1, res.NumImagesConsidered)
+		assert.Equal(t, 1, res.NumImagesUpdated)
+
+		// Verify the updated image has both the tag name AND the digest
+		updatedImage := string(appImages.Application.Spec.Source.Kustomize.Images[0])
+
+		// The image should contain the original tag "latest-bookworm"
+		assert.Contains(t, updatedImage, "latest-bookworm", "Updated image should preserve the tag name 'latest-bookworm'")
+
+		// The image should also contain a digest
+		assert.Contains(t, updatedImage, "@sha256:", "Updated image should contain a digest")
+
+		// Now simulate the second update cycle - this is where the bug manifested
+		// The image now has both tag and digest: "nginx:latest-bookworm@sha256:..."
+		// Parse this image and verify it correctly extracts both tag name and digest
+		parsedImage := image.NewFromIdentifier(updatedImage)
+
+		// This is the critical assertion for issue #1357:
+		// The parsed image should have TagName = "latest-bookworm", not empty
+		if parsedImage.ImageTag != nil {
+			assert.Equal(t, "latest-bookworm", parsedImage.ImageTag.TagName,
+				"Parsed image should preserve tag name 'latest-bookworm', not lose it to 'latest'")
+		}
+
+		// Simulate a second update with the same digest - should NOT trigger an update
+		// because the digest hasn't changed
+		annotations2 := map[string]string{
+			common.ImageUpdaterAnnotation: "nginx=docker.io/library/nginx:latest-bookworm",
+			fmt.Sprintf(registryCommon.Prefixed(common.ImageUpdaterAnnotationPrefix, registryCommon.UpdateStrategyAnnotationSuffix), "nginx"): "digest",
+		}
+
+		// Create a new app state with the previously updated image (tag + digest)
+		appImages2 := &ApplicationImages{
+			Application: v1alpha1.Application{
+				ObjectMeta: v1.ObjectMeta{
+					Name:        "guestbook",
+					Namespace:   "guestbook",
+					Annotations: annotations2,
+				},
+				Spec: v1alpha1.ApplicationSpec{
+					Source: &v1alpha1.ApplicationSource{
+						Kustomize: &v1alpha1.ApplicationSourceKustomize{
+							Images: v1alpha1.KustomizeImages{
+								// State after first update: tag + digest
+								v1alpha1.KustomizeImage("docker.io/library/nginx:latest-bookworm@" + testDigest),
+							},
+						},
+					},
+				},
+				Status: v1alpha1.ApplicationStatus{
+					SourceType: v1alpha1.ApplicationSourceTypeKustomize,
+					Summary: v1alpha1.ApplicationSummary{
+						Images: []string{
+							"docker.io/library/nginx:latest-bookworm@" + testDigest,
+						},
+					},
+				},
+			},
+			Images: *parseImageList(annotations2),
+		}
+
+		res2 := UpdateApplication(&UpdateConfiguration{
+			NewRegFN:   mockClientFn,
+			ArgoClient: &argoClient,
+			KubeClient: &kubeClient,
+			UpdateApp:  appImages2,
+			DryRun:     false,
+		}, NewSyncIterationState())
+
+		// No update should occur because the digest is the same
+		assert.Equal(t, 0, res2.NumErrors)
+		assert.Equal(t, 0, res2.NumImagesUpdated, "No update should occur when digest hasn't changed")
+
+		// Verify the image still has the correct tag name after being parsed
+		updatedImage2 := string(appImages2.Application.Spec.Source.Kustomize.Images[0])
+		assert.Contains(t, updatedImage2, "latest-bookworm",
+			"Image should still contain 'latest-bookworm' after second update cycle")
+	})
+
 }
 
 func Test_MarshalParamsOverride(t *testing.T) {
