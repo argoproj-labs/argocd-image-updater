@@ -95,6 +95,30 @@ func Test_ParseImageTags(t *testing.T) {
 		assert.Equal(t, "gcr.io/jannfis/test-image:test-tag@sha256:abcde", image.GetFullNameWithTag())
 	})
 
+	// This test uses a valid 64-character hex SHA256 digest which triggers the distribution/reference
+	// parser path (not the legacy fallback). This verifies the fix for issue #1357 where images with
+	// both tag and digest were losing the tag name when parsed through the distribution/reference library.
+	t.Run("Parse image with tag and valid SHA256 digest (distribution/reference path)", func(t *testing.T) {
+		// Use a valid 64-character hex digest to ensure distribution/reference parses it
+		image := NewFromIdentifier("gcr.io/jannfis/test-image:latest-bookworm@sha256:1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef")
+		require.NotNil(t, image.ImageTag)
+		assert.Equal(t, "latest-bookworm", image.ImageTag.TagName)
+		assert.Equal(t, "sha256:1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef", image.ImageTag.TagDigest)
+		assert.Equal(t, "latest-bookworm@sha256:1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef", image.GetTagWithDigest())
+		assert.Equal(t, "gcr.io/jannfis/test-image", image.GetFullNameWithoutTag())
+		assert.Equal(t, "gcr.io/jannfis/test-image:latest-bookworm@sha256:1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef", image.GetFullNameWithTag())
+	})
+
+	// Test that digest-only images still work correctly and default to "latest" tag name
+	t.Run("Parse image with only digest (no tag) uses latest default", func(t *testing.T) {
+		image := NewFromIdentifier("gcr.io/jannfis/test-image@sha256:1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef")
+		require.NotNil(t, image.ImageTag)
+		assert.Empty(t, image.ImageTag.TagName)
+		assert.Equal(t, "sha256:1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef", image.ImageTag.TagDigest)
+		// GetTagWithDigest should default to "latest" when TagName is empty
+		assert.Equal(t, "latest@sha256:1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef", image.GetTagWithDigest())
+	})
+
 	t.Run("Parse valid image name with source name and registry info", func(t *testing.T) {
 		image := NewFromIdentifier("jannfis/orig-image=gcr.io/jannfis/test-image:0.1")
 		assert.Equal(t, "gcr.io", image.RegistryURL)

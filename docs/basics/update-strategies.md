@@ -227,13 +227,6 @@ Argo CD Image Updater will then update the image when either
   or
 * the currently used digest differs from what is found in the registry
 
-!!!note "Tags and digests"
-    Note that the `digest` update strategy will use image digests for updating
-    the image tags in your applications, so the image running in your
-    application will appear as `some/image@sha256:<somelonghashstring>` instead
-    of `some/image:latest`. So in your running system, the tag information will
-    be effectively lost.
-
 For example, the following specification would always update the image for an
 application on each new push of the image `some/image` with the tag `latest`:
 
