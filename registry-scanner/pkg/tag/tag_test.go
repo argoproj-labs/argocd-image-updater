@@ -28,7 +28,7 @@ func Test_ImageTagEqual(t *testing.T) {
 
 	t.Run("Digests are similar but version is not", func(t *testing.T) {
 		tag1 := NewImageTag("v1.0.0", time.Now(), "abcdef")
-		tag2 := NewImageTag("v1.0.1", time.Now(), "abcdef")
+		tag2 := NewImageTag("v1.0.0-variant2", time.Now(), "abcdef")
 		assert.True(t, tag1.Equals(tag2))
 	})
 
@@ -54,6 +54,9 @@ func Test_ImageTagEqual(t *testing.T) {
 		tag1 := NewImageTag("v1.0.0", time.Now(), "abc")
 		tag2 := NewImageTag("v1.0.0", time.Now(), "")
 		assert.False(t, tag1.Equals(tag2))
+		// Also verify the reverse - first tag has no digest, 2nd tag has digest
+		// This scenario occurs when comparing an existing image (no digest) with a new image (has digest)
+		assert.False(t, tag2.Equals(tag1))
 	})
 
 }

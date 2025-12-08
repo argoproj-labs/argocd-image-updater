@@ -88,13 +88,14 @@ func (tag *ImageTag) IsDigest() bool {
 }
 
 // Equals checks whether two tags are equal. Will consider any digest set for
-// the tag with precedence, otherwise uses a tag's name.
+// either tag with precedence, otherwise uses the tag names.
 func (tag *ImageTag) Equals(aTag *ImageTag) bool {
-	if tag.IsDigest() {
+	// If either tag has a digest, compare by digest
+	if tag.IsDigest() || aTag.IsDigest() {
 		return tag.TagDigest == aTag.TagDigest
-	} else {
-		return tag.TagName == aTag.TagName
 	}
+	// Otherwise compare by tag name
+	return tag.TagName == aTag.TagName
 }
 
 // Tags returns a list of verbatim tag names as string slice
