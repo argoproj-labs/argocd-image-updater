@@ -21,11 +21,19 @@ import (
 
 // WebhookConfig holds the options for the webhook server
 type WebhookConfig struct {
-	Port                        int
-	DockerSecret                string
-	GHCRSecret                  string
-	QuaySecret                  string
-	HarborSecret                string
+	// Port is the port number for the webhook server to listen on
+	Port int
+	// DockerSecret is the secret for validating Docker Hub webhooks
+	DockerSecret string
+	// GHCRSecret is the secret for validating GitHub Container Registry webhooks
+	GHCRSecret string
+	// QuaySecret is the secret for validating Quay webhooks
+	QuaySecret string
+	// HarborSecret is the secret for validating Harbor webhooks
+	HarborSecret string
+	// CloudEventsSecret is the secret for validating CloudEvents webhooks
+	CloudEventsSecret string
+	// RateLimitNumAllowedRequests is the number of allowed requests per hour for rate limiting (0 disables rate limiting)
 	RateLimitNumAllowedRequests int
 }
 
@@ -117,6 +125,7 @@ func SetupWebhookServer(webhookCfg *WebhookConfig, reconciler *controller.ImageU
 	handler.RegisterHandler(webhook.NewGHCRWebhook(webhookCfg.GHCRSecret))
 	handler.RegisterHandler(webhook.NewHarborWebhook(webhookCfg.HarborSecret))
 	handler.RegisterHandler(webhook.NewQuayWebhook(webhookCfg.QuaySecret))
+	handler.RegisterHandler(webhook.NewCloudEventsWebhook(webhookCfg.CloudEventsSecret))
 
 	// Create webhook server
 	server := webhook.NewWebhookServer(webhookCfg.Port, handler, reconciler)

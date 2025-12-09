@@ -17,6 +17,12 @@ Defaults to the namespace the controller is running in.
 
 Can also be set with the `ARGOCD_NAMESPACE` environment variable.
 
+**--cloudevents-webhook-secret *secret***
+
+Secret for validating CloudEvents webhooks from AWS EventBridge and other CloudEvents sources.
+
+Can also be set with the `CLOUDEVENTS_WEBHOOK_SECRET` environment variable.
+
 **--disable-kube-events**
 
 Disable kubernetes events
