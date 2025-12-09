@@ -119,6 +119,44 @@ For more information about the CloudEvents specification, see the [CloudEvents v
 3. **Create an API Destination** pointing to your webhook endpoint
 4. **Set up IAM permissions** for EventBridge to invoke the API destination
 
+#### Input Transformer Configuration
+
+When setting up the EventBridge target, configure the Input Transformer with:
+
+**input_paths:**
+```json
+{
+  "id": "$.id",
+  "time": "$.time",
+  "account": "$.account",
+  "region": "$.region",
+  "repo": "$.detail.repository-name",
+  "digest": "$.detail.image-digest",
+  "tag": "$.detail.image-tag"
+}
+```
+
+**input_template:**
+```json
+{
+  "specversion": "1.0",
+  "id": "<id>",
+  "type": "com.amazon.ecr.image.push",
+  "source": "urn:aws:ecr:<region>:<account>:repository/<repo>",
+  "subject": "<repo>:<tag>",
+  "time": "<time>",
+  "datacontenttype": "application/json",
+  "data": {
+    "repositoryName": "<repo>",
+    "imageDigest": "<digest>",
+    "imageTag": "<tag>",
+    "registryId": "<account>"
+  }
+}
+```
+
+> **Note:** Use exact field names in the `data` object (camelCase: `repositoryName`, `imageTag`, `imageDigest`). The registry URL is automatically extracted from the `source` field.
+
 #### Example Terraform Configuration
 
 See `config/examples/cloudevents/terraform/` for a complete Terraform module that sets up:
