@@ -69,11 +69,11 @@ func (r *ImageUpdaterReconciler) RunImageUpdater(ctx context.Context, cr *iuapi.
 			continue
 		}
 
-		go func(app string, curApplication argocd.ApplicationImages) {
+		go func(app string, curApplication argocd.ApplicationImages, logger *logrus.Entry) {
 			defer sem.Release(1)
 
-			ctx = log.ContextWithLogger(ctx, appLogger)
-			appLogger.Debugf("Processing application")
+			ctx = log.ContextWithLogger(ctx, logger)
+			logger.Debugf("Processing application")
 
 			upconf := &argocd.UpdateConfiguration{
 				NewRegFN:               registry.NewClient,
@@ -104,7 +104,7 @@ func (r *ImageUpdaterReconciler) RunImageUpdater(ctx context.Context, cr *iuapi.
 			//metrics.Applications().IncreaseUpdateErrors(app, res.NumErrors)
 			//metrics.Applications().SetNumberOfImagesWatched(app, res.NumImagesConsidered)
 			wg.Done()
-		}(app, curApplication)
+		}(app, curApplication, appLogger)
 	}
 
 	// Wait for all goroutines to finish
