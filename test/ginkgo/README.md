@@ -19,16 +19,19 @@ You must have the following tools installed locally:
 - [Docker](https://docs.docker.com/get-docker/)
 - [k3d](https://k3d.io/#installation)
 
+**Note on Docker Configuration on Mac**: The E2E tests use a local container registry at `127.0.0.1:30000` which requires Docker to be configured to allow insecure registries. The `test-e2e` target automatically configures Docker daemon.json for you, but if you run tests manually on Mac, you may need to run `make -C test/ginkgo configure-docker-daemon` first.
+
 #### Architecture
 
-The `test-e2e-local` target in `test/ginkgo/Makefile` automates the entire testing lifecycle:
+The `test-e2e` target in `test/ginkgo/Makefile` automates the entire testing lifecycle:
 
-1.  **Cluster Creation**: A new `k3d` cluster is created for a clean test run.
-2.  **Build**: The target calls the `docker-build` command in the root `Makefile` to build a Docker image from your current source code.
-3.  **Image Import**: The newly built local image is imported directly into the `k3d` cluster's nodes, making it available to Kubernetes without a registry.
-4.  **Operator Deployment**: The `argocd-operator` is deployed into the cluster. Its deployment is then patched to use your local image by setting the `ARGOCD_IMAGE_UPDATER_IMAGE` environment variable.
-5.  **Test Execution**: The Ginkgo E2E test suite is run against the deployed operator and image updater.
-6.  **Cluster Deletion**: After the tests complete, the `k3d` cluster is automatically deleted to clean up all resources.
+1. **Docker Configuration**: Docker daemon.json is configured to allow insecure registry at `127.0.0.1:30000` (required for local container registry).
+2. **Build**: The target calls the `docker-build` command in the root `Makefile` to build a Docker image from your current source code. 
+3. **Cluster Creation**: A new `k3d` cluster is created for a clean test run.
+4. **Image Import**: The newly built local image is imported directly into the `k3d` cluster's nodes, making it available to Kubernetes without a registry.
+5. **Operator Deployment**: The `argocd-operator` is deployed into the cluster. Its deployment is then patched to use your local image by setting the `ARGOCD_IMAGE_UPDATER_IMAGE` environment variable.
+6. **Create Local Container Registry**: TLS certificates are generated dynamically and Kubernetes secrets are created for the registry deployments. The local container registry (both public and private) is then deployed into the cluster, providing a test registry accessible at `127.0.0.1:30000` (public) and `127.0.0.1:30001` (private). The git container image is built and pushed to the public registry.
+7. **Test Execution**: The Ginkgo E2E test suite is run against the deployed operator and image updater.
 
 #### Instructions
 
@@ -36,12 +39,11 @@ The `test-e2e-local` target in `test/ginkgo/Makefile` automates the entire testi
 
 This single command will perform all the steps described above.
 ```bash
-make -C test/ginkgo test-e2e-local
+make -C test/ginkgo test-e2e
 ```
 
 **To clean up the cluster manually:**
 
-This is only necessary if the `test-e2e-local` target is interrupted before it can clean up after itself.
 ```bash
 make -C test/ginkgo k3d-cluster-delete
 ```
@@ -51,7 +53,7 @@ make -C test/ginkgo k3d-cluster-delete
 ```bash
 # 'make ginkgo' to download ginkgo, if needed
 # Examples:
-./bin/ginkgo -vv -focus "1-001_validate_image_updater_test" -r ./test/ginkgo/parallel
+./bin/ginkgo -vv -focus "1-001-argocd-write-back_target_test" -r ./test/ginkgo/parallel
 ```
 
 ## Test Code
@@ -70,6 +72,9 @@ These tests are written with the [Ginkgo/Gomega test frameworks](https://github.
     - A test is safe to run in parallel if it does not have any of the above problematic behaviours. 
     - It is fine for a parallel test to READ shared or cluster-scoped resources (such as resources in operator namespaces)
     - But a parallel test should NEVER write to resources that may be shared with other tests (some cluster-scoped resources, etc.)
+
+!!!note
+    If you develop a test for the git write-back policy, create a new directory for each test in `test/ginkgo/prereqs/containers/git/testdata`
 
 *Guidance*: Look at the list of restrictions for sequential. If your test is doing any of those things, it needs to run sequential. Otherwise, parallel is fine.
 

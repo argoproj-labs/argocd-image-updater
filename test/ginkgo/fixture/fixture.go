@@ -56,7 +56,7 @@ func WaitForRootPartitionToHaveMinimumDiskSpace() {
 
 	for {
 
-		output, err := osFixture.ExecCommandWithOutputParam(true, "df", "-k")
+		output, err := osFixture.ExecCommandWithOutputParam(false, false, "df", "-k")
 		Expect(err).ToNot(HaveOccurred())
 
 		// Output from 'df' looks like this:
@@ -378,6 +378,8 @@ func WaitForAllPodsInTheNamespaceToBeReady(ns string, k8sClient client.Client) {
 }
 
 // Delete all namespaces having a specific label used to identify namespaces that are created by e2e tests.
+// When running in parallel mode, only deletes namespaces older than 15 minutes to avoid deleting namespaces
+// that are in use by other parallel test processes.
 func ensureTestNamespacesDeleted(ctx context.Context, k8sClient client.Client) error {
 
 	// fetch all namespaces having given label
@@ -386,8 +388,33 @@ func ensureTestNamespacesDeleted(ctx context.Context, k8sClient client.Client) e
 		return fmt.Errorf("unable to delete test namespace: %w", err)
 	}
 
+	// When running in parallel mode, we need to be careful not to delete namespaces that might be in use
+	// by other parallel processes. We use multiple strategies:
+	// 1. Skip namespaces that are already terminating
+	// 2. Always skip namespaces created in the last 15 minutes (safety measure for parallel execution)
+	now := time.Now()
+
+	// Safety threshold: always skip namespaces created in the last 15 minutes to avoid conflicts
+	// This protects against race conditions even if parallel mode detection fails
+	safetyThreshold := 15 * time.Minute
+
 	// delete selected namespaces
 	for _, namespace := range nsList.Items {
+		// Skip namespaces that are already being terminated to avoid conflicts
+		if namespace.Status.Phase == corev1.NamespaceTerminating {
+			GinkgoWriter.Printf("Skipping deletion of namespace '%s' as it is already terminating\n", namespace.Name)
+			continue
+		}
+
+		namespaceAge := now.Sub(namespace.CreationTimestamp.Time)
+
+		// Always skip namespaces created in the last 15 minutes as a safety measure
+		// This prevents deleting namespaces that might be in use by other processes
+		if namespaceAge < safetyThreshold {
+			GinkgoWriter.Printf("Skipping deletion of namespace '%s' (age: %v) as it was created recently and may be in use\n", namespace.Name, namespaceAge)
+			continue
+		}
+
 		if err := deleteNamespaceAndVerify(ctx, namespace.Name, k8sClient); err != nil {
 			return fmt.Errorf("unable to delete namespace '%s': %w", namespace.Name, err)
 		}
@@ -501,7 +528,7 @@ func appendToFile(filepath string, content string) {
 
 // collectAndSavePodLogs collects logs from pods matching the given substring and saves to a file
 func collectAndSavePodLogs(namespace, podSubstring, filepath string) {
-	output, err := osFixture.ExecCommandWithOutputParam(false, "kubectl", "get", "po", "-n", namespace, "-o=name")
+	output, err := osFixture.ExecCommandWithOutputParam(false, false, "kubectl", "get", "po", "-n", namespace, "-o=name")
 	if err != nil {
 		return
 	}
@@ -509,7 +536,7 @@ func collectAndSavePodLogs(namespace, podSubstring, filepath string) {
 	pods := strings.Split(strings.TrimSpace(output), "\n")
 	for _, pod := range pods {
 		if strings.Contains(pod, podSubstring) {
-			logs, err := osFixture.ExecCommandWithOutputParam(false, "kubectl", "logs", "-n", namespace, pod, "--tail=500")
+			logs, err := osFixture.ExecCommandWithOutputParam(false, false, "kubectl", "logs", "-n", namespace, pod, "--tail=500")
 			if err != nil {
 				GinkgoWriter.Println("unable to get logs for pod:", pod, err)
 				continue
@@ -572,7 +599,7 @@ func OutputDebugOnFail(namespaceParams ...any) {
 
 	for _, namespace := range namespaces {
 
-		kubectlOutput, err := osFixture.ExecCommandWithOutputParam(false, "kubectl", "get", "all", "-n", namespace)
+		kubectlOutput, err := osFixture.ExecCommandWithOutputParam(false, true, "kubectl", "get", "all", "-n", namespace)
 		if err != nil {
 			GinkgoWriter.Println("unable to list", namespace, err, kubectlOutput)
 			continue
@@ -585,7 +612,7 @@ func OutputDebugOnFail(namespaceParams ...any) {
 		GinkgoWriter.Println("----------------------------------------------------------------")
 		appendToFile("/tmp/pods.log", fmt.Sprintf("--- Resources in namespace %s ---\n%s\n", namespace, kubectlOutput))
 
-		kubectlOutput, err = osFixture.ExecCommandWithOutputParam(false, "kubectl", "get", "deployments", "-n", namespace, "-o", "yaml")
+		kubectlOutput, err = osFixture.ExecCommandWithOutputParam(false, true, "kubectl", "get", "deployments", "-n", namespace, "-o", "yaml")
 		if err != nil {
 			GinkgoWriter.Println("unable to list", namespace, err, kubectlOutput)
 			continue
@@ -597,7 +624,7 @@ func OutputDebugOnFail(namespaceParams ...any) {
 		GinkgoWriter.Println(kubectlOutput)
 		GinkgoWriter.Println("----------------------------------------------------------------")
 
-		kubectlOutput, err = osFixture.ExecCommandWithOutputParam(false, "kubectl", "get", "events", "-n", namespace)
+		kubectlOutput, err = osFixture.ExecCommandWithOutputParam(false, true, "kubectl", "get", "events", "-n", namespace)
 		if err != nil {
 			GinkgoWriter.Println("unable to get events for namespace", err, kubectlOutput)
 		} else {
@@ -614,7 +641,7 @@ func OutputDebugOnFail(namespaceParams ...any) {
 		collectAndSavePodLogs(namespace, "image-updater", "/tmp/e2e-image-updater.log")
 	}
 
-	kubectlOutput, err := osFixture.ExecCommandWithOutputParam(false, "kubectl", "get", "argocds", "-A", "-o", "yaml")
+	kubectlOutput, err := osFixture.ExecCommandWithOutputParam(false, true, "kubectl", "get", "argocds", "-A", "-o", "yaml")
 	if err != nil {
 		GinkgoWriter.Println("unable to output all argo cd statuses", err, kubectlOutput)
 	} else {
@@ -631,10 +658,16 @@ func OutputDebugOnFail(namespaceParams ...any) {
 
 // EnsureRunningOnOpenShift should be called if a test requires OpenShift (for example, it uses Route CR).
 func EnsureRunningOnOpenShift() {
+
 	runningOnOpenShift := RunningOnOpenShift()
+
 	if !runningOnOpenShift {
 		Skip("This test requires the cluster to be OpenShift")
+		return
 	}
+
+	Expect(runningOnOpenShift).To(BeTrueBecause("this test is marked as requiring an OpenShift cluster, and we have detected the cluster is OpenShift"))
+
 }
 
 // RunningOnOpenShift returns true if the cluster is an OpenShift cluster, false otherwise.
@@ -689,7 +722,7 @@ func outputPodLog(podSubstring string) {
 	}
 
 	// Extract operator logs
-	kubectlLogOutput, err := osFixture.ExecCommandWithOutputParam(false, "kubectl", "logs", "pod/"+matchingPods[0].Name, "manager", "-n", matchingPods[0].Namespace)
+	kubectlLogOutput, err := osFixture.ExecCommandWithOutputParam(false, true, "kubectl", "logs", "pod/"+matchingPods[0].Name, "manager", "-n", matchingPods[0].Namespace)
 	if err != nil {
 		GinkgoWriter.Println("unable to extract operator logs", err)
 		return

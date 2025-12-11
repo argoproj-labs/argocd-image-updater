@@ -178,14 +178,6 @@ jobs:
           docker system prune -af
           echo "=== Disk space after cleanup ==="
           df -h /
-      - name: Install K3D
-        run: |
-          set -ex
-          curl -fsSL https://raw.githubusercontent.com/rancher/k3d/main/install.sh | bash
-          sudo mkdir -p $HOME/.kube && sudo chown -R runner $HOME/.kube
-          k3d cluster create --servers 3 --image rancher/k3s:${{ matrix.k3s-version }}-k3s1
-          kubectl version
-          k3d version
       - name: Checkout code
         uses: actions/checkout@v5
       - name: Setup Golang
@@ -206,28 +198,18 @@ jobs:
       - name: Download Go dependencies
         run: |
           cd test/ginkgo && go mod download
-      - name: Build local image updater, deploy operator
+      - name: Install K3D
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/rancher/k3d/main/install.sh | bash
+          sudo mkdir -p "$HOME/.kube" && sudo chown -R runner "$HOME/.kube"
+      - name: Deploy operator and run e2e tests
         env:
           ARGOCD_CLUSTER_CONFIG_NAMESPACES: argocd-e2e-cluster-config
           K3D_CLUSTER_NAME: k3s-default
+          LOCAL: false
         run: |
           set -o pipefail
-          make -C test/ginkgo test-e2e-ci
-
-      - name: Verify operator deployment
-        run: |
-          echo "--- Checking operator deployment ---"
-          kubectl get deployment -n argocd-operator-system
-          echo "--- Checking operator pods ---"
-          kubectl get pods -n argocd-operator-system
-          echo "--- Checking operator logs (last 50 lines) ---"
-          OPERATOR_POD=$(kubectl get po -n argocd-operator-system -o=name | grep controller-manager | head -1)
-          kubectl logs -n argocd-operator-system "$OPERATOR_POD" -c manager --tail=50 || true
-
-      - name: Run ginkgo tests
-        run: |
-          set -o pipefail
-          make e2e-tests-parallel-ginkgo 2>&1 | tee /tmp/e2e-test-ginkgo.log
+          make -C test/ginkgo test-e2e 2>&1 | tee /tmp/e2e-test-ginkgo.log
 
       - name: Save application controller and server logs
         if: ${{ failure() }}

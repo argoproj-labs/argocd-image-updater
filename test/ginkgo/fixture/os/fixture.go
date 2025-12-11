@@ -9,15 +9,18 @@ import (
 )
 
 func ExecCommand(cmdArgs ...string) (string, error) {
-	return ExecCommandWithOutputParam(true, cmdArgs...)
+	return ExecCommandWithOutputParam(true, true, cmdArgs...)
 }
 
-// You probably want to use ExecCommand, unless you need to supress the output of sensitive data (for example, openssl CLI output)
-func ExecCommandWithOutputParam(printOutput bool, cmdArgs ...string) (string, error) {
+// ExecCommandWithOutputParam You probably want to use ExecCommand, unless you need to suppress the output of sensitive data (for example, openssl CLI output)
+func ExecCommandWithOutputParam(printOutput bool, printCommand bool, cmdArgs ...string) (string, error) {
 	if len(cmdArgs) == 0 {
-		return "", fmt.Errorf("ExecCommandWithOutputParam requires at least one argument")
+		return "", fmt.Errorf("no command arguments provided")
 	}
-	GinkgoWriter.Println("executing command:", cmdArgs)
+
+	if printCommand {
+		GinkgoWriter.Println("executing command:", cmdArgs)
+	}
 
 	// #nosec G204
 	cmd := exec.Command(cmdArgs[0], cmdArgs[1:]...)
