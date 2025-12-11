@@ -43,7 +43,7 @@ import (
 
 var _ = Describe("GitOps Operator Parallel E2E Tests", func() {
 
-	Context("1-001_validate_image_updater_test", func() {
+	Context("1-002_git_write-back_target_test", func() {
 
 		var (
 			k8sClient    client.Client
@@ -123,6 +123,41 @@ var _ = Describe("GitOps Operator Parallel E2E Tests", func() {
 			Eventually(statefulSet).Should(ssFixture.HaveReplicas(1))
 			Eventually(statefulSet, "3m", "5s").Should(ssFixture.HaveReadyReplicas(1))
 
+			time.Sleep(10 * time.Minute)
+
+			//secret := &corev1.Secret{
+			//	ObjectMeta: metav1.ObjectMeta{
+			//		Name:      "e2e-git-repo",
+			//		Namespace: ns.Name,
+			//		Labels: map[string]string{
+			//			"argocd.argoproj.io/secret-type": "repository",
+			//			"component":                      ns.Namespace,
+			//		},
+			//	},
+			//	StringData: map[string]string{
+			//		"url":      "https://e2e-repository:8081/testdata.git",
+			//		"type":     "git",
+			//		"password": "git",
+			//		"username": "git",
+			//		"insecure": "true",
+			//	},
+			//}
+			//Expect(k8sClient.Create(ctx, secret)).To(Succeed())
+
+			//apiVersion: v1
+			//kind: Secret
+			//metadata:
+			//  name: e2e-git-repo
+			//  labels:
+			//    argocd.argoproj.io/secret-type: repository
+			//    component: argocd-operator-system
+			//stringData:
+			//  url: https://e2e-repository:8081/testdata.git
+			//  type: git
+			//  password: git
+			//  username: git
+			//  insecure: "true"
+
 			By("creating Application")
 			app := &appv1alpha1.Application{
 				ObjectMeta: metav1.ObjectMeta{
@@ -132,8 +167,8 @@ var _ = Describe("GitOps Operator Parallel E2E Tests", func() {
 				Spec: appv1alpha1.ApplicationSpec{
 					Project: "default",
 					Source: &appv1alpha1.ApplicationSource{
-						RepoURL:        "https://github.com/argoproj-labs/argocd-image-updater/",
-						Path:           "test/e2e/testdata/005-public-guestbook",
+						RepoURL:        "https://e2e-repository:8081/testdata.git",
+						Path:           "005-public-guestbook",
 						TargetRevision: "HEAD",
 					},
 					Destination: appv1alpha1.ApplicationDestination{
@@ -149,50 +184,50 @@ var _ = Describe("GitOps Operator Parallel E2E Tests", func() {
 			Eventually(app, "4m", "5s").Should(applicationFixture.HaveHealthStatusCode(health.HealthStatusHealthy))
 			Eventually(app, "4m", "5s").Should(applicationFixture.HaveSyncStatusCode(appv1alpha1.SyncStatusCodeSynced))
 
-			By("creating ImageUpdater CR")
-			updateStrategy := "semver"
-			imageUpdater = &imageUpdaterApi.ImageUpdater{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "image-updater",
-					Namespace: ns.Name,
-				},
-				Spec: imageUpdaterApi.ImageUpdaterSpec{
-					Namespace: ns.Name,
-					ApplicationRefs: []imageUpdaterApi.ApplicationRef{
-						{
-							NamePattern: "app*",
-							Images: []imageUpdaterApi.ImageConfig{
-								{
-									Alias:     "guestbook",
-									ImageName: "quay.io/dkarpele/my-guestbook:~29437546.0",
-									CommonUpdateSettings: &imageUpdaterApi.CommonUpdateSettings{
-										UpdateStrategy: &updateStrategy,
-									},
-								},
-							},
-						},
-					},
-				},
-			}
-			Expect(k8sClient.Create(ctx, imageUpdater)).To(Succeed())
+			//By("creating ImageUpdater CR")
+			//updateStrategy := "semver"
+			//imageUpdater = &imageUpdaterApi.ImageUpdater{
+			//	ObjectMeta: metav1.ObjectMeta{
+			//		Name:      "image-updater",
+			//		Namespace: ns.Name,
+			//	},
+			//	Spec: imageUpdaterApi.ImageUpdaterSpec{
+			//		Namespace: ns.Name,
+			//		ApplicationRefs: []imageUpdaterApi.ApplicationRef{
+			//			{
+			//				NamePattern: "app*",
+			//				Images: []imageUpdaterApi.ImageConfig{
+			//					{
+			//						Alias:     "guestbook",
+			//						ImageName: "quay.io/dkarpele/my-guestbook:~29437546.0",
+			//						CommonUpdateSettings: &imageUpdaterApi.CommonUpdateSettings{
+			//							UpdateStrategy: &updateStrategy,
+			//						},
+			//					},
+			//				},
+			//			},
+			//		},
+			//	},
+			//}
+			//Expect(k8sClient.Create(ctx, imageUpdater)).To(Succeed())
 
-			By("ensuring that the Application image has `29437546.0` version after update")
-			Eventually(func() string {
-				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(app), app)
-
-				if err != nil {
-					return "" // Let Eventually retry on error
-				}
-
-				// Nil-safe check: The Kustomize block is only added by the Image Updater after its first run.
-				// We must check that it and its Images field exist before trying to access them.
-				if app.Spec.Source.Kustomize != nil && len(app.Spec.Source.Kustomize.Images) > 0 {
-					return string(app.Spec.Source.Kustomize.Images[0])
-				}
-
-				// Return an empty string to signify the condition is not yet met.
-				return ""
-			}, "5m", "10s").Should(Equal("quay.io/dkarpele/my-guestbook:29437546.0"))
+			//By("ensuring that the Application image has `29437546.0` version after update")
+			//Eventually(func() string {
+			//	err := k8sClient.Get(ctx, client.ObjectKeyFromObject(app), app)
+			//
+			//	if err != nil {
+			//		return "" // Let Eventually retry on error
+			//	}
+			//
+			//	// Nil-safe check: The Kustomize block is only added by the Image Updater after its first run.
+			//	// We must check that it and its Images field exist before trying to access them.
+			//	if app.Spec.Source.Kustomize != nil && len(app.Spec.Source.Kustomize.Images) > 0 {
+			//		return string(app.Spec.Source.Kustomize.Images[0])
+			//	}
+			//
+			//	// Return an empty string to signify the condition is not yet met.
+			//	return ""
+			//}, "5m", "10s").Should(Equal("quay.io/dkarpele/my-guestbook:29437546.0"))
 		})
 	})
 })

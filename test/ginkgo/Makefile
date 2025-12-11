@@ -1,3 +1,5 @@
+CURRENT_DIR=$(shell pwd)
+CONTAINER_TOOL ?= docker
 # Default image for argocd-operator. Can be overridden.
 ARGOCD_OPERATOR_IMAGE ?= quay.io/argoprojlabs/argocd-operator:latest
 
@@ -74,7 +76,12 @@ undeploy-argocd-operator: kustomize ## Undeploy argocd-operator.
 
 k3d-cluster-create: ## Create k3d cluster for e2e tests
 	@echo "--- Creating k3d cluster $(K3D_CLUSTER_NAME) ---"
-	$(K3D) cluster create $(K3D_CLUSTER_NAME)
+	$(K3D) cluster create $(K3D_CLUSTER_NAME) \
+	--port '30000:30000@server:0' \
+	--port '30002:30002@server:0' \
+	--port '30003:30003@server:0' \
+	--registry-config "${CURRENT_DIR}/prereqs/assets/registries.yaml" \
+	--volume "${CURRENT_DIR}/prereqs/assets/registry.crt:/etc/rancher/k3s/local.crt:ro"
 
 k3d-cluster-delete: ## Delete k3d cluster for e2e tests
 	@echo "--- Deleting k3d cluster $(K3D_CLUSTER_NAME) ---"
@@ -96,6 +103,8 @@ test-e2e-local: ## Build local image updater, deploy operator, and run parallel 
 	$(MAKE) deploy-argocd-operator
 	@echo "--- Waiting for argocd-operator to be ready ---"
 	$(KUBECTL) wait --for=condition=available --timeout=300s deployment/argocd-operator-controller-manager -n argocd-operator-system
+	@echo "--- Deploying local git repo ---"
+	$(MAKE) git-container-prereqs
 	@echo "--- Running Parallel E2E tests ---"
 	$(MAKE) -C ../../ e2e-tests-parallel-ginkgo
 	@echo "--- Deleting k3d cluster ---"
@@ -110,3 +119,23 @@ test-e2e-ci: ## Build local image updater, deploy operator.
 	$(MAKE) deploy-argocd-operator
 	@echo "--- Waiting for argocd-operator to be ready ---"
 	$(KUBECTL) wait --for=condition=available --timeout=300s deployment/argocd-operator-controller-manager -n argocd-operator-system
+
+GIT_IMAGE_REPO		?= 127.0.0.1:30000
+GIT_IMAGE_NAME		?= git-http
+GIT_IMAGE_TAG		?= latest
+
+GIT_IMAGE_SLUG		:= $(GIT_IMAGE_REPO)/$(GIT_IMAGE_NAME):$(GIT_IMAGE_TAG)
+
+git-container-build:
+	$(CONTAINER_TOOL) build -t $(GIT_IMAGE_SLUG) -f ./prereqs/containers/git/Dockerfile ./prereqs/containers/git
+
+git-container-push: git-container-build
+	$(CONTAINER_TOOL) push $(GIT_IMAGE_SLUG)
+
+git-container-prereqs:
+	$(KUSTOMIZE) build prereqs/repo | $(KUBECTL) -n argocd-operator-system apply -f -
+	$(KUBECTL) apply -n argocd-operator-system -f prereqs/registry/registry.yaml
+	$(KUBECTL) rollout -n argocd-operator-system status deployment e2e-registry-public
+	$(KUBECTL) wait --for=condition=available --timeout=30s deployment/e2e-registry-public -n argocd-operator-system
+	make git-container-push
+	$(KUBECTL) apply -n argocd-operator-system -f prereqs/repo/install.yaml
