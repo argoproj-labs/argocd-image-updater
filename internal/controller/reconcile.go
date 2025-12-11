@@ -60,6 +60,7 @@ func (r *ImageUpdaterReconciler) RunImageUpdater(ctx context.Context, cr *iuapi.
 
 	for app, curApplication := range appList {
 		appLogger := baseLogger.WithField("application", app)
+		appCtx := log.ContextWithLogger(ctx, appLogger)
 
 		lockErr := sem.Acquire(ctx, 1)
 		if lockErr != nil {
@@ -69,11 +70,11 @@ func (r *ImageUpdaterReconciler) RunImageUpdater(ctx context.Context, cr *iuapi.
 			continue
 		}
 
-		go func(app string, curApplication argocd.ApplicationImages, logger *logrus.Entry) {
+		go func(appCtx context.Context, app string, curApplication argocd.ApplicationImages) {
 			defer sem.Release(1)
 
-			ctx = log.ContextWithLogger(ctx, logger)
-			logger.Debugf("Processing application")
+			appLogger := log.LoggerFromContext(appCtx)
+			appLogger.Debugf("Processing application")
 
 			upconf := &argocd.UpdateConfiguration{
 				NewRegFN:               registry.NewClient,
@@ -90,7 +91,7 @@ func (r *ImageUpdaterReconciler) RunImageUpdater(ctx context.Context, cr *iuapi.
 				DisableKubeEvents:      r.Config.DisableKubeEvents,
 				GitCreds:               r.Config.GitCreds,
 			}
-			res := argocd.UpdateApplication(ctx, upconf, syncState)
+			res := argocd.UpdateApplication(appCtx, upconf, syncState)
 			result.NumApplicationsProcessed += 1
 			result.NumErrors += res.NumErrors
 			result.NumImagesConsidered += res.NumImagesConsidered
@@ -104,7 +105,7 @@ func (r *ImageUpdaterReconciler) RunImageUpdater(ctx context.Context, cr *iuapi.
 			//metrics.Applications().IncreaseUpdateErrors(app, res.NumErrors)
 			//metrics.Applications().SetNumberOfImagesWatched(app, res.NumImagesConsidered)
 			wg.Done()
-		}(app, curApplication, appLogger)
+		}(appCtx, app, curApplication)
 	}
 
 	// Wait for all goroutines to finish
@@ -148,7 +149,7 @@ func (r *ImageUpdaterReconciler) ProcessImageUpdaterCRs(ctx context.Context, crs
 			continue
 		}
 
-		go func(imageUpdater iuapi.ImageUpdater) {
+		go func(ctx context.Context, imageUpdater iuapi.ImageUpdater) {
 			defer sem.Release(1)
 
 			// Create logger for this CR - extract logger name from existing context
@@ -182,7 +183,7 @@ func (r *ImageUpdaterReconciler) ProcessImageUpdaterCRs(ctx context.Context, crs
 				crLogger.Infof("Successfully processed ImageUpdater CR")
 			}
 			wg.Done()
-		}(cr)
+		}(ctx, cr)
 	}
 
 	// Wait for all goroutines to finish
