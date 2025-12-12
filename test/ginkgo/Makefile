@@ -1,3 +1,5 @@
+# Assisted-by: Claude AI model
+
 CURRENT_DIR=$(shell pwd)
 CONTAINER_TOOL ?= docker
 # Default image for argocd-operator. Can be overridden.
@@ -136,14 +138,30 @@ GIT_IMAGE_TAG		?= latest
 
 GIT_IMAGE_SLUG		:= $(GIT_IMAGE_REPO)/$(GIT_IMAGE_NAME):$(GIT_IMAGE_TAG)
 
-git-container-build:
+git-container-build: ## Build git container image
 	$(CONTAINER_TOOL) build -t $(GIT_IMAGE_SLUG) -f ./prereqs/containers/git/Dockerfile ./prereqs/containers/git
 
-git-container-push: git-container-build
+git-container-push: git-container-build ## Push git container image
 	$(CONTAINER_TOOL) push $(GIT_IMAGE_SLUG)
 
-create-local-container-registry:
+create-local-container-registry: ## Create local container registry
 	$(KUBECTL) apply -n argocd-operator-system -f prereqs/registry/registry.yaml
 	$(KUBECTL) rollout -n argocd-operator-system status deployment e2e-registry-public
 	$(KUBECTL) wait --for=condition=available --timeout=30s deployment/e2e-registry-public -n argocd-operator-system
+	@echo "Waiting for registry service to be accessible at 127.0.0.1:30000..."
+	@timeout=60; \
+	elapsed=0; \
+	while [ $$elapsed -lt $$timeout ]; do \
+		if curl -k -s -o /dev/null -w "%{http_code}" https://127.0.0.1:30000/v2/ 2>/dev/null | grep -q "200\|401\|404"; then \
+			echo "Registry is accessible"; \
+			break; \
+		fi; \
+		printf "."; \
+		sleep 1; \
+		elapsed=$$((elapsed + 1)); \
+	done; \
+	echo ""; \
+	if [ $$elapsed -ge $$timeout ]; then \
+		echo "Warning: Registry may not be fully ready, but attempting push anyway..."; \
+	fi
 	make git-container-push

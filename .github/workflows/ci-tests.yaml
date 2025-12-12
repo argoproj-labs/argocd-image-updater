@@ -178,16 +178,21 @@ jobs:
           docker system prune -af
           echo "=== Disk space after cleanup ==="
           df -h /
+      - name: Checkout code
+        uses: actions/checkout@v5
       - name: Install K3D
         run: |
           set -ex
           curl -fsSL https://raw.githubusercontent.com/rancher/k3d/main/install.sh | bash
           sudo mkdir -p $HOME/.kube && sudo chown -R runner $HOME/.kube
-          k3d cluster create --servers 3 --image rancher/k3s:${{ matrix.k3s-version }}-k3s1
+          k3d cluster create --servers 3 --image rancher/k3s:${{ matrix.k3s-version }}-k3s1 \
+            --port '30000:30000@server:0' \
+            --port '30002:30002@server:0' \
+            --port '30003:30003@server:0' \
+            --registry-config "${{ github.workspace }}/test/ginkgo/prereqs/assets/registries.yaml" \
+            --volume "${{ github.workspace }}/test/ginkgo/prereqs/assets/registry.crt:/etc/rancher/k3s/local.crt:ro"
           kubectl version
           k3d version
-      - name: Checkout code
-        uses: actions/checkout@v5
       - name: Setup Golang
         uses: actions/setup-go@v6
         with:
