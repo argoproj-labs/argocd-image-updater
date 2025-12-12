@@ -57,7 +57,11 @@ if [ "$(uname)" = "Darwin" ]; then
 	fi
 else
 	echo "Detected Linux, using system daemon.json: $DAEMON_JSON"
-	if [ ! -w "$DAEMON_JSON" ] && [ -f "$DAEMON_JSON" ]; then
+	# Always use sudo for /etc/docker on Linux (system directory)
+	# Also check if file exists and is not writable, or directory is not writable
+	if [ "$(dirname $DAEMON_JSON)" = "/etc/docker" ] || \
+	   ([ -f "$DAEMON_JSON" ] && [ ! -w "$DAEMON_JSON" ]) || \
+	   [ ! -w "$(dirname $DAEMON_JSON)" ] 2>/dev/null; then
 		SUDO_CMD="sudo"
 	fi
 	if [ ! -d "$(dirname $DAEMON_JSON)" ]; then
