@@ -1,8 +1,8 @@
-FROM nginx:alpine
+FROM nginx:alpine-slim
 
 RUN set -x && \
   apk --update upgrade                                  &&  \
-  apk add git git-daemon bash fcgiwrap spawn-fcgi wget             &&  \
+  apk add git git-daemon bash fcgiwrap spawn-fcgi wget  &&  \
   adduser git -h /var/lib/git -D                        &&  \
   adduser nginx git                                     &&  \
   git config --system http.receivepack true             &&  \
@@ -11,7 +11,6 @@ RUN set -x && \
   git config --system user.name "Git Server"            &&  \
   ln -sf /dev/stdout /var/log/nginx/access.log          &&  \
   ln -sf /dev/stderr /var/log/nginx/error.log
-
 
 ADD ./etc /etc
 ADD ./entrypoint.sh /usr/local/bin/entrypoint

@@ -1,18 +1,16 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: e2e-registry
+  name: 1-002-git-write-back-target-test
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: test-app-005
-      component: argocd-image-updater-e2e
+      app: 1-002-git-write-back-target-test
   template:
     metadata:
       labels:
-        app: test-app-005
-        component: argocd-image-updater-e2e
+        app: 1-002-git-write-back-target-test
     spec:
       containers:
       - name: test

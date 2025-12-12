@@ -18,6 +18,7 @@ package parallel
 
 import (
 	"context"
+	"fmt"
 
 	applicationFixture "github.com/argoproj-labs/argocd-image-updater/test/ginkgo/fixture/application"
 	appv1alpha1 "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1"
@@ -43,7 +44,7 @@ import (
 
 var _ = Describe("GitOps Operator Parallel E2E Tests", func() {
 
-	Context("1-001_argocd_write-back_target_test", func() {
+	Context("1-002-git-write-back-target-test", func() {
 
 		var (
 			k8sClient    client.Client
@@ -87,6 +88,7 @@ var _ = Describe("GitOps Operator Parallel E2E Tests", func() {
 
 			By("creating simple namespace-scoped Argo CD instance with image updater enabled")
 			ns, cleanupFunc = fixture.CreateRandomE2ETestNamespaceWithCleanupFunc()
+			iuFixture.CreateLocalGitRepo(ctx, k8sClient, ns.Name)
 
 			argoCD = &argov1beta1api.ArgoCD{
 				ObjectMeta: metav1.ObjectMeta{Name: "argocd", Namespace: ns.Name},
@@ -124,6 +126,27 @@ var _ = Describe("GitOps Operator Parallel E2E Tests", func() {
 			Eventually(statefulSet).Should(ssFixture.HaveReplicas(1))
 			Eventually(statefulSet, "3m", "3s").Should(ssFixture.HaveReadyReplicas(1))
 
+			//			By("updating ConfigMap for ImageUpdater")
+			//			cm := &corev1.ConfigMap{
+			//				ObjectMeta: metav1.ObjectMeta{
+			//					Name:      "argocd-image-updater-config",
+			//					Namespace: ns.Name,
+			//				},
+			//			}
+			//			configmapFixture.Update(cm, func(cm *corev1.ConfigMap) {
+			//				cm.Data = map[string]string{
+			//					"log.level": "trace",
+			//					"registries.conf": `
+			//    registries:
+			//    - name: Test Registry
+			//      api_url: https://host.docker.internal:30000
+			//      ping: yes
+			//      prefix: 127.0.0.1:30000
+			//      insecure: true
+			//`,
+			//				}
+			//			})
+
 			By("creating Application")
 			app := &appv1alpha1.Application{
 				ObjectMeta: metav1.ObjectMeta{
@@ -133,15 +156,19 @@ var _ = Describe("GitOps Operator Parallel E2E Tests", func() {
 				Spec: appv1alpha1.ApplicationSpec{
 					Project: "default",
 					Source: &appv1alpha1.ApplicationSource{
-						RepoURL:        "https://github.com/argoproj-labs/argocd-image-updater/",
-						Path:           "test/e2e/testdata/005-public-guestbook",
+						RepoURL:        fmt.Sprintf("https://%s.%s.svc.cluster.local:8081/testdata.git", iuFixture.Name, ns.Name),
+						Path:           "1-002-git-write-back-target-test",
 						TargetRevision: "HEAD",
 					},
 					Destination: appv1alpha1.ApplicationDestination{
 						Server:    "https://kubernetes.default.svc",
 						Namespace: ns.Name,
 					},
-					SyncPolicy: &appv1alpha1.SyncPolicy{Automated: &appv1alpha1.SyncPolicyAutomated{}},
+					SyncPolicy: &appv1alpha1.SyncPolicy{
+						Automated: &appv1alpha1.SyncPolicyAutomated{
+							Prune: true, // Automatically delete old resources (pods) that are no longer in git
+						},
+					},
 				},
 			}
 			Expect(k8sClient.Create(ctx, app)).To(Succeed())
@@ -152,6 +179,11 @@ var _ = Describe("GitOps Operator Parallel E2E Tests", func() {
 
 			By("creating ImageUpdater CR")
 			updateStrategy := "semver"
+			forceUpdate := false
+			method := fmt.Sprintf("git:secret:%s/%s", ns.Name, iuFixture.Name)
+			branch := "master"
+			repository := fmt.Sprintf("https://%s.%s.svc.cluster.local:8081/testdata.git", iuFixture.Name, ns.Name)
+
 			imageUpdater = &imageUpdaterApi.ImageUpdater{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "image-updater",
@@ -159,16 +191,24 @@ var _ = Describe("GitOps Operator Parallel E2E Tests", func() {
 				},
 				Spec: imageUpdaterApi.ImageUpdaterSpec{
 					Namespace: ns.Name,
+					CommonUpdateSettings: &imageUpdaterApi.CommonUpdateSettings{
+						UpdateStrategy: &updateStrategy,
+						ForceUpdate:    &forceUpdate,
+					},
+					WriteBackConfig: &imageUpdaterApi.WriteBackConfig{
+						Method: &method,
+						GitConfig: &imageUpdaterApi.GitConfig{
+							Branch:     &branch,
+							Repository: &repository,
+						},
+					},
 					ApplicationRefs: []imageUpdaterApi.ApplicationRef{
 						{
 							NamePattern: "app*",
 							Images: []imageUpdaterApi.ImageConfig{
 								{
-									Alias:     "guestbook",
-									ImageName: "quay.io/dkarpele/my-guestbook:~29437546.0",
-									CommonUpdateSettings: &imageUpdaterApi.CommonUpdateSettings{
-										UpdateStrategy: &updateStrategy,
-									},
+									Alias:     "test",
+									ImageName: "quay.io/dkarpele/my-guestbook:29437546.X",
 								},
 							},
 						},
@@ -176,6 +216,31 @@ var _ = Describe("GitOps Operator Parallel E2E Tests", func() {
 				},
 			}
 			Expect(k8sClient.Create(ctx, imageUpdater)).To(Succeed())
+
+			//#---
+			//#apiVersion: argocd-image-updater.argoproj.io/v1alpha1
+			//#kind: ImageUpdater
+			//#metadata:
+			//#  labels:
+			//#    app.kubernetes.io/name: image-updater
+			//#    app.kubernetes.io/managed-by: kustomize
+			//#  name: image-updater-007
+			//#  namespace: argocd-image-updater-e2e
+			//#spec:
+			//#  namespace: argocd-image-updater-e2e
+			//#  commonUpdateSettings:
+			//#    updateStrategy: "semver"
+			//#    forceUpdate: false
+			//#  writeBackConfig:
+			//#    method: "git:secret:argocd-image-updater-e2e/e2e-git-repo"
+			//#    gitConfig:
+			//#      writeBackTarget: "kustomization"
+			//#      repository: "https://127.0.0.1:30003/testdata.git"
+			//#  applicationRefs:
+			//#    - namePattern: "image-updater-007"
+			//#      images:
+			//#        - alias: "test"
+			//#          imageName: "127.0.0.1:30000/test-image:1.X.X"
 
 			By("ensuring that the Application image has `29437546.0` version after update")
 			triggerRefresh := iuFixture.TriggerArgoCDRefresh(ctx, k8sClient, app)
@@ -189,10 +254,10 @@ var _ = Describe("GitOps Operator Parallel E2E Tests", func() {
 				// Trigger ArgoCD refresh periodically to force immediate git check
 				triggerRefresh()
 
-				// Nil-safe check: The Kustomize block is only added by the Image Updater after its first run.
-				// We must check that it and its Images field exist before trying to access them.
-				if app.Spec.Source.Kustomize != nil && len(app.Spec.Source.Kustomize.Images) > 0 {
-					return string(app.Spec.Source.Kustomize.Images[0])
+				// For git write-back method, the image updater writes changes to git, and ArgoCD syncs from git.
+				// The image appears in Status.Summary.Images (not in Spec.Source.Kustomize.Images like argocd write-back).
+				if len(app.Status.Summary.Images) > 0 {
+					return string(app.Status.Summary.Images[0])
 				}
 
 				// Return an empty string to signify the condition is not yet met.

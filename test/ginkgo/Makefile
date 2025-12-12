@@ -46,7 +46,7 @@ ifndef ignore-not-found
   ignore-not-found = false
 endif
 
-.PHONY: deploy-argocd-operator undeploy-argocd-operator kustomize test-e2e-local test-e2e-ci k3d-cluster-create k3d-cluster-delete k3d-image-import
+.PHONY: deploy-argocd-operator undeploy-argocd-operator kustomize test-e2e-local test-e2e-ci k3d-cluster-create k3d-cluster-delete k3d-image-import configure-docker-daemon
 kustomize:
 	$(MAKE) -C ../../ kustomize
 
@@ -87,12 +87,18 @@ k3d-cluster-delete: ## Delete k3d cluster for e2e tests
 	@echo "--- Deleting k3d cluster $(K3D_CLUSTER_NAME) ---"
 	$(K3D) cluster delete $(K3D_CLUSTER_NAME)
 
+configure-docker-daemon: ## Configure Docker daemon.json to allow insecure registry at 127.0.0.1:30000
+	@echo "--- Configuring Docker daemon.json for insecure registry 127.0.0.1:30000 ---"
+	@bash "${CURRENT_DIR}/prereqs/assets/configure-docker-daemon.sh"
+
 k3d-image-import: ## Import local image to k3d cluster
 	@echo "--- Importing image $(ARGOCD_IMAGE_UPDATER_IMAGE) to k3d cluster $(K3D_CLUSTER_NAME) ---"
 	$(K3D) image import $(ARGOCD_IMAGE_UPDATER_IMAGE) -c $(K3D_CLUSTER_NAME)
 
 # Currently run only parallel tests because we don't have sequential tests yet.
 test-e2e-local: ## Build local image updater, deploy operator, and run parallel e2e tests.
+	@echo "--- Configuring Docker daemon for insecure registry ---"
+	$(MAKE) configure-docker-daemon
 	@echo "--- Creating k3d cluster---"
 	$(MAKE) k3d-cluster-create
 	@echo "--- Building local argocd-image-updater image ---"
@@ -103,14 +109,16 @@ test-e2e-local: ## Build local image updater, deploy operator, and run parallel 
 	$(MAKE) deploy-argocd-operator
 	@echo "--- Waiting for argocd-operator to be ready ---"
 	$(KUBECTL) wait --for=condition=available --timeout=300s deployment/argocd-operator-controller-manager -n argocd-operator-system
-	@echo "--- Deploying local git repo ---"
-	$(MAKE) git-container-prereqs
+	@echo "--- Deploying local container registry ---"
+	$(MAKE) create-local-container-registry
 	@echo "--- Running Parallel E2E tests ---"
 	$(MAKE) -C ../../ e2e-tests-parallel-ginkgo
 	@echo "--- Deleting k3d cluster ---"
 	$(MAKE) k3d-cluster-delete
 
 test-e2e-ci: ## Build local image updater, deploy operator.
+	@echo "--- Configuring Docker daemon for insecure registry ---"
+	$(MAKE) configure-docker-daemon
 	@echo "--- Building local argocd-image-updater image ---"
 	$(MAKE) -C ../../ docker-build
 	@echo "--- Importing image to k3d cluster ---"
@@ -119,6 +127,8 @@ test-e2e-ci: ## Build local image updater, deploy operator.
 	$(MAKE) deploy-argocd-operator
 	@echo "--- Waiting for argocd-operator to be ready ---"
 	$(KUBECTL) wait --for=condition=available --timeout=300s deployment/argocd-operator-controller-manager -n argocd-operator-system
+	@echo "--- Deploying local container registry ---"
+	$(MAKE) create-local-container-registry
 
 GIT_IMAGE_REPO		?= 127.0.0.1:30000
 GIT_IMAGE_NAME		?= git-http
@@ -132,10 +142,8 @@ git-container-build:
 git-container-push: git-container-build
 	$(CONTAINER_TOOL) push $(GIT_IMAGE_SLUG)
 
-git-container-prereqs:
-	$(KUSTOMIZE) build prereqs/repo | $(KUBECTL) -n argocd-operator-system apply -f -
+create-local-container-registry:
 	$(KUBECTL) apply -n argocd-operator-system -f prereqs/registry/registry.yaml
 	$(KUBECTL) rollout -n argocd-operator-system status deployment e2e-registry-public
 	$(KUBECTL) wait --for=condition=available --timeout=30s deployment/e2e-registry-public -n argocd-operator-system
 	make git-container-push
-	$(KUBECTL) apply -n argocd-operator-system -f prereqs/repo/install.yaml
