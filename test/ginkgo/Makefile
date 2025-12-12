@@ -63,7 +63,7 @@ deploy-argocd-operator: kustomize ## Deploy argocd-operator from a stable git re
 	cd $$TMP_DIR && \
 		$(KUSTOMIZE) edit set image quay.io/argoprojlabs/argocd-operator=$(ARGOCD_OPERATOR_IMAGE) && \
 		$(KUSTOMIZE) edit add patch --path patch.yaml; \
-	$(KUSTOMIZE) build $$TMP_DIR | $(KUBECTL) apply --server-side=true -f -; \
+	$(KUSTOMIZE) build $$TMP_DIR | $(KUBECTL) apply --server-side=true --validate=false -f -; \
 	rm -rf $$TMP_DIR; \
 	echo "Argo CD Operator deployment initiated.";
 
