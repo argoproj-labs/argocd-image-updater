@@ -145,8 +145,9 @@ test-e2e-ci: ## Build local image updater, deploy operator.
 	@$(K3D) cluster list || true
 	@echo "Checking kubectl context..."
 	@$(KUBECTL) config current-context || true
-	@timeout=180; \
+	@timeout=120; \
 	elapsed=0; \
+	restart_attempted=0; \
 	while [ $$elapsed -lt $$timeout ]; do \
 		if $(KUBECTL) get nodes >/dev/null 2>&1 && $(KUBECTL) get namespaces >/dev/null 2>&1; then \
 			echo "Cluster is ready"; \
@@ -161,6 +162,15 @@ test-e2e-ci: ## Build local image updater, deploy operator.
 			echo "Still waiting... ($$elapsed/$$timeout seconds)"; \
 			$(K3D) cluster list || true; \
 			$(KUBECTL) cluster-info 2>&1 || true; \
+			if [ $$elapsed -ge 60 ] && [ $$restart_attempted -eq 0 ]; then \
+				echo "API server not responding, attempting to restart cluster..."; \
+				$(K3D) cluster stop $(K3D_CLUSTER_NAME) || true; \
+				sleep 5; \
+				$(K3D) cluster start $(K3D_CLUSTER_NAME) || true; \
+				restart_attempted=1; \
+				echo "Cluster restart attempted, waiting for recovery..."; \
+				sleep 10; \
+			fi; \
 		fi; \
 	done; \
 	echo ""; \

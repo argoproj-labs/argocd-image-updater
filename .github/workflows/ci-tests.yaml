@@ -238,8 +238,9 @@ jobs:
           k3d cluster list || true
           echo "Checking kubectl context..."
           kubectl config current-context || true
-          timeout=180
+          timeout=120
           elapsed=0
+          restart_attempted=0
           while [ $elapsed -lt $timeout ]; do
             if kubectl get nodes >/dev/null 2>&1 && kubectl get namespaces >/dev/null 2>&1; then
               echo "Cluster is ready for deployment"
@@ -255,6 +256,15 @@ jobs:
               echo "Still waiting... ($elapsed/$timeout seconds)"
               k3d cluster list || true
               kubectl cluster-info 2>&1 || true
+              if [ $elapsed -ge 60 ] && [ $restart_attempted -eq 0 ]; then
+                echo "API server not responding, attempting to restart cluster..."
+                k3d cluster stop k3s-default || true
+                sleep 5
+                k3d cluster start k3s-default || true
+                restart_attempted=1
+                echo "Cluster restart attempted, waiting for recovery..."
+                sleep 10
+              fi
             fi
           done
           echo ""
