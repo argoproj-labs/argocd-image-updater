@@ -141,20 +141,35 @@ test-e2e-ci: ## Build local image updater, deploy operator.
 	@echo "--- Building local argocd-image-updater image ---"
 	$(MAKE) -C ../../ docker-build
 	@echo "--- Waiting for k3d cluster to be ready before deployment ---"
-	@timeout=120; \
+	@echo "Checking cluster status..."
+	@$(K3D) cluster list || true
+	@echo "Checking kubectl context..."
+	@$(KUBECTL) config current-context || true
+	@timeout=180; \
 	elapsed=0; \
 	while [ $$elapsed -lt $$timeout ]; do \
 		if $(KUBECTL) get nodes >/dev/null 2>&1 && $(KUBECTL) get namespaces >/dev/null 2>&1; then \
 			echo "Cluster is ready"; \
+			$(KUBECTL) get nodes; \
 			break; \
 		fi; \
 		printf "."; \
-		sleep 2; \
-		elapsed=$$((elapsed + 2)); \
+		sleep 3; \
+		elapsed=$$((elapsed + 3)); \
+		if [ $$((elapsed % 30)) -eq 0 ]; then \
+			echo ""; \
+			echo "Still waiting... ($$elapsed/$$timeout seconds)"; \
+			$(K3D) cluster list || true; \
+			$(KUBECTL) cluster-info 2>&1 || true; \
+		fi; \
 	done; \
 	echo ""; \
 	if [ $$elapsed -ge $$timeout ]; then \
 		echo "Error: Cluster did not become ready within $$timeout seconds" >&2; \
+		echo "Cluster status:"; \
+		$(K3D) cluster list || true; \
+		$(KUBECTL) cluster-info 2>&1 || true; \
+		$(KUBECTL) get nodes 2>&1 || true; \
 		exit 1; \
 	fi
 	@echo "--- Importing image to k3d cluster ---"

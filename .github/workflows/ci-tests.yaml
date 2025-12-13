@@ -234,21 +234,36 @@ jobs:
       - name: Wait for cluster before deployment
         run: |
           echo "--- Waiting for k3d cluster to be ready before deployment ---"
-          timeout=120
+          echo "Checking cluster status..."
+          k3d cluster list || true
+          echo "Checking kubectl context..."
+          kubectl config current-context || true
+          timeout=180
           elapsed=0
           while [ $elapsed -lt $timeout ]; do
             if kubectl get nodes >/dev/null 2>&1 && kubectl get namespaces >/dev/null 2>&1; then
               echo "Cluster is ready for deployment"
               kubectl cluster-info
+              kubectl get nodes
               break
             fi
             printf "."
-            sleep 2
-            elapsed=$((elapsed + 2))
+            sleep 3
+            elapsed=$((elapsed + 3))
+            if [ $((elapsed % 30)) -eq 0 ]; then
+              echo ""
+              echo "Still waiting... ($elapsed/$timeout seconds)"
+              k3d cluster list || true
+              kubectl cluster-info 2>&1 || true
+            fi
           done
           echo ""
           if [ $elapsed -ge $timeout ]; then
             echo "Error: Cluster did not become ready within $timeout seconds"
+            echo "Cluster status:"
+            k3d cluster list || true
+            kubectl cluster-info 2>&1 || true
+            kubectl get nodes 2>&1 || true
             exit 1
           fi
       - name: Build local image updater, deploy operator
