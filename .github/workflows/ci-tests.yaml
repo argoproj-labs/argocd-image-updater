@@ -193,6 +193,26 @@ jobs:
             --volume "${{ github.workspace }}/test/ginkgo/prereqs/assets/registry.crt:/etc/rancher/k3s/local.crt:ro"
           kubectl version
           k3d version
+      - name: Wait for k3d cluster to be ready
+        run: |
+          echo "--- Waiting for k3d cluster to be ready ---"
+          timeout=120
+          elapsed=0
+          while [ $elapsed -lt $timeout ]; do
+            if kubectl cluster-info >/dev/null 2>&1; then
+              echo "Cluster is ready"
+              kubectl cluster-info
+              break
+            fi
+            printf "."
+            sleep 2
+            elapsed=$((elapsed + 2))
+          done
+          echo ""
+          if [ $elapsed -ge $timeout ]; then
+            echo "Error: Cluster did not become ready within $timeout seconds"
+            exit 1
+          fi
       - name: Setup Golang
         uses: actions/setup-go@v6
         with:
@@ -211,6 +231,26 @@ jobs:
       - name: Download Go dependencies
         run: |
           cd test/ginkgo && go mod download
+      - name: Wait for cluster before deployment
+        run: |
+          echo "--- Waiting for k3d cluster to be ready before deployment ---"
+          timeout=120
+          elapsed=0
+          while [ $elapsed -lt $timeout ]; do
+            if kubectl cluster-info >/dev/null 2>&1; then
+              echo "Cluster is ready for deployment"
+              kubectl cluster-info
+              break
+            fi
+            printf "."
+            sleep 2
+            elapsed=$((elapsed + 2))
+          done
+          echo ""
+          if [ $elapsed -ge $timeout ]; then
+            echo "Error: Cluster did not become ready within $timeout seconds"
+            exit 1
+          fi
       - name: Build local image updater, deploy operator
         env:
           ARGOCD_CLUSTER_CONFIG_NAMESPACES: argocd-e2e-cluster-config

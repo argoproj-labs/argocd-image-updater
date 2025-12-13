@@ -78,12 +78,29 @@ undeploy-argocd-operator: kustomize ## Undeploy argocd-operator.
 
 k3d-cluster-create: ## Create k3d cluster for e2e tests
 	@echo "--- Creating k3d cluster $(K3D_CLUSTER_NAME) ---"
-	$(K3D) cluster create $(K3D_CLUSTER_NAME) \
+	@$(K3D) cluster create $(K3D_CLUSTER_NAME) \
 	--port '30000:30000@server:0' \
 	--port '30002:30002@server:0' \
 	--port '30003:30003@server:0' \
 	--registry-config "${CURRENT_DIR}/prereqs/assets/registries.yaml" \
 	--volume "${CURRENT_DIR}/prereqs/assets/registry.crt:/etc/rancher/k3s/local.crt:ro"
+	@echo "--- Waiting for k3d cluster to be ready ---"
+	@timeout=120; \
+	elapsed=0; \
+	while [ $$elapsed -lt $$timeout ]; do \
+		if $(KUBECTL) cluster-info >/dev/null 2>&1; then \
+			echo "Cluster is ready"; \
+			break; \
+		fi; \
+		printf "."; \
+		sleep 2; \
+		elapsed=$$((elapsed + 2)); \
+	done; \
+	echo ""; \
+	if [ $$elapsed -ge $$timeout ]; then \
+		echo "Error: Cluster did not become ready within $$timeout seconds" >&2; \
+		exit 1; \
+	fi
 
 k3d-cluster-delete: ## Delete k3d cluster for e2e tests
 	@echo "--- Deleting k3d cluster $(K3D_CLUSTER_NAME) ---"
@@ -123,6 +140,23 @@ test-e2e-ci: ## Build local image updater, deploy operator.
 	$(MAKE) configure-docker-daemon
 	@echo "--- Building local argocd-image-updater image ---"
 	$(MAKE) -C ../../ docker-build
+	@echo "--- Waiting for k3d cluster to be ready before deployment ---"
+	@timeout=120; \
+	elapsed=0; \
+	while [ $$elapsed -lt $$timeout ]; do \
+		if $(KUBECTL) cluster-info >/dev/null 2>&1; then \
+			echo "Cluster is ready"; \
+			break; \
+		fi; \
+		printf "."; \
+		sleep 2; \
+		elapsed=$$((elapsed + 2)); \
+	done; \
+	echo ""; \
+	if [ $$elapsed -ge $$timeout ]; then \
+		echo "Error: Cluster did not become ready within $$timeout seconds" >&2; \
+		exit 1; \
+	fi
 	@echo "--- Importing image to k3d cluster ---"
 	$(MAKE) k3d-image-import
 	@echo "--- Deploying argocd-operator with local image-updater ---"
