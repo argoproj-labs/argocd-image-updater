@@ -88,7 +88,7 @@ k3d-cluster-create: ## Create k3d cluster for e2e tests
 	@timeout=120; \
 	elapsed=0; \
 	while [ $$elapsed -lt $$timeout ]; do \
-		if $(KUBECTL) cluster-info >/dev/null 2>&1; then \
+		if $(KUBECTL) get nodes >/dev/null 2>&1 && $(KUBECTL) get namespaces >/dev/null 2>&1; then \
 			echo "Cluster is ready"; \
 			break; \
 		fi; \
@@ -144,7 +144,7 @@ test-e2e-ci: ## Build local image updater, deploy operator.
 	@timeout=120; \
 	elapsed=0; \
 	while [ $$elapsed -lt $$timeout ]; do \
-		if $(KUBECTL) cluster-info >/dev/null 2>&1; then \
+		if $(KUBECTL) get nodes >/dev/null 2>&1 && $(KUBECTL) get namespaces >/dev/null 2>&1; then \
 			echo "Cluster is ready"; \
 			break; \
 		fi; \

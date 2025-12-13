@@ -199,7 +199,7 @@ jobs:
           timeout=120
           elapsed=0
           while [ $elapsed -lt $timeout ]; do
-            if kubectl cluster-info >/dev/null 2>&1; then
+            if kubectl get nodes >/dev/null 2>&1 && kubectl get namespaces >/dev/null 2>&1; then
               echo "Cluster is ready"
               kubectl cluster-info
               break
@@ -237,7 +237,7 @@ jobs:
           timeout=120
           elapsed=0
           while [ $elapsed -lt $timeout ]; do
-            if kubectl cluster-info >/dev/null 2>&1; then
+            if kubectl get nodes >/dev/null 2>&1 && kubectl get namespaces >/dev/null 2>&1; then
               echo "Cluster is ready for deployment"
               kubectl cluster-info
               break
