@@ -42,13 +42,14 @@ KUSTOMIZE ?= $(CURDIR)/../../bin/kustomize
 KUBECTL ?= kubectl
 K3D ?= k3d
 
-K3D_CLUSTER_NAME ?= test-e2e-local
+K3D_CLUSTER_NAME ?= test-e2e
+LOCAL ?= true
 
 ifndef ignore-not-found
   ignore-not-found = false
 endif
 
-.PHONY: deploy-argocd-operator undeploy-argocd-operator kustomize test-e2e-local test-e2e-ci k3d-cluster-create k3d-cluster-delete k3d-image-import configure-docker-daemon
+.PHONY: deploy-argocd-operator undeploy-argocd-operator kustomize test-e2e k3d-cluster-create k3d-cluster-delete k3d-image-import configure-docker-daemon
 kustomize:
 	$(MAKE) -C ../../ kustomize
 
@@ -115,13 +116,13 @@ k3d-image-import: ## Import local image to k3d cluster
 	$(K3D) image import $(ARGOCD_IMAGE_UPDATER_IMAGE) -c $(K3D_CLUSTER_NAME)
 
 # Currently run only parallel tests because we don't have sequential tests yet.
-test-e2e-local: ## Build local image updater, deploy operator, and run parallel e2e tests.
+test-e2e: ## Build local image updater, deploy operator, and run parallel e2e tests.
 	@echo "--- Configuring Docker daemon for insecure registry ---"
 	$(MAKE) configure-docker-daemon
+	@echo "--- Building local argocd-image-updater image ---"
+	$(MAKE) -C ../../ docker-build
 	@echo "--- Creating k3d cluster---"
 	$(MAKE) k3d-cluster-create
-	@echo "--- Building local argocd-image-updater image ---"
-	$(MAKE) -C ../../ docker-build
 	@echo "--- Importing image to k3d cluster ---"
 	$(MAKE) k3d-image-import
 	@echo "--- Deploying argocd-operator with local image-updater ---"
@@ -130,66 +131,15 @@ test-e2e-local: ## Build local image updater, deploy operator, and run parallel 
 	$(KUBECTL) wait --for=condition=available --timeout=300s deployment/argocd-operator-controller-manager -n argocd-operator-system
 	@echo "--- Deploying local container registry ---"
 	$(MAKE) create-local-container-registry
+	@echo "--- Verifying operator deployment ---"
+	@$(KUBECTL) get deployment -n argocd-operator-system || true
+	@$(KUBECTL) get pods -n argocd-operator-system || true
 	@echo "--- Running Parallel E2E tests ---"
 	$(MAKE) -C ../../ e2e-tests-parallel-ginkgo
+ifeq ($(LOCAL),true)
 	@echo "--- Deleting k3d cluster ---"
 	$(MAKE) k3d-cluster-delete
-
-test-e2e-ci: ## Build local image updater, deploy operator.
-	@echo "--- Configuring Docker daemon for insecure registry ---"
-	$(MAKE) configure-docker-daemon
-	@echo "--- Building local argocd-image-updater image ---"
-	$(MAKE) -C ../../ docker-build
-	@echo "--- Waiting for k3d cluster to be ready before deployment ---"
-	@echo "Checking cluster status..."
-	@$(K3D) cluster list || true
-	@echo "Checking kubectl context..."
-	@$(KUBECTL) config current-context || true
-	@timeout=120; \
-	elapsed=0; \
-	restart_attempted=0; \
-	while [ $$elapsed -lt $$timeout ]; do \
-		if $(KUBECTL) get nodes >/dev/null 2>&1 && $(KUBECTL) get namespaces >/dev/null 2>&1; then \
-			echo "Cluster is ready"; \
-			$(KUBECTL) get nodes; \
-			break; \
-		fi; \
-		printf "."; \
-		sleep 3; \
-		elapsed=$$((elapsed + 3)); \
-		if [ $$((elapsed % 30)) -eq 0 ]; then \
-			echo ""; \
-			echo "Still waiting... ($$elapsed/$$timeout seconds)"; \
-			$(K3D) cluster list || true; \
-			$(KUBECTL) cluster-info 2>&1 || true; \
-			if [ $$elapsed -ge 60 ] && [ $$restart_attempted -eq 0 ]; then \
-				echo "API server not responding, attempting to restart cluster..."; \
-				$(K3D) cluster stop $(K3D_CLUSTER_NAME) || true; \
-				sleep 5; \
-				$(K3D) cluster start $(K3D_CLUSTER_NAME) || true; \
-				restart_attempted=1; \
-				echo "Cluster restart attempted, waiting for recovery..."; \
-				sleep 10; \
-			fi; \
-		fi; \
-	done; \
-	echo ""; \
-	if [ $$elapsed -ge $$timeout ]; then \
-		echo "Error: Cluster did not become ready within $$timeout seconds" >&2; \
-		echo "Cluster status:"; \
-		$(K3D) cluster list || true; \
-		$(KUBECTL) cluster-info 2>&1 || true; \
-		$(KUBECTL) get nodes 2>&1 || true; \
-		exit 1; \
-	fi
-	@echo "--- Importing image to k3d cluster ---"
-	$(MAKE) k3d-image-import
-	@echo "--- Deploying argocd-operator with local image-updater ---"
-	$(MAKE) deploy-argocd-operator
-	@echo "--- Waiting for argocd-operator to be ready ---"
-	$(KUBECTL) wait --for=condition=available --timeout=300s deployment/argocd-operator-controller-manager -n argocd-operator-system
-	@echo "--- Deploying local container registry ---"
-	$(MAKE) create-local-container-registry
+endif
 
 GIT_IMAGE_REPO		?= 127.0.0.1:30000
 GIT_IMAGE_NAME		?= git-http

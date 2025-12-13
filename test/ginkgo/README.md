@@ -19,19 +19,18 @@ You must have the following tools installed locally:
 - [Docker](https://docs.docker.com/get-docker/)
 - [k3d](https://k3d.io/#installation)
 
-**Note on Docker Configuration**: The E2E tests use a local container registry at `127.0.0.1:30000` which requires Docker to be configured to allow insecure registries. The `test-e2e-local` target automatically configures Docker daemon.json for you, but if you run tests manually, you may need to run `make -C test/ginkgo configure-docker-daemon` first.
+**Note on Docker Configuration on Mac**: The E2E tests use a local container registry at `127.0.0.1:30000` which requires Docker to be configured to allow insecure registries. The `test-e2e` target automatically configures Docker daemon.json for you, but if you run tests manually on Mac, you may need to run `make -C test/ginkgo configure-docker-daemon` first.
 
 #### Architecture
 
-The `test-e2e-local` target in `test/ginkgo/Makefile` automates the entire testing lifecycle:
+The `test-e2e` target in `test/ginkgo/Makefile` automates the entire testing lifecycle:
 
 1.  **Docker Configuration**: Docker daemon.json is configured to allow insecure registry at `127.0.0.1:30000` (required for local container registry).
-2.  **Cluster Creation**: A new `k3d` cluster is created for a clean test run.
-3.  **Build**: The target calls the `docker-build` command in the root `Makefile` to build a Docker image from your current source code.
-4.  **Image Import**: The newly built local image is imported directly into the `k3d` cluster's nodes, making it available to Kubernetes without a registry.
+2.  **Build**: The target calls the `docker-build` command in the root `Makefile` to build a Docker image from your current source code. 
+3. **Cluster Creation**: A new `k3d` cluster is created for a clean test run.
+4. **Image Import**: The newly built local image is imported directly into the `k3d` cluster's nodes, making it available to Kubernetes without a registry.
 5.  **Operator Deployment**: The `argocd-operator` is deployed into the cluster. Its deployment is then patched to use your local image by setting the `ARGOCD_IMAGE_UPDATER_IMAGE` environment variable.
 6.  **Test Execution**: The Ginkgo E2E test suite is run against the deployed operator and image updater.
-7.  **Cluster Deletion**: After the tests complete, the `k3d` cluster is automatically deleted to clean up all resources.
 
 #### Instructions
 
@@ -39,12 +38,11 @@ The `test-e2e-local` target in `test/ginkgo/Makefile` automates the entire testi
 
 This single command will perform all the steps described above.
 ```bash
-make -C test/ginkgo test-e2e-local
+make -C test/ginkgo test-e2e
 ```
 
 **To clean up the cluster manually:**
 
-This is only necessary if the `test-e2e-local` target is interrupted before it can clean up after itself.
 ```bash
 make -C test/ginkgo k3d-cluster-delete
 ```
