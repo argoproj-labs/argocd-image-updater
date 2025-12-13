@@ -1,5 +1,6 @@
-# Assisted-by: Claude AI model
 #!/bin/bash
+# Assisted-by: Claude AI model
+
 set -e
 
 REGISTRY="127.0.0.1:30000"

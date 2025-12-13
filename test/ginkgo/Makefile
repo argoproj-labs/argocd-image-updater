@@ -85,23 +85,7 @@ k3d-cluster-create: ## Create k3d cluster for e2e tests
 	--port '30003:30003@server:0' \
 	--registry-config "${CURRENT_DIR}/prereqs/assets/registries.yaml" \
 	--volume "${CURRENT_DIR}/prereqs/assets/registry.crt:/etc/rancher/k3s/local.crt:ro"
-	@echo "--- Waiting for k3d cluster to be ready ---"
-	@timeout=120; \
-	elapsed=0; \
-	while [ $$elapsed -lt $$timeout ]; do \
-		if $(KUBECTL) get nodes >/dev/null 2>&1 && $(KUBECTL) get namespaces >/dev/null 2>&1; then \
-			echo "Cluster is ready"; \
-			break; \
-		fi; \
-		printf "."; \
-		sleep 2; \
-		elapsed=$$((elapsed + 2)); \
-	done; \
-	echo ""; \
-	if [ $$elapsed -ge $$timeout ]; then \
-		echo "Error: Cluster did not become ready within $$timeout seconds" >&2; \
-		exit 1; \
-	fi
+	@. "${CURRENT_DIR}/prereqs/assets/wait-utils.sh" && wait_for_cluster_ready 120 $(KUBECTL) || exit 1
 
 k3d-cluster-delete: ## Delete k3d cluster for e2e tests
 	@echo "--- Deleting k3d cluster $(K3D_CLUSTER_NAME) ---"
@@ -154,23 +138,8 @@ git-container-push: git-container-build ## Push git container image
 	$(CONTAINER_TOOL) push $(GIT_IMAGE_SLUG)
 
 create-local-container-registry: ## Create local container registry
-	$(KUBECTL) apply -n argocd-operator-system -f prereqs/registry/registry.yaml
+	$(KUBECTL) apply -n argocd-operator-system -f prereqs/assets/registry.yaml
 	$(KUBECTL) rollout -n argocd-operator-system status deployment e2e-registry-public
 	$(KUBECTL) wait --for=condition=available --timeout=30s deployment/e2e-registry-public -n argocd-operator-system
-	@echo "Waiting for registry service to be accessible at 127.0.0.1:30000..."
-	@timeout=60; \
-	elapsed=0; \
-	while [ $$elapsed -lt $$timeout ]; do \
-		if curl -k -s -o /dev/null -w "%{http_code}" https://127.0.0.1:30000/v2/ 2>/dev/null | grep -q "200\|401\|404"; then \
-			echo "Registry is accessible"; \
-			break; \
-		fi; \
-		printf "."; \
-		sleep 1; \
-		elapsed=$$((elapsed + 1)); \
-	done; \
-	echo ""; \
-	if [ $$elapsed -ge $$timeout ]; then \
-		echo "Warning: Registry may not be fully ready, but attempting push anyway..."; \
-	fi
-	make git-container-push
+	@. "${CURRENT_DIR}/prereqs/assets/wait-utils.sh" && wait_for_registry_ready 60 || true
+	@$(MAKE) git-container-push
