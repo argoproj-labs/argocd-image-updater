@@ -85,7 +85,7 @@ k3d-cluster-create: ## Create k3d cluster for e2e tests
 	--port '30003:30003@server:0' \
 	--registry-config "${CURRENT_DIR}/prereqs/assets/registries.yaml" \
 	--volume "${CURRENT_DIR}/prereqs/assets/registry.crt:/etc/rancher/k3s/local.crt:ro"
-	@. "${CURRENT_DIR}/prereqs/assets/wait-utils.sh" && wait_for_cluster_ready 120 $(KUBECTL) || exit 1
+	@bash -c '. "${CURRENT_DIR}/prereqs/assets/wait-utils.sh" && wait_for_cluster_ready 120 $(KUBECTL)' || exit 1
 
 k3d-cluster-delete: ## Delete k3d cluster for e2e tests
 	@echo "--- Deleting k3d cluster $(K3D_CLUSTER_NAME) ---"
@@ -141,5 +141,5 @@ create-local-container-registry: ## Create local container registry
 	$(KUBECTL) apply -n argocd-operator-system -f prereqs/assets/registry.yaml
 	$(KUBECTL) rollout -n argocd-operator-system status deployment e2e-registry-public
 	$(KUBECTL) wait --for=condition=available --timeout=30s deployment/e2e-registry-public -n argocd-operator-system
-	@. "${CURRENT_DIR}/prereqs/assets/wait-utils.sh" && wait_for_registry_ready 60 || true
+	@bash -c '. "${CURRENT_DIR}/prereqs/assets/wait-utils.sh" && wait_for_registry_ready 60' || true
 	@$(MAKE) git-container-push
