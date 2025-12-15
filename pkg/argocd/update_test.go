@@ -1344,6 +1344,288 @@ func Test_UpdateApplication(t *testing.T) {
 		assert.Equal(t, "latest", iuImg.ContainerImage.ImageTag.TagName)
 	})
 
+	// Test for issue #1357: digest update strategy with suffixed tags (e.g., "latest-bookworm")
+	// Previously, when an image like "nginx:latest-bookworm@sha256:..." was parsed, the tag name
+	// "latest-bookworm" was lost, causing alternating commits between the correct tag and "latest".
+	// This test verifies that the tag name is preserved correctly across multiple update cycles.
+	t.Run("Test digest update strategy with suffixed tag preserves tag name (issue #1357)", func(t *testing.T) {
+		// Use a proper 32-byte hash that when hex-encoded becomes a valid SHA256 digest
+		// The bytes 0x12, 0x34, 0x56, 0x78... become "1234567890abcdef..." when hex-encoded
+		digestBytes := [32]byte{
+			0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef,
+			0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef,
+			0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef,
+			0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef,
+		}
+		testDigest := "sha256:1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+
+		mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
+			regMock := regmock.RegistryClient{}
+			regMock.On("NewRepository", mock.Anything).Return(nil)
+			regMock.On("Tags", mock.Anything).Return([]string{"latest-bookworm"}, nil)
+			// Mock ManifestForTag to return metadata with the digest
+			meta1 := &schema1.SignedManifest{} //nolint:staticcheck
+			meta1.Name = "library/nginx"
+			meta1.Tag = "latest-bookworm"
+			regMock.On("ManifestForTag", mock.Anything, "latest-bookworm").Return(meta1, nil)
+			// Mock TagMetadata to return the tag info with digest
+			regMock.On("TagMetadata", mock.Anything, mock.Anything, mock.Anything).Return(&tag.TagInfo{
+				CreatedAt: time.Now(),
+				Digest:    digestBytes,
+			}, nil)
+			return &regMock, nil
+		}
+
+		argoClient := argomock.ArgoCD{}
+		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+
+		kubeClient := kube.ImageUpdaterKubernetesClient{
+			KubeClient: &registryKube.KubernetesClient{
+				Clientset: fake.NewFakeKubeClient(),
+			},
+		}
+
+		// Image configuration with digest update strategy and suffixed tag
+		containerImg := image.NewFromIdentifier("nginx=docker.io/library/nginx:latest-bookworm")
+		iuImg := NewImage(containerImg)
+		iuImg.UpdateStrategy = image.StrategyDigest
+
+		imageList := ImageList{iuImg}
+
+		appImages := &ApplicationImages{
+			Application: v1alpha1.Application{
+				ObjectMeta: v1.ObjectMeta{
+					Name:      "guestbook",
+					Namespace: "guestbook",
+				},
+				Spec: v1alpha1.ApplicationSpec{
+					Source: &v1alpha1.ApplicationSource{
+						Kustomize: &v1alpha1.ApplicationSourceKustomize{
+							Images: v1alpha1.KustomizeImages{
+								// Initial state: just the tag without digest
+								"docker.io/library/nginx:latest-bookworm",
+							},
+						},
+					},
+				},
+				Status: v1alpha1.ApplicationStatus{
+					SourceType: v1alpha1.ApplicationSourceTypeKustomize,
+					Summary: v1alpha1.ApplicationSummary{
+						Images: []string{
+							"docker.io/library/nginx:latest-bookworm",
+						},
+					},
+				},
+			},
+			Images: imageList,
+			WriteBackConfig: &WriteBackConfig{
+				Method: WriteBackApplication,
+			},
+		}
+
+		res := UpdateApplication(context.Background(), &UpdateConfiguration{
+			NewRegFN:   mockClientFn,
+			ArgoClient: &argoClient,
+			KubeClient: &kubeClient,
+			UpdateApp:  appImages,
+			DryRun:     false,
+		}, NewSyncIterationState())
+
+		assert.Equal(t, 0, res.NumErrors)
+		assert.Equal(t, 0, res.NumSkipped)
+		assert.Equal(t, 1, res.NumApplicationsProcessed)
+		assert.Equal(t, 1, res.NumImagesConsidered)
+		assert.Equal(t, 1, res.NumImagesUpdated)
+
+		// Verify the updated image has both the tag name AND the digest
+		require.Len(t, appImages.Application.Spec.Source.Kustomize.Images, 1)
+		updatedImage := string(appImages.Application.Spec.Source.Kustomize.Images[0])
+
+		// The image should contain the original tag "latest-bookworm"
+		assert.Contains(t, updatedImage, "latest-bookworm", "Updated image should preserve the tag name 'latest-bookworm'")
+
+		// The image should also contain a digest
+		assert.Contains(t, updatedImage, "@sha256:", "Updated image should contain a digest")
+
+		// Now simulate the second update cycle - this is where the bug manifested
+		// The image now has both tag and digest: "nginx:latest-bookworm@sha256:..."
+		// Parse this image and verify it correctly extracts both tag name and digest
+		parsedImage := image.NewFromIdentifier(updatedImage)
+
+		// This is the critical assertion for issue #1357:
+		// The parsed image should have TagName = "latest-bookworm", not empty
+		require.NotNil(t, parsedImage.ImageTag)
+		assert.Equal(t, "latest-bookworm", parsedImage.ImageTag.TagName,
+			"Parsed image should preserve tag name 'latest-bookworm', not lose it to 'latest'")
+
+		// Simulate a second update with the same digest - should NOT trigger an update
+		// because the digest hasn't changed
+		containerImg2 := image.NewFromIdentifier("nginx=docker.io/library/nginx:latest-bookworm")
+		iuImg2 := NewImage(containerImg2)
+		iuImg2.UpdateStrategy = image.StrategyDigest
+
+		imageList2 := ImageList{iuImg2}
+
+		// Create a new app state with the previously updated image (tag + digest)
+		appImages2 := &ApplicationImages{
+			Application: v1alpha1.Application{
+				ObjectMeta: v1.ObjectMeta{
+					Name:      "guestbook",
+					Namespace: "guestbook",
+				},
+				Spec: v1alpha1.ApplicationSpec{
+					Source: &v1alpha1.ApplicationSource{
+						Kustomize: &v1alpha1.ApplicationSourceKustomize{
+							Images: v1alpha1.KustomizeImages{
+								// State after first update: tag + digest
+								v1alpha1.KustomizeImage("docker.io/library/nginx:latest-bookworm@" + testDigest),
+							},
+						},
+					},
+				},
+				Status: v1alpha1.ApplicationStatus{
+					SourceType: v1alpha1.ApplicationSourceTypeKustomize,
+					Summary: v1alpha1.ApplicationSummary{
+						Images: []string{
+							"docker.io/library/nginx:latest-bookworm@" + testDigest,
+						},
+					},
+				},
+			},
+			Images: imageList2,
+			WriteBackConfig: &WriteBackConfig{
+				Method: WriteBackApplication,
+			},
+		}
+
+		res2 := UpdateApplication(context.Background(), &UpdateConfiguration{
+			NewRegFN:   mockClientFn,
+			ArgoClient: &argoClient,
+			KubeClient: &kubeClient,
+			UpdateApp:  appImages2,
+			DryRun:     false,
+		}, NewSyncIterationState())
+
+		// No update should occur because the digest is the same
+		assert.Equal(t, 0, res2.NumErrors)
+		assert.Equal(t, 0, res2.NumImagesUpdated, "No update should occur when digest hasn't changed")
+
+		// Verify the image still has the correct tag name after being parsed
+		updatedImage2 := string(appImages2.Application.Spec.Source.Kustomize.Images[0])
+		assert.Contains(t, updatedImage2, "latest-bookworm",
+			"Image should still contain 'latest-bookworm' after second update cycle")
+	})
+
+	// Test for issue #1357: Two tags pointing to the same digest should be considered equal
+	// In the reported issue, the user has tags like "latest" and "latest-bookworm" both pointing
+	// to the same digest. When using digest update strategy, switching between these tags
+	// should NOT trigger an update since they resolve to the same content.
+	t.Run("Test two tags with same digest are considered equal (issue #1357)", func(t *testing.T) {
+		// Both tags will return the same digest
+		sharedDigestBytes := [32]byte{
+			0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef,
+			0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef,
+			0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef,
+			0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef,
+		}
+		sharedDigest := "sha256:1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+
+		// Mock registry that returns BOTH tags, and both resolve to the same digest
+		mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
+			regMock := regmock.RegistryClient{}
+			regMock.On("NewRepository", mock.Anything).Return(nil)
+			// Return both tags - "latest" and "latest-bookworm" both exist
+			regMock.On("Tags", mock.Anything).Return([]string{"latest", "latest-bookworm"}, nil)
+
+			// Both tags return manifests
+			metaLatest := &schema1.SignedManifest{} //nolint:staticcheck
+			metaLatest.Name = "library/nginx"
+			metaLatest.Tag = "latest"
+			regMock.On("ManifestForTag", mock.Anything, "latest").Return(metaLatest, nil)
+
+			metaBookworm := &schema1.SignedManifest{} //nolint:staticcheck
+			metaBookworm.Name = "library/nginx"
+			metaBookworm.Tag = "latest-bookworm"
+			regMock.On("ManifestForTag", mock.Anything, "latest-bookworm").Return(metaBookworm, nil)
+
+			// CRITICAL: Both tags return the SAME digest
+			regMock.On("TagMetadata", mock.Anything, mock.Anything, mock.Anything).Return(&tag.TagInfo{
+				CreatedAt: time.Now(),
+				Digest:    sharedDigestBytes,
+			}, nil)
+
+			return &regMock, nil
+		}
+
+		argoClient := argomock.ArgoCD{}
+		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+
+		kubeClient := kube.ImageUpdaterKubernetesClient{
+			KubeClient: &registryKube.KubernetesClient{
+				Clientset: fake.NewFakeKubeClient(),
+			},
+		}
+
+		// User wants to track "latest-bookworm" tag with digest strategy
+		containerImg := image.NewFromIdentifier("nginx=docker.io/library/nginx:latest-bookworm")
+		iuImg := NewImage(containerImg)
+		iuImg.UpdateStrategy = image.StrategyDigest
+
+		imageList := ImageList{iuImg}
+
+		// Application currently has "latest" tag with the SAME digest
+		// This simulates the scenario where both tags point to the same image content
+		appImages := &ApplicationImages{
+			Application: v1alpha1.Application{
+				ObjectMeta: v1.ObjectMeta{
+					Name:      "guestbook",
+					Namespace: "guestbook",
+				},
+				Spec: v1alpha1.ApplicationSpec{
+					Source: &v1alpha1.ApplicationSource{
+						Kustomize: &v1alpha1.ApplicationSourceKustomize{
+							Images: v1alpha1.KustomizeImages{
+								// Current state: "latest" tag with the shared digest
+								v1alpha1.KustomizeImage("docker.io/library/nginx:latest@" + sharedDigest),
+							},
+						},
+					},
+				},
+				Status: v1alpha1.ApplicationStatus{
+					SourceType: v1alpha1.ApplicationSourceTypeKustomize,
+					Summary: v1alpha1.ApplicationSummary{
+						Images: []string{
+							"docker.io/library/nginx:latest@" + sharedDigest,
+						},
+					},
+				},
+			},
+			Images: imageList,
+			WriteBackConfig: &WriteBackConfig{
+				Method: WriteBackApplication,
+			},
+		}
+
+		res := UpdateApplication(context.Background(), &UpdateConfiguration{
+			NewRegFN:   mockClientFn,
+			ArgoClient: &argoClient,
+			KubeClient: &kubeClient,
+			UpdateApp:  appImages,
+			DryRun:     false,
+		}, NewSyncIterationState())
+
+		// Since both "latest" and "latest-bookworm" resolve to the same digest,
+		// NO update should occur - the content is identical
+		assert.Equal(t, 0, res.NumErrors)
+		assert.Equal(t, 0, res.NumImagesUpdated,
+			"No update should occur when two different tags point to the same digest")
+
+		// Verify the image was NOT changed (still has "latest" tag, not "latest-bookworm")
+		updatedImage := string(appImages.Application.Spec.Source.Kustomize.Images[0])
+		assert.Contains(t, updatedImage, "latest@"+sharedDigest,
+			"Image should remain unchanged since digest is the same")
+	})
+
 }
 
 func Test_MarshalParamsOverride(t *testing.T) {
@@ -5134,57 +5416,74 @@ func Test_GetRepositoryLock(t *testing.T) {
 func Test_mergeKustomizeOverride(t *testing.T) {
 	tests := []struct {
 		name     string
-		existing v1alpha1.KustomizeImages
-		new      v1alpha1.KustomizeImages
-		expected v1alpha1.KustomizeImages
+		existing *v1alpha1.KustomizeImages
+		new      *v1alpha1.KustomizeImages
+		expected *v1alpha1.KustomizeImages
 	}{
-		{"with-tag", []v1alpha1.KustomizeImage{"nginx:foo"},
-			[]v1alpha1.KustomizeImage{"nginx:foo"},
-			[]v1alpha1.KustomizeImage{"nginx:foo"}},
-		{"no-tag", []v1alpha1.KustomizeImage{"nginx:foo"},
-			[]v1alpha1.KustomizeImage{"nginx"},
-			[]v1alpha1.KustomizeImage{"nginx:foo"}},
-		{"with-tag-1", []v1alpha1.KustomizeImage{"nginx"},
-			[]v1alpha1.KustomizeImage{"nginx:latest"},
-			[]v1alpha1.KustomizeImage{"nginx:latest"}},
-		{"with-tag-sha", []v1alpha1.KustomizeImage{"nginx:latest"},
-			[]v1alpha1.KustomizeImage{"nginx:latest@sha256:91734281c0ebfc6f1aea979cffeed5079cfe786228a71cc6f1f46a228cde6e34"},
-			[]v1alpha1.KustomizeImage{"nginx:latest@sha256:91734281c0ebfc6f1aea979cffeed5079cfe786228a71cc6f1f46a228cde6e34"}},
+		{"with-tag", &v1alpha1.KustomizeImages{"nginx:foo"},
+			&v1alpha1.KustomizeImages{"nginx:foo"},
+			&v1alpha1.KustomizeImages{"nginx:foo"}},
+		{"no-tag", &v1alpha1.KustomizeImages{"nginx:foo"},
+			&v1alpha1.KustomizeImages{"nginx"},
+			&v1alpha1.KustomizeImages{"nginx:foo"}},
+		{"with-tag-1", &v1alpha1.KustomizeImages{"nginx"},
+			&v1alpha1.KustomizeImages{"nginx:latest"},
+			&v1alpha1.KustomizeImages{"nginx:latest"}},
+		{"with-tag-sha", &v1alpha1.KustomizeImages{"nginx:latest"},
+			&v1alpha1.KustomizeImages{"nginx:latest@sha256:91734281c0ebfc6f1aea979cffeed5079cfe786228a71cc6f1f46a228cde6e34"},
+			&v1alpha1.KustomizeImages{"nginx:latest@sha256:91734281c0ebfc6f1aea979cffeed5079cfe786228a71cc6f1f46a228cde6e34"}},
 
-		{"2-images", []v1alpha1.KustomizeImage{"nginx:latest",
+		{"2-images", &v1alpha1.KustomizeImages{"nginx:latest",
 			"bitnami/nginx:latest@sha256:1a2fe3f9f6d1d38d5a7ee35af732fdb7d15266ec3dbc79bbc0355742cd24d3ec"},
-			[]v1alpha1.KustomizeImage{"nginx:latest@sha256:91734281c0ebfc6f1aea979cffeed5079cfe786228a71cc6f1f46a228cde6e34",
+			&v1alpha1.KustomizeImages{"nginx:latest@sha256:91734281c0ebfc6f1aea979cffeed5079cfe786228a71cc6f1f46a228cde6e34",
 				"bitnami/nginx@sha256:1a2fe3f9f6d1d38d5a7ee35af732fdb7d15266ec3dbc79bbc0355742cd24d3ec"},
-			[]v1alpha1.KustomizeImage{"nginx:latest@sha256:91734281c0ebfc6f1aea979cffeed5079cfe786228a71cc6f1f46a228cde6e34",
+			&v1alpha1.KustomizeImages{"nginx:latest@sha256:91734281c0ebfc6f1aea979cffeed5079cfe786228a71cc6f1f46a228cde6e34",
 				"bitnami/nginx:latest@sha256:1a2fe3f9f6d1d38d5a7ee35af732fdb7d15266ec3dbc79bbc0355742cd24d3ec"}},
 
-		{"with-registry", []v1alpha1.KustomizeImage{"quay.io/nginx:latest"},
-			[]v1alpha1.KustomizeImage{"quay.io/nginx:latest"},
-			[]v1alpha1.KustomizeImage{"quay.io/nginx:latest"}},
-		{"with-registry-1", []v1alpha1.KustomizeImage{"quay.io/nginx:latest"},
-			[]v1alpha1.KustomizeImage{"docker.io/nginx:latest"},
-			[]v1alpha1.KustomizeImage{"docker.io/nginx:latest", "quay.io/nginx:latest"}},
+		{"with-registry", &v1alpha1.KustomizeImages{"quay.io/nginx:latest"},
+			&v1alpha1.KustomizeImages{"quay.io/nginx:latest"},
+			&v1alpha1.KustomizeImages{"quay.io/nginx:latest"}},
+		{"with-registry-1", &v1alpha1.KustomizeImages{"quay.io/nginx:latest"},
+			&v1alpha1.KustomizeImages{"docker.io/nginx:latest"},
+			&v1alpha1.KustomizeImages{"docker.io/nginx:latest", "quay.io/nginx:latest"}},
+		{"o_is_nil", &v1alpha1.KustomizeImages{"nginx:foo"},
+			nil,
+			&v1alpha1.KustomizeImages{"nginx:foo"}},
+		{"t_is_nil", nil,
+			&v1alpha1.KustomizeImages{"nginx:foo"},
+			&v1alpha1.KustomizeImages{"nginx:foo"}},
+		{"both_are_nil", nil,
+			nil,
+			nil},
+		{"add_to_empty", &v1alpha1.KustomizeImages{},
+			&v1alpha1.KustomizeImages{"nginx:foo"},
+			&v1alpha1.KustomizeImages{"nginx:foo"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			existingImages := kustomizeOverride{
 				Kustomize: kustomizeImages{
-					Images: &tt.existing,
+					Images: tt.existing,
 				},
 			}
 			newImages := kustomizeOverride{
 				Kustomize: kustomizeImages{
-					Images: &tt.new,
+					Images: tt.new,
 				},
 			}
 			expectedImages := kustomizeOverride{
 				Kustomize: kustomizeImages{
-					Images: &tt.expected,
+					Images: tt.expected,
 				},
 			}
 
 			mergeKustomizeOverride(&existingImages, &newImages)
-			assert.ElementsMatch(t, *expectedImages.Kustomize.Images, *existingImages.Kustomize.Images)
+			if expectedImages.Kustomize.Images == nil {
+				assert.Nil(t, existingImages.Kustomize.Images)
+			} else {
+				require.NotNil(t, existingImages.Kustomize.Images)
+				assert.ElementsMatch(t, *expectedImages.Kustomize.Images, *existingImages.Kustomize.Images)
+			}
 		})
 	}
 }
