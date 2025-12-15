@@ -1,0 +1,135 @@
+name: docker-build-and-push-images
+on:
+  workflow_dispatch:
+    inputs:
+      runners:
+        description: 'Runners to use (JSON array, e.g., ["ubuntu-latest", "ubuntu-24.04-arm"] or ["ubuntu-latest"])'
+        required: true
+        type: string
+        default: '["ubuntu-latest", "ubuntu-24.04-arm"]'
+  
+jobs:
+  build-push-images:
+    name: Build and push images (${{ matrix.runner }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      matrix:
+        runner: ${{ fromJSON(inputs.runners) }}
+    steps:
+      - name: Delete tool cache to preserve space
+        run: rm -rf /opt/hostedtoolcache || true
+
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Get version-tag
+        id: version-tag
+        run: |
+          VERSION=$(cat VERSION)
+          if [ "$VERSION" = "99.9.9" ]; then
+            VERSION_TAG="latest"
+          else
+            VERSION_TAG="v${VERSION}"
+          fi
+          echo version-tag=${VERSION_TAG} >> $GITHUB_OUTPUT
+
+      - name: Detect platform
+        id: platform
+        run: |
+          if [[ "${{ matrix.runner }}" == *"arm"* ]]; then
+            echo "platform=linux/arm64" >> $GITHUB_OUTPUT
+            echo "arch-tag=arm64" >> $GITHUB_OUTPUT
+          else
+            echo "platform=linux/amd64" >> $GITHUB_OUTPUT
+            echo "arch-tag=amd64" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Setup Golang
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Build and push platform-specific image
+        run: |
+          set -euo pipefail
+          echo "${DOCKER_PASSWORD}" | docker login --username "${DOCKER_USERNAME}" --password-stdin quay.io
+          IMAGE_TAG="${{ steps.version-tag.outputs.version-tag }}-${{ steps.platform.outputs.arch-tag }}" make docker-build docker-push
+        env:
+          DOCKER_USERNAME: ${{ secrets.QUAY_USERNAME }}
+          DOCKER_PASSWORD: ${{ secrets.QUAY_TOKEN }}
+
+  create-manifest:
+    name: Create multi-arch manifest
+    needs: build-push-images
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    if: needs.build-push-images.result == 'success'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Get version-tag
+        id: version-tag
+        run: |
+          VERSION=$(cat VERSION)
+          if [ "$VERSION" = "99.9.9" ]; then
+            VERSION_TAG="latest"
+          else
+            VERSION_TAG="v${VERSION}"
+          fi
+          echo version-tag=${VERSION_TAG} >> $GITHUB_OUTPUT
+
+      - name: Login to registry
+        run: |
+          set -euo pipefail
+          echo "${DOCKER_PASSWORD}" | docker login --username "${DOCKER_USERNAME}" --password-stdin quay.io
+        env:
+          DOCKER_USERNAME: ${{ secrets.QUAY_USERNAME }}
+          DOCKER_PASSWORD: ${{ secrets.QUAY_TOKEN }}
+
+      - name: Create and push multi-arch manifest
+        run: |
+          set -ex
+          IMAGE_NAME="quay.io/argoprojlabs/argocd-image-updater"
+          VERSION_TAG="${{ steps.version-tag.outputs.version-tag }}"
+
+          # Build list of platform-specific tags that exist
+          MANIFEST_TAGS=""
+
+          # Check if amd64 image exists
+          if docker manifest inspect ${IMAGE_NAME}:${VERSION_TAG}-amd64 >/dev/null 2>&1; then
+            MANIFEST_TAGS="${MANIFEST_TAGS} ${IMAGE_NAME}:${VERSION_TAG}-amd64"
+          fi
+
+          # Check if arm64 image exists
+          if docker manifest inspect ${IMAGE_NAME}:${VERSION_TAG}-arm64 >/dev/null 2>&1; then
+            MANIFEST_TAGS="${MANIFEST_TAGS} ${IMAGE_NAME}:${VERSION_TAG}-arm64"
+          fi
+
+          # Remove leading space
+          MANIFEST_TAGS=$(echo ${MANIFEST_TAGS} | sed 's/^ //')
+
+          if [ -z "${MANIFEST_TAGS}" ]; then
+            echo "No platform-specific images found, skipping manifest creation"
+            exit 0
+          fi
+
+          # Create manifest list
+          docker manifest create ${IMAGE_NAME}:${VERSION_TAG} ${MANIFEST_TAGS}
+
+          # Annotate each platform that exists
+          if docker manifest inspect ${IMAGE_NAME}:${VERSION_TAG}-amd64 >/dev/null 2>&1; then
+            docker manifest annotate ${IMAGE_NAME}:${VERSION_TAG} \
+              ${IMAGE_NAME}:${VERSION_TAG}-amd64 \
+              --os linux --arch amd64
+          fi
+
+          if docker manifest inspect ${IMAGE_NAME}:${VERSION_TAG}-arm64 >/dev/null 2>&1; then
+            docker manifest annotate ${IMAGE_NAME}:${VERSION_TAG} \
+              ${IMAGE_NAME}:${VERSION_TAG}-arm64 \
+              --os linux --arch arm64
+          fi
+
+          # Push the manifest
+          docker manifest push ${IMAGE_NAME}:${VERSION_TAG}

@@ -31,5 +31,6 @@ COPY --from=builder /src/argocd-image-updater/dist/argocd-image-updater /manager
 COPY hack/git-ask-pass.sh /usr/local/bin/git-ask-pass.sh
 
 USER 1000
+WORKDIR /app
 
 ENTRYPOINT ["/sbin/tini", "--", "/manager"]

@@ -18,6 +18,9 @@ const (
 	DefaultHelmImageTag  = "image.tag"
 )
 
+// DefaultTargetFilePrefix the prefix of the default git write-back target
+const DefaultTargetFilePrefix = ".argocd-source-"
+
 // DefaultTargetFilePattern configurations related to the write-back functionality
 const DefaultTargetFilePattern = ".argocd-source-%s_%s.yaml"
 const DefaultTargetFilePatternWithoutNamespace = ".argocd-source-%s.yaml"

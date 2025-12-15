@@ -93,6 +93,85 @@ func Test_GetImagesFromApplication(t *testing.T) {
 		assert.Equal(t, "nginx", imageList[0].ImageName)
 		assert.Nil(t, imageList[0].ImageTag)
 	})
+
+	t.Run("Force-update with digest strategy preserves constraint (issue #1344)", func(t *testing.T) {
+		application := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "test-app",
+				Namespace: "argocd",
+			},
+			Spec: v1alpha1.ApplicationSpec{},
+			Status: v1alpha1.ApplicationStatus{
+				Summary: v1alpha1.ApplicationSummary{},
+			},
+		}
+		// Create image with tag (which will be used as constraint for digest strategy)
+		// This mimics the scenario: forceUpdate=true + updateStrategy=digest + tag as version constraint
+		imgToUpdate := image.NewFromIdentifier("nginx:1.14")
+		img := NewImage(imgToUpdate)
+		img.ForceUpdate = true
+		img.UpdateStrategy = image.StrategyDigest
+
+		applicationImages := &ApplicationImages{
+			Application: *application,
+			Images:      ImageList{img},
+		}
+
+		// Get the live images list
+		imageList := GetImagesFromApplication(applicationImages)
+		require.Len(t, imageList, 1)
+		assert.Equal(t, "nginx", imageList[0].ImageName)
+		// The returned image should have nil tag (it's for matching with live images)
+		assert.Nil(t, imageList[0].ImageTag)
+		// Ensure a copy was created (no in-place mutation of the original).
+		require.NotSame(t, img.ContainerImage, imageList[0])
+
+		// CRITICAL: The original image's tag should be preserved for use as version constraint
+		// This is the fix for issue #1344 - without the fix, img.ImageTag would be nil here
+		require.NotNil(t, img.ImageTag, "Original image tag should be preserved for constraint")
+		assert.Equal(t, "1.14", img.ImageTag.TagName, "Constraint tag should be available")
+
+		// Verify the update strategy is still set correctly
+		assert.Equal(t, image.StrategyDigest, img.UpdateStrategy, "Update strategy should remain digest")
+
+		// Verify that the constraint would work with digest strategy validation
+		// Digest strategy requires a non-empty constraint (vc.Constraint != "")
+		assert.NotEmpty(t, img.ImageTag.TagName, "Constraint must be non-empty for digest strategy")
+	})
+
+	t.Run("Force-update avoids duplicates when image already in status", func(t *testing.T) {
+		application := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "test-app",
+				Namespace: "argocd",
+			},
+			Spec: v1alpha1.ApplicationSpec{},
+			Status: v1alpha1.ApplicationStatus{
+				Summary: v1alpha1.ApplicationSummary{
+					// Image already exists in the application status
+					Images: []string{
+						"nginx:1.14",
+					},
+				},
+			},
+		}
+		// Create image with forceUpdate that has the same name/registry as the status image
+		imgToUpdate := image.NewFromIdentifier("nginx:1.14")
+		img := NewImage(imgToUpdate)
+		img.ForceUpdate = true
+
+		applicationImages := &ApplicationImages{
+			Application: *application,
+			Images:      ImageList{img},
+		}
+
+		// Get the live images list
+		imageList := GetImagesFromApplication(applicationImages)
+
+		// Should only have 1 image (from status), not 2 (duplicate prevented)
+		require.Len(t, imageList, 1, "Should not create duplicate entry for image already in status")
+		assert.Equal(t, "nginx", imageList[0].ImageName)
+	})
 }
 
 func Test_GetImagesAndAliasesFromApplication(t *testing.T) {
@@ -221,7 +300,7 @@ func Test_GetApplicationType(t *testing.T) {
 		}
 		// Create a WriteBackConfig with kustomization target to test the logic
 		wbc := &WriteBackConfig{
-			Target: "kustomization:.",
+			KustomizeBase: ".",
 		}
 		appType := GetApplicationType(application, wbc)
 		assert.Equal(t, ApplicationTypeKustomize, appType)
@@ -302,7 +381,7 @@ func Test_GetApplicationSourceType(t *testing.T) {
 
 		// Create a WriteBackConfig with kustomization target to test the logic
 		wbc := &WriteBackConfig{
-			Target: "kustomization:.",
+			KustomizeBase: ".",
 		}
 
 		appType := GetApplicationSourceType(application, wbc)
@@ -938,6 +1017,81 @@ func Test_SetHelmImage(t *testing.T) {
 		}
 		err := SetHelmImage(context.Background(), app, img, wbc, appImage)
 		require.Error(t, err)
+	})
+
+	t.Run("Test set Helm image with empty tag preserves existing tag (issue #1351)", func(t *testing.T) {
+		// This test verifies the fix for issue #1351:
+		// https://github.com/argoproj-labs/argocd-image-updater/issues/1351
+		//
+		// Scenario from the issue:
+		// - User has a Helm application with global.image.tag set to "mq@sha256:123456"
+		// - ImageUpdater CRD specifies:
+		//   - imageName: "example-registry/docker/frontend-partners" (NO TAG!)
+		//   - forceUpdate: true
+		//   - updateStrategy: digest
+		// - Bug: SetHelmImage was setting global.image.tag to empty string "",
+		//   causing "invalid reference format" error when parsing "example-registry/docker/frontend-partners:"
+		// - Fix: When the new image has no tag, preserve the existing tag parameter value
+		//
+		// This test simulates the SetHelmImage call with an image that has no tag
+		// and verifies the existing tag parameter is NOT overwritten with empty string.
+		app := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "frontend-partners",
+				Namespace: "argocd",
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: &v1alpha1.ApplicationSource{
+					Helm: &v1alpha1.ApplicationSourceHelm{
+						Parameters: []v1alpha1.HelmParameter{
+							{
+								Name:  "global.image.tag",
+								Value: "mq@sha256:123456", // Existing tag from the issue
+							},
+							{
+								Name:  "global.image.name",
+								Value: "example-registry/docker/frontend-partners",
+							},
+						},
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypeHelm,
+				Summary: v1alpha1.ApplicationSummary{
+					// Empty - simulating a Job that doesn't appear in app status
+					Images: []string{},
+				},
+			},
+		}
+
+		// Create an image WITHOUT a tag - exactly as in the issue
+		// User specified: imageName: "example-registry/docker/frontend-partners"
+		img := image.NewFromIdentifier("example-registry/docker/frontend-partners")
+		wbc := &WriteBackConfig{
+			Target: "helmvalues:.",
+		}
+		appImage := &Image{
+			HelmImageName: "global.image.name",
+			HelmImageTag:  "global.image.tag",
+		}
+		err := SetHelmImage(context.Background(), app, img, wbc, appImage)
+		require.NoError(t, err)
+		require.NotNil(t, app.Spec.Source.Helm)
+
+		// Find the tag parameter - it should still have the original value
+		var tagParam *v1alpha1.HelmParameter
+		for i, p := range app.Spec.Source.Helm.Parameters {
+			if p.Name == "global.image.tag" {
+				tagParam = &app.Spec.Source.Helm.Parameters[i]
+				break
+			}
+		}
+
+		// CRITICAL: The tag parameter should still exist with its original value "mq@sha256:123456"
+		// Before the fix, this would be "" causing "invalid reference format" error
+		require.NotNil(t, tagParam, "Tag parameter should be preserved")
+		assert.Equal(t, "mq@sha256:123456", tagParam.Value, "Existing tag value should not be overwritten with empty string")
 	})
 
 }

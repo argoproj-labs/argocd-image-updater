@@ -99,12 +99,16 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 				WithValues(logrusFieldsToLogrValues(common.ControllerLogFields)...)
 
 			setupLogger.Info("Controller runtime logger initialized.", "setAppLogLevel", cfg.LogLevel)
-			setupLogger.Info("starting",
-				"app", version.BinaryName()+": "+version.Version(),
+			logFields := []interface{}{
+				"app", version.BinaryName() + ": " + version.Version(),
 				"loglevel", strings.ToUpper(cfg.LogLevel),
 				"interval", argocd.GetPrintableInterval(cfg.CheckInterval),
 				"healthPort", probeAddr,
-			)
+			}
+			if cfg.ArgocdNamespace != "" {
+				logFields = append(logFields, "argocdNamespace", cfg.ArgocdNamespace)
+			}
+			setupLogger.Info("starting", logFields...)
 
 			// Create context with signal handling
 			ctx := ctrl.SetupSignalHandler()
@@ -170,6 +174,16 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 				return err
 			}
 
+			// isLeader is an atomic bool that will be set to true when the controller
+			// becomes the leader.
+			var isLeader atomic.Bool
+
+			// Start a goroutine that sets isLeader to true when leadership is acquired.
+			go func() {
+				<-mgr.Elected()
+				isLeader.Store(true)
+			}()
+
 			// Add the CacheWarmer as a Runnable to the manager.
 			setupLogger.Info("Adding cache warmer to the manager.")
 			warmupState := &WarmupStatus{
@@ -231,11 +245,11 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 			}
 
 			if err := mgr.AddReadyzCheck("warmup-check", func(req *http.Request) error {
-				if !warmupState.isCacheWarmed.Load() {
-					// If the cache is not yet warmed, the check fails.
+				// If we are the leader, we are ready only if the cache is warmed.
+				if isLeader.Load() && !warmupState.isCacheWarmed.Load() {
 					return fmt.Errorf("cache is not yet warmed")
 				}
-				// Once warmed, the check passes.
+				// If we are not the leader, we are always ready.
 				return nil
 			}); err != nil {
 				setupLogger.Error(err, "unable to set up ready check")
@@ -285,7 +299,7 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 	controllerCmd.Flags().StringVar(&cfg.RegistriesConf, "registries-conf-path", common.DefaultRegistriesConfPath, "path to registries configuration file")
 	controllerCmd.Flags().IntVar(&cfg.MaxConcurrentApps, "max-concurrent-apps", env.ParseNumFromEnv("MAX_CONCURRENT_APPS", 10, 1, 100), "maximum number of ArgoCD applications that can be updated concurrently (must be >= 1)")
 	controllerCmd.Flags().IntVar(&MaxConcurrentReconciles, "max-concurrent-reconciles", env.ParseNumFromEnv("MAX_CONCURRENT_RECONCILES", 1, 1, 10), "maximum number of concurrent Reconciles which can be run (must be >= 1)")
-	controllerCmd.Flags().StringVar(&cfg.ArgocdNamespace, "argocd-namespace", "", "namespace where ArgoCD runs in (current namespace by default)")
+	controllerCmd.Flags().StringVar(&cfg.ArgocdNamespace, "argocd-namespace", env.GetStringVal("ARGOCD_NAMESPACE", ""), "namespace where ArgoCD runs in (controller namespace by default)")
 	controllerCmd.Flags().BoolVar(&warmUpCache, "warmup-cache", true, "whether to perform a cache warm-up on startup")
 	controllerCmd.Flags().BoolVar(&cfg.DisableKubeEvents, "disable-kube-events", env.GetBoolVal("IMAGE_UPDATER_KUBE_EVENTS", false), "Disable kubernetes events")
 
@@ -420,6 +434,8 @@ func (ws *WebhookServerRunnable) Start(ctx context.Context) error {
 	return ws.webhookServer.Start(ctx)
 }
 
+// NeedLeaderElection tells the manager that this runnable should only be
+// run on the leader replica.
 func (ws *WebhookServerRunnable) NeedLeaderElection() bool {
 	return true
 }

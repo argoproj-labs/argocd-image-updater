@@ -3,7 +3,7 @@ module github.com/argoproj-labs/argocd-image-updater
 go 1.24.6
 
 require (
-	github.com/argoproj-labs/argocd-image-updater/registry-scanner v0.2.0
+	github.com/argoproj-labs/argocd-image-updater/registry-scanner v1.0.0
 	github.com/argoproj/argo-cd/v3 v3.1.9
 	github.com/argoproj/gitops-engine v0.7.1-0.20250905160054-e48120133eec
 	github.com/bmatcuk/doublestar/v4 v4.9.1
@@ -13,8 +13,8 @@ require (
 	github.com/go-git/go-git/v5 v5.14.0
 	github.com/go-logr/logr v1.4.3
 	github.com/google/uuid v1.6.1-0.20241114170450-2d3c2a9cc518
-	github.com/onsi/ginkgo/v2 v2.22.0
-	github.com/onsi/gomega v1.36.1
+	github.com/onsi/ginkgo/v2 v2.27.2
+	github.com/onsi/gomega v1.38.2
 	github.com/patrickmn/go-cache v2.1.1-0.20191004192108-46f407853014+incompatible
 	github.com/prometheus/client_golang v1.23.0
 	github.com/sirupsen/logrus v1.9.3
@@ -100,7 +100,7 @@ require (
 	github.com/google/go-github/v69 v69.2.0 // indirect
 	github.com/google/go-github/v75 v75.0.0 // indirect
 	github.com/google/go-querystring v1.1.0 // indirect
-	github.com/google/pprof v0.0.0-20241029153458-d1b30febd7db // indirect
+	github.com/google/pprof v0.0.0-20250403155104-27863c87afa6 // indirect
 	github.com/gorilla/mux v1.8.0 // indirect
 	github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674 // indirect
 	github.com/gregjones/httpcache v0.0.0-20190611155906-901d90724c79 // indirect
@@ -161,7 +161,8 @@ require (
 	go.opentelemetry.io/otel/trace v1.37.0 // indirect
 	go.opentelemetry.io/proto/otlp v1.6.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.2 // indirect
-	go.yaml.in/yaml/v3 v3.0.3 // indirect
+	go.yaml.in/yaml/v3 v3.0.4 // indirect
+	golang.org/x/mod v0.28.0 // indirect
 	golang.org/x/net v0.45.0 // indirect
 	golang.org/x/sys v0.37.0 // indirect
 	golang.org/x/term v0.36.0 // indirect
@@ -172,7 +173,7 @@ require (
 	google.golang.org/genproto v0.0.0-20240213162025-012b6fc9bca9 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20250804133106-a7a43d27e69b // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250804133106-a7a43d27e69b // indirect
-	google.golang.org/protobuf v1.36.6 // indirect
+	google.golang.org/protobuf v1.36.7 // indirect
 	gopkg.in/evanphx/json-patch.v4 v4.12.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/warnings.v0 v0.1.2 // indirect

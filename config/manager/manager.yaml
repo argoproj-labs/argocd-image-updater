@@ -1,18 +1,7 @@
-apiVersion: v1
-kind: Namespace
-metadata:
-  labels:
-    control-plane: argocd-image-updater-controller
-    app.kubernetes.io/name: argocd-image-updater-system
-    app.kubernetes.io/managed-by: kustomize
-    metrics: enabled
-  name: argocd-image-updater-system
----
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: argocd-image-updater-controller
-  namespace: argocd-image-updater-system
   labels:
     control-plane: argocd-image-updater-controller
     app.kubernetes.io/name: argocd-image-updater-controller
@@ -25,7 +14,7 @@ spec:
   template:
     metadata:
       annotations:
-        kubectl.kubernetes.io/default-container: manager
+        kubectl.kubernetes.io/default-container: argocd-image-updater-controller
       labels:
         control-plane: argocd-image-updater-controller
         app.kubernetes.io/name: argocd-image-updater
@@ -67,6 +56,12 @@ spec:
         image: argocd-image-updater-controller:latest
         name: argocd-image-updater-controller
         env:
+          - name: ARGOCD_NAMESPACE
+            valueFrom:
+              configMapKeyRef:
+                name: argocd-image-updater-config
+                key: argocd.namespace
+                optional: true
           - name: IMAGE_UPDATER_INTERVAL
             valueFrom:
               configMapKeyRef:

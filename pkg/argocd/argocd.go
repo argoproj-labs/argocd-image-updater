@@ -706,8 +706,15 @@ func SetHelmImage(ctx context.Context, app *argocdapi.Application, newImage *ima
 	} else {
 		mergeParams = append(mergeParams,
 			argocdapi.HelmParameter{Name: hpImageName, Value: newImage.GetFullNameWithoutTag(), ForceString: true},
-			argocdapi.HelmParameter{Name: hpImageTag, Value: newImage.GetTagWithDigest(), ForceString: true},
 		)
+		// Only set the tag parameter if we have a non-empty tag value.
+		// When forceUpdate is enabled and no tag is specified, the tag can be empty.
+		// Setting an empty tag would overwrite existing tag values and cause invalid image references.
+		if tagValue := newImage.GetTagWithDigest(); tagValue != "" {
+			mergeParams = append(mergeParams,
+				argocdapi.HelmParameter{Name: hpImageTag, Value: tagValue, ForceString: true},
+			)
+		}
 	}
 
 	appSource := getApplicationSource(ctx, app)
@@ -807,8 +814,14 @@ func GetImagesFromApplication(applicationImages *ApplicationImages) image.Contai
 
 	for _, img := range applicationImages.Images {
 		if img.ForceUpdate {
-			img.ImageTag = nil // the tag from the image list will be a version constraint, which isn't a valid tag
-			images = append(images, img.ContainerImage)
+			// Create a copy of the container image with nil tag to add to the live images list.
+			// The tag from the image list will be a version constraint, which isn't a valid tag.
+			// We preserve the original img.ContainerImage so the constraint is available later.
+			imgCopy := img.ContainerImage.WithTag(nil)
+			// Avoid duplicates if an entry already exists for this image (ignore tag for match).
+			if images.ContainsImage(img.ContainerImage, false) == nil {
+				images = append(images, imgCopy)
+			}
 		}
 	}
 
@@ -890,7 +903,7 @@ func getApplicationType(app *argocdapi.Application, wbc *WriteBackConfig) Applic
 // getApplicationSourceType returns the source type of the application
 func getApplicationSourceType(app *argocdapi.Application, wbc *WriteBackConfig) argocdapi.ApplicationSourceType {
 	if wbc != nil {
-		if target := wbc.Target; strings.HasPrefix(target, common.KustomizationPrefix) {
+		if wbc.KustomizeBase != "" {
 			return argocdapi.ApplicationSourceTypeKustomize
 		}
 	}
