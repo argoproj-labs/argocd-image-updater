@@ -5,4 +5,4 @@ kind: Kustomization
 images:
 - name: argocd-image-updater-controller
   newName: quay.io/argoprojlabs/argocd-image-updater
-  newTag: v1.0.1
+  newTag: v1.0.2
