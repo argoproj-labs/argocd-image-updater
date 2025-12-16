@@ -697,6 +697,10 @@ func getApplicationSourceType(app *v1alpha1.Application) v1alpha1.ApplicationSou
 		strings.HasPrefix(st, common.KustomizationPrefix) {
 		return v1alpha1.ApplicationSourceTypeKustomize
 	}
+	if st, set := app.Annotations[common.WriteBackTargetAnnotation]; set &&
+		strings.HasPrefix(st, common.HelmPrefix) {
+		return v1alpha1.ApplicationSourceTypeHelm
+	}
 
 	if app.Spec.HasMultipleSources() {
 		for _, st := range app.Status.SourceTypes {
@@ -718,8 +722,10 @@ func getApplicationSourceType(app *v1alpha1.Application) v1alpha1.ApplicationSou
 func getApplicationSource(app *v1alpha1.Application) *v1alpha1.ApplicationSource {
 
 	if app.Spec.HasMultipleSources() {
+		sourceType := getApplicationSourceType(app)
 		for _, s := range app.Spec.Sources {
-			if s.Helm != nil || s.Kustomize != nil {
+			if (sourceType == v1alpha1.ApplicationSourceTypeKustomize && s.Kustomize != nil) ||
+				(sourceType == v1alpha1.ApplicationSourceTypeHelm && s.Helm != nil) {
 				return &s
 			}
 		}
