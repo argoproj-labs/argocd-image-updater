@@ -42,6 +42,7 @@ func TestNewWebhookCommand(t *testing.T) {
 	asser.Equal(env.GetStringVal("GHCR_WEBHOOK_SECRET", ""), controllerCommand.Flag("ghcr-webhook-secret").Value.String())
 	asser.Equal(env.GetStringVal("QUAY_WEBHOOK_SECRET", ""), controllerCommand.Flag("quay-webhook-secret").Value.String())
 	asser.Equal(env.GetStringVal("HARBOR_WEBHOOK_SECRET", ""), controllerCommand.Flag("harbor-webhook-secret").Value.String())
+	asser.Equal(env.GetStringVal("CLOUDEVENTS_WEBHOOK_SECRET", ""), controllerCommand.Flag("cloudevents-webhook-secret").Value.String())
 	asser.Equal(strconv.Itoa(env.ParseNumFromEnv("WEBHOOK_RATELIMIT_ALLOWED", 0, 0, math.MaxInt)), controllerCommand.Flag("webhook-ratelimit-allowed").Value.String())
 
 	asser.Nil(controllerCommand.Help())

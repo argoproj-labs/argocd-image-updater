@@ -14,12 +14,19 @@ Supported Registries:
 - GitHub Container Registry (GHCR)
 - Quay
 - Harbor
+- AWS EventBridge (CloudEvents)
 
 ### Flags
 
 **-argocd-namespace *namespace***
 
 namespace where ArgoCD runs in (current namespace by default)
+
+**--cloudevents-webhook-secret *secret***
+
+Secret for validating CloudEvents webhooks from AWS EventBridge and other CloudEvents sources.
+
+Can also be set with the `CLOUDEVENTS_WEBHOOK_SECRET` environment variable.
 
 **--disable-kube-events**
 
