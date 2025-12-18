@@ -1,0 +1,17 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: 1-002-git-write-back-target-test
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: 1-002-git-write-back-target-test
+  template:
+    metadata:
+      labels:
+        app: 1-002-git-write-back-target-test
+    spec:
+      containers:
+      - name: test
+        image: quay.io/dkarpele/my-guestbook:1.0.0

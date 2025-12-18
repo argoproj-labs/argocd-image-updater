@@ -18,7 +18,6 @@ package parallel
 
 import (
 	"context"
-	"time"
 
 	applicationFixture "github.com/argoproj-labs/argocd-image-updater/test/ginkgo/fixture/application"
 	appv1alpha1 "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1"
@@ -35,6 +34,7 @@ import (
 	"github.com/argoproj-labs/argocd-image-updater/test/ginkgo/fixture"
 	argocdFixture "github.com/argoproj-labs/argocd-image-updater/test/ginkgo/fixture/argocd"
 	deplFixture "github.com/argoproj-labs/argocd-image-updater/test/ginkgo/fixture/deployment"
+	iuFixture "github.com/argoproj-labs/argocd-image-updater/test/ginkgo/fixture/imageupdater"
 	k8sFixture "github.com/argoproj-labs/argocd-image-updater/test/ginkgo/fixture/k8s"
 	ssFixture "github.com/argoproj-labs/argocd-image-updater/test/ginkgo/fixture/statefulset"
 	fixtureUtils "github.com/argoproj-labs/argocd-image-updater/test/ginkgo/fixture/utils"
@@ -43,7 +43,7 @@ import (
 
 var _ = Describe("GitOps Operator Parallel E2E Tests", func() {
 
-	Context("1-001_validate_image_updater_test", func() {
+	Context("1-001-argocd-write-back_target_test", func() {
 
 		var (
 			k8sClient    client.Client
@@ -75,9 +75,6 @@ var _ = Describe("GitOps Operator Parallel E2E Tests", func() {
 				_ = k8sClient.Delete(ctx, argoCD)
 			}
 
-			// Give controllers time to process deletions before namespace cleanup
-			time.Sleep(10 * time.Second)
-
 			if cleanupFunc != nil {
 				cleanupFunc()
 			}
@@ -86,7 +83,7 @@ var _ = Describe("GitOps Operator Parallel E2E Tests", func() {
 
 		})
 
-		It("ensures that Image Updater will update Argo CD Application to the latest image", func() {
+		It("ensures that Image Updater will update Argo CD Application using argocd (default) policy", func() {
 
 			By("creating simple namespace-scoped Argo CD instance with image updater enabled")
 			ns, cleanupFunc = fixture.CreateRandomE2ETestNamespaceWithCleanupFunc()
@@ -100,6 +97,10 @@ var _ = Describe("GitOps Operator Parallel E2E Tests", func() {
 								Name:  "IMAGE_UPDATER_LOGLEVEL",
 								Value: "trace",
 							},
+							{
+								Name:  "IMAGE_UPDATER_INTERVAL",
+								Value: "0",
+							},
 						},
 						Enabled: true},
 				},
@@ -107,7 +108,7 @@ var _ = Describe("GitOps Operator Parallel E2E Tests", func() {
 			Expect(k8sClient.Create(ctx, argoCD)).To(Succeed())
 
 			By("waiting for ArgoCD CR to be reconciled and the instance to be ready")
-			Eventually(argoCD, "5m", "5s").Should(argocdFixture.BeAvailable())
+			Eventually(argoCD, "5m", "3s").Should(argocdFixture.BeAvailable())
 
 			By("verifying all workloads are started")
 			deploymentsShouldExist := []string{"argocd-redis", "argocd-server", "argocd-repo-server", "argocd-argocd-image-updater-controller"}
@@ -115,13 +116,13 @@ var _ = Describe("GitOps Operator Parallel E2E Tests", func() {
 				depl := &appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: depl, Namespace: ns.Name}}
 				Eventually(depl).Should(k8sFixture.ExistByName())
 				Eventually(depl).Should(deplFixture.HaveReplicas(1))
-				Eventually(depl, "3m", "5s").Should(deplFixture.HaveReadyReplicas(1), depl.Name+" was not ready")
+				Eventually(depl, "3m", "3s").Should(deplFixture.HaveReadyReplicas(1), depl.Name+" was not ready")
 			}
 
 			statefulSet := &appsv1.StatefulSet{ObjectMeta: metav1.ObjectMeta{Name: "argocd-application-controller", Namespace: ns.Name}}
 			Eventually(statefulSet).Should(k8sFixture.ExistByName())
 			Eventually(statefulSet).Should(ssFixture.HaveReplicas(1))
-			Eventually(statefulSet, "3m", "5s").Should(ssFixture.HaveReadyReplicas(1))
+			Eventually(statefulSet, "3m", "3s").Should(ssFixture.HaveReadyReplicas(1))
 
 			By("creating Application")
 			app := &appv1alpha1.Application{
@@ -146,8 +147,8 @@ var _ = Describe("GitOps Operator Parallel E2E Tests", func() {
 			Expect(k8sClient.Create(ctx, app)).To(Succeed())
 
 			By("verifying deploying the Application succeeded")
-			Eventually(app, "4m", "5s").Should(applicationFixture.HaveHealthStatusCode(health.HealthStatusHealthy))
-			Eventually(app, "4m", "5s").Should(applicationFixture.HaveSyncStatusCode(appv1alpha1.SyncStatusCodeSynced))
+			Eventually(app, "4m", "3s").Should(applicationFixture.HaveHealthStatusCode(health.HealthStatusHealthy))
+			Eventually(app, "4m", "3s").Should(applicationFixture.HaveSyncStatusCode(appv1alpha1.SyncStatusCodeSynced))
 
 			By("creating ImageUpdater CR")
 			updateStrategy := "semver"
@@ -177,12 +178,16 @@ var _ = Describe("GitOps Operator Parallel E2E Tests", func() {
 			Expect(k8sClient.Create(ctx, imageUpdater)).To(Succeed())
 
 			By("ensuring that the Application image has `29437546.0` version after update")
+			triggerRefresh := iuFixture.TriggerArgoCDRefresh(ctx, k8sClient, app)
 			Eventually(func() string {
 				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(app), app)
 
 				if err != nil {
 					return "" // Let Eventually retry on error
 				}
+
+				// Trigger ArgoCD refresh periodically to force immediate git check
+				triggerRefresh()
 
 				// Nil-safe check: The Kustomize block is only added by the Image Updater after its first run.
 				// We must check that it and its Images field exist before trying to access them.
@@ -192,7 +197,7 @@ var _ = Describe("GitOps Operator Parallel E2E Tests", func() {
 
 				// Return an empty string to signify the condition is not yet met.
 				return ""
-			}, "5m", "10s").Should(Equal("quay.io/dkarpele/my-guestbook:29437546.0"))
+			}, "5m", "3s").Should(Equal("quay.io/dkarpele/my-guestbook:29437546.0"))
 		})
 	})
 })

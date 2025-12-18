@@ -1,0 +1,4 @@
+configs:
+  "127.0.0.1:30000":
+    tls:
+      insecure_skip_verify: true

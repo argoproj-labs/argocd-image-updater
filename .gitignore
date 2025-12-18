@@ -15,3 +15,8 @@ test-results
 *.goe
 **/kuttl-test.json
 **/kubeconfig
+# Private keys and certificates (should be generated at runtime, not committed)
+*.key
+*.crt
+# htpasswd files (should be generated at runtime, not committed)
+**/htpasswd
