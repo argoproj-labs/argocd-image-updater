@@ -44,7 +44,7 @@ If PATH is not given, will show you the default message that is used.
 				}
 				tplStr = string(tplData)
 			}
-			if tpl, err = template.New("commitMessage").Parse(tplStr); err != nil {
+			if tpl, err = template.New("commitMessage").Funcs(getTemplateFuncMap()).Parse(tplStr); err != nil {
 				fmt.Fprintf(cmd.ErrOrStderr(), "could not parse commit message template: %v", err)
 				return
 			}

@@ -18,6 +18,7 @@ type ImageTag struct {
 	TagName   string
 	TagDate   *time.Time
 	TagDigest string
+	Labels    map[string]string
 }
 
 // ImageTagList is a collection of ImageTag objects.
@@ -31,6 +32,7 @@ type ImageTagList struct {
 type TagInfo struct {
 	CreatedAt time.Time
 	Digest    [32]byte
+	Labels    map[string]string
 }
 
 // SortableImageTagList is just that - a sortable list of ImageTag entries
@@ -42,6 +44,21 @@ func NewImageTag(tagName string, tagDate time.Time, tagDigest string) *ImageTag 
 	tag.TagName = tagName
 	tag.TagDate = &tagDate
 	tag.TagDigest = tagDigest
+	tag.Labels = make(map[string]string)
+	return tag
+}
+
+// NewImageTagWithLabels initializes an ImageTag object with labels and returns it
+func NewImageTagWithLabels(tagName string, tagDate time.Time, tagDigest string, labels map[string]string) *ImageTag {
+	tag := &ImageTag{}
+	tag.TagName = tagName
+	tag.TagDate = &tagDate
+	tag.TagDigest = tagDigest
+	if labels != nil {
+		tag.Labels = labels
+	} else {
+		tag.Labels = make(map[string]string)
+	}
 	return tag
 }
 
@@ -170,7 +187,8 @@ func (il *ImageTagList) SortBySemVer(ctx context.Context) SortableImageTagList {
 	}
 	sort.Sort(semverCollection(svl))
 	for _, svi := range svl {
-		sil = append(sil, NewImageTag(svi.Original(), *il.items[svi.Original()].TagDate, il.items[svi.Original()].TagDigest))
+		originalTag := il.items[svi.Original()]
+		sil = append(sil, NewImageTagWithLabels(svi.Original(), *originalTag.TagDate, originalTag.TagDigest, originalTag.Labels))
 	}
 	return sil
 }

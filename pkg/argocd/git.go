@@ -33,9 +33,10 @@ func TemplateCommitMessage(ctx context.Context, tpl *template.Template, appName 
 	var cmBuf bytes.Buffer
 
 	type commitMessageChange struct {
-		Image  string
-		OldTag string
-		NewTag string
+		Image     string
+		OldTag    string
+		NewTag    string
+		NewLabels map[string]string
 	}
 
 	type commitMessageTemplate struct {
@@ -47,7 +48,12 @@ func TemplateCommitMessage(ctx context.Context, tpl *template.Template, appName 
 	// writer of a template.
 	changes := make([]commitMessageChange, 0)
 	for _, c := range changeList {
-		changes = append(changes, commitMessageChange{c.Image.ImageName, c.OldTag.String(), c.NewTag.String()})
+		changes = append(changes, commitMessageChange{
+			Image:     c.Image.ImageName,
+			OldTag:    c.OldTag.String(),
+			NewTag:    c.NewTag.String(),
+			NewLabels: c.NewTag.Labels,
+		})
 	}
 
 	tplData := commitMessageTemplate{

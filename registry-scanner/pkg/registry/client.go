@@ -204,6 +204,9 @@ func (clt *registryClient) TagMetadata(ctx context.Context, manifest distributio
 		Created string `json:"created"`
 		OS      string `json:"os"`
 		Variant string `json:"variant"`
+		Config  struct {
+			Labels map[string]string `json:"Labels"`
+		} `json:"config"`
 	}
 
 	// We support the following types of manifests as returned by the registry:
@@ -240,6 +243,7 @@ func (clt *registryClient) TagMetadata(ctx context.Context, manifest distributio
 		} else {
 			ti.CreatedAt = createdAt
 		}
+		ti.Labels = info.Config.Labels
 		return ti, nil
 
 	case *manifestlist.DeserializedManifestList:
@@ -315,6 +319,7 @@ func (clt *registryClient) TagMetadata(ctx context.Context, manifest distributio
 			return nil, err
 		}
 
+		ti.Labels = info.Config.Labels
 		return ti, nil
 	case *ocischema.DeserializedManifest:
 		var man ocischema.Manifest = deserialized.Manifest
@@ -347,6 +352,7 @@ func (clt *registryClient) TagMetadata(ctx context.Context, manifest distributio
 			return nil, err
 		}
 
+		ti.Labels = info.Config.Labels
 		return ti, nil
 	default:
 		return nil, fmt.Errorf("invalid manifest type %T", manifest)

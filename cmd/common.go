@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"strings"
 	"text/template"
 	"time"
 
@@ -65,7 +66,7 @@ func SetupCommon(ctx context.Context, cfg *controller.ImageUpdaterConfig, setupL
 		commitMessageTpl = common.DefaultGitCommitMessage
 	}
 
-	if tpl, err := template.New("commitMessage").Parse(commitMessageTpl); err != nil {
+	if tpl, err := template.New("commitMessage").Funcs(getTemplateFuncMap()).Parse(commitMessageTpl); err != nil {
 		setupLogger.Error(err, "could not parse commit message template")
 		return err
 	} else {
@@ -134,4 +135,15 @@ func SetupWebhookServer(webhookCfg *WebhookConfig, reconciler *controller.ImageU
 		server.RateLimiter = ratelimit.New(webhookCfg.RateLimitNumAllowedRequests, ratelimit.Per(time.Hour))
 	}
 	return server
+}
+
+// getTemplateFuncMap returns the function map used for template parsing
+func getTemplateFuncMap() template.FuncMap {
+	return template.FuncMap{
+		"contains": strings.Contains,
+		"split":    strings.Split,
+		"sub": func(a, b int) int {
+			return a - b
+		},
+	}
 }
