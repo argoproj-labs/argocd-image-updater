@@ -288,6 +288,15 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 		}
 
 		if needsUpdate(updateableImage, applicationImage, latest, vc.Strategy) {
+
+            if vc.Strategy == image.StrategyDigest && applicationImage.ImageTag != nil {
+                RecordOriginalTag(
+                    &updateConf.UpdateApp.Application,
+                    applicationImage.ImageName,
+                    applicationImage.ImageTag.TagName,
+                )
+            }
+
 			appImageWithTag := applicationImage.WithTag(latest)
 			appImageFullNameWithTag := appImageWithTag.GetFullNameWithTag()
 
