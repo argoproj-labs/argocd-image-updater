@@ -1,8 +1,8 @@
 # Argo CD Image Updater
 
-![Integration tests](https://github.com/argoproj-labs/argocd-image-updater/workflows/Integration%20tests/badge.svg?branch=master&event=push)
-[![Documentation Status](https://readthedocs.org/projects/argocd-image-updater/badge/?version=latest)](https://argocd-image-updater.readthedocs.io/en/latest/?badge=latest)
-[![codecov](https://codecov.io/gh/argoproj-labs/argocd-image-updater/branch/master/graph/badge.svg)](https://codecov.io/gh/argoproj-labs/argocd-image-updater)
+![Integration tests](https://github.com/argoproj-labs/argocd-image-updater/workflows/Integration%20tests/badge.svg?branch=master-annotation-based&event=push)
+[![Documentation Status](https://readthedocs.org/projects/argocd-image-updater/badge/?version=release-0.18)](https://argocd-image-updater.readthedocs.io/en/release-0.18/?badge=release-0.18)
+[![codecov](https://codecov.io/gh/argoproj-labs/argocd-image-updater/branch/master-annotation-based/graph/badge.svg)](https://codecov.io/gh/argoproj-labs/argocd-image-updater)
 [![Go Report Card](https://goreportcard.com/badge/github.com/argoproj-labs/argocd-image-updater)](https://goreportcard.com/report/github.com/argoproj-labs/argocd-image-updater)
 
 ## Introduction
@@ -20,14 +20,14 @@ supported yet (and maybe never will).
 ## Documentation
 
 Read
-[the documentation](https://argocd-image-updater.readthedocs.io/en/stable/)
+[the documentation](https://argocd-image-updater.readthedocs.io/en/release-0.18/)
 for more information on how to setup and run Argo CD Image Updater and to get
 known to its features and limitations.
 
 Above URL points to the documentation for the current release. If you are
 interested in documentation of upcoming features, check out the
-[the latest documentation](https://argocd-image-updater.readthedocs.io/en/latest/)
-which is up-to-date with the master branch.
+[docs home](https://app.readthedocs.org/projects/argocd-image-updater/?utm_source=argocd-image-updater&utm_content=flyout)
+and select the desired version.
 
 ## Current status
 

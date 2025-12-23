@@ -9,6 +9,7 @@ jobs:
   build_image:
     if: github.repository == 'argoproj-labs/argocd-image-updater'
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
