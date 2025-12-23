@@ -1,29 +1,9 @@
 name: Build and push image
 
 on:
-  # push:
-  #   branches:
-  #     - master-annotation-based
-  # pull_request:
-  #   branches:
-  #     - master-annotation-based
-  #   types: [ labeled, unlabeled, opened, synchronize, reopened ]
-  #
-  # make it a manual trigger to disable automatic pushing of legacy images with `latest` tag
-  # to quay.io/argoprojlabs, and to prevent overwriting the current `latest` tag built from master branch.
-  #
-  workflow_dispatch:
-    inputs:
-      push:
-        description: 'Push image to registry'
-        required: false
-        default: false
-        type: boolean
-      multiarch:
-        description: 'Build multi-architecture image'
-        required: false
-        default: false
-        type: boolean
+  push:
+    branches:
+      - master-annotation-based
 
 jobs:
   build_image:
@@ -41,29 +21,8 @@ jobs:
       - name: Build and possibly push image
         run: |
           set -ex
-          MULTIARCH=no
-          PUSH=no
-          if [[ "${{ github.event_name }}" == "push" ]]; then
-            MULTIARCH=yes
-            PUSH=yes
-          elif [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            if [[ "${{ inputs.push }}" == "true" ]]; then
-              PUSH=yes
-            fi
-            if [[ "${{ inputs.multiarch }}" == "true" ]]; then
-              MULTIARCH=yes
-            fi
-          elif [[ "${{ contains(github.event.pull_request.labels.*.name, 'test-arm-image') }}" == "true" ]]; then
-            MULTIARCH=yes
-          fi
-          if [[ "${PUSH}" == "yes" ]]; then
-            docker login --username "${DOCKER_USERNAME}" --password "${DOCKER_PASSWORD}" quay.io
-          fi
-          if [[ "${MULTIARCH}" = "yes" ]]; then
-            IMAGE_TAG=latest-annotation-based IMAGE_PUSH=${PUSH} make multiarch-image
-          else
-            IMAGE_TAG=latest-annotation-based make image
-          fi
+          docker login --username "${DOCKER_USERNAME}" --password "${DOCKER_PASSWORD}" quay.io
+          IMAGE_PUSH=yes make multiarch-image
         working-directory: argocd-image-updater
         env:
           DOCKER_USERNAME: ${{ secrets.QUAY_USERNAME }}
