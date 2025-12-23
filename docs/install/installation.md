@@ -19,13 +19,13 @@ Argo CD is running. Don't worry, without any configuration, it will not start me
     We also provide a Kustomize base in addition to the plain Kubernetes YAML
     manifests. You can use it as remote base and create overlays with your
     configuration on top of it. The remote base's URL is
-    `https://github.com/argoproj-labs/argocd-image-updater/manifests/base`. 
-    You can view the manifests [here](https://github.com/argoproj-labs/argocd-image-updater/tree/stable/manifests/base)
+    `https://github.com/argoproj-labs/argocd-image-updater//manifests/base?ref=latest-annotation-based`. 
+    You can view the manifests [here](https://github.com/argoproj-labs/argocd-image-updater/tree/latest-annotation-based/manifests/base)
 
 ### Apply the installation manifests
 
 ```shell
-kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj-labs/argocd-image-updater/stable/manifests/install.yaml
+kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj-labs/argocd-image-updater/latest-annotation-based/manifests/install.yaml
 ```
 
 !!! warning
@@ -71,7 +71,7 @@ First, create a namespace and apply the manifests to your cluster
 
 ```shell
 kubectl create namespace argocd-image-updater
-kubectl apply -n argocd-image-updater -f https://raw.githubusercontent.com/argoproj-labs/argocd-image-updater/stable/manifests/install.yaml
+kubectl apply -n argocd-image-updater -f https://raw.githubusercontent.com/argoproj-labs/argocd-image-updater/latest-annotation-based/manifests/install.yaml
 ```
 
 !!! warning
@@ -272,4 +272,4 @@ The following metrics are being made available:
     * `argocd_image_updater_registry_requests_failed_total`
 
 A (very) rudimentary example dashboard definition for Grafana is provided
-[here](https://github.com/argoproj-labs/argocd-image-updater/tree/master/config)
+[here](https://github.com/argoproj-labs/argocd-image-updater/tree/master-annotation-based/config)
