@@ -263,7 +263,7 @@ spec:
               key: webhook.ratelimit-allowed
               name: argocd-image-updater-config
               optional: true
-        image: quay.io/argoprojlabs/argocd-image-updater:latest-annotation-based
+        image: quay.io/argoprojlabs/argocd-image-updater:v0.18.0
         imagePullPolicy: Always
         livenessProbe:
           httpGet:
