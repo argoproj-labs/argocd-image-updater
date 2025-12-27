@@ -418,6 +418,7 @@ func newWBCFromSettings(ctx context.Context, app *argocdapi.Application, kubeCli
 		GitCommitSigningMethod: "",
 		GitCommitSignOff:       false,
 		KustomizeBase:          "",
+		HelmChart:              false,
 		Target:                 "", // Will be set by parseDefaultTarget
 		GitRepo:                "",
 		GitCreds:               nil,
@@ -458,6 +459,7 @@ func newWBCFromSettings(ctx context.Context, app *argocdapi.Application, kubeCli
 				wbc.KustomizeBase = parseKustomizeBase(target, appSource.Path)
 			} else if strings.HasPrefix(target, common.HelmPrefix) {
 				wbc.Target = parseTarget(target, appSource.Path)
+				wbc.HelmChart = true
 			} else {
 				wbc.Target = target
 			}
@@ -905,6 +907,9 @@ func getApplicationSourceType(app *argocdapi.Application, wbc *WriteBackConfig) 
 	if wbc != nil {
 		if wbc.KustomizeBase != "" {
 			return argocdapi.ApplicationSourceTypeKustomize
+		}
+		if wbc.HelmChart {
+			return argocdapi.ApplicationSourceTypeHelm
 		}
 	}
 	if app.Spec.HasMultipleSources() {

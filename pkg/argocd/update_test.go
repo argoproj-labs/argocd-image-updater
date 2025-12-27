@@ -3963,6 +3963,7 @@ func Test_GetWriteBackConfig(t *testing.T) {
 		require.NotNil(t, wbc)
 		assert.Equal(t, wbc.Method, WriteBackGit)
 		assert.Equal(t, wbc.KustomizeBase, "config/bar")
+		assert.False(t, wbc.HelmChart, "HelmChart should be false when helmvalues prefix is not used")
 	})
 
 	t.Run("helmvalues write-back config with relative path", func(t *testing.T) {
@@ -4005,6 +4006,7 @@ func Test_GetWriteBackConfig(t *testing.T) {
 		require.NotNil(t, wbc)
 		assert.Equal(t, wbc.Method, WriteBackGit)
 		assert.Equal(t, wbc.Target, "config/bar/values.yaml")
+		assert.True(t, wbc.HelmChart, "HelmChart should be true when helmvalues prefix is used")
 	})
 
 	t.Run("helmvalues write-back config without path", func(t *testing.T) {
@@ -4047,6 +4049,7 @@ func Test_GetWriteBackConfig(t *testing.T) {
 		require.NotNil(t, wbc)
 		assert.Equal(t, wbc.Method, WriteBackGit)
 		assert.Equal(t, wbc.Target, "config/foo/values.yaml")
+		assert.True(t, wbc.HelmChart, "HelmChart should be true when helmvalues prefix is used")
 	})
 
 	t.Run("helmvalues write-back config with absolute path", func(t *testing.T) {
@@ -4089,6 +4092,7 @@ func Test_GetWriteBackConfig(t *testing.T) {
 		require.NotNil(t, wbc)
 		assert.Equal(t, wbc.Method, WriteBackGit)
 		assert.Equal(t, wbc.Target, "helm/app/values.yaml")
+		assert.True(t, wbc.HelmChart, "HelmChart should be true when helmvalues prefix is used")
 	})
 
 	t.Run("Plain write back target without kustomize or helm types", func(t *testing.T) {
@@ -4131,6 +4135,7 @@ func Test_GetWriteBackConfig(t *testing.T) {
 		require.NotNil(t, wbc)
 		assert.Equal(t, wbc.Method, WriteBackGit)
 		assert.Equal(t, wbc.Target, "target/folder/app-parameters.yaml")
+		assert.False(t, wbc.HelmChart, "HelmChart should be false when helmvalues prefix is not used")
 	})
 
 	t.Run("Unknown credentials", func(t *testing.T) {
@@ -4246,6 +4251,134 @@ func Test_GetWriteBackConfig(t *testing.T) {
 		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, settings)
 		require.Error(t, err)
 		require.Nil(t, wbc)
+	})
+
+	t.Run("multi app write-back config - helmvalues override", func(t *testing.T) {
+		// application should have two sources. kustomize and helm (kustomize first)
+		app := v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name: "testapp",
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: &v1alpha1.ApplicationSource{
+					RepoURL:        "https://example.com/example",
+					TargetRevision: "main",
+					Path:           "config/foo",
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypeHelm,
+			},
+		}
+
+		argoClient := argomock.ArgoCD{}
+		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+
+		kubeClient := kube.ImageUpdaterKubernetesClient{
+			KubeClient: &registryKube.KubernetesClient{
+				Clientset: fake.NewFakeKubeClient(),
+			},
+		}
+
+		// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
+		settings := &iuapi.WriteBackConfig{
+			Method: stringPtr("git"),
+			GitConfig: &iuapi.GitConfig{
+				Branch:          stringPtr("mybranch:mytargetbranch"),
+				WriteBackTarget: stringPtr("helmvalues:../bar/values.yaml"),
+			},
+		}
+
+		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, settings)
+		require.NoError(t, err)
+		require.NotNil(t, wbc)
+		assert.True(t, wbc.HelmChart, "HelmChart should be true when helmvalues prefix is used")
+	})
+
+	t.Run("multi app write-back config - kustomization should not set HelmChart", func(t *testing.T) {
+		app := v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name: "testapp",
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: &v1alpha1.ApplicationSource{
+					RepoURL:        "https://example.com/example",
+					TargetRevision: "main",
+					Path:           "config/foo",
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypeKustomize,
+			},
+		}
+
+		argoClient := argomock.ArgoCD{}
+		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+
+		kubeClient := kube.ImageUpdaterKubernetesClient{
+			KubeClient: &registryKube.KubernetesClient{
+				Clientset: fake.NewFakeKubeClient(),
+			},
+		}
+
+		// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
+		settings := &iuapi.WriteBackConfig{
+			Method: stringPtr("git"),
+			GitConfig: &iuapi.GitConfig{
+				Branch:          stringPtr("mybranch:mytargetbranch"),
+				WriteBackTarget: stringPtr("kustomization:../bar"),
+			},
+		}
+
+		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, settings)
+		require.NoError(t, err)
+		require.NotNil(t, wbc)
+		assert.Equal(t, wbc.Method, WriteBackGit)
+		assert.Equal(t, wbc.KustomizeBase, "config/bar")
+		assert.False(t, wbc.HelmChart, "HelmChart should be false when kustomization prefix is used")
+	})
+
+	t.Run("multi app write-back config - plain target should not set HelmChart", func(t *testing.T) {
+		app := v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name: "testapp",
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: &v1alpha1.ApplicationSource{
+					RepoURL:        "https://example.com/example",
+					TargetRevision: "main",
+					Path:           "config/foo",
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypeHelm,
+			},
+		}
+
+		argoClient := argomock.ArgoCD{}
+		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+
+		kubeClient := kube.ImageUpdaterKubernetesClient{
+			KubeClient: &registryKube.KubernetesClient{
+				Clientset: fake.NewFakeKubeClient(),
+			},
+		}
+
+		// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
+		settings := &iuapi.WriteBackConfig{
+			Method: stringPtr("git"),
+			GitConfig: &iuapi.GitConfig{
+				Branch:          stringPtr("mybranch:mytargetbranch"),
+				WriteBackTarget: stringPtr("target/folder/app-parameters.yaml"),
+			},
+		}
+
+		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, settings)
+		require.NoError(t, err)
+		require.NotNil(t, wbc)
+		assert.Equal(t, wbc.Method, WriteBackGit)
+		assert.Equal(t, wbc.Target, "target/folder/app-parameters.yaml")
+		assert.False(t, wbc.HelmChart, "HelmChart should be false when plain target is used")
 	})
 
 }

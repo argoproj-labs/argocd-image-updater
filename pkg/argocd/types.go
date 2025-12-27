@@ -76,6 +76,7 @@ type WriteBackConfig struct {
 	GitCommitSigningMethod string
 	GitCommitSignOff       bool
 	KustomizeBase          string
+	HelmChart              bool
 	Target                 string
 	GitRepo                string
 	GitCreds               git.CredsStore
