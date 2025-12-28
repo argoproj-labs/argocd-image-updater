@@ -1,6 +1,6 @@
 IMAGE_NAMESPACE?=quay.io/argoprojlabs
 IMAGE_NAME=argocd-image-updater
-IMAGE_TAG?=latest
+IMAGE_TAG?=latest-annotation-based
 ifdef IMAGE_NAMESPACE
 IMAGE_PREFIX=${IMAGE_NAMESPACE}/
 else

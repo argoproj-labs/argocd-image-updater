@@ -502,9 +502,14 @@ func SetHelmImage(app *v1alpha1.Application, newImage *image.ContainerImage) err
 			p := v1alpha1.HelmParameter{Name: hpImageName, Value: newImage.GetFullNameWithoutTag(), ForceString: true}
 			mergeParams = append(mergeParams, p)
 		}
+		// Only set the tag parameter if we have a non-empty tag value.
+		// When forceUpdate is enabled and no tag is specified, the tag can be empty.
+		// Setting an empty tag would overwrite existing tag values and cause invalid image references.
 		if hpImageTag != "" {
-			p := v1alpha1.HelmParameter{Name: hpImageTag, Value: newImage.GetTagWithDigest(), ForceString: true}
-			mergeParams = append(mergeParams, p)
+			if tagValue := newImage.GetTagWithDigest(); tagValue != "" {
+				p := v1alpha1.HelmParameter{Name: hpImageTag, Value: tagValue, ForceString: true}
+				mergeParams = append(mergeParams, p)
+			}
 		}
 	}
 
@@ -710,6 +715,10 @@ func getApplicationSourceType(app *v1alpha1.Application) v1alpha1.ApplicationSou
 		strings.HasPrefix(st, common.KustomizationPrefix) {
 		return v1alpha1.ApplicationSourceTypeKustomize
 	}
+	if st, set := app.Annotations[common.WriteBackTargetAnnotation]; set &&
+		strings.HasPrefix(st, common.HelmPrefix) {
+		return v1alpha1.ApplicationSourceTypeHelm
+	}
 
 	if app.Spec.HasMultipleSources() {
 		for _, st := range app.Status.SourceTypes {
@@ -731,8 +740,10 @@ func getApplicationSourceType(app *v1alpha1.Application) v1alpha1.ApplicationSou
 func getApplicationSource(app *v1alpha1.Application) *v1alpha1.ApplicationSource {
 
 	if app.Spec.HasMultipleSources() {
+		sourceType := getApplicationSourceType(app)
 		for _, s := range app.Spec.Sources {
-			if s.Helm != nil || s.Kustomize != nil {
+			if (sourceType == v1alpha1.ApplicationSourceTypeKustomize && s.Kustomize != nil) ||
+				(sourceType == v1alpha1.ApplicationSourceTypeHelm && s.Helm != nil) {
 				return &s
 			}
 		}

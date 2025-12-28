@@ -1,7 +1,7 @@
 # docker image publishing options
 DOCKER_PUSH?=false
 IMAGE_NAMESPACE?=
-IMAGE_TAG?=latest
+IMAGE_TAG?=latest-annotation-based
 ifdef IMAGE_NAMESPACE
 IMAGE_PREFIX=${IMAGE_NAMESPACE}/
 endif

@@ -486,21 +486,6 @@ func marshalParamsOverride(app *v1alpha1.Application, originalData []byte) ([]by
 	appType := GetApplicationType(app)
 	appSource := getApplicationSource(app)
 
-	// Special handling for multi-source applications with helmvalues write-back target
-	// We need to ensure we get the Helm source, not the Kustomize source
-	if strings.HasPrefix(app.Annotations[common.WriteBackTargetAnnotation], common.HelmPrefix) {
-		// For helmvalues write-back, we need the Helm source specifically
-		if app.Spec.HasMultipleSources() {
-			for _, s := range app.Spec.Sources {
-				if s.Helm != nil {
-					appSource = &s
-					appType = ApplicationTypeHelm
-					break
-				}
-			}
-		}
-	}
-
 	switch appType {
 	case ApplicationTypeKustomize:
 		if appSource.Kustomize == nil {
@@ -577,38 +562,60 @@ func marshalParamsOverride(app *v1alpha1.Application, originalData []byte) ([]by
 				} else {
 					// image-tag annotation is present, so continue to process image-tag
 					helmParamVersion := getHelmParam(appSource.Helm.Parameters, helmAnnotationParamVersion)
-					if helmParamVersion == nil {
-						return nil, fmt.Errorf("%s parameter not found", helmAnnotationParamVersion)
+					var tagValue string
+					if helmParamVersion != nil {
+						tagValue = helmParamVersion.Value
+					} else {
+						// Parameter not found in spec, use the image tag from the container image
+						tagValue = c.GetTagWithDigest()
+						log.WithContext().AddField("application", app.GetName()).
+							Debugf("helm parameter %s not found in spec, using image tag value: %s", helmAnnotationParamVersion, tagValue)
 					}
-					err = setHelmValue(&helmNewValues, helmAnnotationParamVersion, helmParamVersion.Value)
-					if err != nil {
-						return nil, fmt.Errorf("failed to set image parameter version value: %v", err)
+					// Only set the tag value if it's non-empty to avoid invalid image references
+					if tagValue != "" {
+						err = setHelmValue(&helmNewValues, helmAnnotationParamVersion, tagValue)
+						if err != nil {
+							return nil, fmt.Errorf("failed to set image parameter version value: %v", err)
+						}
 					}
 				}
 
 				helmParamName := getHelmParam(appSource.Helm.Parameters, helmAnnotationParamName)
-				if helmParamName == nil {
-					return nil, fmt.Errorf("%s parameter not found", helmAnnotationParamName)
-				}
 
 				// Determine which value to use for the image name parameter
-				valueToSet := helmParamName.Value
-				if !emptyOriginalData && image.HasRegistryPrefix(valueToSet) {
-					// helmParamName.Value is in long form (has registry URL)
-					// Check the original value in helmNewValues to see if it's in short form
-					// Skip this check if originalData is empty
-					originalValue, err := getHelmValue(&helmNewValues, helmAnnotationParamName)
-					if err == nil {
-						// Original value exists and was found
-						if !image.HasRegistryPrefix(originalValue) {
-							// Original value is in short form, use the short form of the value to set
+				var valueToSet string
+				if helmParamName != nil {
+					valueToSet = helmParamName.Value
+					if !emptyOriginalData && image.HasRegistryPrefix(valueToSet) {
+						// helmParamName.Value is in long form (has registry URL)
+						// Check the original value in helmNewValues to see if it's in short form
+						// Skip this check if originalData is empty
+						originalValue, err := getHelmValue(&helmNewValues, helmAnnotationParamName)
+						if err == nil {
+							// Original value exists and was found
+							if !image.HasRegistryPrefix(originalValue) {
+								// Original value is in short form, use the short form of the value to set
+								valueToSet = image.ExtractShortForm(valueToSet)
+							}
+							// If originalValue is also in long form, keep using helmParamName.Value
+						}
+						// If getHelmValue returns an error (key not found), use helmParamName.Value as-is
+					}
+					// If helmParamName.Value is already in short form or originalData is empty, use it as-is
+				} else {
+					// Parameter not found in spec, use the full image name from the container image
+					valueToSet = c.GetFullNameWithoutTag()
+					// Check if original data has short form and convert if needed
+					if !emptyOriginalData {
+						originalValue, err := getHelmValue(&helmNewValues, helmAnnotationParamName)
+						if err == nil && !image.HasRegistryPrefix(originalValue) {
+							// Original value is in short form, use the short form
 							valueToSet = image.ExtractShortForm(valueToSet)
 						}
-						// If originalValue is also in long form, keep using helmParamName.Value
 					}
-					// If getHelmValue returns an error (key not found), use helmParamName.Value as-is
+					log.WithContext().AddField("application", app.GetName()).
+						Debugf("helm parameter %s not found in spec, using image name value: %s", helmAnnotationParamName, valueToSet)
 				}
-				// If helmParamName.Value is already in short form or originalData is empty, use it as-is
 
 				err = setHelmValue(&helmNewValues, helmAnnotationParamName, valueToSet)
 				if err != nil {
