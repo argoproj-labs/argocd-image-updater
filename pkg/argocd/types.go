@@ -76,10 +76,12 @@ type WriteBackConfig struct {
 	GitCommitSigningMethod string
 	GitCommitSignOff       bool
 	KustomizeBase          string
-	HelmChart              bool
-	Target                 string
-	GitRepo                string
-	GitCreds               git.CredsStore
+	// HelmChart indicates whether the write-back target is a Helm values file.
+	// When true, the application source type is returned as Helm in getApplicationSourceType.
+	HelmChart bool
+	Target    string
+	GitRepo   string
+	GitCreds  git.CredsStore
 }
 
 // RequiresLocking returns true if write-back method requires repository locking
