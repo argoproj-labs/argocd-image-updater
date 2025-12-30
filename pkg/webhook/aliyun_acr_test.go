@@ -154,6 +154,17 @@ func TestAliyunACRWebhook_Parse(t *testing.T) {
 			expectError:         false,
 		},
 		{
+			name: "missing region without query parameter",
+			payload: `{
+				"repository": { "repo_full_name": "ns/app" },
+				"push_data": { "tag": "v1" }
+			}`,
+			expectedRepo:        "ns/app",
+			expectedTag:         "v1",
+			expectedRegistryURL: "",
+			expectError:         false,
+		},
+		{
 			name: "missing tag",
 			payload: `{
 				"repository": {
@@ -197,11 +208,14 @@ func TestAliyunACRWebhook_Parse(t *testing.T) {
 
 			if event == nil {
 				t.Fatal("expected event to be non-nil")
-			} else if event.RegistryURL != tt.expectedRegistryURL {
+			}
+			if event.RegistryURL != tt.expectedRegistryURL {
 				t.Errorf("expected registry URL to be %q, got %q", tt.expectedRegistryURL, event.RegistryURL)
-			} else if event.Repository != tt.expectedRepo {
+			}
+			if event.Repository != tt.expectedRepo {
 				t.Errorf("expected repository to be %q, got %q", tt.expectedRepo, event.Repository)
-			} else if event.Tag != tt.expectedTag {
+			}
+			if event.Tag != tt.expectedTag {
 				t.Errorf("expected tag to be %q, got %q", tt.expectedTag, event.Tag)
 			}
 		})
