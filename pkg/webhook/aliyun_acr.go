@@ -39,7 +39,7 @@ func (a *AliyunACRWebhook) Validate(r *http.Request) error {
 			return fmt.Errorf("missing webhook secret")
 		}
 
-		if secret != a.secret {
+		if subtle.ConstantTimeCompare([]byte(secret), []byte(a.secret)) != 1 {
 			return fmt.Errorf("invalid webhook secret")
 		}
 	}
