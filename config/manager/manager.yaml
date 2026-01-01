@@ -176,6 +176,56 @@ spec:
                 name: argocd-image-updater-config
                 key: webhook.ratelimit-allowed
                 optional: true
+          # Google Artifact Registry webhook secret (push model)
+          - name: ARTIFACT_REGISTRY_WEBHOOK_SECRET
+            valueFrom:
+              secretKeyRef:
+                name: argocd-image-updater-secret
+                key: webhook.artifact-registry-secret
+                optional: true
+          # Google Artifact Registry Pub/Sub subscriber configuration (pull model)
+          - name: ARTIFACT_REGISTRY_SUBSCRIBER_ENABLED
+            valueFrom:
+              configMapKeyRef:
+                name: argocd-image-updater-config
+                key: artifact-registry.subscriber.enabled
+                optional: true
+          - name: ARTIFACT_REGISTRY_SUBSCRIBER_PROJECT_ID
+            valueFrom:
+              configMapKeyRef:
+                name: argocd-image-updater-config
+                key: artifact-registry.subscriber.project-id
+                optional: true
+          - name: ARTIFACT_REGISTRY_SUBSCRIBER_SUBSCRIPTION_ID
+            valueFrom:
+              configMapKeyRef:
+                name: argocd-image-updater-config
+                key: artifact-registry.subscriber.subscription-id
+                optional: true
+          - name: GOOGLE_APPLICATION_CREDENTIALS
+            valueFrom:
+              configMapKeyRef:
+                name: argocd-image-updater-config
+                key: artifact-registry.subscriber.credentials-file
+                optional: true
+          - name: ARTIFACT_REGISTRY_SUBSCRIBER_MAX_OUTSTANDING_MESSAGES
+            valueFrom:
+              configMapKeyRef:
+                name: argocd-image-updater-config
+                key: artifact-registry.subscriber.max-outstanding-messages
+                optional: true
+          - name: ARTIFACT_REGISTRY_SUBSCRIBER_MAX_OUTSTANDING_BYTES
+            valueFrom:
+              configMapKeyRef:
+                name: argocd-image-updater-config
+                key: artifact-registry.subscriber.max-outstanding-bytes
+                optional: true
+          - name: ARTIFACT_REGISTRY_SUBSCRIBER_NUM_GOROUTINES
+            valueFrom:
+              configMapKeyRef:
+                name: argocd-image-updater-config
+                key: artifact-registry.subscriber.num-goroutines
+                optional: true
         securityContext:
           allowPrivilegeEscalation: false
           capabilities:
@@ -219,6 +269,9 @@ spec:
             mountPath: /app/ssh-keys/id_rsa
             readOnly: true
             subPath: sshPrivateKey
+          - name: gcp-credentials
+            mountPath: /app/gcp
+            readOnly: true
       serviceAccountName: argocd-image-updater-controller
       terminationGracePeriodSeconds: 10
       volumes:
@@ -242,6 +295,10 @@ spec:
         - name: ssh-signing-key
           secret:
             secretName: ssh-git-creds
+            optional: true
+        - name: gcp-credentials
+          secret:
+            secretName: argocd-image-updater-gcp-credentials
             optional: true
         - emptyDir: {}
           name: tmp

@@ -108,6 +108,14 @@ func (s *WebhookServer) handleWebhook(w http.ResponseWriter, r *http.Request) {
 
 	event, err := s.Handler.ProcessWebhook(r)
 	if err != nil {
+		if errors.Is(err, ErrWebhookIgnored) {
+			baseLogger.Debugf("Ignoring webhook payload: %v", err)
+			w.WriteHeader(http.StatusOK)
+			if _, writeErr := w.Write([]byte("Webhook ignored")); writeErr != nil {
+				baseLogger.Errorf("Failed to write webhook response: %v", writeErr)
+			}
+			return
+		}
 		baseLogger.Errorf("Failed to process webhook: %v", err)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return

@@ -40,7 +40,9 @@ func newRunCommand() *cobra.Command {
 	var secureMetrics bool
 	var enableHTTP2 bool
 	var cfg = &controller.ImageUpdaterConfig{}
-	var webhookCfg *WebhookConfig = &WebhookConfig{}
+	var webhookCfg *WebhookConfig = &WebhookConfig{
+		ArtifactRegistrySubscriber: webhook.DefaultPubSubSubscriberConfig(),
+	}
 	var once bool
 	var kubeConfig string
 	var warmUpCache bool
@@ -233,6 +235,32 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 				setupLogger.Info("webhook server is disabled, skip adding webhook server runnable to manager")
 			}
 
+			// Start the Artifact Registry Pub/Sub subscriber if enabled (pull model)
+			if webhookCfg.ArtifactRegistrySubscriber != nil && webhookCfg.ArtifactRegistrySubscriber.Enabled &&
+				webhookCfg.ArtifactRegistrySubscriber.ProjectID != "" && webhookCfg.ArtifactRegistrySubscriber.SubscriptionID != "" {
+				setupLogger.Info("Adding Artifact Registry Pub/Sub subscriber as a Runnable to the manager",
+					"project", webhookCfg.ArtifactRegistrySubscriber.ProjectID,
+					"subscription", webhookCfg.ArtifactRegistrySubscriber.SubscriptionID)
+				arSubscriber := webhook.NewArtifactRegistrySubscriber(webhookCfg.ArtifactRegistrySubscriber, func(ctx context.Context, event *argocd.WebhookEvent) error {
+					logCtx := log.LoggerFromContext(ctx)
+					processingCtx := log.ContextWithLogger(context.Background(), logCtx)
+					logCtx.Infof("Processing Artifact Registry event for %s/%s:%s", event.RegistryURL, event.Repository, event.Tag)
+
+					imageList := &api.ImageUpdaterList{}
+					if err := reconciler.List(processingCtx, imageList); err != nil {
+						return err
+					}
+					return reconciler.ProcessImageUpdaterCRs(processingCtx, imageList.Items, false, event)
+				})
+				if err := mgr.Add(arSubscriber); err != nil {
+					setupLogger.Error(err, "unable to add Artifact Registry Pub/Sub subscriber to manager")
+					return err
+				}
+				setupLogger.Info("Artifact Registry Pub/Sub subscriber runnable added to manager")
+			} else {
+				setupLogger.Info("Artifact Registry Pub/Sub subscriber is disabled, skip adding runnable to manager")
+			}
+
 			if err = reconciler.SetupWithManager(mgr); err != nil {
 				setupLogger.Error(err, "unable to create controller", "controller", "ImageUpdater")
 				return err
@@ -319,7 +347,17 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 	controllerCmd.Flags().StringVar(&webhookCfg.QuaySecret, "quay-webhook-secret", env.GetStringVal("QUAY_WEBHOOK_SECRET", ""), "Secret for validating Quay webhooks")
 	controllerCmd.Flags().StringVar(&webhookCfg.HarborSecret, "harbor-webhook-secret", env.GetStringVal("HARBOR_WEBHOOK_SECRET", ""), "Secret for validating Harbor webhooks")
 	controllerCmd.Flags().StringVar(&webhookCfg.CloudEventsSecret, "cloudevents-webhook-secret", env.GetStringVal("CLOUDEVENTS_WEBHOOK_SECRET", ""), "Secret for validating CloudEvents webhooks")
+	controllerCmd.Flags().StringVar(&webhookCfg.ArtifactRegistrySecret, "artifact-registry-webhook-secret", env.GetStringVal("ARTIFACT_REGISTRY_WEBHOOK_SECRET", ""), "Secret for validating Google Artifact Registry webhooks (push model)")
 	controllerCmd.Flags().IntVar(&webhookCfg.RateLimitNumAllowedRequests, "webhook-ratelimit-allowed", env.ParseNumFromEnv("WEBHOOK_RATELIMIT_ALLOWED", 0, 0, math.MaxInt), "The number of allowed requests in an hour for webhook rate limiting, setting to 0 disables ratelimiting")
+
+	// Google Artifact Registry Pub/Sub subscriber flags (pull model)
+	controllerCmd.Flags().BoolVar(&webhookCfg.ArtifactRegistrySubscriber.Enabled, "artifact-registry-subscriber-enabled", env.GetBoolVal("ARTIFACT_REGISTRY_SUBSCRIBER_ENABLED", false), "Enable Google Pub/Sub subscriber for Artifact Registry notifications (pull model)")
+	controllerCmd.Flags().StringVar(&webhookCfg.ArtifactRegistrySubscriber.ProjectID, "artifact-registry-subscriber-project", env.GetStringVal("ARTIFACT_REGISTRY_SUBSCRIBER_PROJECT_ID", ""), "GCP project ID containing the Pub/Sub subscription")
+	controllerCmd.Flags().StringVar(&webhookCfg.ArtifactRegistrySubscriber.SubscriptionID, "artifact-registry-subscriber-subscription", env.GetStringVal("ARTIFACT_REGISTRY_SUBSCRIBER_SUBSCRIPTION_ID", ""), "Pub/Sub subscription ID to pull messages from")
+	controllerCmd.Flags().StringVar(&webhookCfg.ArtifactRegistrySubscriber.CredentialsFile, "artifact-registry-subscriber-credentials-file", env.GetStringVal("GOOGLE_APPLICATION_CREDENTIALS", ""), "Path to GCP service account JSON file (uses ADC if empty)")
+	controllerCmd.Flags().IntVar(&webhookCfg.ArtifactRegistrySubscriber.MaxOutstandingMessages, "artifact-registry-subscriber-max-outstanding-messages", env.ParseNumFromEnv("ARTIFACT_REGISTRY_SUBSCRIBER_MAX_OUTSTANDING_MESSAGES", 100, 1, 10000), "Maximum number of unprocessed Pub/Sub messages")
+	controllerCmd.Flags().IntVar(&webhookCfg.ArtifactRegistrySubscriber.MaxOutstandingBytes, "artifact-registry-subscriber-max-outstanding-bytes", env.ParseNumFromEnv("ARTIFACT_REGISTRY_SUBSCRIBER_MAX_OUTSTANDING_BYTES", 100*1024*1024, 1024, 1024*1024*1024), "Maximum size in bytes of unprocessed Pub/Sub messages")
+	controllerCmd.Flags().IntVar(&webhookCfg.ArtifactRegistrySubscriber.NumGoroutines, "artifact-registry-subscriber-num-goroutines", env.ParseNumFromEnv("ARTIFACT_REGISTRY_SUBSCRIBER_NUM_GOROUTINES", 4, 1, 100), "Number of goroutines for processing Pub/Sub messages")
 
 	return controllerCmd
 }

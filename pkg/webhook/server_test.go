@@ -3,6 +3,7 @@ package webhook
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"net/http"
@@ -247,6 +248,35 @@ func TestWebhookServerHandleWebhook(t *testing.T) {
 		})
 	}
 
+}
+
+func TestWebhookServerHandleWebhook_IgnoredWebhookReturnsOK(t *testing.T) {
+	server := createMockServer(t, 8080)
+
+	handler := NewArtifactRegistryWebhook("")
+	server.Handler.RegisterHandler(handler)
+
+	// Valid Pub/Sub push envelope but with a non-actionable (non-INSERT) message.
+	arMessage := `{"action":"DELETE","digest":"us-docker.pkg.dev/my-project/my-repo/my-image@sha256:abc123","tag":"v1.0.0"}`
+	encodedData := base64.StdEncoding.EncodeToString([]byte(arMessage))
+	pushEnvelope := fmt.Sprintf(`{
+		"message": {
+			"data": "%s",
+			"messageId": "123",
+			"publishTime": "2026-01-01T00:00:00Z"
+		},
+		"subscription": "projects/my-project/subscriptions/my-subscription"
+	}`, encodedData)
+
+	req := httptest.NewRequest(http.MethodPost, "/webhook?type=artifact-registry", bytes.NewReader([]byte(pushEnvelope)))
+	rec := httptest.NewRecorder()
+
+	server.handleWebhook(rec, req)
+
+	res := rec.Result()
+	defer res.Body.Close()
+
+	assert.Equal(t, http.StatusOK, res.StatusCode)
 }
 
 // TestProcessWebhookEvent tests the processWebhookEvent helper function
