@@ -357,7 +357,7 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 	controllerCmd.Flags().StringVar(&webhookCfg.ArtifactRegistrySubscriber.CredentialsFile, "artifact-registry-subscriber-credentials-file", env.GetStringVal("GOOGLE_APPLICATION_CREDENTIALS", ""), "Path to GCP service account JSON file (uses ADC if empty)")
 	controllerCmd.Flags().IntVar(&webhookCfg.ArtifactRegistrySubscriber.MaxOutstandingMessages, "artifact-registry-subscriber-max-outstanding-messages", env.ParseNumFromEnv("ARTIFACT_REGISTRY_SUBSCRIBER_MAX_OUTSTANDING_MESSAGES", 100, 1, 10000), "Maximum number of unprocessed Pub/Sub messages")
 	controllerCmd.Flags().IntVar(&webhookCfg.ArtifactRegistrySubscriber.MaxOutstandingBytes, "artifact-registry-subscriber-max-outstanding-bytes", env.ParseNumFromEnv("ARTIFACT_REGISTRY_SUBSCRIBER_MAX_OUTSTANDING_BYTES", 100*1024*1024, 1024, 1024*1024*1024), "Maximum size in bytes of unprocessed Pub/Sub messages")
-	controllerCmd.Flags().IntVar(&webhookCfg.ArtifactRegistrySubscriber.NumGoroutines, "artifact-registry-subscriber-num-goroutines", env.ParseNumFromEnv("ARTIFACT_REGISTRY_SUBSCRIBER_NUM_GOROUTINES", 4, 1, 100), "Number of goroutines for processing Pub/Sub messages")
+	controllerCmd.Flags().IntVar(&webhookCfg.ArtifactRegistrySubscriber.NumGoroutines, "artifact-registry-subscriber-num-goroutines", env.ParseNumFromEnv("ARTIFACT_REGISTRY_SUBSCRIBER_NUM_GOROUTINES", 1, 1, 1), "Number of goroutines for processing Pub/Sub messages (GCP recommends 1 for most workloads)")
 
 	return controllerCmd
 }

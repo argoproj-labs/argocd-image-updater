@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -81,6 +82,11 @@ const (
 type ignoredWebhookError struct {
 	reason error
 }
+
+var (
+	ErrNonInsertAction  = errors.New("non-INSERT action")
+	ErrEmptyMessageData = errors.New("empty message data")
+)
 
 func (e *ignoredWebhookError) Error() string {
 	if e == nil || e.reason == nil {
@@ -344,7 +350,7 @@ func ParseArtifactRegistryMessage(data []byte) (*argocd.WebhookEvent, error) {
 	// Artifact Registry notifications are JSON payloads. For both the Pub/Sub push
 	// and pull models, the canonical payload is the decoded message data.
 	if len(data) == 0 {
-		return nil, fmt.Errorf("empty message data")
+		return nil, ErrEmptyMessageData
 	}
 
 	var msg ArtifactRegistryMessage
@@ -358,7 +364,7 @@ func ParseArtifactRegistryMessage(data []byte) (*argocd.WebhookEvent, error) {
 
 	// Only process INSERT actions (new images)
 	if action != "" && action != "INSERT" {
-		return nil, fmt.Errorf("ignoring non-INSERT action: %s", action)
+		return nil, fmt.Errorf("%w: %s", ErrNonInsertAction, action)
 	}
 
 	// Extract registry URL, repository and image info from digest
@@ -425,7 +431,5 @@ func isArtifactRegistryIgnorableError(err error) bool {
 	if err == nil {
 		return false
 	}
-	errStr := err.Error()
-	return strings.Contains(errStr, "ignoring non-INSERT action") ||
-		strings.Contains(errStr, "empty message data")
+	return errors.Is(err, ErrNonInsertAction) || errors.Is(err, ErrEmptyMessageData)
 }

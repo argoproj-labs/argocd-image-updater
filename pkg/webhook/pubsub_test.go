@@ -3,6 +3,7 @@ package webhook
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -21,6 +22,7 @@ func TestParseArtifactRegistryMessage(t *testing.T) {
 		data        []byte
 		wantEvent   bool
 		wantErr     bool
+		wantErrIs   error
 		errContains string
 		registry    string
 		repository  string
@@ -38,18 +40,18 @@ func TestParseArtifactRegistryMessage(t *testing.T) {
 			digest:     "sha256:abc123",
 		},
 		{
-			name:        "DELETE action is ignored",
-			data:        []byte(`{"action":"DELETE","digest":"us-docker.pkg.dev/project/repo/image@sha256:abc123"}`),
-			wantEvent:   false,
-			wantErr:     true,
-			errContains: "ignoring non-INSERT action",
+			name:      "DELETE action is ignored",
+			data:      []byte(`{"action":"DELETE","digest":"us-docker.pkg.dev/project/repo/image@sha256:abc123"}`),
+			wantEvent: false,
+			wantErr:   true,
+			wantErrIs: ErrNonInsertAction,
 		},
 		{
-			name:        "empty data",
-			data:        nil,
-			wantEvent:   false,
-			wantErr:     true,
-			errContains: "empty message data",
+			name:      "empty data",
+			data:      nil,
+			wantEvent: false,
+			wantErr:   true,
+			wantErrIs: ErrEmptyMessageData,
 		},
 		{
 			name:       "GCR registry format",
@@ -113,6 +115,9 @@ func TestParseArtifactRegistryMessage(t *testing.T) {
 
 			if tt.wantErr {
 				require.Error(t, err)
+				if tt.wantErrIs != nil {
+					assert.True(t, errors.Is(err, tt.wantErrIs))
+				}
 				if tt.errContains != "" {
 					assert.Contains(t, err.Error(), tt.errContains)
 				}
@@ -229,35 +234,34 @@ func TestDefaultPubSubSubscriberConfig(t *testing.T) {
 func TestIsArtifactRegistryIgnorableError(t *testing.T) {
 	tests := []struct {
 		name     string
-		errStr   string
+		err      error
 		expected bool
 	}{
 		{
 			name:     "non-INSERT action",
-			errStr:   "ignoring non-INSERT action: DELETE",
+			err:      fmt.Errorf("%w: DELETE", ErrNonInsertAction),
 			expected: true,
 		},
 		{
 			name:     "empty message",
-			errStr:   "empty message data",
+			err:      ErrEmptyMessageData,
 			expected: true,
 		},
 		{
 			name:     "parse error",
-			errStr:   "failed to unmarshal Artifact Registry message",
+			err:      fmt.Errorf("failed to unmarshal Artifact Registry message"),
 			expected: false,
 		},
 		{
 			name:     "other error",
-			errStr:   "network timeout",
+			err:      fmt.Errorf("network timeout"),
 			expected: false,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := fmt.Errorf("%s", tt.errStr)
-			result := isArtifactRegistryIgnorableError(err)
+			result := isArtifactRegistryIgnorableError(tt.err)
 			assert.Equal(t, tt.expected, result)
 		})
 	}
