@@ -260,7 +260,7 @@ func (s *ArtifactRegistrySubscriber) Start(ctx context.Context) error {
 		if _, err := os.Stat(s.config.CredentialsFile); err != nil {
 			return fmt.Errorf("credentials file not found: %s: %w", s.config.CredentialsFile, err)
 		}
-		opts = append(opts, option.WithCredentialsFile(s.config.CredentialsFile))
+		opts = append(opts, option.WithAuthCredentialsFile(option.ServiceAccount, s.config.CredentialsFile))
 		logger.Infof("Using credentials from file: %s", s.config.CredentialsFile)
 	} else {
 		logger.Infof("Using Application Default Credentials (ADC)")
