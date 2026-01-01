@@ -21,7 +21,7 @@ jobs:
         run: rm -rf /opt/hostedtoolcache || true
 
       - name: Checkout code
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Get version-tag
         id: version-tag
@@ -67,7 +67,7 @@ jobs:
     if: needs.build-push-images.result == 'success'
     steps:
       - name: Checkout code
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Get version-tag
         id: version-tag
