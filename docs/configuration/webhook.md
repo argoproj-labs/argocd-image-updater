@@ -226,7 +226,7 @@ Configure a Pub/Sub push subscription to deliver to:
 https://your-webhook.example.com/webhook?type=artifact-registry&secret=<YOUR_SECRET>
 ```
 
-Pub/Sub push subscriptions can deliver messages in either format (see https://docs.cloud.google.com/pubsub/docs/push#receive_push and https://docs.cloud.google.com/pubsub/docs/payload-unwrapping):
+Pub/Sub push subscriptions can deliver messages in either format (see <https://docs.cloud.google.com/pubsub/docs/push#receive_push> and <https://docs.cloud.google.com/pubsub/docs/payload-unwrapping>):
 
 - **Wrapped** (default): request body is the Pub/Sub push envelope containing base64-encoded `message.data`.
 - **Unwrapped** (payload unwrapping): request body is the raw message data.

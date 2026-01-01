@@ -228,7 +228,7 @@ func TestDefaultPubSubSubscriberConfig(t *testing.T) {
 	assert.Equal(t, "", cfg.CredentialsFile)
 	assert.Equal(t, 100, cfg.MaxOutstandingMessages)
 	assert.Equal(t, 100*1024*1024, cfg.MaxOutstandingBytes)
-	assert.Equal(t, 4, cfg.NumGoroutines)
+	assert.Equal(t, 1, cfg.NumGoroutines)
 }
 
 func TestIsArtifactRegistryIgnorableError(t *testing.T) {

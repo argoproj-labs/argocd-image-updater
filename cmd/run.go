@@ -236,15 +236,14 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 			}
 
 			// Start the Artifact Registry Pub/Sub subscriber if enabled (pull model)
-			if webhookCfg.ArtifactRegistrySubscriber != nil && webhookCfg.ArtifactRegistrySubscriber.Enabled &&
-				webhookCfg.ArtifactRegistrySubscriber.ProjectID != "" && webhookCfg.ArtifactRegistrySubscriber.SubscriptionID != "" {
+			if webhookCfg.ArtifactRegistrySubscriber.Enabled && webhookCfg.ArtifactRegistrySubscriber.ProjectID != "" && webhookCfg.ArtifactRegistrySubscriber.SubscriptionID != "" {
 				setupLogger.Info("Adding Artifact Registry Pub/Sub subscriber as a Runnable to the manager",
 					"project", webhookCfg.ArtifactRegistrySubscriber.ProjectID,
 					"subscription", webhookCfg.ArtifactRegistrySubscriber.SubscriptionID)
 				arSubscriber := webhook.NewArtifactRegistrySubscriber(webhookCfg.ArtifactRegistrySubscriber, func(ctx context.Context, event *argocd.WebhookEvent) error {
-					logCtx := log.LoggerFromContext(ctx)
-					processingCtx := log.ContextWithLogger(context.Background(), logCtx)
-					logCtx.Infof("Processing Artifact Registry event for %s/%s:%s", event.RegistryURL, event.Repository, event.Tag)
+					logger := log.LoggerFromContext(ctx)
+					processingCtx := log.ContextWithLogger(ctx, logger)
+					logger.Infof("Processing Artifact Registry event for %s/%s:%s", event.RegistryURL, event.Repository, event.Tag)
 
 					imageList := &api.ImageUpdaterList{}
 					if err := reconciler.List(processingCtx, imageList); err != nil {

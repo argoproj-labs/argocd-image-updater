@@ -104,30 +104,48 @@ func decodePubSubPushRequestData(body []byte) ([]byte, error) {
 	// Wrapped: JSON envelope with base64 message.data.
 	// Unwrapped: raw message data as the HTTP body.
 	// See: https://docs.cloud.google.com/pubsub/docs/push
-	var top map[string]json.RawMessage
-	if err := json.Unmarshal(body, &top); err == nil {
-		if rawMsg, ok := top["message"]; ok {
-			var msg map[string]json.RawMessage
-			if err := json.Unmarshal(rawMsg, &msg); err == nil {
-				if rawData, ok := msg["data"]; ok {
-					var dataStr string
-					if err := json.Unmarshal(rawData, &dataStr); err == nil {
-						return decodePubSubPushMessageData(body)
-					}
-				}
-			}
+	// Try wrapped format first.
+	data, err := decodePubSubPushMessageData(body)
+	if err == nil {
+		if data != nil {
+			return data, nil
 		}
+		// JSON that isn't a Pub/Sub envelope (no message.data) -> treat as unwrapped.
 		return body, nil
 	}
 
-	// If it isn't JSON, treat it as unwrapped raw message data.
-	return body, nil
+	// If it isn't a valid Pub/Sub push envelope (including non-JSON), treat it as unwrapped.
+	var parseErr *pubSubPushEnvelopeParseError
+	if errors.As(err, &parseErr) {
+		return body, nil
+	}
+
+	// Anything else (e.g., invalid base64 in message.data) should surface as an error.
+	return nil, err
+}
+
+type pubSubPushEnvelopeParseError struct {
+	err error
+}
+
+func (e *pubSubPushEnvelopeParseError) Error() string {
+	if e == nil || e.err == nil {
+		return "failed to parse Pub/Sub push envelope"
+	}
+	return fmt.Sprintf("failed to parse Pub/Sub push envelope: %v", e.err)
+}
+
+func (e *pubSubPushEnvelopeParseError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.err
 }
 
 func decodePubSubPushMessageData(body []byte) ([]byte, error) {
 	var pushMsg PubSubPushMessage
 	if err := json.Unmarshal(body, &pushMsg); err != nil {
-		return nil, fmt.Errorf("failed to parse Pub/Sub push envelope: %w", err)
+		return nil, &pubSubPushEnvelopeParseError{err: err}
 	}
 
 	if pushMsg.Message.Data == "" {
@@ -191,7 +209,8 @@ type PubSubSubscriberConfig struct {
 	MaxOutstandingMessages int
 	// MaxOutstandingBytes is the maximum size of unprocessed messages in bytes
 	MaxOutstandingBytes int
-	// NumGoroutines is the number of goroutines to spawn for message processing
+	// NumGoroutines is the number of goroutines to spawn for message processing.
+	// GCP recommends 1 for most workloads.
 	NumGoroutines int
 }
 
@@ -201,7 +220,7 @@ func DefaultPubSubSubscriberConfig() *PubSubSubscriberConfig {
 		Enabled:                false,
 		MaxOutstandingMessages: 100,
 		MaxOutstandingBytes:    100 * 1024 * 1024, // 100MB
-		NumGoroutines:          4,
+		NumGoroutines:          1,
 	}
 }
 
