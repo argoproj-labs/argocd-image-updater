@@ -188,7 +188,7 @@ jobs:
         run: |
           sudo pkill mono || true
       - name: Restore go build cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cache/go-build
           key: ${{ runner.os }}-go-build-v1-${{ github.run_id }}
