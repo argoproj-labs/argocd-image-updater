@@ -1,13 +1,13 @@
 name: Build and push image
 
 on:
-  push:
-    branches:
-      - master
+# restore the following push event once the automatic multi-arch image build is implemented
+#  push:
+#    branches:
+#      - master
   pull_request:
     branches:
       - master
-    types: [ labeled, unlabeled, opened, synchronize, reopened ]
 
 jobs:
   build_image:
