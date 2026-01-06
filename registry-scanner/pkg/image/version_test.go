@@ -76,6 +76,74 @@ func Test_LatestVersion(t *testing.T) {
 		assert.Nil(t, newTag)
 	})
 
+	t.Run("Find the latest version with a calver constraint that is valid", func(t *testing.T) {
+		tagList := newImageTagList([]string{"2021.01.01", "2022.02.02", "2023.05.01", "2025.01.25"})
+		img := NewFromIdentifier("jannfis/test:2021.01.01")
+		vc := VersionConstraint{Constraint: "2022.01.01", Strategy: StrategyCalVer, MatchArgs: "YYYY.MM.DD"}
+		newTag, err := img.GetNewestVersionFromTags(&vc, tagList)
+		assert.NoError(t, err)
+		assert.NotNil(t, newTag)
+		assert.Equal(t, "2025.01.25", newTag.TagName)
+	})
+
+	t.Run("Find latest version with YYYY.MM calver format", func(t *testing.T) {
+		tagList := newImageTagList([]string{"2021.01", "2022.02", "2023.05", "2025.01"})
+		img := NewFromIdentifier("jannfis/test:2021.01")
+		vc := VersionConstraint{Constraint: "2022.01", Strategy: StrategyCalVer, MatchArgs: "YYYY.MM"}
+		newTag, err := img.GetNewestVersionFromTags(&vc, tagList)
+		assert.NoError(t, err)
+		assert.NotNil(t, newTag)
+		assert.Equal(t, "2025.01", newTag.TagName)
+	})
+
+	t.Run("Find latest version with YY.MM.DD calver format", func(t *testing.T) {
+		tagList := newImageTagList([]string{"21.01.01", "22.02.02", "23.05.01", "25.01.25"})
+		img := NewFromIdentifier("jannfis/test:21.01.01")
+		vc := VersionConstraint{Constraint: "22.01.01", Strategy: StrategyCalVer, MatchArgs: "YY.MM.DD"}
+		newTag, err := img.GetNewestVersionFromTags(&vc, tagList)
+		assert.NoError(t, err)
+		assert.NotNil(t, newTag)
+		assert.Equal(t, "25.01.25", newTag.TagName)
+	})
+
+	t.Run("Invalid calver format should return error", func(t *testing.T) {
+		tagList := newImageTagList([]string{"2021.01.01", "2022.02.02"})
+		img := NewFromIdentifier("jannfis/test:2021.01.01")
+		vc := VersionConstraint{Constraint: "2022.01.01", Strategy: StrategyCalVer, MatchArgs: "invalid-format"}
+		newTag, err := img.GetNewestVersionFromTags(&vc, tagList)
+		assert.Error(t, err)
+		assert.Nil(t, newTag)
+	})
+
+	t.Run("Tags not matching calver format should be ignored", func(t *testing.T) {
+		tagList := newImageTagList([]string{"2021.01.01", "invalid", "2023.05.01", "not-a-date"})
+		img := NewFromIdentifier("jannfis/test:2021.01.01")
+		vc := VersionConstraint{Constraint: "2022.01.01", Strategy: StrategyCalVer, MatchArgs: "YYYY.MM.DD"}
+		newTag, err := img.GetNewestVersionFromTags(&vc, tagList)
+		assert.NoError(t, err)
+		assert.NotNil(t, newTag)
+		assert.Equal(t, "2023.05.01", newTag.TagName)
+	})
+
+	t.Run("Empty tag list with calver should return nil", func(t *testing.T) {
+		tagList := newImageTagList([]string{})
+		img := NewFromIdentifier("jannfis/test:2021.01.01")
+		vc := VersionConstraint{Constraint: "2022.01.01", Strategy: StrategyCalVer, MatchArgs: "YYYY.MM.DD"}
+		newTag, err := img.GetNewestVersionFromTags(&vc, tagList)
+		assert.NoError(t, err)
+		assert.Nil(t, newTag)
+	})
+
+	t.Run("Missing constraint with calver should use current date", func(t *testing.T) {
+		tagList := newImageTagList([]string{"2021.01.01", "2022.02.02", "2023.05.01"})
+		img := NewFromIdentifier("jannfis/test:2021.01.01")
+		vc := VersionConstraint{Strategy: StrategyCalVer, MatchArgs: "YYYY.MM.DD"}
+		newTag, err := img.GetNewestVersionFromTags(&vc, tagList)
+		assert.NoError(t, err)
+		assert.NotNil(t, newTag)
+		assert.Equal(t, "2023.05.01", newTag.TagName)
+	})
+
 	t.Run("Find the latest version with no tags", func(t *testing.T) {
 		tagList := newImageTagList([]string{})
 		img := NewFromIdentifier("jannfis/test:1.0")
@@ -140,6 +208,7 @@ func Test_UpdateStrategy_String(t *testing.T) {
 		{"StrategyNewestBuild", StrategyNewestBuild, "newest-build"},
 		{"StrategyAlphabetical", StrategyAlphabetical, "alphabetical"},
 		{"StrategyDigest", StrategyDigest, "digest"},
+		{"StrategyCalVer", StrategyCalVer, "calver"},
 		{"unknown", UpdateStrategy(-1), "unknown"},
 	}
 	for _, tt := range tests {
@@ -171,6 +240,7 @@ func Test_UpdateStrategy_IsCacheable(t *testing.T) {
 	assert.True(t, StrategySemVer.IsCacheable())
 	assert.True(t, StrategyNewestBuild.IsCacheable())
 	assert.True(t, StrategyAlphabetical.IsCacheable())
+	assert.True(t, StrategyCalVer.IsCacheable())
 	assert.False(t, StrategyDigest.IsCacheable())
 }
 
@@ -178,6 +248,7 @@ func Test_UpdateStrategy_NeedsMetadata(t *testing.T) {
 	assert.False(t, StrategySemVer.NeedsMetadata())
 	assert.True(t, StrategyNewestBuild.NeedsMetadata())
 	assert.False(t, StrategyAlphabetical.NeedsMetadata())
+	assert.False(t, StrategyCalVer.NeedsMetadata())
 	assert.False(t, StrategyDigest.NeedsMetadata())
 }
 
@@ -185,6 +256,7 @@ func Test_UpdateStrategy_NeedsVersionConstraint(t *testing.T) {
 	assert.False(t, StrategySemVer.NeedsVersionConstraint())
 	assert.False(t, StrategyNewestBuild.NeedsVersionConstraint())
 	assert.False(t, StrategyAlphabetical.NeedsVersionConstraint())
+	assert.True(t, StrategyCalVer.NeedsVersionConstraint())
 	assert.True(t, StrategyDigest.NeedsVersionConstraint())
 }
 
@@ -192,5 +264,6 @@ func Test_UpdateStrategy_WantsOnlyConstraintTag(t *testing.T) {
 	assert.False(t, StrategySemVer.WantsOnlyConstraintTag())
 	assert.False(t, StrategyNewestBuild.WantsOnlyConstraintTag())
 	assert.False(t, StrategyAlphabetical.WantsOnlyConstraintTag())
+	assert.False(t, StrategyCalVer.WantsOnlyConstraintTag())
 	assert.True(t, StrategyDigest.WantsOnlyConstraintTag())
 }

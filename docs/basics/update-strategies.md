@@ -18,6 +18,7 @@ The following update strategies are currently supported:
 * [latest/newest-build](#strategy-latest) - Update to the most recently built image found in a registry
 * [digest](#strategy-digest) - Update to the latest version of a given version (tag), using the tag's SHA digest
 * [name/alphabetical](#strategy-name) - Sorts tags alphabetically and update to the one with the highest cardinality
+* [calver](#strategy-calver) - Update to the latest version of an image considering calendar versioning constraints
 
 !!!warning "Renamed image update strategies"
     The `latest` strategy has been renamed to `newest-build`, and `name` strategy has been renamed to `alphabetical`. 
@@ -285,3 +286,60 @@ argocd-image-updater.argoproj.io/myimage.allow-tags: regexp:^[0-9]{4}-[0-9]{2}-[
 would only consider tags that match a given regular expression for update. In
 this case, only tags matching a date specification of `YYYY-MM-DD` would be
 considered for update.
+
+### <a name="strategy-calver"></a>calver - Update to calendar versions
+
+Strategy name: `calver`
+
+Basic configuration:
+
+```yaml
+argocd-image-updater.argoproj.io/image-list: some/image[:<version_constraint>]
+argocd-image-updater.argoproj.io/<image>.update-strategy: calver
+argocd-image-updater.argoproj.io/<image>.allow-tags: calver:YYYY.0M.MICRO
+```
+
+!!! note "CalVer Format Specification"
+    The `calver` strategy requires defining the version format using the [calver layout syntax](https://github.com/k1LoW/calver). Common patterns include:
+    - `YYYY.0M.MICRO` for year.month.counter (e.g. 2023.08.1)
+    - `YY.MM.MICRO` for 2-digit year.month.counter (e.g. 23.8.5)
+    - `YYYY.MM.DD` for date-based versions (e.g. 2023.08.15)
+
+The `calver` strategy allows you to track & update images which use tags that
+follow the
+[calendar versioning scheme](https://calver.org). Tag names must contain calver
+compatible identifiers in the format `YYYY.MM.DD`, where `YYYY`, `MM`, and `DD` must be
+whole numbers.
+
+This will allow you to update to the latest version of an image within a given
+year, month, or day, or just to the latest version that is tagged with a valid
+calendar version identifier.
+
+To tell Argo CD Image Updater which versions are allowed, simply give a calver
+version as a constraint in the `image-list` annotation. For example, to allow
+updates to the latest version within the `2023.08` month, use
+
+```
+argocd-image-updater.argoproj.io/image-list: some/image:2023.08.x
+```
+
+The above example would update to any new tag pushed to the registry matching
+this constraint, e.g. `2023.08.15`, `2023.08.30` etc, but not to a new month
+(e.g. `2023.09`).
+
+Likewise, to allow updates to any month within the year `2023`,
+use
+
+```yaml
+argocd-image-updater.argoproj.io/image-list: some/image:2023.x
+```
+
+The above example would update to any new tag pushed to the registry matching
+this constraint, e.g. `2023.08.15`, `2023.09.01`, `2023.12.31` etc, but not to a new year
+(e.g. `2024`).
+
+If no version constraint is specified in the list of allowed images, Argo CD
+Image Updater will pick the highest version number found in the registry.
+
+Argo CD Image Updater will omit any tags from your registry that do not match 
+a calendar version when using the `calver` update strategy.

@@ -124,6 +124,8 @@ func (img *ContainerImage) ParseUpdateStrategy(val string) UpdateStrategy {
 		return StrategyAlphabetical
 	case "digest":
 		return StrategyDigest
+	case "calver":
+		return StrategyCalVer
 	default:
 		logCtx.Warnf("Unknown sort option %s -- using semver", val)
 		return StrategySemVer
@@ -187,6 +189,8 @@ func (img *ContainerImage) ParseMatchfunc(val string) (MatchFuncFn, interface{})
 			return MatchFuncNone, nil
 		}
 		return MatchFuncRegexp, re
+	case "calver":
+		return MatchFuncCalVer, opt[1]
 	default:
 		logCtx.Warnf("Unknown match function: %s", opt[0])
 		return MatchFuncNone, nil

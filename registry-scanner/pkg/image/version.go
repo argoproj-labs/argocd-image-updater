@@ -1,6 +1,7 @@
 package image
 
 import (
+	"fmt"
 	"path/filepath"
 
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
@@ -22,6 +23,8 @@ const (
 	StrategyAlphabetical UpdateStrategy = 2
 	// VersionSortDigest uses latest digest of an image
 	StrategyDigest UpdateStrategy = 3
+	// VersionSortCalVer sorts tags using calendar versioning
+	StrategyCalVer UpdateStrategy = 4
 )
 
 func (us UpdateStrategy) String() string {
@@ -34,6 +37,8 @@ func (us UpdateStrategy) String() string {
 		return "alphabetical"
 	case StrategyDigest:
 		return "digest"
+	case StrategyCalVer:
+		return "calver"
 	}
 
 	return "unknown"
@@ -93,6 +98,13 @@ func (img *ContainerImage) GetNewestVersionFromTags(vc *VersionConstraint, tagLi
 		availableTags = tagList.SortByDate()
 	case StrategyDigest:
 		availableTags = tagList.SortAlphabetically()
+	case StrategyCalVer:
+		layout, ok := vc.MatchArgs.(string)
+		if !ok {
+			logCtx.Errorf("calver layout not specified in allow-tags annotation")
+			return nil, fmt.Errorf("calver layout not specified in allow-tags annotation")
+		}
+		availableTags = tagList.SortByCalVer(layout)
 	}
 
 	considerTags := tag.SortableImageTagList{}
