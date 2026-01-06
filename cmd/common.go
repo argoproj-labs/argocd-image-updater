@@ -33,8 +33,12 @@ type WebhookConfig struct {
 	HarborSecret string
 	// CloudEventsSecret is the secret for validating CloudEvents webhooks
 	CloudEventsSecret string
+	// ArtifactRegistrySecret is the secret for validating Google Artifact Registry webhooks (push model)
+	ArtifactRegistrySecret string
 	// RateLimitNumAllowedRequests is the number of allowed requests per hour for rate limiting (0 disables rate limiting)
 	RateLimitNumAllowedRequests int
+	// ArtifactRegistrySubscriber holds the Pub/Sub configuration for Artifact Registry notifications (pull model)
+	ArtifactRegistrySubscriber *webhook.PubSubSubscriberConfig
 }
 
 // SetupCommon initializes common components (logging, context, etc.)
@@ -126,6 +130,7 @@ func SetupWebhookServer(webhookCfg *WebhookConfig, reconciler *controller.ImageU
 	handler.RegisterHandler(webhook.NewHarborWebhook(webhookCfg.HarborSecret))
 	handler.RegisterHandler(webhook.NewQuayWebhook(webhookCfg.QuaySecret))
 	handler.RegisterHandler(webhook.NewCloudEventsWebhook(webhookCfg.CloudEventsSecret))
+	handler.RegisterHandler(webhook.NewArtifactRegistryWebhook(webhookCfg.ArtifactRegistrySecret))
 
 	// Create webhook server
 	server := webhook.NewWebhookServer(webhookCfg.Port, handler, reconciler)

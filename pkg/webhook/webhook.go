@@ -1,11 +1,17 @@
 package webhook
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 
 	"github.com/argoproj-labs/argocd-image-updater/pkg/argocd"
 )
+
+// ErrWebhookIgnored is a sentinel error that indicates the webhook payload was valid
+// but intentionally ignored (e.g., non-actionable event). The HTTP server should
+// treat this as success and return a 2xx response.
+var ErrWebhookIgnored = errors.New("webhook ignored")
 
 // RegistryWebhook interface defines methods for handling registry webhooks
 type RegistryWebhook interface {

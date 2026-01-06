@@ -10,9 +10,10 @@ Currently Supported Registries:
 - Harbor
 - Quay
 - AWS ECR (via EventBridge CloudEvents)
+- Google Artifact Registry (via Pub/Sub)
 
-Using webhooks can help reduce some of the stress that is put on the 
-container registries and where you are running Image Updater by reducing the 
+Using webhooks can help reduce some of the stress that is put on the
+container registries and where you are running Image Updater by reducing the
 need to poll.
 
 ## Enabling the Webhook Server
@@ -22,8 +23,7 @@ polling still enabled through the `run` command or just have the webhook
 server running through the webhook command. 
 
 ### Enabling with `run` Command
-Below is the command for running the webhook server with polling through the `
-run` command. The `--enable-webhook` flag is all that is required. The 
+Below is the command for running the webhook server with polling through the `run` command. The `--enable-webhook` flag is all that is required. The
 default port of the webhook server in this method is `8082`. 
 ```
 argocd-image-updater run --enable-webhook --webhook-port [PORT]
@@ -73,7 +73,7 @@ The webhook server contains two endpoints, `webhook` and `healthz`.
 
 The `webhook` endpoint is used to receive and process webhook notifications.
 
-The `healthz` endpoint acts has a health endpoint to check to see if the server is alive.
+The `healthz` endpoint acts as a health endpoint to check if the server is alive.
 
 ## Setting Up a Webhook Notification
 
@@ -86,6 +86,7 @@ can be found here:
 - [Harbor](https://goharbor.io/docs/1.10/working-with-projects/project-configuration/configure-webhooks/)
 - [Quay](https://docs.quay.io/guides/notifications.html)
 - [AWS ECR via EventBridge](#aws-ecr-via-eventbridge-cloudevents) (see below)
+- [Google Artifact Registry via Pub/Sub](#google-artifact-registry)
 
 For the URL that you set for the webhook, your link should go as the following:
 
@@ -97,6 +98,7 @@ https://app1.example.com/webhook?type=<YOUR_REGISTRY_TYPE>
 # Harbor = harbor
 # Quay = quay.io
 # AWS ECR (via CloudEvents) = cloudevents
+# Google Artifact Registry (via Pub/Sub) = artifact-registry
 ```
 
 ### AWS ECR via EventBridge CloudEvents
@@ -199,6 +201,103 @@ Connection authentication).
 
 For complete setup instructions and examples, see `config/examples/cloudevents/terraform/` for Terraform configuration.
 
+## Google Artifact Registry
+
+Google Artifact Registry sends notifications via [Pub/Sub](https://cloud.google.com/artifact-registry/docs/configure-notifications).
+Image Updater supports both Pub/Sub delivery models:
+
+- **Push**: Pub/Sub sends HTTP POST to your webhook endpoint
+- **Pull**: Image Updater pulls messages from a Pub/Sub subscription (no inbound HTTP)
+
+Only `INSERT` actions are processed. Other actions (e.g. `DELETE`) are ignored.
+
+### Push Model
+
+Use this model when you want Pub/Sub to call Image Updater directly over HTTP.
+
+Prerequisites:
+
+- Webhook server is enabled (either `argocd-image-updater run --enable-webhook` or `argocd-image-updater webhook`)
+- Pub/Sub push subscription can reach the webhook URL (network/DNS/TLS)
+
+Configure a Pub/Sub push subscription to deliver to:
+
+```text
+https://your-webhook.example.com/webhook?type=artifact-registry&secret=<YOUR_SECRET>
+```
+
+Pub/Sub push subscriptions can deliver messages in either format (see <https://docs.cloud.google.com/pubsub/docs/push#receive_push> and <https://docs.cloud.google.com/pubsub/docs/payload-unwrapping>):
+
+- **Wrapped** (default): request body is the Pub/Sub push envelope containing base64-encoded `message.data`.
+- **Unwrapped** (payload unwrapping): request body is the raw message data.
+
+Image Updater expects the HTTP request body to look like this (fields abbreviated):
+
+```json
+{
+  "message": {
+    "data": "<base64-encoded-json>",
+    "messageId": "1234567890",
+    "publishTime": "2026-01-01T00:00:00Z"
+  },
+  "subscription": "projects/<project>/subscriptions/<subscription>"
+}
+```
+
+Notes:
+
+- `message.data` (if present) must be base64-encoded JSON.
+- For unwrapped delivery, the HTTP body must be the Artifact Registry JSON message (and Pub/Sub may include metadata in `x-goog-pubsub-*` headers if enabled).
+
+The Artifact Registry message itself (after base64-decoding `message.data`) is a JSON object. Examples from Google's documentation:
+
+```json
+{"action":"INSERT","digest":"us-west1-docker.pkg.dev/my-project/my-repo/hello-world@sha256:..."}
+```
+
+```json
+{"action":"INSERT","digest":"us-west1-docker.pkg.dev/my-project/my-repo/hello-world@sha256:...","tag":"us-west1-docker.pkg.dev/my-project/my-repo/hello-world:1.1"}
+```
+
+```json
+{"action":"DELETE","tag":"us-west1-docker.pkg.dev/my-project/my-repo/hello-world:1.1"}
+```
+
+The `secret` parameter is validated against `webhook.artifact-registry-secret` (see [Secrets](#secrets)).
+
+### Pull Model
+
+Use this model when you do not want to expose an HTTP endpoint. Image Updater will pull messages from a Pub/Sub subscription.
+
+Notes:
+
+- The pull subscriber currently runs only in controller mode (`argocd-image-updater run`).
+- When running multiple replicas, only the leader processes messages.
+
+Enable the pull subscriber via ConfigMap:
+
+```yaml
+data:
+  artifact-registry.subscriber.enabled: "true"
+  artifact-registry.subscriber.project-id: "your-gcp-project-id"
+  artifact-registry.subscriber.subscription-id: "your-subscription-id"
+  # Optional tuning
+  # artifact-registry.subscriber.max-outstanding-messages: "100"
+  # artifact-registry.subscriber.max-outstanding-bytes: "104857600" # 100MiB
+  # artifact-registry.subscriber.num-goroutines: "4"
+  # Optional: path to a mounted service account JSON file (uses ADC if empty)
+  # artifact-registry.subscriber.credentials-file: "/app/gcp/service-account.json"
+```
+
+Authentication:
+
+- On GKE, prefer Workload Identity / Application Default Credentials (ADC).
+- Alternatively, mount a service account JSON file and set `artifact-registry.subscriber.credentials-file`
+  (or `GOOGLE_APPLICATION_CREDENTIALS`).
+
+Configuration can also be done via CLI flags or environment variables; see
+[Environment Variables](#environment-variables).
+
 ## Secrets
 
 To help secure the webhook server you can apply a secret that is used to 
@@ -212,6 +311,7 @@ stringData:
   webhook.harbor-secret: <YOUR_SECRET>
   webhook.quay-secret: <YOUR_SECRET>
   webhook.cloudevents-secret: <YOUR_SECRET>
+  webhook.artifact-registry-secret: <YOUR_SECRET>
 ```
 
 You also need to configure the webhook notification to use the secret based 
@@ -249,6 +349,7 @@ Supported Registries That Use This:
 - Docker Hub
 - Quay
 - AWS ECR (via CloudEvents/EventBridge)
+- Google Artifact Registry (Pub/Sub push)
 
 Also be aware that if the container registry has a built-in secrets method you will
 not be able to use this method.
@@ -259,7 +360,7 @@ To expose the webhook server we have provided a service and ingress to get
 started. These manifests are not applied with `install.yaml` so you will need 
 to apply them yourself. 
 
-They are located in the `manifets/base/networking` directory.
+They are located in the `config/networking` directory.
 
 ## Rate Limiting
 
@@ -272,7 +373,7 @@ the limit the request will wait until it is allowed. The rate limit value defaul
 to 0 which means that it is disabled.
 ```yaml
 data:
-  # How many requests can be made per second. The default is 0 meaning disabled.
+  # How many requests can be made per hour. The default is 0 meaning disabled.
   webhook.ratelimit-allowed: <SOME_NUMBER>
 ```
 
@@ -290,6 +391,14 @@ environment variables. Below is the list of which variables correspond to which 
 |`HARBOR_WEBHOOK_SECRET` |`--harbor-webhook-secret`|
 |`QUAY_WEBHOOK_SECRET` |`--quay-webhook-secret`|
 |`CLOUDEVENTS_WEBHOOK_SECRET` |`--cloudevents-webhook-secret`|
+|`ARTIFACT_REGISTRY_WEBHOOK_SECRET` |`--artifact-registry-webhook-secret`|
+|`ARTIFACT_REGISTRY_SUBSCRIBER_ENABLED` |`--artifact-registry-subscriber-enabled`|
+|`ARTIFACT_REGISTRY_SUBSCRIBER_PROJECT_ID` |`--artifact-registry-subscriber-project`|
+|`ARTIFACT_REGISTRY_SUBSCRIBER_SUBSCRIPTION_ID` |`--artifact-registry-subscriber-subscription`|
+|`GOOGLE_APPLICATION_CREDENTIALS` |`--artifact-registry-subscriber-credentials-file`|
+|`ARTIFACT_REGISTRY_SUBSCRIBER_MAX_OUTSTANDING_MESSAGES` |`--artifact-registry-subscriber-max-outstanding-messages`|
+|`ARTIFACT_REGISTRY_SUBSCRIBER_MAX_OUTSTANDING_BYTES` |`--artifact-registry-subscriber-max-outstanding-bytes`|
+|`ARTIFACT_REGISTRY_SUBSCRIBER_NUM_GOROUTINES` |`--artifact-registry-subscriber-num-goroutines`|
 |`WEBHOOK_RATELIMIT_ALLOWED`|`--webhook-ratelimit-allowed`|
 
 ## Adding Support For Other Registries
@@ -312,6 +421,8 @@ registries supported.
 - [Quay](https://docs.quay.io/guides/notifications.html)
 (View Repository Push Section)
 - [CloudEvents](#aws-ecr-via-eventbridge-cloudevents) (AWS ECR via EventBridge)
+- [Google Artifact Registry](https://cloud.google.com/artifact-registry/docs/configure-notifications)
+- [Pub/Sub push format](https://cloud.google.com/pubsub/docs/push#receive_push)
 
 ## Troubleshooting
 
