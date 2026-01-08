@@ -26,7 +26,8 @@ import (
 )
 
 // TemplateCommitMessage renders a commit message template and returns it
-// as a string. If the template could not be rendered, returns a default
+// as a string, including image labels that can be used to add custom information to commit messages.
+// If the template could not be rendered, returns a default
 // message.
 func TemplateCommitMessage(ctx context.Context, tpl *template.Template, appName string, changeList []ChangeEntry) string {
 	log := log.LoggerFromContext(ctx)
@@ -36,6 +37,7 @@ func TemplateCommitMessage(ctx context.Context, tpl *template.Template, appName 
 		Image  string
 		OldTag string
 		NewTag string
+		Labels map[string]string
 	}
 
 	type commitMessageTemplate struct {
@@ -47,7 +49,12 @@ func TemplateCommitMessage(ctx context.Context, tpl *template.Template, appName 
 	// writer of a template.
 	changes := make([]commitMessageChange, 0)
 	for _, c := range changeList {
-		changes = append(changes, commitMessageChange{c.Image.ImageName, c.OldTag.String(), c.NewTag.String()})
+		changes = append(changes, commitMessageChange{
+			Image:  c.Image.ImageName,
+			OldTag: c.OldTag.String(),
+			NewTag: c.NewTag.String(),
+			Labels: c.NewTag.Labels,
+		})
 	}
 
 	tplData := commitMessageTemplate{
