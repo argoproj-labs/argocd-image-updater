@@ -1,4 +1,4 @@
-This test case verifies [filtering applications by labels](https://argocd-image-updater.readthedocs.io/en/stable/install/reference/#flags) with `--match-application-label` command line options
+This test case verifies [filtering applications by labels](https://argocd-image-updater.readthedocs.io/en/release-0.18/install/reference/#flags) with `--match-application-label` command line options
 
 This test case uses image from public container registry and application source from public GitHub repo.
 

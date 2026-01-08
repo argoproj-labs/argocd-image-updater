@@ -1,4 +1,4 @@
-This test case verifies [possibility to specify write-back GIT Helm repository as annotation](https://argocd-image-updater.readthedocs.io/en/latest/basics/update-methods/#specifying-a-repository-when-using-a-helm-repository-in-repourl).
+This test case verifies [possibility to specify write-back GIT Helm repository as annotation](https://argocd-image-updater.readthedocs.io/en/release-0.18/basics/update-methods/#specifying-a-repository-when-using-a-helm-repository-in-repourl).
 
 This test case performs the following steps:
 * install ArgoCD Helm Application to the test cluster with GIT write-back method
