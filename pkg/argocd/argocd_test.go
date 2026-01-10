@@ -387,6 +387,30 @@ func Test_GetApplicationSourceType(t *testing.T) {
 		appType := GetApplicationSourceType(application, wbc)
 		assert.Equal(t, v1alpha1.ApplicationSourceTypeKustomize, appType)
 	})
+
+	t.Run("Get application Source type with helmvalues target", func(t *testing.T) {
+		application := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "test-app",
+				Namespace: "argocd",
+			},
+			Spec: v1alpha1.ApplicationSpec{},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypePlugin,
+				Summary: v1alpha1.ApplicationSummary{
+					Images: []string{"nginx:1.12.2", "that/image", "quay.io/dexidp/dex:v1.23.0"},
+				},
+			},
+		}
+
+		// Create a WriteBackConfig with helmvalues target to test the logic
+		wbc := &WriteBackConfig{
+			HelmChart: true,
+		}
+
+		appType := GetApplicationSourceType(application, wbc)
+		assert.Equal(t, v1alpha1.ApplicationSourceTypeHelm, appType)
+	})
 }
 
 func Test_GetApplicationSource(t *testing.T) {
