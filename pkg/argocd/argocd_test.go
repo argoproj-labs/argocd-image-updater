@@ -1308,3 +1308,43 @@ func Test_parseImageList(t *testing.T) {
 		assert.Equal(t, "baz", imgs[0].KustomizeImage.ImageName)
 	})
 }
+
+func Test_RecordOriginalTag(t *testing.T) {
+    tests := []struct {
+        name        string
+        app         *v1alpha1.Application
+        imageName   string
+        originalTag string
+    }{
+        {
+            name: "when annotations already exist",
+            app: &v1alpha1.Application{
+                ObjectMeta: metav1.ObjectMeta{
+                    Annotations: map[string]string{},
+                },
+            },
+            imageName:   "nginx",
+            originalTag: "1.14.2",
+        },
+        {
+            name: "when annotations is nil",
+            app: &v1alpha1.Application{
+                ObjectMeta: metav1.ObjectMeta{
+                    Annotations: nil,
+                },
+            },
+            imageName:   "redis",
+            originalTag: "6.0",
+        },
+    }
+
+    for _, tt := range tests {
+        t.Run(tt.name, func(t *testing.T) {
+            RecordOriginalTag(tt.app, tt.imageName, tt.originalTag)
+
+            key := fmt.Sprintf("argocd-image-updater.argoproj.io/original-tag.%s", tt.imageName)
+            require.NotNil(t, tt.app.Annotations)
+            require.Equal(t, tt.originalTag, tt.app.Annotations[key])
+        })
+    }
+}
