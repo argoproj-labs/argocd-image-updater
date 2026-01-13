@@ -1725,6 +1725,125 @@ kustomize:
 		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(yaml)))
 	})
 
+	t.Run("GitHub issue #1411 - should not create duplicates with docker.io explicit vs implicit", func(t *testing.T) {
+		// This test reproduces GitHub issue #1411
+		// When original data has explicit docker.io registry and new image doesn't,
+		// mergeKustomizeOverride incorrectly treats them as different images and creates duplicates
+		//
+		// The bug is in mergeKustomizeOverride which compares both ImageName AND RegistryURL,
+		// but NewFromIdentifier normalizes docker.io to empty string for implicit Docker Hub images
+		expected := `
+kustomize:
+  images:
+  - jannfis/foobar:1.0.1
+`
+		app := v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name: "testapp",
+				Annotations: map[string]string{
+					"argocd-image-updater.argoproj.io/image-list": "jannfis/foobar",
+				},
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: &v1alpha1.ApplicationSource{
+					RepoURL:        "https://example.com/example",
+					TargetRevision: "main",
+					Kustomize: &v1alpha1.ApplicationSourceKustomize{
+						Images: v1alpha1.KustomizeImages{
+							// New image without explicit docker.io
+							"jannfis/foobar:1.0.1",
+						},
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypeKustomize,
+			},
+		}
+		// Original data has explicit docker.io registry
+		originalData := []byte(`
+kustomize:
+  images:
+  - docker.io/jannfis/foobar:1.0.0
+`)
+		applicationImages := &ApplicationImages{
+			Application: app,
+			Images: ImageList{
+				NewImage(
+					image.NewFromIdentifier("jannfis/foobar")),
+			},
+		}
+		yamlResult, err := marshalParamsOverride(context.Background(), applicationImages, originalData)
+		require.NoError(t, err)
+		assert.NotEmpty(t, yamlResult)
+		// Should have 1 image, not 2 (no duplicate)
+		// If this fails with 2 images, it means the bug is present
+		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(yamlResult)),
+			"Should not create duplicate when docker.io is explicit in original but implicit in new image")
+	})
+
+	t.Run("GitHub issue #1411 - multiple update cycles should not accumulate duplicates", func(t *testing.T) {
+		// Simulates what happens when the image updater runs multiple times
+		// Each cycle reads the previous output and merges new images
+		// Without the fix, duplicates accumulate with each cycle
+
+		app := v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name: "testapp",
+				Annotations: map[string]string{
+					"argocd-image-updater.argoproj.io/image-list": "jannfis/foobar",
+				},
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: &v1alpha1.ApplicationSource{
+					RepoURL:        "https://example.com/example",
+					TargetRevision: "main",
+					Kustomize: &v1alpha1.ApplicationSourceKustomize{
+						Images: v1alpha1.KustomizeImages{
+							"jannfis/foobar:1.0.1",
+						},
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypeKustomize,
+			},
+		}
+		applicationImages := &ApplicationImages{
+			Application: app,
+			Images: ImageList{
+				NewImage(
+					image.NewFromIdentifier("jannfis/foobar")),
+			},
+		}
+
+		// Cycle 1: Start with explicit docker.io registry
+		originalData := []byte(`
+kustomize:
+  images:
+  - docker.io/jannfis/foobar:1.0.0
+`)
+		result1, err := marshalParamsOverride(context.Background(), applicationImages, originalData)
+		require.NoError(t, err)
+
+		// Cycle 2: Use output from cycle 1 as input
+		result2, err := marshalParamsOverride(context.Background(), applicationImages, result1)
+		require.NoError(t, err)
+
+		// Cycle 3: Use output from cycle 2 as input
+		result3, err := marshalParamsOverride(context.Background(), applicationImages, result2)
+		require.NoError(t, err)
+
+		// After 3 cycles, should still have only 1 image
+		expected := `
+kustomize:
+  images:
+  - jannfis/foobar:1.0.1
+`
+		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(result3)),
+			"Multiple update cycles should not accumulate duplicate images")
+	})
+
 	t.Run("Empty Kustomize source", func(t *testing.T) {
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
@@ -5458,6 +5577,17 @@ func Test_mergeKustomizeOverride(t *testing.T) {
 		{"add_to_empty", &v1alpha1.KustomizeImages{},
 			&v1alpha1.KustomizeImages{"nginx:foo"},
 			&v1alpha1.KustomizeImages{"nginx:foo"}},
+		// Test case for GitHub issue #1411 - docker.io explicit vs implicit should be treated as same image
+		{"docker-io-explicit-vs-implicit", &v1alpha1.KustomizeImages{"docker.io/library/nginx:1.0.0"},
+			&v1alpha1.KustomizeImages{"nginx:1.0.1"},
+			&v1alpha1.KustomizeImages{"nginx:1.0.1"}},
+		{"docker-io-explicit-vs-implicit-with-org", &v1alpha1.KustomizeImages{"docker.io/jannfis/foobar:1.0.0"},
+			&v1alpha1.KustomizeImages{"jannfis/foobar:1.0.1"},
+			&v1alpha1.KustomizeImages{"jannfis/foobar:1.0.1"}},
+		// Test case for ECR-style images (issue #1411 user scenario)
+		{"ecr-same-format-update", &v1alpha1.KustomizeImages{"123456.abc.ecr.us-east-1.amazonaws.com/myrepo:v1.0.0"},
+			&v1alpha1.KustomizeImages{"123456.abc.ecr.us-east-1.amazonaws.com/myrepo:v1.0.1"},
+			&v1alpha1.KustomizeImages{"123456.abc.ecr.us-east-1.amazonaws.com/myrepo:v1.0.1"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
