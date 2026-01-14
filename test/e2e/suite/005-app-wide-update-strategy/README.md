@@ -1,4 +1,4 @@
-This test case verifies [app wide update strategy](https://argocd-image-updater.readthedocs.io/en/stable/configuration/images/#update-strategies)
+This test case verifies [app wide update strategy](https://argocd-image-updater.readthedocs.io/en/release-0.18/configuration/images/#update-strategies)
 
 This test case uses image from public container registry and application source from public GitHub repo.
 

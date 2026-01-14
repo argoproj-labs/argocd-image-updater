@@ -1,9 +1,5 @@
 name: Integration tests
 on:
-  push:
-    branches:
-    - 'master-annotation-based'
-    - 'release-*'
   pull_request:
     branches:
     - 'master-annotation-based'

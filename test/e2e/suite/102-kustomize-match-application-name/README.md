@@ -1,4 +1,4 @@
-This test case verifies [filtering applications by name](https://argocd-image-updater.readthedocs.io/en/stable/install/reference/#flags) with `--match-application-name` command line options
+This test case verifies [filtering applications by name](https://argocd-image-updater.readthedocs.io/en/release-0.18/install/reference/#flags) with `--match-application-name` command line options
 * match against a non-existent application name
 * match against an exact application name
 * specify `--match-application-name` option multiple times to match against multiple application names
