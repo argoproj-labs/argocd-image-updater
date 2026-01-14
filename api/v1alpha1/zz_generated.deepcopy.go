@@ -33,6 +33,11 @@ func (in *ApplicationRef) DeepCopyInto(out *ApplicationRef) {
 		*out = new(v1.LabelSelector)
 		(*in).DeepCopyInto(*out)
 	}
+	if in.ReadFromApplicationAnnotations != nil {
+		in, out := &in.ReadFromApplicationAnnotations, &out.ReadFromApplicationAnnotations
+		*out = new(bool)
+		**out = **in
+	}
 	if in.CommonUpdateSettings != nil {
 		in, out := &in.CommonUpdateSettings, &out.CommonUpdateSettings
 		*out = new(CommonUpdateSettings)

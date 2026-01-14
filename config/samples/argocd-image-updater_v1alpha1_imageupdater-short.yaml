@@ -12,3 +12,19 @@ spec:
       images:
         - alias: "nginx"
           imageName: "nginx:1.17.10"
+---
+apiVersion: argocd-image-updater.argoproj.io/v1alpha1
+kind: ImageUpdater
+metadata:
+  labels:
+    app.kubernetes.io/name: argocd-image-updater
+    app.kubernetes.io/managed-by: kustomize
+  name: argocd-image-updater-sample-short-1
+spec:
+  namespace: argocd
+  applicationRefs:
+    - namePattern: "*"
+      readFromApplicationAnnotations: true
+      labelSelectors:
+        matchLabels:
+          image-updater: my-image-updater

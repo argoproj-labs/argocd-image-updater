@@ -21,6 +21,11 @@ spec:
       branch: "main"
       writeBackTarget: "helmvalues:/helm/config/test-values.yaml" # OR "kustomization:/config/overlays/bar" OR "helmvalues:/{{ .app.path.path }}/values.yaml" - for ApplicationSet.
   applicationRefs:
+    - namePattern: "*"
+      readFromApplicationAnnotations: true
+      labelSelectors:
+        matchLabels:
+          image-updater: my-image-updater
     - namePattern: "app-001"
       images:
         - alias: "test1"
