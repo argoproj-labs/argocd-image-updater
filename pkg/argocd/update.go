@@ -523,8 +523,7 @@ func mergeKustomizeOverride(t *kustomizeOverride, o *kustomizeOverride) {
 		newContainerImage := image.NewFromIdentifier(string(newImage))
 		for idx, existingImage := range *t.Kustomize.Images {
 			existingContainerImage := image.NewFromIdentifier(string(existingImage))
-			if newContainerImage.ImageName == existingContainerImage.ImageName &&
-				newContainerImage.RegistryURL == existingContainerImage.RegistryURL {
+			if sameImageNameAndRegistry(newContainerImage, existingContainerImage) {
 				found = true
 				if existingContainerImage.ImageTag == nil ||
 					(newContainerImage.ImageTag != nil && !(existingContainerImage.ImageTag).Equals(newContainerImage.ImageTag)) {
@@ -537,6 +536,22 @@ func mergeKustomizeOverride(t *kustomizeOverride, o *kustomizeOverride) {
 			*t.Kustomize.Images = append(*t.Kustomize.Images, newImage)
 		}
 	}
+}
+
+func sameImageNameAndRegistry(img1 *image.ContainerImage, img2 *image.ContainerImage) bool {
+	if img1.ImageName != img2.ImageName {
+		return false
+	}
+	if img1.RegistryURL == img2.RegistryURL {
+		return true
+	}
+	if img1.RegistryURL == "" && img2.RegistryURL == "docker.io" {
+		return true
+	}
+	if img2.RegistryURL == "" && img1.RegistryURL == "docker.io" {
+		return true
+	}
+	return false
 }
 
 // Check if a key exists in a MappingNode and return the index of its value
