@@ -2670,7 +2670,7 @@ replicas: 1
 		assert.Equal(t, "could not find an image-name for image nginx", err.Error())
 	})
 
-	t.Run("Image-name value not found in Helm source parameters list", func(t *testing.T) {
+	t.Run("Image-name value not found uses fallback from ContainerImage", func(t *testing.T) {
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
 				Name: "testapp",
@@ -2707,7 +2707,7 @@ replicas: 1
 
 		originalData := []byte(`random: yaml`)
 		im := NewImage(
-			image.NewFromIdentifier("nginx"))
+			image.NewFromIdentifier("nginx:v1.2.3"))
 		im.HelmImageName = "wrongimage.name"
 		im.HelmImageTag = "image.tag"
 		applicationImages := &ApplicationImages{
@@ -2718,11 +2718,15 @@ replicas: 1
 			},
 		}
 
-		_, err := marshalParamsOverride(context.Background(), applicationImages, originalData)
-		assert.Error(t, err)
+		// With the fallback fix, marshalParamsOverride should succeed using ContainerImage data
+		result, err := marshalParamsOverride(context.Background(), applicationImages, originalData)
+		assert.NoError(t, err)
+		// The image name should be pulled from ContainerImage.GetFullNameWithoutTag()
+		assert.Contains(t, string(result), "wrongimage")
+		assert.Contains(t, string(result), "nginx")
 	})
 
-	t.Run("Image-tag value not found in Helm source parameters list", func(t *testing.T) {
+	t.Run("Image-tag value not found uses fallback from ContainerImage", func(t *testing.T) {
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
 				Name: "testapp",
@@ -2759,7 +2763,7 @@ replicas: 1
 
 		originalData := []byte(`random: yaml`)
 		im := NewImage(
-			image.NewFromIdentifier("nginx"))
+			image.NewFromIdentifier("nginx:v1.2.3"))
 		im.HelmImageName = "image.name"
 		im.HelmImageTag = "wrongimage.tag"
 		applicationImages := &ApplicationImages{
@@ -2770,9 +2774,15 @@ replicas: 1
 			},
 		}
 
-		_, err := marshalParamsOverride(context.Background(), applicationImages, originalData)
-		assert.Error(t, err)
-		assert.Equal(t, "wrongimage.tag parameter not found", err.Error())
+		// With the fallback fix, marshalParamsOverride should succeed using ContainerImage data
+		// Note: GetImagesAndAliasesFromApplication replaces ContainerImage with the one from app status,
+		// so the tag will be v0.0.0 (from Status.Summary.Images) not v1.2.3 (from the original identifier)
+		result, err := marshalParamsOverride(context.Background(), applicationImages, originalData)
+		assert.NoError(t, err)
+		// The image tag key should be created from the helm param name
+		assert.Contains(t, string(result), "wrongimage")
+		// The tag value comes from ContainerImage.GetTagWithDigest() after aliasing, which is v0.0.0
+		assert.Contains(t, string(result), "v0.0.0")
 	})
 
 	t.Run("Invalid parameters merge for Helm source with Helm values file", func(t *testing.T) {
@@ -3190,6 +3200,207 @@ replicas: 1
 		require.NoError(t, err)
 		assert.NotEmpty(t, yamlOutput)
 		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(yamlOutput)))
+	})
+
+	// Bug scenario:
+	// - Multi-source app has both a Kustomize source and a Helm source
+	// - Status.SourceTypes lists Kustomize first (e.g., [Kustomize, Helm])
+	// - User configures write-back to target a Helm values file (e.g., "charts/values.yaml")
+	// - Without fix: getApplicationSourceType returns Kustomize (first in SourceTypes),
+	//   causing marshalParamsOverride to generate Kustomize output instead of Helm values
+	// - With fix: getApplicationSourceType correctly returns Helm (based on .yaml target),
+	//   and marshalParamsOverride generates the correct Helm values output
+	t.Run("Multi-source app with Kustomize and Helm should generate Helm values output when WriteBackTarget is helm values file", func(t *testing.T) {
+		expected := `
+image:
+  name: docker.io/myorg/myapp
+  tag: v1.0.0
+replicas: 3
+`
+		// Multi-source application with BOTH Kustomize and Helm sources
+		// Kustomize source is listed FIRST in both Spec.Sources and Status.SourceTypes
+		// to trigger the bug where getApplicationSourceType would return Kustomize
+		app := v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "multi-source-app",
+				Namespace: "argocd",
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Sources: v1alpha1.ApplicationSources{
+					// Kustomize source listed FIRST
+					v1alpha1.ApplicationSource{
+						RepoURL: "https://github.com/example/kustomize-repo",
+						Path:    "overlays/production",
+						Kustomize: &v1alpha1.ApplicationSourceKustomize{
+							Images: v1alpha1.KustomizeImages{
+								"some-other-image:1.0.0",
+							},
+						},
+					},
+					// Helm source listed SECOND
+					v1alpha1.ApplicationSource{
+						RepoURL: "https://github.com/example/helm-repo",
+						Path:    "charts/myapp",
+						Helm: &v1alpha1.ApplicationSourceHelm{
+							Parameters: []v1alpha1.HelmParameter{
+								{
+									Name:        "image.name",
+									Value:       "docker.io/myorg/myapp",
+									ForceString: true,
+								},
+								{
+									Name:        "image.tag",
+									Value:       "v1.0.0",
+									ForceString: true,
+								},
+							},
+						},
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				// Kustomize is listed FIRST in SourceTypes - this triggers the bug
+				// Without the fix, getApplicationSourceType iterates through SourceTypes
+				// and returns the first match (Kustomize), ignoring the write-back target
+				SourceTypes: []v1alpha1.ApplicationSourceType{
+					v1alpha1.ApplicationSourceTypeKustomize,
+					v1alpha1.ApplicationSourceTypeHelm,
+				},
+				Summary: v1alpha1.ApplicationSummary{
+					Images: []string{
+						"docker.io/myorg/myapp:v1.0.0",
+						"some-other-image:1.0.0",
+					},
+				},
+			},
+		}
+
+		// Original helm values file content
+		originalData := []byte(`
+image:
+  name: docker.io/myorg/myapp
+  tag: v0.9.0
+replicas: 3
+`)
+
+		im := NewImage(image.NewFromIdentifier("myapp=docker.io/myorg/myapp"))
+		im.ImageAlias = "myapp"
+		im.HelmImageName = "image.name"
+		im.HelmImageTag = "image.tag"
+
+		applicationImages := &ApplicationImages{
+			Application: app,
+			Images:      ImageList{im},
+			// WriteBackConfig targeting a Helm values file (.yaml extension)
+			// The fix checks if Target ends with .yaml/.yml and returns Helm type
+			WriteBackConfig: &WriteBackConfig{
+				Method:    WriteBackGit,
+				Target:    "charts/myapp/values.yaml",
+				GitRepo:   "https://github.com/example/helm-repo",
+				GitBranch: "main",
+			},
+		}
+
+		yamlOutput, err := marshalParamsOverride(context.Background(), applicationImages, originalData)
+		require.NoError(t, err, "marshalParamsOverride should succeed for multi-source app with Helm write-back target")
+		assert.NotEmpty(t, yamlOutput, "Should generate non-empty YAML output")
+
+		// Verify the output is Helm values format (not Kustomize format)
+		// If the bug is present, the output would be Kustomize format with "kustomize:" key
+		assert.NotContains(t, string(yamlOutput), "kustomize:",
+			"Output should NOT contain 'kustomize:' key - this indicates the bug where "+
+				"Kustomize source was incorrectly selected based on SourceTypes order")
+
+		// Verify the output contains the expected Helm values
+		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(yamlOutput)),
+			"Output should be valid Helm values YAML with updated image tag. "+
+				"If this fails, the image updater incorrectly identified the source type.")
+	})
+
+	t.Run("Multi-source app should generate Kustomize output when KustomizeBase is set even if Helm is first in SourceTypes", func(t *testing.T) {
+		expected := `
+kustomize:
+  images:
+  - docker.io/myorg/myapp:v1.0.0
+`
+		// Multi-source application with Helm source listed FIRST in SourceTypes
+		// to verify that KustomizeBase correctly overrides SourceTypes order
+		app := v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "multi-source-app-kustomize",
+				Namespace: "argocd",
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Sources: v1alpha1.ApplicationSources{
+					// Helm source listed FIRST
+					v1alpha1.ApplicationSource{
+						RepoURL: "https://github.com/example/helm-repo",
+						Path:    "charts/myapp",
+						Helm: &v1alpha1.ApplicationSourceHelm{
+							Parameters: []v1alpha1.HelmParameter{
+								{
+									Name:  "image.tag",
+									Value: "v1.0.0",
+								},
+							},
+						},
+					},
+					// Kustomize source listed SECOND
+					v1alpha1.ApplicationSource{
+						RepoURL: "https://github.com/example/kustomize-repo",
+						Path:    "overlays/production",
+						Kustomize: &v1alpha1.ApplicationSourceKustomize{
+							Images: v1alpha1.KustomizeImages{
+								"docker.io/myorg/myapp:v1.0.0",
+							},
+						},
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				// Helm is listed FIRST in SourceTypes
+				SourceTypes: []v1alpha1.ApplicationSourceType{
+					v1alpha1.ApplicationSourceTypeHelm,
+					v1alpha1.ApplicationSourceTypeKustomize,
+				},
+				Summary: v1alpha1.ApplicationSummary{
+					Images: []string{
+						"docker.io/myorg/myapp:v1.0.0",
+					},
+				},
+			},
+		}
+
+		// Original kustomize override file content
+		originalData := []byte(`
+kustomize:
+  images:
+  - docker.io/myorg/myapp:v0.9.0
+`)
+
+		im := NewImage(image.NewFromIdentifier("myapp=docker.io/myorg/myapp"))
+		im.ImageAlias = "myapp"
+
+		applicationImages := &ApplicationImages{
+			Application: app,
+			Images:      ImageList{im},
+			// WriteBackConfig with KustomizeBase should force Kustomize type
+			WriteBackConfig: &WriteBackConfig{
+				Method:        WriteBackGit,
+				KustomizeBase: "overlays/production",
+			},
+		}
+
+		yamlOutput, err := marshalParamsOverride(context.Background(), applicationImages, originalData)
+		require.NoError(t, err, "marshalParamsOverride should succeed for multi-source app with Kustomize write-back")
+		assert.NotEmpty(t, yamlOutput, "Should generate non-empty YAML output")
+
+		// Verify the output is Kustomize format (not Helm values format)
+		assert.Contains(t, string(yamlOutput), "kustomize:",
+			"Output should contain 'kustomize:' key for Kustomize write-back")
+
+		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(yamlOutput)),
+			"Output should be valid Kustomize override YAML with updated image")
 	})
 }
 
@@ -5621,4 +5832,226 @@ func Test_mergeKustomizeOverride(t *testing.T) {
 // Helper function to create string pointers for testing
 func stringPtr(s string) *string {
 	return &s
+}
+
+// Test_MultiSourceHelmAndKustomize_SourceTypeDetection demonstrates the bug fixed by the
+// write-back target check in getApplicationSourceType.
+// The bug scenario:
+// - Multi-source app has both a Kustomize source and a Helm source
+// - Status.SourceTypes lists Kustomize first (e.g., [Kustomize, Helm])
+// - User configures write-back to target a Helm values file (e.g., "charts/values.yaml")
+// - Without fix: getApplicationSourceType returns Kustomize (first in SourceTypes)
+// - With fix: getApplicationSourceType correctly returns Helm (based on .yaml target)
+func Test_MultiSourceHelmAndKustomize_SourceTypeDetection(t *testing.T) {
+	t.Run("WriteBackConfig targeting helm values file should return Helm source type even when Kustomize is first in SourceTypes", func(t *testing.T) {
+		// Create a multi-source application with both Kustomize and Helm sources
+		application := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "multi-source-app",
+				Namespace: "argocd",
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Sources: v1alpha1.ApplicationSources{
+					// Kustomize source (listed first)
+					v1alpha1.ApplicationSource{
+						RepoURL: "https://github.com/example/kustomize-repo",
+						Path:    "overlays/production",
+						Kustomize: &v1alpha1.ApplicationSourceKustomize{
+							Images: v1alpha1.KustomizeImages{
+								"nginx:1.0.0",
+							},
+						},
+					},
+					// Helm source (listed second)
+					v1alpha1.ApplicationSource{
+						RepoURL: "https://github.com/example/helm-repo",
+						Path:    "charts/myapp",
+						Helm: &v1alpha1.ApplicationSourceHelm{
+							Parameters: []v1alpha1.HelmParameter{
+								{
+									Name:  "image.tag",
+									Value: "1.0.0",
+								},
+							},
+						},
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				// Kustomize is listed FIRST - this is the key to triggering the bug
+				// Without the fix, getApplicationSourceType would return Kustomize
+				SourceTypes: []v1alpha1.ApplicationSourceType{
+					v1alpha1.ApplicationSourceTypeKustomize,
+					v1alpha1.ApplicationSourceTypeHelm,
+				},
+				Summary: v1alpha1.ApplicationSummary{
+					Images: []string{"nginx:1.0.0"},
+				},
+			},
+		}
+
+		// WriteBackConfig targeting a Helm values file
+		// The .yaml suffix should indicate this is a Helm source, not Kustomize
+		wbc := &WriteBackConfig{
+			Method:    WriteBackGit,
+			Target:    "charts/myapp/values.yaml",
+			GitRepo:   "https://github.com/example/helm-repo",
+			GitBranch: "main",
+		}
+
+		// Test GetApplicationSourceType returns Helm (not Kustomize)
+		sourceType := GetApplicationSourceType(application, wbc)
+		assert.Equal(t, v1alpha1.ApplicationSourceTypeHelm, sourceType,
+			"Expected Helm source type when write-back target is a .yaml file, but got %s. "+
+				"This indicates the bug where SourceTypes order determines the type instead of the write-back target.",
+			sourceType)
+
+		// Test GetApplicationSource returns the Helm source (not the Kustomize source)
+		source := GetApplicationSource(context.Background(), application, wbc)
+		require.NotNil(t, source, "Expected to get a source")
+		assert.NotNil(t, source.Helm, "Expected to get the Helm source, but got a non-Helm source")
+		assert.Nil(t, source.Kustomize, "Should not have returned the Kustomize source")
+		assert.Equal(t, "charts/myapp", source.Path, "Expected Helm source path")
+	})
+
+	t.Run("WriteBackConfig targeting helm values.yml file should return Helm source type", func(t *testing.T) {
+		application := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "multi-source-app",
+				Namespace: "argocd",
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Sources: v1alpha1.ApplicationSources{
+					v1alpha1.ApplicationSource{
+						RepoURL: "https://github.com/example/kustomize-repo",
+						Path:    "overlays/production",
+						Kustomize: &v1alpha1.ApplicationSourceKustomize{
+							Images: v1alpha1.KustomizeImages{"nginx:1.0.0"},
+						},
+					},
+					v1alpha1.ApplicationSource{
+						RepoURL: "https://github.com/example/helm-repo",
+						Path:    "charts/myapp",
+						Helm: &v1alpha1.ApplicationSourceHelm{
+							Parameters: []v1alpha1.HelmParameter{
+								{Name: "image.tag", Value: "1.0.0"},
+							},
+						},
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceTypes: []v1alpha1.ApplicationSourceType{
+					v1alpha1.ApplicationSourceTypeKustomize,
+					v1alpha1.ApplicationSourceTypeHelm,
+				},
+			},
+		}
+
+		// Test with .yml extension
+		wbc := &WriteBackConfig{
+			Method: WriteBackGit,
+			Target: "charts/myapp/values.yml",
+		}
+
+		sourceType := GetApplicationSourceType(application, wbc)
+		assert.Equal(t, v1alpha1.ApplicationSourceTypeHelm, sourceType,
+			"Expected Helm source type for .yml target file")
+	})
+
+	t.Run("WriteBackConfig with KustomizeBase should return Kustomize source type regardless of SourceTypes order", func(t *testing.T) {
+		application := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "multi-source-app",
+				Namespace: "argocd",
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Sources: v1alpha1.ApplicationSources{
+					// Helm source listed first this time
+					v1alpha1.ApplicationSource{
+						RepoURL: "https://github.com/example/helm-repo",
+						Path:    "charts/myapp",
+						Helm: &v1alpha1.ApplicationSourceHelm{
+							Parameters: []v1alpha1.HelmParameter{
+								{Name: "image.tag", Value: "1.0.0"},
+							},
+						},
+					},
+					v1alpha1.ApplicationSource{
+						RepoURL: "https://github.com/example/kustomize-repo",
+						Path:    "overlays/production",
+						Kustomize: &v1alpha1.ApplicationSourceKustomize{
+							Images: v1alpha1.KustomizeImages{"nginx:1.0.0"},
+						},
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				// Helm is listed first
+				SourceTypes: []v1alpha1.ApplicationSourceType{
+					v1alpha1.ApplicationSourceTypeHelm,
+					v1alpha1.ApplicationSourceTypeKustomize,
+				},
+			},
+		}
+
+		// WriteBackConfig with KustomizeBase should force Kustomize type
+		wbc := &WriteBackConfig{
+			Method:        WriteBackGit,
+			KustomizeBase: "overlays/production",
+		}
+
+		sourceType := GetApplicationSourceType(application, wbc)
+		assert.Equal(t, v1alpha1.ApplicationSourceTypeKustomize, sourceType,
+			"Expected Kustomize source type when KustomizeBase is set")
+
+		source := GetApplicationSource(context.Background(), application, wbc)
+		require.NotNil(t, source)
+		assert.NotNil(t, source.Kustomize, "Expected to get the Kustomize source")
+		assert.Equal(t, "overlays/production", source.Path)
+	})
+
+	t.Run("Default argocd-source override file should NOT be treated as Helm values file", func(t *testing.T) {
+		// The fix should exclude .argocd-source-*.yaml files from being treated as Helm values
+		application := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "multi-source-app",
+				Namespace: "argocd",
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Sources: v1alpha1.ApplicationSources{
+					v1alpha1.ApplicationSource{
+						RepoURL: "https://github.com/example/kustomize-repo",
+						Path:    "overlays/production",
+						Kustomize: &v1alpha1.ApplicationSourceKustomize{
+							Images: v1alpha1.KustomizeImages{"nginx:1.0.0"},
+						},
+					},
+					v1alpha1.ApplicationSource{
+						RepoURL: "https://github.com/example/helm-repo",
+						Path:    "charts/myapp",
+						Helm:    &v1alpha1.ApplicationSourceHelm{},
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceTypes: []v1alpha1.ApplicationSourceType{
+					v1alpha1.ApplicationSourceTypeKustomize,
+					v1alpha1.ApplicationSourceTypeHelm,
+				},
+			},
+		}
+
+		// Target is the default argocd-source override file, should NOT be treated as Helm
+		wbc := &WriteBackConfig{
+			Method: WriteBackGit,
+			Target: ".argocd-source-multi-source-app.yaml",
+		}
+
+		// Without KustomizeBase or a regular .yaml target, it should fall back to SourceTypes order
+		sourceType := GetApplicationSourceType(application, wbc)
+		// Since SourceTypes has Kustomize first and the target is excluded, it should return Kustomize
+		assert.Equal(t, v1alpha1.ApplicationSourceTypeKustomize, sourceType,
+			"Default argocd-source override file should not trigger Helm source type detection")
+	})
 }

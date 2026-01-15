@@ -411,7 +411,7 @@ func Test_GetApplicationSource(t *testing.T) {
 			Status: v1alpha1.ApplicationStatus{},
 		}
 
-		appSource := GetApplicationSource(context.Background(), application)
+		appSource := GetApplicationSource(context.Background(), application, nil)
 		assert.NotNil(t, appSource.Helm)
 	})
 
@@ -433,7 +433,7 @@ func Test_GetApplicationSource(t *testing.T) {
 			Status: v1alpha1.ApplicationStatus{},
 		}
 
-		appSource := GetApplicationSource(context.Background(), application)
+		appSource := GetApplicationSource(context.Background(), application, nil)
 		assert.NotNil(t, appSource.Kustomize)
 	})
 
@@ -451,7 +451,7 @@ func Test_GetApplicationSource(t *testing.T) {
 			Status: v1alpha1.ApplicationStatus{},
 		}
 
-		appSource := GetApplicationSource(context.Background(), application)
+		appSource := GetApplicationSource(context.Background(), application, nil)
 		assert.NotEmpty(t, appSource)
 	})
 
@@ -482,7 +482,7 @@ func Test_GetApplicationSource(t *testing.T) {
 			Status: v1alpha1.ApplicationStatus{},
 		}
 
-		appSource := GetApplicationSource(context.Background(), application)
+		appSource := GetApplicationSource(context.Background(), application, nil)
 		assert.NotNil(t, appSource.Helm)
 	})
 
@@ -510,7 +510,7 @@ func Test_GetApplicationSource(t *testing.T) {
 			Status: v1alpha1.ApplicationStatus{},
 		}
 
-		appSource := GetApplicationSource(context.Background(), application)
+		appSource := GetApplicationSource(context.Background(), application, nil)
 		assert.NotNil(t, appSource.Kustomize)
 	})
 
@@ -533,7 +533,7 @@ func Test_GetApplicationSource(t *testing.T) {
 			Status: v1alpha1.ApplicationStatus{},
 		}
 
-		appSource := GetApplicationSource(context.Background(), application)
+		appSource := GetApplicationSource(context.Background(), application, nil)
 		assert.NotEmpty(t, appSource)
 		assert.Equal(t, appSource.Path, "sources/source1")
 	})

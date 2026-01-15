@@ -423,7 +423,7 @@ func newWBCFromSettings(ctx context.Context, app *argocdapi.Application, kubeCli
 		GitCreds:               nil,
 	}
 
-	appSource := getApplicationSource(ctx, app)
+	appSource := getApplicationSource(ctx, app, nil)
 	if appSource == nil {
 		return nil, fmt.Errorf("application source is not defined for %s/%s", app.Namespace, app.Name)
 	}
@@ -645,7 +645,7 @@ func GetHelmImage(ctx context.Context, app *argocdapi.Application, wbc *WriteBac
 		}
 	}
 
-	appSource := getApplicationSource(ctx, app)
+	appSource := getApplicationSource(ctx, app, wbc)
 
 	if appSource.Helm == nil {
 		return "", nil
@@ -717,7 +717,7 @@ func SetHelmImage(ctx context.Context, app *argocdapi.Application, newImage *ima
 		}
 	}
 
-	appSource := getApplicationSource(ctx, app)
+	appSource := getApplicationSource(ctx, app, wbc)
 
 	if appSource.Helm == nil {
 		appSource.Helm = &argocdapi.ApplicationSourceHelm{}
@@ -741,7 +741,7 @@ func GetKustomizeImage(ctx context.Context, app *argocdapi.Application, wbc *Wri
 
 	ksImageName := applicationImage.KustomizeImageName
 
-	appSource := getApplicationSource(ctx, app)
+	appSource := getApplicationSource(ctx, app, wbc)
 
 	if appSource.Kustomize == nil {
 		return "", nil
@@ -779,7 +779,7 @@ func SetKustomizeImage(ctx context.Context, app *argocdapi.Application, newImage
 
 	log.Tracef("Setting Kustomize parameter %s", ksImageParam)
 
-	appSource := getApplicationSource(ctx, app)
+	appSource := getApplicationSource(ctx, app, wbc)
 
 	if appSource.Kustomize == nil {
 		appSource.Kustomize = &argocdapi.ApplicationSourceKustomize{}
@@ -878,8 +878,8 @@ func GetApplicationSourceType(app *argocdapi.Application, wbc *WriteBackConfig) 
 }
 
 // GetApplicationSource returns the main source of a Helm or Kustomize type of the ArgoCD application
-func GetApplicationSource(ctx context.Context, app *argocdapi.Application) *argocdapi.ApplicationSource {
-	return getApplicationSource(ctx, app)
+func GetApplicationSource(ctx context.Context, app *argocdapi.Application, wbc *WriteBackConfig) *argocdapi.ApplicationSource {
+	return getApplicationSource(ctx, app, wbc)
 }
 
 // IsValidApplicationType returns true if we can update the application
@@ -906,6 +906,14 @@ func getApplicationSourceType(app *argocdapi.Application, wbc *WriteBackConfig) 
 		if wbc.KustomizeBase != "" {
 			return argocdapi.ApplicationSourceTypeKustomize
 		}
+		// Check if the target is a helmvalues path (ends with .yaml or .yml)
+		// but exclude the default override file format (.argocd-source-*.yaml)
+		if wbc.Target != "" && (strings.HasSuffix(wbc.Target, ".yaml") || strings.HasSuffix(wbc.Target, ".yml")) {
+			targetBase := filepath.Base(wbc.Target)
+			if !strings.HasPrefix(targetBase, common.DefaultTargetFilePrefix) {
+				return argocdapi.ApplicationSourceTypeHelm
+			}
+		}
 	}
 	if app.Spec.HasMultipleSources() {
 		for _, st := range app.Status.SourceTypes {
@@ -924,12 +932,29 @@ func getApplicationSourceType(app *argocdapi.Application, wbc *WriteBackConfig) 
 }
 
 // getApplicationSource returns the main source of a Helm or Kustomize type of the application
-func getApplicationSource(ctx context.Context, app *argocdapi.Application) *argocdapi.ApplicationSource {
+func getApplicationSource(ctx context.Context, app *argocdapi.Application, wbc *WriteBackConfig) *argocdapi.ApplicationSource {
 	log := log.LoggerFromContext(ctx)
 	if app.Spec.HasMultipleSources() {
-		for _, s := range app.Spec.Sources {
+		// Determine the source type from WriteBackConfig
+		sourceType := getApplicationSourceType(app, wbc)
+
+		for i := range app.Spec.Sources {
+			s := &app.Spec.Sources[i]
+			// If source type is Helm, look for Helm source
+			if sourceType == argocdapi.ApplicationSourceTypeHelm && s.Helm != nil {
+				return s
+			}
+			// If source type is Kustomize, look for Kustomize source
+			if sourceType == argocdapi.ApplicationSourceTypeKustomize && s.Kustomize != nil {
+				return s
+			}
+		}
+
+		// Fallback: look for any Helm or Kustomize source
+		for i := range app.Spec.Sources {
+			s := &app.Spec.Sources[i]
 			if s.Helm != nil || s.Kustomize != nil {
-				return &s
+				return s
 			}
 		}
 
