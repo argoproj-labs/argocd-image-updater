@@ -389,11 +389,12 @@ and annotations:
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: argocd-image-updater
+  name: argocd-image-updater-controller
   labels:
     azure.workload.identity/use: "true"
   annotations:
-    azure.workload.identity/client-id: placeholder
+    azure.workload.identity/client-id: <REPLACE ME>
+    azure.workload.identity/tenant-id: <REPLACE ME>
 ```
 
 Patch the deployment with the appropriate Azure Workload identity labels, mount
@@ -403,7 +404,7 @@ directory and `ACR_NAME` environment variable:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: argocd-image-updater
+  name: argocd-image-updater-controller
 spec:
   selector:
     matchLabels:
@@ -414,9 +415,9 @@ spec:
         azure.workload.identity/use: "true"
     spec:
       containers:
-        - name: argocd-image-updater
-          command:
-            - /usr/local/bin/argocd-image-updater
+        - name: argocd-image-updater-controller
+          args:
+            - --metrics-bind-address=:8443
             - run
             - --registries-conf-path
             - /app/config/registries.conf
