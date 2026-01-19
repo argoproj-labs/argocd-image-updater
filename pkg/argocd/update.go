@@ -546,6 +546,8 @@ func mergeKustomizeOverride(t *kustomizeOverride, o *kustomizeOverride) {
 	}
 }
 
+// sameImageNameAndRegistry checks if 2 ContainerImage have the same image name and registry url.
+// When comparing registry url, the default registry url "docker.io" and empty string are considered the same.
 func sameImageNameAndRegistry(img1 *image.ContainerImage, img2 *image.ContainerImage) bool {
 	if img1.ImageName != img2.ImageName {
 		return false
