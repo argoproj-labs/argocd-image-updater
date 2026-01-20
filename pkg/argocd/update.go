@@ -348,7 +348,7 @@ func marshalParamsOverride(ctx context.Context, applicationImages *ApplicationIm
 	wbc := applicationImages.WriteBackConfig
 
 	appType := GetApplicationType(app, wbc)
-	appSource := GetApplicationSource(ctx, app)
+	appSource := GetApplicationSource(ctx, app, wbc)
 
 	switch appType {
 	case ApplicationTypeKustomize:
@@ -426,38 +426,46 @@ func marshalParamsOverride(ctx context.Context, applicationImages *ApplicationIm
 				} else {
 					// image-tag is present, so continue to process image-tag
 					helmParamVer := getHelmParam(appSource.Helm.Parameters, helmParamVersion)
+					var tagValue string
 					if helmParamVer == nil {
-						return nil, fmt.Errorf("%s parameter not found", helmParamVersion)
+						// Parameter not pre-defined in the Application - use the image's tag data as fallback
+						log.Debugf("helm parameter %s not found in app spec, using image tag as fallback", helmParamVersion)
+						tagValue = c.ContainerImage.GetTagWithDigest()
+					} else {
+						tagValue = helmParamVer.Value
 					}
-					err = setHelmValue(&helmNewValues, helmParamVersion, helmParamVer.Value)
+					err = setHelmValue(&helmNewValues, helmParamVersion, tagValue)
 					if err != nil {
 						return nil, fmt.Errorf("failed to set image parameter version value: %v", err)
 					}
 				}
 
 				helmParamN := getHelmParam(appSource.Helm.Parameters, helmParamName)
-				if helmParamN == nil {
-					return nil, fmt.Errorf("%s parameter not found", helmParamName)
-				}
-
 				// Determine which value to use for the image name parameter
-				valueToSet := helmParamN.Value
-				if !emptyOriginalData && image.HasRegistryPrefix(valueToSet) {
-					// helmParamN.Value is in long form (has registry URL)
-					// Check the original value in helmNewValues to see if it's in short form
-					// Skip this check if originalData is empty
-					originalValue, err := getHelmValue(&helmNewValues, helmParamName)
-					if err == nil {
-						// Original value exists and was found
-						if !image.HasRegistryPrefix(originalValue) {
-							// Original value is in short form, use the short form of the value to set
-							valueToSet = image.ExtractShortForm(valueToSet)
+				var valueToSet string
+				if helmParamN == nil {
+					// Parameter not pre-defined in the Application - use the image's name data as fallback
+					log.Debugf("helm parameter %s not found in app spec, using image name as fallback", helmParamName)
+					valueToSet = c.ContainerImage.GetFullNameWithoutTag()
+				} else {
+					valueToSet = helmParamN.Value
+					if !emptyOriginalData && image.HasRegistryPrefix(valueToSet) {
+						// helmParamN.Value is in long form (has registry URL)
+						// Check the original value in helmNewValues to see if it's in short form
+						// Skip this check if originalData is empty
+						originalValue, err := getHelmValue(&helmNewValues, helmParamName)
+						if err == nil {
+							// Original value exists and was found
+							if !image.HasRegistryPrefix(originalValue) {
+								// Original value is in short form, use the short form of the value to set
+								valueToSet = image.ExtractShortForm(valueToSet)
+							}
+							// If originalValue is also in long form, keep using helmParamN.Value
 						}
-						// If originalValue is also in long form, keep using helmParamN.Value
+						// If getHelmValue returns an error (key not found), use helmParamN.Value as-is
 					}
-					// If getHelmValue returns an error (key not found), use helmParamN.Value as-is
+					// If helmParamN.Value is already in short form or originalData is empty, use it as-is
 				}
-				// If helmParamN.Value is already in short form or originalData is empty, use it as-is
 
 				err = setHelmValue(&helmNewValues, helmParamName, valueToSet)
 				if err != nil {
@@ -538,6 +546,8 @@ func mergeKustomizeOverride(t *kustomizeOverride, o *kustomizeOverride) {
 	}
 }
 
+// sameImageNameAndRegistry checks if 2 ContainerImage have the same image name and registry url.
+// When comparing registry url, the default registry url "docker.io" and empty string are considered the same.
 func sameImageNameAndRegistry(img1 *image.ContainerImage, img2 *image.ContainerImage) bool {
 	if img1.ImageName != img2.ImageName {
 		return false
@@ -818,7 +828,7 @@ func parseGitConfig(ctx context.Context, app *v1alpha1.Application, kubeClient *
 		}
 
 	}
-	wbc.GitRepo = getApplicationSource(ctx, app).RepoURL
+	wbc.GitRepo = getApplicationSource(ctx, app, wbc).RepoURL
 	if settings.GitConfig != nil && settings.GitConfig.Repository != nil {
 		repo := *settings.GitConfig.Repository
 		wbc.GitRepo = repo

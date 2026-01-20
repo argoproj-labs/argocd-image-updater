@@ -355,7 +355,7 @@ func Test_getApplicationSource(t *testing.T) {
 			},
 		}
 
-		source := getApplicationSource(context.Background(), app)
+		source := getApplicationSource(context.Background(), app, nil)
 		assert.Equal(t, "18.2.3", source.TargetRevision)
 		assert.Equal(t, "https://charts.bitnami.com/bitnami", source.RepoURL)
 	})
@@ -373,7 +373,7 @@ func Test_getApplicationSource(t *testing.T) {
 			},
 		}
 
-		source := getApplicationSource(context.Background(), app)
+		source := getApplicationSource(context.Background(), app, nil)
 		assert.Equal(t, "main", source.TargetRevision)
 		assert.Equal(t, "https://github.com/example/repo.git", source.RepoURL)
 	})

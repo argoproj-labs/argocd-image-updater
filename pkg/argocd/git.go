@@ -153,7 +153,7 @@ func getWriteBackBranch(ctx context.Context, app *v1alpha1.Application, wbc *Wri
 	}
 	// Fall back to getApplicationSource's targetRevision
 	// This maintains consistency with how other parts of the code select the source
-	return getApplicationSource(ctx, app).TargetRevision
+	return getApplicationSource(ctx, app, wbc).TargetRevision
 }
 
 // commitChanges commits any changes required for updating one or more images
@@ -373,7 +373,7 @@ func writeKustomization(ctx context.Context, applicationImages *ApplicationImage
 	if kustFile == "" {
 		return fmt.Errorf("could not find kustomization in %s", base), false
 	}
-	source := getApplicationSource(ctx, &app)
+	source := getApplicationSource(ctx, &app, wbc)
 	if source == nil {
 		return fmt.Errorf("failed to find source for kustomization in %s", base), false
 	}
