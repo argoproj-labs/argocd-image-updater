@@ -1,2 +1,2 @@
 resources:
-  - deployment.yaml
+  - configmap.yaml

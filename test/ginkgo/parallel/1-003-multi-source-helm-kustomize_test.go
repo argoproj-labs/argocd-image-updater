@@ -155,14 +155,14 @@ var _ = Describe("ArgoCD Image Updater Parallel E2E Tests", func() {
 							TargetRevision: "HEAD",
 							Kustomize:      &appv1alpha1.ApplicationSourceKustomize{},
 						},
-						// Helm source (listed second) - explicitly configure to use values.yaml
-						// so ArgoCD will detect changes when the image updater writes to it
+						// Helm source (listed second) - use external values file for image overrides
+						// The helm-overrides.yaml is outside the chart so ArgoCD detects changes
 						{
 							RepoURL:        gitRepoURL,
 							Path:           "1-003-multi-source-helm-kustomize-test/helm",
 							TargetRevision: "HEAD",
 							Helm: &appv1alpha1.ApplicationSourceHelm{
-								ValueFiles: []string{"values.yaml"},
+								ValueFiles: []string{"values.yaml", "../helm-overrides.yaml"},
 							},
 						},
 					},
@@ -189,8 +189,8 @@ var _ = Describe("ArgoCD Image Updater Parallel E2E Tests", func() {
 			method := fmt.Sprintf("git:secret:%s/%s", ns.Name, iuFixture.Name)
 			branch := "master"
 			repository := gitRepoURL
-			// Target the Helm values file - this tests the source type detection fix from PR #1443
-			writeBackTarget := "helmvalues:1-003-multi-source-helm-kustomize-test/helm/values.yaml"
+			// Target the external helm-overrides.yaml file - this tests the source type detection fix from PR #1443
+			writeBackTarget := "helmvalues:/1-003-multi-source-helm-kustomize-test/helm-overrides.yaml"
 
 			imageUpdater = &imageUpdaterApi.ImageUpdater{
 				ObjectMeta: metav1.ObjectMeta{
