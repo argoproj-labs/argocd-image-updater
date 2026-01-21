@@ -153,6 +153,7 @@ var _ = Describe("ArgoCD Image Updater Parallel E2E Tests", func() {
 							RepoURL:        gitRepoURL,
 							Path:           "1-003-multi-source-helm-kustomize-test/kustomize",
 							TargetRevision: "HEAD",
+							Kustomize:      &appv1alpha1.ApplicationSourceKustomize{},
 						},
 						// Helm source (listed second) - explicitly configure to use values.yaml
 						// so ArgoCD will detect changes when the image updater writes to it
@@ -240,10 +241,8 @@ var _ = Describe("ArgoCD Image Updater Parallel E2E Tests", func() {
 				// For git write-back method, the image updater writes changes to git, and ArgoCD syncs from git.
 				// The image appears in Status.Summary.Images (not in Spec.Source.Kustomize.Images like argocd write-back).
 				// Check if any image in the summary matches the expected updated image
-				for _, img := range app.Status.Summary.Images {
-					if img == "quay.io/dkarpele/my-guestbook:29437546.0" {
-						return img
-					}
+				if len(app.Status.Summary.Images) > 0 {
+					return app.Status.Summary.Images[0]
 				}
 
 				// Return an empty string to signify the condition is not yet met.
