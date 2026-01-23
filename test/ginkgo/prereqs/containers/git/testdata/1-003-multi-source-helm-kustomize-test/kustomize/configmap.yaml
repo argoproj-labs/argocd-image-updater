@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kustomize-config
+data:
+  app-name: kustomize-app
+  environment: test
