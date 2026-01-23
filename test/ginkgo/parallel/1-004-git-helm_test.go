@@ -177,6 +177,9 @@ var _ = Describe("ArgoCD Image Updater Parallel E2E Tests", func() {
 			repository := gitRepoURL
 			// Target the external helm-overrides.yaml file
 			writeBackTarget := "helmvalues:/1-004-git-helm-test/helm-overrides.yaml"
+			// Helm value paths for image name and tag
+			helmImageName := "image.name"
+			helmImageTag := "image.tag"
 
 			imageUpdater = &imageUpdaterApi.ImageUpdater{
 				ObjectMeta: metav1.ObjectMeta{
@@ -204,6 +207,12 @@ var _ = Describe("ArgoCD Image Updater Parallel E2E Tests", func() {
 								{
 									Alias:     "guestbook",
 									ImageName: "quay.io/dkarpele/my-guestbook:29437546.X",
+									ManifestTarget: &imageUpdaterApi.ManifestTarget{
+										Helm: &imageUpdaterApi.HelmTarget{
+											Name: &helmImageName,
+											Tag:  &helmImageTag,
+										},
+									},
 								},
 							},
 						},
