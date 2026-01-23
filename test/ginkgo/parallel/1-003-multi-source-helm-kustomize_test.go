@@ -67,6 +67,7 @@ var _ = Describe("ArgoCD Image Updater Parallel E2E Tests", func() {
 		AfterEach(func() {
 			// Cleanup is best-effort. Issue deletes and give some time for controllers
 			// to process, but don't fail the test if cleanup takes too long.
+			fixture.OutputDebugOnFail(ns)
 
 			if imageUpdater != nil {
 				By("deleting ImageUpdater CR")
@@ -81,9 +82,6 @@ var _ = Describe("ArgoCD Image Updater Parallel E2E Tests", func() {
 			if cleanupFunc != nil {
 				cleanupFunc()
 			}
-
-			fixture.OutputDebugOnFail(ns)
-
 		})
 
 		It("ensures that Image Updater correctly updates Helm source in multi-source app with both Kustomize and Helm sources", func() {
@@ -156,7 +154,6 @@ var _ = Describe("ArgoCD Image Updater Parallel E2E Tests", func() {
 							Kustomize:      &appv1alpha1.ApplicationSourceKustomize{},
 						},
 						// Helm source (listed second) - use external values file for image overrides
-						// The helm-overrides.yaml is outside the chart so ArgoCD detects changes
 						{
 							RepoURL:        gitRepoURL,
 							Path:           "1-003-multi-source-helm-kustomize-test/helm",
@@ -191,6 +188,9 @@ var _ = Describe("ArgoCD Image Updater Parallel E2E Tests", func() {
 			repository := gitRepoURL
 			// Target the external helm-overrides.yaml file - this tests the source type detection fix from PR #1443
 			writeBackTarget := "helmvalues:/1-003-multi-source-helm-kustomize-test/helm-overrides.yaml"
+			// Helm value paths for image name and tag
+			helmImageName := "image.name"
+			helmImageTag := "image.tag"
 
 			imageUpdater = &imageUpdaterApi.ImageUpdater{
 				ObjectMeta: metav1.ObjectMeta{
@@ -218,6 +218,12 @@ var _ = Describe("ArgoCD Image Updater Parallel E2E Tests", func() {
 								{
 									Alias:     "guestbook",
 									ImageName: "quay.io/dkarpele/my-guestbook:29437546.X",
+									ManifestTarget: &imageUpdaterApi.ManifestTarget{
+										Helm: &imageUpdaterApi.HelmTarget{
+											Name: &helmImageName,
+											Tag:  &helmImageTag,
+										},
+									},
 								},
 							},
 						},
