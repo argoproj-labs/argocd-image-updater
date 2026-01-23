@@ -67,6 +67,7 @@ var _ = Describe("ArgoCD Image Updater Parallel E2E Tests", func() {
 		AfterEach(func() {
 			// Cleanup is best-effort. Issue deletes and give some time for controllers
 			// to process, but don't fail the test if cleanup takes too long.
+			fixture.OutputDebugOnFail(ns)
 
 			if imageUpdater != nil {
 				By("deleting ImageUpdater CR")
@@ -81,9 +82,6 @@ var _ = Describe("ArgoCD Image Updater Parallel E2E Tests", func() {
 			if cleanupFunc != nil {
 				cleanupFunc()
 			}
-
-			fixture.OutputDebugOnFail(ns)
-
 		})
 
 		It("ensures that Image Updater will update single-source Helm Argo CD Application using git write-back policy", func() {
@@ -149,7 +147,7 @@ var _ = Describe("ArgoCD Image Updater Parallel E2E Tests", func() {
 						Path:           "1-004-git-helm-test/helm",
 						TargetRevision: "HEAD",
 						Helm: &appv1alpha1.ApplicationSourceHelm{
-							ValueFiles: []string{"values.yaml", "../helm-overrides.yaml"},
+							ValueFiles: []string{"values.yaml"},
 						},
 					},
 					Destination: appv1alpha1.ApplicationDestination{
@@ -175,8 +173,8 @@ var _ = Describe("ArgoCD Image Updater Parallel E2E Tests", func() {
 			method := fmt.Sprintf("git:secret:%s/%s", ns.Name, iuFixture.Name)
 			branch := "master"
 			repository := gitRepoURL
-			// Target the external helm-overrides.yaml file
-			writeBackTarget := "helmvalues:/1-004-git-helm-test/helm-overrides.yaml"
+			// Target the helm values.yaml file directly
+			writeBackTarget := "helmvalues:/1-004-git-helm-test/helm/values.yaml"
 			// Helm value paths for image name and tag
 			helmImageName := "image.name"
 			helmImageTag := "image.tag"
