@@ -51,7 +51,7 @@ type ImageUpdaterSpec struct {
 }
 
 // ApplicationRef contains various criteria by which to include applications for managing by image updater
-// +kubebuilder:validation:XValidation:rule="!(has(self.readFromApplicationAnnotations) && self.readFromApplicationAnnotations == true) ? (has(self.images) && size(self.images) > 0) : true",message="Either readFromApplicationAnnotations must be true, or images must be provided with at least one item"
+// +kubebuilder:validation:XValidation:rule="!(has(self.useAnnotations) && self.useAnnotations == true) ? (has(self.images) && size(self.images) > 0) : true",message="Either useAnnotations must be true, or images must be provided with at least one item"
 type ApplicationRef struct {
 	// NamePattern indicates the glob pattern for application name
 	// +kubebuilder:validation:Required
@@ -61,7 +61,7 @@ type ApplicationRef struct {
 	// +optional
 	LabelSelectors *metav1.LabelSelector `json:"labelSelectors,omitempty"`
 
-	// ReadFromApplicationAnnotations When true, read image configuration from Application's
+	// UseAnnotations When true, read image configuration from Application's
 	// argocd-image-updater.argoproj.io/* annotations instead of
 	// requiring explicit Images[] configuration in this CR.
 	// When this field is set to true, only namePattern and labelSelectors are used for
@@ -69,28 +69,28 @@ type ApplicationRef struct {
 	// are ignored.
 	// +optional
 	// +kubebuilder:default:=false
-	ReadFromApplicationAnnotations *bool `json:"readFromApplicationAnnotations,omitempty"`
+	UseAnnotations *bool `json:"useAnnotations,omitempty"`
 
 	// --- Overrides for spec-level settings, specific to THIS ApplicationRef ---
-	// NOTE: These fields are ignored when ReadFromApplicationAnnotations is true.
+	// NOTE: These fields are ignored when UseAnnotations is true.
 	// Only namePattern and labelSelectors are used in that case.
 
 	// CommonUpdateSettings overrides the global CommonUpdateSettings for applications
 	// matched by this selector.
-	// This field is ignored when ReadFromApplicationAnnotations is true.
+	// This field is ignored when UseAnnotations is true.
 	// +optional
 	*CommonUpdateSettings `json:"commonUpdateSettings,omitempty"`
 
 	// WriteBackConfig overrides the global WriteBackConfig settings for applications
 	// matched by this selector.
-	// This field is ignored when ReadFromApplicationAnnotations is true.
+	// This field is ignored when UseAnnotations is true.
 	// +optional
 	*WriteBackConfig `json:"writeBackConfig,omitempty"`
 
 	// Images contains a list of configurations that how images should be updated.
 	// These rules apply to applications selected by namePattern in ApplicationRefs, and each
 	// image can override global/ApplicationRef settings.
-	// This field is ignored when ReadFromApplicationAnnotations is true.
+	// This field is ignored when UseAnnotations is true.
 	// +optional
 	// +listType=map
 	// +listMapKey=alias

@@ -2943,7 +2943,7 @@ func Test_FilterApplicationsForUpdate(t *testing.T) {
 			expectError: true,
 		},
 		{
-			name: "ReadFromApplicationAnnotations: reads from annotations and ignores CR settings",
+			name: "UseAnnotations: reads from annotations and ignores CR settings",
 			initialApps: []client.Object{
 				&v1alpha1.Application{
 					ObjectMeta: v1.ObjectMeta{
@@ -2994,7 +2994,7 @@ func Test_FilterApplicationsForUpdate(t *testing.T) {
 							Images: []api.ImageConfig{
 								{Alias: "redis", ImageName: "redis:6"}, // Should be ignored
 							},
-							ReadFromApplicationAnnotations: boolPtr(true),
+							UseAnnotations: boolPtr(true),
 						},
 					},
 				},
@@ -3003,7 +3003,7 @@ func Test_FilterApplicationsForUpdate(t *testing.T) {
 			expectedImages: map[string]int{"testns/annotated-app": 2}, // Should have 2 images from annotations
 		},
 		{
-			name: "ReadFromApplicationAnnotations: per-image settings override application-wide settings",
+			name: "UseAnnotations: per-image settings override application-wide settings",
 			initialApps: []client.Object{
 				&v1alpha1.Application{
 					ObjectMeta: v1.ObjectMeta{
@@ -3033,8 +3033,8 @@ func Test_FilterApplicationsForUpdate(t *testing.T) {
 					Namespace: "testns",
 					ApplicationRefs: []api.ApplicationRef{
 						{
-							NamePattern:                    "priority-test-app",
-							ReadFromApplicationAnnotations: boolPtr(true),
+							NamePattern:    "priority-test-app",
+							UseAnnotations: boolPtr(true),
 						},
 					},
 				},
@@ -3043,7 +3043,7 @@ func Test_FilterApplicationsForUpdate(t *testing.T) {
 			expectedImages: map[string]int{"testns/priority-test-app": 2},
 		},
 		{
-			name: "ReadFromApplicationAnnotations: only namePattern and labelSelectors used from CR",
+			name: "UseAnnotations: only namePattern and labelSelectors used from CR",
 			initialApps: []client.Object{
 				&v1alpha1.Application{
 					ObjectMeta: v1.ObjectMeta{
@@ -3078,7 +3078,7 @@ func Test_FilterApplicationsForUpdate(t *testing.T) {
 							Images: []api.ImageConfig{
 								{Alias: "redis", ImageName: "redis:6"}, // Should be ignored
 							},
-							ReadFromApplicationAnnotations: boolPtr(true),
+							UseAnnotations: boolPtr(true),
 						},
 					},
 				},
@@ -3087,7 +3087,7 @@ func Test_FilterApplicationsForUpdate(t *testing.T) {
 			expectedImages: map[string]int{"testns/labeled-app": 1}, // Should have 1 image from annotations
 		},
 		{
-			name: "ReadFromApplicationAnnotations: skips app when image-list annotation is missing",
+			name: "UseAnnotations: skips app when image-list annotation is missing",
 			initialApps: []client.Object{
 				&v1alpha1.Application{
 					ObjectMeta: v1.ObjectMeta{
@@ -3109,8 +3109,8 @@ func Test_FilterApplicationsForUpdate(t *testing.T) {
 					Namespace: "testns",
 					ApplicationRefs: []api.ApplicationRef{
 						{
-							NamePattern:                    "no-annotation-app",
-							ReadFromApplicationAnnotations: boolPtr(true),
+							NamePattern:    "no-annotation-app",
+							UseAnnotations: boolPtr(true),
 						},
 					},
 				},
@@ -3118,7 +3118,7 @@ func Test_FilterApplicationsForUpdate(t *testing.T) {
 			expectedKeys: []string{}, // App should be skipped due to missing annotation
 		},
 		{
-			name: "ReadFromApplicationAnnotations: skips app when image-list annotation is empty",
+			name: "UseAnnotations: skips app when image-list annotation is empty",
 			initialApps: []client.Object{
 				&v1alpha1.Application{
 					ObjectMeta: v1.ObjectMeta{
@@ -3143,8 +3143,8 @@ func Test_FilterApplicationsForUpdate(t *testing.T) {
 					Namespace: "testns",
 					ApplicationRefs: []api.ApplicationRef{
 						{
-							NamePattern:                    "empty-annotation-app",
-							ReadFromApplicationAnnotations: boolPtr(true),
+							NamePattern:    "empty-annotation-app",
+							UseAnnotations: boolPtr(true),
 						},
 					},
 				},
@@ -3152,7 +3152,7 @@ func Test_FilterApplicationsForUpdate(t *testing.T) {
 			expectedKeys: []string{}, // App should be skipped due to empty annotation
 		},
 		{
-			name: "ReadFromApplicationAnnotations: skips app when force-update annotation has invalid value",
+			name: "UseAnnotations: skips app when force-update annotation has invalid value",
 			initialApps: []client.Object{
 				&v1alpha1.Application{
 					ObjectMeta: v1.ObjectMeta{
@@ -3178,8 +3178,8 @@ func Test_FilterApplicationsForUpdate(t *testing.T) {
 					Namespace: "testns",
 					ApplicationRefs: []api.ApplicationRef{
 						{
-							NamePattern:                    "invalid-annotation-app",
-							ReadFromApplicationAnnotations: boolPtr(true),
+							NamePattern:    "invalid-annotation-app",
+							UseAnnotations: boolPtr(true),
 						},
 					},
 				},
@@ -3187,7 +3187,7 @@ func Test_FilterApplicationsForUpdate(t *testing.T) {
 			expectedKeys: []string{}, // App should be skipped due to invalid annotation
 		},
 		{
-			name: "ReadFromApplicationAnnotations: skips app when both helm and kustomize manifest targets configured",
+			name: "UseAnnotations: skips app when both helm and kustomize manifest targets configured",
 			initialApps: []client.Object{
 				&v1alpha1.Application{
 					ObjectMeta: v1.ObjectMeta{
@@ -3214,8 +3214,8 @@ func Test_FilterApplicationsForUpdate(t *testing.T) {
 					Namespace: "testns",
 					ApplicationRefs: []api.ApplicationRef{
 						{
-							NamePattern:                    "conflict-manifest-app",
-							ReadFromApplicationAnnotations: boolPtr(true),
+							NamePattern:    "conflict-manifest-app",
+							UseAnnotations: boolPtr(true),
 						},
 					},
 				},
@@ -3223,7 +3223,7 @@ func Test_FilterApplicationsForUpdate(t *testing.T) {
 			expectedKeys: []string{}, // App should be skipped due to conflicting manifest targets
 		},
 		{
-			name: "ReadFromApplicationAnnotations: uses CR settings when ReadFromApplicationAnnotations is false",
+			name: "UseAnnotations: uses CR settings when UseAnnotations is false",
 			initialApps: []client.Object{
 				&v1alpha1.Application{
 					ObjectMeta: v1.ObjectMeta{
@@ -3252,7 +3252,7 @@ func Test_FilterApplicationsForUpdate(t *testing.T) {
 							Images: []api.ImageConfig{
 								{Alias: "redis", ImageName: "redis:6"}, // Should be used
 							},
-							ReadFromApplicationAnnotations: boolPtr(false), // Explicitly false
+							UseAnnotations: boolPtr(false), // Explicitly false
 						},
 					},
 				},
@@ -3261,7 +3261,7 @@ func Test_FilterApplicationsForUpdate(t *testing.T) {
 			expectedImages: map[string]int{"testns/cr-config-app": 1}, // Should have 1 image from CR
 		},
 		{
-			name: "ReadFromApplicationAnnotations: uses CR settings when ReadFromApplicationAnnotations is nil",
+			name: "UseAnnotations: uses CR settings when UseAnnotations is nil",
 			initialApps: []client.Object{
 				&v1alpha1.Application{
 					ObjectMeta: v1.ObjectMeta{
@@ -3290,7 +3290,7 @@ func Test_FilterApplicationsForUpdate(t *testing.T) {
 							Images: []api.ImageConfig{
 								{Alias: "postgres", ImageName: "postgres:14"}, // Should be used
 							},
-							// ReadFromApplicationAnnotations is nil (not set)
+							// UseAnnotations is nil (not set)
 						},
 					},
 				},
@@ -3299,7 +3299,7 @@ func Test_FilterApplicationsForUpdate(t *testing.T) {
 			expectedImages: map[string]int{"testns/nil-flag-app": 1}, // Should have 1 image from CR
 		},
 		{
-			name: "ReadFromApplicationAnnotations: reads application-wide update settings from annotations",
+			name: "UseAnnotations: reads application-wide update settings from annotations",
 			initialApps: []client.Object{
 				&v1alpha1.Application{
 					ObjectMeta: v1.ObjectMeta{
@@ -3336,7 +3336,7 @@ func Test_FilterApplicationsForUpdate(t *testing.T) {
 							CommonUpdateSettings: &api.CommonUpdateSettings{
 								UpdateStrategy: strPtr("latest"), // Should be ignored
 							},
-							ReadFromApplicationAnnotations: boolPtr(true),
+							UseAnnotations: boolPtr(true),
 						},
 					},
 				},
@@ -3344,7 +3344,7 @@ func Test_FilterApplicationsForUpdate(t *testing.T) {
 			expectedKeys: []string{"testns/app-wide-settings-app"},
 		},
 		{
-			name: "ReadFromApplicationAnnotations: reads write-back config from annotations",
+			name: "UseAnnotations: reads write-back config from annotations",
 			initialApps: []client.Object{
 				&v1alpha1.Application{
 					ObjectMeta: v1.ObjectMeta{
@@ -3380,7 +3380,7 @@ func Test_FilterApplicationsForUpdate(t *testing.T) {
 							WriteBackConfig: &api.WriteBackConfig{
 								Method: strPtr("argocd"), // Should be ignored
 							},
-							ReadFromApplicationAnnotations: boolPtr(true),
+							UseAnnotations: boolPtr(true),
 						},
 					},
 				},
@@ -3427,7 +3427,7 @@ func Test_FilterApplicationsForUpdate(t *testing.T) {
 			}
 
 			// Custom verification for per-image settings override test
-			if tc.name == "ReadFromApplicationAnnotations: per-image settings override application-wide settings" {
+			if tc.name == "UseAnnotations: per-image settings override application-wide settings" {
 				appKey := "testns/priority-test-app"
 				require.Contains(t, appsForUpdate, appKey)
 				images := appsForUpdate[appKey].Images
@@ -3458,7 +3458,7 @@ func Test_FilterApplicationsForUpdate(t *testing.T) {
 			}
 
 			// Custom verification for annotated-app test - verify web image has semver (per-image override)
-			if tc.name == "ReadFromApplicationAnnotations: reads from annotations and ignores CR settings" {
+			if tc.name == "UseAnnotations: reads from annotations and ignores CR settings" {
 				appKey := "testns/annotated-app"
 				require.Contains(t, appsForUpdate, appKey)
 				images := appsForUpdate[appKey].Images

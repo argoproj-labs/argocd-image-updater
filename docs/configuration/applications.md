@@ -204,10 +204,10 @@ spec:
       labelSelectors:
         matchLabels:
           image-updater: my-image-updater
-      readFromApplicationAnnotations: true
+      useAnnotations: true
 ```
 
-When `readFromApplicationAnnotations` is set to `true`, **all CR-based configuration
+When `useAnnotations` is set to `true`, **all CR-based configuration
 is ignored** (`images` including `manifestTargets` within each image, `commonUpdateSettings`,
 `writeBackConfig`). Instead, the controller reads everything from the Application's
 legacy `argocd-image-updater.argoproj.io/*` annotations. Only `namePattern` and
@@ -215,7 +215,7 @@ legacy `argocd-image-updater.argoproj.io/*` annotations. Only `namePattern` and
 
 #### Required annotations
 
-The following annotation is **required** when using `readFromApplicationAnnotations: true`:
+The following annotation is **required** when using `useAnnotations: true`:
 
 * **`argocd-image-updater.argoproj.io/image-list`** - A comma-separated list of images to update.
   Each image can optionally have an alias (format: `alias=image:tag` or just `image:tag`).
@@ -233,7 +233,7 @@ generating thousands of Applications, as it avoids the need to create a separate
 ImageUpdater CR for each Application.
 
 !!!warning "Performance Consideration"
-    When using `readFromApplicationAnnotations: true` with `namePattern: "*"` and
+    When using `useAnnotations: true` with `namePattern: "*"` and
     no `labelSelectors`, the ImageUpdater will attempt to process **all Applications**
     in the target namespace. This can lead to performance issues if you have many
     Applications. It is strongly recommended to use `labelSelectors` to limit the

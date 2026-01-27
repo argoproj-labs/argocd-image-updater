@@ -18,6 +18,8 @@ import (
 	"k8s.io/client-go/util/retry"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 
+	"github.com/sirupsen/logrus"
+
 	iuapi "github.com/argoproj-labs/argocd-image-updater/api/v1alpha1"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/kube"
@@ -279,10 +281,10 @@ func FilterApplicationsForUpdate(ctx context.Context, ctrlClient *ArgoCDK8sClien
 				var mergedCommonUpdateSettings *iuapi.CommonUpdateSettings
 				var appWBCSettings *WriteBackConfig
 				var err error
-				// When ReadFromApplicationAnnotations is true, we ignore all CR-based configuration
+				// When UseAnnotations is true, we ignore all CR-based configuration
 				// (Images, CommonUpdateSettings, WriteBackConfig) and instead read everything from
 				// the Application's legacy argocd-image-updater.argoproj.io/* annotations.
-				if applicationRef.ReadFromApplicationAnnotations != nil && *applicationRef.ReadFromApplicationAnnotations {
+				if applicationRef.UseAnnotations != nil && *applicationRef.UseAnnotations {
 					log.Debugf("Read settings from application Annotations for app %s/%s", app.Namespace, app.Name)
 
 					appRefImages, err := getImagesFromAnnotations(&app)
@@ -321,11 +323,14 @@ func FilterApplicationsForUpdate(ctx context.Context, ctrlClient *ArgoCDK8sClien
 					}
 				}
 
-				appRefJSON, err := json.MarshalIndent(localAppRef, "", "  ")
-				if err != nil {
-					log.Warnf("Could not marshal application reference for app %s/%s", app.Namespace, app.Name)
-				} else {
-					log.Tracef("Resulted Image Updater object for app %s/%s: %s", app.Namespace, app.Name, string(appRefJSON))
+				// Only perform expensive marshaling if trace logging is enabled
+				if log.Logger.IsLevelEnabled(logrus.TraceLevel) {
+					appRefJSON, err := json.MarshalIndent(localAppRef, "", "  ")
+					if err != nil {
+						log.Warnf("Could not marshal application reference for app %s/%s", app.Namespace, app.Name)
+					} else {
+						log.Tracef("Resulted Image Updater object for app %s/%s: %s", app.Namespace, app.Name, string(appRefJSON))
+					}
 				}
 				appNSName := fmt.Sprintf("%s/%s", cr.Spec.Namespace, app.Name)
 				processApplicationForUpdate(ctx, &app, localAppRef, mergedCommonUpdateSettings, appWBCSettings, appNSName, appsForUpdate, webhookEvent)

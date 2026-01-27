@@ -24,7 +24,7 @@ spec:
   namespace: argocd
   applicationRefs:
     - namePattern: "*"
-      readFromApplicationAnnotations: true
+      useAnnotations: true
       labelSelectors:
         matchLabels:
           image-updater: my-image-updater

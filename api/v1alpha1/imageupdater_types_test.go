@@ -192,8 +192,8 @@ var _ = AfterSuite(func() {
 	}
 })
 
-var _ = Describe("ApplicationRef ReadFromApplicationAnnotations Validation", func() {
-	Context("when readFromApplicationAnnotations is false", func() {
+var _ = Describe("ApplicationRef UseAnnotations Validation", func() {
+	Context("when useAnnotations is false", func() {
 		It("should reject ApplicationRef without images", func() {
 			cr := &ImageUpdater{
 				ObjectMeta: metav1.ObjectMeta{
@@ -204,8 +204,8 @@ var _ = Describe("ApplicationRef ReadFromApplicationAnnotations Validation", fun
 					Namespace: "argocd",
 					ApplicationRefs: []ApplicationRef{
 						{
-							NamePattern:                    "*",
-							ReadFromApplicationAnnotations: boolPtr(false),
+							NamePattern:    "*",
+							UseAnnotations: boolPtr(false),
 							LabelSelectors: &metav1.LabelSelector{
 								MatchLabels: map[string]string{
 									"app.kubernetes.io/part-of": "my-project-1",
@@ -219,7 +219,7 @@ var _ = Describe("ApplicationRef ReadFromApplicationAnnotations Validation", fun
 
 			err := k8sClient.Create(context.Background(), cr)
 			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("Either readFromApplicationAnnotations must be true, or images must be provided with at least one item"))
+			Expect(err.Error()).To(ContainSubstring("Either useAnnotations must be true, or images must be provided with at least one item"))
 		})
 
 		It("should accept ApplicationRef with images", func() {
@@ -232,8 +232,8 @@ var _ = Describe("ApplicationRef ReadFromApplicationAnnotations Validation", fun
 					Namespace: "argocd",
 					ApplicationRefs: []ApplicationRef{
 						{
-							NamePattern:                    "*",
-							ReadFromApplicationAnnotations: boolPtr(false),
+							NamePattern:    "*",
+							UseAnnotations: boolPtr(false),
 							LabelSelectors: &metav1.LabelSelector{
 								MatchLabels: map[string]string{
 									"app.kubernetes.io/part-of": "my-project-1",
@@ -259,7 +259,7 @@ var _ = Describe("ApplicationRef ReadFromApplicationAnnotations Validation", fun
 		})
 	})
 
-	Context("when readFromApplicationAnnotations is true", func() {
+	Context("when useAnnotations is true", func() {
 		It("should accept ApplicationRef without images", func() {
 			cr := &ImageUpdater{
 				ObjectMeta: metav1.ObjectMeta{
@@ -270,8 +270,8 @@ var _ = Describe("ApplicationRef ReadFromApplicationAnnotations Validation", fun
 					Namespace: "argocd",
 					ApplicationRefs: []ApplicationRef{
 						{
-							NamePattern:                    "*",
-							ReadFromApplicationAnnotations: boolPtr(true),
+							NamePattern:    "*",
+							UseAnnotations: boolPtr(true),
 							LabelSelectors: &metav1.LabelSelector{
 								MatchLabels: map[string]string{
 									"app.kubernetes.io/part-of": "my-project-1",
@@ -301,8 +301,8 @@ var _ = Describe("ApplicationRef ReadFromApplicationAnnotations Validation", fun
 					Namespace: "argocd",
 					ApplicationRefs: []ApplicationRef{
 						{
-							NamePattern:                    "*",
-							ReadFromApplicationAnnotations: boolPtr(true),
+							NamePattern:    "*",
+							UseAnnotations: boolPtr(true),
 							LabelSelectors: &metav1.LabelSelector{
 								MatchLabels: map[string]string{
 									"app.kubernetes.io/part-of": "my-project-1",
@@ -328,7 +328,7 @@ var _ = Describe("ApplicationRef ReadFromApplicationAnnotations Validation", fun
 		})
 	})
 
-	Context("when readFromApplicationAnnotations is nil (not set)", func() {
+	Context("when useAnnotations is nil (not set)", func() {
 		It("should reject ApplicationRef without images", func() {
 			cr := &ImageUpdater{
 				ObjectMeta: metav1.ObjectMeta{
@@ -340,7 +340,7 @@ var _ = Describe("ApplicationRef ReadFromApplicationAnnotations Validation", fun
 					ApplicationRefs: []ApplicationRef{
 						{
 							NamePattern: "*",
-							// ReadFromApplicationAnnotations is nil (defaults to false)
+							// UseAnnotations is nil (defaults to false)
 							// No images provided - should fail validation
 						},
 					},
@@ -349,7 +349,7 @@ var _ = Describe("ApplicationRef ReadFromApplicationAnnotations Validation", fun
 
 			err := k8sClient.Create(context.Background(), cr)
 			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("Either readFromApplicationAnnotations must be true, or images must be provided with at least one item"))
+			Expect(err.Error()).To(ContainSubstring("Either useAnnotations must be true, or images must be provided with at least one item"))
 		})
 
 		It("should accept ApplicationRef with images", func() {
@@ -363,7 +363,7 @@ var _ = Describe("ApplicationRef ReadFromApplicationAnnotations Validation", fun
 					ApplicationRefs: []ApplicationRef{
 						{
 							NamePattern: "*",
-							// ReadFromApplicationAnnotations is nil (defaults to false)
+							// UseAnnotations is nil (defaults to false)
 							Images: []ImageConfig{
 								{
 									Alias:     "nginx",
@@ -385,7 +385,7 @@ var _ = Describe("ApplicationRef ReadFromApplicationAnnotations Validation", fun
 	})
 
 	Context("when ApplicationRef has empty images array", func() {
-		It("should reject ApplicationRef with empty images array when readFromApplicationAnnotations is false", func() {
+		It("should reject ApplicationRef with empty images array when useAnnotations is false", func() {
 			cr := &ImageUpdater{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "image-updater-empty-images",
@@ -395,9 +395,9 @@ var _ = Describe("ApplicationRef ReadFromApplicationAnnotations Validation", fun
 					Namespace: "argocd",
 					ApplicationRefs: []ApplicationRef{
 						{
-							NamePattern:                    "*",
-							ReadFromApplicationAnnotations: boolPtr(false),
-							Images:                         []ImageConfig{}, // Empty array
+							NamePattern:    "*",
+							UseAnnotations: boolPtr(false),
+							Images:         []ImageConfig{}, // Empty array
 						},
 					},
 				},
@@ -405,7 +405,7 @@ var _ = Describe("ApplicationRef ReadFromApplicationAnnotations Validation", fun
 
 			err := k8sClient.Create(context.Background(), cr)
 			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("Either readFromApplicationAnnotations must be true, or images must be provided with at least one item"))
+			Expect(err.Error()).To(ContainSubstring("Either useAnnotations must be true, or images must be provided with at least one item"))
 		})
 	})
 
@@ -420,14 +420,14 @@ var _ = Describe("ApplicationRef ReadFromApplicationAnnotations Validation", fun
 					Namespace: "argocd",
 					ApplicationRefs: []ApplicationRef{
 						{
-							NamePattern:                    "app-1",
-							ReadFromApplicationAnnotations: boolPtr(true),
-							// Valid: readFromApplicationAnnotations is true
+							NamePattern:    "app-1",
+							UseAnnotations: boolPtr(true),
+							// Valid: useAnnotations is true
 						},
 						{
-							NamePattern:                    "app-2",
-							ReadFromApplicationAnnotations: boolPtr(false),
-							// Invalid: readFromApplicationAnnotations is false but no images
+							NamePattern:    "app-2",
+							UseAnnotations: boolPtr(false),
+							// Invalid: useAnnotations is false but no images
 						},
 					},
 				},
@@ -435,7 +435,7 @@ var _ = Describe("ApplicationRef ReadFromApplicationAnnotations Validation", fun
 
 			err := k8sClient.Create(context.Background(), cr)
 			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("Either readFromApplicationAnnotations must be true, or images must be provided with at least one item"))
+			Expect(err.Error()).To(ContainSubstring("Either useAnnotations must be true, or images must be provided with at least one item"))
 		})
 
 		It("should accept multiple valid ApplicationRefs", func() {
@@ -448,12 +448,12 @@ var _ = Describe("ApplicationRef ReadFromApplicationAnnotations Validation", fun
 					Namespace: "argocd",
 					ApplicationRefs: []ApplicationRef{
 						{
-							NamePattern:                    "app-1",
-							ReadFromApplicationAnnotations: boolPtr(true),
+							NamePattern:    "app-1",
+							UseAnnotations: boolPtr(true),
 						},
 						{
-							NamePattern:                    "app-2",
-							ReadFromApplicationAnnotations: boolPtr(false),
+							NamePattern:    "app-2",
+							UseAnnotations: boolPtr(false),
 							Images: []ImageConfig{
 								{
 									Alias:     "nginx",

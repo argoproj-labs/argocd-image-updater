@@ -33,8 +33,8 @@ func (in *ApplicationRef) DeepCopyInto(out *ApplicationRef) {
 		*out = new(v1.LabelSelector)
 		(*in).DeepCopyInto(*out)
 	}
-	if in.ReadFromApplicationAnnotations != nil {
-		in, out := &in.ReadFromApplicationAnnotations, &out.ReadFromApplicationAnnotations
+	if in.UseAnnotations != nil {
+		in, out := &in.UseAnnotations, &out.UseAnnotations
 		*out = new(bool)
 		**out = **in
 	}

@@ -22,7 +22,7 @@ spec:
       writeBackTarget: "helmvalues:/helm/config/test-values.yaml" # OR "kustomization:/config/overlays/bar" OR "helmvalues:/{{ .app.path.path }}/values.yaml" - for ApplicationSet.
   applicationRefs:
     - namePattern: "*"
-      readFromApplicationAnnotations: true
+      useAnnotations: true
       labelSelectors:
         matchLabels:
           image-updater: my-image-updater
