@@ -54,6 +54,7 @@ spec:
                       description: |-
                         CommonUpdateSettings overrides the global CommonUpdateSettings for applications
                         matched by this selector.
+                        This field is ignored when UseAnnotations is true.
                       properties:
                         allowTags:
                           description: |-
@@ -100,6 +101,7 @@ spec:
                         Images contains a list of configurations that how images should be updated.
                         These rules apply to applications selected by namePattern in ApplicationRefs, and each
                         image can override global/ApplicationRef settings.
+                        This field is ignored when UseAnnotations is true.
                       items:
                         description: |-
                           ImageConfig defines how a specific container image should be discovered, updated,
@@ -224,7 +226,6 @@ spec:
                         - alias
                         - imageName
                         type: object
-                      minItems: 1
                       type: array
                       x-kubernetes-list-map-keys:
                       - alias
@@ -280,10 +281,21 @@ spec:
                       description: NamePattern indicates the glob pattern for application
                         name
                       type: string
+                    useAnnotations:
+                      default: false
+                      description: |-
+                        UseAnnotations When true, read image configuration from Application's
+                        argocd-image-updater.argoproj.io/* annotations instead of
+                        requiring explicit Images[] configuration in this CR.
+                        When this field is set to true, only namePattern and labelSelectors are used for
+                        application selection. All other fields (CommonUpdateSettings, WriteBackConfig, Images)
+                        are ignored.
+                      type: boolean
                     writeBackConfig:
                       description: |-
                         WriteBackConfig overrides the global WriteBackConfig settings for applications
                         matched by this selector.
+                        This field is ignored when UseAnnotations is true.
                       properties:
                         gitConfig:
                           description: |-
@@ -321,9 +333,13 @@ spec:
                       - method
                       type: object
                   required:
-                  - images
                   - namePattern
                   type: object
+                  x-kubernetes-validations:
+                  - message: Either useAnnotations must be true, or images must be
+                      provided with at least one item
+                    rule: '!(has(self.useAnnotations) && self.useAnnotations == true)
+                      ? (has(self.images) && size(self.images) > 0) : true'
                 minItems: 1
                 type: array
                 x-kubernetes-list-map-keys:

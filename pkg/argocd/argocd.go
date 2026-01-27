@@ -3,6 +3,7 @@ package argocd
 import (
 	"cmp"
 	"context"
+	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"regexp"
@@ -16,6 +17,8 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/retry"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
+
+	"github.com/sirupsen/logrus"
 
 	iuapi "github.com/argoproj-labs/argocd-image-updater/api/v1alpha1"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
@@ -110,13 +113,15 @@ func nameMatchesPattern(ctx context.Context, name string, pattern string) (bool,
 		log.Warnf("Invalid application name pattern '%s': %v", pattern, err)
 		return false, fmt.Errorf("could not compile name pattern '%s': %w", pattern, err)
 	}
+	log.Tracef("Matched application name %s against pattern %s: %v", name, pattern, m)
 	return m, nil
 }
 
 // nameMatchesLabels checks if the given labels match the provided LabelSelector.
 // It returns true if the selectors are nil (no filtering), or if all MatchLabels
 // and MatchExpressions conditions are met.
-func nameMatchesLabels(appLabels map[string]string, selectors *metav1.LabelSelector) bool {
+func nameMatchesLabels(ctx context.Context, appLabels map[string]string, selectors *metav1.LabelSelector) bool {
+	log := log.LoggerFromContext(ctx)
 	if selectors == nil {
 		return true // No selectors means no filtering by labels
 	}
@@ -128,7 +133,9 @@ func nameMatchesLabels(appLabels map[string]string, selectors *metav1.LabelSelec
 		return false
 	}
 
-	return selector.Matches(labels.Set(appLabels))
+	result := selector.Matches(labels.Set(appLabels))
+	log.Tracef("Matched labels %v against selector %v: %v", appLabels, selectors, result)
+	return result
 }
 
 // processApplicationForUpdate checks if an application is of a supported type,
@@ -269,18 +276,64 @@ func FilterApplicationsForUpdate(ctx context.Context, ctrlClient *ArgoCDK8sClien
 			// We can ignore the error here because we pre-validated all patterns above.
 			// An error from filepath.Match is the only error condition.
 			matches, _ := nameMatchesPattern(ctx, app.Name, applicationRef.NamePattern)
-			if matches && nameMatchesLabels(app.Labels, applicationRef.LabelSelectors) {
-				// Calculate the effective settings for this ApplicationRef by layering on top of global.
-				mergedCommonUpdateSettings := mergeCommonUpdateSettings(globalUpdateSettings, applicationRef.CommonUpdateSettings)
-				mergedWBCSettings := mergeWBCSettings(cr.Spec.WriteBackConfig, applicationRef.WriteBackConfig)
-				appWBCSettings, err := newWBCFromSettings(ctx, &app, kubeClient, mergedWBCSettings)
-				if err != nil {
-					log.Warnf("Could not create write-back config for app %s, skipping: %v", app.Name, err)
-					continue
+			if matches && nameMatchesLabels(ctx, app.Labels, applicationRef.LabelSelectors) {
+				localAppRef := applicationRef
+				var mergedCommonUpdateSettings *iuapi.CommonUpdateSettings
+				var appWBCSettings *WriteBackConfig
+				var err error
+				// When UseAnnotations is true, we ignore all CR-based configuration
+				// (Images, CommonUpdateSettings, WriteBackConfig) and instead read everything from
+				// the Application's legacy argocd-image-updater.argoproj.io/* annotations.
+				if applicationRef.UseAnnotations != nil && *applicationRef.UseAnnotations {
+					log.Debugf("Read settings from application Annotations for app %s/%s", app.Namespace, app.Name)
+
+					appRefImages, err := getImagesFromAnnotations(&app)
+					if err != nil {
+						log.Warnf("Could not create image list for app %s/%s, skipping: %v", app.Namespace, app.Name, err)
+						continue
+					}
+
+					appRefWBC := getWriteBackConfigFromAnnotations(&app)
+					appWBCSettings, err = newWBCFromSettings(ctx, &app, kubeClient, appRefWBC)
+					if err != nil {
+						log.Warnf("Could not create write-back config for app %s/%s, skipping: %v", app.Namespace, app.Name, err)
+						continue
+					}
+
+					// Empty alias means we're reading application-wide annotations (not image-specific)
+					updateStrategyAnnotations := getImageUpdateStrategyAnnotations("")
+					mergedCommonUpdateSettings, err = getCommonUpdateSettingsFromAnnotations(&app, updateStrategyAnnotations)
+					if err != nil {
+						log.Warnf("Could not create common update settings for app %s/%s, skipping: %v", app.Namespace, app.Name, err)
+						continue
+					}
+
+					// Create a local copy of applicationRef with annotation-derived values
+					localAppRef.Images = appRefImages
+					localAppRef.WriteBackConfig = appRefWBC
+				} else {
+					// Calculate the effective settings for this ApplicationRef by layering on top of global.
+					log.Debugf("Read settings from Image Updater CR for app %s/%s", app.Namespace, app.Name)
+					mergedCommonUpdateSettings = mergeCommonUpdateSettings(globalUpdateSettings, applicationRef.CommonUpdateSettings)
+					mergedWBCSettings := mergeWBCSettings(cr.Spec.WriteBackConfig, applicationRef.WriteBackConfig)
+					appWBCSettings, err = newWBCFromSettings(ctx, &app, kubeClient, mergedWBCSettings)
+					if err != nil {
+						log.Warnf("Could not create write-back config for app %s/%s, skipping: %v", app.Namespace, app.Name, err)
+						continue
+					}
 				}
 
+				// Only perform expensive marshaling if trace logging is enabled
+				if log.Logger.IsLevelEnabled(logrus.TraceLevel) {
+					appRefJSON, err := json.MarshalIndent(localAppRef, "", "  ")
+					if err != nil {
+						log.Warnf("Could not marshal application reference for app %s/%s", app.Namespace, app.Name)
+					} else {
+						log.Tracef("Resulted Image Updater object for app %s/%s: %s", app.Namespace, app.Name, string(appRefJSON))
+					}
+				}
 				appNSName := fmt.Sprintf("%s/%s", cr.Spec.Namespace, app.Name)
-				processApplicationForUpdate(ctx, &app, applicationRef, mergedCommonUpdateSettings, appWBCSettings, appNSName, appsForUpdate, webhookEvent)
+				processApplicationForUpdate(ctx, &app, localAppRef, mergedCommonUpdateSettings, appWBCSettings, appNSName, appsForUpdate, webhookEvent)
 				break // Found the best match, move to the next app
 			}
 		}

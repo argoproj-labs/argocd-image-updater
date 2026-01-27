@@ -2291,6 +2291,8 @@ func Test_nameMatchesPatterns(t *testing.T) {
 
 // Assisted-by: Gemini AI
 func Test_nameMatchesLabels(t *testing.T) {
+	ctx := context.Background()
+
 	testCases := []struct {
 		name      string
 		appLabels map[string]string
@@ -2457,7 +2459,7 @@ func Test_nameMatchesLabels(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := nameMatchesLabels(tc.appLabels, tc.selector)
+			got := nameMatchesLabels(ctx, tc.appLabels, tc.selector)
 			if got != tc.want {
 				t.Errorf("nameMatchesLabels() = %v, want %v", got, tc.want)
 			}
@@ -2940,6 +2942,451 @@ func Test_FilterApplicationsForUpdate(t *testing.T) {
 			},
 			expectError: true,
 		},
+		{
+			name: "UseAnnotations: reads from annotations and ignores CR settings",
+			initialApps: []client.Object{
+				&v1alpha1.Application{
+					ObjectMeta: v1.ObjectMeta{
+						Name:      "annotated-app",
+						Namespace: "testns",
+						Annotations: map[string]string{
+							ImageUpdaterAnnotation:                                "web=nginx:1.21,api=quay.io/myorg/api:v2.0",
+							ImageUpdaterAnnotationPrefix + "/update-strategy":     "latest",
+							ImageUpdaterAnnotationPrefix + "/force-update":        "true",
+							ImageUpdaterAnnotationPrefix + "/web.update-strategy": "semver",
+							ImageUpdaterAnnotationPrefix + "/web.helm.image-name": "image.repository",
+							ImageUpdaterAnnotationPrefix + "/web.helm.image-tag":  "image.tag",
+							WriteBackMethodAnnotation:                             "git",
+							WriteBackTargetAnnotation:                             "helmvalues:./values.yaml",
+							GitBranchAnnotation:                                   "main",
+						},
+					},
+					Spec: v1alpha1.ApplicationSpec{
+						Source: &v1alpha1.ApplicationSource{
+							RepoURL:        "https://github.com/example/repo.git",
+							TargetRevision: "main",
+							Path:           "helm",
+						},
+					},
+					Status: v1alpha1.ApplicationStatus{SourceType: v1alpha1.ApplicationSourceTypeHelm},
+				},
+			},
+			imageUpdaterCR: &api.ImageUpdater{
+				Spec: api.ImageUpdaterSpec{
+					Namespace: "testns",
+					CommonUpdateSettings: &api.CommonUpdateSettings{
+						UpdateStrategy: strPtr("digest"), // Should be ignored
+						ForceUpdate:    boolPtr(false),   // Should be ignored
+					},
+					WriteBackConfig: &api.WriteBackConfig{
+						Method: strPtr("argocd"), // Should be ignored
+					},
+					ApplicationRefs: []api.ApplicationRef{
+						{
+							NamePattern: "annotated-app",
+							// These CR settings should be completely ignored
+							CommonUpdateSettings: &api.CommonUpdateSettings{
+								UpdateStrategy: strPtr("name"), // Should be ignored
+							},
+							WriteBackConfig: &api.WriteBackConfig{
+								Method: strPtr("argocd"), // Should be ignored
+							},
+							Images: []api.ImageConfig{
+								{Alias: "redis", ImageName: "redis:6"}, // Should be ignored
+							},
+							UseAnnotations: boolPtr(true),
+						},
+					},
+				},
+			},
+			expectedKeys:   []string{"testns/annotated-app"},
+			expectedImages: map[string]int{"testns/annotated-app": 2}, // Should have 2 images from annotations
+		},
+		{
+			name: "UseAnnotations: per-image settings override application-wide settings",
+			initialApps: []client.Object{
+				&v1alpha1.Application{
+					ObjectMeta: v1.ObjectMeta{
+						Name:      "priority-test-app",
+						Namespace: "testns",
+						Annotations: map[string]string{
+							ImageUpdaterAnnotation:                                "web=nginx:1.21,api=quay.io/myorg/api:v2.0",
+							ImageUpdaterAnnotationPrefix + "/update-strategy":     "latest", // Application-wide
+							ImageUpdaterAnnotationPrefix + "/force-update":        "false",  // Application-wide
+							ImageUpdaterAnnotationPrefix + "/web.update-strategy": "semver", // Per-image override
+							ImageUpdaterAnnotationPrefix + "/web.force-update":    "true",   // Per-image override
+							ImageUpdaterAnnotationPrefix + "/api.allow-tags":      "v2.*",   // Per-image setting
+						},
+					},
+					Spec: v1alpha1.ApplicationSpec{
+						Source: &v1alpha1.ApplicationSource{
+							RepoURL:        "https://github.com/example/repo.git",
+							TargetRevision: "main",
+							Path:           "kustomize",
+						},
+					},
+					Status: v1alpha1.ApplicationStatus{SourceType: v1alpha1.ApplicationSourceTypeKustomize},
+				},
+			},
+			imageUpdaterCR: &api.ImageUpdater{
+				Spec: api.ImageUpdaterSpec{
+					Namespace: "testns",
+					ApplicationRefs: []api.ApplicationRef{
+						{
+							NamePattern:    "priority-test-app",
+							UseAnnotations: boolPtr(true),
+						},
+					},
+				},
+			},
+			expectedKeys:   []string{"testns/priority-test-app"},
+			expectedImages: map[string]int{"testns/priority-test-app": 2},
+		},
+		{
+			name: "UseAnnotations: only namePattern and labelSelectors used from CR",
+			initialApps: []client.Object{
+				&v1alpha1.Application{
+					ObjectMeta: v1.ObjectMeta{
+						Name:      "labeled-app",
+						Namespace: "testns",
+						Labels: map[string]string{
+							"env": "prod",
+						},
+						Annotations: map[string]string{
+							ImageUpdaterAnnotation: "web=nginx:1.21",
+						},
+					},
+					Spec: v1alpha1.ApplicationSpec{
+						Source: &v1alpha1.ApplicationSource{
+							RepoURL:        "https://github.com/example/repo.git",
+							TargetRevision: "main",
+							Path:           "kustomize",
+						},
+					},
+					Status: v1alpha1.ApplicationStatus{SourceType: v1alpha1.ApplicationSourceTypeKustomize},
+				},
+			},
+			imageUpdaterCR: &api.ImageUpdater{
+				Spec: api.ImageUpdaterSpec{
+					Namespace: "testns",
+					ApplicationRefs: []api.ApplicationRef{
+						{
+							NamePattern: "*", // This is used for matching
+							LabelSelectors: &v1.LabelSelector{ // This is used for matching
+								MatchLabels: map[string]string{"env": "prod"},
+							},
+							Images: []api.ImageConfig{
+								{Alias: "redis", ImageName: "redis:6"}, // Should be ignored
+							},
+							UseAnnotations: boolPtr(true),
+						},
+					},
+				},
+			},
+			expectedKeys:   []string{"testns/labeled-app"},
+			expectedImages: map[string]int{"testns/labeled-app": 1}, // Should have 1 image from annotations
+		},
+		{
+			name: "UseAnnotations: skips app when image-list annotation is missing",
+			initialApps: []client.Object{
+				&v1alpha1.Application{
+					ObjectMeta: v1.ObjectMeta{
+						Name:      "no-annotation-app",
+						Namespace: "testns",
+					},
+					Spec: v1alpha1.ApplicationSpec{
+						Source: &v1alpha1.ApplicationSource{
+							RepoURL:        "https://github.com/example/repo.git",
+							TargetRevision: "main",
+							Path:           "kustomize",
+						},
+					},
+					Status: v1alpha1.ApplicationStatus{SourceType: v1alpha1.ApplicationSourceTypeKustomize},
+				},
+			},
+			imageUpdaterCR: &api.ImageUpdater{
+				Spec: api.ImageUpdaterSpec{
+					Namespace: "testns",
+					ApplicationRefs: []api.ApplicationRef{
+						{
+							NamePattern:    "no-annotation-app",
+							UseAnnotations: boolPtr(true),
+						},
+					},
+				},
+			},
+			expectedKeys: []string{}, // App should be skipped due to missing annotation
+		},
+		{
+			name: "UseAnnotations: skips app when image-list annotation is empty",
+			initialApps: []client.Object{
+				&v1alpha1.Application{
+					ObjectMeta: v1.ObjectMeta{
+						Name:      "empty-annotation-app",
+						Namespace: "testns",
+						Annotations: map[string]string{
+							ImageUpdaterAnnotation: "", // Empty annotation
+						},
+					},
+					Spec: v1alpha1.ApplicationSpec{
+						Source: &v1alpha1.ApplicationSource{
+							RepoURL:        "https://github.com/example/repo.git",
+							TargetRevision: "main",
+							Path:           "kustomize",
+						},
+					},
+					Status: v1alpha1.ApplicationStatus{SourceType: v1alpha1.ApplicationSourceTypeKustomize},
+				},
+			},
+			imageUpdaterCR: &api.ImageUpdater{
+				Spec: api.ImageUpdaterSpec{
+					Namespace: "testns",
+					ApplicationRefs: []api.ApplicationRef{
+						{
+							NamePattern:    "empty-annotation-app",
+							UseAnnotations: boolPtr(true),
+						},
+					},
+				},
+			},
+			expectedKeys: []string{}, // App should be skipped due to empty annotation
+		},
+		{
+			name: "UseAnnotations: skips app when force-update annotation has invalid value",
+			initialApps: []client.Object{
+				&v1alpha1.Application{
+					ObjectMeta: v1.ObjectMeta{
+						Name:      "invalid-annotation-app",
+						Namespace: "testns",
+						Annotations: map[string]string{
+							ImageUpdaterAnnotation:                         "web=nginx:1.21",
+							ImageUpdaterAnnotationPrefix + "/force-update": "invalid-boolean",
+						},
+					},
+					Spec: v1alpha1.ApplicationSpec{
+						Source: &v1alpha1.ApplicationSource{
+							RepoURL:        "https://github.com/example/repo.git",
+							TargetRevision: "main",
+							Path:           "kustomize",
+						},
+					},
+					Status: v1alpha1.ApplicationStatus{SourceType: v1alpha1.ApplicationSourceTypeKustomize},
+				},
+			},
+			imageUpdaterCR: &api.ImageUpdater{
+				Spec: api.ImageUpdaterSpec{
+					Namespace: "testns",
+					ApplicationRefs: []api.ApplicationRef{
+						{
+							NamePattern:    "invalid-annotation-app",
+							UseAnnotations: boolPtr(true),
+						},
+					},
+				},
+			},
+			expectedKeys: []string{}, // App should be skipped due to invalid annotation
+		},
+		{
+			name: "UseAnnotations: skips app when both helm and kustomize manifest targets configured",
+			initialApps: []client.Object{
+				&v1alpha1.Application{
+					ObjectMeta: v1.ObjectMeta{
+						Name:      "conflict-manifest-app",
+						Namespace: "testns",
+						Annotations: map[string]string{
+							ImageUpdaterAnnotation:                                     "web=nginx:1.21",
+							ImageUpdaterAnnotationPrefix + "/web.helm.image-name":      "image.repository",
+							ImageUpdaterAnnotationPrefix + "/web.kustomize.image-name": "nginx",
+						},
+					},
+					Spec: v1alpha1.ApplicationSpec{
+						Source: &v1alpha1.ApplicationSource{
+							RepoURL:        "https://github.com/example/repo.git",
+							TargetRevision: "main",
+							Path:           "kustomize",
+						},
+					},
+					Status: v1alpha1.ApplicationStatus{SourceType: v1alpha1.ApplicationSourceTypeKustomize},
+				},
+			},
+			imageUpdaterCR: &api.ImageUpdater{
+				Spec: api.ImageUpdaterSpec{
+					Namespace: "testns",
+					ApplicationRefs: []api.ApplicationRef{
+						{
+							NamePattern:    "conflict-manifest-app",
+							UseAnnotations: boolPtr(true),
+						},
+					},
+				},
+			},
+			expectedKeys: []string{}, // App should be skipped due to conflicting manifest targets
+		},
+		{
+			name: "UseAnnotations: uses CR settings when UseAnnotations is false",
+			initialApps: []client.Object{
+				&v1alpha1.Application{
+					ObjectMeta: v1.ObjectMeta{
+						Name:      "cr-config-app",
+						Namespace: "testns",
+						Annotations: map[string]string{
+							ImageUpdaterAnnotation: "web=nginx:1.21", // Should be ignored
+						},
+					},
+					Spec: v1alpha1.ApplicationSpec{
+						Source: &v1alpha1.ApplicationSource{
+							RepoURL:        "https://github.com/example/repo.git",
+							TargetRevision: "main",
+							Path:           "kustomize",
+						},
+					},
+					Status: v1alpha1.ApplicationStatus{SourceType: v1alpha1.ApplicationSourceTypeKustomize},
+				},
+			},
+			imageUpdaterCR: &api.ImageUpdater{
+				Spec: api.ImageUpdaterSpec{
+					Namespace: "testns",
+					ApplicationRefs: []api.ApplicationRef{
+						{
+							NamePattern: "cr-config-app",
+							Images: []api.ImageConfig{
+								{Alias: "redis", ImageName: "redis:6"}, // Should be used
+							},
+							UseAnnotations: boolPtr(false), // Explicitly false
+						},
+					},
+				},
+			},
+			expectedKeys:   []string{"testns/cr-config-app"},
+			expectedImages: map[string]int{"testns/cr-config-app": 1}, // Should have 1 image from CR
+		},
+		{
+			name: "UseAnnotations: uses CR settings when UseAnnotations is nil",
+			initialApps: []client.Object{
+				&v1alpha1.Application{
+					ObjectMeta: v1.ObjectMeta{
+						Name:      "nil-flag-app",
+						Namespace: "testns",
+						Annotations: map[string]string{
+							ImageUpdaterAnnotation: "web=nginx:1.21", // Should be ignored
+						},
+					},
+					Spec: v1alpha1.ApplicationSpec{
+						Source: &v1alpha1.ApplicationSource{
+							RepoURL:        "https://github.com/example/repo.git",
+							TargetRevision: "main",
+							Path:           "kustomize",
+						},
+					},
+					Status: v1alpha1.ApplicationStatus{SourceType: v1alpha1.ApplicationSourceTypeKustomize},
+				},
+			},
+			imageUpdaterCR: &api.ImageUpdater{
+				Spec: api.ImageUpdaterSpec{
+					Namespace: "testns",
+					ApplicationRefs: []api.ApplicationRef{
+						{
+							NamePattern: "nil-flag-app",
+							Images: []api.ImageConfig{
+								{Alias: "postgres", ImageName: "postgres:14"}, // Should be used
+							},
+							// UseAnnotations is nil (not set)
+						},
+					},
+				},
+			},
+			expectedKeys:   []string{"testns/nil-flag-app"},
+			expectedImages: map[string]int{"testns/nil-flag-app": 1}, // Should have 1 image from CR
+		},
+		{
+			name: "UseAnnotations: reads application-wide update settings from annotations",
+			initialApps: []client.Object{
+				&v1alpha1.Application{
+					ObjectMeta: v1.ObjectMeta{
+						Name:      "app-wide-settings-app",
+						Namespace: "testns",
+						Annotations: map[string]string{
+							ImageUpdaterAnnotation:                            "web=nginx:1.21",
+							ImageUpdaterAnnotationPrefix + "/update-strategy": "digest",
+							ImageUpdaterAnnotationPrefix + "/force-update":    "true",
+							ImageUpdaterAnnotationPrefix + "/allow-tags":      "v1.*",
+							ImageUpdaterAnnotationPrefix + "/ignore-tags":     "dev,test",
+							ImageUpdaterAnnotationPrefix + "/pull-secret":     "my-secret",
+						},
+					},
+					Spec: v1alpha1.ApplicationSpec{
+						Source: &v1alpha1.ApplicationSource{
+							RepoURL:        "https://github.com/example/repo.git",
+							TargetRevision: "main",
+							Path:           "kustomize",
+						},
+					},
+					Status: v1alpha1.ApplicationStatus{SourceType: v1alpha1.ApplicationSourceTypeKustomize},
+				},
+			},
+			imageUpdaterCR: &api.ImageUpdater{
+				Spec: api.ImageUpdaterSpec{
+					Namespace: "testns",
+					CommonUpdateSettings: &api.CommonUpdateSettings{
+						UpdateStrategy: strPtr("semver"), // Should be ignored
+					},
+					ApplicationRefs: []api.ApplicationRef{
+						{
+							NamePattern: "app-wide-settings-app",
+							CommonUpdateSettings: &api.CommonUpdateSettings{
+								UpdateStrategy: strPtr("latest"), // Should be ignored
+							},
+							UseAnnotations: boolPtr(true),
+						},
+					},
+				},
+			},
+			expectedKeys: []string{"testns/app-wide-settings-app"},
+		},
+		{
+			name: "UseAnnotations: reads write-back config from annotations",
+			initialApps: []client.Object{
+				&v1alpha1.Application{
+					ObjectMeta: v1.ObjectMeta{
+						Name:      "wbc-annotation-app",
+						Namespace: "testns",
+						Annotations: map[string]string{
+							ImageUpdaterAnnotation:    "web=nginx:1.21",
+							WriteBackMethodAnnotation: "git",
+							WriteBackTargetAnnotation: "helmvalues:./values.yaml",
+							GitBranchAnnotation:       "main:feature-branch",
+							GitRepositoryAnnotation:   "https://github.com/example/repo.git",
+						},
+					},
+					Spec: v1alpha1.ApplicationSpec{
+						Source: &v1alpha1.ApplicationSource{
+							RepoURL:        "https://github.com/example/repo.git",
+							TargetRevision: "main",
+							Path:           "helm",
+						},
+					},
+					Status: v1alpha1.ApplicationStatus{SourceType: v1alpha1.ApplicationSourceTypeHelm},
+				},
+			},
+			imageUpdaterCR: &api.ImageUpdater{
+				Spec: api.ImageUpdaterSpec{
+					Namespace: "testns",
+					WriteBackConfig: &api.WriteBackConfig{
+						Method: strPtr("argocd"), // Should be ignored
+					},
+					ApplicationRefs: []api.ApplicationRef{
+						{
+							NamePattern: "wbc-annotation-app",
+							WriteBackConfig: &api.WriteBackConfig{
+								Method: strPtr("argocd"), // Should be ignored
+							},
+							UseAnnotations: boolPtr(true),
+						},
+					},
+				},
+			},
+			expectedKeys: []string{"testns/wbc-annotation-app"},
+		},
 	}
 
 	for _, tc := range testCases {
@@ -2977,6 +3424,56 @@ func Test_FilterApplicationsForUpdate(t *testing.T) {
 				if count, ok := tc.expectedImages[key]; ok {
 					assert.Len(t, appsForUpdate[key].Images, count, "The number of images for app %s should match the most specific rule", key)
 				}
+			}
+
+			// Custom verification for per-image settings override test
+			if tc.name == "UseAnnotations: per-image settings override application-wide settings" {
+				appKey := "testns/priority-test-app"
+				require.Contains(t, appsForUpdate, appKey)
+				images := appsForUpdate[appKey].Images
+				require.Len(t, images, 2)
+
+				// Find the "web" image - should have semver strategy (per-image override) and force-update true
+				var webImage *Image
+				var apiImage *Image
+				for i := range images {
+					if images[i].ImageAlias == "web" {
+						webImage = images[i]
+					} else if images[i].ImageAlias == "api" {
+						apiImage = images[i]
+					}
+				}
+				require.NotNil(t, webImage, "web image should be found")
+				require.NotNil(t, apiImage, "api image should be found")
+
+				// Verify web image has per-image settings (semver, force-update true)
+				assert.Equal(t, image.StrategySemVer, webImage.UpdateStrategy, "web image should have semver strategy from per-image annotation")
+				assert.True(t, webImage.ForceUpdate, "web image should have force-update true from per-image annotation")
+
+				// Verify api image has application-wide settings (latest) and per-image allow-tags
+				// Note: "latest" strategy is renamed to "newest-build" internally
+				assert.Equal(t, image.StrategyNewestBuild, apiImage.UpdateStrategy, "api image should have latest strategy from application-wide annotation")
+				assert.False(t, apiImage.ForceUpdate, "api image should have force-update false from application-wide annotation")
+				assert.Equal(t, "v2.*", apiImage.AllowTags, "api image should have allow-tags v2.* from per-image annotation")
+			}
+
+			// Custom verification for annotated-app test - verify web image has semver (per-image override)
+			if tc.name == "UseAnnotations: reads from annotations and ignores CR settings" {
+				appKey := "testns/annotated-app"
+				require.Contains(t, appsForUpdate, appKey)
+				images := appsForUpdate[appKey].Images
+				require.Len(t, images, 2)
+
+				// Find the "web" image - should have semver strategy (per-image override of application-wide "latest")
+				var webImage *Image
+				for i := range images {
+					if images[i].ImageAlias == "web" {
+						webImage = images[i]
+						break
+					}
+				}
+				require.NotNil(t, webImage, "web image should be found")
+				assert.Equal(t, image.StrategySemVer, webImage.UpdateStrategy, "web image should have semver strategy from per-image annotation, overriding application-wide latest")
 			}
 		})
 	}

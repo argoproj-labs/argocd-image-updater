@@ -553,13 +553,14 @@ update strategies and set options for images.
 
 #### ApplicationRef fields
 
-| Field                  | Type                 | Required | Description                                                  |
-|------------------------|----------------------|----------|--------------------------------------------------------------|
-| `namePattern`          | string               | Yes      | Glob pattern for application name selection                  |
-| `images`               | []ImageConfig        | Yes      | List of image configurations                                 |
-| `labelSelectors`       | LabelSelector        | No       | Label selectors for application selection                    |
-| `commonUpdateSettings` | CommonUpdateSettings | No       | Override global settings for this application group          |
-| `writeBackConfig`      | WriteBackConfig      | No       | Override global write-back config for this application group |
+| Field                  | Type                 | Required | Description                                                                                                    |
+|------------------------|----------------------|----------|----------------------------------------------------------------------------------------------------------------|
+| `namePattern`          | string               | Yes      | Glob pattern for application name selection                                                                    |
+| `images`               | []ImageConfig        | No       | List of image configurations (required if `useAnnotations` is not true, ignored when `useAnnotations` is true) |
+| `useAnnotations`       | bool                 | No       | When true, read image configuration from Application's legacy annotations                                      |
+| `labelSelectors`       | LabelSelector        | No       | Label selectors for application selection                                                                      |
+| `commonUpdateSettings` | CommonUpdateSettings | No       | Override global settings for this application group (ignored when `useAnnotations` is true)                    |
+| `writeBackConfig`      | WriteBackConfig      | No       | Override global write-back config for this application group (ignored when `useAnnotations` is true)           |
 
 #### ImageConfig fields
 
