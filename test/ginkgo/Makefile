@@ -51,7 +51,8 @@ endif
 
 .PHONY: deploy-argocd-operator undeploy-argocd-operator kustomize test-e2e \
    k3d-cluster-create k3d-cluster-delete k3d-image-import configure-docker-daemon \
-   git-container-build git-container-push create-local-container-registry
+   git-container-build git-container-push create-local-container-registry \
+   apply-imageupdater-crd
 
 kustomize:
 	$(MAKE) -C ../../ kustomize
@@ -72,6 +73,10 @@ deploy-argocd-operator: kustomize ## Deploy argocd-operator from a stable git re
 	echo "Argo CD Operator deployment initiated.";
 	echo "--- Waiting for argocd-operator to be ready ---";
 	$(KUBECTL) wait --for=condition=available --timeout=300s deployment/argocd-operator-controller-manager -n argocd-operator-system
+
+apply-imageupdater-crd: ## Apply the ImageUpdater CRD from this repository to update the cluster CRD.
+	@echo "Applying updated ImageUpdater CRD..."
+	$(MAKE) -C ../../ install
 
 undeploy-argocd-operator: kustomize ## Undeploy argocd-operator.
 	@echo "Undeploying Argo CD Operator..."
@@ -113,6 +118,8 @@ test-e2e: ## Build local image updater, deploy operator, and run parallel e2e te
 	$(MAKE) k3d-image-import
 	@echo "--- Deploying argocd-operator with local image-updater ---"
 	$(MAKE) deploy-argocd-operator
+	@echo "--- Applying updated ImageUpdater CRD ---"
+	$(MAKE) apply-imageupdater-crd
 	@echo "--- Deploying local container registry ---"
 	$(MAKE) create-local-container-registry
 	@echo "--- Running Parallel E2E tests ---"
