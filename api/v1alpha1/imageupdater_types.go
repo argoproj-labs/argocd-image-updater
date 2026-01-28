@@ -222,22 +222,26 @@ type ManifestTarget struct {
 }
 
 // HelmTarget defines parameters for updating image references within Helm values.
+// +kubebuilder:validation:XValidation:rule="has(self.spec) ? true : (has(self.name) && has(self.tag))",message="Either spec must be set, or both name and tag must be set together"
 type HelmTarget struct {
 	// Name is the dot-separated path to the Helm key for the image repository/name part.
 	// Example: "image.repository", "frontend.deployment.image.name".
-	// This field is required if the Helm target is used.
-	Name *string `json:"name"`
+	// This field is required together with tag if spec is not set.
+	// If spec is set, this field is ignored.
+	// +optional
+	Name *string `json:"name,omitempty"`
 
 	// Tag is the dot-separated path to the Helm key for the image tag part.
 	// Example: "image.tag", "frontend.deployment.image.version".
-	// This field is required if the Helm target is used.
-	Tag *string `json:"tag"`
+	// This field is required together with name if spec is not set.
+	// If spec is set, this field is ignored.
+	// +optional
+	Tag *string `json:"tag,omitempty"`
 
-	// Spec is an optional dot-separated path to a Helm key where the full image string
+	// Spec is the dot-separated path to a Helm key where the full image string
 	// (e.g., "image/name:1.0") should be written.
 	// Use this if your Helm chart expects the entire image reference in a single field,
-	// rather than separate name/tag fields. If this is set, other Helm parameter-related
-	// options will be ignored.
+	// rather than separate name/tag fields. If this is set, name and tag will be ignored.
 	// +optional
 	Spec *string `json:"spec,omitempty"`
 }

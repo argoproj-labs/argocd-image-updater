@@ -475,7 +475,220 @@ var _ = Describe("ApplicationRef UseAnnotations Validation", func() {
 	})
 })
 
+var _ = Describe("HelmTarget Validation", func() {
+	Context("when spec is set", func() {
+		It("should accept HelmTarget with only spec", func() {
+			cr := &ImageUpdater{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "image-updater-helm-spec-only",
+					Namespace: "argocd",
+				},
+				Spec: ImageUpdaterSpec{
+					Namespace: "argocd",
+					ApplicationRefs: []ApplicationRef{
+						{
+							NamePattern: "*",
+							Images: []ImageConfig{
+								{
+									Alias:     "test",
+									ImageName: "nginx:1.21.0",
+									ManifestTarget: &ManifestTarget{
+										Helm: &HelmTarget{
+											Spec: strPtr("image"),
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			}
+
+			err := k8sClient.Create(context.Background(), cr)
+			Expect(err).NotTo(HaveOccurred())
+
+			// Cleanup
+			err = k8sClient.Delete(context.Background(), cr)
+			Expect(err).NotTo(HaveOccurred())
+		})
+
+		It("should accept HelmTarget with spec even when name and tag are also set", func() {
+			cr := &ImageUpdater{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "image-updater-helm-spec-with-name-tag",
+					Namespace: "argocd",
+				},
+				Spec: ImageUpdaterSpec{
+					Namespace: "argocd",
+					ApplicationRefs: []ApplicationRef{
+						{
+							NamePattern: "*",
+							Images: []ImageConfig{
+								{
+									Alias:     "test",
+									ImageName: "nginx:1.21.0",
+									ManifestTarget: &ManifestTarget{
+										Helm: &HelmTarget{
+											Spec: strPtr("image"),
+											Name: strPtr("image.repository"),
+											Tag:  strPtr("image.tag"),
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			}
+
+			err := k8sClient.Create(context.Background(), cr)
+			Expect(err).NotTo(HaveOccurred())
+
+			// Cleanup
+			err = k8sClient.Delete(context.Background(), cr)
+			Expect(err).NotTo(HaveOccurred())
+		})
+	})
+
+	Context("when spec is not set", func() {
+		It("should accept HelmTarget with both name and tag", func() {
+			cr := &ImageUpdater{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "image-updater-helm-name-tag",
+					Namespace: "argocd",
+				},
+				Spec: ImageUpdaterSpec{
+					Namespace: "argocd",
+					ApplicationRefs: []ApplicationRef{
+						{
+							NamePattern: "*",
+							Images: []ImageConfig{
+								{
+									Alias:     "test",
+									ImageName: "nginx:1.21.0",
+									ManifestTarget: &ManifestTarget{
+										Helm: &HelmTarget{
+											Name: strPtr("image.repository"),
+											Tag:  strPtr("image.tag"),
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			}
+
+			err := k8sClient.Create(context.Background(), cr)
+			Expect(err).NotTo(HaveOccurred())
+
+			// Cleanup
+			err = k8sClient.Delete(context.Background(), cr)
+			Expect(err).NotTo(HaveOccurred())
+		})
+
+		It("should reject HelmTarget with only name", func() {
+			cr := &ImageUpdater{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "image-updater-helm-name-only",
+					Namespace: "argocd",
+				},
+				Spec: ImageUpdaterSpec{
+					Namespace: "argocd",
+					ApplicationRefs: []ApplicationRef{
+						{
+							NamePattern: "*",
+							Images: []ImageConfig{
+								{
+									Alias:     "test",
+									ImageName: "nginx:1.21.0",
+									ManifestTarget: &ManifestTarget{
+										Helm: &HelmTarget{
+											Name: strPtr("image.repository"),
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			}
+
+			err := k8sClient.Create(context.Background(), cr)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("Either spec must be set, or both name and tag must be set together"))
+		})
+
+		It("should reject HelmTarget with only tag", func() {
+			cr := &ImageUpdater{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "image-updater-helm-tag-only",
+					Namespace: "argocd",
+				},
+				Spec: ImageUpdaterSpec{
+					Namespace: "argocd",
+					ApplicationRefs: []ApplicationRef{
+						{
+							NamePattern: "*",
+							Images: []ImageConfig{
+								{
+									Alias:     "test",
+									ImageName: "nginx:1.21.0",
+									ManifestTarget: &ManifestTarget{
+										Helm: &HelmTarget{
+											Tag: strPtr("image.tag"),
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			}
+
+			err := k8sClient.Create(context.Background(), cr)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("Either spec must be set, or both name and tag must be set together"))
+		})
+
+		It("should reject HelmTarget with neither spec nor name/tag", func() {
+			cr := &ImageUpdater{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "image-updater-helm-empty",
+					Namespace: "argocd",
+				},
+				Spec: ImageUpdaterSpec{
+					Namespace: "argocd",
+					ApplicationRefs: []ApplicationRef{
+						{
+							NamePattern: "*",
+							Images: []ImageConfig{
+								{
+									Alias:     "test",
+									ImageName: "nginx:1.21.0",
+									ManifestTarget: &ManifestTarget{
+										Helm: &HelmTarget{},
+									},
+								},
+							},
+						},
+					},
+				},
+			}
+
+			err := k8sClient.Create(context.Background(), cr)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("Either spec must be set, or both name and tag must be set together"))
+		})
+	})
+})
+
 // Helper function to create a bool pointer
 func boolPtr(b bool) *bool {
 	return &b
+}
+
+// Helper function to create a string pointer
+func strPtr(s string) *string {
+	return &s
 }
