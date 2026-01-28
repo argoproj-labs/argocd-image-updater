@@ -222,18 +222,20 @@ type ManifestTarget struct {
 }
 
 // HelmTarget defines parameters for updating image references within Helm values.
-// +kubebuilder:validation:XValidation:rule="has(self.spec) ? true : (has(self.name) && has(self.tag))",message="Either spec must be set, or both name and tag must be set together"
+// +kubebuilder:validation:XValidation:rule="has(self.spec) || (has(self.name) == has(self.tag))",message="Either spec must be set, both name and tag must be set together, or neither name nor tag must be set (defaults will be used)"
 type HelmTarget struct {
 	// Name is the dot-separated path to the Helm key for the image repository/name part.
 	// Example: "image.repository", "frontend.deployment.image.name".
-	// This field is required together with tag if spec is not set.
+	// If neither spec nor name/tag are set, defaults to "image.name".
+	// This field must be set together with tag if spec is not set and you want to override defaults.
 	// If spec is set, this field is ignored.
 	// +optional
 	Name *string `json:"name,omitempty"`
 
 	// Tag is the dot-separated path to the Helm key for the image tag part.
 	// Example: "image.tag", "frontend.deployment.image.version".
-	// This field is required together with name if spec is not set.
+	// If neither spec nor name/tag are set, defaults to "image.tag".
+	// This field must be set together with name if spec is not set and you want to override defaults.
 	// If spec is set, this field is ignored.
 	// +optional
 	Tag *string `json:"tag,omitempty"`

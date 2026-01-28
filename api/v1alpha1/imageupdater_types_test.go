@@ -616,7 +616,7 @@ var _ = Describe("HelmTarget Validation", func() {
 
 			err := k8sClient.Create(context.Background(), cr)
 			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("Either spec must be set, or both name and tag must be set together"))
+			Expect(err.Error()).To(ContainSubstring("Either spec must be set, both name and tag must be set together, or neither name nor tag must be set"))
 		})
 
 		It("should reject HelmTarget with only tag", func() {
@@ -648,10 +648,10 @@ var _ = Describe("HelmTarget Validation", func() {
 
 			err := k8sClient.Create(context.Background(), cr)
 			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("Either spec must be set, or both name and tag must be set together"))
+			Expect(err.Error()).To(ContainSubstring("Either spec must be set, both name and tag must be set together, or neither name nor tag must be set"))
 		})
 
-		It("should reject HelmTarget with neither spec nor name/tag", func() {
+		It("should accept HelmTarget with neither spec nor name/tag (defaults will be used)", func() {
 			cr := &ImageUpdater{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "image-updater-helm-empty",
@@ -677,8 +677,11 @@ var _ = Describe("HelmTarget Validation", func() {
 			}
 
 			err := k8sClient.Create(context.Background(), cr)
-			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("Either spec must be set, or both name and tag must be set together"))
+			Expect(err).NotTo(HaveOccurred())
+
+			// Cleanup
+			err = k8sClient.Delete(context.Background(), cr)
+			Expect(err).NotTo(HaveOccurred())
 		})
 	})
 })
