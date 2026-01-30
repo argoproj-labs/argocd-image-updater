@@ -47,73 +47,75 @@ For better workload isolation, you can install the image updater into its own na
 
 Let's assume Argo CD runs in `<argocd_namespace>` and you are installing the image updater in `<updater_namespace>`.
 
-1.  **Install the Controller**
+1. **Install the Controller**
 
-    First, create the target namespace and apply the installation manifest.
-    ```shell
-    kubectl create namespace <updater_namespace>
-    kubectl apply -n <updater_namespace> -f https://raw.githubusercontent.com/argoproj-labs/argocd-image-updater/stable/config/install.yaml
-    ```
+First, create the target namespace and apply the installation manifest.
 
-2.  **Configure the Argo CD Namespace**
+```shell
+kubectl create namespace <updater_namespace>
+kubectl apply -n <updater_namespace> -f https://raw.githubusercontent.com/argoproj-labs/argocd-image-updater/stable/config/install.yaml
+```
 
-    The controller needs to know where to find Argo CD resources. Edit the `argocd-image-updater-controller` deployment manifest and add the `ARGOCD_NAMESPACE` environment variable to the `argocd-image-updater-controller` container or add `argocd.namespace` key to the ConfigMap `argocd-image-updater-config`, pointing to the namespace where Argo CD is installed.
+2. **Configure the Argo CD Namespace**
 
-    ```yaml
-    ...
-          env:
-          - name: ARGOCD_NAMESPACE
-            value: <argocd_namespace>
-    ...
-    ```
+The controller needs to know where to find Argo CD resources. Edit the `argocd-image-updater-controller` deployment manifest and add the `ARGOCD_NAMESPACE` environment variable to the `argocd-image-updater-controller` container or add `argocd.namespace` key to the ConfigMap `argocd-image-updater-config`, pointing to the namespace where Argo CD is installed.
 
-    or
+```yaml
+...
+      env:
+      - name: ARGOCD_NAMESPACE
+        value: <argocd_namespace>
+...
+```
 
-    ```yaml
-    ...
-          data:
-            argocd.namespace: <argocd_namespace>
-    ...
-    ```
+or
 
-    Alternatively, you can add the `--argocd-namespace=<argocd_namespace>` flag to the container's `command` arguments in the deployment manifest.
+```yaml
+...
+      data:
+        argocd.namespace: <argocd_namespace>
+...
+```
 
-3.  **Adjust ClusterRoleBinding**
+Alternatively, you can add the `--argocd-namespace=<argocd_namespace>` flag to the container's `command` arguments in the deployment manifest.
 
-    The installation manifest contains `ClusterRoleBinding` resources that grant the controller's `ServiceAccount` cluster-wide permissions. You must update these bindings to reference the namespace where the image updater is installed (`<updater_namespace>`).
+3. **Adjust ClusterRoleBinding**
 
-    To do this, download `install.yaml` and manually change the `namespace` in the `subjects` section of all `ClusterRoleBinding` resources from `argocd` to `<updater_namespace>` before applying the manifest.
+The installation manifest contains `ClusterRoleBinding` resources that grant the controller's `ServiceAccount` cluster-wide permissions. You must update these bindings to reference the namespace where the image updater is installed (`<updater_namespace>`).
 
-4.  **Grant Permissions in the Argo CD Namespace**
+To do this, download `install.yaml` and manually change the `namespace` in the `subjects` section of all `ClusterRoleBinding` resources from `argocd` to `<updater_namespace>` before applying the manifest.
 
-    The image updater needs to read resources from the Argo CD namespace, such as `Secrets` containing repository credentials. The default installation does not grant these cross-namespace permissions. You must create a `Role` and `RoleBinding` in the Argo CD namespace to allow the image updater's ServiceAccount (from `<updater_namespace>`) to access these resources.
+4. **Grant Permissions in the Argo CD Namespace**
 
-    Create and apply the following manifest in the `<argocd_namespace>`:
-    ```yaml
-    apiVersion: rbac.authorization.k8s.io/v1
-    kind: Role
-    metadata:
-      name: argocd-image-updater-cross-namespace-reader
-      namespace: <argocd_namespace>
-    rules:
-    - apiGroups: [""]
-      resources: ["secrets", "configmaps"]
-      verbs: ["get", "list", "watch"]
-    ---
-    apiVersion: rbac.authorization.k8s.io/v1
-    kind: RoleBinding
-    metadata:
-      name: argocd-image-updater-cross-namespace-reader
-      namespace: <argocd_namespace>
-    roleRef:
-      apiGroup: rbac.authorization.k8s.io
-      kind: Role
-      name: argocd-image-updater-cross-namespace-reader
-    subjects:
-    - kind: ServiceAccount
-      name: argocd-image-updater-controller
-      namespace: <updater_namespace>
-    ```
+The image updater needs to read resources from the Argo CD namespace, such as `Secrets` containing repository credentials. The default installation does not grant these cross-namespace permissions. You must create a `Role` and `RoleBinding` in the Argo CD namespace to allow the image updater's ServiceAccount (from `<updater_namespace>`) to access these resources.
+
+Create and apply the following manifest in the `<argocd_namespace>`:
+
+```yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: argocd-image-updater-cross-namespace-reader
+  namespace: <argocd_namespace>
+rules:
+- apiGroups: [""]
+  resources: ["secrets", "configmaps"]
+  verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: argocd-image-updater-cross-namespace-reader
+  namespace: <argocd_namespace>
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: argocd-image-updater-cross-namespace-reader
+subjects:
+- kind: ServiceAccount
+  name: argocd-image-updater-controller
+  namespace: <updater_namespace>
+```
 
 ### Configure the desired log level
 
