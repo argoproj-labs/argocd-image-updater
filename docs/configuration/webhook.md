@@ -83,7 +83,7 @@ can be found here:
 
 - [Docker Hub](https://docs.docker.com/docker-hub/repos/manage/webhooks/)
 - [GitHub Container Registry](https://docs.github.com/en/webhooks/webhook-events-and-payloads)
-- [Harbor](https://goharbor.io/docs/1.10/working-with-projects/project-configuration/configure-webhooks/)
+- [Harbor](https://goharbor.io/docs/2.2.0/working-with-projects/project-configuration/configure-webhooks/)
 - [Quay](https://docs.quay.io/guides/notifications.html)
 - [AWS ECR via EventBridge](#aws-ecr-via-eventbridge-cloudevents) (see below)
 
@@ -307,8 +307,8 @@ registries supported.
 
 - [Docker Hub](https://docs.docker.com/docker-hub/repos/manage/webhooks/#example-webhook-payload)
 - [GitHub Container Registry](https://docs.github.com/en/webhooks/webhook-events-and-payloads#example-webhook-delivery)
-- [Harbor](https://goharbor.io/docs/1.10/working-with-projects/project-configuration/configure-webhooks/)
-(View JSON Payload Format Section)
+- [Harbor](https://goharbor.io/docs/2.2.0/working-with-projects/project-configuration/configure-webhooks/)
+(View Payload Format Section)
 - [Quay](https://docs.quay.io/guides/notifications.html)
 (View Repository Push Section)
 - [CloudEvents](#aws-ecr-via-eventbridge-cloudevents) (AWS ECR via EventBridge)
