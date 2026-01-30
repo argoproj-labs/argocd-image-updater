@@ -2,9 +2,6 @@ package webhook
 
 import (
 	"bytes"
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/hex"
 	"io"
 	"net/http/httptest"
 	"strings"
@@ -37,20 +34,21 @@ func TestHarborWebhook_Validate(t *testing.T) {
 	webhook := NewHarborWebhook(secret)
 
 	tests := []struct {
-		name        string
-		method      string
-		contentType string
-		body        string
-		signature   string
-		noSecret    bool
-		expectError bool
+		name           string
+		method         string
+		contentType    string
+		body           string
+		authHeader     string
+		noSecret       bool
+		expectError    bool
+		expectedErrMsg string
 	}{
 		{
-			name:        "valid POST request with correct signature",
+			name:        "valid POST request with correct secret",
 			method:      "POST",
 			contentType: "application/json",
 			body:        `{"test": "data"}`,
-			signature:   generateHarborSignature(secret, `{"test": "data"}`),
+			authHeader:  secret,
 			expectError: false,
 		},
 		{
@@ -66,7 +64,7 @@ func TestHarborWebhook_Validate(t *testing.T) {
 			method:      "GET",
 			contentType: "application/json",
 			body:        `{"test": "data"}`,
-			signature:   generateHarborSignature(secret, `{"test": "data"}`),
+			authHeader:  secret,
 			expectError: true,
 		},
 		{
@@ -74,32 +72,26 @@ func TestHarborWebhook_Validate(t *testing.T) {
 			method:      "POST",
 			contentType: "text/plain",
 			body:        `{"test": "data"}`,
-			signature:   generateHarborSignature(secret, `{"test": "data"}`),
+			authHeader:  secret,
 			expectError: true,
 		},
 		{
-			name:        "missing signature when secret is configured",
-			method:      "POST",
-			contentType: "application/json",
-			body:        `{"test": "data"}`,
-			signature:   "",
-			expectError: true,
+			name:           "missing Authorization header when secret is configured",
+			method:         "POST",
+			contentType:    "application/json",
+			body:           `{"test": "data"}`,
+			authHeader:     "",
+			expectError:    true,
+			expectedErrMsg: "missing Authorization header when secret is configured",
 		},
 		{
-			name:        "invalid signature",
-			method:      "POST",
-			contentType: "application/json",
-			body:        `{"test": "data"}`,
-			signature:   "sha256=invalid",
-			expectError: true,
-		},
-		{
-			name:        "signature for different body",
-			method:      "POST",
-			contentType: "application/json",
-			body:        `{"test": "data"}`,
-			signature:   generateHarborSignature(secret, `{"different": "data"}`),
-			expectError: true,
+			name:           "incorrect secret",
+			method:         "POST",
+			contentType:    "application/json",
+			body:           `{"test": "data"}`,
+			authHeader:     "wrong-secret",
+			expectError:    true,
+			expectedErrMsg: "incorrect webhook secret",
 		},
 	}
 
@@ -112,17 +104,24 @@ func TestHarborWebhook_Validate(t *testing.T) {
 
 			req := httptest.NewRequest(tt.method, "/webhook", strings.NewReader(tt.body))
 			req.Header.Set("Content-Type", tt.contentType)
-			if tt.signature != "" {
-				req.Header.Set("Authorization", tt.signature)
+			if tt.authHeader != "" {
+				req.Header.Set("Authorization", tt.authHeader)
 			}
 
 			err := testWebhook.Validate(req)
 
-			if tt.expectError && err == nil {
-				t.Error("expected error but got none")
-			}
-			if !tt.expectError && err != nil {
-				t.Errorf("expected no error but got: %v", err)
+			if tt.expectError {
+				if err == nil {
+					t.Error("expected error but got none")
+					return
+				}
+				if tt.expectedErrMsg != "" && err.Error() != tt.expectedErrMsg {
+					t.Errorf("expected error message %q, got %q", tt.expectedErrMsg, err.Error())
+				}
+			} else {
+				if err != nil {
+					t.Errorf("expected no error but got: %v", err)
+				}
 			}
 		})
 	}
@@ -344,64 +343,6 @@ func TestHarborWebhook_Parse(t *testing.T) {
 	}
 }
 
-func TestHarborWebhook_validateSignature(t *testing.T) {
-	secret := "test-secret"
-	webhook := NewHarborWebhook(secret)
-
-	tests := []struct {
-		name      string
-		body      string
-		signature string
-		expected  bool
-	}{
-		{
-			name:      "valid signature with sha256 prefix",
-			body:      `{"test": "data"}`,
-			signature: generateHarborSignature(secret, `{"test": "data"}`),
-			expected:  true,
-		},
-		{
-			name:      "valid signature with Bearer prefix",
-			body:      `{"test": "data"}`,
-			signature: "Bearer " + generateHarborSignatureHex(secret, `{"test": "data"}`),
-			expected:  true,
-		},
-		{
-			name:      "valid signature without prefix",
-			body:      `{"test": "data"}`,
-			signature: generateHarborSignatureHex(secret, `{"test": "data"}`),
-			expected:  true,
-		},
-		{
-			name:      "invalid signature",
-			body:      `{"test": "data"}`,
-			signature: "sha256=invalid",
-			expected:  false,
-		},
-		{
-			name:      "empty signature",
-			body:      `{"test": "data"}`,
-			signature: "",
-			expected:  false,
-		},
-		{
-			name:      "signature for different body",
-			body:      `{"test": "data"}`,
-			signature: generateHarborSignature(secret, `{"different": "data"}`),
-			expected:  false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := webhook.validateSignature([]byte(tt.body), tt.signature)
-			if result != tt.expected {
-				t.Errorf("expected %v, got %v", tt.expected, result)
-			}
-		})
-	}
-}
-
 func TestHarborWebhook_ParseWithBodyReuse(t *testing.T) {
 	// Test that body can be read multiple times (e.g., after validation)
 	secret := "test-secret"
@@ -424,7 +365,7 @@ func TestHarborWebhook_ParseWithBodyReuse(t *testing.T) {
 
 	req := httptest.NewRequest("POST", "/webhook", strings.NewReader(payload))
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", generateHarborSignature(secret, payload))
+	req.Header.Set("Authorization", secret)
 
 	// First, validate the request
 	err := webhook.Validate(req)
@@ -449,17 +390,6 @@ func TestHarborWebhook_ParseWithBodyReuse(t *testing.T) {
 	if event.RegistryURL != "harbor" {
 		t.Errorf("expected registry URL to be 'harbor', got %q", event.RegistryURL)
 	}
-}
-
-// Helper function to generate HMAC-SHA256 signature for Harbor testing
-func generateHarborSignature(secret, body string) string {
-	return "sha256=" + generateHarborSignatureHex(secret, body)
-}
-
-func generateHarborSignatureHex(secret, body string) string {
-	mac := hmac.New(sha256.New, []byte(secret))
-	mac.Write([]byte(body))
-	return hex.EncodeToString(mac.Sum(nil))
 }
 
 // Test helper to simulate reading request body multiple times
