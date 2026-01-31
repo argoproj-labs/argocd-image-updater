@@ -119,7 +119,8 @@ func TestWebhookServerStart(t *testing.T) {
 
 // TestWebhookServerStop ensures that the server is stopped properly
 func TestWebhookServerStop(t *testing.T) {
-	server := createMockServer(t, 8080)
+	// Use a unique port to avoid conflicts with other tests running in parallel
+	server := createMockServer(t, 8081)
 	errorChannel := make(chan error)
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
@@ -142,8 +143,12 @@ func TestWebhookServerStop(t *testing.T) {
 		t.Fatal("Server did not shut down properly")
 	}
 
-	client := http.Client{Timeout: 5 * time.Second}
-	_, err = client.Get("http://localhost:8080/webhook")
+	// Give the server a moment to fully close the connection
+	time.Sleep(200 * time.Millisecond)
+
+	// Try to connect - should fail since server is down
+	client := http.Client{Timeout: 500 * time.Millisecond}
+	_, err = client.Get(address + "webhook")
 	assert.NotNil(t, err, "Connecting to endpoint did not return error, server did not shut down properly")
 }
 
@@ -212,7 +217,7 @@ func TestWebhookServerHandleWebhook(t *testing.T) {
 	}{
 		{
 			name:    "Valid webhook payload",
-			handler: "docker",
+			handler: "docker.io",
 			body: []byte(`{
 				"repository": {
 					"repo_name": "somepersononthisfakeregistry/myimagethatdoescoolstuff",
@@ -305,7 +310,7 @@ func TestWebhookServerWebhookEndpoint(t *testing.T) {
 			}`
 
 	client := http.Client{Timeout: 3 * time.Second}
-	res, err := client.Post(address+"webhook?type=docker", "application/json", bytes.NewReader([]byte(body)))
+	res, err := client.Post(address+"webhook?type=docker.io", "application/json", bytes.NewReader([]byte(body)))
 	assert.NoError(t, err)
 	assert.NotNil(t, res, "Response received was nil")
 	if res != nil {
@@ -351,7 +356,7 @@ func TestWebhookServerRateLimit(t *testing.T) {
 		}
 	}`)
 
-	req := httptest.NewRequest(http.MethodPost, "/webhook?type=docker", bytes.NewReader(body))
+	req := httptest.NewRequest(http.MethodPost, "/webhook?type=docker.io", bytes.NewReader(body))
 	rec := httptest.NewRecorder()
 
 	server.handleWebhook(rec, req)
