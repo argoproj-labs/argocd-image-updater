@@ -54,16 +54,12 @@ func (h *WebhookHandler) ProcessWebhook(r *http.Request) (*argocd.WebhookEvent, 
 		return nil, fmt.Errorf("invalid registry type: %s. Supported types: %s", registryType, strings.Join(registryTypes, ", "))
 	}
 
-	// If handler exists for the specified type, use it
-	if handler, exists := h.handlers[registryType]; exists {
-		if err := handler.Validate(r); err != nil {
-			return nil, err
-		}
-		return handler.Parse(r)
+	// Handler is guaranteed to exist after the validation above
+	handler := h.handlers[registryType]
+	if err := handler.Validate(r); err != nil {
+		return nil, err
 	}
-
-	// Valid type but no handler registered - return clear error
-	return nil, fmt.Errorf("no handler registered for registry type: %s", registryType)
+	return handler.Parse(r)
 }
 
 // getSupportedRegistryTypes returns a list of all supported registry types from registered handlers
@@ -72,6 +68,7 @@ func (h *WebhookHandler) getSupportedRegistryTypes() []string {
 	for registryType := range h.handlers {
 		types = append(types, registryType)
 	}
+	slices.Sort(types)
 	return types
 }
 
