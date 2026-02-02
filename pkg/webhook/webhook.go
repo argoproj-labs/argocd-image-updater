@@ -51,7 +51,7 @@ func (h *WebhookHandler) ProcessWebhook(r *http.Request) (*argocd.WebhookEvent, 
 
 	// Validate the registry type
 	if !slices.Contains(registryTypes, registryType) {
-		return nil, fmt.Errorf("invalid registry type: %s. Should be one of %s", registryType, strings.Join(registryTypes, ", "))
+		return nil, fmt.Errorf("invalid registry type: %s. Supported types: %s", registryType, strings.Join(registryTypes, ", "))
 	}
 
 	// If handler exists for the specified type, use it
