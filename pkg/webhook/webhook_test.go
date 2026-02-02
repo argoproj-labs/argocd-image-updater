@@ -163,7 +163,7 @@ func TestWebhookHandler_ProcessWebhook(t *testing.T) {
 						if !strings.Contains(err.Error(), "unsupported.io") {
 							t.Errorf("expected error to mention the invalid type, got: %v", err)
 						}
-						if !strings.Contains(err.Error(), "Should be one of") {
+						if !strings.Contains(err.Error(), "Supported types:") {
 							t.Errorf("expected error to list valid types, got: %v", err)
 						}
 					}
