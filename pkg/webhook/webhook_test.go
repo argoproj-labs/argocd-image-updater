@@ -105,7 +105,7 @@ func TestWebhookHandler_ProcessWebhook(t *testing.T) {
 			expectError:  false,
 		},
 		{
-			name:         "Docker Hub webhook without type parameter (auto-detection)",
+			name:         "missing registry type parameter",
 			registryType: "",
 			payload: `{
 				"repository": {
@@ -115,19 +115,17 @@ func TestWebhookHandler_ProcessWebhook(t *testing.T) {
 					"tag": "latest"
 				}
 			}`,
-			expectedRepo: "myuser/myapp",
-			expectedTag:  "latest",
-			expectError:  false,
+			expectError: true,
 		},
 		{
-			name:         "unsupported registry type",
+			name:         "invalid registry type",
 			registryType: "unsupported.io",
 			payload:      `{"test": "data"}`,
 			expectError:  true,
 		},
 		{
-			name:         "invalid payload",
-			registryType: "",
+			name:         "invalid payload with valid type",
+			registryType: "docker.io",
 			payload:      `{"invalid": "payload"}`,
 			expectError:  true,
 		},
@@ -152,6 +150,23 @@ func TestWebhookHandler_ProcessWebhook(t *testing.T) {
 			if tt.expectError {
 				if err == nil {
 					t.Error("expected error but got none")
+				} else {
+					// Verify error message for specific test cases
+					if tt.name == "missing registry type parameter" {
+						if !strings.Contains(err.Error(), "missing registry type parameter") {
+							t.Errorf("expected error about missing registry type parameter, got: %v", err)
+						}
+					} else if tt.name == "invalid registry type" {
+						if !strings.Contains(err.Error(), "invalid registry type") {
+							t.Errorf("expected error about invalid registry type, got: %v", err)
+						}
+						if !strings.Contains(err.Error(), "unsupported.io") {
+							t.Errorf("expected error to mention the invalid type, got: %v", err)
+						}
+						if !strings.Contains(err.Error(), "Supported types:") {
+							t.Errorf("expected error to list valid types, got: %v", err)
+						}
+					}
 				}
 				return
 			}

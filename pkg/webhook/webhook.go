@@ -3,6 +3,8 @@ package webhook
 import (
 	"fmt"
 	"net/http"
+	"slices"
+	"strings"
 
 	"github.com/argoproj-labs/argocd-image-updater/pkg/argocd"
 )
@@ -39,21 +41,35 @@ func (h *WebhookHandler) ProcessWebhook(r *http.Request) (*argocd.WebhookEvent, 
 	// Try to determine registry type from request headers or path
 	registryType := h.detectRegistryType(r)
 
-	if handler, exists := h.handlers[registryType]; exists {
-		if err := handler.Validate(r); err != nil {
-			return nil, err
-		}
-		return handler.Parse(r)
+	// Get list of supported registry types from registered handlers
+	registryTypes := h.getSupportedRegistryTypes()
+
+	// Registry type is required
+	if registryType == "" {
+		return nil, fmt.Errorf("missing registry type parameter. Supported types: %s", strings.Join(registryTypes, ", "))
 	}
 
-	// If we can't determine the registry type, try each handler
-	for _, handler := range h.handlers {
-		if err := handler.Validate(r); err == nil {
-			return handler.Parse(r)
-		}
+	// Validate the registry type
+	if !slices.Contains(registryTypes, registryType) {
+		return nil, fmt.Errorf("invalid registry type: %s. Supported types: %s", registryType, strings.Join(registryTypes, ", "))
 	}
 
-	return nil, fmt.Errorf("no handler available for this webhook")
+	// Handler is guaranteed to exist after the validation above
+	handler := h.handlers[registryType]
+	if err := handler.Validate(r); err != nil {
+		return nil, err
+	}
+	return handler.Parse(r)
+}
+
+// getSupportedRegistryTypes returns a list of all supported registry types from registered handlers
+func (h *WebhookHandler) getSupportedRegistryTypes() []string {
+	types := make([]string, 0, len(h.handlers))
+	for registryType := range h.handlers {
+		types = append(types, registryType)
+	}
+	slices.Sort(types)
+	return types
 }
 
 // detectRegistryType tries to determine the registry type from the request
