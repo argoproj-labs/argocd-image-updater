@@ -182,7 +182,6 @@ spec:
                                       Name is the dot-separated path to the Helm key for the image repository/name part.
                                       Example: "image.repository", "frontend.deployment.image.name".
                                       If neither spec nor name/tag are set, defaults to "image.name".
-                                      This field must be set together with tag if spec is not set and you want to override defaults.
                                       If spec is set, this field is ignored.
                                     type: string
                                   spec:
@@ -197,15 +196,9 @@ spec:
                                       Tag is the dot-separated path to the Helm key for the image tag part.
                                       Example: "image.tag", "frontend.deployment.image.version".
                                       If neither spec nor name/tag are set, defaults to "image.tag".
-                                      This field must be set together with name if spec is not set and you want to override defaults.
                                       If spec is set, this field is ignored.
                                     type: string
                                 type: object
-                                x-kubernetes-validations:
-                                - message: Either spec must be set, both name and
-                                    tag must be set together, or neither name nor
-                                    tag must be set (defaults will be used)
-                                  rule: has(self.spec) || (has(self.name) == has(self.tag))
                               kustomize:
                                 description: |-
                                   Kustomize specifies update parameters if the target manifest is managed by Kustomize
