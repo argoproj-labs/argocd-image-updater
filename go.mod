@@ -6,7 +6,7 @@ require (
 	github.com/argoproj-labs/argocd-image-updater/registry-scanner v1.0.2
 	github.com/argoproj/argo-cd/v3 v3.3.0
 	github.com/argoproj/gitops-engine v0.7.1-0.20251217140045-5baed5604d2d
-	github.com/bmatcuk/doublestar/v4 v4.9.1
+	github.com/bmatcuk/doublestar/v4 v4.10.0
 	github.com/bombsimon/logrusr/v2 v2.0.1
 	github.com/bradleyfalzon/ghinstallation/v2 v2.17.0
 	github.com/distribution/distribution/v3 v3.0.0-20230722181636-7b502560cad4
