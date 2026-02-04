@@ -5,3 +5,14 @@ metadata:
   labels:
     app.kubernetes.io/name: argocd-image-updater-config
     app.kubernetes.io/part-of: argocd-image-updater-controller
+data:
+  log.level: "trace"
+  webhook.port: "8080"
+  webhook.enable: "true"
+  registries.conf: |
+    registries:
+    - name: Test Registry
+      api_url: https://host.docker.internal:30000
+      ping: yes
+      prefix: 127.0.0.1:30000
+      insecure: true

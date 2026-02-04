@@ -55,12 +55,19 @@ spec:
           - run
         image: argocd-image-updater-controller:latest
         name: argocd-image-updater-controller
+        imagePullPolicy: IfNotPresent
         env:
           - name: ARGOCD_NAMESPACE
             valueFrom:
               configMapKeyRef:
                 name: argocd-image-updater-config
                 key: argocd.namespace
+                optional: true
+          - name: REQUIRE_SAME_NAMESPACE
+            valueFrom:
+              configMapKeyRef:
+                name: argocd-image-updater-config
+                key: require_same_namespace
                 optional: true
           - name: IMAGE_UPDATER_INTERVAL
             valueFrom:

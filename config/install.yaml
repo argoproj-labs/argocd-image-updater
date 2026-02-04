@@ -764,6 +764,17 @@ subjects:
   namespace: argocd
 ---
 apiVersion: v1
+data:
+  log.level: trace
+  registries.conf: |
+    registries:
+    - name: Test Registry
+      api_url: https://host.docker.internal:30000
+      ping: yes
+      prefix: 127.0.0.1:30000
+      insecure: true
+  webhook.enable: "true"
+  webhook.port: "8080"
 kind: ConfigMap
 metadata:
   labels:
@@ -836,6 +847,12 @@ spec:
           valueFrom:
             configMapKeyRef:
               key: argocd.namespace
+              name: argocd-image-updater-config
+              optional: true
+        - name: REQUIRE_SAME_NAMESPACE
+          valueFrom:
+            configMapKeyRef:
+              key: require_same_namespace
               name: argocd-image-updater-config
               optional: true
         - name: IMAGE_UPDATER_INTERVAL
@@ -952,7 +969,8 @@ spec:
               key: webhook.ratelimit-allowed
               name: argocd-image-updater-config
               optional: true
-        image: quay.io/argoprojlabs/argocd-image-updater:latest
+        image: quay.io/argoprojlabs/argocd-image-updater:v1.1.0
+        imagePullPolicy: IfNotPresent
         livenessProbe:
           httpGet:
             path: /healthz
