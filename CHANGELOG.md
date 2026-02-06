@@ -28,6 +28,7 @@ handling on your side.
 ### Other changes
 
 * refactor: make argocd-image-updater-config volume mapping optional (#145)
+* enhancement: the current image tag no longer needs to be a valid semver version when using the semver update strategy
 
 ## 2020-12-06 - Release v0.8.0
 
