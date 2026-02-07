@@ -106,24 +106,11 @@ func (img *ContainerImage) GetNewestVersionFromTags(ctx context.Context, vc *Ver
 	// The given constraint MUST match a semver constraint
 	var semverConstraint *semver.Constraints
 	var err error
-	if vc.Strategy == StrategySemVer {
-		// TODO: Shall we really ensure a valid semver on the current tag?
-		// This prevents updating from a non-semver tag currently.
-		if img.ImageTag != nil && img.ImageTag.TagName != "" {
-			_, err := semver.NewVersion(img.ImageTag.TagName)
-			if err != nil {
-				return nil, err
-			}
-		}
-
-		if vc.Constraint != "" {
-			if vc.Strategy == StrategySemVer {
-				semverConstraint, err = semver.NewConstraint(vc.Constraint)
-				if err != nil {
-					logCtx.Errorf("invalid constraint '%s' given: '%v'", vc, err)
-					return nil, err
-				}
-			}
+	if vc.Strategy == StrategySemVer && vc.Constraint != "" {
+		semverConstraint, err = semver.NewConstraint(vc.Constraint)
+		if err != nil {
+			logCtx.Errorf("invalid constraint '%s' given: '%v'", vc, err)
+			return nil, err
 		}
 	}
 
