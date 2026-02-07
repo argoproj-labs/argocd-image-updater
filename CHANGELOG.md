@@ -28,6 +28,7 @@ handling on your side.
 ### Other changes
 
 * refactor: make argocd-image-updater-config volume mapping optional (#145)
+* enhancement: sort Helm parameters alphabetically in .argocd-source-<appName>.yaml for deterministic output
 
 ## 2020-12-06 - Release v0.8.0
 

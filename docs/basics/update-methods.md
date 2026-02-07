@@ -59,7 +59,8 @@ By default, Argo CD Image Updater will store the parameter in a file named
 its manifests from. This will allow Argo CD to pick up parameters in this
 file, when rendering manifests for the Application named `<appName>`. Using
 this approach will also minimize the possibility of merge conflicts, as long
-as no other party in your CI will modify this file.
+as no other party in your CI will modify this file. Helm parameters in this
+file are sorted alphabetically by name to ensure deterministic output.
 
 !!!note "A note on the application's target revision"
     Due to the nature of how Git write-back works, your application really
