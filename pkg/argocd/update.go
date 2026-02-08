@@ -375,8 +375,11 @@ func marshalParamsOverride(ctx context.Context, applicationImages *ApplicationIm
 		mergeKustomizeOverride(&params, &newParams)
 		override, err = marshalWithIndent(params, defaultIndent)
 	case ApplicationTypeHelm:
-		if appSource.Helm == nil {
-			return []byte{}, nil
+		// Extract Helm parameters safely; Helm may be nil for SourceHydrator apps
+		// where the source type is auto-detected from files rather than set in the spec.
+		var helmParams []v1alpha1.HelmParameter
+		if appSource.Helm != nil {
+			helmParams = appSource.Helm.Parameters
 		}
 
 		if wbc != nil && !strings.HasPrefix(filepath.Base(wbc.Target), common.DefaultTargetFilePrefix) {
@@ -425,7 +428,7 @@ func marshalParamsOverride(ctx context.Context, applicationImages *ApplicationIm
 					}
 				} else {
 					// image-tag is present, so continue to process image-tag
-					helmParamVer := getHelmParam(appSource.Helm.Parameters, helmParamVersion)
+					helmParamVer := getHelmParam(helmParams, helmParamVersion)
 					var tagValue string
 					if helmParamVer == nil {
 						// Parameter not pre-defined in the Application - use the image's tag data as fallback
@@ -440,7 +443,7 @@ func marshalParamsOverride(ctx context.Context, applicationImages *ApplicationIm
 					}
 				}
 
-				helmParamN := getHelmParam(appSource.Helm.Parameters, helmParamName)
+				helmParamN := getHelmParam(helmParams, helmParamName)
 				// Determine which value to use for the image name parameter
 				var valueToSet string
 				if helmParamN == nil {
@@ -475,6 +478,9 @@ func marshalParamsOverride(ctx context.Context, applicationImages *ApplicationIm
 
 			override, err = marshalWithIndent(&helmNewValues, defaultIndent)
 		} else {
+			if appSource.Helm == nil {
+				return []byte{}, nil
+			}
 			var params helmOverride
 			newParams := helmOverride{
 				Helm: helmParameters{
