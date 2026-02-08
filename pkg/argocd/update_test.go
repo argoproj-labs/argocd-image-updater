@@ -1877,14 +1877,14 @@ kustomize:
 		expected := `
 helm:
   parameters:
+  - name: bar
+    value: foo
+    forcestring: true
   - name: baz
     value: baz
     forcestring: false
   - name: foo
     value: bar
-    forcestring: true
-  - name: bar
-    value: foo
     forcestring: true
 `
 		app := v1alpha1.Application{
@@ -1940,11 +1940,11 @@ helm:
 		expected := `
 helm:
   parameters:
-  - name: foo
-    value: bar
-    forcestring: true
   - name: bar
     value: foo
+    forcestring: true
+  - name: foo
+    value: bar
     forcestring: true
 `
 		app := v1alpha1.Application{
@@ -1994,11 +1994,11 @@ helm:
 		expected := `
 helm:
   parameters:
-  - name: foo
-    value: bar
-    forcestring: true
   - name: bar
     value: foo
+    forcestring: true
+  - name: foo
+    value: bar
     forcestring: true
 `
 		app := v1alpha1.Application{
@@ -5192,14 +5192,14 @@ helm:
 		assert.YAMLEq(t, `
 helm:
   parameters:
-  - name: foo
-    value: foo
-    forcestring: true
   - name: bar
     value: bar
     forcestring: true
   - name: baz
     value: baz
+    forcestring: true
+  - name: foo
+    value: foo
     forcestring: true
 `, string(override))
 	})
@@ -5255,14 +5255,14 @@ helm:
 		assert.YAMLEq(t, `
 helm:
   parameters:
-  - name: foo
-    value: foo
-    forcestring: true
   - name: bar
     value: bar
     forcestring: true
   - name: baz
     value: baz
+    forcestring: true
+  - name: foo
+    value: foo
     forcestring: true
 `, string(override))
 	})
@@ -5318,14 +5318,14 @@ helm:
 		assert.YAMLEq(t, `
 helm:
   parameters:
-  - name: foo
-    value: foo
-    forcestring: true
   - name: bar
     value: bar
     forcestring: true
   - name: baz
     value: baz
+    forcestring: true
+  - name: foo
+    value: foo
     forcestring: true
 `, string(override))
 	})
@@ -5825,6 +5825,61 @@ func Test_mergeKustomizeOverride(t *testing.T) {
 				require.NotNil(t, existingImages.Kustomize.Images)
 				assert.ElementsMatch(t, *expectedImages.Kustomize.Images, *existingImages.Kustomize.Images)
 			}
+		})
+	}
+}
+
+func Test_sortHelmParameters(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    []v1alpha1.HelmParameter
+		expected []v1alpha1.HelmParameter
+	}{
+		{
+			"unsorted",
+			[]v1alpha1.HelmParameter{
+				{Name: "charlie", Value: "3"},
+				{Name: "alpha", Value: "1"},
+				{Name: "bravo", Value: "2"},
+			}, []v1alpha1.HelmParameter{
+				{Name: "alpha", Value: "1"},
+				{Name: "bravo", Value: "2"},
+				{Name: "charlie", Value: "3"},
+			}},
+		{
+			"already sorted",
+			[]v1alpha1.HelmParameter{
+				{Name: "a", Value: "1"},
+				{Name: "b", Value: "2"},
+			}, []v1alpha1.HelmParameter{
+				{Name: "a", Value: "1"},
+				{Name: "b", Value: "2"},
+			}},
+		{
+			"empty",
+			[]v1alpha1.HelmParameter{},
+			[]v1alpha1.HelmParameter{}},
+		{
+			"single element",
+			[]v1alpha1.HelmParameter{
+				{Name: "only", Value: "1"},
+			}, []v1alpha1.HelmParameter{
+				{Name: "only", Value: "1"},
+			}},
+		{
+			"preserves all fields",
+			[]v1alpha1.HelmParameter{
+				{Name: "image.tag", Value: "v2.0.0", ForceString: true},
+				{Name: "image.name", Value: "nginx", ForceString: false},
+			}, []v1alpha1.HelmParameter{
+				{Name: "image.name", Value: "nginx", ForceString: false},
+				{Name: "image.tag", Value: "v2.0.0", ForceString: true},
+			}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sortHelmParameters(tt.input)
+			assert.Equal(t, tt.expected, tt.input)
 		})
 	}
 }
