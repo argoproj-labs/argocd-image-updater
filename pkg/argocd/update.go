@@ -2,6 +2,7 @@ package argocd
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"fmt"
 	"path/filepath"
@@ -486,15 +487,18 @@ func marshalParamsOverride(ctx context.Context, applicationImages *ApplicationIm
 			log.Debugf("values: '%s'", outputParams)
 
 			if len(originalData) == 0 {
+				sortHelmParameters(newParams.Helm.Parameters)
 				override, err = marshalWithIndent(newParams, defaultIndent)
 				break
 			}
 			err = yaml.Unmarshal(originalData, &params)
 			if err != nil {
+				sortHelmParameters(newParams.Helm.Parameters)
 				override, err = marshalWithIndent(newParams, defaultIndent)
 				break
 			}
 			mergeHelmOverride(&params, &newParams)
+			sortHelmParameters(params.Helm.Parameters)
 			override, err = marshalWithIndent(params, defaultIndent)
 		}
 	default:
@@ -505,6 +509,12 @@ func marshalParamsOverride(ctx context.Context, applicationImages *ApplicationIm
 	}
 
 	return override, nil
+}
+
+func sortHelmParameters(params []v1alpha1.HelmParameter) {
+	slices.SortFunc(params, func(a, b v1alpha1.HelmParameter) int {
+		return cmp.Compare(a.Name, b.Name)
+	})
 }
 
 func mergeHelmOverride(t *helmOverride, o *helmOverride) {
