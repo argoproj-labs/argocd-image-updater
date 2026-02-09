@@ -881,13 +881,20 @@ func commitChanges(ctx context.Context, applicationImages *ApplicationImages, ch
 	}
 	switch wbc.Method {
 	case WriteBackApplication:
-		// Use the K8s client to update both spec and annotations
 		if argoK8sClient, ok := wbc.ArgoClient.(*ArgoCDK8sClient); ok {
+			originalTagAnnotations := make(map[string]string)
+			originalTagPrefix := ImageUpdaterAnnotationPrefix + "/original-tag."
+			for k, v := range app.Annotations {
+				if strings.HasPrefix(k, originalTagPrefix) {
+					originalTagAnnotations[k] = v
+				}
+			}
+
 			_, err := argoK8sClient.UpdateSpecWithAnnotations(ctx, &application.ApplicationUpdateSpecRequest{
 				Name:         &app.Name,
 				AppNamespace: &app.Namespace,
 				Spec:         &app.Spec,
-			}, app.Annotations)
+			}, originalTagAnnotations)
 			if err != nil {
 				return err
 			}
