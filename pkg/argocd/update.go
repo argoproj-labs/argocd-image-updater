@@ -190,6 +190,15 @@ func UpdateApplication(ctx context.Context, updateConf *UpdateConfiguration, sta
 				result.NumErrors += 1
 				continue
 			} else {
+				// Record original tag when using digest strategy with argocd write-back method
+				if vc.Strategy == image.StrategyDigest && applicationImage.ImageTag != nil && updateConf.UpdateApp.WriteBackConfig.Method == WriteBackApplication {
+					recordOriginalTag(
+						&updateConf.UpdateApp.Application,
+						applicationImage.ContainerImage,
+						applicationImage.ImageTag.TagName,
+					)
+				}
+
 				imgCtx.Infof("Successfully updated image '%s' to '%s', but pending spec update (dry run=%v)", updateableImage.GetFullNameWithTag(), appImageFullNameWithTag, updateConf.DryRun)
 				changeList = append(changeList, ChangeEntry{appImageWithTag, updateableImage.ImageTag, appImageWithTag.ImageTag})
 				result.NumImagesUpdated += 1

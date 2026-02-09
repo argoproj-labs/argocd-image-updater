@@ -3543,3 +3543,78 @@ func (a ApplicationType) String() string {
 		return "Unknown"
 	}
 }
+
+func Test_recordOriginalTag(t *testing.T) {
+	tests := []struct {
+		name        string
+		app         *v1alpha1.Application
+		img         *image.ContainerImage
+		originalTag string
+		expectedKey string
+	}{
+		{
+			name: "when annotations already exist and no alias",
+			app: &v1alpha1.Application{
+				ObjectMeta: v1.ObjectMeta{
+					Annotations: map[string]string{},
+				},
+			},
+			img: &image.ContainerImage{
+				ImageName: "nginx",
+			},
+			originalTag: "1.14.2",
+			expectedKey: fmt.Sprintf("%s/original-tag.nginx", ImageUpdaterAnnotationPrefix),
+		},
+		{
+			name: "when annotations is nil",
+			app: &v1alpha1.Application{
+				ObjectMeta: v1.ObjectMeta{
+					Annotations: nil,
+				},
+			},
+			img: &image.ContainerImage{
+				ImageName: "redis",
+			},
+			originalTag: "6.0",
+			expectedKey: fmt.Sprintf("%s/original-tag.redis", ImageUpdaterAnnotationPrefix),
+		},
+		{
+			name: "when image has alias",
+			app: &v1alpha1.Application{
+				ObjectMeta: v1.ObjectMeta{
+					Annotations: map[string]string{},
+				},
+			},
+			img: &image.ContainerImage{
+				ImageName:  "nginx",
+				ImageAlias: "webserver",
+			},
+			originalTag: "1.14.2",
+			expectedKey: fmt.Sprintf("%s/original-tag.webserver", ImageUpdaterAnnotationPrefix),
+		},
+		{
+			name: "when overwriting existing annotation",
+			app: &v1alpha1.Application{
+				ObjectMeta: v1.ObjectMeta{
+					Annotations: map[string]string{
+						fmt.Sprintf("%s/original-tag.nginx", ImageUpdaterAnnotationPrefix): "1.14.0",
+					},
+				},
+			},
+			img: &image.ContainerImage{
+				ImageName: "nginx",
+			},
+			originalTag: "1.14.2",
+			expectedKey: fmt.Sprintf("%s/original-tag.nginx", ImageUpdaterAnnotationPrefix),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			recordOriginalTag(tt.app, tt.img, tt.originalTag)
+
+			require.NotNil(t, tt.app.Annotations)
+			require.Equal(t, tt.originalTag, tt.app.Annotations[tt.expectedKey])
+		})
+	}
+}
