@@ -3607,6 +3607,19 @@ func Test_recordOriginalTag(t *testing.T) {
 			originalTag: "1.14.2",
 			expectedKey: fmt.Sprintf("%s/original-tag.nginx", ImageUpdaterAnnotationPrefix),
 		},
+		{
+			name: "when image name contains slashes",
+			app: &v1alpha1.Application{
+				ObjectMeta: v1.ObjectMeta{
+					Annotations: map[string]string{},
+				},
+			},
+			img: &image.ContainerImage{
+				ImageName: "dexidp/dex",
+			},
+			originalTag: "v2.30.0",
+			expectedKey: fmt.Sprintf("%s/original-tag.dexidp_dex", ImageUpdaterAnnotationPrefix),
+		},
 	}
 
 	for _, tt := range tests {

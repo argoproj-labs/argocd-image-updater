@@ -881,13 +881,26 @@ func commitChanges(ctx context.Context, applicationImages *ApplicationImages, ch
 	}
 	switch wbc.Method {
 	case WriteBackApplication:
-		_, err := wbc.ArgoClient.UpdateSpec(ctx, &application.ApplicationUpdateSpecRequest{
-			Name:         &app.Name,
-			AppNamespace: &app.Namespace,
-			Spec:         &app.Spec,
-		})
-		if err != nil {
-			return err
+		// Use the K8s client to update both spec and annotations
+		if argoK8sClient, ok := wbc.ArgoClient.(*ArgoCDK8sClient); ok {
+			_, err := argoK8sClient.UpdateSpecWithAnnotations(ctx, &application.ApplicationUpdateSpecRequest{
+				Name:         &app.Name,
+				AppNamespace: &app.Namespace,
+				Spec:         &app.Spec,
+			}, app.Annotations)
+			if err != nil {
+				return err
+			}
+		} else {
+			// Fallback for non-K8s clients (shouldn't happen in practice)
+			_, err := wbc.ArgoClient.UpdateSpec(ctx, &application.ApplicationUpdateSpecRequest{
+				Name:         &app.Name,
+				AppNamespace: &app.Namespace,
+				Spec:         &app.Spec,
+			})
+			if err != nil {
+				return err
+			}
 		}
 	case WriteBackGit:
 		// if the kustomize base is set, the target is a kustomization
