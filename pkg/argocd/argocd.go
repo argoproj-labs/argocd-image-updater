@@ -785,6 +785,24 @@ func SetHelmImage(ctx context.Context, app *argocdapi.Application, newImage *ima
 	return nil
 }
 
+// recordOriginalTag saves the original tag as an annotation when using digest strategy.
+// This allows users to see which human-readable tag was originally deployed while
+// maintaining the immutability benefit of using digests.
+func recordOriginalTag(app *argocdapi.Application, img *image.ContainerImage, originalTag string) {
+	if app.Annotations == nil {
+		app.Annotations = make(map[string]string)
+	}
+
+	// Use ImageAlias if available, otherwise use ImageName
+	identifier := img.ImageAlias
+	if identifier == "" {
+		identifier = img.ImageName
+	}
+
+	key := fmt.Sprintf("%s/original-tag.%s", ImageUpdaterAnnotationPrefix, identifier)
+	app.Annotations[key] = originalTag
+}
+
 // GetKustomizeImage gets the image set in Application source matching new image
 // or an empty string if match is not found
 func GetKustomizeImage(ctx context.Context, app *argocdapi.Application, wbc *WriteBackConfig, applicationImage *Image) (string, error) {
