@@ -59,6 +59,26 @@ func Test_LatestVersion(t *testing.T) {
 		assert.Equal(t, "1.0.1", newTag.TagName)
 	})
 
+	t.Run("Find the latest version with a non-semver current tag and semver constraint", func(t *testing.T) {
+		tagList := newImageTagList([]string{"0.1", "0.5.1", "0.9", "1.0", "1.0.1", "1.1.2", "2.0.3"})
+		img := NewFromIdentifier("christianschlichtherle/test:latest")
+		vc := VersionConstraint{Constraint: "^1.0"}
+		newTag, err := img.GetNewestVersionFromTags(context.Background(), &vc, tagList)
+		require.NoError(t, err)
+		require.NotNil(t, newTag)
+		assert.Equal(t, "1.1.2", newTag.TagName)
+	})
+
+	t.Run("Find the latest version with a non-semver current tag without any constraint", func(t *testing.T) {
+		tagList := newImageTagList([]string{"0.1", "0.5.1", "0.9", "1.0", "1.0.1", "1.1.2", "2.0.3"})
+		img := NewFromIdentifier("christianschlichtherle/test:latest")
+		vc := VersionConstraint{}
+		newTag, err := img.GetNewestVersionFromTags(context.Background(), &vc, tagList)
+		require.NoError(t, err)
+		require.NotNil(t, newTag)
+		assert.Equal(t, "2.0.3", newTag.TagName)
+	})
+
 	t.Run("Find the latest version with a semver constraint that has no match", func(t *testing.T) {
 		tagList := newImageTagList([]string{"0.1", "0.5.1", "0.9", "2.0.3"})
 		img := NewFromIdentifier("jannfis/test:1.0")
