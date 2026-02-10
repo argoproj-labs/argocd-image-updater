@@ -29,6 +29,7 @@ handling on your side.
 
 * refactor: make argocd-image-updater-config volume mapping optional (#145)
 * enhancement: sort Helm parameters alphabetically in .argocd-source-<appName>.yaml for deterministic output
+* enhancement: the current image tag no longer needs to be a valid semver version when using the semver update strategy
 
 ## 2020-12-06 - Release v0.8.0
 

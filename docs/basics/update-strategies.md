@@ -93,9 +93,12 @@ The above example would update to any new tag pushed to the registry matching
 this constraint, e.g. `1.2.5`, `1.2.12` etc., but not to a new minor version
 (e.g. `1.3`).
 
-!!!warning "A note on the current image tag"
-    For semver strategy to work, the current application tag must already follow
-    semver. Otherwise, no comparison can happen by the updater. See discussion at [#270](https://github.com/argoproj-labs/argocd-image-updater/issues/270) for more details.
+!!!note "A note on the current image tag"
+    The current application tag does not need to follow semver. The updater will
+    find the newest tag from the registry that matches the version constraint,
+    regardless of the format of the currently running tag. For example, an
+    application running the `latest` tag can be updated to a semver-compatible
+    version using a constraint like `1.x`.
 
 Likewise, to allow updates to any minor release within the major version `1`,
 use
