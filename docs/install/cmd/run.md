@@ -173,6 +173,19 @@ Can also be set using the *MAX_CONCURRENT_RECONCILES* environment variable.
 
 port to start the metrics server on, "0" to disable (default "0")
 
+**--watch-namespaces *namespace-list***
+
+Comma-separated list of namespaces to watch. When set, the controller operates
+in namespace-scoped mode, only watching ImageUpdater CRs and Applications in
+the specified namespaces. This allows deployment with namespace-scoped RBAC
+(Role/RoleBinding) instead of cluster-wide RBAC (ClusterRole/ClusterRoleBinding).
+
+When not set or empty, the controller watches all namespaces (cluster-wide mode).
+
+Example: `--watch-namespaces=argocd,team-a,team-b`
+
+Can also be set using the *IMAGE_UPDATER_WATCH_NAMESPACES* environment variable.
+
 **--metrics-secure *enabled***
 
 If set, the metrics endpoint is served securely via HTTPS. Use `--metrics-secure="false"` to use HTTP instead.
