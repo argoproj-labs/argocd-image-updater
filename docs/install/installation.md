@@ -117,6 +117,87 @@ subjects:
   namespace: <updater_namespace>
 ```
 
+#### Option 3: Namespace-scoped installation (without cluster-wide RBAC)
+
+For multi-tenant environments or when cluster-wide RBAC is not permitted, the controller can operate in namespace-scoped mode. This restricts the controller to only watch specific namespaces using namespace-scoped `Role` and `RoleBinding` resources instead of `ClusterRole` and `ClusterRoleBinding`.
+
+Let's assume you want to watch namespaces `argocd` and `team-a`, and the controller is installed in the `argocd` namespace.
+
+1. **Install the Controller**
+
+First, apply the installation manifest. You will modify the RBAC in the next step.
+
+```shell
+kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj-labs/argocd-image-updater/stable/config/install.yaml
+```
+
+2. **Replace Cluster-wide RBAC with Namespace-scoped RBAC**
+
+The default installation includes `ClusterRole` and `ClusterRoleBinding` resources that grant cluster-wide permissions. For namespace-scoped operation, you must replace these with `Role` and `RoleBinding` resources in each namespace you want to watch.
+
+First, delete the cluster-wide RBAC resources:
+
+```shell
+kubectl delete clusterrole argocd-image-updater-manager-role
+kubectl delete clusterrolebinding argocd-image-updater-manager-rolebinding
+```
+
+Then, for each namespace you want to watch (e.g., `argocd`, `team-a`), create a `Role` and `RoleBinding`. The required permissions mirror those in `config/rbac/role.yaml`:
+
+```yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: argocd-image-updater-manager-role
+  namespace: <target_namespace>
+rules:
+- apiGroups: [""]
+  resources: ["events"]
+  verbs: ["create"]
+- apiGroups: [""]
+  resources: ["secrets", "configmaps"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["argocd-image-updater.argoproj.io"]
+  resources: ["imageupdaters"]
+  verbs: ["create", "delete", "get", "list", "patch", "update", "watch"]
+- apiGroups: ["argocd-image-updater.argoproj.io"]
+  resources: ["imageupdaters/finalizers"]
+  verbs: ["update"]
+- apiGroups: ["argocd-image-updater.argoproj.io"]
+  resources: ["imageupdaters/status"]
+  verbs: ["get", "patch", "update"]
+- apiGroups: ["argoproj.io"]
+  resources: ["applications"]
+  verbs: ["get", "list", "patch", "update", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: argocd-image-updater-manager-rolebinding
+  namespace: <target_namespace>
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: argocd-image-updater-manager-role
+subjects:
+- kind: ServiceAccount
+  name: argocd-image-updater-controller
+  namespace: argocd
+```
+
+3. **Configure the Controller to Watch Specific Namespaces**
+
+The controller must be configured to only watch the namespaces where you have granted permissions. Edit the `argocd-image-updater-config` ConfigMap and add the `watch-namespaces` key:
+
+```yaml
+data:
+  watch-namespaces: "argocd,team-a"
+```
+
+Alternatively, you can add the `--watch-namespaces=argocd,team-a` flag to the container's `command` arguments in the deployment manifest, or set the `IMAGE_UPDATER_WATCH_NAMESPACES` environment variable.
+
+The controller logs `Configuring namespace-scoped operation` on startup when this mode is active
+
 ### Configure the desired log level
 
 While this step is optional, we recommend to set the log level explicitly.

@@ -61,6 +61,7 @@ type ImageUpdaterConfig struct {
 	DisableKubeEvents      bool
 	GitCreds               git.CredsStore
 	EnableWebhook          bool
+	WatchNamespaces        string
 	// EnableCRMetrics enables per-ImageUpdater-CR Prometheus metrics. Set false in webhook-only
 	// mode (no controller/reconcile) so metrics are not written and never orphaned on CR delete.
 	EnableCRMetrics bool
