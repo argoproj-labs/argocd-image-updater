@@ -128,7 +128,9 @@ func setNodeValue(node ast.Node, value string) error {
 	comment := stringNode.GetComment()
 	stringNode.Value = value
 	if comment != nil {
-		stringNode.SetComment(comment)
+		if err := stringNode.SetComment(comment); err != nil {
+			return fmt.Errorf("failed to preserve comment: %w", err)
+		}
 	}
 
 	return nil
