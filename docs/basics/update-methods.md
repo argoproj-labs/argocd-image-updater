@@ -343,17 +343,40 @@ message that best suites your processes and regulations. For this, a simple
 template can be created (evaluating using the `text/template` Golang package)
 and made available through setting the key `git.commit-message-template` in the
 `argocd-image-updater-config` ConfigMap to the template's contents, e.g.
-
 ```yaml
 data:
   git.commit-message-template: |
     build: automatic update of {{ .AppName }}
 
     {{ range .AppChanges -}}
-    updates image {{ .Image }} tag '{{ .OldTag }}' to '{{ .NewTag }}'
+    Updates image {{ .Image }} tag '{{ .OldTag }}' to '{{ .NewTag }}'
     {{ end -}}
 ```
 
+If we want a more detailed message, we can add custom labels during the build process, and use them for adding custom details to the commit messages. The example below uses OCI image labels to show the parent commit in GitHub.  
+- `org.opencontainers.image.source` label showing the Git repo URL.  
+- `org.opencontainers.image.revision` label showing Git commit SHA
+```yaml
+data:
+  git.commit-message-template: |
+    build: Automatic update of {{ .AppName }}
+
+    {{ range .AppChanges -}}
+    Updates image {{ .Image }} tag '{{ .OldTag }}' to '{{ .NewTag }}'
+    {{- if index .Labels "org.opencontainers.image.revision" }}
+    {{- $source := index .Labels "org.opencontainers.image.source" }}
+    {{- $revision := index .Labels "org.opencontainers.image.revision" }}
+    Upstream Commit: {{ $source }}/commit/{{ $revision }}
+    {{ end }}
+    {{ end -}}
+```
+**Note:** This template assumes `org.opencontainers.image.source` contains a clean Git repository URL (e.g., `https://github.com/org/repo`) without trailing slashes or `.git` suffixes. Most container build tools automatically generate labels in this format. It also assumes that `org.opencontainers.image.revision` is provided at build time. 
+
+To update the `Upstream Commit` message for different Git providers, following examples can be used.  
+1. **GitLab**:    `Upstream Commit: {{ $source }}/-/commit/{{ $revision }}`.  
+2. **BitBucket**:  `Upstream Commit: {{ $source }}/commits/{{ $revision }}`
+
+ 
 Two top-level variables are provided to the template:
 
 * `.AppName` is the name of the application that is being updated
@@ -363,6 +386,7 @@ Two top-level variables are provided to the template:
   * `.Image` holds the full name of the image that was updated
   * `.OldTag` holds the tag name or SHA digest previous to the update
   * `.NewTag` holds the tag name or SHA digest that was updated to
+  * `.Labels` is a map of the labels contained in the created Docker/OCI image, and in case no labels are being assigned to created image, an empty map is created
 
 In order to test a template before configuring it for use in Image Updater,
 you can store the template you want to use in a temporary file, and then use
