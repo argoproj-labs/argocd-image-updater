@@ -47,7 +47,7 @@ line option, e.g. the following demonstrates no available images for the given
 platform:
 
 ```shell
-$ argocd-image-updater test quay.io/argoprojlabs/argocd-e2e-container --platforms darwin/amd64 --update-strateg newest-build --loglevel debug 
+$ argocd-image-updater test quay.io/argoprojlabs/argocd-e2e-container --platforms darwin/amd64 --update-strategy newest-build --loglevel debug 
 INFO[0000] retrieving information about image            command=test image_name=quay.io/argoprojlabs/argocd-e2e-container image_registry=quay.io
 DEBU[0000] setting rate limit to 20 requests per second  command=test image_name=quay.io/argoprojlabs/argocd-e2e-container image_registry=quay.io prefix=quay.io registry="https://quay.io"
 DEBU[0000] Inferred registry from prefix quay.io to use API https://quay.io  command=test image_name=quay.io/argoprojlabs/argocd-e2e-container image_registry=quay.io
@@ -65,7 +65,7 @@ INFO[0002] no newer version of image found               command=test image_name
 While setting the `platforms` to include `linux/amd64`, yields the following:
 
 ```shell
-$ argocd-image-updater test quay.io/argoprojlabs/argocd-e2e-container --platforms linux/amd64 --update-strateg newest-build --loglevel debug 
+$ argocd-image-updater test quay.io/argoprojlabs/argocd-e2e-container --platforms linux/amd64 --update-strategy newest-build --loglevel debug 
 INFO[0000] retrieving information about image            command=test image_name=quay.io/argoprojlabs/argocd-e2e-container image_registry=quay.io
 DEBU[0000] setting rate limit to 20 requests per second  command=test image_name=quay.io/argoprojlabs/argocd-e2e-container image_registry=quay.io prefix=quay.io registry="https://quay.io"
 DEBU[0000] Inferred registry from prefix quay.io to use API https://quay.io  command=test image_name=quay.io/argoprojlabs/argocd-e2e-container image_registry=quay.io
@@ -108,7 +108,7 @@ INFO[0139] latest image according to constraint is ghcr.io/argoproj/argocd:2.4.0
 
 ## Using credentials
 
-If you need to specify 
+If you need to specify
 [credentials](../basics/authentication.md#auth-registries),
 you can do so using the `--credentials` parameter. It accepts the same values
 as the corresponding
