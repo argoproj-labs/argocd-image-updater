@@ -213,7 +213,7 @@ func (clt *registryClient) ManifestForDigest(ctx context.Context, dgst digest.Di
 	return manifest, nil
 }
 
-// TagMetadata retrieves metadata for a given manifest of given repository
+// TagMetadata retrieves metadata for a given manifest of given repository.
 func (clt *registryClient) TagMetadata(ctx context.Context, manifest distribution.Manifest, opts *options.ManifestOptions) (*tag.TagInfo, error) {
 	ti := &tag.TagInfo{}
 	logCtx := log.LoggerFromContext(ctx)
@@ -222,6 +222,9 @@ func (clt *registryClient) TagMetadata(ctx context.Context, manifest distributio
 		Created string `json:"created"`
 		OS      string `json:"os"`
 		Variant string `json:"variant"`
+		Config  struct {
+			Labels map[string]string `json:"Labels"`
+		} `json:"config"`
 	}
 
 	// We support the following types of manifests as returned by the registry:
@@ -258,6 +261,7 @@ func (clt *registryClient) TagMetadata(ctx context.Context, manifest distributio
 		} else {
 			ti.CreatedAt = createdAt
 		}
+		ti.Labels = info.Config.Labels
 		return ti, nil
 
 	case *manifestlist.DeserializedManifestList:
@@ -333,6 +337,7 @@ func (clt *registryClient) TagMetadata(ctx context.Context, manifest distributio
 			return nil, err
 		}
 
+		ti.Labels = info.Config.Labels
 		return ti, nil
 	case *ocischema.DeserializedManifest:
 		var man ocischema.Manifest = deserialized.Manifest
@@ -365,6 +370,7 @@ func (clt *registryClient) TagMetadata(ctx context.Context, manifest distributio
 			return nil, err
 		}
 
+		ti.Labels = info.Config.Labels
 		return ti, nil
 	default:
 		return nil, fmt.Errorf("invalid manifest type %T", manifest)
@@ -372,7 +378,6 @@ func (clt *registryClient) TagMetadata(ctx context.Context, manifest distributio
 }
 
 // TagInfoFromReferences is a helper method to retrieve metadata for a given
-// list of references. It will return the most recent pushed manifest from the
 // list of references.
 func TagInfoFromReferences(ctx context.Context, client *registryClient, opts *options.ManifestOptions, ti *tag.TagInfo, references []distribution.Descriptor) (*tag.TagInfo, error) {
 	logCtx := log.LoggerFromContext(ctx)
@@ -435,6 +440,7 @@ func TagInfoFromReferences(ctx context.Context, client *registryClient, opts *op
 		if cti != nil {
 			if cti.CreatedAt.After(ti.CreatedAt) {
 				ti.CreatedAt = cti.CreatedAt
+				ti.Labels = cti.Labels
 			}
 		} else {
 			logCtx.Warnf("returned metadata for manifest %v is nil, this should not happen.", ref.Digest)
