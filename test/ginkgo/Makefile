@@ -34,6 +34,8 @@ spec:
         env:
         - name: ARGOCD_IMAGE_UPDATER_IMAGE
           value: $(ARGOCD_IMAGE_UPDATER_IMAGE)
+        - name: ARGOCD_CLUSTER_CONFIG_NAMESPACES
+          value: argocd-operator-system
 endef
 export PATCH_TEMPLATE
 
