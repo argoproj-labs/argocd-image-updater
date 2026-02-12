@@ -54,8 +54,18 @@ func (y *ValuesFile) SetValue(key string, value string) error {
 	doc := y.file.Docs[0]
 	root := doc.Body
 
+	// Handle comment-only YAML or empty documents by initializing an empty mapping
 	if root == nil {
-		return fmt.Errorf("empty document body")
+		root = makeEmptyMapping(0)
+		doc.Body = root
+	} else if commentGroup, isCommentOnly := root.(*ast.CommentGroupNode); isCommentOnly {
+		// Comment-only YAML - create empty mapping and preserve comments
+		newRoot := makeEmptyMapping(0)
+		if err := newRoot.SetComment(commentGroup); err != nil {
+			return fmt.Errorf("failed to preserve comments: %w", err)
+		}
+		doc.Body = newRoot
+		root = newRoot
 	}
 
 	rootMapping, ok := root.(*ast.MappingNode)
@@ -91,18 +101,14 @@ func (y *ValuesFile) GetValue(key string) (string, error) {
 		return "", fmt.Errorf("root is not a mapping node")
 	}
 
-	// First try nested path
-	keys := strings.Split(key, ".")
-	if val, err := getNestedValue(rootMapping, keys); err == nil {
-		return val, nil
-	}
-
-	// Try as literal key
+	// First, check if the full key exists as a literal key
 	if node := findKeyInMapping(rootMapping, key); node != nil {
 		return getScalarValue(node)
 	}
 
-	return "", fmt.Errorf("key %q not found", key)
+	// Try navigating as a nested path
+	keys := strings.Split(key, ".")
+	return getNestedValue(rootMapping, keys)
 }
 
 // findKeyInMapping finds a key in a mapping node and returns its value node.
@@ -115,20 +121,57 @@ func findKeyInMapping(mapping *ast.MappingNode, key string) ast.Node {
 	return nil
 }
 
-// setNodeValue sets the value of a scalar node, preserving comments.
-func setNodeValue(node ast.Node, value string) error {
-	// Unwrap anchor/alias nodes
-	node = unwrapNode(node)
-
-	stringNode, ok := node.(*ast.StringNode)
-	if !ok {
-		return fmt.Errorf("cannot set value on non-scalar node (type: %T)", node)
+// updateNodeToken updates the token value for a node and returns its comment.
+func updateNodeToken(node ast.Node, value string) (*ast.CommentGroupNode, error) {
+	type tokenNode interface {
+		GetComment() *ast.CommentGroupNode
+		GetToken() *token.Token
 	}
 
-	comment := stringNode.GetComment()
-	stringNode.Value = value
+	tn, ok := node.(tokenNode)
+	if !ok {
+		return nil, fmt.Errorf("cannot set value on non-scalar node (type: %T)", node)
+	}
+
+	// Validate value based on node type
+	switch n := node.(type) {
+	case *ast.IntegerNode:
+		if _, err := strconv.ParseInt(value, 10, 64); err != nil {
+			return nil, fmt.Errorf("cannot set integer value to %q: %w", value, err)
+		}
+	case *ast.FloatNode:
+		if _, err := strconv.ParseFloat(value, 64); err != nil {
+			return nil, fmt.Errorf("cannot set float value to %q: %w", value, err)
+		}
+	case *ast.BoolNode:
+		if _, err := strconv.ParseBool(value); err != nil {
+			return nil, fmt.Errorf("cannot set bool value to %q: %w", value, err)
+		}
+	case *ast.StringNode:
+		// String node - update the value field
+		n.Value = value
+	}
+
+	// Update token for serialization
+	if tok := tn.GetToken(); tok != nil {
+		tok.Value = value
+	}
+
+	return tn.GetComment(), nil
+}
+
+// setNodeValue sets the value of a scalar node, preserving comments and type.
+func setNodeValue(node ast.Node, value string) error {
+	node = unwrapNode(node)
+
+	comment, err := updateNodeToken(node, value)
+	if err != nil {
+		return err
+	}
+
+	// Restore comment
 	if comment != nil {
-		if err := stringNode.SetComment(comment); err != nil {
+		if err := node.SetComment(comment); err != nil {
 			return fmt.Errorf("failed to preserve comment: %w", err)
 		}
 	}
@@ -138,28 +181,20 @@ func setNodeValue(node ast.Node, value string) error {
 
 // getScalarValue extracts the string value from a node.
 func getScalarValue(node ast.Node) (string, error) {
-	// Handle alias nodes
-	if aliasNode, ok := node.(*ast.AliasNode); ok {
-		return getScalarValue(aliasNode.Value)
+	switch n := node.(type) {
+	case *ast.AliasNode:
+		return getScalarValue(n.Value)
+	case *ast.StringNode:
+		return n.Value, nil
+	case *ast.IntegerNode:
+		return n.GetToken().Value, nil
+	case *ast.FloatNode:
+		return n.GetToken().Value, nil
+	case *ast.BoolNode:
+		return n.GetToken().Value, nil
+	default:
+		return "", fmt.Errorf("node is not a scalar value (type: %T)", node)
 	}
-
-	if stringNode, ok := node.(*ast.StringNode); ok {
-		return stringNode.Value, nil
-	}
-
-	if intNode, ok := node.(*ast.IntegerNode); ok {
-		return intNode.GetToken().Value, nil
-	}
-
-	if floatNode, ok := node.(*ast.FloatNode); ok {
-		return floatNode.GetToken().Value, nil
-	}
-
-	if boolNode, ok := node.(*ast.BoolNode); ok {
-		return boolNode.GetToken().Value, nil
-	}
-
-	return "", fmt.Errorf("node is not a scalar value (type: %T)", node)
 }
 
 // unwrapNode unwraps AnchorNode and AliasNode to get the actual value node.
@@ -179,29 +214,32 @@ func unwrapNode(node ast.Node) ast.Node {
 // setNestedValue sets a value at a nested path, creating nodes as needed.
 func setNestedValue(mapping *ast.MappingNode, keys []string, value string) error {
 	current := mapping
+	// Infer indent step once from the root mapping
+	indentStep := getIndentStep(mapping)
 
 	for i, k := range keys {
 		keyPart, arrayIdx := parseArrayIndex(k)
 
 		var valueNode ast.Node
-		var mappingValueNode *ast.MappingValueNode
-
 		for _, item := range current.Values {
 			if keyNode, ok := item.Key.(*ast.StringNode); ok && keyNode.Value == keyPart {
 				valueNode = item.Value
-				mappingValueNode = item
 				break
 			}
 		}
 
 		// If key not found, create it
 		if valueNode == nil {
+			// Cannot create missing array indices
+			if arrayIdx != nil {
+				return fmt.Errorf("cannot set value: key %q does not exist (array indices must reference existing sequences)", keyPart)
+			}
 			if i == len(keys)-1 {
 				// Last key - create scalar value
 				return addKeyValue(current, k, value)
 			}
-			// Create intermediate mapping
-			newMapping, err := addKeyMapping(current, keyPart)
+			// Create intermediate mapping with the inferred indent step
+			newMapping, err := addKeyMapping(current, keyPart, indentStep)
 			if err != nil {
 				return err
 			}
@@ -225,9 +263,6 @@ func setNestedValue(mapping *ast.MappingNode, keys []string, value string) error
 		}
 
 		if i == len(keys)-1 {
-			if mappingValueNode != nil && arrayIdx == nil {
-				return setNodeValue(unwrapNode(mappingValueNode.Value), value)
-			}
 			return setNodeValue(valueNode, value)
 		}
 
@@ -318,119 +353,80 @@ func getMappingIndent(mapping *ast.MappingNode) int {
 	return 0
 }
 
-// addKeyValue adds a new key-value pair to a mapping.
-func addKeyValue(mapping *ast.MappingNode, key string, value string) error {
-	indent := getMappingIndent(mapping)
-
-	keyTok := &token.Token{
-		Type:   token.StringType,
-		Value:  key,
-		Origin: key,
+// makeToken creates a token with position information.
+// Column is 1-indexed, so indent 4 means column 5.
+func makeToken(tokenType token.Type, value string, indent int) *token.Token {
+	return &token.Token{
+		Type:   tokenType,
+		Value:  value,
+		Origin: value,
 		Position: &token.Position{
 			IndentNum:   indent,
 			IndentLevel: 0,
 			Column:      indent + 1,
 		},
 	}
+}
 
-	colonTok := &token.Token{
-		Type:   token.MappingValueType,
-		Value:  ":",
-		Origin: ":",
+// makeEmptyMapping creates an empty mapping node with the given indent.
+func makeEmptyMapping(indent int) *ast.MappingNode {
+	startTok := &token.Token{
+		Type: token.MappingStartType,
 		Position: &token.Position{
 			IndentNum:   indent,
 			IndentLevel: 0,
-			Column:      indent + len(key) + 1,
+			Column:      indent + 1,
 		},
 	}
+	return ast.Mapping(startTok, false)
+}
 
-	valTok := &token.Token{
-		Type:   token.StringType,
-		Value:  value,
-		Origin: value,
-		Position: &token.Position{
-			IndentNum:   indent,
-			IndentLevel: 0,
-			Column:      indent + len(key) + 3,
-		},
+// getIndentStep infers the indent step size from the document.
+// Returns the number of spaces to add when creating a child level.
+func getIndentStep(mapping *ast.MappingNode) int {
+	// Try to infer from a nested mapping value
+	for _, item := range mapping.Values {
+		if childMapping, ok := unwrapNode(item.Value).(*ast.MappingNode); ok {
+			if len(childMapping.Values) > 0 {
+				parentIndent := item.Key.GetToken().Position.IndentNum
+				childIndent := childMapping.Values[0].Key.GetToken().Position.IndentNum
+				if childIndent > parentIndent {
+					return childIndent - parentIndent
+				}
+			}
+		}
 	}
+	// Default to 2 spaces if we can't infer
+	return 2
+}
 
-	keyNode := &ast.StringNode{
-		BaseNode: &ast.BaseNode{},
-		Token:    keyTok,
-		Value:    key,
-	}
+// addKeyValue adds a new key-value pair to a mapping.
+func addKeyValue(mapping *ast.MappingNode, key string, value string) error {
+	indent := getMappingIndent(mapping)
 
-	valNode := &ast.StringNode{
-		BaseNode: &ast.BaseNode{},
-		Token:    valTok,
-		Value:    value,
-	}
+	keyTok := makeToken(token.StringType, key, indent)
+	colonTok := makeToken(token.MappingValueType, ":", indent)
+	valTok := makeToken(token.StringType, value, indent)
 
-	newValue := &ast.MappingValueNode{
-		BaseNode: &ast.BaseNode{},
-		Start:    colonTok,
-		Key:      keyNode,
-		Value:    valNode,
-	}
+	keyNode := ast.String(keyTok)
+	valNode := ast.String(valTok)
+	newValue := ast.MappingValue(colonTok, keyNode, valNode)
 
 	mapping.Values = append(mapping.Values, newValue)
 	return nil
 }
 
 // addKeyMapping adds a new key with an empty mapping value.
-func addKeyMapping(mapping *ast.MappingNode, key string) (*ast.MappingNode, error) {
+func addKeyMapping(mapping *ast.MappingNode, key string, indentStep int) (*ast.MappingNode, error) {
 	indent := getMappingIndent(mapping)
+	childIndent := indent + indentStep
 
-	// Calculate child indent (2 more than current)
-	childIndent := indent + 2
+	keyTok := makeToken(token.StringType, key, indent)
+	colonTok := makeToken(token.MappingValueType, ":", indent)
 
-	keyTok := &token.Token{
-		Type:   token.StringType,
-		Value:  key,
-		Origin: key,
-		Position: &token.Position{
-			IndentNum:   indent,
-			IndentLevel: 0,
-			Column:      indent + 1,
-		},
-	}
-
-	colonTok := &token.Token{
-		Type:   token.MappingValueType,
-		Value:  ":",
-		Origin: ":",
-		Position: &token.Position{
-			IndentNum:   indent,
-			IndentLevel: 0,
-			Column:      indent + len(key) + 1,
-		},
-	}
-
-	keyNode := &ast.StringNode{
-		BaseNode: &ast.BaseNode{},
-		Token:    keyTok,
-		Value:    key,
-	}
-
-	newMapping := &ast.MappingNode{
-		BaseNode: &ast.BaseNode{},
-		Values:   []*ast.MappingValueNode{},
-		Start: &token.Token{
-			Type: token.MappingStartType,
-			Position: &token.Position{
-				IndentNum:   childIndent,
-				IndentLevel: 0,
-			},
-		},
-	}
-
-	newValue := &ast.MappingValueNode{
-		BaseNode: &ast.BaseNode{},
-		Start:    colonTok,
-		Key:      keyNode,
-		Value:    newMapping,
-	}
+	keyNode := ast.String(keyTok)
+	newMapping := makeEmptyMapping(childIndent)
+	newValue := ast.MappingValue(colonTok, keyNode, newMapping)
 
 	mapping.Values = append(mapping.Values, newValue)
 	return newMapping, nil
@@ -438,17 +434,7 @@ func addKeyMapping(mapping *ast.MappingNode, key string) (*ast.MappingNode, erro
 
 // CreateEmptyValuesFile creates an empty values file with an optional header comment.
 func CreateEmptyValuesFile(headerComment string) *ValuesFile {
-	mapping := &ast.MappingNode{
-		BaseNode: &ast.BaseNode{},
-		Values:   []*ast.MappingValueNode{},
-		Start: &token.Token{
-			Type: token.MappingStartType,
-			Position: &token.Position{
-				IndentNum:   0,
-				IndentLevel: 0,
-			},
-		},
-	}
+	mapping := makeEmptyMapping(0)
 
 	doc := &ast.DocumentNode{
 		BaseNode: &ast.BaseNode{},

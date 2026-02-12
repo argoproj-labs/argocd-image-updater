@@ -162,6 +162,125 @@ app:
 		output := valuesFile.String()
 		assert.Contains(t, output, "v2.0.0")
 	})
+
+	t.Run("Fails when trying to create missing array index", func(t *testing.T) {
+		input := `other:
+  field: value
+`
+		valuesFile, err := ParseValuesFile([]byte(input))
+		require.NoError(t, err)
+
+		// Trying to set images[0].tag when images doesn't exist should fail
+		err = valuesFile.SetValue("images[0].tag", "v1.0.0")
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "does not exist")
+	})
+
+	t.Run("Updates integer value", func(t *testing.T) {
+		input := `replicas: 3
+`
+		expected := `replicas: 5
+`
+		valuesFile, err := ParseValuesFile([]byte(input))
+		require.NoError(t, err)
+
+		err = valuesFile.SetValue("replicas", "5")
+		require.NoError(t, err)
+
+		assert.Equal(t, expected, valuesFile.String())
+	})
+
+	t.Run("Updates float value", func(t *testing.T) {
+		input := `cpu: 0.5
+`
+		expected := `cpu: 1.5
+`
+		valuesFile, err := ParseValuesFile([]byte(input))
+		require.NoError(t, err)
+
+		err = valuesFile.SetValue("cpu", "1.5")
+		require.NoError(t, err)
+
+		assert.Equal(t, expected, valuesFile.String())
+	})
+
+	t.Run("Updates boolean value", func(t *testing.T) {
+		input := `enabled: true
+`
+		expected := `enabled: false
+`
+		valuesFile, err := ParseValuesFile([]byte(input))
+		require.NoError(t, err)
+
+		err = valuesFile.SetValue("enabled", "false")
+		require.NoError(t, err)
+
+		assert.Equal(t, expected, valuesFile.String())
+	})
+
+	t.Run("Validates integer format", func(t *testing.T) {
+		input := `replicas: 3
+`
+		valuesFile, err := ParseValuesFile([]byte(input))
+		require.NoError(t, err)
+
+		err = valuesFile.SetValue("replicas", "not-a-number")
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "cannot set integer value")
+	})
+
+	t.Run("Handles comment-only YAML file", func(t *testing.T) {
+		input := `# This is just a comment
+# Another comment
+`
+		valuesFile, err := ParseValuesFile([]byte(input))
+		require.NoError(t, err)
+
+		// Should be able to add a value to a comment-only file
+		err = valuesFile.SetValue("image.tag", "v1.0.0")
+		require.NoError(t, err)
+
+		output := valuesFile.String()
+		assert.Contains(t, output, "tag: v1.0.0")
+		// Comments should be preserved
+		assert.Contains(t, output, "# This is just a comment")
+	})
+
+	t.Run("Infers 4-space indent from existing file", func(t *testing.T) {
+		input := `section1:
+    key1:
+        nested: value1
+`
+		valuesFile, err := ParseValuesFile([]byte(input))
+		require.NoError(t, err)
+
+		// Add a new nested key - should use 4-space indent like existing structure
+		err = valuesFile.SetValue("section2.key2.nested", "value2")
+		require.NoError(t, err)
+
+		output := valuesFile.String()
+		// The new section should match the existing 4-space indent pattern
+		assert.Contains(t, output, "section2:")
+		assert.Contains(t, output, "    key2:")
+		assert.Contains(t, output, "        nested: value2")
+	})
+
+	t.Run("Uses default 2-space indent when structure is flat", func(t *testing.T) {
+		input := `key1: value1
+key2: value2
+`
+		valuesFile, err := ParseValuesFile([]byte(input))
+		require.NoError(t, err)
+
+		// Add nested structure - should use default 2-space indent
+		err = valuesFile.SetValue("section.nested.key", "value")
+		require.NoError(t, err)
+
+		output := valuesFile.String()
+		assert.Contains(t, output, "section:")
+		assert.Contains(t, output, "  nested:")
+		assert.Contains(t, output, "    key: value")
+	})
 }
 
 func Test_ValuesFile_GetValue(t *testing.T) {
@@ -231,7 +350,7 @@ tag: v1.0.0
 		assert.Equal(t, "repo-name", val)
 	})
 
-	t.Run("Prefers nested path when literal key also exists", func(t *testing.T) {
+	t.Run("Prefers literal key when both literal and nested exist", func(t *testing.T) {
 		input := `image:
   attributes:
     tag: nested-value
@@ -240,10 +359,10 @@ tag: v1.0.0
 		valuesFile, err := ParseValuesFile([]byte(input))
 		require.NoError(t, err)
 
-		// Should prefer nested path over literal key
+		// Should prefer literal key over nested path for consistency with SetValue
 		val, err := valuesFile.GetValue("image.attributes.tag")
 		require.NoError(t, err)
-		assert.Equal(t, "nested-value", val)
+		assert.Equal(t, "literal-value", val)
 	})
 
 	t.Run("Falls back to literal key when nested path does not exist", func(t *testing.T) {
@@ -271,6 +390,24 @@ other:
 		val, err := valuesFile.GetValue("image.attributes.tag")
 		require.NoError(t, err)
 		assert.Equal(t, "v1.0.0", val)
+	})
+
+	t.Run("Round-trip consistency with literal and nested keys", func(t *testing.T) {
+		input := `image:
+  attributes:
+    tag: nested-value
+"image.attributes.tag": literal-value
+`
+		valuesFile, err := ParseValuesFile([]byte(input))
+		require.NoError(t, err)
+
+		// Both SetValue and GetValue should operate on the same key
+		err = valuesFile.SetValue("image.attributes.tag", "updated-value")
+		require.NoError(t, err)
+
+		val, err := valuesFile.GetValue("image.attributes.tag")
+		require.NoError(t, err)
+		assert.Equal(t, "updated-value", val, "GetValue should return the value that SetValue just set")
 	})
 }
 
