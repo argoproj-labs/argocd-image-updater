@@ -5,8 +5,8 @@ metadata:
     app.kubernetes.io/name: argocd-image-updater
     app.kubernetes.io/managed-by: kustomize
   name: argocd-image-updater-sample
-spec:
   namespace: argocd
+spec:
   commonUpdateSettings:
     updateStrategy: "semver" # Default strategy if not specified per image
     forceUpdate: true

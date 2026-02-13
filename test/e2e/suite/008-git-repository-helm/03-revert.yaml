@@ -7,7 +7,6 @@ metadata:
   name: image-updater-008
   namespace: argocd-image-updater-e2e
 spec:
-  namespace: argocd-image-updater-e2e
   commonUpdateSettings:
     updateStrategy: "semver"
   writeBackConfig:
