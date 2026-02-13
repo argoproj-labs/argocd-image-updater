@@ -59,6 +59,7 @@ type ImageUpdaterConfig struct {
 	DisableKubeEvents      bool
 	GitCreds               git.CredsStore
 	EnableWebhook          bool
+	WatchNamespaces        string
 }
 
 // ImageUpdaterReconciler reconciles a ImageUpdater object
