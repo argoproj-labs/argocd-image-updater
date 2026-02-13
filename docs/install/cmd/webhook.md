@@ -14,9 +14,16 @@ Supported Registries:
 - GitHub Container Registry (GHCR)
 - Quay
 - Harbor
+- Aliyun ACR (Alibaba Cloud Container Registry)
 - AWS EventBridge (CloudEvents)
 
 ### Flags
+
+**--aliyun-acr-webhook-secret *secret***
+
+Secret for validating Aliyun ACR webhooks.
+
+Can also be set with the `ALIYUN_ACR_WEBHOOK_SECRET` environment variable.
 
 **-argocd-namespace *namespace***
 
