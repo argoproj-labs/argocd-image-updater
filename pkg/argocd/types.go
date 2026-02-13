@@ -93,19 +93,47 @@ func (wbc *WriteBackConfig) RequiresLocking() bool {
 
 // The following are helper structs to only marshal the fields we require
 type kustomizeImages struct {
-	Images *argocdapi.KustomizeImages `json:"images"`
+	Images *argocdapi.KustomizeImages `yaml:"images"`
 }
 
 type kustomizeOverride struct {
-	Kustomize kustomizeImages `json:"kustomize"`
+	Kustomize kustomizeImages `yaml:"kustomize"`
 }
 
-type helmParameters struct {
-	Parameters []argocdapi.HelmParameter `json:"parameters"`
+// helmParameterYAML is a wrapper for HelmParameter with explicit yaml tags
+// to maintain backward compatibility with existing files that use lowercase field names.
+// goccy/go-yaml is case-sensitive and uses json tags as-is, but existing files
+// use lowercase "forcestring" which was produced by the previous yaml library.
+type helmParameterYAML struct {
+	Name        string `yaml:"name,omitempty"`
+	Value       string `yaml:"value,omitempty"`
+	ForceString bool   `yaml:"forcestring"`
+}
+
+type helmParametersYAML struct {
+	Parameters []helmParameterYAML `yaml:"parameters"`
 }
 
 type helmOverride struct {
-	Helm helmParameters `json:"helm"`
+	Helm helmParametersYAML `yaml:"helm"`
+}
+
+// toHelmParameterYAML converts argocd HelmParameter to our yaml-compatible type
+func toHelmParameterYAML(p argocdapi.HelmParameter) helmParameterYAML {
+	return helmParameterYAML{
+		Name:        p.Name,
+		Value:       p.Value,
+		ForceString: p.ForceString,
+	}
+}
+
+// toHelmParametersYAML converts a slice of HelmParameters
+func toHelmParametersYAML(params []argocdapi.HelmParameter) []helmParameterYAML {
+	result := make([]helmParameterYAML, len(params))
+	for i, p := range params {
+		result[i] = toHelmParameterYAML(p)
+	}
+	return result
 }
 
 // ChangeEntry represents an image that has been changed by Image Updater

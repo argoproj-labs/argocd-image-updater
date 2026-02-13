@@ -10,8 +10,6 @@ import (
 	"testing"
 	"time"
 
-	yaml "sigs.k8s.io/yaml/goyaml.v3"
-
 	iuapi "github.com/argoproj-labs/argocd-image-updater/api/v1alpha1"
 	"github.com/argoproj-labs/argocd-image-updater/ext/git"
 	gitmock "github.com/argoproj-labs/argocd-image-updater/ext/git/mocks"
@@ -3404,703 +3402,6 @@ kustomize:
 	})
 }
 
-func Test_GetHelmValue(t *testing.T) {
-	t.Run("Get nested path value", func(t *testing.T) {
-		inputData := []byte(`
-image:
-  attributes:
-    name: repo-name
-    tag: v1.0.0
-`)
-		input := yaml.Node{}
-		err := yaml.Unmarshal(inputData, &input)
-		require.NoError(t, err)
-
-		value, err := getHelmValue(&input, "image.attributes.tag")
-		require.NoError(t, err)
-		assert.Equal(t, "v1.0.0", value)
-	})
-
-	t.Run("Get literal key with dots", func(t *testing.T) {
-		inputData := []byte(`image.attributes.tag: v1.0.0`)
-		input := yaml.Node{}
-		err := yaml.Unmarshal(inputData, &input)
-		require.NoError(t, err)
-
-		value, err := getHelmValue(&input, "image.attributes.tag")
-		require.NoError(t, err)
-		assert.Equal(t, "v1.0.0", value)
-	})
-
-	t.Run("Get root level key", func(t *testing.T) {
-		inputData := []byte(`
-name: repo-name
-tag: v1.0.0
-`)
-		input := yaml.Node{}
-		err := yaml.Unmarshal(inputData, &input)
-		require.NoError(t, err)
-
-		value, err := getHelmValue(&input, "name")
-		require.NoError(t, err)
-		assert.Equal(t, "repo-name", value)
-	})
-
-	t.Run("Get nested path when literal key also exists", func(t *testing.T) {
-		inputData := []byte(`
-image:
-  attributes:
-    tag: nested-value
-image.attributes.tag: literal-value
-`)
-		input := yaml.Node{}
-		err := yaml.Unmarshal(inputData, &input)
-		require.NoError(t, err)
-
-		// Should prefer nested path
-		value, err := getHelmValue(&input, "image.attributes.tag")
-		require.NoError(t, err)
-		assert.Equal(t, "nested-value", value)
-	})
-
-	t.Run("Get literal key when nested path doesn't exist", func(t *testing.T) {
-		inputData := []byte(`
-image.attributes.tag: literal-value
-other:
-  field: value
-`)
-		input := yaml.Node{}
-		err := yaml.Unmarshal(inputData, &input)
-		require.NoError(t, err)
-
-		value, err := getHelmValue(&input, "image.attributes.tag")
-		require.NoError(t, err)
-		assert.Equal(t, "literal-value", value)
-	})
-
-	t.Run("Get value from alias node", func(t *testing.T) {
-		inputData := []byte(`
-image:
-  attributes: &attrs
-    name: repo-name
-    tag: v1.0.0
-other:
-  attributes: *attrs
-`)
-		input := yaml.Node{}
-		err := yaml.Unmarshal(inputData, &input)
-		require.NoError(t, err)
-
-		value, err := getHelmValue(&input, "other.attributes.tag")
-		require.NoError(t, err)
-		assert.Equal(t, "v1.0.0", value)
-	})
-
-	t.Run("Get value from array with index", func(t *testing.T) {
-		inputData := []byte(`
-images:
-  - name: image1
-    tag: v1.0.0
-  - name: image2
-    tag: v2.0.0
-`)
-		input := yaml.Node{}
-		err := yaml.Unmarshal(inputData, &input)
-		require.NoError(t, err)
-
-		value, err := getHelmValue(&input, "images[1].tag")
-		require.NoError(t, err)
-		assert.Equal(t, "v2.0.0", value)
-	})
-
-	t.Run("Key not found returns error", func(t *testing.T) {
-		inputData := []byte(`
-image:
-  attributes:
-    name: repo-name
-`)
-		input := yaml.Node{}
-		err := yaml.Unmarshal(inputData, &input)
-		require.NoError(t, err)
-
-		_, err = getHelmValue(&input, "image.attributes.tag")
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "not found")
-	})
-
-	t.Run("Empty document node returns error", func(t *testing.T) {
-		input := yaml.Node{
-			Kind: yaml.DocumentNode,
-		}
-
-		_, err := getHelmValue(&input, "key")
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "empty document node")
-	})
-
-	t.Run("Invalid root type returns error", func(t *testing.T) {
-		input := yaml.Node{
-			Kind:  yaml.ScalarNode,
-			Value: "not-a-map",
-		}
-
-		_, err := getHelmValue(&input, "key")
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "unexpected type")
-	})
-
-	t.Run("Literal key found but not scalar returns error", func(t *testing.T) {
-		inputData := []byte(`
-image.attributes.tag:
-  nested: value
-`)
-		input := yaml.Node{}
-		err := yaml.Unmarshal(inputData, &input)
-		require.NoError(t, err)
-
-		_, err = getHelmValue(&input, "image.attributes.tag")
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "not a scalar value")
-	})
-
-	t.Run("Deep nested path", func(t *testing.T) {
-		inputData := []byte(`
-level1:
-  level2:
-    level3:
-      level4:
-        value: deep-value
-`)
-		input := yaml.Node{}
-		err := yaml.Unmarshal(inputData, &input)
-		require.NoError(t, err)
-
-		value, err := getHelmValue(&input, "level1.level2.level3.level4.value")
-		require.NoError(t, err)
-		assert.Equal(t, "deep-value", value)
-	})
-
-	t.Run("Nested path with non-scalar final value falls back to literal", func(t *testing.T) {
-		inputData := []byte(`
-image:
-  attributes: value-not-nested
-image.attributes.tag: literal-value
-`)
-		input := yaml.Node{}
-		err := yaml.Unmarshal(inputData, &input)
-		require.NoError(t, err)
-
-		// When image.attributes is a scalar (not a map), nested path fails
-		// Should fall back to literal key if it exists
-		value, err := getHelmValue(&input, "image.attributes.tag")
-		require.NoError(t, err)
-		assert.Equal(t, "literal-value", value)
-	})
-}
-
-func Test_SetHelmValue(t *testing.T) {
-	t.Run("Update existing Key", func(t *testing.T) {
-		expected := `
-image:
-  attributes:
-    name: repo-name
-    tag: v2.0.0
-`
-
-		inputData := []byte(`
-image:
-  attributes:
-    name: repo-name
-    tag: v1.0.0
-`)
-		input := yaml.Node{}
-		err := yaml.Unmarshal(inputData, &input)
-		require.NoError(t, err)
-
-		key := "image.attributes.tag"
-		value := "v2.0.0"
-
-		err = setHelmValue(&input, key, value)
-		require.NoError(t, err)
-
-		output, err := marshalWithIndent(&input, defaultIndent)
-		require.NoError(t, err)
-		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
-	})
-
-	t.Run("Update Key with dots", func(t *testing.T) {
-		expected := `image.attributes.tag: v2.0.0`
-
-		inputData := []byte(`image.attributes.tag: v1.0.0`)
-		input := yaml.Node{}
-		err := yaml.Unmarshal(inputData, &input)
-		require.NoError(t, err)
-
-		key := "image.attributes.tag"
-		value := "v2.0.0"
-
-		err = setHelmValue(&input, key, value)
-		require.NoError(t, err)
-
-		output, err := marshalWithIndent(&input, defaultIndent)
-		require.NoError(t, err)
-		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
-	})
-
-	t.Run("Key not found", func(t *testing.T) {
-		expected := `
-image:
-  attributes:
-    name: repo-name
-    tag: v2.0.0
-`
-
-		inputData := []byte(`
-image:
-  attributes:
-    name: repo-name
-`)
-		input := yaml.Node{}
-		err := yaml.Unmarshal(inputData, &input)
-		require.NoError(t, err)
-
-		key := "image.attributes.tag"
-		value := "v2.0.0"
-
-		err = setHelmValue(&input, key, value)
-		require.NoError(t, err)
-
-		output, err := marshalWithIndent(&input, defaultIndent)
-		require.NoError(t, err)
-		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
-	})
-
-	t.Run("Root key not found", func(t *testing.T) {
-		expected := `
-name: repo-name
-tag: v2.0.0
-`
-
-		inputData := []byte(`name: repo-name`)
-		input := yaml.Node{}
-		err := yaml.Unmarshal(inputData, &input)
-		require.NoError(t, err)
-
-		key := "tag"
-		value := "v2.0.0"
-
-		err = setHelmValue(&input, key, value)
-		require.NoError(t, err)
-
-		output, err := marshalWithIndent(&input, defaultIndent)
-		require.NoError(t, err)
-		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
-	})
-
-	t.Run("Empty values with deep key", func(t *testing.T) {
-		// this uses inline syntax because the input data
-		// needed is an empty map, which can only be expressed as {}.
-		expected := `{image: {attributes: {tag: v2.0.0}}}`
-
-		inputData := []byte(`{}`)
-		input := yaml.Node{}
-		err := yaml.Unmarshal(inputData, &input)
-		require.NoError(t, err)
-
-		key := "image.attributes.tag"
-		value := "v2.0.0"
-
-		err = setHelmValue(&input, key, value)
-		require.NoError(t, err)
-
-		output, err := marshalWithIndent(&input, defaultIndent)
-		require.NoError(t, err)
-		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
-	})
-
-	t.Run("Unexpected type for key", func(t *testing.T) {
-		inputData := []byte(`
-image:
-  attributes: v1.0.0
-`)
-		input := yaml.Node{}
-		err := yaml.Unmarshal(inputData, &input)
-		require.NoError(t, err)
-
-		key := "image.attributes.tag"
-		value := "v2.0.0"
-
-		err = setHelmValue(&input, key, value)
-		assert.Error(t, err)
-		assert.Equal(t, "unexpected type ScalarNode for key attributes", err.Error())
-	})
-
-	t.Run("Aliases, comments, and multiline strings are preserved", func(t *testing.T) {
-		expected := `
-image:
-  attributes:
-    name: &repo repo-name
-    tag: v2.0.0
-    # this is a comment
-    multiline: |
-      one
-      two
-      three
-    alias: *repo
-`
-
-		inputData := []byte(`
-image:
-  attributes:
-    name: &repo repo-name
-    tag: v1.0.0
-    # this is a comment
-    multiline: |
-      one
-      two
-      three
-    alias: *repo
-`)
-		input := yaml.Node{}
-		err := yaml.Unmarshal(inputData, &input)
-		require.NoError(t, err)
-
-		key := "image.attributes.tag"
-		value := "v2.0.0"
-
-		err = setHelmValue(&input, key, value)
-		require.NoError(t, err)
-
-		output, err := marshalWithIndent(&input, defaultIndent)
-		require.NoError(t, err)
-		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
-	})
-
-	t.Run("Aliases to mappings are followed", func(t *testing.T) {
-		expected := `
-global:
-  attributes: &attrs
-    name: &repo repo-name
-    tag: v2.0.0
-image:
-  attributes: *attrs
-`
-
-		inputData := []byte(`
-global:
-  attributes: &attrs
-    name: &repo repo-name
-    tag: v1.0.0
-image:
-  attributes: *attrs
-`)
-		input := yaml.Node{}
-		err := yaml.Unmarshal(inputData, &input)
-		require.NoError(t, err)
-
-		key := "image.attributes.tag"
-		value := "v2.0.0"
-
-		err = setHelmValue(&input, key, value)
-		require.NoError(t, err)
-
-		output, err := marshalWithIndent(&input, defaultIndent)
-		require.NoError(t, err)
-		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
-	})
-
-	t.Run("Aliases to scalars are followed", func(t *testing.T) {
-		expected := `
-image:
-  attributes:
-    name: repo-name
-    version: &ver v2.0.0
-    tag: *ver
-`
-
-		inputData := []byte(`
-image:
-  attributes:
-    name: repo-name
-    version: &ver v1.0.0
-    tag: *ver
-`)
-		input := yaml.Node{}
-		err := yaml.Unmarshal(inputData, &input)
-		require.NoError(t, err)
-
-		key := "image.attributes.tag"
-		value := "v2.0.0"
-
-		err = setHelmValue(&input, key, value)
-		require.NoError(t, err)
-
-		output, err := marshalWithIndent(&input, defaultIndent)
-		require.NoError(t, err)
-		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
-	})
-
-	t.Run("yaml list is correctly parsed", func(t *testing.T) {
-		expected := `
-images:
-- name: image-1
-  attributes:
-    name: repo-name
-    tag: 2.0.0
-`
-
-		inputData := []byte(`
-images:
-- name: image-1
-  attributes:
-    name: repo-name
-    tag: 1.0.0
-`)
-		input := yaml.Node{}
-		err := yaml.Unmarshal(inputData, &input)
-		require.NoError(t, err)
-
-		key := "images[0].attributes.tag"
-		value := "2.0.0"
-
-		err = setHelmValue(&input, key, value)
-		require.NoError(t, err)
-
-		output, err := marshalWithIndent(&input, defaultIndent)
-		require.NoError(t, err)
-		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
-	})
-
-	t.Run("yaml list is correctly parsed when multiple values", func(t *testing.T) {
-		expected := `
-images:
-- name: image-1
-  attributes:
-    name: repo-name
-    tag: 1.0.0
-- name: image-2
-  attributes:
-    name: repo-name
-    tag: 2.0.0
-`
-
-		inputData := []byte(`
-images:
-- name: image-1
-  attributes:
-    name: repo-name
-    tag: 1.0.0
-- name: image-2
-  attributes:
-    name: repo-name
-    tag: 1.0.0
-`)
-		input := yaml.Node{}
-		err := yaml.Unmarshal(inputData, &input)
-		require.NoError(t, err)
-
-		key := "images[1].attributes.tag"
-		value := "2.0.0"
-
-		err = setHelmValue(&input, key, value)
-		require.NoError(t, err)
-
-		output, err := marshalWithIndent(&input, defaultIndent)
-		require.NoError(t, err)
-		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
-	})
-
-	t.Run("yaml list is correctly parsed when inside map", func(t *testing.T) {
-		expected := `
-extraContainers:
-  images:
-  - name: image-1
-    attributes:
-      name: repo-name
-      tag: 2.0.0
-`
-
-		inputData := []byte(`
-extraContainers:
-  images:
-  - name: image-1
-    attributes:
-      name: repo-name
-      tag: 1.0.0
-`)
-		input := yaml.Node{}
-		err := yaml.Unmarshal(inputData, &input)
-		require.NoError(t, err)
-
-		key := "extraContainers.images[0].attributes.tag"
-		value := "2.0.0"
-
-		err = setHelmValue(&input, key, value)
-		require.NoError(t, err)
-
-		output, err := marshalWithIndent(&input, defaultIndent)
-		require.NoError(t, err)
-		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
-	})
-
-	t.Run("yaml list is correctly parsed when list name contains digits", func(t *testing.T) {
-		expected := `
-extraContainers:
-  images123:
-  - name: image-1
-    attributes:
-      name: repo-name
-      tag: 2.0.0
-`
-
-		inputData := []byte(`
-extraContainers:
-  images123:
-  - name: image-1
-    attributes:
-      name: repo-name
-      tag: 1.0.0
-`)
-		input := yaml.Node{}
-		err := yaml.Unmarshal(inputData, &input)
-		require.NoError(t, err)
-
-		key := "extraContainers.images123[0].attributes.tag"
-		value := "2.0.0"
-
-		err = setHelmValue(&input, key, value)
-		require.NoError(t, err)
-
-		output, err := marshalWithIndent(&input, defaultIndent)
-		require.NoError(t, err)
-		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
-	})
-
-	t.Run("id for yaml list is lower than 0", func(t *testing.T) {
-		inputData := []byte(`
-images:
-- name: image-1
-  attributes:
-    name: repo-name
-    tag: 1.0.0
-`)
-		input := yaml.Node{}
-		err := yaml.Unmarshal(inputData, &input)
-		require.NoError(t, err)
-
-		key := "images[-1].attributes.tag"
-		value := "2.0.0"
-
-		err = setHelmValue(&input, key, value)
-
-		require.Error(t, err)
-		assert.Equal(t, "id -1 is out of range [0, 1)", err.Error())
-	})
-
-	t.Run("id for yaml list is greater than length of list", func(t *testing.T) {
-		inputData := []byte(`
-images:
-- name: image-1
-  attributes:
-    name: repo-name
-    tag: 1.0.0
-`)
-		input := yaml.Node{}
-		err := yaml.Unmarshal(inputData, &input)
-		require.NoError(t, err)
-
-		key := "images[1].attributes.tag"
-		value := "2.0.0"
-
-		err = setHelmValue(&input, key, value)
-
-		require.Error(t, err)
-		assert.Equal(t, "id 1 is out of range [0, 1)", err.Error())
-	})
-
-	t.Run("id for YAML list is not a valid integer", func(t *testing.T) {
-		inputData := []byte(`
-images:
-- name: image-1
-  attributes:
-    name: repo-name
-    tag: 1.0.0
-`)
-		input := yaml.Node{}
-		err := yaml.Unmarshal(inputData, &input)
-		require.NoError(t, err)
-
-		key := "images[invalid].attributes.tag"
-		value := "2.0.0"
-
-		err = setHelmValue(&input, key, value)
-
-		require.Error(t, err)
-		assert.Equal(t, "id \"invalid\" in yaml array must match pattern ^(.*)\\[(.*)\\]$", err.Error())
-	})
-
-	t.Run("no id for yaml list given", func(t *testing.T) {
-		inputData := []byte(`
-images:
-- name: image-1
-  attributes:
-    name: repo-name
-    tag: 1.0.0
-`)
-		input := yaml.Node{}
-		err := yaml.Unmarshal(inputData, &input)
-		require.NoError(t, err)
-
-		key := "images.attributes.tag"
-		value := "2.0.0"
-
-		err = setHelmValue(&input, key, value)
-
-		require.Error(t, err)
-		assert.Equal(t, "no id provided for yaml array \"images\"", err.Error())
-	})
-
-	t.Run("id given when node is not an yaml list", func(t *testing.T) {
-		inputData := []byte(`
-image:
-  attributes:
-    name: repo-name
-    tag: 1.0.0
-`)
-		input := yaml.Node{}
-		err := yaml.Unmarshal(inputData, &input)
-		require.NoError(t, err)
-
-		key := "image[0].attributes.tag"
-		value := "2.0.0"
-
-		err = setHelmValue(&input, key, value)
-
-		require.Error(t, err)
-		assert.Equal(t, "id 0 provided when \"image\" is not an yaml array", err.Error())
-	})
-
-	t.Run("invalid id given when node is not an yaml list", func(t *testing.T) {
-		inputData := []byte(`
-image:
-  attributes:
-    name: repo-name
-    tag: 1.0.0
-`)
-		input := yaml.Node{}
-		err := yaml.Unmarshal(inputData, &input)
-		require.NoError(t, err)
-
-		key := "image[invalid].attributes.tag"
-		value := "2.0.0"
-
-		err = setHelmValue(&input, key, value)
-
-		require.Error(t, err)
-		assert.Equal(t, "id \"invalid\" in yaml array must match pattern ^(.*)\\[(.*)\\]$", err.Error())
-	})
-}
-
 func Test_GetWriteBackConfig(t *testing.T) {
 	t.Run("Valid write-back config - git", func(t *testing.T) {
 		app := v1alpha1.Application{
@@ -5829,62 +5130,239 @@ func Test_mergeKustomizeOverride(t *testing.T) {
 	}
 }
 
-func Test_sortHelmParameters(t *testing.T) {
+// Helper function to create string pointers for testing
+func stringPtr(s string) *string {
+	return &s
+}
+
+func Test_sortHelmParametersYAML(t *testing.T) {
 	tests := []struct {
 		name     string
-		input    []v1alpha1.HelmParameter
-		expected []v1alpha1.HelmParameter
+		input    []helmParameterYAML
+		expected []helmParameterYAML
 	}{
 		{
-			"unsorted",
-			[]v1alpha1.HelmParameter{
-				{Name: "charlie", Value: "3"},
-				{Name: "alpha", Value: "1"},
-				{Name: "bravo", Value: "2"},
-			}, []v1alpha1.HelmParameter{
-				{Name: "alpha", Value: "1"},
-				{Name: "bravo", Value: "2"},
-				{Name: "charlie", Value: "3"},
-			}},
+			name: "unsorted parameters are sorted alphabetically",
+			input: []helmParameterYAML{
+				{Name: "charlie", Value: "3", ForceString: false},
+				{Name: "alpha", Value: "1", ForceString: true},
+				{Name: "bravo", Value: "2", ForceString: false},
+			},
+			expected: []helmParameterYAML{
+				{Name: "alpha", Value: "1", ForceString: true},
+				{Name: "bravo", Value: "2", ForceString: false},
+				{Name: "charlie", Value: "3", ForceString: false},
+			},
+		},
 		{
-			"already sorted",
-			[]v1alpha1.HelmParameter{
-				{Name: "a", Value: "1"},
-				{Name: "b", Value: "2"},
-			}, []v1alpha1.HelmParameter{
-				{Name: "a", Value: "1"},
-				{Name: "b", Value: "2"},
-			}},
+			name: "already sorted parameters remain unchanged",
+			input: []helmParameterYAML{
+				{Name: "a", Value: "1", ForceString: false},
+				{Name: "b", Value: "2", ForceString: false},
+			},
+			expected: []helmParameterYAML{
+				{Name: "a", Value: "1", ForceString: false},
+				{Name: "b", Value: "2", ForceString: false},
+			},
+		},
 		{
-			"empty",
-			[]v1alpha1.HelmParameter{},
-			[]v1alpha1.HelmParameter{}},
+			name:     "empty slice",
+			input:    []helmParameterYAML{},
+			expected: []helmParameterYAML{},
+		},
 		{
-			"single element",
-			[]v1alpha1.HelmParameter{
-				{Name: "only", Value: "1"},
-			}, []v1alpha1.HelmParameter{
-				{Name: "only", Value: "1"},
-			}},
+			name: "single element",
+			input: []helmParameterYAML{
+				{Name: "only", Value: "1", ForceString: false},
+			},
+			expected: []helmParameterYAML{
+				{Name: "only", Value: "1", ForceString: false},
+			},
+		},
 		{
-			"preserves all fields",
-			[]v1alpha1.HelmParameter{
+			name: "preserves all fields during sort",
+			input: []helmParameterYAML{
 				{Name: "image.tag", Value: "v2.0.0", ForceString: true},
 				{Name: "image.name", Value: "nginx", ForceString: false},
-			}, []v1alpha1.HelmParameter{
+			},
+			expected: []helmParameterYAML{
 				{Name: "image.name", Value: "nginx", ForceString: false},
 				{Name: "image.tag", Value: "v2.0.0", ForceString: true},
-			}},
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			sortHelmParameters(tt.input)
+			sortHelmParametersYAML(tt.input)
 			assert.Equal(t, tt.expected, tt.input)
 		})
 	}
 }
 
-// Helper function to create string pointers for testing
-func stringPtr(s string) *string {
-	return &s
+// Test_YAMLFormattingPreservation tests that YAML formatting is preserved when
+// updating helm values files through the helmvalues write-back method.
+// This is a comprehensive test covering blank lines, comments, and indentation.
+// These tests use the new YAMLFile implementation (goccy/go-yaml based).
+func Test_YAMLFormattingPreservation(t *testing.T) {
+	t.Run("Full formatting preservation through round-trip", func(t *testing.T) {
+		// This YAML document has various formatting elements that should be preserved:
+		// - Head comment at document level
+		// - Blank lines between sections
+		// - Inline comments
+		// - Different comment styles
+		// - Multiline values
+		// - Anchors and aliases
+		inputData := []byte(`# This is a header comment describing the values file
+# It spans multiple lines
+
+# Global settings section
+global:
+  # Environment configuration
+  environment: production
+  debug: false
+
+# Image configuration with anchors
+images:
+  # Primary application image
+  app: &app-image
+    repository: myapp
+    tag: v1.0.0 # Current version
+    pullPolicy: IfNotPresent
+
+  # Sidecar image using alias
+  sidecar:
+    <<: *app-image
+    tag: v1.0.0
+
+# Database settings
+database:
+  host: localhost
+  port: 5432
+
+  # Connection pool settings
+  pool:
+    minSize: 5
+    maxSize: 20
+`)
+
+		// Expected output should preserve all formatting, only changing the tag values
+		// Note: goccy/go-yaml normalizes spacing before inline comments to single space
+		expected := `# This is a header comment describing the values file
+# It spans multiple lines
+
+# Global settings section
+global:
+  # Environment configuration
+  environment: production
+  debug: false
+
+# Image configuration with anchors
+images:
+  # Primary application image
+  app: &app-image
+    repository: myapp
+    tag: v2.0.0 # Current version
+    pullPolicy: IfNotPresent
+
+  # Sidecar image using alias
+  sidecar:
+    <<: *app-image
+    tag: v2.0.0
+
+# Database settings
+database:
+  host: localhost
+  port: 5432
+
+  # Connection pool settings
+  pool:
+    minSize: 5
+    maxSize: 20
+`
+
+		yamlFile, err := ParseValuesFile(inputData)
+		require.NoError(t, err)
+
+		// Update the image tags
+		err = yamlFile.SetValue("images.app.tag", "v2.0.0")
+		require.NoError(t, err)
+
+		err = yamlFile.SetValue("images.sidecar.tag", "v2.0.0")
+		require.NoError(t, err)
+
+		assert.Equal(t, expected, yamlFile.String(), "YAML formatting should be preserved through round-trip")
+	})
+
+	t.Run("Blank lines between top-level sections preserved", func(t *testing.T) {
+		inputData := []byte(`section1:
+  key1: value1
+
+section2:
+  key2: value2
+
+section3:
+  image:
+    tag: v1.0.0
+`)
+
+		expected := `section1:
+  key1: value1
+
+section2:
+  key2: value2
+
+section3:
+  image:
+    tag: v2.0.0
+`
+
+		yamlFile, err := ParseValuesFile(inputData)
+		require.NoError(t, err)
+
+		err = yamlFile.SetValue("section3.image.tag", "v2.0.0")
+		require.NoError(t, err)
+
+		assert.Equal(t, expected, yamlFile.String(), "Blank lines between sections should be preserved")
+	})
+
+	t.Run("Foot comments preserved", func(t *testing.T) {
+		inputData := []byte(`image:
+  tag: v1.0.0
+# This is a foot comment at the end of the document
+`)
+
+		expected := `image:
+  tag: v2.0.0
+# This is a foot comment at the end of the document
+`
+
+		yamlFile, err := ParseValuesFile(inputData)
+		require.NoError(t, err)
+
+		err = yamlFile.SetValue("image.tag", "v2.0.0")
+		require.NoError(t, err)
+
+		assert.Equal(t, expected, yamlFile.String(), "Foot comments should be preserved")
+	})
+
+	t.Run("Mixed indentation preserved", func(t *testing.T) {
+		// Some YAML files use 4-space indentation
+		inputData := []byte(`image:
+    repository: nginx
+    tag: v1.0.0
+`)
+
+		expected := `image:
+    repository: nginx
+    tag: v2.0.0
+`
+
+		yamlFile, err := ParseValuesFile(inputData)
+		require.NoError(t, err)
+
+		err = yamlFile.SetValue("image.tag", "v2.0.0")
+		require.NoError(t, err)
+
+		assert.Equal(t, expected, yamlFile.String(), "Original indentation should be preserved")
+	})
 }
