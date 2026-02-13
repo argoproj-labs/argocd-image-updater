@@ -29,6 +29,42 @@ import (
 	regokube "github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/kube"
 )
 
+// Assisted-by: Claude AI
+// strictNamespaceClient wraps a client.Client to enforce strict namespace filtering.
+// When InNamespace("") is used (empty namespace), it returns empty results instead of
+// all namespaces, matching real Kubernetes API behavior.
+type strictNamespaceClient struct {
+	client.Client
+}
+
+// List intercepts List operations to enforce strict namespace filtering.
+// If InNamespace("") is used, it returns empty results.
+func (c *strictNamespaceClient) List(ctx context.Context, list client.ObjectList, opts ...client.ListOption) error {
+	// Extract namespace from list options
+	listOpts := &client.ListOptions{}
+	for _, opt := range opts {
+		opt.ApplyToList(listOpts)
+	}
+
+	// If namespace is empty, return empty results (matching real Kubernetes behavior)
+	// This ensures tests fail when ObjectMeta.Namespace is not set on ImageUpdater CRs
+	if listOpts.Namespace == "" {
+		// Set items to empty slice by using type assertion
+		// For ApplicationList, we can directly set Items to empty
+		if appList, ok := list.(*argocdapi.ApplicationList); ok {
+			appList.Items = []argocdapi.Application{}
+			appList.ListMeta = metav1.ListMeta{}
+			return nil
+		}
+		// For other list types, we could use reflection, but since we primarily test
+		// with ApplicationList, this explicit handling is sufficient.
+		// If other types are needed, we can extend this.
+	}
+
+	// Delegate to underlying client for non-empty namespaces
+	return c.Client.List(ctx, list, opts...)
+}
+
 // Assisted-by: Gemini AI
 // TestImageUpdaterReconciler_Reconcile tests the main Reconcile function
 func TestImageUpdaterReconciler_Reconcile(t *testing.T) {
@@ -81,7 +117,6 @@ func TestImageUpdaterReconciler_Reconcile(t *testing.T) {
 						Namespace: "default",
 					},
 					Spec: argocdimageupdaterv1alpha1.ImageUpdaterSpec{
-						Namespace: "argocd",
 						ApplicationRefs: []argocdimageupdaterv1alpha1.ApplicationRef{
 							{
 								NamePattern: "test-app",
@@ -120,7 +155,6 @@ func TestImageUpdaterReconciler_Reconcile(t *testing.T) {
 						Namespace: "default",
 					},
 					Spec: argocdimageupdaterv1alpha1.ImageUpdaterSpec{
-						Namespace: "argocd",
 						ApplicationRefs: []argocdimageupdaterv1alpha1.ApplicationRef{
 							{
 								NamePattern: "test-app",
@@ -171,7 +205,6 @@ func TestImageUpdaterReconciler_Reconcile(t *testing.T) {
 						Namespace: "default",
 					},
 					Spec: argocdimageupdaterv1alpha1.ImageUpdaterSpec{
-						Namespace: "argocd",
 						ApplicationRefs: []argocdimageupdaterv1alpha1.ApplicationRef{
 							{
 								NamePattern: "test-app",
@@ -220,7 +253,6 @@ func TestImageUpdaterReconciler_Reconcile(t *testing.T) {
 						Namespace: "default",
 					},
 					Spec: argocdimageupdaterv1alpha1.ImageUpdaterSpec{
-						Namespace: "argocd",
 						ApplicationRefs: []argocdimageupdaterv1alpha1.ApplicationRef{
 							{
 								NamePattern: "test-app",
@@ -325,7 +357,6 @@ func TestImageUpdaterReconciler_Reconcile_ComplexScenarios(t *testing.T) {
 					Namespace: "default",
 				},
 				Spec: argocdimageupdaterv1alpha1.ImageUpdaterSpec{
-					Namespace: "argocd",
 					ApplicationRefs: []argocdimageupdaterv1alpha1.ApplicationRef{
 						{
 							NamePattern: "simple-app",
@@ -350,7 +381,6 @@ func TestImageUpdaterReconciler_Reconcile_ComplexScenarios(t *testing.T) {
 					Namespace: "default",
 				},
 				Spec: argocdimageupdaterv1alpha1.ImageUpdaterSpec{
-					Namespace: "argocd",
 					ApplicationRefs: []argocdimageupdaterv1alpha1.ApplicationRef{
 						{
 							NamePattern: "multi-app",
@@ -379,7 +409,6 @@ func TestImageUpdaterReconciler_Reconcile_ComplexScenarios(t *testing.T) {
 					Namespace: "default",
 				},
 				Spec: argocdimageupdaterv1alpha1.ImageUpdaterSpec{
-					Namespace: "argocd",
 					ApplicationRefs: []argocdimageupdaterv1alpha1.ApplicationRef{
 						{
 							NamePattern: "labeled-app",
@@ -409,7 +438,6 @@ func TestImageUpdaterReconciler_Reconcile_ComplexScenarios(t *testing.T) {
 					Namespace: "test-namespace",
 				},
 				Spec: argocdimageupdaterv1alpha1.ImageUpdaterSpec{
-					Namespace: "argocd",
 					ApplicationRefs: []argocdimageupdaterv1alpha1.ApplicationRef{
 						{
 							NamePattern: "ns-app",
@@ -533,7 +561,6 @@ func TestImageUpdaterReconciler_Reconcile_AdvancedScenarios(t *testing.T) {
 				Namespace: "default",
 			},
 			Spec: argocdimageupdaterv1alpha1.ImageUpdaterSpec{
-				Namespace: "argocd",
 				CommonUpdateSettings: &argocdimageupdaterv1alpha1.CommonUpdateSettings{
 					UpdateStrategy: stringPtr("latest"),
 				},
@@ -623,7 +650,6 @@ func TestImageUpdaterReconciler_Reconcile_AdvancedScenarios(t *testing.T) {
 				Namespace: "default",
 			},
 			Spec: argocdimageupdaterv1alpha1.ImageUpdaterSpec{
-				Namespace: "argocd",
 				ApplicationRefs: []argocdimageupdaterv1alpha1.ApplicationRef{
 					{
 						NamePattern: "app1",
@@ -919,7 +945,6 @@ func TestImageUpdaterReconciler_Reconcile_MultipleCRs_CheckIntervalZero(t *testi
 				Namespace: "default",
 			},
 			Spec: argocdimageupdaterv1alpha1.ImageUpdaterSpec{
-				Namespace: "argocd",
 				ApplicationRefs: []argocdimageupdaterv1alpha1.ApplicationRef{
 					{
 						NamePattern: "app1",
@@ -940,7 +965,6 @@ func TestImageUpdaterReconciler_Reconcile_MultipleCRs_CheckIntervalZero(t *testi
 				Namespace: "default",
 			},
 			Spec: argocdimageupdaterv1alpha1.ImageUpdaterSpec{
-				Namespace: "argocd",
 				ApplicationRefs: []argocdimageupdaterv1alpha1.ApplicationRef{
 					{
 						NamePattern: "app2",
@@ -961,7 +985,6 @@ func TestImageUpdaterReconciler_Reconcile_MultipleCRs_CheckIntervalZero(t *testi
 				Namespace: "default",
 			},
 			Spec: argocdimageupdaterv1alpha1.ImageUpdaterSpec{
-				Namespace: "argocd",
 				ApplicationRefs: []argocdimageupdaterv1alpha1.ApplicationRef{
 					{
 						NamePattern: "app3",
@@ -1085,7 +1108,6 @@ func TestImageUpdaterReconciler_Reconcile_MultipleCRs_CheckIntervalZero(t *testi
 				Namespace: "default",
 			},
 			Spec: argocdimageupdaterv1alpha1.ImageUpdaterSpec{
-				Namespace: "argocd",
 				ApplicationRefs: []argocdimageupdaterv1alpha1.ApplicationRef{
 					{
 						NamePattern: "app1",
@@ -1106,7 +1128,6 @@ func TestImageUpdaterReconciler_Reconcile_MultipleCRs_CheckIntervalZero(t *testi
 				Namespace: "default",
 			},
 			Spec: argocdimageupdaterv1alpha1.ImageUpdaterSpec{
-				Namespace: "argocd",
 				ApplicationRefs: []argocdimageupdaterv1alpha1.ApplicationRef{
 					{
 						NamePattern: "app2",
@@ -1215,7 +1236,6 @@ func TestImageUpdaterReconciler_Reconcile_MultipleCRs_CheckIntervalZero(t *testi
 					Namespace: "default",
 				},
 				Spec: argocdimageupdaterv1alpha1.ImageUpdaterSpec{
-					Namespace: "argocd",
 					ApplicationRefs: []argocdimageupdaterv1alpha1.ApplicationRef{
 						{
 							NamePattern: "app1",
@@ -1235,7 +1255,6 @@ func TestImageUpdaterReconciler_Reconcile_MultipleCRs_CheckIntervalZero(t *testi
 					Namespace: "default",
 				},
 				Spec: argocdimageupdaterv1alpha1.ImageUpdaterSpec{
-					Namespace: "argocd",
 					ApplicationRefs: []argocdimageupdaterv1alpha1.ApplicationRef{
 						{
 							NamePattern: "app2",
@@ -1255,7 +1274,6 @@ func TestImageUpdaterReconciler_Reconcile_MultipleCRs_CheckIntervalZero(t *testi
 					Namespace: "default",
 				},
 				Spec: argocdimageupdaterv1alpha1.ImageUpdaterSpec{
-					Namespace: "argocd",
 					ApplicationRefs: []argocdimageupdaterv1alpha1.ApplicationRef{
 						{
 							NamePattern: "app3",
@@ -1366,7 +1384,6 @@ func TestImageUpdaterReconciler_Reconcile_MultipleCRs_CheckIntervalZero(t *testi
 					Namespace: "default",
 				},
 				Spec: argocdimageupdaterv1alpha1.ImageUpdaterSpec{
-					Namespace: "argocd",
 					ApplicationRefs: []argocdimageupdaterv1alpha1.ApplicationRef{
 						{
 							NamePattern: "app1",
@@ -1386,7 +1403,6 @@ func TestImageUpdaterReconciler_Reconcile_MultipleCRs_CheckIntervalZero(t *testi
 					Namespace: "default",
 				},
 				Spec: argocdimageupdaterv1alpha1.ImageUpdaterSpec{
-					Namespace: "argocd",
 					ApplicationRefs: []argocdimageupdaterv1alpha1.ApplicationRef{
 						{
 							NamePattern: "app2",
@@ -1406,7 +1422,6 @@ func TestImageUpdaterReconciler_Reconcile_MultipleCRs_CheckIntervalZero(t *testi
 					Namespace: "default",
 				},
 				Spec: argocdimageupdaterv1alpha1.ImageUpdaterSpec{
-					Namespace: "argocd",
 					ApplicationRefs: []argocdimageupdaterv1alpha1.ApplicationRef{
 						{
 							NamePattern: "app3",
@@ -1536,7 +1551,6 @@ func TestImageUpdaterReconciler_Reconcile_MultipleCRs_CheckIntervalZero(t *testi
 					Namespace: "default",
 				},
 				Spec: argocdimageupdaterv1alpha1.ImageUpdaterSpec{
-					Namespace: "argocd",
 					ApplicationRefs: []argocdimageupdaterv1alpha1.ApplicationRef{
 						{
 							NamePattern: "app-fast",
@@ -1556,7 +1570,6 @@ func TestImageUpdaterReconciler_Reconcile_MultipleCRs_CheckIntervalZero(t *testi
 					Namespace: "default",
 				},
 				Spec: argocdimageupdaterv1alpha1.ImageUpdaterSpec{
-					Namespace: "argocd",
 					ApplicationRefs: []argocdimageupdaterv1alpha1.ApplicationRef{
 						{
 							NamePattern: "app-slow",
@@ -1714,7 +1727,6 @@ func TestImageUpdaterReconciler_Reconcile_Finalizer(t *testing.T) {
 				Namespace: "default",
 			},
 			Spec: argocdimageupdaterv1alpha1.ImageUpdaterSpec{
-				Namespace: "argocd",
 				ApplicationRefs: []argocdimageupdaterv1alpha1.ApplicationRef{
 					{
 						NamePattern: "test-app",
@@ -1794,7 +1806,6 @@ func TestImageUpdaterReconciler_Reconcile_Finalizer(t *testing.T) {
 				Finalizers: []string{ResourcesFinalizerName},
 			},
 			Spec: argocdimageupdaterv1alpha1.ImageUpdaterSpec{
-				Namespace: "argocd",
 				ApplicationRefs: []argocdimageupdaterv1alpha1.ApplicationRef{
 					{
 						NamePattern: "test-app",
@@ -1875,7 +1886,6 @@ func TestImageUpdaterReconciler_Reconcile_Finalizer(t *testing.T) {
 				Finalizers: []string{"other-finalizer", ResourcesFinalizerName, "another-finalizer"},
 			},
 			Spec: argocdimageupdaterv1alpha1.ImageUpdaterSpec{
-				Namespace: "argocd",
 				ApplicationRefs: []argocdimageupdaterv1alpha1.ApplicationRef{
 					{
 						NamePattern: "test-app",
@@ -1958,7 +1968,6 @@ func TestImageUpdaterReconciler_Reconcile_Finalizer(t *testing.T) {
 				Finalizers: []string{"different-finalizer"},
 			},
 			Spec: argocdimageupdaterv1alpha1.ImageUpdaterSpec{
-				Namespace: "argocd",
 				ApplicationRefs: []argocdimageupdaterv1alpha1.ApplicationRef{
 					{
 						NamePattern: "test-app",
@@ -2138,10 +2147,9 @@ func TestImageUpdaterReconciler_RunImageUpdater(t *testing.T) {
 	baseCr := &argocdimageupdaterv1alpha1.ImageUpdater{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-cr",
-			Namespace: "default",
+			Namespace: "argocd",
 		},
 		Spec: argocdimageupdaterv1alpha1.ImageUpdaterSpec{
-			Namespace: "argocd",
 			ApplicationRefs: []argocdimageupdaterv1alpha1.ApplicationRef{
 				{
 					NamePattern: "matching-app",
@@ -2198,6 +2206,18 @@ func TestImageUpdaterReconciler_RunImageUpdater(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "app-other-ns",
 			Namespace: "other-ns",
+		},
+		Spec: argocdapi.ApplicationSpec{
+			Source: &argocdapi.ApplicationSource{
+				Kustomize: &argocdapi.ApplicationSourceKustomize{},
+				Path:      "some/path",
+			},
+		},
+		Status: argocdapi.ApplicationStatus{
+			Summary: argocdapi.ApplicationSummary{
+				Images: []string{"nginx:1.21.0"},
+			},
+			SourceType: argocdapi.ApplicationSourceTypeKustomize,
 		},
 	}
 
@@ -2256,7 +2276,6 @@ func TestImageUpdaterReconciler_RunImageUpdater(t *testing.T) {
 			cr: &argocdimageupdaterv1alpha1.ImageUpdater{
 				ObjectMeta: metav1.ObjectMeta{Name: "test-cr", Namespace: "default"},
 				Spec: argocdimageupdaterv1alpha1.ImageUpdaterSpec{
-					Namespace: "argocd",
 					ApplicationRefs: []argocdimageupdaterv1alpha1.ApplicationRef{
 						{NamePattern: "no-match"},
 					},
@@ -2268,9 +2287,8 @@ func TestImageUpdaterReconciler_RunImageUpdater(t *testing.T) {
 		{
 			name: "multiple matching applications",
 			cr: &argocdimageupdaterv1alpha1.ImageUpdater{
-				ObjectMeta: metav1.ObjectMeta{Name: "test-cr", Namespace: "default"},
+				ObjectMeta: metav1.ObjectMeta{Name: "test-cr", Namespace: "argocd"},
 				Spec: argocdimageupdaterv1alpha1.ImageUpdaterSpec{
-					Namespace: "argocd",
 					ApplicationRefs: []argocdimageupdaterv1alpha1.ApplicationRef{
 						{
 							NamePattern: "matching-*",
@@ -2291,9 +2309,8 @@ func TestImageUpdaterReconciler_RunImageUpdater(t *testing.T) {
 		{
 			name: "application with label selector",
 			cr: &argocdimageupdaterv1alpha1.ImageUpdater{
-				ObjectMeta: metav1.ObjectMeta{Name: "test-cr", Namespace: "default"},
+				ObjectMeta: metav1.ObjectMeta{Name: "test-cr", Namespace: "argocd"},
 				Spec: argocdimageupdaterv1alpha1.ImageUpdaterSpec{
-					Namespace: "argocd",
 					ApplicationRefs: []argocdimageupdaterv1alpha1.ApplicationRef{
 						{
 							NamePattern: "matching-app",
@@ -2315,25 +2332,50 @@ func TestImageUpdaterReconciler_RunImageUpdater(t *testing.T) {
 			},
 		},
 		{
-			name: "application in different namespace",
+			name: "application in different namespace - should be blocked",
 			cr: &argocdimageupdaterv1alpha1.ImageUpdater{
-				ObjectMeta: metav1.ObjectMeta{Name: "test-cr", Namespace: "default"},
+				ObjectMeta: metav1.ObjectMeta{Name: "test-cr", Namespace: "argocd"},
 				Spec: argocdimageupdaterv1alpha1.ImageUpdaterSpec{
-					Namespace: "other-ns",
 					ApplicationRefs: []argocdimageupdaterv1alpha1.ApplicationRef{
-						{NamePattern: "app-other-ns"},
+						{
+							NamePattern: "app-other-ns",
+							Images: []argocdimageupdaterv1alpha1.ImageConfig{
+								{ImageName: "nginx"},
+							},
+						},
 					},
 				},
 			},
 			apps:           []client.Object{appInOtherNs},
-			expectedResult: argocd.ImageUpdaterResult{},
+			expectedResult: argocd.ImageUpdaterResult{}, // Empty result because app is in different namespace
+		},
+		{
+			name: "application in same namespace - should be allowed",
+			cr: &argocdimageupdaterv1alpha1.ImageUpdater{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-cr", Namespace: "other-ns"},
+				Spec: argocdimageupdaterv1alpha1.ImageUpdaterSpec{
+					ApplicationRefs: []argocdimageupdaterv1alpha1.ApplicationRef{
+						{
+							NamePattern: "app-other-ns",
+							Images: []argocdimageupdaterv1alpha1.ImageConfig{
+								{ImageName: "nginx"},
+							},
+						},
+					},
+				},
+			},
+			apps: []client.Object{appInOtherNs},
+			expectedResult: argocd.ImageUpdaterResult{
+				NumApplicationsProcessed: 1,
+				NumImagesConsidered:      1,
+				NumImagesUpdated:         1,
+			},
 		},
 		{
 			name: "error with invalid regex",
 			cr: &argocdimageupdaterv1alpha1.ImageUpdater{
-				ObjectMeta: metav1.ObjectMeta{Name: "test-cr", Namespace: "default"},
+				ObjectMeta: metav1.ObjectMeta{Name: "test-cr", Namespace: "argocd"},
 				Spec: argocdimageupdaterv1alpha1.ImageUpdaterSpec{
-					Namespace: "argocd",
 					ApplicationRefs: []argocdimageupdaterv1alpha1.ApplicationRef{
 						{NamePattern: "["},
 					},
@@ -2373,9 +2415,11 @@ func TestImageUpdaterReconciler_RunImageUpdater(t *testing.T) {
 			crmetrics.Registry = prometheus.NewRegistry()
 			metrics.InitMetrics()
 
-			fakeKubeClient := clifake.NewClientBuilder().WithScheme(s).WithObjects(tt.apps...).Build()
+			// Build fake client and wrap with strict namespace client to enforce namespace isolation
+			fakeClient := clifake.NewClientBuilder().WithScheme(s).WithObjects(tt.apps...).Build()
+			strictClient := &strictNamespaceClient{Client: fakeClient}
 			reconciler := &ImageUpdaterReconciler{
-				Client: fakeKubeClient,
+				Client: strictClient,
 				Scheme: s,
 				Config: &ImageUpdaterConfig{
 					CheckInterval:     30 * time.Second,
@@ -2438,7 +2482,6 @@ func TestImageUpdaterReconciler_ProcessImageUpdaterCRs(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "cr1", Namespace: "default"},
 		Spec: argocdimageupdaterv1alpha1.ImageUpdaterSpec{
 			ApplicationRefs: []argocdimageupdaterv1alpha1.ApplicationRef{{NamePattern: "app1"}},
-			Namespace:       "argocd",
 		},
 	}
 
@@ -2446,7 +2489,6 @@ func TestImageUpdaterReconciler_ProcessImageUpdaterCRs(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "cr2", Namespace: "default"},
 		Spec: argocdimageupdaterv1alpha1.ImageUpdaterSpec{
 			ApplicationRefs: []argocdimageupdaterv1alpha1.ApplicationRef{{NamePattern: "app2"}},
-			Namespace:       "argocd",
 		},
 	}
 
@@ -2454,7 +2496,6 @@ func TestImageUpdaterReconciler_ProcessImageUpdaterCRs(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "cr-invalid", Namespace: "default"},
 		Spec: argocdimageupdaterv1alpha1.ImageUpdaterSpec{
 			ApplicationRefs: []argocdimageupdaterv1alpha1.ApplicationRef{{NamePattern: "["}}, // Invalid regex
-			Namespace:       "argocd",
 		},
 	}
 

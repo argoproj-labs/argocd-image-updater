@@ -9,7 +9,7 @@ If you are running Argo CD Image Updater as a Kubernetes workload, it uses the
 token of a ServiceAccount mounted to its pod to authenticate at the Kubernetes
 API.
 
-The name of this ServiceAccount is `argocd-image-updater`, and it gets
+The name of this ServiceAccount is `argocd-image-updater-controller`, and it gets
 created through the installation manifests in the installation namespace.
 The ServiceAccount is accompanied with an appropriate Kubernetes RBAC
 Role that holds the required permissions, and a RoleBinding to bind the
