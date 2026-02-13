@@ -93,7 +93,7 @@ metadata:
     app.kubernetes.io/name: image-updater
     app.kubernetes.io/managed-by: kustomize
   name: image-updater-006
-  namespace: argocd-image-updater-e2e
+  namespace: image-updater-e2e-006-01
 spec:
   commonUpdateSettings:
     updateStrategy: "semver"
