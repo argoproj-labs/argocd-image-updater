@@ -2614,8 +2614,8 @@ func Test_FilterApplicationsForUpdate(t *testing.T) {
 			name:        "Fast path for exact name matches",
 			initialApps: []client.Object{appProd, appStaging},
 			imageUpdaterCR: &api.ImageUpdater{
+				ObjectMeta: v1.ObjectMeta{Name: "test-updater", Namespace: "testns"},
 				Spec: api.ImageUpdaterSpec{
-					Namespace: "testns",
 					ApplicationRefs: []api.ApplicationRef{
 						{NamePattern: "app-prod", Images: []api.ImageConfig{{Alias: "nginx", ImageName: "nginx:1.0"}}},
 					},
@@ -2627,8 +2627,8 @@ func Test_FilterApplicationsForUpdate(t *testing.T) {
 			name:        "Slow path with wildcard name pattern",
 			initialApps: []client.Object{appProd, appStaging, otherProd},
 			imageUpdaterCR: &api.ImageUpdater{
+				ObjectMeta: v1.ObjectMeta{Name: "test-updater", Namespace: "testns"},
 				Spec: api.ImageUpdaterSpec{
-					Namespace: "testns",
 					ApplicationRefs: []api.ApplicationRef{
 						{NamePattern: "app-*", Images: []api.ImageConfig{{Alias: "nginx", ImageName: "nginx:1.0"}}},
 					},
@@ -2640,8 +2640,8 @@ func Test_FilterApplicationsForUpdate(t *testing.T) {
 			name:        "Slow path with label selector",
 			initialApps: []client.Object{appProd, appStaging, otherProd},
 			imageUpdaterCR: &api.ImageUpdater{
+				ObjectMeta: v1.ObjectMeta{Name: "test-updater", Namespace: "testns"},
 				Spec: api.ImageUpdaterSpec{
-					Namespace: "testns",
 					ApplicationRefs: []api.ApplicationRef{
 						{NamePattern: "*", LabelSelectors: &v1.LabelSelector{MatchLabels: map[string]string{"env": "prod"}}, Images: []api.ImageConfig{{Alias: "nginx", ImageName: "nginx:1.0"}}},
 					},
@@ -2653,8 +2653,8 @@ func Test_FilterApplicationsForUpdate(t *testing.T) {
 			name:        "Specificity rule is applied correctly",
 			initialApps: []client.Object{appProd},
 			imageUpdaterCR: &api.ImageUpdater{
+				ObjectMeta: v1.ObjectMeta{Name: "test-updater", Namespace: "testns"},
 				Spec: api.ImageUpdaterSpec{
-					Namespace: "testns",
 					ApplicationRefs: []api.ApplicationRef{
 						// General rule with 1 image
 						{NamePattern: "app-*", Images: []api.ImageConfig{{Alias: "nginx", ImageName: "nginx:1.0"}}},
@@ -2670,8 +2670,8 @@ func Test_FilterApplicationsForUpdate(t *testing.T) {
 			name:        "Unsupported application type is skipped",
 			initialApps: []client.Object{appProd, unsupportedApp},
 			imageUpdaterCR: &api.ImageUpdater{
+				ObjectMeta: v1.ObjectMeta{Name: "test-updater", Namespace: "testns"},
 				Spec: api.ImageUpdaterSpec{
-					Namespace: "testns",
 					ApplicationRefs: []api.ApplicationRef{
 						{NamePattern: "*", LabelSelectors: &v1.LabelSelector{MatchLabels: map[string]string{"env": "prod"}}, Images: []api.ImageConfig{{Alias: "nginx", ImageName: "nginx:1.0"}}},
 					},
@@ -2683,8 +2683,8 @@ func Test_FilterApplicationsForUpdate(t *testing.T) {
 			name:        "No applications in namespace returns nil result",
 			initialApps: nil,
 			imageUpdaterCR: &api.ImageUpdater{
+				ObjectMeta: v1.ObjectMeta{Name: "test-updater", Namespace: "testns"},
 				Spec: api.ImageUpdaterSpec{
-					Namespace: "testns",
 					ApplicationRefs: []api.ApplicationRef{
 						{NamePattern: "*"},
 					},
@@ -2696,8 +2696,8 @@ func Test_FilterApplicationsForUpdate(t *testing.T) {
 			name:        "No matching applications found returns empty map",
 			initialApps: []client.Object{appStaging},
 			imageUpdaterCR: &api.ImageUpdater{
+				ObjectMeta: v1.ObjectMeta{Name: "test-updater", Namespace: "testns"},
 				Spec: api.ImageUpdaterSpec{
-					Namespace: "testns",
 					ApplicationRefs: []api.ApplicationRef{
 						{NamePattern: "app-prod"},
 					},
@@ -2709,8 +2709,8 @@ func Test_FilterApplicationsForUpdate(t *testing.T) {
 			name:        "Error on invalid name pattern",
 			initialApps: []client.Object{appProd, appStaging},
 			imageUpdaterCR: &api.ImageUpdater{
+				ObjectMeta: v1.ObjectMeta{Name: "test-updater", Namespace: "testns"},
 				Spec: api.ImageUpdaterSpec{
-					Namespace: "testns",
 					ApplicationRefs: []api.ApplicationRef{
 						{NamePattern: "app-[", Images: []api.ImageConfig{{Alias: "nginx", ImageName: "nginx:1.0"}}},
 					},
@@ -2787,7 +2787,44 @@ func Test_GetParameterPullSecret(t *testing.T) {
 	})
 }
 
+// strictNamespaceClient wraps a client.Client to enforce strict namespace filtering.
+// When InNamespace("") is used (empty namespace), it returns empty results instead of
+// all namespaces, matching real Kubernetes API behavior.
+type strictNamespaceClient struct {
+	client.Client
+}
+
+// Assisted-by: Claude AI
+// List intercepts List operations to enforce strict namespace filtering.
+// If InNamespace("") is used, it returns empty results.
+func (c *strictNamespaceClient) List(ctx context.Context, list client.ObjectList, opts ...client.ListOption) error {
+	// Extract namespace from list options
+	listOpts := &client.ListOptions{}
+	for _, opt := range opts {
+		opt.ApplyToList(listOpts)
+	}
+
+	// If namespace is empty, return empty results (matching real Kubernetes behavior)
+	// This ensures tests fail when ObjectMeta.Namespace is not set on ImageUpdater CRs
+	if listOpts.Namespace == "" {
+		// Set items to empty slice by using type assertion
+		// For ApplicationList, we can directly set Items to empty
+		if appList, ok := list.(*v1alpha1.ApplicationList); ok {
+			appList.Items = []v1alpha1.Application{}
+			appList.ListMeta = v1.ListMeta{}
+			return nil
+		}
+		// For other list types, we could use reflection, but since we primarily test
+		// with ApplicationList, this explicit handling is sufficient.
+		// If other types are needed, we can extend this.
+	}
+
+	// Delegate to underlying client for non-empty namespaces
+	return c.Client.List(ctx, list, opts...)
+}
+
 // Helper function to create a new fake client for tests
+// The client enforces strict namespace filtering: empty namespace returns empty results.
 func newTestK8sClient(initObjs ...client.Object) (*ArgoCDK8sClient, error) {
 	// Register the Argo CD Application scheme so the fake client knows about it
 	scheme := runtime.NewScheme()
@@ -2805,9 +2842,12 @@ func newTestK8sClient(initObjs ...client.Object) (*ArgoCDK8sClient, error) {
 	// Build the fake client
 	fakeClient := builder.Build()
 
+	// Wrap with strict namespace client to enforce proper namespace filtering
+	strictClient := &strictNamespaceClient{Client: fakeClient}
+
 	// Use constructor to create the k8sClient instance
 	return &ArgoCDK8sClient{
-		fakeClient,
+		strictClient,
 	}, nil
 }
 

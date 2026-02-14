@@ -34,7 +34,6 @@ metadata:
   name: image-updater-001
   namespace: argocd-image-updater-e2e
 spec:
-  namespace: argocd-image-updater-e2e
   commonUpdateSettings:
     updateStrategy: "semver"
   applicationRefs:

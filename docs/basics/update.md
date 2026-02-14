@@ -14,7 +14,7 @@ The workflow of Argo CD Image Updater can be described as follows:
   specify applications by name patterns or label selectors.
 
 * For each `ImageUpdater` CR, the controller lists all Argo CD `Application`
-  resources in the specified namespace and matches them against the
+  resources in the ImageUpdater CR's namespace and matches them against the
   `applicationRefs` patterns and label selectors defined in the CR.
 
 * The controller then processes each matching application according to the
