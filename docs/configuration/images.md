@@ -13,8 +13,8 @@ apiVersion: argocd-image-updater.argoproj.io/v1alpha1
 kind: ImageUpdater
 metadata:
   name: my-image-updater
-spec:
   namespace: argocd
+spec:
   applicationRefs:
     - namePattern: "my-app-*"
       images:
@@ -544,12 +544,12 @@ update strategies and set options for images.
 
 #### Top-level ImageUpdater fields
 
-| Field                  | Type                 | Required | Description                                             |
-|------------------------|----------------------|----------|---------------------------------------------------------|
-| `namespace`            | string               | Yes      | Target namespace where Argo CD Applications are located |
-| `applicationRefs`      | []ApplicationRef     | Yes      | List of application references to manage                |
-| `commonUpdateSettings` | CommonUpdateSettings | No       | Global default settings for all applications            |
-| `writeBackConfig`      | WriteBackConfig      | No       | Global write-back configuration                         |
+| Field                  | Type                 | Required | Description                                                                                                                                                                                                         |
+|------------------------|----------------------|----------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `namespace`            | string               | No       | **Deprecated**: Target namespace where Argo CD Applications are located. The controller now uses the ImageUpdater CR's `metadata.namespace` instead. This field is ignored and will be removed in a future release. |
+| `applicationRefs`      | []ApplicationRef     | Yes      | List of application references to manage                                                                                                                                                                            |
+| `commonUpdateSettings` | CommonUpdateSettings | No       | Global default settings for all applications                                                                                                                                                                        |
+| `writeBackConfig`      | WriteBackConfig      | No       | Global write-back configuration                                                                                                                                                                                     |
 
 #### ApplicationRef fields
 

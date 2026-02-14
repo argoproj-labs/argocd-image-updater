@@ -36,8 +36,8 @@ apiVersion: argocd-image-updater.argoproj.io/v1alpha1
 kind: ImageUpdater
 metadata:
   name: my-image-updater
-spec:
   namespace: argocd
+spec:
   applicationRefs:
     - namePattern: "my-app"
       images:
@@ -249,8 +249,8 @@ apiVersion: argocd-image-updater.argoproj.io/v1alpha1
 kind: ImageUpdater
 metadata:
   name: multi-app-image-updater
-spec:
   namespace: argocd
+spec:
   writeBackConfig:
     method: "git"
     gitConfig:
@@ -285,7 +285,7 @@ spec:
 ## Common Pitfalls
 
 ### 1. Namespace Specification
-The target namespace is now specified at the ImageUpdater level, not per application.
+The target namespace is determined by the ImageUpdater CR's `metadata.namespace` field, not per application.
 
 ### 2. Array vs String
 Some fields (`platforms`, `ignoreTags`) that were comma-separated strings are now arrays:
