@@ -94,42 +94,48 @@ jobs:
           IMAGE_NAME="quay.io/argoprojlabs/argocd-image-updater"
           VERSION_TAG="${{ steps.version-tag.outputs.version-tag }}"
 
-          # Build list of platform-specific tags that exist
-          MANIFEST_TAGS=""
+          # Resolve each platform tag to a single-image digest reference (image@sha256:...).
+          # Registry or build may expose -amd64/-arm64 as manifest lists; we take the platform digest.
+          # We must use digest refs only; mixing tag refs in the list can make Quay reject the push.
+          get_platform_ref() {
+            local tag=$1
+            local arch=$2
+            local inspect
+            inspect=$(docker manifest inspect "${IMAGE_NAME}:${tag}" 2>/dev/null) || return 1
+            if echo "${inspect}" | jq -e '.manifests' >/dev/null 2>&1; then
+              local digest
+              digest=$(echo "${inspect}" | jq -r --arg a "${arch}" '.manifests[] | select(.platform.architecture == $a) | .digest' | head -n1)
+              [ -n "${digest}" ] && echo "${IMAGE_NAME}@${digest}" || return 1
+            else
+              local digest
+              digest=$(docker buildx imagetools inspect "${IMAGE_NAME}:${tag}" --format '{{.Digest}}' 2>/dev/null) || return 1
+              [ -n "${digest}" ] && echo "${IMAGE_NAME}@${digest}" || return 1
+            fi
+          }
 
-          # Check if amd64 image exists
-          if docker manifest inspect ${IMAGE_NAME}:${VERSION_TAG}-amd64 >/dev/null 2>&1; then
-            MANIFEST_TAGS="${MANIFEST_TAGS} ${IMAGE_NAME}:${VERSION_TAG}-amd64"
+          # Resolve each platform once (used for create and annotate)
+          REF_AMD64=""
+          REF_ARM64=""
+          if ref=$(get_platform_ref "${VERSION_TAG}-amd64" amd64); then
+            REF_AMD64="${ref}"
           fi
 
-          # Check if arm64 image exists
-          if docker manifest inspect ${IMAGE_NAME}:${VERSION_TAG}-arm64 >/dev/null 2>&1; then
-            MANIFEST_TAGS="${MANIFEST_TAGS} ${IMAGE_NAME}:${VERSION_TAG}-arm64"
+          if ref=$(get_platform_ref "${VERSION_TAG}-arm64" arm64); then
+            REF_ARM64="${ref}"
           fi
 
-          # Remove leading space
-          MANIFEST_TAGS=$(echo ${MANIFEST_TAGS} | sed 's/^ //')
-
-          if [ -z "${MANIFEST_TAGS}" ]; then
+          REFS=$(echo "${REF_AMD64} ${REF_ARM64}" | sed 's/^ *//;s/ *$//')
+          if [ -z "${REFS}" ]; then
             echo "No platform-specific images found, skipping manifest creation"
             exit 0
           fi
 
-          # Create manifest list
-          docker manifest create ${IMAGE_NAME}:${VERSION_TAG} ${MANIFEST_TAGS}
+          # Create manifest list from single-image refs
+          docker manifest create ${IMAGE_NAME}:${VERSION_TAG} ${REFS}
 
-          # Annotate each platform that exists
-          if docker manifest inspect ${IMAGE_NAME}:${VERSION_TAG}-amd64 >/dev/null 2>&1; then
-            docker manifest annotate ${IMAGE_NAME}:${VERSION_TAG} \
-              ${IMAGE_NAME}:${VERSION_TAG}-amd64 \
-              --os linux --arch amd64
-          fi
-
-          if docker manifest inspect ${IMAGE_NAME}:${VERSION_TAG}-arm64 >/dev/null 2>&1; then
-            docker manifest annotate ${IMAGE_NAME}:${VERSION_TAG} \
-              ${IMAGE_NAME}:${VERSION_TAG}-arm64 \
-              --os linux --arch arm64
-          fi
+          # Annotate each platform (reuse refs from above)
+          [ -n "${REF_AMD64}" ] && docker manifest annotate ${IMAGE_NAME}:${VERSION_TAG} "${REF_AMD64}" --os linux --arch amd64
+          [ -n "${REF_ARM64}" ] && docker manifest annotate ${IMAGE_NAME}:${VERSION_TAG} "${REF_ARM64}" --os linux --arch arm64
 
           # Push the manifest
           docker manifest push ${IMAGE_NAME}:${VERSION_TAG}
