@@ -201,7 +201,6 @@ var _ = Describe("ApplicationRef UseAnnotations Validation", func() {
 					Namespace: "argocd",
 				},
 				Spec: ImageUpdaterSpec{
-					Namespace: "argocd",
 					ApplicationRefs: []ApplicationRef{
 						{
 							NamePattern:    "*",
@@ -229,7 +228,6 @@ var _ = Describe("ApplicationRef UseAnnotations Validation", func() {
 					Namespace: "argocd",
 				},
 				Spec: ImageUpdaterSpec{
-					Namespace: "argocd",
 					ApplicationRefs: []ApplicationRef{
 						{
 							NamePattern:    "*",
@@ -267,7 +265,6 @@ var _ = Describe("ApplicationRef UseAnnotations Validation", func() {
 					Namespace: "argocd",
 				},
 				Spec: ImageUpdaterSpec{
-					Namespace: "argocd",
 					ApplicationRefs: []ApplicationRef{
 						{
 							NamePattern:    "*",
@@ -298,7 +295,6 @@ var _ = Describe("ApplicationRef UseAnnotations Validation", func() {
 					Namespace: "argocd",
 				},
 				Spec: ImageUpdaterSpec{
-					Namespace: "argocd",
 					ApplicationRefs: []ApplicationRef{
 						{
 							NamePattern:    "*",
@@ -336,7 +332,6 @@ var _ = Describe("ApplicationRef UseAnnotations Validation", func() {
 					Namespace: "argocd",
 				},
 				Spec: ImageUpdaterSpec{
-					Namespace: "argocd",
 					ApplicationRefs: []ApplicationRef{
 						{
 							NamePattern: "*",
@@ -359,7 +354,6 @@ var _ = Describe("ApplicationRef UseAnnotations Validation", func() {
 					Namespace: "argocd",
 				},
 				Spec: ImageUpdaterSpec{
-					Namespace: "argocd",
 					ApplicationRefs: []ApplicationRef{
 						{
 							NamePattern: "*",
@@ -392,7 +386,6 @@ var _ = Describe("ApplicationRef UseAnnotations Validation", func() {
 					Namespace: "argocd",
 				},
 				Spec: ImageUpdaterSpec{
-					Namespace: "argocd",
 					ApplicationRefs: []ApplicationRef{
 						{
 							NamePattern:    "*",
@@ -417,7 +410,6 @@ var _ = Describe("ApplicationRef UseAnnotations Validation", func() {
 					Namespace: "argocd",
 				},
 				Spec: ImageUpdaterSpec{
-					Namespace: "argocd",
 					ApplicationRefs: []ApplicationRef{
 						{
 							NamePattern:    "app-1",
@@ -445,7 +437,6 @@ var _ = Describe("ApplicationRef UseAnnotations Validation", func() {
 					Namespace: "argocd",
 				},
 				Spec: ImageUpdaterSpec{
-					Namespace: "argocd",
 					ApplicationRefs: []ApplicationRef{
 						{
 							NamePattern:    "app-1",
@@ -484,7 +475,6 @@ var _ = Describe("HelmTarget Validation", func() {
 					Namespace: "argocd",
 				},
 				Spec: ImageUpdaterSpec{
-					Namespace: "argocd",
 					ApplicationRefs: []ApplicationRef{
 						{
 							NamePattern: "*",
@@ -519,7 +509,6 @@ var _ = Describe("HelmTarget Validation", func() {
 					Namespace: "argocd",
 				},
 				Spec: ImageUpdaterSpec{
-					Namespace: "argocd",
 					ApplicationRefs: []ApplicationRef{
 						{
 							NamePattern: "*",
@@ -558,7 +547,6 @@ var _ = Describe("HelmTarget Validation", func() {
 					Namespace: "argocd",
 				},
 				Spec: ImageUpdaterSpec{
-					Namespace: "argocd",
 					ApplicationRefs: []ApplicationRef{
 						{
 							NamePattern: "*",
@@ -594,7 +582,6 @@ var _ = Describe("HelmTarget Validation", func() {
 					Namespace: "argocd",
 				},
 				Spec: ImageUpdaterSpec{
-					Namespace: "argocd",
 					ApplicationRefs: []ApplicationRef{
 						{
 							NamePattern: "*",
@@ -629,7 +616,6 @@ var _ = Describe("HelmTarget Validation", func() {
 					Namespace: "argocd",
 				},
 				Spec: ImageUpdaterSpec{
-					Namespace: "argocd",
 					ApplicationRefs: []ApplicationRef{
 						{
 							NamePattern: "*",
@@ -664,7 +650,6 @@ var _ = Describe("HelmTarget Validation", func() {
 					Namespace: "argocd",
 				},
 				Spec: ImageUpdaterSpec{
-					Namespace: "argocd",
 					ApplicationRefs: []ApplicationRef{
 						{
 							NamePattern: "*",
