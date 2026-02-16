@@ -91,7 +91,7 @@ jobs:
       - name: Create and push multi-arch manifest
         run: |
           set -ex
-          IMAGE_NAME="quay.io/dkarpele/argocd-image-updater"
+          IMAGE_NAME="quay.io/argoprojlabs/argocd-image-updater"
           VERSION_TAG="${{ steps.version-tag.outputs.version-tag }}"
 
           # Resolve each platform tag to a single-image digest reference (image@sha256:...).
