@@ -21,7 +21,6 @@ metadata:
   name: my-image-updater
   namespace: argocd
 spec:
-  namespace: argocd  # Target namespace where Argo CD Applications are located
   applicationRefs:
     - namePattern: "my-app-*"  # Select applications matching this pattern
       images:
@@ -103,8 +102,8 @@ apiVersion: argocd-image-updater.argoproj.io/v1alpha1
 kind: ImageUpdater
 metadata:
   name: my-image-updater
-spec:
   namespace: argocd
+spec:
   applicationRefs:
     # This will be used for app-1 (most specific - exact match)
     - namePattern: "app-1"
@@ -127,7 +126,7 @@ spec:
 
 #### Application Selection Process
 
-1. **List all applications** in the target namespace (performed once per
+1. **List all applications** in the ImageUpdater CR's namespace (performed once per
    reconciliation)
 2. **Sort applicationRefs** by specificity (most specific first)
 3. **For each application**, find the first matching rule in the sorted list
@@ -207,7 +206,6 @@ Set defaults that apply to all applications unless overridden:
 
 ```yaml
 spec:
-  namespace: argocd
   commonUpdateSettings:
     updateStrategy: "semver"        # Default: "semver"
     forceUpdate: false              # Default: false
@@ -230,7 +228,6 @@ Override global settings for specific applications:
 
 ```yaml
 spec:
-  namespace: argocd
   commonUpdateSettings:
     updateStrategy: "semver"
   applicationRefs:
@@ -253,7 +250,6 @@ Override settings for specific images:
 
 ```yaml
 spec:
-  namespace: argocd
   commonUpdateSettings:
     updateStrategy: "semver"
   applicationRefs:
@@ -274,7 +270,7 @@ For Argo CD Image Updater to manage an application, the following criteria
 must be met:
 
 * The application must be of type `Helm` or `Kustomize`
-* The application must be located in the namespace specified in `spec.namespace`
+* The application must be located in the `metadata.namespace` of the ImageUpdater CR
 * The application must match at least one `applicationRef` criteria
 
 ## <a name="configure-write-back"></a>Configuring the write-back method
@@ -313,7 +309,6 @@ metadata:
   name: production-updater
   namespace: argocd
 spec:
-  namespace: argocd
   commonUpdateSettings:
     updateStrategy: "semver"
     forceUpdate: false

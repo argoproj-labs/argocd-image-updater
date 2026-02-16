@@ -34,7 +34,6 @@ metadata:
   name: image-updater-004
   namespace: argocd-image-updater-e2e
 spec:
-  namespace: argocd-image-updater-e2e
   applicationRefs:
     - namePattern: "image-updater-004"
       commonUpdateSettings:

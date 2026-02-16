@@ -25,10 +25,12 @@ import (
 // and a list of images to manage.
 type ImageUpdaterSpec struct {
 	// Namespace indicates the target namespace of the applications.
-	// This is the namespace where the controller will look for Argo CD Applications
-	// matching the criteria in ApplicationRefs.
-	// +kubebuilder:validation:Required
-	Namespace string `json:"namespace"`
+	//
+	// Deprecated: This field is deprecated and will be removed in a future release.
+	// The controller now uses the ImageUpdater CR's namespace (metadata.namespace)
+	// to determine which namespace to search for applications. This field is ignored.
+	// +optional
+	Namespace *string `json:"namespace,omitempty"`
 
 	// CommonUpdateSettings provides global default settings for update strategies,
 	// tag filtering, pull secrets, etc., for all applications matched by this CR.
@@ -42,7 +44,7 @@ type ImageUpdaterSpec struct {
 	*WriteBackConfig `json:"writeBackConfig,omitempty"`
 
 	// ApplicationRefs indicates the set of applications to be managed.
-	// ApplicationRefs is a list of rules to select Argo CD Applications within the `spec.namespace`.
+	// ApplicationRefs is a list of rules to select Argo CD Applications within the ImageUpdater CR's namespace.
 	// Each reference can also provide specific overrides for the global settings defined above.
 	// +kubebuilder:validation:MinItems=1
 	// +listType=map
