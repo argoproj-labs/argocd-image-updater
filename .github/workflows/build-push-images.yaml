@@ -94,9 +94,9 @@ jobs:
           IMAGE_NAME="quay.io/argoprojlabs/argocd-image-updater"
           VERSION_TAG="${{ steps.version-tag.outputs.version-tag }}"
 
-          # Resolve each platform tag to a single-image reference (digest).
-          # Registry or build may expose -amd64/-arm64 as manifest lists; docker manifest create
-          # requires single-image refs, so we extract the platform digest when it's a list.
+          # Resolve each platform tag to a single-image digest reference (image@sha256:...).
+          # Registry or build may expose -amd64/-arm64 as manifest lists; we take the platform digest.
+          # We must use digest refs only; mixing tag refs in the list can make Quay reject the push.
           get_platform_ref() {
             local tag=$1
             local arch=$2
@@ -107,7 +107,9 @@ jobs:
               digest=$(echo "${inspect}" | jq -r --arg a "${arch}" '.manifests[] | select(.platform.architecture == $a) | .digest' | head -n1)
               [ -n "${digest}" ] && echo "${IMAGE_NAME}@${digest}" || return 1
             else
-              echo "${IMAGE_NAME}:${tag}"
+              local digest
+              digest=$(docker buildx imagetools inspect "${IMAGE_NAME}:${tag}" --format '{{.Digest}}' 2>/dev/null) || return 1
+              [ -n "${digest}" ] && echo "${IMAGE_NAME}@${digest}" || return 1
             fi
           }
 
