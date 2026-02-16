@@ -111,20 +111,18 @@ jobs:
             fi
           }
 
-          REFS=""
-          # Check if amd64 image exists
+          # Resolve each platform once (used for create and annotate)
+          REF_AMD64=""
+          REF_ARM64=""
           if ref=$(get_platform_ref "${VERSION_TAG}-amd64" amd64); then
-            REFS="${REFS} ${ref}"
+            REF_AMD64="${ref}"
           fi
 
-          # Check if arm64 image exists
           if ref=$(get_platform_ref "${VERSION_TAG}-arm64" arm64); then
-            REFS="${REFS} ${ref}"
+            REF_ARM64="${ref}"
           fi
 
-          # Remove leading space
-          REFS=$(echo "${REFS}" | sed 's/^ //')
-
+          REFS=$(echo "${REF_AMD64} ${REF_ARM64}" | sed 's/^ *//;s/ *$//')
           if [ -z "${REFS}" ]; then
             echo "No platform-specific images found, skipping manifest creation"
             exit 0
@@ -133,13 +131,9 @@ jobs:
           # Create manifest list from single-image refs
           docker manifest create ${IMAGE_NAME}:${VERSION_TAG} ${REFS}
 
-          # Annotate each platform
-          if ref=$(get_platform_ref "${VERSION_TAG}-amd64" amd64); then
-            docker manifest annotate ${IMAGE_NAME}:${VERSION_TAG} "${ref}" --os linux --arch amd64
-          fi
-          if ref=$(get_platform_ref "${VERSION_TAG}-arm64" arm64); then
-            docker manifest annotate ${IMAGE_NAME}:${VERSION_TAG} "${ref}" --os linux --arch arm64
-          fi
+          # Annotate each platform (reuse refs from above)
+          [ -n "${REF_AMD64}" ] && docker manifest annotate ${IMAGE_NAME}:${VERSION_TAG} "${REF_AMD64}" --os linux --arch amd64
+          [ -n "${REF_ARM64}" ] && docker manifest annotate ${IMAGE_NAME}:${VERSION_TAG} "${REF_ARM64}" --os linux --arch arm64
 
           # Push the manifest
           docker manifest push ${IMAGE_NAME}:${VERSION_TAG}
