@@ -20,7 +20,6 @@ import (
 	"context"
 	"fmt"
 
-	applicationFixture "github.com/argoproj-labs/argocd-image-updater/test/ginkgo/fixture/application"
 	appv1alpha1 "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1"
 	"github.com/argoproj/gitops-engine/pkg/health"
 	. "github.com/onsi/ginkgo/v2"
@@ -30,7 +29,11 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	applicationFixture "github.com/argoproj-labs/argocd-image-updater/test/ginkgo/fixture/application"
+
 	imageUpdaterApi "github.com/argoproj-labs/argocd-image-updater/api/v1alpha1"
+
+	argov1beta1api "github.com/argoproj-labs/argocd-operator/api/v1beta1"
 
 	"github.com/argoproj-labs/argocd-image-updater/test/ginkgo/fixture"
 	argocdFixture "github.com/argoproj-labs/argocd-image-updater/test/ginkgo/fixture/argocd"
@@ -39,7 +42,6 @@ import (
 	k8sFixture "github.com/argoproj-labs/argocd-image-updater/test/ginkgo/fixture/k8s"
 	ssFixture "github.com/argoproj-labs/argocd-image-updater/test/ginkgo/fixture/statefulset"
 	fixtureUtils "github.com/argoproj-labs/argocd-image-updater/test/ginkgo/fixture/utils"
-	argov1beta1api "github.com/argoproj-labs/argocd-operator/api/v1beta1"
 )
 
 var _ = Describe("ArgoCD Image Updater Parallel E2E Tests", func() {
@@ -69,6 +71,9 @@ var _ = Describe("ArgoCD Image Updater Parallel E2E Tests", func() {
 			if imageUpdater != nil {
 				By("deleting ImageUpdater CR")
 				_ = k8sClient.Delete(ctx, imageUpdater)
+				// Wait for the controller to process the finalizer and fully remove the CR
+				// before deleting the ArgoCD CR (which tears down the controller).
+				Eventually(imageUpdater, "2m", "3s").Should(k8sFixture.NotExistByName())
 			}
 
 			if argoCD != nil {
@@ -217,7 +222,7 @@ var _ = Describe("ArgoCD Image Updater Parallel E2E Tests", func() {
 				// For git write-back method, the image updater writes changes to git, and ArgoCD syncs from git.
 				// The image appears in Status.Summary.Images (not in Spec.Source.Kustomize.Images like argocd write-back).
 				if len(app.Status.Summary.Images) > 0 {
-					return string(app.Status.Summary.Images[0])
+					return app.Status.Summary.Images[0]
 				}
 
 				// Return an empty string to signify the condition is not yet met.

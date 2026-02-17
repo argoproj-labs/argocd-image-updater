@@ -539,6 +539,7 @@ spec:
                 description: ObservedGeneration is the most recent generation observed
                   by the controller.
                 format: int64
+                minimum: 0
                 type: integer
               recentUpdates:
                 description: RecentUpdates contains the list of image updates performed

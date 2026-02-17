@@ -265,6 +265,7 @@ type ImageUpdaterStatus struct {
 
 	// ObservedGeneration is the most recent generation observed by the controller.
 	// +optional
+	// +kubebuilder:validation:Minimum=0
 	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 
 	// LastCheckedAt indicates when the controller last checked for image updates.
@@ -277,11 +278,11 @@ type ImageUpdaterStatus struct {
 
 	// ApplicationsMatched is the number of Argo CD applications matched by this CR's selectors.
 	// +optional
-	ApplicationsMatched int `json:"applicationsMatched,omitempty"`
+	ApplicationsMatched int `json:"applicationsMatched"`
 
 	// ImagesManaged is the number of images that were eligible for update checking.
 	// +optional
-	ImagesManaged int `json:"imagesManaged,omitempty"`
+	ImagesManaged int `json:"imagesManaged"`
 
 	// RecentUpdates contains the list of image updates performed during the last reconciliation cycle.
 	// +optional
