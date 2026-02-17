@@ -246,18 +246,18 @@ func FilterApplicationsForUpdate(ctx context.Context, ctrlClient *ArgoCDK8sClien
 
 	allAppsInNamespace := &argocdapi.ApplicationList{}
 	listOpts := []ctrlclient.ListOption{
-		ctrlclient.InNamespace(cr.Spec.Namespace),
+		ctrlclient.InNamespace(cr.Namespace),
 	}
 
-	// Perform the app list operation in the target namespace cr.Spec.Namespace.
-	log.Infof("Listing all applications in target namespace: %s", cr.Spec.Namespace)
+	// Perform the app list operation in the target namespace cr.Namespace.
+	log.Infof("Listing all applications in target namespace: %s", cr.Namespace)
 	if err := ctrlClient.List(ctx, allAppsInNamespace, listOpts...); err != nil {
-		log.Errorf("Failed to list applications in namespace: %s, error: %v", cr.Spec.Namespace, err)
+		log.Errorf("Failed to list applications in namespace: %s, error: %v", cr.Namespace, err)
 		return nil, err
 	}
 
 	if len(allAppsInNamespace.Items) == 0 {
-		log.Infof("No applications found in target namespace: %s", cr.Spec.Namespace)
+		log.Infof("No applications found in target namespace: %s", cr.Namespace)
 		return nil, nil
 	}
 
@@ -332,7 +332,7 @@ func FilterApplicationsForUpdate(ctx context.Context, ctrlClient *ArgoCDK8sClien
 						log.Tracef("Resulted Image Updater object for app %s/%s: %s", app.Namespace, app.Name, string(appRefJSON))
 					}
 				}
-				appNSName := fmt.Sprintf("%s/%s", cr.Spec.Namespace, app.Name)
+				appNSName := fmt.Sprintf("%s/%s", app.Namespace, app.Name)
 				processApplicationForUpdate(ctx, &app, localAppRef, mergedCommonUpdateSettings, appWBCSettings, appNSName, appsForUpdate, webhookEvent)
 				break // Found the best match, move to the next app
 			}
