@@ -47,7 +47,7 @@ func TestReconcile_DeleteFinalizer_RemovesMetrics(t *testing.T) {
 	scheme := runtime.NewScheme()
 	_ = v1alpha1.AddToScheme(scheme)
 
-	fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithRuntimeObjects(imageUpdater).Build()
+	fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithRuntimeObjects(imageUpdater).WithStatusSubresource(&v1alpha1.ImageUpdater{}).Build()
 
 	warmedCh := make(chan struct{})
 	close(warmedCh)

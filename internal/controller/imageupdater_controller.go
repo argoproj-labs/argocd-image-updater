@@ -71,8 +71,9 @@ type ImageUpdaterReconciler struct {
 	// Channel to signal manager to stop
 	StopChan chan struct{}
 	// For run-once mode: wait for all CRs to complete
-	Once bool
-	Wg   sync.WaitGroup
+	Once          bool
+	Wg            sync.WaitGroup
+	onceCompleted sync.Map
 }
 
 const (
@@ -167,8 +168,30 @@ func (r *ImageUpdaterReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	}
 
 	if r.Config.CheckInterval == 0 {
+		// In run-once mode, our own writes (finalizer, status updates) trigger
+		// additional reconcile events for the same CR. Skip CRs that have
+		// already been processed to avoid redundant work and a WaitGroup panic
+		// from calling Done() more than once per CR.
+		if r.Once {
+			crKey := req.NamespacedName.String()
+			if _, alreadyDone := r.onceCompleted.LoadOrStore(crKey, true); alreadyDone {
+				reqLogger.Debugf("CR %s already processed in run-once mode, skipping.", crKey)
+				return ctrl.Result{}, nil
+			}
+		}
+
 		reqLogger.Debugf("Requeue interval is zero; will run once and stop.")
-		_, err := r.RunImageUpdater(ctx, &imageUpdater, false, nil)
+
+		if statusErr := r.setReconcilingStatus(ctx, &imageUpdater); statusErr != nil {
+			reqLogger.Warnf("Failed to set reconciling status: %v", statusErr)
+		}
+
+		result, err := r.RunImageUpdater(ctx, &imageUpdater, false, nil)
+
+		if statusErr := r.updateStatusAfterReconcile(ctx, &imageUpdater, result, err); statusErr != nil {
+			reqLogger.Warnf("Failed to update status after reconcile: %v", statusErr)
+		}
+
 		if err != nil {
 			reqLogger.Errorf("Error processing CR %s/%s: %v", imageUpdater.Namespace, imageUpdater.Name, err)
 		} else {
@@ -183,7 +206,16 @@ func (r *ImageUpdaterReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, nil
 	}
 
-	_, err := r.RunImageUpdater(ctx, &imageUpdater, false, nil)
+	if statusErr := r.setReconcilingStatus(ctx, &imageUpdater); statusErr != nil {
+		reqLogger.Warnf("Failed to set reconciling status: %v", statusErr)
+	}
+
+	result, err := r.RunImageUpdater(ctx, &imageUpdater, false, nil)
+
+	if statusErr := r.updateStatusAfterReconcile(ctx, &imageUpdater, result, err); statusErr != nil {
+		reqLogger.Warnf("Failed to update status after reconcile: %v", statusErr)
+	}
+
 	if err != nil {
 		return ctrl.Result{}, err
 	}

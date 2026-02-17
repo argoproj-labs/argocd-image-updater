@@ -263,38 +263,66 @@ type KustomizeTarget struct {
 type ImageUpdaterStatus struct {
 	// Important: Run "make" to regenerate code after modifying this file
 
-	// LastUpdatedAt indicates when the image updater last ran
-	LastUpdatedAt *metav1.Time `json:"reconciledAt,omitempty"`
+	// ObservedGeneration is the most recent generation observed by the controller.
+	// +optional
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 
-	// ImageStatus indicates the detailed status for the list of managed images
-	ImageStatus []ImageStatus `json:"imageStatus,omitempty"`
+	// LastCheckedAt indicates when the controller last checked for image updates.
+	// +optional
+	LastCheckedAt *metav1.Time `json:"lastCheckedAt,omitempty"`
 
+	// LastUpdatedAt indicates when the controller last performed an image update.
+	// +optional
+	LastUpdatedAt *metav1.Time `json:"lastUpdatedAt,omitempty"`
+
+	// ApplicationsMatched is the number of Argo CD applications matched by this CR's selectors.
+	// +optional
+	ApplicationsMatched int `json:"applicationsMatched,omitempty"`
+
+	// ImagesManaged is the number of images that were eligible for update checking.
+	// +optional
+	ImagesManaged int `json:"imagesManaged,omitempty"`
+
+	// RecentUpdates contains the list of image updates performed during the last reconciliation cycle.
+	// +optional
+	// +listType=atomic
+	RecentUpdates []RecentUpdate `json:"recentUpdates,omitempty"`
+
+	// Conditions represent the latest available observations of the resource's state.
+	// +optional
+	// +listType=map
+	// +listMapKey=type
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
-// ImageStatus contains information for an image:version and its update status in hosting applications
-type ImageStatus struct {
-	// Name indicates the image name
-	Name string `json:"name"`
+// RecentUpdate records a single image update performed during the last reconciliation.
+type RecentUpdate struct {
+	// Alias is the alias of the image configuration that was updated.
+	Alias string `json:"alias"`
 
-	// Version indicates the image version
-	Version string `json:"version"`
+	// Image is the full image reference.
+	Image string `json:"image"`
 
-	// Applications contains a list of applications and when the image was last updated therein
-	Applications []ImageApplicationLastUpdated `json:"applications,omitempty"`
-}
+	// NewVersion is the new tag or digest the image was updated to.
+	NewVersion string `json:"newVersion"`
 
-// ImageApplicationLastUpdated contains information for an application and when the image was last updated therein
-type ImageApplicationLastUpdated struct {
-	// AppName indicates and namespace and the application name
-	AppName string `json:"appName"`
+	// ApplicationsUpdated is the number of applications in which this image was updated.
+	ApplicationsUpdated int `json:"applicationsUpdated"`
 
-	// LastUpdatedAt indicates when the image in this application was last updated
-	LastUpdatedAt metav1.Time `json:"lastUpdatedAt,omitempty"`
+	// UpdatedAt is the timestamp when the update was applied.
+	UpdatedAt metav1.Time `json:"updatedAt"`
+
+	// Message provides a human-readable description of the update action.
+	// +optional
+	Message string `json:"message,omitempty"`
 }
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
+// +kubebuilder:printcolumn:name="Apps",type=integer,JSONPath=`.status.applicationsMatched`
+// +kubebuilder:printcolumn:name="Images",type=integer,JSONPath=`.status.imagesManaged`
+// +kubebuilder:printcolumn:name="Last Checked",type=date,JSONPath=`.status.lastCheckedAt`
+// +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`
 
 // ImageUpdater is the Schema for the imageupdaters API
 type ImageUpdater struct {

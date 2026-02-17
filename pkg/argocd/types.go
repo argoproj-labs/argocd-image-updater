@@ -21,6 +21,8 @@ type ImageUpdaterResult struct {
 	NumImagesConsidered      int
 	NumSkipped               int
 	NumErrors                int
+	ApplicationsMatched      int
+	Changes                  []ChangeEntry
 }
 
 type UpdateConfiguration struct {
@@ -110,9 +112,10 @@ type helmOverride struct {
 
 // ChangeEntry represents an image that has been changed by Image Updater
 type ChangeEntry struct {
-	Image  *image.ContainerImage
-	OldTag *tag.ImageTag
-	NewTag *tag.ImageTag
+	Image   *image.ContainerImage
+	OldTag  *tag.ImageTag
+	NewTag  *tag.ImageTag
+	AppName string
 }
 
 // SyncIterationState holds shared state of a running update operation

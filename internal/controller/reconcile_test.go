@@ -2242,6 +2242,7 @@ func TestImageUpdaterReconciler_RunImageUpdater(t *testing.T) {
 				NumImagesConsidered:      1,
 				NumErrors:                0,
 				NumImagesUpdated:         1,
+				ApplicationsMatched:      1,
 			},
 		},
 		{
@@ -2257,6 +2258,7 @@ func TestImageUpdaterReconciler_RunImageUpdater(t *testing.T) {
 				NumApplicationsProcessed: 1,
 				NumImagesConsidered:      1,
 				NumImagesUpdated:         1,
+				ApplicationsMatched:      1,
 			},
 		},
 		{
@@ -2269,6 +2271,7 @@ func TestImageUpdaterReconciler_RunImageUpdater(t *testing.T) {
 				NumImagesConsidered:      1,
 				NumErrors:                0,
 				NumImagesUpdated:         1,
+				ApplicationsMatched:      1,
 			},
 		},
 		{
@@ -2304,6 +2307,7 @@ func TestImageUpdaterReconciler_RunImageUpdater(t *testing.T) {
 				NumApplicationsProcessed: 1,
 				NumImagesConsidered:      1,
 				NumImagesUpdated:         1,
+				ApplicationsMatched:      1,
 			},
 		},
 		{
@@ -2329,6 +2333,7 @@ func TestImageUpdaterReconciler_RunImageUpdater(t *testing.T) {
 				NumApplicationsProcessed: 1,
 				NumImagesConsidered:      1,
 				NumImagesUpdated:         1,
+				ApplicationsMatched:      1,
 			},
 		},
 		{
@@ -2369,6 +2374,7 @@ func TestImageUpdaterReconciler_RunImageUpdater(t *testing.T) {
 				NumApplicationsProcessed: 1,
 				NumImagesConsidered:      1,
 				NumImagesUpdated:         1,
+				ApplicationsMatched:      1,
 			},
 		},
 		{
@@ -2396,6 +2402,7 @@ func TestImageUpdaterReconciler_RunImageUpdater(t *testing.T) {
 				NumApplicationsProcessed: 1,
 				NumImagesConsidered:      1,
 				NumImagesUpdated:         1,
+				ApplicationsMatched:      1,
 			},
 		},
 		{
@@ -2440,6 +2447,8 @@ func TestImageUpdaterReconciler_RunImageUpdater(t *testing.T) {
 				}
 			} else {
 				require.NoError(t, err)
+				// Clear Changes before comparison as it contains complex pointer types
+				result.Changes = nil
 				assert.Equal(t, tt.expectedResult, result)
 			}
 
