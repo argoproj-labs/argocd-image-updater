@@ -13,7 +13,20 @@ spec:
     singular: imageupdater
   scope: Namespaced
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - jsonPath: .status.applicationsMatched
+      name: Apps
+      type: integer
+    - jsonPath: .status.imagesManaged
+      name: Images
+      type: integer
+    - jsonPath: .status.lastCheckedAt
+      name: Last Checked
+      type: date
+    - jsonPath: .status.conditions[?(@.type=="Ready")].status
+      name: Ready
+      type: string
+    name: v1alpha1
     schema:
       openAPIV3Schema:
         description: ImageUpdater is the Schema for the imageupdaters API
@@ -443,7 +456,13 @@ spec:
           status:
             description: ImageUpdaterStatus defines the observed state of ImageUpdater
             properties:
+              applicationsMatched:
+                description: ApplicationsMatched is the number of Argo CD applications
+                  matched by this CR's selectors.
+                type: integer
               conditions:
+                description: Conditions represent the latest available observations
+                  of the resource's state.
                 items:
                   description: Condition contains details for one aspect of the current
                     state of this API Resource.
@@ -499,48 +518,68 @@ spec:
                   - type
                   type: object
                 type: array
-              imageStatus:
-                description: ImageStatus indicates the detailed status for the list
-                  of managed images
-                items:
-                  description: ImageStatus contains information for an image:version
-                    and its update status in hosting applications
-                  properties:
-                    applications:
-                      description: Applications contains a list of applications and
-                        when the image was last updated therein
-                      items:
-                        description: ImageApplicationLastUpdated contains information
-                          for an application and when the image was last updated therein
-                        properties:
-                          appName:
-                            description: AppName indicates and namespace and the application
-                              name
-                            type: string
-                          lastUpdatedAt:
-                            description: LastUpdatedAt indicates when the image in
-                              this application was last updated
-                            format: date-time
-                            type: string
-                        required:
-                        - appName
-                        type: object
-                      type: array
-                    name:
-                      description: Name indicates the image name
-                      type: string
-                    version:
-                      description: Version indicates the image version
-                      type: string
-                  required:
-                  - name
-                  - version
-                  type: object
-                type: array
-              reconciledAt:
-                description: LastUpdatedAt indicates when the image updater last ran
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              imagesManaged:
+                description: ImagesManaged is the number of images that were eligible
+                  for update checking.
+                type: integer
+              lastCheckedAt:
+                description: LastCheckedAt indicates when the controller last checked
+                  for image updates.
                 format: date-time
                 type: string
+              lastUpdatedAt:
+                description: LastUpdatedAt indicates when the controller last performed
+                  an image update.
+                format: date-time
+                type: string
+              observedGeneration:
+                description: ObservedGeneration is the most recent generation observed
+                  by the controller.
+                format: int64
+                type: integer
+              recentUpdates:
+                description: RecentUpdates contains the list of image updates performed
+                  during the last reconciliation cycle.
+                items:
+                  description: RecentUpdate records a single image update performed
+                    during the last reconciliation.
+                  properties:
+                    alias:
+                      description: Alias is the alias of the image configuration that
+                        was updated.
+                      type: string
+                    applicationsUpdated:
+                      description: ApplicationsUpdated is the number of applications
+                        in which this image was updated.
+                      type: integer
+                    image:
+                      description: Image is the full image reference.
+                      type: string
+                    message:
+                      description: Message provides a human-readable description of
+                        the update action.
+                      type: string
+                    newVersion:
+                      description: NewVersion is the new tag or digest the image was
+                        updated to.
+                      type: string
+                    updatedAt:
+                      description: UpdatedAt is the timestamp when the update was
+                        applied.
+                      format: date-time
+                      type: string
+                  required:
+                  - alias
+                  - applicationsUpdated
+                  - image
+                  - newVersion
+                  - updatedAt
+                  type: object
+                type: array
+                x-kubernetes-list-type: atomic
             type: object
         type: object
     served: true
