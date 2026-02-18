@@ -183,13 +183,13 @@ func (r *ImageUpdaterReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		reqLogger.Debugf("Requeue interval is zero; will run once and stop.")
 
 		if statusErr := r.setReconcilingStatus(ctx, &imageUpdater); statusErr != nil {
-			reqLogger.Warnf("Failed to set reconciling status: %v", statusErr)
+			reqLogger.Warnf("Failed to set Reconciling status condition for %s/%s, status may be stale: %v", imageUpdater.Namespace, imageUpdater.Name, statusErr)
 		}
 
 		result, err := r.RunImageUpdater(ctx, &imageUpdater, false, nil)
 
 		if statusErr := r.updateStatusAfterReconcile(ctx, &imageUpdater, result, err); statusErr != nil {
-			reqLogger.Warnf("Failed to update status after reconcile: %v", statusErr)
+			reqLogger.Warnf("Failed to update status after reconcile for %s/%s, status may be stale: %v", imageUpdater.Namespace, imageUpdater.Name, statusErr)
 		}
 
 		if err != nil {
@@ -207,13 +207,13 @@ func (r *ImageUpdaterReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	}
 
 	if statusErr := r.setReconcilingStatus(ctx, &imageUpdater); statusErr != nil {
-		reqLogger.Warnf("Failed to set reconciling status: %v", statusErr)
+		reqLogger.Warnf("Failed to set Reconciling status condition for %s/%s, status may be stale: %v", imageUpdater.Namespace, imageUpdater.Name, statusErr)
 	}
 
 	result, err := r.RunImageUpdater(ctx, &imageUpdater, false, nil)
 
 	if statusErr := r.updateStatusAfterReconcile(ctx, &imageUpdater, result, err); statusErr != nil {
-		reqLogger.Warnf("Failed to update status after reconcile: %v", statusErr)
+		reqLogger.Warnf("Failed to update status after reconcile for %s/%s, status may be stale: %v", imageUpdater.Namespace, imageUpdater.Name, statusErr)
 	}
 
 	if err != nil {

@@ -278,11 +278,13 @@ type ImageUpdaterStatus struct {
 
 	// ApplicationsMatched is the number of Argo CD applications matched by this CR's selectors.
 	// +optional
-	ApplicationsMatched int `json:"applicationsMatched"`
+	// +kubebuilder:validation:Minimum=0
+	ApplicationsMatched int32 `json:"applicationsMatched"`
 
 	// ImagesManaged is the number of images that were eligible for update checking.
 	// +optional
-	ImagesManaged int `json:"imagesManaged"`
+	// +kubebuilder:validation:Minimum=0
+	ImagesManaged int32 `json:"imagesManaged"`
 
 	// RecentUpdates contains the list of image updates performed during the last reconciliation cycle.
 	// +optional
@@ -308,7 +310,8 @@ type RecentUpdate struct {
 	NewVersion string `json:"newVersion"`
 
 	// ApplicationsUpdated is the number of applications in which this image was updated.
-	ApplicationsUpdated int `json:"applicationsUpdated"`
+	// +kubebuilder:validation:Minimum=0
+	ApplicationsUpdated int32 `json:"applicationsUpdated"`
 
 	// UpdatedAt is the timestamp when the update was applied.
 	UpdatedAt metav1.Time `json:"updatedAt"`

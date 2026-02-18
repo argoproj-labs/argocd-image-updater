@@ -191,7 +191,7 @@ func UpdateApplication(ctx context.Context, updateConf *UpdateConfiguration, sta
 				continue
 			} else {
 				imgCtx.Infof("Successfully updated image '%s' to '%s', but pending spec update (dry run=%v)", updateableImage.GetFullNameWithTag(), appImageFullNameWithTag, updateConf.DryRun)
-				changeList = append(changeList, ChangeEntry{Image: appImageWithTag, OldTag: updateableImage.ImageTag, NewTag: appImageWithTag.ImageTag, AppName: app})
+				changeList = append(changeList, ChangeEntry{appImageWithTag, updateableImage.ImageTag, appImageWithTag.ImageTag})
 				result.NumImagesUpdated += 1
 			}
 		} else {

@@ -459,6 +459,8 @@ spec:
               applicationsMatched:
                 description: ApplicationsMatched is the number of Argo CD applications
                   matched by this CR's selectors.
+                format: int32
+                minimum: 0
                 type: integer
               conditions:
                 description: Conditions represent the latest available observations
@@ -524,6 +526,8 @@ spec:
               imagesManaged:
                 description: ImagesManaged is the number of images that were eligible
                   for update checking.
+                format: int32
+                minimum: 0
                 type: integer
               lastCheckedAt:
                 description: LastCheckedAt indicates when the controller last checked
@@ -555,6 +559,8 @@ spec:
                     applicationsUpdated:
                       description: ApplicationsUpdated is the number of applications
                         in which this image was updated.
+                      format: int32
+                      minimum: 0
                       type: integer
                     image:
                       description: Image is the full image reference.

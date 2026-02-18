@@ -28,7 +28,6 @@ import (
 
 	api "github.com/argoproj-labs/argocd-image-updater/api/v1alpha1"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/argocd"
-	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
 )
 
 // Condition type constants
@@ -40,8 +39,6 @@ const (
 
 // setReconcilingStatus sets the Reconciling condition to True at the start of a reconcile loop.
 func (r *ImageUpdaterReconciler) setReconcilingStatus(ctx context.Context, imageUpdater *api.ImageUpdater) error {
-	logger := log.LoggerFromContext(ctx)
-
 	apimeta.SetStatusCondition(&imageUpdater.Status.Conditions, metav1.Condition{
 		Type:               ConditionTypeReconciling,
 		Status:             metav1.ConditionTrue,
@@ -50,11 +47,7 @@ func (r *ImageUpdaterReconciler) setReconcilingStatus(ctx context.Context, image
 		ObservedGeneration: imageUpdater.Generation,
 	})
 
-	if err := r.Status().Update(ctx, imageUpdater); err != nil {
-		logger.Errorf("Failed to set Reconciling status: %v", err)
-		return err
-	}
-	return nil
+	return r.Status().Update(ctx, imageUpdater)
 }
 
 // updateStatusAfterReconcile updates the status subresource with all results from a reconciliation cycle.
@@ -64,12 +57,9 @@ func (r *ImageUpdaterReconciler) updateStatusAfterReconcile(
 	result argocd.ImageUpdaterResult,
 	reconcileErr error,
 ) error {
-	logger := log.LoggerFromContext(ctx)
-
 	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		// Re-fetch the latest version to avoid conflicts
 		if err := r.Get(ctx, client.ObjectKeyFromObject(imageUpdater), imageUpdater); err != nil {
-			logger.Errorf("Failed to re-fetch ImageUpdater for status update: %v", err)
 			return err
 		}
 
@@ -77,8 +67,8 @@ func (r *ImageUpdaterReconciler) updateStatusAfterReconcile(
 
 		imageUpdater.Status.ObservedGeneration = imageUpdater.Generation
 		imageUpdater.Status.LastCheckedAt = &now
-		imageUpdater.Status.ApplicationsMatched = result.ApplicationsMatched
-		imageUpdater.Status.ImagesManaged = result.NumImagesConsidered
+		imageUpdater.Status.ApplicationsMatched = int32(result.ApplicationsMatched)
+		imageUpdater.Status.ImagesManaged = int32(result.NumImagesConsidered)
 
 		if result.NumImagesUpdated > 0 {
 			imageUpdater.Status.LastUpdatedAt = &now
@@ -87,11 +77,7 @@ func (r *ImageUpdaterReconciler) updateStatusAfterReconcile(
 
 		setCompletionConditions(imageUpdater, result, reconcileErr)
 
-		if err := r.Status().Update(ctx, imageUpdater); err != nil {
-			logger.Errorf("Failed to update status after reconcile: %v", err)
-			return err
-		}
-		return nil
+		return r.Status().Update(ctx, imageUpdater)
 	})
 }
 

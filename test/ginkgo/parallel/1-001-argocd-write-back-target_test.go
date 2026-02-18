@@ -64,14 +64,12 @@ var _ = Describe("ArgoCD Image Updater Parallel E2E Tests", func() {
 		})
 
 		AfterEach(func() {
-			// Cleanup is best-effort. Issue deletes and give some time for controllers
-			// to process, but don't fail the test if cleanup takes too long.
+			// Delete the ImageUpdater CR first and wait for its finalizer to be
+			// processed before tearing down the ArgoCD CR (which removes the controller).
 
 			if imageUpdater != nil {
 				By("deleting ImageUpdater CR")
 				_ = k8sClient.Delete(ctx, imageUpdater)
-				// Wait for the controller to process the finalizer and fully remove the CR
-				// before deleting the ArgoCD CR (which tears down the controller).
 				Eventually(imageUpdater, "2m", "3s").Should(k8sFixture.NotExistByName())
 			}
 

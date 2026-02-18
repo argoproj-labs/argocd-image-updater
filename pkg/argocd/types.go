@@ -112,10 +112,9 @@ type helmOverride struct {
 
 // ChangeEntry represents an image that has been changed by Image Updater
 type ChangeEntry struct {
-	Image   *image.ContainerImage
-	OldTag  *tag.ImageTag
-	NewTag  *tag.ImageTag
-	AppName string
+	Image  *image.ContainerImage
+	OldTag *tag.ImageTag
+	NewTag *tag.ImageTag
 }
 
 // SyncIterationState holds shared state of a running update operation

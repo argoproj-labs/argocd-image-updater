@@ -50,9 +50,8 @@ func TestBuildRecentUpdates(t *testing.T) {
 					ImageName:  "nginx",
 					ImageAlias: "web",
 				},
-				OldTag:  tag.NewImageTag("1.20", time.Now(), ""),
-				NewTag:  tag.NewImageTag("1.21", time.Now(), ""),
-				AppName: "my-app",
+				OldTag: tag.NewImageTag("1.20", time.Now(), ""),
+				NewTag: tag.NewImageTag("1.21", time.Now(), ""),
 			},
 		}
 
@@ -60,7 +59,7 @@ func TestBuildRecentUpdates(t *testing.T) {
 		assert.Len(t, result, 1)
 		assert.Equal(t, "web", result[0].Alias)
 		assert.Equal(t, "1.21", result[0].NewVersion)
-		assert.Equal(t, 1, result[0].ApplicationsUpdated)
+		assert.Equal(t, int32(1), result[0].ApplicationsUpdated)
 		assert.Equal(t, now, result[0].UpdatedAt)
 		assert.Contains(t, result[0].Message, "1.20")
 		assert.Contains(t, result[0].Message, "1.21")
@@ -73,25 +72,23 @@ func TestBuildRecentUpdates(t *testing.T) {
 					ImageName:  "nginx",
 					ImageAlias: "web",
 				},
-				OldTag:  tag.NewImageTag("1.20", time.Now(), ""),
-				NewTag:  tag.NewImageTag("1.21", time.Now(), ""),
-				AppName: "app-1",
+				OldTag: tag.NewImageTag("1.20", time.Now(), ""),
+				NewTag: tag.NewImageTag("1.21", time.Now(), ""),
 			},
 			{
 				Image: &image.ContainerImage{
 					ImageName:  "nginx",
 					ImageAlias: "web",
 				},
-				OldTag:  tag.NewImageTag("1.20", time.Now(), ""),
-				NewTag:  tag.NewImageTag("1.21", time.Now(), ""),
-				AppName: "app-2",
+				OldTag: tag.NewImageTag("1.20", time.Now(), ""),
+				NewTag: tag.NewImageTag("1.21", time.Now(), ""),
 			},
 		}
 
 		result := buildRecentUpdates(changes, now)
 		assert.Len(t, result, 1)
 		assert.Equal(t, "web", result[0].Alias)
-		assert.Equal(t, 2, result[0].ApplicationsUpdated)
+		assert.Equal(t, int32(2), result[0].ApplicationsUpdated)
 	})
 
 	t.Run("different images produce separate entries", func(t *testing.T) {
@@ -101,18 +98,16 @@ func TestBuildRecentUpdates(t *testing.T) {
 					ImageName:  "nginx",
 					ImageAlias: "web",
 				},
-				OldTag:  tag.NewImageTag("1.20", time.Now(), ""),
-				NewTag:  tag.NewImageTag("1.21", time.Now(), ""),
-				AppName: "app-1",
+				OldTag: tag.NewImageTag("1.20", time.Now(), ""),
+				NewTag: tag.NewImageTag("1.21", time.Now(), ""),
 			},
 			{
 				Image: &image.ContainerImage{
 					ImageName:  "redis",
 					ImageAlias: "cache",
 				},
-				OldTag:  tag.NewImageTag("6.0", time.Now(), ""),
-				NewTag:  tag.NewImageTag("7.0", time.Now(), ""),
-				AppName: "app-1",
+				OldTag: tag.NewImageTag("6.0", time.Now(), ""),
+				NewTag: tag.NewImageTag("7.0", time.Now(), ""),
 			},
 		}
 
@@ -129,9 +124,8 @@ func TestBuildRecentUpdates(t *testing.T) {
 					ImageName:  "nginx",
 					ImageAlias: "",
 				},
-				OldTag:  tag.NewImageTag("1.20", time.Now(), ""),
-				NewTag:  tag.NewImageTag("1.21", time.Now(), ""),
-				AppName: "app-1",
+				OldTag: tag.NewImageTag("1.20", time.Now(), ""),
+				NewTag: tag.NewImageTag("1.21", time.Now(), ""),
 			},
 		}
 

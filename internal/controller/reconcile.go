@@ -76,6 +76,7 @@ func (r *ImageUpdaterReconciler) RunImageUpdater(ctx context.Context, cr *iuapi.
 
 		go func(appCtx context.Context, app string, curApplication argocd.ApplicationImages) {
 			defer sem.Release(1)
+			defer wg.Done()
 
 			appLogger := log.LoggerFromContext(appCtx)
 			appLogger.Debugf("Processing application")
@@ -113,7 +114,6 @@ func (r *ImageUpdaterReconciler) RunImageUpdater(ctx context.Context, cr *iuapi.
 			//}
 			//metrics.Applications().IncreaseUpdateErrors(app, res.NumErrors)
 			//metrics.Applications().SetNumberOfImagesWatched(app, res.NumImagesConsidered)
-			wg.Done()
 		}(appCtx, app, curApplication)
 	}
 
@@ -175,7 +175,7 @@ func (r *ImageUpdaterReconciler) ProcessImageUpdaterCRs(ctx context.Context, crs
 
 			if !warmUp {
 				if statusErr := r.setReconcilingStatus(crCtx, &imageUpdater); statusErr != nil {
-					crLogger.Warnf("Failed to set reconciling status: %v", statusErr)
+					crLogger.Warnf("Failed to set Reconciling status condition for %s/%s, status may be stale: %v", imageUpdater.Namespace, imageUpdater.Name, statusErr)
 				}
 			}
 
@@ -183,7 +183,7 @@ func (r *ImageUpdaterReconciler) ProcessImageUpdaterCRs(ctx context.Context, crs
 
 			if !warmUp {
 				if statusErr := r.updateStatusAfterReconcile(crCtx, &imageUpdater, result, err); statusErr != nil {
-					crLogger.Warnf("Failed to update status after reconcile: %v", statusErr)
+					crLogger.Warnf("Failed to update status after reconcile for %s/%s, status may be stale: %v", imageUpdater.Namespace, imageUpdater.Name, statusErr)
 				}
 			}
 

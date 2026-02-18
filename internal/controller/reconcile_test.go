@@ -295,7 +295,7 @@ func TestImageUpdaterReconciler_Reconcile(t *testing.T) {
 			err = argocdapi.AddToScheme(s)
 			require.NoError(t, err)
 
-			fakeClient := clifake.NewClientBuilder().WithScheme(s).Build()
+			fakeClient := clifake.NewClientBuilder().WithScheme(s).WithStatusSubresource(&argocdimageupdaterv1alpha1.ImageUpdater{}).Build()
 
 			// Create mock ArgoCD client
 			mockArgoClient := &mocks.ArgoCD{}
@@ -471,7 +471,7 @@ func TestImageUpdaterReconciler_Reconcile_ComplexScenarios(t *testing.T) {
 			err = argocdapi.AddToScheme(s)
 			require.NoError(t, err)
 
-			fakeClient := clifake.NewClientBuilder().WithScheme(s).Build()
+			fakeClient := clifake.NewClientBuilder().WithScheme(s).WithStatusSubresource(&argocdimageupdaterv1alpha1.ImageUpdater{}).Build()
 
 			// Create mock ArgoCD client (not used in these tests since the code uses Kubernetes client directly)
 			mockArgoClient := &mocks.ArgoCD{}
@@ -533,7 +533,7 @@ func TestImageUpdaterReconciler_Reconcile_AdvancedScenarios(t *testing.T) {
 		err = argocdapi.AddToScheme(s)
 		require.NoError(t, err)
 
-		fakeClient := clifake.NewClientBuilder().WithScheme(s).Build()
+		fakeClient := clifake.NewClientBuilder().WithScheme(s).WithStatusSubresource(&argocdimageupdaterv1alpha1.ImageUpdater{}).Build()
 
 		// Create mock ArgoCD client
 		mockArgoClient := &mocks.ArgoCD{}
@@ -622,7 +622,7 @@ func TestImageUpdaterReconciler_Reconcile_AdvancedScenarios(t *testing.T) {
 		err := argocdimageupdaterv1alpha1.AddToScheme(s)
 		require.NoError(t, err)
 
-		fakeClient := clifake.NewClientBuilder().WithScheme(s).Build()
+		fakeClient := clifake.NewClientBuilder().WithScheme(s).WithStatusSubresource(&argocdimageupdaterv1alpha1.ImageUpdater{}).Build()
 
 		// Create mock ArgoCD client
 		mockArgoClient := &mocks.ArgoCD{}
@@ -919,7 +919,7 @@ func TestImageUpdaterReconciler_Reconcile_MultipleCRs_CheckIntervalZero(t *testi
 		err = argocdapi.AddToScheme(s)
 		require.NoError(t, err)
 
-		fakeClient := clifake.NewClientBuilder().WithScheme(s).Build()
+		fakeClient := clifake.NewClientBuilder().WithScheme(s).WithStatusSubresource(&argocdimageupdaterv1alpha1.ImageUpdater{}).Build()
 
 		// Create reconciler with CheckInterval = 0 (run-once mode)
 		reconciler := &ImageUpdaterReconciler{
@@ -1082,7 +1082,7 @@ func TestImageUpdaterReconciler_Reconcile_MultipleCRs_CheckIntervalZero(t *testi
 		err = argocdapi.AddToScheme(s)
 		require.NoError(t, err)
 
-		fakeClient := clifake.NewClientBuilder().WithScheme(s).Build()
+		fakeClient := clifake.NewClientBuilder().WithScheme(s).WithStatusSubresource(&argocdimageupdaterv1alpha1.ImageUpdater{}).Build()
 
 		// Create reconciler with CheckInterval = 0 (run-once mode)
 		reconciler := &ImageUpdaterReconciler{
@@ -1209,7 +1209,7 @@ func TestImageUpdaterReconciler_Reconcile_MultipleCRs_CheckIntervalZero(t *testi
 		err = argocdapi.AddToScheme(s)
 		require.NoError(t, err)
 
-		fakeClient := clifake.NewClientBuilder().WithScheme(s).Build()
+		fakeClient := clifake.NewClientBuilder().WithScheme(s).WithStatusSubresource(&argocdimageupdaterv1alpha1.ImageUpdater{}).Build()
 
 		// Create reconciler with CheckInterval = 0 and higher concurrency
 		reconciler := &ImageUpdaterReconciler{
@@ -1357,7 +1357,7 @@ func TestImageUpdaterReconciler_Reconcile_MultipleCRs_CheckIntervalZero(t *testi
 		err = argocdapi.AddToScheme(s)
 		require.NoError(t, err)
 
-		fakeClient := clifake.NewClientBuilder().WithScheme(s).Build()
+		fakeClient := clifake.NewClientBuilder().WithScheme(s).WithStatusSubresource(&argocdimageupdaterv1alpha1.ImageUpdater{}).Build()
 
 		// Create reconciler with CheckInterval = 0 (run-once mode)
 		reconciler := &ImageUpdaterReconciler{
@@ -1524,7 +1524,7 @@ func TestImageUpdaterReconciler_Reconcile_MultipleCRs_CheckIntervalZero(t *testi
 		err = argocdapi.AddToScheme(s)
 		require.NoError(t, err)
 
-		fakeClient := clifake.NewClientBuilder().WithScheme(s).Build()
+		fakeClient := clifake.NewClientBuilder().WithScheme(s).WithStatusSubresource(&argocdimageupdaterv1alpha1.ImageUpdater{}).Build()
 
 		// Create reconciler with CheckInterval = 0 (run-once mode)
 		reconciler := &ImageUpdaterReconciler{
@@ -1702,7 +1702,7 @@ func TestImageUpdaterReconciler_Reconcile_Finalizer(t *testing.T) {
 		err = argocdapi.AddToScheme(s)
 		require.NoError(t, err)
 
-		fakeClient := clifake.NewClientBuilder().WithScheme(s).Build()
+		fakeClient := clifake.NewClientBuilder().WithScheme(s).WithStatusSubresource(&argocdimageupdaterv1alpha1.ImageUpdater{}).Build()
 
 		// Create reconciler
 		reconciler := &ImageUpdaterReconciler{
@@ -1780,7 +1780,7 @@ func TestImageUpdaterReconciler_Reconcile_Finalizer(t *testing.T) {
 		err = argocdapi.AddToScheme(s)
 		require.NoError(t, err)
 
-		fakeClient := clifake.NewClientBuilder().WithScheme(s).Build()
+		fakeClient := clifake.NewClientBuilder().WithScheme(s).WithStatusSubresource(&argocdimageupdaterv1alpha1.ImageUpdater{}).Build()
 
 		// Create reconciler
 		reconciler := &ImageUpdaterReconciler{
@@ -1860,7 +1860,7 @@ func TestImageUpdaterReconciler_Reconcile_Finalizer(t *testing.T) {
 		err = argocdapi.AddToScheme(s)
 		require.NoError(t, err)
 
-		fakeClient := clifake.NewClientBuilder().WithScheme(s).Build()
+		fakeClient := clifake.NewClientBuilder().WithScheme(s).WithStatusSubresource(&argocdimageupdaterv1alpha1.ImageUpdater{}).Build()
 
 		// Create reconciler
 		reconciler := &ImageUpdaterReconciler{
@@ -1942,7 +1942,7 @@ func TestImageUpdaterReconciler_Reconcile_Finalizer(t *testing.T) {
 		err = argocdapi.AddToScheme(s)
 		require.NoError(t, err)
 
-		fakeClient := clifake.NewClientBuilder().WithScheme(s).Build()
+		fakeClient := clifake.NewClientBuilder().WithScheme(s).WithStatusSubresource(&argocdimageupdaterv1alpha1.ImageUpdater{}).Build()
 
 		// Create reconciler
 		reconciler := &ImageUpdaterReconciler{
@@ -2423,7 +2423,7 @@ func TestImageUpdaterReconciler_RunImageUpdater(t *testing.T) {
 			metrics.InitMetrics()
 
 			// Build fake client and wrap with strict namespace client to enforce namespace isolation
-			fakeClient := clifake.NewClientBuilder().WithScheme(s).WithObjects(tt.apps...).Build()
+			fakeClient := clifake.NewClientBuilder().WithScheme(s).WithStatusSubresource(&argocdimageupdaterv1alpha1.ImageUpdater{}).WithObjects(tt.apps...).Build()
 			strictClient := &strictNamespaceClient{Client: fakeClient}
 			reconciler := &ImageUpdaterReconciler{
 				Client: strictClient,
@@ -2517,28 +2517,28 @@ func TestImageUpdaterReconciler_ProcessImageUpdaterCRs(t *testing.T) {
 	}
 
 	t.Run("no CRs to process", func(t *testing.T) {
-		fakeClient := clifake.NewClientBuilder().WithScheme(s).Build()
+		fakeClient := clifake.NewClientBuilder().WithScheme(s).WithStatusSubresource(&argocdimageupdaterv1alpha1.ImageUpdater{}).Build()
 		reconciler := newTestReconciler(fakeClient)
 		err := reconciler.ProcessImageUpdaterCRs(ctx, []argocdimageupdaterv1alpha1.ImageUpdater{}, false, nil)
 		assert.NoError(t, err)
 	})
 
 	t.Run("one successful CR", func(t *testing.T) {
-		fakeClient := clifake.NewClientBuilder().WithScheme(s).WithObjects(app1).Build()
+		fakeClient := clifake.NewClientBuilder().WithScheme(s).WithStatusSubresource(&argocdimageupdaterv1alpha1.ImageUpdater{}).WithObjects(app1).Build()
 		reconciler := newTestReconciler(fakeClient)
 		err := reconciler.ProcessImageUpdaterCRs(ctx, []argocdimageupdaterv1alpha1.ImageUpdater{*cr1}, false, nil)
 		assert.NoError(t, err)
 	})
 
 	t.Run("multiple successful CRs", func(t *testing.T) {
-		fakeClient := clifake.NewClientBuilder().WithScheme(s).WithObjects(app1, app2).Build()
+		fakeClient := clifake.NewClientBuilder().WithScheme(s).WithStatusSubresource(&argocdimageupdaterv1alpha1.ImageUpdater{}).WithObjects(app1, app2).Build()
 		reconciler := newTestReconciler(fakeClient)
 		err := reconciler.ProcessImageUpdaterCRs(ctx, []argocdimageupdaterv1alpha1.ImageUpdater{*cr1, *cr2}, false, nil)
 		assert.NoError(t, err)
 	})
 
 	t.Run("one failing CR", func(t *testing.T) {
-		fakeClient := clifake.NewClientBuilder().WithScheme(s).WithObjects(app1).Build()
+		fakeClient := clifake.NewClientBuilder().WithScheme(s).WithStatusSubresource(&argocdimageupdaterv1alpha1.ImageUpdater{}).WithObjects(app1).Build()
 		reconciler := newTestReconciler(fakeClient)
 		err := reconciler.ProcessImageUpdaterCRs(ctx, []argocdimageupdaterv1alpha1.ImageUpdater{*crInvalid}, false, nil)
 		assert.Error(t, err)
@@ -2546,7 +2546,7 @@ func TestImageUpdaterReconciler_ProcessImageUpdaterCRs(t *testing.T) {
 	})
 
 	t.Run("multiple CRs, one failing", func(t *testing.T) {
-		fakeClient := clifake.NewClientBuilder().WithScheme(s).WithObjects(app1).Build()
+		fakeClient := clifake.NewClientBuilder().WithScheme(s).WithStatusSubresource(&argocdimageupdaterv1alpha1.ImageUpdater{}).WithObjects(app1).Build()
 		reconciler := newTestReconciler(fakeClient)
 		err := reconciler.ProcessImageUpdaterCRs(ctx, []argocdimageupdaterv1alpha1.ImageUpdater{*cr1, *crInvalid}, false, nil)
 		assert.Error(t, err)
@@ -2555,14 +2555,14 @@ func TestImageUpdaterReconciler_ProcessImageUpdaterCRs(t *testing.T) {
 	})
 
 	t.Run("warmUp mode", func(t *testing.T) {
-		fakeClient := clifake.NewClientBuilder().WithScheme(s).WithObjects(app1).Build()
+		fakeClient := clifake.NewClientBuilder().WithScheme(s).WithStatusSubresource(&argocdimageupdaterv1alpha1.ImageUpdater{}).WithObjects(app1).Build()
 		reconciler := newTestReconciler(fakeClient)
 		err := reconciler.ProcessImageUpdaterCRs(ctx, []argocdimageupdaterv1alpha1.ImageUpdater{*cr1}, true, nil)
 		assert.NoError(t, err)
 	})
 
 	t.Run("with webhook event", func(t *testing.T) {
-		fakeClient := clifake.NewClientBuilder().WithScheme(s).WithObjects(app1).Build()
+		fakeClient := clifake.NewClientBuilder().WithScheme(s).WithStatusSubresource(&argocdimageupdaterv1alpha1.ImageUpdater{}).WithObjects(app1).Build()
 		reconciler := newTestReconciler(fakeClient)
 		webhookEvent := &argocd.WebhookEvent{
 			Repository: "some-repo",
