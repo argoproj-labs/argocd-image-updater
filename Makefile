@@ -33,7 +33,7 @@ override LDFLAGS += \
 	-X ${VERSION_PACKAGE}.gitCommit=${GIT_COMMIT} \
 	-X ${VERSION_PACKAGE}.buildDate=${BUILD_DATE}
 
-MKDOCS_DOCKER_IMAGE?=squidfunk/mkdocs-material:4.1.1
+MKDOCS_DOCKER_IMAGE?=squidfunk/mkdocs-material:9.7.1
 MKDOCS_RUN_ARGS?=
 
 # Image URL to use all building/pushing image targets
