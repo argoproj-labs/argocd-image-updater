@@ -186,13 +186,13 @@ The following metric is currently available and populated with data:
     temporarily disabled. They may not appear on the `/metrics` endpoint or may
     always report a value of `0`.
 
-*   `argocd_image_updater_images_watched_total`
-*   `argocd_image_updater_images_updated_total`
-*   `argocd_image_updater_images_errors_total`
-*   `argocd_image_updater_k8s_api_requests_total`
-*   `argocd_image_updater_k8s_api_errors_total`
-*   `argocd_image_updater_registry_requests_total`
-*   `argocd_image_updater_registry_requests_failed_total`
+    *   `argocd_image_updater_images_watched_total`
+    *   `argocd_image_updater_images_updated_total`
+    *   `argocd_image_updater_images_errors_total`
+    *   `argocd_image_updater_k8s_api_requests_total`
+    *   `argocd_image_updater_k8s_api_errors_total`
+    *   `argocd_image_updater_registry_requests_total`
+    *   `argocd_image_updater_registry_requests_failed_total`
 
 A (very) rudimentary example dashboard definition for Grafana is provided
 [here](https://github.com/argoproj-labs/argocd-image-updater/tree/master/config)
