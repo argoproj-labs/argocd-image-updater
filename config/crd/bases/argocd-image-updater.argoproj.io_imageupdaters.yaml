@@ -548,10 +548,10 @@ spec:
                 type: integer
               recentUpdates:
                 description: RecentUpdates contains the list of image updates performed
-                  during the last reconciliation cycle.
+                  during the last update cycle.
                 items:
                   description: RecentUpdate records a single image update performed
-                    during the last reconciliation.
+                    during the last update.
                   properties:
                     alias:
                       description: Alias is the alias of the image configuration that

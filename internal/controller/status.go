@@ -39,15 +39,22 @@ const (
 
 // setReconcilingStatus sets the Reconciling condition to True at the start of a reconcile loop.
 func (r *ImageUpdaterReconciler) setReconcilingStatus(ctx context.Context, imageUpdater *api.ImageUpdater) error {
-	apimeta.SetStatusCondition(&imageUpdater.Status.Conditions, metav1.Condition{
-		Type:               ConditionTypeReconciling,
-		Status:             metav1.ConditionTrue,
-		Reason:             "Reconciling",
-		Message:            "Image update check in progress.",
-		ObservedGeneration: imageUpdater.Generation,
-	})
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		// Re-fetch the latest version to avoid conflicts
+		if err := r.Get(ctx, client.ObjectKeyFromObject(imageUpdater), imageUpdater); err != nil {
+			return err
+		}
 
-	return r.Status().Update(ctx, imageUpdater)
+		apimeta.SetStatusCondition(&imageUpdater.Status.Conditions, metav1.Condition{
+			Type:               ConditionTypeReconciling,
+			Status:             metav1.ConditionTrue,
+			Reason:             "Reconciling",
+			Message:            "Image update check in progress.",
+			ObservedGeneration: imageUpdater.Generation,
+		})
+
+		return r.Status().Update(ctx, imageUpdater)
+	})
 }
 
 // updateStatusAfterReconcile updates the status subresource with all results from a reconciliation cycle.

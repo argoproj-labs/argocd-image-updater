@@ -286,7 +286,7 @@ type ImageUpdaterStatus struct {
 	// +kubebuilder:validation:Minimum=0
 	ImagesManaged int32 `json:"imagesManaged"`
 
-	// RecentUpdates contains the list of image updates performed during the last reconciliation cycle.
+	// RecentUpdates contains the list of image updates performed during the last update cycle.
 	// +optional
 	// +listType=atomic
 	RecentUpdates []RecentUpdate `json:"recentUpdates,omitempty"`
@@ -298,7 +298,7 @@ type ImageUpdaterStatus struct {
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
-// RecentUpdate records a single image update performed during the last reconciliation.
+// RecentUpdate records a single image update performed during the last update.
 type RecentUpdate struct {
 	// Alias is the alias of the image configuration that was updated.
 	Alias string `json:"alias"`
