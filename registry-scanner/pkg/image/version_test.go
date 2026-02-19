@@ -97,14 +97,13 @@ func Test_LatestVersion(t *testing.T) {
 		assert.Nil(t, newTag)
 	})
 
-	t.Run("Find the latest version with no tags", func(t *testing.T) {
+	t.Run("Find the latest version with no tags returns nil", func(t *testing.T) {
 		tagList := newImageTagList([]string{})
 		img := NewFromIdentifier("jannfis/test:1.0")
 		vc := VersionConstraint{Constraint: "~1.0"}
 		newTag, err := img.GetNewestVersionFromTags(context.Background(), &vc, tagList)
 		require.NoError(t, err)
-		require.NotNil(t, newTag)
-		assert.Equal(t, "1.0", newTag.TagName)
+		require.Nil(t, newTag)
 	})
 
 	t.Run("Find the latest version using latest sortmode", func(t *testing.T) {
@@ -117,14 +116,13 @@ func Test_LatestVersion(t *testing.T) {
 		assert.Equal(t, "ll", newTag.TagName)
 	})
 
-	t.Run("Find the latest version using latest sortmode, invalid tags", func(t *testing.T) {
+	t.Run("Find the latest version using semver sortmode with invalid tags returns nil", func(t *testing.T) {
 		tagList := newImageTagListWithDate([]string{"zz", "bb", "yy", "cc", "yy", "aa", "ll"})
 		img := NewFromIdentifier("jannfis/test:bb")
 		vc := VersionConstraint{Strategy: StrategySemVer}
 		newTag, err := img.GetNewestVersionFromTags(context.Background(), &vc, tagList)
 		require.NoError(t, err)
-		require.NotNil(t, newTag)
-		assert.Equal(t, "bb", newTag.TagName)
+		require.Nil(t, newTag)
 	})
 
 	t.Run("Find the latest version using VersionConstraint StrategyAlphabetical", func(t *testing.T) {

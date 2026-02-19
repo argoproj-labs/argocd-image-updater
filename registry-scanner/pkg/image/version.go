@@ -100,7 +100,8 @@ func (img *ContainerImage) GetNewestVersionFromTags(ctx context.Context, vc *Ver
 
 	// It makes no sense to proceed if we have no available tags
 	if len(availableTags) == 0 {
-		return img.ImageTag, nil
+		logCtx.Warnf("no tags found for image %s in registry", img.GetFullNameWithoutTag())
+		return nil, nil
 	}
 
 	// The given constraint MUST match a semver constraint
