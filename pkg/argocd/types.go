@@ -21,6 +21,8 @@ type ImageUpdaterResult struct {
 	NumImagesConsidered      int
 	NumSkipped               int
 	NumErrors                int
+	ApplicationsMatched      int
+	Changes                  []ChangeEntry
 }
 
 type UpdateConfiguration struct {

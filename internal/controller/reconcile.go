@@ -41,6 +41,8 @@ func (r *ImageUpdaterReconciler) RunImageUpdater(ctx context.Context, cr *iuapi.
 		baseLogger.Infof("Starting image update cycle, considering %d application(s) for update", len(appList))
 	}
 
+	result.ApplicationsMatched = len(appList)
+
 	syncState := argocd.NewSyncIterationState()
 
 	// Allow a maximum of MaxConcurrentApps number of goroutines to exist at the
@@ -56,6 +58,8 @@ func (r *ImageUpdaterReconciler) RunImageUpdater(ctx context.Context, cr *iuapi.
 	sem := semaphore.NewWeighted(int64(concurrency))
 
 	var wg sync.WaitGroup
+	var mu sync.Mutex
+	var allChanges []argocd.ChangeEntry
 	wg.Add(len(appList))
 
 	for app, curApplication := range appList {
@@ -72,6 +76,7 @@ func (r *ImageUpdaterReconciler) RunImageUpdater(ctx context.Context, cr *iuapi.
 
 		go func(appCtx context.Context, app string, curApplication argocd.ApplicationImages) {
 			defer sem.Release(1)
+			defer wg.Done()
 
 			appLogger := log.LoggerFromContext(appCtx)
 			appLogger.Debugf("Processing application")
@@ -92,11 +97,16 @@ func (r *ImageUpdaterReconciler) RunImageUpdater(ctx context.Context, cr *iuapi.
 				GitCreds:               r.Config.GitCreds,
 			}
 			res := argocd.UpdateApplication(appCtx, upconf, syncState)
+
+			mu.Lock()
 			result.NumApplicationsProcessed += 1
 			result.NumErrors += res.NumErrors
 			result.NumImagesConsidered += res.NumImagesConsidered
 			result.NumImagesUpdated += res.NumImagesUpdated
 			result.NumSkipped += res.NumSkipped
+			allChanges = append(allChanges, res.Changes...)
+			mu.Unlock()
+
 			// TODO: images metrics will be implemented in GITOPS-8068
 			// TODO: these metrics were commented out because there is no proper cabbage collector that will handle metrics deletion
 			//if !warmUp && !r.Config.DryRun {
@@ -104,12 +114,13 @@ func (r *ImageUpdaterReconciler) RunImageUpdater(ctx context.Context, cr *iuapi.
 			//}
 			//metrics.Applications().IncreaseUpdateErrors(app, res.NumErrors)
 			//metrics.Applications().SetNumberOfImagesWatched(app, res.NumImagesConsidered)
-			wg.Done()
 		}(appCtx, app, curApplication)
 	}
 
 	// Wait for all goroutines to finish
 	wg.Wait()
+
+	result.Changes = allChanges
 
 	baseLogger.Infof("Processing results: applications=%d images_considered=%d images_skipped=%d images_updated=%d errors=%d",
 		result.NumApplicationsProcessed,
@@ -151,6 +162,7 @@ func (r *ImageUpdaterReconciler) ProcessImageUpdaterCRs(ctx context.Context, crs
 
 		go func(ctx context.Context, imageUpdater iuapi.ImageUpdater) {
 			defer sem.Release(1)
+			defer wg.Done()
 
 			// Create logger for this CR - extract logger name from existing context
 			crLogger := baseLogger.WithFields(logrus.Fields{
@@ -161,7 +173,20 @@ func (r *ImageUpdaterReconciler) ProcessImageUpdaterCRs(ctx context.Context, crs
 
 			crLogger.Debugf("Processing CR")
 
-			_, err := r.RunImageUpdater(crCtx, &imageUpdater, warmUp, webhookEvent)
+			if !warmUp {
+				if statusErr := r.setReconcilingStatus(crCtx, &imageUpdater); statusErr != nil {
+					crLogger.Warnf("Failed to set Reconciling status condition for %s/%s, status may be stale: %v", imageUpdater.Namespace, imageUpdater.Name, statusErr)
+				}
+			}
+
+			result, err := r.RunImageUpdater(crCtx, &imageUpdater, warmUp, webhookEvent)
+
+			if !warmUp {
+				if statusErr := r.updateStatusAfterReconcile(crCtx, &imageUpdater, result, err); statusErr != nil {
+					crLogger.Warnf("Failed to update status after reconcile for %s/%s, status may be stale: %v", imageUpdater.Namespace, imageUpdater.Name, statusErr)
+				}
+			}
+
 			if err != nil {
 				crLogger.Errorf("Failed to process ImageUpdater CR: %v", err)
 
@@ -182,7 +207,6 @@ func (r *ImageUpdaterReconciler) ProcessImageUpdaterCRs(ctx context.Context, crs
 				}
 				crLogger.Infof("Successfully processed ImageUpdater CR")
 			}
-			wg.Done()
 		}(ctx, cr)
 	}
 

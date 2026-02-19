@@ -5,8 +5,9 @@ import (
 	"os/exec"
 	"time"
 
-	"github.com/argoproj-labs/argocd-image-updater/test/ginkgo/fixture/utils"
 	argov1beta1api "github.com/argoproj-labs/argocd-operator/api/v1beta1"
+
+	"github.com/argoproj-labs/argocd-image-updater/test/ginkgo/fixture/utils"
 
 	//lint:ignore ST1001 "This is a common practice in Gomega tests for readability."
 	. "github.com/onsi/ginkgo/v2" //nolint:all
