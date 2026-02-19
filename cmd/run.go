@@ -15,6 +15,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
@@ -161,6 +162,25 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 				metricsServerOptions.FilterProvider = filters.WithAuthenticationAndAuthorization
 			}
 
+			// Build cache options for namespace-scoped operation
+			var cacheOptions cache.Options
+			if cfg.WatchNamespaces != "" {
+				setupLogger.Info("Configuring namespace-scoped operation", "watchNamespaces", cfg.WatchNamespaces)
+				nsMap := make(map[string]cache.Config)
+				for _, ns := range strings.Split(cfg.WatchNamespaces, ",") {
+					ns = strings.TrimSpace(ns)
+					if ns != "" {
+						nsMap[ns] = cache.Config{}
+					}
+				}
+				if len(nsMap) == 0 {
+					return fmt.Errorf("--watch-namespaces flag provided but no valid namespaces specified")
+				}
+				cacheOptions = cache.Options{
+					DefaultNamespaces: nsMap,
+				}
+			}
+
 			mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 				Scheme:                  scheme,
 				Metrics:                 metricsServerOptions,
@@ -168,6 +188,7 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 				LeaderElection:          enableLeaderElection,
 				LeaderElectionID:        "c21b75f2.argoproj.io",
 				LeaderElectionNamespace: leaderElectionNamespace,
+				Cache:                   cacheOptions,
 			})
 			if err != nil {
 				setupLogger.Error(err, "unable to start manager")
@@ -300,6 +321,7 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 	controllerCmd.Flags().IntVar(&cfg.MaxConcurrentApps, "max-concurrent-apps", env.ParseNumFromEnv("MAX_CONCURRENT_APPS", 10, 1, 100), "maximum number of ArgoCD applications that can be updated concurrently (must be >= 1)")
 	controllerCmd.Flags().IntVar(&MaxConcurrentReconciles, "max-concurrent-reconciles", env.ParseNumFromEnv("MAX_CONCURRENT_RECONCILES", 1, 1, 10), "maximum number of concurrent Reconciles which can be run (must be >= 1)")
 	controllerCmd.Flags().StringVar(&cfg.ArgocdNamespace, "argocd-namespace", env.GetStringVal("ARGOCD_NAMESPACE", ""), "namespace where ArgoCD runs in (controller namespace by default)")
+	controllerCmd.Flags().StringVar(&cfg.WatchNamespaces, "watch-namespaces", env.GetStringVal("IMAGE_UPDATER_WATCH_NAMESPACES", ""), "Comma-separated list of namespaces to watch. Restricts controller to namespace-scoped operation. Empty means cluster-wide.")
 	controllerCmd.Flags().BoolVar(&warmUpCache, "warmup-cache", true, "whether to perform a cache warm-up on startup")
 	controllerCmd.Flags().BoolVar(&cfg.DisableKubeEvents, "disable-kube-events", env.GetBoolVal("IMAGE_UPDATER_KUBE_EVENTS", false), "Disable kubernetes events")
 

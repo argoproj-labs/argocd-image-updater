@@ -176,6 +176,12 @@ spec:
                 name: argocd-image-updater-config
                 key: webhook.ratelimit-allowed
                 optional: true
+          - name: IMAGE_UPDATER_WATCH_NAMESPACES
+            valueFrom:
+              configMapKeyRef:
+                name: argocd-image-updater-config
+                key: watch-namespaces
+                optional: true
         securityContext:
           allowPrivilegeEscalation: false
           capabilities:
