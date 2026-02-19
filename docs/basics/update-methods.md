@@ -7,11 +7,11 @@ images to Argo CD. These methods are also referred to as *write back methods*.
 
 Currently, the following methods are supported:
 
-* [argocd](../configuration/applications.md#method-argocd)
+* [argocd](#method-argocd)
   directly modifies the Argo CD *Application* resource, using Kubernetes
   API, depending on Argo CD Image Updater's configuration.
 
-* [git](../configuration/applications.md#method-git)
+* [git](#method-git)
   will create a Git commit in your Application's Git repository that holds the
   information about the image to update to.
 

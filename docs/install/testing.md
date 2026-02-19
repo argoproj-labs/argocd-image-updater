@@ -127,5 +127,5 @@ For a complete list of available command line parameters, run
 `argocd-image-updater test --help`.
 
 It is recommended that you read about core updating and image concepts in the
-[documentation](../../configuration/images/)
+[documentation](../configuration/images.md)
 before using this command.

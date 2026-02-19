@@ -62,10 +62,10 @@ platforms are allowed for a certain application or an image. This can be done
 by setting an appropriate
 [annotation per image](../configuration/images.md#platforms)
 or for all images of a given
-[application as a default setting](../configuration/images.md#appendix-defaults).
+[application as a default setting](../configuration/images.md#appendix-hierarchy).
 
 Multi-arch is also implemented by the
-[test command](../install/testing.md#multi-arch).
+[test command](../install/testing.md#multi-arch-images).
 
 ## Sync policies and image updates
 
