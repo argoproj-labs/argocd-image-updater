@@ -23,9 +23,19 @@ func TestGetCredsFromSecret(t *testing.T) {
 
 	secret1 := fixture.NewSecret("foo", "bar", map[string][]byte{"username": []byte("myuser"), "password": []byte("mypass")})
 	secret2 := fixture.NewSecret("foo1", "bar1", map[string][]byte{"username": []byte("myuser")})
+	secret3 := fixture.NewSecret("ns", "ghapp", map[string][]byte{
+		"githubAppID":                []byte("123"),
+		"githubAppInstallationID":    []byte("456"),
+		"githubAppPrivateKey":        []byte("appprivatekey"),
+		"githubAppEnterpriseBaseUrl": []byte("https://ghe.example.com/api/v3"),
+		"tlsClientCertData":          []byte("certdata"),
+		"tlsClientCertKey":           []byte("certkey"),
+		"insecure":                   []byte("true"),
+		"proxy":                      []byte("https://proxy.example.com"),
+	})
 	kubeClient := kube.ImageUpdaterKubernetesClient{
 		KubeClient: &registryKube.KubernetesClient{
-			Clientset: fake.NewFakeClientsetWithResources(secret1, secret2),
+			Clientset: fake.NewFakeClientsetWithResources(secret1, secret2, secret3),
 		},
 	}
 
@@ -54,6 +64,14 @@ func TestGetCredsFromSecret(t *testing.T) {
 	_, err = getCredsFromSecret(wbc, credentialsSecret, &kubeClient)
 	assert.Error(t, err)
 	assert.EqualError(t, err, "unknown repository type")
+
+	// Test case 5: GitHub App credentials with enterprise base URL
+	wbc.GitRepo = "https://ghe.example.com/org/repo.git"
+	credentialsSecret = "ns/ghapp"
+	expectedGHAppCreds := git.NewGitHubAppCreds(123, 456, "appprivatekey", "https://ghe.example.com/api/v3", "https://ghe.example.com/org/repo.git", "certdata", "certkey", true, "https://proxy.example.com", wbc.GitCreds)
+	ghAppCreds, err := getCredsFromSecret(wbc, credentialsSecret, &kubeClient)
+	assert.NoError(t, err)
+	assert.Equal(t, expectedGHAppCreds, ghAppCreds)
 }
 
 func TestGetGitCredsSource(t *testing.T) {
