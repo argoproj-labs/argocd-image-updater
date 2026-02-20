@@ -33,9 +33,14 @@ func TestGetCredsFromSecret(t *testing.T) {
 		"insecure":                   []byte("true"),
 		"proxy":                      []byte("https://proxy.example.com"),
 	})
+	secret4 := fixture.NewSecret("ns", "ghapp-minimal", map[string][]byte{
+		"githubAppID":             []byte("789"),
+		"githubAppInstallationID": []byte("101"),
+		"githubAppPrivateKey":     []byte("minimalkey"),
+	})
 	kubeClient := kube.ImageUpdaterKubernetesClient{
 		KubeClient: &registryKube.KubernetesClient{
-			Clientset: fake.NewFakeClientsetWithResources(secret1, secret2, secret3),
+			Clientset: fake.NewFakeClientsetWithResources(secret1, secret2, secret3, secret4),
 		},
 	}
 
@@ -72,6 +77,14 @@ func TestGetCredsFromSecret(t *testing.T) {
 	ghAppCreds, err := getCredsFromSecret(wbc, credentialsSecret, &kubeClient)
 	assert.NoError(t, err)
 	assert.Equal(t, expectedGHAppCreds, ghAppCreds)
+
+	// Test case 6: GitHub App credentials with absent optional fields (safe defaults)
+	wbc.GitRepo = "https://github.com/org/repo.git"
+	credentialsSecret = "ns/ghapp-minimal"
+	expectedMinimalCreds := git.NewGitHubAppCreds(789, 101, "minimalkey", "", "https://github.com/org/repo.git", "", "", false, "", wbc.GitCreds)
+	minimalCreds, err := getCredsFromSecret(wbc, credentialsSecret, &kubeClient)
+	assert.NoError(t, err)
+	assert.Equal(t, expectedMinimalCreds, minimalCreds)
 }
 
 func TestGetGitCredsSource(t *testing.T) {
