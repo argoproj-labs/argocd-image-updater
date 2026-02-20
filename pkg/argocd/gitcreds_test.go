@@ -16,13 +16,15 @@ import (
 )
 
 func TestGetCredsFromSecret(t *testing.T) {
-	wbc := &WriteBackConfig{
-		GitRepo:  "https://github.com/example/repo.git",
-		GitCreds: git.NoopCredsStore{},
-	}
+	store := git.NoopCredsStore{}
 
-	secret1 := fixture.NewSecret("foo", "bar", map[string][]byte{"username": []byte("myuser"), "password": []byte("mypass")})
-	secret2 := fixture.NewSecret("foo1", "bar1", map[string][]byte{"username": []byte("myuser")})
+	secret1 := fixture.NewSecret("foo", "bar", map[string][]byte{
+		"username": []byte("myuser"),
+		"password": []byte("mypass"),
+	})
+	secret2 := fixture.NewSecret("foo1", "bar1", map[string][]byte{
+		"username": []byte("myuser"),
+	})
 	secret3 := fixture.NewSecret("ns", "ghapp", map[string][]byte{
 		"githubAppID":                []byte("123"),
 		"githubAppInstallationID":    []byte("456"),
@@ -38,53 +40,109 @@ func TestGetCredsFromSecret(t *testing.T) {
 		"githubAppInstallationID": []byte("101"),
 		"githubAppPrivateKey":     []byte("minimalkey"),
 	})
+	secret5 := fixture.NewSecret("ns", "ghapp-bad-id", map[string][]byte{
+		"githubAppID":             []byte("abc"),
+		"githubAppInstallationID": []byte("456"),
+		"githubAppPrivateKey":     []byte("key"),
+	})
+	secret6 := fixture.NewSecret("ns", "ghapp-bad-insecure", map[string][]byte{
+		"githubAppID":             []byte("123"),
+		"githubAppInstallationID": []byte("456"),
+		"githubAppPrivateKey":     []byte("key"),
+		"insecure":                []byte("maybe"),
+	})
+
 	kubeClient := kube.ImageUpdaterKubernetesClient{
 		KubeClient: &registryKube.KubernetesClient{
-			Clientset: fake.NewFakeClientsetWithResources(secret1, secret2, secret3, secret4),
+			Clientset: fake.NewFakeClientsetWithResources(secret1, secret2, secret3, secret4, secret5, secret6),
 		},
 	}
 
-	// Test case 1: Valid secret reference
-	credentialsSecret := "foo/bar"
-	expectedCreds := git.NewHTTPSCreds("myuser", "mypass", "", "", true, "", wbc.GitCreds, false)
-	creds, err := getCredsFromSecret(wbc, credentialsSecret, &kubeClient)
-	assert.NoError(t, err)
-	assert.Equal(t, expectedCreds, creds)
+	tests := []struct {
+		name          string
+		gitRepo       string
+		secretRef     string
+		expectedCreds git.Creds
+		expectedErr   string
+	}{
+		{
+			name:          "HTTPS credentials",
+			gitRepo:       "https://github.com/example/repo.git",
+			secretRef:     "foo/bar",
+			expectedCreds: git.NewHTTPSCreds("myuser", "mypass", "", "", true, "", store, false),
+		},
+		{
+			name:        "invalid secret reference format",
+			gitRepo:     "https://github.com/example/repo.git",
+			secretRef:   "invalid",
+			expectedErr: "secret ref must be in format 'namespace/name', but is 'invalid'",
+		},
+		{
+			name:        "missing password field",
+			gitRepo:     "https://github.com/example/repo.git",
+			secretRef:   "foo1/bar1",
+			expectedErr: "invalid secret foo1/bar1: does not contain field password",
+		},
+		{
+			name:        "unknown repository type",
+			gitRepo:     "unknown://example.com/repo.git",
+			secretRef:   "foo/bar",
+			expectedErr: "unknown repository type",
+		},
+		{
+			name:      "GitHub App with enterprise base URL",
+			gitRepo:   "https://ghe.example.com/org/repo.git",
+			secretRef: "ns/ghapp",
+			expectedCreds: git.NewGitHubAppCreds(
+				123, 456, "appprivatekey",
+				"https://ghe.example.com/api/v3", "https://ghe.example.com/org/repo.git",
+				"certdata", "certkey", true, "https://proxy.example.com", store,
+			),
+		},
+		{
+			name:      "GitHub App with absent optional fields defaults safely",
+			gitRepo:   "https://github.com/org/repo.git",
+			secretRef: "ns/ghapp-minimal",
+			expectedCreds: git.NewGitHubAppCreds(
+				789, 101, "minimalkey",
+				"", "https://github.com/org/repo.git",
+				"", "", false, "", store,
+			),
+		},
+		{
+			name:        "non-numeric githubAppID",
+			gitRepo:     "https://github.com/org/repo.git",
+			secretRef:   "ns/ghapp-bad-id",
+			expectedErr: "invalid value in field githubAppID",
+		},
+		{
+			name:      "malformed insecure value defaults to false",
+			gitRepo:   "https://github.com/org/repo.git",
+			secretRef: "ns/ghapp-bad-insecure",
+			expectedCreds: git.NewGitHubAppCreds(
+				123, 456, "key",
+				"", "https://github.com/org/repo.git",
+				"", "", false, "", store,
+			),
+		},
+	}
 
-	// Test case 2: Invalid secret reference
-	credentialsSecret = "invalid"
-	_, err = getCredsFromSecret(wbc, credentialsSecret, &kubeClient)
-	assert.Error(t, err)
-	assert.EqualError(t, err, "secret ref must be in format 'namespace/name', but is 'invalid'")
-
-	// Test case 3: Missing field in secret
-	credentialsSecret = "foo1/bar1"
-	_, err = getCredsFromSecret(wbc, credentialsSecret, &kubeClient)
-	assert.Error(t, err)
-	assert.EqualError(t, err, "invalid secret foo1/bar1: does not contain field password")
-
-	// Test case 4: Unknown repository type
-	credentialsSecret = "foo/bar"
-	wbc.GitRepo = "unknown://example.com/repo.git"
-	_, err = getCredsFromSecret(wbc, credentialsSecret, &kubeClient)
-	assert.Error(t, err)
-	assert.EqualError(t, err, "unknown repository type")
-
-	// Test case 5: GitHub App credentials with enterprise base URL
-	wbc.GitRepo = "https://ghe.example.com/org/repo.git"
-	credentialsSecret = "ns/ghapp"
-	expectedGHAppCreds := git.NewGitHubAppCreds(123, 456, "appprivatekey", "https://ghe.example.com/api/v3", "https://ghe.example.com/org/repo.git", "certdata", "certkey", true, "https://proxy.example.com", wbc.GitCreds)
-	ghAppCreds, err := getCredsFromSecret(wbc, credentialsSecret, &kubeClient)
-	assert.NoError(t, err)
-	assert.Equal(t, expectedGHAppCreds, ghAppCreds)
-
-	// Test case 6: GitHub App credentials with absent optional fields (safe defaults)
-	wbc.GitRepo = "https://github.com/org/repo.git"
-	credentialsSecret = "ns/ghapp-minimal"
-	expectedMinimalCreds := git.NewGitHubAppCreds(789, 101, "minimalkey", "", "https://github.com/org/repo.git", "", "", false, "", wbc.GitCreds)
-	minimalCreds, err := getCredsFromSecret(wbc, credentialsSecret, &kubeClient)
-	assert.NoError(t, err)
-	assert.Equal(t, expectedMinimalCreds, minimalCreds)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			wbc := &WriteBackConfig{
+				GitRepo:  tt.gitRepo,
+				GitCreds: store,
+			}
+			creds, err := getCredsFromSecret(wbc, tt.secretRef, &kubeClient)
+			if tt.expectedErr != "" {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), tt.expectedErr)
+			} else {
+				assert.NoError(t, err)
+				assert.Equal(t, tt.expectedCreds, creds)
+			}
+		})
+	}
 }
 
 func TestGetGitCredsSource(t *testing.T) {
