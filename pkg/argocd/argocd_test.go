@@ -540,6 +540,164 @@ func Test_GetApplicationSource(t *testing.T) {
 
 }
 
+func Test_GetApplicationSource_SourceHydrator(t *testing.T) {
+	t.Run("Get source with Helm config from DrySource", func(t *testing.T) {
+		application := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{Name: "test-app", Namespace: "testns"},
+			Spec: v1alpha1.ApplicationSpec{
+				SourceHydrator: &v1alpha1.SourceHydrator{
+					DrySource: v1alpha1.DrySource{
+						RepoURL:        "https://example.com/repo.git",
+						Path:           "charts/myapp",
+						TargetRevision: "main",
+						Helm: &v1alpha1.ApplicationSourceHelm{
+							Parameters: []v1alpha1.HelmParameter{{Name: "image.tag", Value: "1.0.0"}},
+						},
+					},
+				},
+			},
+		}
+
+		appSource := GetApplicationSource(context.Background(), application, nil)
+		require.NotNil(t, appSource)
+		assert.Equal(t, "https://example.com/repo.git", appSource.RepoURL)
+		assert.Equal(t, "charts/myapp", appSource.Path)
+		assert.Equal(t, "main", appSource.TargetRevision)
+		require.NotNil(t, appSource.Helm)
+		assert.Equal(t, "1.0.0", appSource.Helm.Parameters[0].Value)
+	})
+
+	t.Run("Get source with Kustomize config from DrySource", func(t *testing.T) {
+		application := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{Name: "test-app", Namespace: "testns"},
+			Spec: v1alpha1.ApplicationSpec{
+				SourceHydrator: &v1alpha1.SourceHydrator{
+					DrySource: v1alpha1.DrySource{
+						RepoURL:   "https://example.com/repo.git",
+						Path:      "overlays/hub",
+						Kustomize: &v1alpha1.ApplicationSourceKustomize{},
+					},
+				},
+			},
+		}
+
+		appSource := GetApplicationSource(context.Background(), application, nil)
+		require.NotNil(t, appSource)
+		assert.NotNil(t, appSource.Kustomize)
+	})
+
+	t.Run("Get source from DrySource without explicit type config", func(t *testing.T) {
+		application := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{Name: "test-app", Namespace: "testns"},
+			Spec: v1alpha1.ApplicationSpec{
+				SourceHydrator: &v1alpha1.SourceHydrator{
+					DrySource: v1alpha1.DrySource{
+						RepoURL:        "https://example.com/repo.git",
+						Path:           "overlays/hub",
+						TargetRevision: "main",
+					},
+				},
+			},
+		}
+
+		appSource := GetApplicationSource(context.Background(), application, nil)
+		require.NotNil(t, appSource)
+		assert.Equal(t, "main", appSource.TargetRevision)
+		assert.Nil(t, appSource.Helm)
+		assert.Nil(t, appSource.Kustomize)
+	})
+
+	t.Run("SourceHydrator takes precedence over nil Source", func(t *testing.T) {
+		application := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{Name: "test-app", Namespace: "testns"},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: nil,
+				SourceHydrator: &v1alpha1.SourceHydrator{
+					DrySource: v1alpha1.DrySource{
+						RepoURL:        "https://example.com/repo.git",
+						TargetRevision: "develop",
+					},
+				},
+			},
+		}
+
+		appSource := GetApplicationSource(context.Background(), application, nil)
+		require.NotNil(t, appSource)
+		assert.Equal(t, "develop", appSource.TargetRevision)
+	})
+}
+
+func Test_GetApplicationSourceType_SourceHydrator(t *testing.T) {
+	t.Run("Detect Helm from DrySource", func(t *testing.T) {
+		application := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{Name: "test-app", Namespace: "testns"},
+			Spec: v1alpha1.ApplicationSpec{
+				SourceHydrator: &v1alpha1.SourceHydrator{
+					DrySource: v1alpha1.DrySource{Helm: &v1alpha1.ApplicationSourceHelm{}},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{SourceType: v1alpha1.ApplicationSourceTypeDirectory},
+		}
+		assert.Equal(t, v1alpha1.ApplicationSourceTypeHelm, GetApplicationSourceType(application, nil))
+	})
+
+	t.Run("Detect Kustomize from DrySource", func(t *testing.T) {
+		application := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{Name: "test-app", Namespace: "testns"},
+			Spec: v1alpha1.ApplicationSpec{
+				SourceHydrator: &v1alpha1.SourceHydrator{
+					DrySource: v1alpha1.DrySource{Kustomize: &v1alpha1.ApplicationSourceKustomize{}},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{SourceType: v1alpha1.ApplicationSourceTypeDirectory},
+		}
+		assert.Equal(t, v1alpha1.ApplicationSourceTypeKustomize, GetApplicationSourceType(application, nil))
+	})
+
+	t.Run("Detect Plugin from DrySource", func(t *testing.T) {
+		application := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{Name: "test-app", Namespace: "testns"},
+			Spec: v1alpha1.ApplicationSpec{
+				SourceHydrator: &v1alpha1.SourceHydrator{
+					DrySource: v1alpha1.DrySource{Plugin: &v1alpha1.ApplicationSourcePlugin{}},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{SourceType: v1alpha1.ApplicationSourceTypeDirectory},
+		}
+		assert.Equal(t, v1alpha1.ApplicationSourceTypePlugin, GetApplicationSourceType(application, nil))
+	})
+
+	t.Run("Fall back to Status.SourceType when DrySource has no explicit type", func(t *testing.T) {
+		application := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{Name: "test-app", Namespace: "testns"},
+			Spec: v1alpha1.ApplicationSpec{
+				SourceHydrator: &v1alpha1.SourceHydrator{
+					DrySource: v1alpha1.DrySource{},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{SourceType: v1alpha1.ApplicationSourceTypeDirectory},
+		}
+		assert.Equal(t, v1alpha1.ApplicationSourceTypeDirectory, GetApplicationSourceType(application, nil))
+	})
+
+	t.Run("DrySource Helm overrides misleading Status.SourceType Directory", func(t *testing.T) {
+		application := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{Name: "test-app", Namespace: "testns"},
+			Spec: v1alpha1.ApplicationSpec{
+				SourceHydrator: &v1alpha1.SourceHydrator{
+					DrySource: v1alpha1.DrySource{
+						Helm: &v1alpha1.ApplicationSourceHelm{
+							Parameters: []v1alpha1.HelmParameter{{Name: "image.tag", Value: "1.0.0"}},
+						},
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{SourceType: v1alpha1.ApplicationSourceTypeDirectory},
+		}
+		assert.Equal(t, v1alpha1.ApplicationSourceTypeHelm, GetApplicationSourceType(application, nil))
+	})
+}
+
 // Test_MultiSourceHelmAndKustomize_SourceTypeDetection demonstrates the bug fixed by the
 // write-back target check in getApplicationSourceType.
 // The bug scenario:
