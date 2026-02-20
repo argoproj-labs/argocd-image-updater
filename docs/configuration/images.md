@@ -65,13 +65,11 @@ in the
 of the [Semver library](https://github.com/Masterminds/semver) we're using.
 
 !!!note
-If you use an
-[update strategy](#update-strategies)
-other than `semver` or `digest`, the `version_constraint` will not have any effect
-and all tags returned from the registry will be considered for update. If
-you need to further restrict the list of tags to consider, see
-[filtering tags](#filtering-tags)
-below.
+    If you use an [update strategy](#update-strategies) other than `semver` or
+    `digest`, the `version_constraint` will not have any effect and all tags
+    returned from the registry will be considered for update. If you need to
+    further restrict the list of tags to consider, see [filtering tags](#filtering-tags)
+    below.
 
 ### Forcing Image Updates
 
@@ -136,16 +134,18 @@ If no update strategy is given, or an invalid value is used, the default
 strategy `semver` will be used.
 
 !!!warning "Renamed image update strategies"
-The `latest` strategy has been renamed to `newest-build`, and `name` strategy has been renamed to `alphabetical`.
-Please switch to the new convention as support for the old naming convention will be removed in future releases.
+    The `latest` strategy has been renamed to `newest-build`, and `name`
+    strategy has been renamed to `alphabetical`. Please switch to the new
+    convention as support for the old naming convention will be removed in
+    future releases.
 
 !!!warning
-As of November 2020, Docker Hub has introduced pull limits for accounts on
-the free plan and unauthenticated requests. The `latest/newest-build` update strategy
-will perform manifest pulls for determining the most recently pushed tags,
-and these will count into your pull limits. So unless you are not affected
-by these pull limits, it is **not recommended** to use the `latest/newest-build` update
-strategy with images hosted on Docker Hub.
+    As of November 2020, Docker Hub has introduced pull limits for accounts on
+    the free plan and unauthenticated requests. The `latest/newest-build` update
+    strategy will perform manifest pulls for determining the most recently
+    pushed tags, and these will count into your pull limits. So unless you are
+    not affected by these pull limits, it is **not recommended** to use the
+    `latest/newest-build` update strategy with images hosted on Docker Hub.
 
 ## Filtering tags
 
@@ -244,10 +244,10 @@ images:
 The correct image to execute will be chosen by Kubernetes.
 
 !!!note
-The `platforms` field only has effect for images that use an update
-strategy that fetches meta-data. Currently, these are the `latest` and
-`digest` strategies. For `semver` and `name` strategies, the `platforms`
-setting has no effect.
+    The `platforms` field only has effect for images that use an update
+    strategy that fetches meta-data. Currently, these are the `latest` and
+    `digest` strategies. For `semver` and `name` strategies, the `platforms`
+    setting has no effect.
 
 ## <a name="pull-secrets"></a>Specifying pull secrets
 
