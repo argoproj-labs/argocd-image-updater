@@ -10,6 +10,12 @@ Runs the Argo CD Image Updater in a reconciliation loop with a set of options.
 
 ### Flags
 
+**--aliyun-acr-webhook-secret *secret***
+
+Secret for validating Aliyun ACR webhooks.
+
+Can also be set with the `ALIYUN_ACR_WEBHOOK_SECRET` environment variable.
+
 **--argocd-namespace *namespace***
 
 The namespace where Argo CD is running. Required only if the Image Updater runs in a different namespace than Argo CD.
