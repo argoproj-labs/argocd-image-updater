@@ -82,7 +82,7 @@ func TestNewRepository_ACR_Actions(t *testing.T) {
 		}
 	})
 
-	t.Run("ACR NewRepository creates client with correct actions", func(t *testing.T) {
+	t.Run("Non-ACR endpoint triggers token request with only pull action", func(t *testing.T) {
 		// Mock registry server that simulates /v2/ ping with Bearer challenge
 		var capturedTokenRequest *http.Request
 		var serverURL string
@@ -99,6 +99,11 @@ func TestNewRepository_ACR_Actions(t *testing.T) {
 			w.WriteHeader(http.StatusOK)
 			fmt.Fprint(w, `{"access_token":"mock-token","expires_in":300}`)
 		})
+	
+		mux.HandleFunc("/v2/test/myimage/tags/list", func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+			fmt.Fprint(w, `{"name":"test/myimage","tags":["latest"]}`)
+		})
 		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
 		})
@@ -107,9 +112,6 @@ func TestNewRepository_ACR_Actions(t *testing.T) {
 		serverURL = mockServer.URL
 		defer mockServer.Close()
 
-		// This mock server URL does not contain ".azurecr.io",
-		// so actions will be ["pull"] only (non-ACR path).
-		// The ACR action selection logic is validated in the unit tests above.
 		ep := &RegistryEndpoint{
 			RegistryAPI: mockServer.URL,
 			Limiter:     ratelimit.New(100),
@@ -119,17 +121,14 @@ func TestNewRepository_ACR_Actions(t *testing.T) {
 		err = client.NewRepository("test/myimage")
 		require.NoError(t, err)
 
-		// For non-ACR server, the token request should only have "pull" scope
-		if capturedTokenRequest != nil {
-			scope := capturedTokenRequest.URL.Query().Get("scope")
-			if scope != "" {
-				assert.Contains(t, scope, "pull")
-				assert.NotContains(t, scope, "metadata_read",
-					"Non-ACR endpoint should not request metadata_read")
-				assert.NotContains(t, scope, "content_read",
-					"Non-ACR endpoint should not request content_read")
-			}
-		}
+		_, _ = client.Tags(context.Background())
+
+		require.NotNil(t, capturedTokenRequest, "Token request should have been captured")
+		
+		scope := capturedTokenRequest.URL.Query().Get("scope")
+		assert.Contains(t, scope, "pull")
+		assert.NotContains(t, scope, "metadata_read", "Non-ACR endpoint should not request metadata_read")
+		assert.NotContains(t, scope, "content_read", "Non-ACR endpoint should not request content_read")
 	})
 
 	t.Run("Non-ACR endpoint NewRepository with mock server - only pull", func(t *testing.T) {
