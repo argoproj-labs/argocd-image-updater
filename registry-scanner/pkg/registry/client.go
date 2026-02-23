@@ -102,6 +102,22 @@ func (rlt *rateLimitTransport) RoundTrip(r *http.Request) (*http.Response, error
 	return resp, err
 }
 
+// getTokenActions returns the list of actions to request for the given registry.
+// If different registry authentication permissions are required, add them here.
+// for Basic Auth token requests.
+func getTokenActions(registryAPI string) []string {
+	switch {
+
+	// ACR endpoints require additional metadata_read and content_read actions
+	case strings.Contains(registryAPI, ".azurecr.io"):
+		return []string{"pull", "metadata_read", "content_read"}
+
+	// default registry actions
+	default:
+		return []string{"pull"}
+	}
+}
+
 // NewRepository is a wrapper for creating a registry client that is possibly
 // rate-limited by using a custom HTTP round tripper method.
 func (clt *registryClient) NewRepository(nameInRepository string) error {
@@ -112,10 +128,12 @@ func (clt *registryClient) NewRepository(nameInRepository string) error {
 		return err
 	}
 
+	actions := getTokenActions(clt.endpoint.RegistryAPI)
+
 	authTransport := transport.NewTransport(
 		clt.endpoint.GetTransport(), auth.NewAuthorizer(
 			challengeManager1,
-			auth.NewTokenHandler(clt.endpoint.GetTransport(), clt.creds, nameInRepository, "pull"),
+			auth.NewTokenHandler(clt.endpoint.GetTransport(), clt.creds, nameInRepository, actions...),
 			auth.NewBasicHandler(clt.creds)))
 
 	rlt := &rateLimitTransport{
