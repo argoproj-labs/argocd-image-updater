@@ -99,7 +99,7 @@ func TestNewRepository_ACR_Actions(t *testing.T) {
 			w.WriteHeader(http.StatusOK)
 			fmt.Fprint(w, `{"access_token":"mock-token","expires_in":300}`)
 		})
-	
+
 		mux.HandleFunc("/v2/test/myimage/tags/list", func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
 			fmt.Fprint(w, `{"name":"test/myimage","tags":["latest"]}`)
@@ -124,7 +124,7 @@ func TestNewRepository_ACR_Actions(t *testing.T) {
 		_, _ = client.Tags(context.Background())
 
 		require.NotNil(t, capturedTokenRequest, "Token request should have been captured")
-		
+
 		scope := capturedTokenRequest.URL.Query().Get("scope")
 		assert.Contains(t, scope, "pull")
 		assert.NotContains(t, scope, "metadata_read", "Non-ACR endpoint should not request metadata_read")
