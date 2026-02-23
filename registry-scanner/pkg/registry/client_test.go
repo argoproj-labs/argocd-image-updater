@@ -48,7 +48,7 @@ func TestBasic(t *testing.T) {
 }
 
 // TestNewRepository_ACR_Actions tests that ACR endpoints get additional
-// metadata_read and content_read actions for Basic Auth token requests,
+// metadata_read and content_read actions for OAuth2 Bearer token requests,
 // while non-ACR endpoints only request the "pull" action.
 func TestNewRepository_ACR_Actions(t *testing.T) {
 

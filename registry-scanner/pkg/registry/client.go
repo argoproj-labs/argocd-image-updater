@@ -102,9 +102,9 @@ func (rlt *rateLimitTransport) RoundTrip(r *http.Request) (*http.Response, error
 	return resp, err
 }
 
-// getTokenActions returns the list of actions to request for the given registry.
-// If different registry authentication permissions are required, add them here.
-// for Basic Auth token requests.
+// getTokenActions returns the list of OAuth2 Bearer token actions to request
+// for the given registry API. Extend this function when a registry requires
+// additional scopes beyond the default "pull".
 func getTokenActions(registryAPI string) []string {
 	switch {
 
