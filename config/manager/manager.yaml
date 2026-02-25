@@ -164,6 +164,12 @@ spec:
                 name: argocd-image-updater-secret
                 key: webhook.harbor-secret
                 optional: true
+          - name: ALIYUN_ACR_WEBHOOK_SECRET
+            valueFrom:
+              secretKeyRef:
+                name: argocd-image-updater-secret
+                key: webhook.aliyun-acr-secret
+                optional: true
           - name: CLOUDEVENTS_WEBHOOK_SECRET
             valueFrom:
               secretKeyRef:

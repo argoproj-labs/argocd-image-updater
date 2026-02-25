@@ -9,6 +9,7 @@ Currently Supported Registries:
 - GitHub Container Registry
 - Harbor
 - Quay
+- Aliyun ACR
 - AWS ECR (via EventBridge CloudEvents)
 
 Using webhooks can help reduce some of the stress that is put on the 
@@ -85,6 +86,7 @@ can be found here:
 - [GitHub Container Registry](https://docs.github.com/en/webhooks/webhook-events-and-payloads)
 - [Harbor](https://goharbor.io/docs/2.2.0/working-with-projects/project-configuration/configure-webhooks/)
 - [Quay](https://docs.quay.io/guides/notifications.html)
+- [Aliyun ACR](https://www.alibabacloud.com/help/en/acr/user-guide/manage-webhooks)
 - [AWS ECR via EventBridge](#aws-ecr-via-eventbridge-cloudevents) (see below)
 
 For the URL that you set for the webhook, your link should go as the following:
@@ -96,7 +98,16 @@ https://app1.example.com/webhook?type=<YOUR_REGISTRY_TYPE>
 # GitHub Container Registry = ghcr.io
 # Harbor = harbor
 # Quay = quay.io
+# Aliyun ACR = aliyun-acr
 # AWS ECR (via CloudEvents) = cloudevents
+```
+
+### Aliyun ACR Specifics
+
+Aliyun ACR (especially Enterprise Edition) uses various registry endpoints (e.g. `<instance>-registry.cn-shanghai.cr.aliyuncs.com`). Since the webhook payload does not contain the instance name, you must provide the registry URL via the `registry_url` query parameter if it differs from the default `registry.<region>.aliyuncs.com`:
+
+```text
+https://app1.example.com/webhook?type=aliyun-acr&registry_url=my-instance-registry.cn-shanghai.cr.aliyuncs.com
 ```
 
 ### AWS ECR via EventBridge CloudEvents
@@ -211,6 +222,7 @@ stringData:
   webhook.ghcr-secret: <YOUR_SECRET>
   webhook.harbor-secret: <YOUR_SECRET>
   webhook.quay-secret: <YOUR_SECRET>
+  webhook.aliyun-acr-secret: <YOUR_SECRET>
   webhook.cloudevents-secret: <YOUR_SECRET>
 ```
 
@@ -248,6 +260,7 @@ Supported Registries That Use This:
 
 - Docker Hub
 - Quay
+- Aliyun ACR
 - AWS ECR (via CloudEvents/EventBridge)
 
 Also be aware that if the container registry has a built-in secrets method you will
@@ -289,6 +302,7 @@ environment variables. Below is the list of which variables correspond to which 
 |`GHCR_WEBHOOK_SECRET` |`--ghcr-webhook-secret`|
 |`HARBOR_WEBHOOK_SECRET` |`--harbor-webhook-secret`|
 |`QUAY_WEBHOOK_SECRET` |`--quay-webhook-secret`|
+|`ALIYUN_ACR_WEBHOOK_SECRET` |`--aliyun-acr-webhook-secret`|
 |`CLOUDEVENTS_WEBHOOK_SECRET` |`--cloudevents-webhook-secret`|
 |`WEBHOOK_RATELIMIT_ALLOWED`|`--webhook-ratelimit-allowed`|
 
@@ -311,6 +325,7 @@ registries supported.
 (View Payload Format Section)
 - [Quay](https://docs.quay.io/guides/notifications.html)
 (View Repository Push Section)
+- [Aliyun ACR](https://www.alibabacloud.com/help/en/acr/user-guide/manage-webhooks)
 - [CloudEvents](#aws-ecr-via-eventbridge-cloudevents) (AWS ECR via EventBridge)
 
 ## Troubleshooting
