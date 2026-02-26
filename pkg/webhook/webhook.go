@@ -9,6 +9,11 @@ import (
 	"github.com/argoproj-labs/argocd-image-updater/pkg/argocd"
 )
 
+// maxWebhookBodySize limits the size of webhook request bodies to prevent
+// resource exhaustion from oversized payloads. 1 MiB is generous for any
+// registry webhook JSON payload.
+const maxWebhookBodySize = 1 << 20 // 1 MiB
+
 // RegistryWebhook interface defines methods for handling registry webhooks
 type RegistryWebhook interface {
 	// Parse processes the webhook payload and returns a WebhookEvent
