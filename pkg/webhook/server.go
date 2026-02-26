@@ -105,9 +105,16 @@ func (s *WebhookServer) handleWebhook(w http.ResponseWriter, r *http.Request) {
 	baseLogger := log.LoggerFromContext(ctx).
 		WithField("webhook_remote", r.RemoteAddr)
 	baseLogger.Debugf("Received webhook request from %s", r.RemoteAddr)
+	r.Body = http.MaxBytesReader(w, r.Body, maxWebhookBodySize)
 
 	event, err := s.Handler.ProcessWebhook(r)
 	if err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			baseLogger.Warnf("Webhook request body too large (limit: %d bytes)", maxWebhookBodySize)
+			http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
+			return
+		}
 		baseLogger.Errorf("Failed to process webhook: %v", err)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return

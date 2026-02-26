@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -252,6 +253,56 @@ func TestWebhookServerHandleWebhook(t *testing.T) {
 		})
 	}
 
+}
+
+func TestWebhookServerHandleWebhookOversizedBody(t *testing.T) {
+	server := createMockServer(t, 8080)
+
+	handler := NewDockerHubWebhook("")
+	assert.NotNil(t, handler, "Docker handler was nil")
+
+	server.Handler.RegisterHandler(handler)
+
+	t.Run("Oversized webhook payload", func(t *testing.T) {
+		padding := strings.Repeat("x", maxWebhookBodySize+1)
+		body := fmt.Sprintf("{\"padding\":\"%s\"}", padding)
+
+		req := httptest.NewRequest(http.MethodPost, "/webhook?type=docker.io", strings.NewReader(body))
+		rec := httptest.NewRecorder()
+
+		server.handleWebhook(rec, req)
+
+		res := rec.Result()
+		defer res.Body.Close()
+
+		responseBody, err := io.ReadAll(res.Body)
+		assert.NoError(t, err, "Error while parsing body")
+		assert.Equal(t, http.StatusRequestEntityTooLarge, res.StatusCode, "Did not receive expected status")
+		assert.Contains(t, string(responseBody), "request body too large", "Did not receive expected error message")
+	})
+
+	t.Run("Normal webhook payload still accepted", func(t *testing.T) {
+		body := []byte(`{
+			"repository": {
+				"repo_name": "somepersononthisfakeregistry/myimagethatdoescoolstuff",
+				"name": "myimagethatdoescoolstuff",
+				"namespace": "randomplaceincluster"
+			},
+			"push_data": {
+				"tag": "v12.0.9"
+			}
+		}`)
+
+		req := httptest.NewRequest(http.MethodPost, "/webhook?type=docker.io", bytes.NewReader(body))
+		rec := httptest.NewRecorder()
+
+		server.handleWebhook(rec, req)
+
+		res := rec.Result()
+		defer res.Body.Close()
+
+		assert.Equal(t, http.StatusOK, res.StatusCode, "Did not receive ok status")
+	})
 }
 
 // TestProcessWebhookEvent tests the processWebhookEvent helper function
