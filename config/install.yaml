@@ -830,8 +830,6 @@ spec:
       - args:
         - --metrics-bind-address=:8443
         - run
-        command:
-        - /manager
         env:
         - name: ARGOCD_NAMESPACE
           valueFrom:

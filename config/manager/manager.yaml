@@ -49,9 +49,7 @@ spec:
         # seccompProfile:
         #   type: RuntimeDefault
       containers:
-      - command:
-          - /manager
-        args:
+      - args:
           - run
         image: argocd-image-updater-controller:latest
         name: argocd-image-updater-controller
