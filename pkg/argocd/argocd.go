@@ -61,6 +61,11 @@ func (client *ArgoCDK8sClient) GetApplication(ctx context.Context, appNamespace 
 
 // UpdateSpec updates the spec for given application
 func (client *ArgoCDK8sClient) UpdateSpec(ctx context.Context, spec *application.ApplicationUpdateSpecRequest) (*argocdapi.ApplicationSpec, error) {
+	return client.UpdateSpecWithAnnotations(ctx, spec, nil)
+}
+
+// UpdateSpecWithAnnotations updates the spec and optionally annotations for given application
+func (client *ArgoCDK8sClient) UpdateSpecWithAnnotations(ctx context.Context, spec *application.ApplicationUpdateSpecRequest, annotations map[string]string) (*argocdapi.ApplicationSpec, error) {
 	log := log.LoggerFromContext(ctx)
 	app := &argocdapi.Application{}
 	var err error
@@ -75,6 +80,16 @@ func (client *ArgoCDK8sClient) UpdateSpec(ctx context.Context, spec *application
 		}
 
 		app.Spec = *spec.Spec
+
+		// Update annotations if provided
+		if annotations != nil {
+			if app.Annotations == nil {
+				app.Annotations = make(map[string]string)
+			}
+			for k, v := range annotations {
+				app.Annotations[k] = v
+			}
+		}
 
 		// Attempt to update the object. If there is a conflict,
 		// RetryOnConflict will automatically re-fetch and re-apply the changes.
@@ -783,6 +798,26 @@ func SetHelmImage(ctx context.Context, app *argocdapi.Application, newImage *ima
 	appSource.Helm.Parameters = mergeHelmParams(appSource.Helm.Parameters, mergeParams)
 
 	return nil
+}
+
+// recordOriginalTag saves the original tag as an annotation when using digest strategy.
+// This allows users to see which human-readable tag was originally deployed while
+// maintaining the immutability benefit of using digests.
+func recordOriginalTag(app *argocdapi.Application, img *image.ContainerImage, originalTag string) {
+	if app.Annotations == nil {
+		app.Annotations = make(map[string]string)
+	}
+
+	// Use ImageAlias if available, otherwise use ImageName
+	identifier := img.ImageAlias
+	if identifier == "" {
+		identifier = img.ImageName
+	}
+
+	identifier = strings.ReplaceAll(identifier, "/", "_")
+
+	key := fmt.Sprintf("%s/original-tag.%s", ImageUpdaterAnnotationPrefix, identifier)
+	app.Annotations[key] = originalTag
 }
 
 // GetKustomizeImage gets the image set in Application source matching new image

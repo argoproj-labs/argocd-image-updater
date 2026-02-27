@@ -190,6 +190,15 @@ func UpdateApplication(ctx context.Context, updateConf *UpdateConfiguration, sta
 				result.NumErrors += 1
 				continue
 			} else {
+				// Record original tag when using digest strategy with argocd write-back method
+				if vc.Strategy == image.StrategyDigest && applicationImage.ImageTag != nil && updateConf.UpdateApp.WriteBackConfig.Method == WriteBackApplication {
+					recordOriginalTag(
+						&updateConf.UpdateApp.Application,
+						applicationImage.ContainerImage,
+						applicationImage.ImageTag.TagName,
+					)
+				}
+
 				imgCtx.Infof("Successfully updated image '%s' to '%s', but pending spec update (dry run=%v)", updateableImage.GetFullNameWithTag(), appImageFullNameWithTag, updateConf.DryRun)
 				changeList = append(changeList, ChangeEntry{appImageWithTag, updateableImage.ImageTag, appImageWithTag.ImageTag})
 				result.NumImagesUpdated += 1
@@ -872,13 +881,33 @@ func commitChanges(ctx context.Context, applicationImages *ApplicationImages, ch
 	}
 	switch wbc.Method {
 	case WriteBackApplication:
-		_, err := wbc.ArgoClient.UpdateSpec(ctx, &application.ApplicationUpdateSpecRequest{
-			Name:         &app.Name,
-			AppNamespace: &app.Namespace,
-			Spec:         &app.Spec,
-		})
-		if err != nil {
-			return err
+		if argoK8sClient, ok := wbc.ArgoClient.(*ArgoCDK8sClient); ok {
+			originalTagAnnotations := make(map[string]string)
+			originalTagPrefix := ImageUpdaterAnnotationPrefix + "/original-tag."
+			for k, v := range app.Annotations {
+				if strings.HasPrefix(k, originalTagPrefix) {
+					originalTagAnnotations[k] = v
+				}
+			}
+
+			_, err := argoK8sClient.UpdateSpecWithAnnotations(ctx, &application.ApplicationUpdateSpecRequest{
+				Name:         &app.Name,
+				AppNamespace: &app.Namespace,
+				Spec:         &app.Spec,
+			}, originalTagAnnotations)
+			if err != nil {
+				return err
+			}
+		} else {
+			// Fallback for non-K8s clients (shouldn't happen in practice)
+			_, err := wbc.ArgoClient.UpdateSpec(ctx, &application.ApplicationUpdateSpecRequest{
+				Name:         &app.Name,
+				AppNamespace: &app.Namespace,
+				Spec:         &app.Spec,
+			})
+			if err != nil {
+				return err
+			}
 		}
 	case WriteBackGit:
 		// if the kustomize base is set, the target is a kustomization
