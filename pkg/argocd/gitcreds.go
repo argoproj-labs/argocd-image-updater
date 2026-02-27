@@ -151,7 +151,12 @@ func getCredsFromSecret(wbc *WriteBackConfig, credentialsSecret string, kubeClie
 			if err != nil {
 				return nil, fmt.Errorf("invalid value in field githubAppInstallationID: %w", err)
 			}
-			return git.NewGitHubAppCreds(intGithubAppID, intGithubAppInstallationID, string(githubAppPrivateKey), "", "", "", "", true, "", wbc.GitCreds), nil
+			enterpriseBaseURL := string(credentials["githubAppEnterpriseBaseUrl"])
+			tlsClientCertData := string(credentials["tlsClientCertData"])
+			tlsClientCertKey := string(credentials["tlsClientCertKey"])
+			insecure, _ := strconv.ParseBool(string(credentials["insecure"]))
+			proxy := string(credentials["proxy"])
+			return git.NewGitHubAppCreds(intGithubAppID, intGithubAppInstallationID, string(githubAppPrivateKey), enterpriseBaseURL, wbc.GitRepo, tlsClientCertData, tlsClientCertKey, insecure, proxy, wbc.GitCreds), nil
 		} else if username, ok = credentials["username"]; ok {
 			if password, ok = credentials["password"]; !ok {
 				return nil, fmt.Errorf("invalid secret %s: does not contain field password", credentialsSecret)
