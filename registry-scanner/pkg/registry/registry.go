@@ -165,9 +165,9 @@ func (ep *RegistryEndpoint) GetTags(ctx context.Context, img *image.ContainerIma
 			logCtx.Tracef("Found date %s", ti.CreatedAt.String())
 			var imgTag *tag.ImageTag
 			if vc.Strategy == image.StrategyDigest {
-				imgTag = tag.NewImageTag(tagStr, ti.CreatedAt, fmt.Sprintf("sha256:%x", ti.Digest))
+				imgTag = tag.NewImageTagWithLabels(tagStr, ti.CreatedAt, fmt.Sprintf("sha256:%x", ti.Digest), ti.Labels)
 			} else {
-				imgTag = tag.NewImageTag(tagStr, ti.CreatedAt, "")
+				imgTag = tag.NewImageTagWithLabels(tagStr, ti.CreatedAt, "", ti.Labels)
 			}
 			tagListLock.Lock()
 			tagList.Add(imgTag)
