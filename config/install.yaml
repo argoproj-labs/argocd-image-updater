@@ -959,6 +959,12 @@ spec:
               key: webhook.ratelimit-allowed
               name: argocd-image-updater-config
               optional: true
+        - name: IMAGE_UPDATER_WATCH_NAMESPACES
+          valueFrom:
+            configMapKeyRef:
+              key: watch-namespaces
+              name: argocd-image-updater-config
+              optional: true
         image: quay.io/argoprojlabs/argocd-image-updater:latest
         livenessProbe:
           httpGet:
