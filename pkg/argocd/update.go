@@ -271,6 +271,7 @@ func UpdateApplication(ctx context.Context, updateConf *UpdateConfiguration, sta
 		}
 	}
 
+	result.Changes = changeList
 	return result
 }
 

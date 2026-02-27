@@ -26,9 +26,11 @@ import (
 	"github.com/sirupsen/logrus"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	api "github.com/argoproj-labs/argocd-image-updater/api/v1alpha1"
 	"github.com/argoproj-labs/argocd-image-updater/ext/git"
@@ -71,8 +73,9 @@ type ImageUpdaterReconciler struct {
 	// Channel to signal manager to stop
 	StopChan chan struct{}
 	// For run-once mode: wait for all CRs to complete
-	Once bool
-	Wg   sync.WaitGroup
+	Once          bool
+	Wg            sync.WaitGroup
+	onceCompleted sync.Map
 }
 
 const (
@@ -167,8 +170,30 @@ func (r *ImageUpdaterReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	}
 
 	if r.Config.CheckInterval == 0 {
+		// In run-once mode, our own writes (finalizer, status updates) trigger
+		// additional reconcile events for the same CR. Skip CRs that have
+		// already been processed to avoid redundant work and a WaitGroup panic
+		// from calling Done() more than once per CR.
+		if r.Once {
+			crKey := req.NamespacedName.String()
+			if _, alreadyDone := r.onceCompleted.LoadOrStore(crKey, true); alreadyDone {
+				reqLogger.Debugf("CR %s already processed in run-once mode, skipping.", crKey)
+				return ctrl.Result{}, nil
+			}
+		}
+
 		reqLogger.Debugf("Requeue interval is zero; will run once and stop.")
-		_, err := r.RunImageUpdater(ctx, &imageUpdater, false, nil)
+
+		if statusErr := r.setReconcilingStatus(ctx, &imageUpdater); statusErr != nil {
+			reqLogger.Warnf("Failed to set Reconciling status condition for %s/%s, status may be stale: %v", imageUpdater.Namespace, imageUpdater.Name, statusErr)
+		}
+
+		result, err := r.RunImageUpdater(ctx, &imageUpdater, false, nil)
+
+		if statusErr := r.updateStatusAfterReconcile(ctx, &imageUpdater, result, err); statusErr != nil {
+			reqLogger.Warnf("Failed to update status after reconcile for %s/%s, status may be stale: %v", imageUpdater.Namespace, imageUpdater.Name, statusErr)
+		}
+
 		if err != nil {
 			reqLogger.Errorf("Error processing CR %s/%s: %v", imageUpdater.Namespace, imageUpdater.Name, err)
 		} else {
@@ -183,9 +208,18 @@ func (r *ImageUpdaterReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, nil
 	}
 
-	_, err := r.RunImageUpdater(ctx, &imageUpdater, false, nil)
+	if statusErr := r.setReconcilingStatus(ctx, &imageUpdater); statusErr != nil {
+		reqLogger.Warnf("Failed to set Reconciling status condition for %s/%s, status may be stale: %v", imageUpdater.Namespace, imageUpdater.Name, statusErr)
+	}
+
+	result, err := r.RunImageUpdater(ctx, &imageUpdater, false, nil)
+
+	if statusErr := r.updateStatusAfterReconcile(ctx, &imageUpdater, result, err); statusErr != nil {
+		reqLogger.Warnf("Failed to update status after reconcile for %s/%s, status may be stale: %v", imageUpdater.Namespace, imageUpdater.Name, statusErr)
+	}
+
 	if err != nil {
-		return ctrl.Result{}, err
+		reqLogger.Warnf("Reconciliation failed for %s/%s, will retry at normal interval: %v", imageUpdater.Namespace, imageUpdater.Name, err)
 	}
 
 	reqLogger.Debugf("Reconciliation will requeue after interval %s", r.Config.CheckInterval.String())
@@ -195,7 +229,7 @@ func (r *ImageUpdaterReconciler) Reconcile(ctx context.Context, req ctrl.Request
 // SetupWithManager sets up the controller with the Manager.
 func (r *ImageUpdaterReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&api.ImageUpdater{}).
+		For(&api.ImageUpdater{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		WithOptions(controller.Options{MaxConcurrentReconciles: r.MaxConcurrentReconciles}).
 		Complete(r)
 }

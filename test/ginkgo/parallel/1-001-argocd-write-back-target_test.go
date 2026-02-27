@@ -19,7 +19,6 @@ package parallel
 import (
 	"context"
 
-	applicationFixture "github.com/argoproj-labs/argocd-image-updater/test/ginkgo/fixture/application"
 	appv1alpha1 "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1"
 	"github.com/argoproj/gitops-engine/pkg/health"
 	. "github.com/onsi/ginkgo/v2"
@@ -29,7 +28,11 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	applicationFixture "github.com/argoproj-labs/argocd-image-updater/test/ginkgo/fixture/application"
+
 	imageUpdaterApi "github.com/argoproj-labs/argocd-image-updater/api/v1alpha1"
+
+	argov1beta1api "github.com/argoproj-labs/argocd-operator/api/v1beta1"
 
 	"github.com/argoproj-labs/argocd-image-updater/test/ginkgo/fixture"
 	argocdFixture "github.com/argoproj-labs/argocd-image-updater/test/ginkgo/fixture/argocd"
@@ -38,7 +41,6 @@ import (
 	k8sFixture "github.com/argoproj-labs/argocd-image-updater/test/ginkgo/fixture/k8s"
 	ssFixture "github.com/argoproj-labs/argocd-image-updater/test/ginkgo/fixture/statefulset"
 	fixtureUtils "github.com/argoproj-labs/argocd-image-updater/test/ginkgo/fixture/utils"
-	argov1beta1api "github.com/argoproj-labs/argocd-operator/api/v1beta1"
 )
 
 var _ = Describe("ArgoCD Image Updater Parallel E2E Tests", func() {
@@ -62,12 +64,13 @@ var _ = Describe("ArgoCD Image Updater Parallel E2E Tests", func() {
 		})
 
 		AfterEach(func() {
-			// Cleanup is best-effort. Issue deletes and give some time for controllers
-			// to process, but don't fail the test if cleanup takes too long.
+			// Delete the ImageUpdater CR first and wait for its finalizer to be
+			// processed before tearing down the ArgoCD CR (which removes the controller).
 
 			if imageUpdater != nil {
 				By("deleting ImageUpdater CR")
 				_ = k8sClient.Delete(ctx, imageUpdater)
+				Eventually(imageUpdater, "2m", "3s").Should(k8sFixture.NotExistByName())
 			}
 
 			if argoCD != nil {
