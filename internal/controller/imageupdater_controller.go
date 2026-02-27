@@ -219,7 +219,7 @@ func (r *ImageUpdaterReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	}
 
 	if err != nil {
-		return ctrl.Result{}, err
+		reqLogger.Warnf("Reconciliation failed for %s/%s, will retry at normal interval: %v", imageUpdater.Namespace, imageUpdater.Name, err)
 	}
 
 	reqLogger.Debugf("Reconciliation will requeue after interval %s", r.Config.CheckInterval.String())

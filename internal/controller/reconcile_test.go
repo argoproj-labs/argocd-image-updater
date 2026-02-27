@@ -11,6 +11,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/fake"
@@ -277,6 +278,53 @@ func TestImageUpdaterReconciler_Reconcile(t *testing.T) {
 			},
 			expectedResult: reconcile.Result{RequeueAfter: 30 * time.Second},
 			expectedError:  false,
+		},
+		{
+			name: "invalid name pattern - should requeue at normal interval, not exponential backoff",
+			setupTest: func(reconciler *ImageUpdaterReconciler, fakeClient client.Client, mockArgoClient *mocks.ArgoCD, cacheChan chan struct{}) {
+				close(cacheChan)
+				reconciler.Config.CheckInterval = 30 * time.Second
+				imageUpdater := &argocdimageupdaterv1alpha1.ImageUpdater{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:       "test-invalid-pattern",
+						Namespace:  "default",
+						Finalizers: []string{ResourcesFinalizerName},
+					},
+					Spec: argocdimageupdaterv1alpha1.ImageUpdaterSpec{
+						ApplicationRefs: []argocdimageupdaterv1alpha1.ApplicationRef{
+							{
+								NamePattern: "foo[bar", // Invalid regex pattern
+							},
+						},
+					},
+				}
+				require.NoError(t, fakeClient.Create(context.Background(), imageUpdater))
+			},
+			request: reconcile.Request{
+				NamespacedName: types.NamespacedName{
+					Name:      "test-invalid-pattern",
+					Namespace: "default",
+				},
+			},
+			// Error from RunImageUpdater should NOT be returned to controller-runtime;
+			// instead, requeue at normal interval with the error recorded in status.
+			expectedResult: reconcile.Result{RequeueAfter: 30 * time.Second},
+			expectedError:  false,
+			postCheck: func(t *testing.T, reconciler *ImageUpdaterReconciler) {
+				// Verify the error is recorded in the status condition
+				var updatedCR argocdimageupdaterv1alpha1.ImageUpdater
+				err := reconciler.Get(context.Background(), types.NamespacedName{
+					Name:      "test-invalid-pattern",
+					Namespace: "default",
+				}, &updatedCR)
+				require.NoError(t, err)
+
+				errorCondition := apimeta.FindStatusCondition(updatedCR.Status.Conditions, ConditionTypeError)
+				require.NotNil(t, errorCondition, "Error condition should be set in status")
+				assert.Equal(t, metav1.ConditionTrue, errorCondition.Status)
+				assert.Equal(t, "ReconcileError", errorCondition.Reason)
+				assert.Contains(t, errorCondition.Message, "invalid application name pattern")
+			},
 		},
 	}
 
