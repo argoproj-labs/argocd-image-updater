@@ -907,7 +907,9 @@ func Test_UpdateApplication(t *testing.T) {
 			DryRun:     false,
 		}, NewSyncIterationState())
 		assert.Equal(t, 0, res.NumErrors)
-		assert.Equal(t, 0, res.NumSkipped)
+		// Non-semver tags with default semver strategy yields no valid tags,
+		// so the image is skipped rather than treated as up-to-date.
+		assert.Equal(t, 1, res.NumSkipped)
 		assert.Equal(t, 1, res.NumApplicationsProcessed)
 		assert.Equal(t, 1, res.NumImagesConsidered)
 		assert.Equal(t, 0, res.NumImagesUpdated)
@@ -985,7 +987,9 @@ func Test_UpdateApplication(t *testing.T) {
 			DryRun:     false,
 		}, NewSyncIterationState())
 		assert.Equal(t, 0, res.NumErrors)
-		assert.Equal(t, 0, res.NumSkipped)
+		// Non-semver tags with default semver strategy yields no valid tags,
+		// so the image is skipped rather than treated as up-to-date.
+		assert.Equal(t, 1, res.NumSkipped)
 		assert.Equal(t, 1, res.NumApplicationsProcessed)
 		assert.Equal(t, 1, res.NumImagesConsidered)
 		assert.Equal(t, 0, res.NumImagesUpdated)
@@ -1169,6 +1173,68 @@ func Test_UpdateApplication(t *testing.T) {
 		}, NewSyncIterationState())
 		assert.Equal(t, 1, res.NumErrors)
 		assert.Equal(t, 0, res.NumSkipped)
+		assert.Equal(t, 1, res.NumApplicationsProcessed)
+		assert.Equal(t, 1, res.NumImagesConsidered)
+		assert.Equal(t, 0, res.NumImagesUpdated)
+	})
+
+	t.Run("Test skip when registry returns empty tags (issue #1242)", func(t *testing.T) {
+		mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
+			regMock := regmock.RegistryClient{}
+			regMock.On("NewRepository", mock.Anything).Return(nil)
+			regMock.On("Tags", mock.Anything).Return([]string{}, nil)
+			return &regMock, nil
+		}
+
+		argoClient := argomock.ArgoCD{}
+		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+
+		kubeClient := kube.ImageUpdaterKubernetesClient{
+			KubeClient: &registryKube.KubernetesClient{
+				Clientset: fake.NewFakeKubeClient(),
+			},
+		}
+		appImages := &ApplicationImages{
+			Application: v1alpha1.Application{
+				ObjectMeta: v1.ObjectMeta{
+					Name:      "guestbook",
+					Namespace: "guestbook",
+				},
+				Spec: v1alpha1.ApplicationSpec{
+					Source: &v1alpha1.ApplicationSource{
+						Kustomize: &v1alpha1.ApplicationSourceKustomize{
+							Images: v1alpha1.KustomizeImages{
+								"jannfis/foobar:1.0.1",
+							},
+						},
+					},
+				},
+				Status: v1alpha1.ApplicationStatus{
+					SourceType: v1alpha1.ApplicationSourceTypeKustomize,
+					Summary: v1alpha1.ApplicationSummary{
+						Images: []string{
+							"jannfis/foobar:1.0.1",
+						},
+					},
+				},
+			},
+			WriteBackConfig: &WriteBackConfig{
+				Method: WriteBackApplication,
+			},
+			Images: ImageList{
+				NewImage(
+					image.NewFromIdentifier("jannfis/foobar:1.0.1")),
+			},
+		}
+		res := UpdateApplication(context.Background(), &UpdateConfiguration{
+			NewRegFN:   mockClientFn,
+			ArgoClient: &argoClient,
+			KubeClient: &kubeClient,
+			UpdateApp:  appImages,
+			DryRun:     false,
+		}, NewSyncIterationState())
+		assert.Equal(t, 0, res.NumErrors)
+		assert.Equal(t, 1, res.NumSkipped)
 		assert.Equal(t, 1, res.NumApplicationsProcessed)
 		assert.Equal(t, 1, res.NumImagesConsidered)
 		assert.Equal(t, 0, res.NumImagesUpdated)

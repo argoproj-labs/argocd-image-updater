@@ -79,8 +79,8 @@ func NewVersionConstraint() *VersionConstraint {
 }
 
 // GetNewestVersionFromTags returns the latest available version from a list of
-// tags while optionally taking a semver constraint into account. Returns the
-// original version if no new version could be found from the list of tags.
+// tags while optionally taking a semver constraint into account. Returns nil
+// if no suitable version could be found or the registry returned no tags.
 func (img *ContainerImage) GetNewestVersionFromTags(ctx context.Context, vc *VersionConstraint, tagList *tag.ImageTagList) (*tag.ImageTag, error) {
 	logCtx := log.LoggerFromContext(ctx)
 
@@ -100,7 +100,12 @@ func (img *ContainerImage) GetNewestVersionFromTags(ctx context.Context, vc *Ver
 
 	// It makes no sense to proceed if we have no available tags
 	if len(availableTags) == 0 {
-		return img.ImageTag, nil
+		if len(tagList.Tags()) > 0 {
+			logCtx.Warnf("no tags for image %s matched by the %s strategy", img.GetFullNameWithoutTag(), vc.Strategy)
+		} else {
+			logCtx.Warnf("no tags found for image %s in registry", img.GetFullNameWithoutTag())
+		}
+		return nil, nil
 	}
 
 	// The given constraint MUST match a semver constraint
@@ -153,6 +158,7 @@ func (img *ContainerImage) GetNewestVersionFromTags(ctx context.Context, vc *Ver
 		return considerTags[len(considerTags)-1], nil
 	}
 
+	logCtx.Warnf("no tags for image %s matched constraint %q", img.GetFullNameWithoutTag(), vc.Constraint)
 	return nil, nil
 }
 
