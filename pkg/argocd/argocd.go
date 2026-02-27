@@ -981,6 +981,22 @@ func getApplicationSourceType(app *argocdapi.Application, wbc *WriteBackConfig) 
 		return argocdapi.ApplicationSourceTypeDirectory
 	}
 
+	// For SourceHydrator apps, Status.SourceType reflects the sync source (typically
+	// "Directory" since it syncs rendered manifests), not the dry source. If the DrySource
+	// has explicit Helm/Kustomize/Plugin config, use that to determine the actual type.
+	if app.Spec.SourceHydrator != nil {
+		ds := app.Spec.SourceHydrator.DrySource
+		if ds.Helm != nil {
+			return argocdapi.ApplicationSourceTypeHelm
+		}
+		if ds.Kustomize != nil {
+			return argocdapi.ApplicationSourceTypeKustomize
+		}
+		if ds.Plugin != nil {
+			return argocdapi.ApplicationSourceTypePlugin
+		}
+	}
+
 	return app.Status.SourceType
 }
 
@@ -1013,6 +1029,24 @@ func getApplicationSource(ctx context.Context, app *argocdapi.Application, wbc *
 
 		log.Tracef("Could not get Source of type Helm or Kustomize from multisource configuration. Returning first source from the list")
 		return &app.Spec.Sources[0]
+	}
+
+	// If the application uses a SourceHydrator, derive the source from its DrySource.
+	// The dry source is the write-back target: it holds the original (unhydrated) manifests.
+	// We construct the ApplicationSource manually (rather than using GetDrySource()) to
+	// include the Helm/Kustomize/Directory/Plugin fields, which downstream code relies on.
+	if app.Spec.SourceHydrator != nil {
+		ds := app.Spec.SourceHydrator.DrySource
+		source := argocdapi.ApplicationSource{
+			RepoURL:        ds.RepoURL,
+			Path:           ds.Path,
+			TargetRevision: ds.TargetRevision,
+			Helm:           ds.Helm,
+			Kustomize:      ds.Kustomize,
+			Directory:      ds.Directory,
+			Plugin:         ds.Plugin,
+		}
+		return &source
 	}
 
 	return app.Spec.Source
