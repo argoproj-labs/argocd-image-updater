@@ -3,7 +3,7 @@ module github.com/argoproj-labs/argocd-image-updater/test/ginkgo
 go 1.25.5
 
 require (
-	github.com/argoproj-labs/argocd-image-updater v1.1.0
+	github.com/argoproj-labs/argocd-image-updater v1.1.1
 	github.com/argoproj-labs/argocd-operator v0.17.0
 	github.com/argoproj/argo-cd/v3 v3.3.0
 	github.com/argoproj/gitops-engine v0.7.1-0.20251217140045-5baed5604d2d
