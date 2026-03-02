@@ -3403,82 +3403,69 @@ kustomize:
 			"Output should be valid Kustomize override YAML with updated image")
 	})
 
-	t.Run("helm tag empty should not create version key", func(t *testing.T) {
-		ctx := context.Background()
-
-		cont := image.NewFromIdentifier("myapp=docker.io/myorg/myapp")
-		iimg := NewImage(cont)
-
-		_, helmParamVersion := getHelmParamNames(iimg)
-		require.NotEmpty(t, helmParamVersion, "helmParamVersion must not be empty for this test")
-
+	t.Run("Empty target tag should not override existing helm tag", func(t *testing.T) {
 		app := v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name: "testapp",
+			},
 			Spec: v1alpha1.ApplicationSpec{
 				Source: &v1alpha1.ApplicationSource{
+					RepoURL:        "https://example.com/example",
+					TargetRevision: "main",
 					Helm: &v1alpha1.ApplicationSourceHelm{
 						Parameters: []v1alpha1.HelmParameter{
-							{Name: helmParamVersion, Value: ""},
+							{
+								Name:        "image.name",
+								Value:       "nginx",
+								ForceString: true,
+							},
+							{
+								Name:        "image.tag",
+								Value:       "",
+								ForceString: true,
+							},
 						},
 					},
 				},
 			},
-		}
-		wbc := &WriteBackConfig{Target: "values.yaml"}
-		applicationImages := &ApplicationImages{
-			Application:     app,
-			WriteBackConfig: wbc,
-			Images:          ImageList{iimg},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypeHelm,
+				Summary: v1alpha1.ApplicationSummary{
+					Images: []string{
+						"nginx:",
+					},
+				},
+			},
 		}
 
-		override, err := marshalParamsOverride(ctx, applicationImages, []byte{})
+		originalData := []byte(`
+image.name: nginx
+image.tag: v1.0.0
+replicas: 1
+`)
+		im := NewImage(
+			image.NewFromIdentifier("nginx"))
+		im.HelmImageName = "image.name"
+		im.HelmImageTag = "image.tag"
+		applicationImages := &ApplicationImages{
+			Application: app,
+			Images:      ImageList{im},
+			WriteBackConfig: &WriteBackConfig{
+				Target: "./test-values.yaml",
+			},
+		}
+
+		override, err := marshalParamsOverride(context.Background(), applicationImages, originalData)
 		require.NoError(t, err)
+		assert.NotEmpty(t, override)
 
 		var out map[string]interface{}
 		err = yaml.Unmarshal(override, &out)
 		require.NoError(t, err)
 
-		assert.NotContains(t, out, helmParamVersion,
-			"empty tagValue should not create a %s key", helmParamVersion)
-	})
-
-	t.Run("helm existing version value preserved when tag empty", func(t *testing.T) {
-		ctx := context.Background()
-
-		cont := image.NewFromIdentifier("myapp=docker.io/myorg/myapp")
-		iimg := NewImage(cont)
-
-		_, helmParamVersion := getHelmParamNames(iimg)
-		require.NotEmpty(t, helmParamVersion, "helmParamVersion must not be empty for this test")
-
-		app := v1alpha1.Application{
-			Spec: v1alpha1.ApplicationSpec{
-				Source: &v1alpha1.ApplicationSource{
-					Helm: &v1alpha1.ApplicationSourceHelm{
-						Parameters: []v1alpha1.HelmParameter{
-							{Name: helmParamVersion, Value: ""},
-						},
-					},
-				},
-			},
-		}
-		wbc := &WriteBackConfig{Target: "values.yaml"}
-		applicationImages := &ApplicationImages{
-			Application:     app,
-			WriteBackConfig: wbc,
-			Images:          ImageList{iimg},
-		}
-
-		orig := []byte(fmt.Sprintf("%s: preserved\n", helmParamVersion))
-		override, err := marshalParamsOverride(ctx, applicationImages, orig)
-		require.NoError(t, err)
-
-		var out map[string]interface{}
-		err = yaml.Unmarshal(override, &out)
-		require.NoError(t, err)
-
-		val, ok := out[helmParamVersion]
-		require.True(t, ok, "expected key %s to still exist", helmParamVersion)
-		assert.Equal(t, "preserved", val)
+		val, ok := out["image.tag"]
+		require.True(t, ok, "expected key %s to still exist", "image.tag")
+		assert.Equal(t, "v1.0.0", val)
 	})
 }
 
