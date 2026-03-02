@@ -3402,6 +3402,84 @@ kustomize:
 		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(yamlOutput)),
 			"Output should be valid Kustomize override YAML with updated image")
 	})
+
+	t.Run("helm tag empty should not create version key", func(t *testing.T) {
+		ctx := context.Background()
+
+		cont := image.NewFromIdentifier("myapp=docker.io/myorg/myapp")
+		iimg := NewImage(cont)
+
+		_, helmParamVersion := getHelmParamNames(iimg)
+		require.NotEmpty(t, helmParamVersion, "helmParamVersion must not be empty for this test")
+
+		app := v1alpha1.Application{
+			Spec: v1alpha1.ApplicationSpec{
+				Source: &v1alpha1.ApplicationSource{
+					Helm: &v1alpha1.ApplicationSourceHelm{
+						Parameters: []v1alpha1.HelmParameter{
+							{Name: helmParamVersion, Value: ""},
+						},
+					},
+				},
+			},
+		}
+		wbc := &WriteBackConfig{Target: "values.yaml"}
+		applicationImages := &ApplicationImages{
+			Application:     app,
+			WriteBackConfig: wbc,
+			Images:          ImageList{iimg},
+		}
+
+		override, err := marshalParamsOverride(ctx, applicationImages, []byte{})
+		require.NoError(t, err)
+
+		var out map[string]interface{}
+		err = yaml.Unmarshal(override, &out)
+		require.NoError(t, err)
+
+		assert.NotContains(t, out, helmParamVersion,
+			"empty tagValue should not create a %s key", helmParamVersion)
+	})
+
+	t.Run("helm existing version value preserved when tag empty", func(t *testing.T) {
+		ctx := context.Background()
+
+		cont := image.NewFromIdentifier("myapp=docker.io/myorg/myapp")
+		iimg := NewImage(cont)
+
+		_, helmParamVersion := getHelmParamNames(iimg)
+		require.NotEmpty(t, helmParamVersion, "helmParamVersion must not be empty for this test")
+
+		app := v1alpha1.Application{
+			Spec: v1alpha1.ApplicationSpec{
+				Source: &v1alpha1.ApplicationSource{
+					Helm: &v1alpha1.ApplicationSourceHelm{
+						Parameters: []v1alpha1.HelmParameter{
+							{Name: helmParamVersion, Value: ""},
+						},
+					},
+				},
+			},
+		}
+		wbc := &WriteBackConfig{Target: "values.yaml"}
+		applicationImages := &ApplicationImages{
+			Application:     app,
+			WriteBackConfig: wbc,
+			Images:          ImageList{iimg},
+		}
+
+		orig := []byte(fmt.Sprintf("%s: preserved\n", helmParamVersion))
+		override, err := marshalParamsOverride(ctx, applicationImages, orig)
+		require.NoError(t, err)
+
+		var out map[string]interface{}
+		err = yaml.Unmarshal(override, &out)
+		require.NoError(t, err)
+
+		val, ok := out[helmParamVersion]
+		require.True(t, ok, "expected key %s to still exist", helmParamVersion)
+		assert.Equal(t, "preserved", val)
+	})
 }
 
 func Test_GetHelmValue(t *testing.T) {
