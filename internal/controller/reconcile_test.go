@@ -2299,12 +2299,38 @@ func TestImageUpdaterReconciler_RunImageUpdater(t *testing.T) {
 			apps: []client.Object{matchingApp, nonMatchingApp},
 			postCheck: func(t *testing.T, r *ImageUpdaterReconciler, cr *argocdimageupdaterv1alpha1.ImageUpdater, res argocd.ImageUpdaterResult) {
 				expectedVal := float64(1)
-				metricVal := testutil.ToFloat64(metrics.Applications().ApplicationsTotal.WithLabelValues(cr.Name, cr.Namespace))
+				metricVal := testutil.ToFloat64(metrics.ImageUpdaterCR().ApplicationsTotal.WithLabelValues(cr.Name, cr.Namespace))
 				assert.Equal(t, expectedVal, metricVal)
 			},
 			expectedResult: argocd.ImageUpdaterResult{
 				NumApplicationsProcessed: 1,
 				NumImagesConsidered:      1,
+				NumImagesUpdated:         1,
+				ApplicationsMatched:      1,
+			},
+		},
+		{
+			name:   "sets image metrics (images watched, updated, errors)",
+			cr:     baseCr,
+			apps:   []client.Object{matchingApp, nonMatchingApp},
+			dryRun: false,
+			postCheck: func(t *testing.T, r *ImageUpdaterReconciler, cr *argocdimageupdaterv1alpha1.ImageUpdater, res argocd.ImageUpdaterResult) {
+				iucm := metrics.ImageUpdaterCR()
+				require.NotNil(t, iucm)
+				labels := []string{cr.Name, cr.Namespace}
+				watched := testutil.ToFloat64(iucm.ImagesWatchedTotal.WithLabelValues(labels...))
+				updated := testutil.ToFloat64(iucm.ImagesUpdatedTotal.WithLabelValues(labels...))
+				errors := testutil.ToFloat64(iucm.ImagesUpdatedErrorsTotal.WithLabelValues(labels...))
+				// Gauge: set once per run, so it must match this run's result.
+				assert.Equal(t, float64(res.NumImagesConsidered), watched, "images watched total")
+				// Counters: cumulative across test cases (shared metrics), so assert at least this run's contribution.
+				assert.GreaterOrEqual(t, updated, float64(res.NumImagesUpdated), "images updated total")
+				assert.GreaterOrEqual(t, errors, float64(res.NumErrors), "images errors total")
+			},
+			expectedResult: argocd.ImageUpdaterResult{
+				NumApplicationsProcessed: 1,
+				NumImagesConsidered:      1,
+				NumErrors:                0,
 				NumImagesUpdated:         1,
 				ApplicationsMatched:      1,
 			},
@@ -2480,6 +2506,7 @@ func TestImageUpdaterReconciler_RunImageUpdater(t *testing.T) {
 					CheckInterval:     30 * time.Second,
 					MaxConcurrentApps: 1,
 					DryRun:            tt.dryRun,
+					EnableCRMetrics:   true,
 					KubeClient: &kube.ImageUpdaterKubernetesClient{
 						KubeClient: regokube.NewKubernetesClient(ctx, fakeClientset, "default"),
 					},

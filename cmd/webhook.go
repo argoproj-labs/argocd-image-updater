@@ -65,6 +65,10 @@ Supported registries:
 				return err
 			}
 
+			// Webhook-only mode has no controller/reconcile, so finalizers never run on CR delete.
+			// Disable CR-scoped metrics to avoid orphaned series.
+			cfg.EnableCRMetrics = false
+
 			err = runWebhook(ctx, cfg, webhookCfg, MaxConcurrentUpdaters)
 			return err
 		},

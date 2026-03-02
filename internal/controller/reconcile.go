@@ -34,14 +34,14 @@ func (r *ImageUpdaterReconciler) RunImageUpdater(ctx context.Context, cr *iuapi.
 		return result, err
 	}
 
-	if !warmUp {
-		if metrics.Applications() != nil {
-			metrics.Applications().SetNumberOfApplications(cr.Name, cr.Namespace, len(appList))
-		}
-		baseLogger.Infof("Starting image update cycle, considering %d application(s) for update", len(appList))
-	}
-
 	result.ApplicationsMatched = len(appList)
+
+	if !warmUp {
+		if r.Config != nil && r.Config.EnableCRMetrics && metrics.ImageUpdaterCR() != nil {
+			metrics.ImageUpdaterCR().SetNumberOfApplications(cr.Name, cr.Namespace, result.ApplicationsMatched)
+		}
+		baseLogger.Infof("Starting image update cycle, considering %d application(s) for update", result.ApplicationsMatched)
+	}
 
 	syncState := argocd.NewSyncIterationState()
 
@@ -107,13 +107,12 @@ func (r *ImageUpdaterReconciler) RunImageUpdater(ctx context.Context, cr *iuapi.
 			allChanges = append(allChanges, res.Changes...)
 			mu.Unlock()
 
-			// TODO: images metrics will be implemented in GITOPS-8068
-			// TODO: these metrics were commented out because there is no proper cabbage collector that will handle metrics deletion
-			//if !warmUp && !r.Config.DryRun {
-			//	metrics.Applications().IncreaseImageUpdate(app, res.NumImagesUpdated)
-			//}
-			//metrics.Applications().IncreaseUpdateErrors(app, res.NumErrors)
-			//metrics.Applications().SetNumberOfImagesWatched(app, res.NumImagesConsidered)
+			if !warmUp && r.Config != nil && r.Config.EnableCRMetrics && metrics.ImageUpdaterCR() != nil {
+				if !r.Config.DryRun {
+					metrics.ImageUpdaterCR().IncreaseImageUpdate(cr.Name, cr.Namespace, res.NumImagesUpdated)
+				}
+				metrics.ImageUpdaterCR().IncreaseUpdateErrors(cr.Name, cr.Namespace, res.NumErrors)
+			}
 		}(appCtx, app, curApplication)
 	}
 
@@ -121,6 +120,14 @@ func (r *ImageUpdaterReconciler) RunImageUpdater(ctx context.Context, cr *iuapi.
 	wg.Wait()
 
 	result.Changes = allChanges
+
+	// Set images-watched gauge once here with the CR-wide aggregate. We cannot set it inside the
+	// per-application goroutines: each goroutine would overwrite the same gauge with that app's
+	// count, so only the last app to finish would be reflected. Using result.NumImagesConsidered
+	// after wg.Wait() gives the total number of images considered for this CR.
+	if !warmUp && r.Config != nil && r.Config.EnableCRMetrics && metrics.ImageUpdaterCR() != nil {
+		metrics.ImageUpdaterCR().SetNumberOfImagesWatched(cr.Name, cr.Namespace, result.NumImagesConsidered)
+	}
 
 	baseLogger.Infof("Processing results: applications=%d images_considered=%d images_skipped=%d images_updated=%d errors=%d",
 		result.NumApplicationsProcessed,

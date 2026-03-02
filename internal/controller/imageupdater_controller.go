@@ -61,6 +61,9 @@ type ImageUpdaterConfig struct {
 	DisableKubeEvents      bool
 	GitCreds               git.CredsStore
 	EnableWebhook          bool
+	// EnableCRMetrics enables per-ImageUpdater-CR Prometheus metrics. Set false in webhook-only
+	// mode (no controller/reconcile) so metrics are not written and never orphaned on CR delete.
+	EnableCRMetrics bool
 }
 
 // ImageUpdaterReconciler reconciles a ImageUpdater object
@@ -140,7 +143,9 @@ func (r *ImageUpdaterReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		if hasFinalizer {
 			reqLogger.Debugf("ImageUpdater resource is being deleted, running finalizer.")
 			// --- FINALIZER LOGIC ---
-			metrics.Applications().RemoveNumberOfApplications(imageUpdater.Name, imageUpdater.Namespace)
+			if r.Config != nil && r.Config.EnableCRMetrics && metrics.ImageUpdaterCR() != nil {
+				metrics.ImageUpdaterCR().RemoveImageUpdaterMetrics(imageUpdater.Name, imageUpdater.Namespace)
+			}
 
 			// Remove the finalizer from the list and update the object.
 			reqLogger.Debugf("Finalizer logic complete, removing finalizer from the resource.")

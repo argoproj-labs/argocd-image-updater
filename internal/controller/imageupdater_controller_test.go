@@ -27,11 +27,17 @@ func TestReconcile_DeleteFinalizer_RemovesMetrics(t *testing.T) {
 	crName := "test-iu"
 	crNamespace := "test-ns"
 
-	apm := metrics.Applications()
-	// Pre-set a metric for our test CR
-	apm.SetNumberOfApplications(crName, crNamespace, 1)
+	apm := metrics.ImageUpdaterCR()
 	if apm != nil {
+		// Pre-set all ImageUpdater CR metrics for our test CR so we can assert finalizer removes them
+		apm.SetNumberOfApplications(crName, crNamespace, 1)
+		apm.SetNumberOfImagesWatched(crName, crNamespace, 2)
+		apm.IncreaseImageUpdate(crName, crNamespace, 1)
+		apm.IncreaseUpdateErrors(crName, crNamespace, 0)
 		assert.Equal(t, 1, testutil.CollectAndCount(apm.ApplicationsTotal))
+		assert.Equal(t, 1, testutil.CollectAndCount(apm.ImagesWatchedTotal))
+		assert.Equal(t, 1, testutil.CollectAndCount(apm.ImagesUpdatedTotal))
+		assert.Equal(t, 1, testutil.CollectAndCount(apm.ImagesUpdatedErrorsTotal))
 	}
 
 	// Create a fake ImageUpdater resource that is marked for deletion
@@ -55,7 +61,7 @@ func TestReconcile_DeleteFinalizer_RemovesMetrics(t *testing.T) {
 	reconciler := &ImageUpdaterReconciler{
 		Client:      fakeClient,
 		Scheme:      scheme,
-		Config:      &ImageUpdaterConfig{},
+		Config:      &ImageUpdaterConfig{EnableCRMetrics: true},
 		CacheWarmed: warmedCh,
 	}
 
@@ -69,6 +75,9 @@ func TestReconcile_DeleteFinalizer_RemovesMetrics(t *testing.T) {
 	_, err := reconciler.Reconcile(context.Background(), req)
 	assert.NoError(t, err)
 
-	// The metric should be gone after reconciliation of the deleted resource
+	// All ImageUpdater CR metrics for this CR should be gone after finalizer runs
 	assert.Equal(t, 0, testutil.CollectAndCount(apm.ApplicationsTotal))
+	assert.Equal(t, 0, testutil.CollectAndCount(apm.ImagesWatchedTotal))
+	assert.Equal(t, 0, testutil.CollectAndCount(apm.ImagesUpdatedTotal))
+	assert.Equal(t, 0, testutil.CollectAndCount(apm.ImagesUpdatedErrorsTotal))
 }

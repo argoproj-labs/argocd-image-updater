@@ -175,10 +175,19 @@ metrics. This feature is disabled by default but can be enabled using the
 `--metrics-bind-address` flag to specify a listening address (e.g., `:8080`).
 Metrics are then served on the `/metrics` path.
 
-The following metric is currently available and populated with data:
+The following metrics are currently available and populated with data when the controller
+is run with polling (the default `run` command). When running in webhook-only mode
+(`webhook` command, no controller), these CR-scoped metrics are disabled to avoid
+orphaned series when ImageUpdater CRs are deleted.
 
 *   `argocd_image_updater_applications_watched_total` - A gauge that shows the
     number of applications watched per `ImageUpdater` CR.
+*   `argocd_image_updater_images_watched_total` - A gauge that shows the number
+    of images watched (considered for update) per `ImageUpdater` CR.
+*   `argocd_image_updater_images_updated_total` - A counter of the number of
+    images updated per `ImageUpdater` CR.
+*   `argocd_image_updater_images_errors_total` - A counter of the number of
+    errors during image updates per `ImageUpdater` CR.
 
 !!! note "Other Defined Metrics"
     The metrics listed below are also defined within the application. However,
@@ -186,9 +195,6 @@ The following metric is currently available and populated with data:
     temporarily disabled. They may not appear on the `/metrics` endpoint or may
     always report a value of `0`.
 
-    *   `argocd_image_updater_images_watched_total`
-    *   `argocd_image_updater_images_updated_total`
-    *   `argocd_image_updater_images_errors_total`
     *   `argocd_image_updater_k8s_api_requests_total`
     *   `argocd_image_updater_k8s_api_errors_total`
     *   `argocd_image_updater_registry_requests_total`
