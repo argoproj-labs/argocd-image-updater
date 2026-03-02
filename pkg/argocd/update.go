@@ -436,9 +436,12 @@ func marshalParamsOverride(ctx context.Context, applicationImages *ApplicationIm
 					} else {
 						tagValue = helmParamVer.Value
 					}
-					err = setHelmValue(&helmNewValues, helmParamVersion, tagValue)
-					if err != nil {
-						return nil, fmt.Errorf("failed to set image parameter version value: %v", err)
+					//Write tag in helm value file only if tag is not empty
+					if tagValue != "" {
+						err = setHelmValue(&helmNewValues, helmParamVersion, tagValue)
+						if err != nil {
+							return nil, fmt.Errorf("failed to set image parameter version value: %v", err)
+						}
 					}
 				}
 
