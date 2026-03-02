@@ -43,6 +43,31 @@ The workflow of Argo CD Image Updater can be described as follows:
   never update your manifests, instead it re-configures your Application
   sources to use the new image tag, and control is handed over to Argo CD.
 
+## Observing update status
+
+Each `ImageUpdater` CR maintains a `status` subresource that reports the
+results of the most recent reconciliation cycle. You can quickly check the
+state of all your ImageUpdater resources with:
+
+```bash
+kubectl get imageupdater -n argocd
+```
+
+The output shows the number of matched applications, managed images, last
+check time, and readiness:
+
+```
+NAME                 APPS   IMAGES   LAST CHECKED             READY
+production-updater   7      3        2026-03-02T22:10:00Z     True
+```
+
+The `status.recentUpdates` field lists every image that was updated in the last
+cycle, and the `status.conditions` field provides standard Kubernetes conditions
+(`Ready`, `Reconciling`, `Error`) for integration with monitoring tools.
+
+For a full reference of all status fields, see
+[Monitoring status](../configuration/applications.md#status).
+
 ## <a name="multi-arch"></a>Multi-arch images and clusters
 
 As of version 0.12, Argo CD Image Updater has full support for multi-arch
