@@ -417,7 +417,7 @@ kubectl get imageupdater -n argocd
 
 The default output includes printer columns for quick visibility:
 
-```
+```text
 NAME                 APPS   IMAGES   LAST CHECKED             READY
 production-updater   7      3        2026-03-02T22:10:00Z     True
 ```
@@ -430,20 +430,20 @@ kubectl get imageupdater production-updater -n argocd -o yaml
 
 ### Status fields
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `observedGeneration` | int64 | The most recent `.metadata.generation` observed by the controller. |
-| `lastCheckedAt` | timestamp | When the controller last checked for image updates. |
+| Field | Type | Description                                                                                       |
+|-------|------|---------------------------------------------------------------------------------------------------|
+| `observedGeneration` | int64 | The most recent `.metadata.generation` observed by the controller.                                |
+| `lastCheckedAt` | timestamp | When the controller last checked for image updates.                                               |
 | `lastUpdatedAt` | timestamp | When the controller last performed an image update. Only set when at least one image was updated. |
-| `applicationsMatched` | int32 | Number of Argo CD applications matched by this CR's selectors. |
-| `imagesManaged` | int32 | Number of images eligible for update checking. |
-| `recentUpdates` | list | Image updates performed during the last reconciliation cycle (see below). |
-| `conditions` | list | Standard Kubernetes conditions (see below). |
+| `applicationsMatched` | int32 | Number of Argo CD applications matched by this CR's selectors.                                    |
+| `imagesManaged` | int32 | Number of images eligible for update checking.                                                    |
+| `recentUpdates` | list | Image updates performed during the last update cycle (see below).                                 |
+| `conditions` | list | Standard Kubernetes conditions (see below).                                                       |
 
 ### Recent updates
 
 The `recentUpdates` list records each image that was updated during the most
-recent reconciliation cycle. Each entry contains:
+recent update cycle. Each entry contains:
 
 | Field | Type | Description |
 |-------|------|-------------|

@@ -45,9 +45,11 @@ The workflow of Argo CD Image Updater can be described as follows:
 
 ## Observing update status
 
-Each `ImageUpdater` CR maintains a `status` subresource that reports the
-results of the most recent reconciliation cycle. You can quickly check the
-state of all your ImageUpdater resources with:
+Each `ImageUpdater` CR maintains a `status` subresource that reflects the
+overall observed state of the resource, including the number of matched
+applications, managed images, timestamps, conditions, and a list of image
+updates from the most recent update cycle. You can quickly check the state
+of all your ImageUpdater resources with:
 
 ```bash
 kubectl get imageupdater -n argocd
@@ -56,14 +58,15 @@ kubectl get imageupdater -n argocd
 The output shows the number of matched applications, managed images, last
 check time, and readiness:
 
-```
+```text
 NAME                 APPS   IMAGES   LAST CHECKED             READY
 production-updater   7      3        2026-03-02T22:10:00Z     True
 ```
 
 The `status.recentUpdates` field lists every image that was updated in the last
-cycle, and the `status.conditions` field provides standard Kubernetes conditions
-(`Ready`, `Reconciling`, `Error`) for integration with monitoring tools.
+update cycle, and the `status.conditions` field provides standard Kubernetes
+conditions (`Ready`, `Reconciling`, `Error`) for integration with monitoring
+tools.
 
 For a full reference of all status fields, see
 [Monitoring status](../configuration/applications.md#status).
