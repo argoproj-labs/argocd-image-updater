@@ -25,6 +25,7 @@ import (
 	. "github.com/onsi/gomega"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	applicationFixture "github.com/argoproj-labs/argocd-image-updater/test/ginkgo/fixture/application"
@@ -203,6 +204,35 @@ var _ = Describe("ArgoCD Image Updater Parallel E2E Tests", func() {
 				// Return an empty string to signify the condition is not yet met.
 				return ""
 			}, "5m", "3s").Should(Equal("quay.io/dkarpele/my-guestbook:29437546.0"))
+
+			By("verifying ImageUpdater CR status reflects successful reconciliation")
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(imageUpdater), imageUpdater)
+				g.Expect(err).ToNot(HaveOccurred())
+
+				g.Expect(imageUpdater.Status.ApplicationsMatched).To(BeNumerically(">=", int32(1)),
+					"should match at least 1 application")
+				g.Expect(imageUpdater.Status.ImagesManaged).To(BeNumerically(">=", int32(1)),
+					"should manage at least 1 image")
+				g.Expect(imageUpdater.Status.LastCheckedAt).ToNot(BeNil(),
+					"lastCheckedAt should be set after reconciliation")
+				g.Expect(imageUpdater.Status.LastUpdatedAt).ToNot(BeNil(),
+					"lastUpdatedAt should be set after a successful image update")
+				g.Expect(imageUpdater.Status.RecentUpdates).ToNot(BeEmpty(),
+					"recentUpdates should not be empty after a successful image update")
+				g.Expect(imageUpdater.Status.ObservedGeneration).To(BeNumerically(">", int64(0)),
+					"observedGeneration should be set")
+
+				readyCondition := apimeta.FindStatusCondition(imageUpdater.Status.Conditions, "Ready")
+				g.Expect(readyCondition).ToNot(BeNil(), "Ready condition should be present")
+				g.Expect(readyCondition.Status).To(Equal(metav1.ConditionTrue),
+					"Ready condition should be True")
+
+				errorCondition := apimeta.FindStatusCondition(imageUpdater.Status.Conditions, "Error")
+				g.Expect(errorCondition).ToNot(BeNil(), "Error condition should be present")
+				g.Expect(errorCondition.Status).To(Equal(metav1.ConditionFalse),
+					"Error condition should be False for successful reconciliation")
+			}, "3m", "5s").Should(Succeed())
 		})
 	})
 })
