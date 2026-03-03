@@ -3402,6 +3402,133 @@ kustomize:
 		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(yamlOutput)),
 			"Output should be valid Kustomize override YAML with updated image")
 	})
+
+	t.Run("Empty target tag should not override existing helm tag", func(t *testing.T) {
+		app := v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name: "testapp",
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: &v1alpha1.ApplicationSource{
+					RepoURL:        "https://example.com/example",
+					TargetRevision: "main",
+					Helm: &v1alpha1.ApplicationSourceHelm{
+						Parameters: []v1alpha1.HelmParameter{
+							{
+								Name:        "image.name",
+								Value:       "nginx",
+								ForceString: true,
+							},
+							{
+								Name:        "image.tag",
+								Value:       "",
+								ForceString: true,
+							},
+						},
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypeHelm,
+				Summary: v1alpha1.ApplicationSummary{
+					Images: []string{
+						"nginx:",
+					},
+				},
+			},
+		}
+
+		originalData := []byte(`
+image.name: nginx
+image.tag: v1.0.0
+replicas: 1
+`)
+		im := NewImage(
+			image.NewFromIdentifier("nginx"))
+		im.HelmImageName = "image.name"
+		im.HelmImageTag = "image.tag"
+		applicationImages := &ApplicationImages{
+			Application: app,
+			Images:      ImageList{im},
+			WriteBackConfig: &WriteBackConfig{
+				Target: "./test-values.yaml",
+			},
+		}
+
+		override, err := marshalParamsOverride(context.Background(), applicationImages, originalData)
+		require.NoError(t, err)
+		assert.NotEmpty(t, override)
+
+		var out map[string]interface{}
+		err = yaml.Unmarshal(override, &out)
+		require.NoError(t, err)
+
+		val, ok := out["image.tag"]
+		require.True(t, ok, "expected key %s to still exist", "image.tag")
+		assert.Equal(t, "v1.0.0", val)
+	})
+
+	t.Run("Empty target tag should not override a non existing helm tag", func(t *testing.T) {
+		app := v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name: "testapp",
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: &v1alpha1.ApplicationSource{
+					RepoURL:        "https://example.com/example",
+					TargetRevision: "main",
+					Helm: &v1alpha1.ApplicationSourceHelm{
+						Parameters: []v1alpha1.HelmParameter{
+							{
+								Name:        "image.name",
+								Value:       "nginx",
+								ForceString: true,
+							},
+							{
+								Name:        "image.tag",
+								Value:       "",
+								ForceString: true,
+							},
+						},
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypeHelm,
+				Summary: v1alpha1.ApplicationSummary{
+					Images: []string{
+						"nginx:",
+					},
+				},
+			},
+		}
+
+		originalData := []byte(`
+image.name: nginx
+replicas: 1
+`)
+		im := NewImage(
+			image.NewFromIdentifier("nginx"))
+		im.HelmImageName = "image.name"
+		im.HelmImageTag = "image.tag"
+		applicationImages := &ApplicationImages{
+			Application: app,
+			Images:      ImageList{im},
+			WriteBackConfig: &WriteBackConfig{
+				Target: "./test-values.yaml",
+			},
+		}
+
+		override, err := marshalParamsOverride(context.Background(), applicationImages, originalData)
+		require.NoError(t, err)
+		assert.NotEmpty(t, override)
+
+		var out map[string]interface{}
+		err = yaml.Unmarshal(override, &out)
+		require.NoError(t, err)
+		_, ok := out["image.tag"]
+		require.False(t, ok, "expected key %s to be absent", "image.tag")
+	})
 }
 
 func Test_GetHelmValue(t *testing.T) {
