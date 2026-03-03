@@ -84,6 +84,10 @@ RBAC authorization on Application resources etc. are fully supported.
 * Ability to perform parallel update of applications
 * Webhook server to receive registry events and trigger immediate image updates
   for supported registries (Docker Hub, GitHub Container Registry, Quay, Harbor)
+* CR status subresource with standard Kubernetes conditions (`Ready`,
+  `Reconciling`, `Error`), matched application and image counts, and a list
+  of recent image updates (see
+  [Monitoring status](./configuration/applications.md#status))
 
 ## Limitations
 

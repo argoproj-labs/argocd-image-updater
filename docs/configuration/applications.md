@@ -405,3 +405,101 @@ This configuration:
 For more details on configuring images and update strategies, see the
 [Images Configuration](images.md) and [Update Strategies](../basics/update-strategies.md)
 documentation.
+
+## <a name="status"></a>Monitoring status
+
+The `ImageUpdater` CR exposes a `status` subresource that reflects the observed
+state of each resource. You can inspect it with:
+
+```bash
+kubectl get imageupdater -n argocd
+```
+
+The default output includes printer columns for quick visibility:
+
+```text
+NAME                 APPS   IMAGES   LAST CHECKED             READY
+production-updater   7      3        2026-03-02T22:10:00Z     True
+```
+
+For the full status, use:
+
+```bash
+kubectl get imageupdater production-updater -n argocd -o yaml
+```
+
+### Status fields
+
+| Field | Type | Description                                                                                       |
+|-------|------|---------------------------------------------------------------------------------------------------|
+| `observedGeneration` | int64 | The most recent `.metadata.generation` observed by the controller.                                |
+| `lastCheckedAt` | timestamp | When the controller last checked for image updates.                                               |
+| `lastUpdatedAt` | timestamp | When the controller last performed an image update. Only set when at least one image was updated. |
+| `applicationsMatched` | int32 | Number of Argo CD applications matched by this CR's selectors.                                    |
+| `imagesManaged` | int32 | Number of images eligible for update checking.                                                    |
+| `recentUpdates` | list | Image updates performed during the last update cycle (see below).                                 |
+| `conditions` | list | Standard Kubernetes conditions (see below).                                                       |
+
+### Recent updates
+
+The `recentUpdates` list records each image that was updated during the most
+recent update cycle. Each entry contains:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `alias` | string | The alias of the image configuration that was updated. |
+| `image` | string | The full image reference. |
+| `newVersion` | string | The new tag or digest the image was updated to. |
+| `applicationsUpdated` | int32 | Number of applications in which this image was updated. |
+| `updatedAt` | timestamp | When the update was applied. |
+| `message` | string | Human-readable description of the update action. |
+
+### Conditions
+
+The controller maintains three condition types following standard
+[Kubernetes API conventions](https://github.com/kubernetes/community/blob/master/contributors/devel/sig-architecture/api-conventions.md#typical-status-properties):
+
+| Condition | Meaning when `True` | Meaning when `False` |
+|-----------|-------------------|---------------------|
+| `Ready` | Last reconciliation completed successfully. | Last reconciliation failed entirely. |
+| `Reconciling` | An image update check is currently in progress. | Controller is idle, awaiting the next cycle. |
+| `Error` | Errors occurred during the last reconciliation. | No errors during the last reconciliation. |
+
+!!!note "Ready with partial errors"
+    When some applications succeed and others fail, `Ready` is `True` with
+    reason `ReconcileCompletedWithErrors`, while `Error` is also `True` with
+    reason `PartialErrors`. Check the condition messages for details.
+
+### Example status
+
+```yaml
+status:
+  observedGeneration: 5
+  lastCheckedAt: "2026-03-02T22:10:00Z"
+  lastUpdatedAt: "2026-03-02T22:12:35Z"
+  applicationsMatched: 7
+  imagesManaged: 3
+  recentUpdates:
+    - alias: "frontend-image"
+      image: "myregistry.com/myorg/frontend:v1.2.3"
+      newVersion: "v1.2.4"
+      applicationsUpdated: 2
+      updatedAt: "2026-03-02T22:12:35Z"
+      message: "Updated to latest patch via semver."
+  conditions:
+    - type: "Ready"
+      status: "True"
+      lastTransitionTime: "2026-03-02T22:10:00Z"
+      reason: "ReconcileSucceeded"
+      message: "Reconciled 7 applications, 2 images updated."
+    - type: "Reconciling"
+      status: "False"
+      lastTransitionTime: "2026-03-02T22:10:00Z"
+      reason: "Idle"
+      message: "Last check completed. Awaiting next cycle."
+    - type: "Error"
+      status: "False"
+      lastTransitionTime: "2026-03-02T22:10:00Z"
+      reason: "NoErrors"
+      message: "No errors during last reconciliation."
+```
