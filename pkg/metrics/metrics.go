@@ -145,16 +145,6 @@ func (iucm *ImageUpdaterCRMetrics) SetNumberOfApplications(name, namespace strin
 	iucm.ApplicationsTotal.WithLabelValues(name, namespace).Set(float64(num))
 }
 
-// RemoveNumberOfApplications removes the applications-watched gauge for a given ImageUpdater CR.
-func (iucm *ImageUpdaterCRMetrics) RemoveNumberOfApplications(name, namespace string) {
-	iucm.ApplicationsTotal.DeleteLabelValues(name, namespace)
-}
-
-// ResetApplicationsTotal resets the applications-watched gauge (all CRs). Used in tests.
-func (iucm *ImageUpdaterCRMetrics) ResetApplicationsTotal() {
-	iucm.ApplicationsTotal.Reset()
-}
-
 // SetNumberOfImagesWatched sets the total number of currently watched images for the given ImageUpdater CR.
 func (iucm *ImageUpdaterCRMetrics) SetNumberOfImagesWatched(name, namespace string, num int) {
 	iucm.ImagesWatchedTotal.WithLabelValues(name, namespace).Set(float64(num))

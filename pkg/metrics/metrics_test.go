@@ -93,29 +93,6 @@ func TestMetricsOperations(t *testing.T) {
 }
 
 func TestImageUpdaterCRMetricsRemovals(t *testing.T) {
-	t.Run("RemoveNumberOfApplications", func(t *testing.T) {
-		crmetrics.Registry = prometheus.NewRegistry()
-		apm := NewImageUpdaterCRMetrics()
-		apm.SetNumberOfApplications("cr1", "ns1", 5)
-		apm.SetNumberOfApplications("cr2", "ns2", 10)
-		assert.Equal(t, 2, testutil.CollectAndCount(apm.ApplicationsTotal))
-
-		apm.RemoveNumberOfApplications("cr1", "ns1")
-		assert.Equal(t, 1, testutil.CollectAndCount(apm.ApplicationsTotal))
-		assert.Equal(t, float64(10), testutil.ToFloat64(apm.ApplicationsTotal.WithLabelValues("cr2", "ns2")))
-	})
-
-	t.Run("ResetApplicationsTotal", func(t *testing.T) {
-		crmetrics.Registry = prometheus.NewRegistry()
-		apm := NewImageUpdaterCRMetrics()
-		apm.SetNumberOfApplications("cr1", "ns1", 5)
-		apm.SetNumberOfApplications("cr2", "ns2", 10)
-		assert.Equal(t, 2, testutil.CollectAndCount(apm.ApplicationsTotal))
-
-		apm.ResetApplicationsTotal()
-		assert.Equal(t, 0, testutil.CollectAndCount(apm.ApplicationsTotal))
-	})
-
 	t.Run("RemoveImageUpdaterMetrics", func(t *testing.T) {
 		crmetrics.Registry = prometheus.NewRegistry()
 		apm := NewImageUpdaterCRMetrics()
