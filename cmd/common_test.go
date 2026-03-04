@@ -240,7 +240,7 @@ func TestSetupCommon(t *testing.T) {
 		err := callSetupCommonWithMocks(t, cfg, logr.Discard(), "", kubeconfigFile)
 		require.NoError(t, err)
 		assert.NotNil(t, metrics.Endpoint())
-		assert.NotNil(t, metrics.Applications())
+		assert.NotNil(t, metrics.ImageUpdaterCR())
 		assert.NotNil(t, metrics.Clients())
 		assert.NotNil(t, cfg.KubeClient)
 		assert.IsType(t, &aiukube.ImageUpdaterKubernetesClient{}, cfg.KubeClient)

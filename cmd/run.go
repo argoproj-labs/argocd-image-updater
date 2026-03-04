@@ -193,6 +193,9 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 			// Create stop channel for run-once mode
 			stopChan := make(chan struct{})
 
+			// Controller mode: Reconcile runs and finalizers clean up metrics on CR delete.
+			cfg.EnableCRMetrics = true
+
 			reconciler := &controller.ImageUpdaterReconciler{
 				Client:                  mgr.GetClient(),
 				Scheme:                  mgr.GetScheme(),

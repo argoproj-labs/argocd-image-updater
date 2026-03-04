@@ -175,10 +175,49 @@ metrics. This feature is disabled by default but can be enabled using the
 `--metrics-bind-address` flag to specify a listening address (e.g., `:8080`).
 Metrics are then served on the `/metrics` path.
 
-The following metric is currently available and populated with data:
+CR-scoped metrics are labeled by `image_updater_cr_name` and
+`image_updater_cr_namespace`. They are populated only when the controller runs
+with polling (default `run` command); in webhook-only mode (`webhook` command)
+they are disabled to avoid orphaned series when CRs are deleted.
+
+**Available metrics**
 
 *   `argocd_image_updater_applications_watched_total` - A gauge that shows the
     number of applications watched per `ImageUpdater` CR.
+*   `argocd_image_updater_images_watched_total` - A gauge that shows the number
+    of images watched (considered for update) per `ImageUpdater` CR.
+*   `argocd_image_updater_images_updated_total` - A counter of the number of
+    images updated per `ImageUpdater` CR.
+*   `argocd_image_updater_images_errors_total` - A counter of the number of
+    errors during image updates per `ImageUpdater` CR.
+
+**Sample output on the `/metrics` endpoint**
+
+```text
+# HELP argocd_image_updater_applications_watched_total The total number of applications watched by Argo CD Image Updater CR
+# TYPE argocd_image_updater_applications_watched_total gauge
+argocd_image_updater_applications_watched_total{image_updater_cr_name="dev",image_updater_cr_namespace="argocd"} 1
+argocd_image_updater_applications_watched_total{image_updater_cr_name="prod",image_updater_cr_namespace="argocd"} 2
+
+# HELP argocd_image_updater_images_watched_total Number of images watched by Argo CD Image Updater CR
+# TYPE argocd_image_updater_images_watched_total gauge
+argocd_image_updater_images_watched_total{image_updater_cr_name="dev",image_updater_cr_namespace="argocd"} 2
+argocd_image_updater_images_watched_total{image_updater_cr_name="prod",image_updater_cr_namespace="argocd"} 1
+
+# HELP argocd_image_updater_images_updated_total Number of images updated by Argo CD Image Updater CR
+# TYPE argocd_image_updater_images_updated_total counter
+argocd_image_updater_images_updated_total{image_updater_cr_name="dev",image_updater_cr_namespace="argocd"} 2
+argocd_image_updater_images_updated_total{image_updater_cr_name="prod",image_updater_cr_namespace="argocd"} 5
+
+# HELP argocd_image_updater_images_errors_total Number of errors reported by Argo CD Image Updater CR
+# TYPE argocd_image_updater_images_errors_total counter
+argocd_image_updater_images_errors_total{image_updater_cr_name="dev",image_updater_cr_namespace="argocd"} 0
+argocd_image_updater_images_errors_total{image_updater_cr_name="prod",image_updater_cr_namespace="argocd"} 0
+```
+
+Here, two ImageUpdater CRs in the `argocd` namespace are tracked. Gauges
+reflect the current state of the last run; counters are cumulative since
+controller start.
 
 !!! note "Other Defined Metrics"
     The metrics listed below are also defined within the application. However,
@@ -186,9 +225,6 @@ The following metric is currently available and populated with data:
     temporarily disabled. They may not appear on the `/metrics` endpoint or may
     always report a value of `0`.
 
-    *   `argocd_image_updater_images_watched_total`
-    *   `argocd_image_updater_images_updated_total`
-    *   `argocd_image_updater_images_errors_total`
     *   `argocd_image_updater_k8s_api_requests_total`
     *   `argocd_image_updater_k8s_api_errors_total`
     *   `argocd_image_updater_registry_requests_total`

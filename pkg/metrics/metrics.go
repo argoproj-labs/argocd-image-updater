@@ -10,9 +10,9 @@ import (
 )
 
 type Metrics struct {
-	Endpoint     *EndpointMetrics
-	Applications *ApplicationMetrics
-	Clients      *ClientMetrics
+	Endpoint       *EndpointMetrics
+	ImageUpdaterCR *ImageUpdaterCRMetrics
+	Clients        *ClientMetrics
 }
 
 var (
@@ -26,12 +26,12 @@ type EndpointMetrics struct {
 	requestsFailed *prometheus.CounterVec
 }
 
-// ApplicationMetrics stores metrics for applications
-type ApplicationMetrics struct {
+// ImageUpdaterCRMetrics stores per–ImageUpdater-CR metrics (applications watched, images watched/updated/errors).
+type ImageUpdaterCRMetrics struct {
 	ApplicationsTotal        *prometheus.GaugeVec
-	imagesWatchedTotal       *prometheus.GaugeVec
-	imagesUpdatedTotal       *prometheus.CounterVec
-	imagesUpdatedErrorsTotal *prometheus.CounterVec
+	ImagesWatchedTotal       *prometheus.GaugeVec
+	ImagesUpdatedTotal       *prometheus.CounterVec
+	ImagesUpdatedErrorsTotal *prometheus.CounterVec
 }
 
 // ClientMetrics stores metrics for K8s client
@@ -56,29 +56,29 @@ func NewEndpointMetrics() *EndpointMetrics {
 	return metrics
 }
 
-// NewApplicationsMetrics returns a new application metrics object
-func NewApplicationsMetrics() *ApplicationMetrics {
-	metrics := &ApplicationMetrics{}
+// NewImageUpdaterCRMetrics returns a new ImageUpdater CR metrics object.
+func NewImageUpdaterCRMetrics() *ImageUpdaterCRMetrics {
+	metrics := &ImageUpdaterCRMetrics{}
 
 	metrics.ApplicationsTotal = promauto.With(crmetrics.Registry).NewGaugeVec(prometheus.GaugeOpts{
 		Name: "argocd_image_updater_applications_watched_total",
 		Help: "The total number of applications watched by Argo CD Image Updater CR",
 	}, []string{"image_updater_cr_name", "image_updater_cr_namespace"})
 
-	metrics.imagesWatchedTotal = promauto.With(crmetrics.Registry).NewGaugeVec(prometheus.GaugeOpts{
+	metrics.ImagesWatchedTotal = promauto.With(crmetrics.Registry).NewGaugeVec(prometheus.GaugeOpts{
 		Name: "argocd_image_updater_images_watched_total",
-		Help: "Number of images watched by Argo CD Image Updater",
-	}, []string{"application"})
+		Help: "Number of images watched by Argo CD Image Updater CR",
+	}, []string{"image_updater_cr_name", "image_updater_cr_namespace"})
 
-	metrics.imagesUpdatedTotal = promauto.With(crmetrics.Registry).NewCounterVec(prometheus.CounterOpts{
+	metrics.ImagesUpdatedTotal = promauto.With(crmetrics.Registry).NewCounterVec(prometheus.CounterOpts{
 		Name: "argocd_image_updater_images_updated_total",
-		Help: "Number of images updates by Argo CD Image Updater",
-	}, []string{"application"})
+		Help: "Number of images updated by Argo CD Image Updater CR",
+	}, []string{"image_updater_cr_name", "image_updater_cr_namespace"})
 
-	metrics.imagesUpdatedErrorsTotal = promauto.With(crmetrics.Registry).NewCounterVec(prometheus.CounterOpts{
+	metrics.ImagesUpdatedErrorsTotal = promauto.With(crmetrics.Registry).NewCounterVec(prometheus.CounterOpts{
 		Name: "argocd_image_updater_images_errors_total",
-		Help: "Number of errors reported by Argo CD Image Updater",
-	}, []string{"application"})
+		Help: "Number of errors reported by Argo CD Image Updater CR",
+	}, []string{"image_updater_cr_name", "image_updater_cr_namespace"})
 
 	return metrics
 }
@@ -102,9 +102,9 @@ func NewClientMetrics() *ClientMetrics {
 
 func NewMetrics() *Metrics {
 	return &Metrics{
-		Endpoint:     NewEndpointMetrics(),
-		Applications: NewApplicationsMetrics(),
-		Clients:      NewClientMetrics(),
+		Endpoint:       NewEndpointMetrics(),
+		ImageUpdaterCR: NewImageUpdaterCRMetrics(),
+		Clients:        NewClientMetrics(),
 	}
 }
 
@@ -116,12 +116,12 @@ func Endpoint() *EndpointMetrics {
 	return defaultMetrics.Endpoint
 }
 
-// Applications returns the global ApplicationMetrics object
-func Applications() *ApplicationMetrics {
+// ImageUpdaterCR returns the global ImageUpdater CR metrics object.
+func ImageUpdaterCR() *ImageUpdaterCRMetrics {
 	if defaultMetrics == nil {
 		return nil
 	}
-	return defaultMetrics.Applications
+	return defaultMetrics.ImageUpdaterCR
 }
 
 // Clients returns the global ClientMetrics object
@@ -140,41 +140,32 @@ func (epm *EndpointMetrics) IncreaseRequest(registryURL string, isFailed bool) {
 	}
 }
 
-// SetNumberOfApplications sets the total number of currently watched applications
-func (apm *ApplicationMetrics) SetNumberOfApplications(name, namespace string, num int) {
-	apm.ApplicationsTotal.WithLabelValues(name, namespace).Set(float64(num))
+// SetNumberOfApplications sets the total number of currently watched applications for the given ImageUpdater CR.
+func (iucm *ImageUpdaterCRMetrics) SetNumberOfApplications(name, namespace string, num int) {
+	iucm.ApplicationsTotal.WithLabelValues(name, namespace).Set(float64(num))
 }
 
-// RemoveNumberOfApplications removes the application gauge for a given CR
-func (apm *ApplicationMetrics) RemoveNumberOfApplications(name, namespace string) {
-	apm.ApplicationsTotal.DeleteLabelValues(name, namespace)
+// SetNumberOfImagesWatched sets the total number of currently watched images for the given ImageUpdater CR.
+func (iucm *ImageUpdaterCRMetrics) SetNumberOfImagesWatched(name, namespace string, num int) {
+	iucm.ImagesWatchedTotal.WithLabelValues(name, namespace).Set(float64(num))
 }
 
-// ResetApplicationsTotal resets the total number of applications to handle deletion
-func (apm *ApplicationMetrics) ResetApplicationsTotal() {
-	apm.ApplicationsTotal.Reset()
+// IncreaseImageUpdate increases the number of image updates for the given ImageUpdater CR.
+func (iucm *ImageUpdaterCRMetrics) IncreaseImageUpdate(name, namespace string, by int) {
+	iucm.ImagesUpdatedTotal.WithLabelValues(name, namespace).Add(float64(by))
 }
 
-// SetNumberOfImagesWatched sets the total number of currently watched images for given application
-func (apm *ApplicationMetrics) SetNumberOfImagesWatched(application string, num int) {
-	apm.imagesWatchedTotal.WithLabelValues(application).Set(float64(num))
+// IncreaseUpdateErrors increases the number of errors for the given ImageUpdater CR during update.
+func (iucm *ImageUpdaterCRMetrics) IncreaseUpdateErrors(name, namespace string, by int) {
+	iucm.ImagesUpdatedErrorsTotal.WithLabelValues(name, namespace).Add(float64(by))
 }
 
-// IncreaseImageUpdate increases the number of image updates for given application
-func (apm *ApplicationMetrics) IncreaseImageUpdate(application string, by int) {
-	apm.imagesUpdatedTotal.WithLabelValues(application).Add(float64(by))
-}
-
-// IncreaseUpdateErrors increases the number of errors for given application occurred during update process
-func (apm *ApplicationMetrics) IncreaseUpdateErrors(application string, by int) {
-	apm.imagesUpdatedErrorsTotal.WithLabelValues(application).Add(float64(by))
-}
-
-// RemoveNumberOfImages removes the images gauge for a given CR
-func (apm *ApplicationMetrics) RemoveNumberOfImages(application string) {
-	apm.imagesWatchedTotal.DeleteLabelValues(application)
-	apm.imagesUpdatedTotal.DeleteLabelValues(application)
-	apm.imagesUpdatedErrorsTotal.DeleteLabelValues(application)
+// RemoveImageUpdaterMetrics removes all metrics for a given ImageUpdater CR (e.g. on CR deletion).
+func (iucm *ImageUpdaterCRMetrics) RemoveImageUpdaterMetrics(name, namespace string) {
+	iucm.ApplicationsTotal.DeleteLabelValues(name, namespace)
+	iucm.ImagesWatchedTotal.DeleteLabelValues(name, namespace)
+	iucm.ImagesUpdatedTotal.DeleteLabelValues(name, namespace)
+	iucm.ImagesUpdatedErrorsTotal.DeleteLabelValues(name, namespace)
 }
 
 // IncreaseK8sClientRequest increases the number of K8s API requests
