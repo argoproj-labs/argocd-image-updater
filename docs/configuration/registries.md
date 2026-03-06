@@ -123,7 +123,7 @@ properties are optional, unless otherwise stated:
   * `credentials` - A string describing the credential source to use when
     accessing this registry and no other credentials are configured on the
     image level. For more information, refer to
-    [Authenticating to container registries](../../basics/authentication/#auth-registries).
+    [Authenticating to container registries](../basics/authentication.md#auth-registries).
 
     Default value: _none_
 

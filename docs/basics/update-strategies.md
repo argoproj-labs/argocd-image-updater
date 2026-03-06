@@ -35,7 +35,7 @@ The following update strategies are currently supported:
 
 Some of the strategies will require additional configuration, or can be tweaked
 with additional parameters. Please have a look at the
-[image configuration](../../configuration/images)
+[image configuration](../configuration/images.md)
 documentation for more details.
 
 ## <a name="mutable-immutable"></a>Mutable vs immutable tags
@@ -210,7 +210,7 @@ images:
 
 This would allow for considering all tags found but `latest` and `master`. You
 can read more about filtering tags
-[here](../../configuration/images/#filtering-tags).
+[here](../configuration/images.md#filtering-tags).
 
 ### <a name="strategy-digest"></a>digest - Update to the most recent pushed version of a given tag
 

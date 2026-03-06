@@ -79,7 +79,7 @@ RBAC authorization on Application resources etc. are fully supported.
   [pull secrets](./basics/authentication.md#auth-registries) (using generic K8s
   secrets, K8s pull secrets, environment variables or external scripts)
 * Runs in a 
-  [Kubernetes cluster](./install/installation.md#install-kubernetes) or can be
+  [Kubernetes cluster](./install/installation.md) or can be
   used stand-alone from the command line
 * Ability to perform parallel update of applications
 * Webhook server to receive registry events and trigger immediate image updates
