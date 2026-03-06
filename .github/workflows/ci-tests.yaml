@@ -261,42 +261,42 @@ jobs:
           kubectl get deployment -n argocd-operator-system -o yaml >> /tmp/e2e-operator-run.log 2>&1 || true
 
       - name: Upload operator logs
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: e2e-operator-run-${{ matrix.k3s-version }}.log
           path: /tmp/e2e-operator-run.log
         if: ${{ failure() }}
 
       - name: Upload ginkgo test logs
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: e2e-test-${{ matrix.k3s-version }}.log
           path: /tmp/e2e-test-ginkgo.log
         if: ${{ failure() }}
 
       - name: Upload application controller logs
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: e2e-application-controller-${{ matrix.k3s-version }}.log
           path: /tmp/e2e-application-controller.log
         if: ${{ failure() }}
 
       - name: Upload server logs
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: e2e-server-${{ matrix.k3s-version }}.log
           path: /tmp/e2e-server.log
         if: ${{ failure() }}
 
       - name: Upload image updater logs
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: e2e-image-updater-${{ matrix.k3s-version }}.log
           path: /tmp/e2e-image-updater.log
         if: ${{ failure() }}
 
       - name: Upload pod descriptions
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: e2e-pods-${{ matrix.k3s-version }}.log
           path: /tmp/pods.log
