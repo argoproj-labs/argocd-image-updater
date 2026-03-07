@@ -22,6 +22,8 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
+	"go.uber.org/ratelimit"
+
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/image"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/options"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/registry/mocks"
@@ -43,6 +45,111 @@ func TestBasic(t *testing.T) {
 	if password != "testpass" {
 		t.Errorf("Expected password to be 'testpass', got '%s'", password)
 	}
+}
+
+// TestNewRepository_ACR_Actions tests that ACR endpoints get additional
+// metadata_read and content_read actions for OAuth2 Bearer token requests,
+// while non-ACR endpoints only request the "pull" action.
+func TestNewRepository_ACR_Actions(t *testing.T) {
+
+	t.Run("ACR endpoint includes metadata_read and content_read actions", func(t *testing.T) {
+		acrURLs := []string{
+			"https://myregistry.azurecr.io",
+			"https://test.azurecr.io",
+			"https://prod-registry.azurecr.io",
+			"https://dev.azurecr.io/v2",
+		}
+		for _, registryAPI := range acrURLs {
+			actions := getTokenActions(registryAPI)
+			assert.Equal(t, []string{"pull", "metadata_read", "content_read"}, actions,
+				"ACR endpoint %s should have pull, metadata_read, content_read actions", registryAPI)
+		}
+	})
+
+	t.Run("Non-ACR endpoint only includes pull action", func(t *testing.T) {
+		nonACRURLs := []string{
+			"https://registry-1.docker.io",
+			"https://ghcr.io",
+			"https://quay.io",
+			"https://gcr.io",
+			"https://harbor.example.com",
+			"https://registry.gitlab.com",
+		}
+		for _, registryAPI := range nonACRURLs {
+			actions := getTokenActions(registryAPI)
+			assert.Equal(t, []string{"pull"}, actions,
+				"Non-ACR endpoint %s should only have pull action", registryAPI)
+		}
+	})
+
+	t.Run("Non-ACR endpoint triggers token request with only pull action", func(t *testing.T) {
+		// Mock registry server that simulates /v2/ ping with Bearer challenge
+		var capturedTokenRequest *http.Request
+		var serverURL string
+
+		mux := http.NewServeMux()
+		mux.HandleFunc("/v2/", func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("WWW-Authenticate",
+				fmt.Sprintf(`Bearer realm="%s/oauth2/token",service="myacr.azurecr.io"`, serverURL))
+			w.WriteHeader(http.StatusUnauthorized)
+		})
+		mux.HandleFunc("/oauth2/token", func(w http.ResponseWriter, r *http.Request) {
+			capturedTokenRequest = r
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			fmt.Fprint(w, `{"access_token":"mock-token","expires_in":300}`)
+		})
+
+		mux.HandleFunc("/v2/test/myimage/tags/list", func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+			fmt.Fprint(w, `{"name":"test/myimage","tags":["latest"]}`)
+		})
+		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		})
+
+		mockServer := httptest.NewServer(mux)
+		serverURL = mockServer.URL
+		defer mockServer.Close()
+
+		ep := &RegistryEndpoint{
+			RegistryAPI: mockServer.URL,
+			Limiter:     ratelimit.New(100),
+		}
+		client, err := NewClient(ep, "testuser", "testpass")
+		require.NoError(t, err)
+		err = client.NewRepository("test/myimage")
+		require.NoError(t, err)
+
+		_, _ = client.Tags(context.Background())
+
+		require.NotNil(t, capturedTokenRequest, "Token request should have been captured")
+
+		scope := capturedTokenRequest.URL.Query().Get("scope")
+		assert.Contains(t, scope, "pull")
+		assert.NotContains(t, scope, "metadata_read", "Non-ACR endpoint should not request metadata_read")
+		assert.NotContains(t, scope, "content_read", "Non-ACR endpoint should not request content_read")
+	})
+
+	t.Run("Non-ACR endpoint NewRepository with mock server - only pull", func(t *testing.T) {
+		mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/v2/" {
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+			w.WriteHeader(http.StatusOK)
+		}))
+		defer mockServer.Close()
+
+		ep := &RegistryEndpoint{
+			RegistryAPI: mockServer.URL,
+			Limiter:     ratelimit.New(100),
+		}
+		client, err := NewClient(ep, "user", "pass")
+		require.NoError(t, err)
+		err = client.NewRepository("library/nginx")
+		require.NoError(t, err)
+	})
 }
 
 func TestNewRepository(t *testing.T) {
