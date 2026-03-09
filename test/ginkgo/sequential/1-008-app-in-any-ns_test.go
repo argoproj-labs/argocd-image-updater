@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package parallel
+package sequential
 
 import (
 	"context"
@@ -48,12 +48,14 @@ var _ = Describe("ArgoCD Image Updater Parallel E2E Tests", func() {
 	Context("1-008-app-in-any-ns_test", func() {
 
 		var (
-			k8sClient    client.Client
-			ctx          context.Context
-			ns           *corev1.Namespace
-			cleanupFunc  func()
-			imageUpdater *imageUpdaterApi.ImageUpdater
-			argoCD       *argov1beta1api.ArgoCD
+			k8sClient      client.Client
+			ctx            context.Context
+			ns             *corev1.Namespace
+			nsDev          *corev1.Namespace
+			cleanupFunc    func()
+			cleanupFuncDev func()
+			imageUpdater   *imageUpdaterApi.ImageUpdater
+			argoCD         *argov1beta1api.ArgoCD
 		)
 
 		BeforeEach(func() {
@@ -81,6 +83,10 @@ var _ = Describe("ArgoCD Image Updater Parallel E2E Tests", func() {
 				cleanupFunc()
 			}
 
+			if cleanupFuncDev != nil {
+				cleanupFuncDev()
+			}
+
 			fixture.OutputDebugOnFail(ns)
 
 		})
@@ -89,7 +95,7 @@ var _ = Describe("ArgoCD Image Updater Parallel E2E Tests", func() {
 
 			By("creating namespaces")
 			ns, cleanupFunc = fixture.CreateRandomE2ETestNamespaceWithCleanupFunc()
-			nsDev := fixture.CreateNamespace("dev")
+			nsDev, cleanupFuncDev = fixture.CreateRandomE2ETestNamespaceWithCleanupFunc()
 
 			By("updating argocd-operator deployment with ARGOCD_CLUSTER_CONFIG_NAMESPACES including random test namespace and restarting")
 			operatorDeploy := &appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: "argocd-operator-controller-manager", Namespace: "argocd-operator-system"}}
