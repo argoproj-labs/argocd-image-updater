@@ -59,7 +59,7 @@ var _ = Describe("ArgoCD Image Updater Sequential E2E Tests", func() {
 		)
 
 		BeforeEach(func() {
-			fixture.EnsureParallelCleanSlate()
+			fixture.EnsureSequentialCleanSlate()
 
 			k8sClient, _ = fixtureUtils.GetE2ETestKubeClient()
 			ctx = context.Background()
@@ -68,7 +68,23 @@ var _ = Describe("ArgoCD Image Updater Sequential E2E Tests", func() {
 		AfterEach(func() {
 			// Cleanup is best-effort. Issue deletes and give some time for controllers
 			// to process, but don't fail the test if cleanup takes too long.
-
+			By("restoring argocd-operator deployment ARGOCD_CLUSTER_CONFIG_NAMESPACES to default")
+			operatorDeploy := &appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: "argocd-operator-controller-manager", Namespace: "argocd-operator-system"}}
+			if err := k8sClient.Get(ctx, client.ObjectKeyFromObject(operatorDeploy), operatorDeploy); err == nil {
+				for i := range operatorDeploy.Spec.Template.Spec.Containers {
+					if operatorDeploy.Spec.Template.Spec.Containers[i].Name == "manager" {
+						for j := range operatorDeploy.Spec.Template.Spec.Containers[i].Env {
+							if operatorDeploy.Spec.Template.Spec.Containers[i].Env[j].Name == "ARGOCD_CLUSTER_CONFIG_NAMESPACES" {
+								operatorDeploy.Spec.Template.Spec.Containers[i].Env[j].Value = "argocd-operator-system"
+								break
+							}
+						}
+						break
+					}
+				}
+				operatorDeploy.Spec.Template.ObjectMeta.Annotations["kubectl.kubernetes.io/restartedAt"] = time.Now().Format(time.RFC3339)
+				_ = k8sClient.Update(ctx, operatorDeploy)
+			}
 			if imageUpdater != nil {
 				By("deleting ImageUpdater CR")
 				_ = k8sClient.Delete(ctx, imageUpdater)

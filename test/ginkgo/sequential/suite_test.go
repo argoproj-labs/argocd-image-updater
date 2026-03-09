@@ -27,8 +27,6 @@ import (
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
-
-	"github.com/argoproj-labs/argocd-image-updater/test/ginkgo/fixture"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -38,15 +36,13 @@ import (
 func TestSequentialSuite(t *testing.T) {
 
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "Sequential Test Suite")
+	RunSpecs(t, "Sequential Suite")
 }
 
 var _ = BeforeSuite(func() {
 	logf.SetLogger(zap.New(zap.WriteTo(GinkgoWriter), zap.UseDevMode(true)))
 
-	// Before the test suite starts, ensure that operator is restored to default state, and all previous parallel test resources are deleted
-	fixture.EnsureParallelCleanSlate()
 })
 
-// AfterSuite is intentionally empty - cleanup is handled per-test via deferred functions
-var _ = AfterSuite(func() {})
+var _ = AfterSuite(func() {
+})
