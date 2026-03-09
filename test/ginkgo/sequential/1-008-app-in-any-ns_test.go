@@ -43,7 +43,7 @@ import (
 	argov1beta1api "github.com/argoproj-labs/argocd-operator/api/v1beta1"
 )
 
-var _ = Describe("ArgoCD Image Updater Parallel E2E Tests", func() {
+var _ = Describe("ArgoCD Image Updater Sequential E2E Tests", func() {
 
 	Context("1-008-app-in-any-ns_test", func() {
 
@@ -124,13 +124,14 @@ var _ = Describe("ArgoCD Image Updater Parallel E2E Tests", func() {
 			Expect(k8sClient.Update(ctx, operatorDeploy)).To(Succeed())
 
 			By("waiting for argocd-operator to be ready after restart")
-			Eventually(func() int32 {
-				d := &appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: "argocd-operator-controller-manager", Namespace: "argocd-operator-system"}}
-				if err := k8sClient.Get(ctx, client.ObjectKeyFromObject(d), d); err != nil {
-					return 0
-				}
-				return d.Status.ReadyReplicas
-			}, "2m", "3s").Should(BeEquivalentTo(1))
+			Eventually(
+				&appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{
+					Name:      "argocd-operator-controller-manager",
+					Namespace: "argocd-operator-system",
+				}},
+				"2m",
+				"3s",
+			).Should(deplFixture.HaveReadyReplicas(1))
 
 			By("creating simple namespace-scoped Argo CD instance with image updater enabled")
 			argoCD = &argov1beta1api.ArgoCD{
