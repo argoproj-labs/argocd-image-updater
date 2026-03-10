@@ -104,7 +104,7 @@ var _ = Describe("ArgoCD Image Updater Sequential E2E Tests", func() {
 			}
 
 			fixture.OutputDebugOnFail(ns)
-
+			fixture.OutputDebugOnFail(nsDev)
 		})
 
 		It("ensures that Image Updater will update Argo CD Application in any namespace", func() {
