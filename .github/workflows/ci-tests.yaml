@@ -198,7 +198,7 @@ jobs:
           sudo mkdir -p "$HOME/.kube" && sudo chown -R runner "$HOME/.kube"
       - name: Deploy operator and run e2e tests
         env:
-          ARGOCD_CLUSTER_CONFIG_NAMESPACES: argocd-e2e-cluster-config
+          ARGOCD_CLUSTER_CONFIG_NAMESPACES: argocd-e2e-cluster-config, argocd-operator-system
           K3D_CLUSTER_NAME: k3s-default
           LOCAL: false
         run: |

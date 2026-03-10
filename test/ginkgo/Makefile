@@ -34,6 +34,8 @@ spec:
         env:
         - name: ARGOCD_IMAGE_UPDATER_IMAGE
           value: $(ARGOCD_IMAGE_UPDATER_IMAGE)
+        - name: ARGOCD_CLUSTER_CONFIG_NAMESPACES
+          value: argocd-operator-system
 endef
 export PATCH_TEMPLATE
 
@@ -124,6 +126,8 @@ test-e2e: ## Build local image updater, deploy operator, and run parallel e2e te
 	$(MAKE) create-local-container-registry
 	@echo "--- Running Parallel E2E tests ---"
 	$(MAKE) -C ../../ e2e-tests-parallel-ginkgo
+	@echo "--- Running Sequential E2E tests ---"
+	$(MAKE) -C ../../ e2e-tests-sequential-ginkgo
 ifeq ($(LOCAL),true)
 	@echo "--- Deleting k3d cluster ---"
 	$(MAKE) k3d-cluster-delete
