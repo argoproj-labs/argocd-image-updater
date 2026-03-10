@@ -178,7 +178,8 @@ kubectl -n argocd-image-updater create secret generic git-creds \
   --from-literal=githubAppID=12345 \
   --from-literal=githubAppInstallationID=67890 \
   --from-literal=githubAppPrivateKey='-----BEGIN RSA PRIVATE KEY-----PRIVATEKEYDATA-----END RSA PRIVATE KEY-----' \
-  --from-literal=githubAppEnterpriseBaseUrl='https://github.example.com/api/v3'
+  --from-literal=githubAppEnterpriseBaseUrl='https://github.example.com/api/v3' \
+  --from-literal=insecure='true'
 ```
 
 !!!warning "Breaking change: `insecure` default"
