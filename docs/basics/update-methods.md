@@ -161,6 +161,38 @@ kubectl -n argocd-image-updater create secret generic git-creds \
   --from-literal=githubAppPrivateKey='-----BEGIN RSA PRIVATE KEY-----PRIVATEKEYDATA-----END RSA PRIVATE KEY-----'
 ```
 
+The following optional fields are also supported for GitHub App secrets:
+
+| Secret Key | Description | Default |
+|---|---|---|
+| `githubAppEnterpriseBaseUrl` | GitHub Enterprise API base URL (e.g. `https://github.example.com/api/v3`) | empty (uses github.com) |
+| `tlsClientCertData` | PEM-encoded client certificate for mTLS | empty |
+| `tlsClientCertKey` | PEM-encoded client private key for mTLS | empty |
+| `insecure` | Skip TLS certificate verification (`"true"` or `"false"`) | `"false"` |
+| `proxy` | HTTP(S) proxy URL | empty |
+
+For example, to use a GitHub Enterprise instance:
+
+```bash
+kubectl -n argocd-image-updater create secret generic git-creds \
+  --from-literal=githubAppID=12345 \
+  --from-literal=githubAppInstallationID=67890 \
+  --from-literal=githubAppPrivateKey='-----BEGIN RSA PRIVATE KEY-----PRIVATEKEYDATA-----END RSA PRIVATE KEY-----' \
+  --from-literal=githubAppEnterpriseBaseUrl='https://github.example.com/api/v3'
+```
+
+!!!warning "Breaking change: `insecure` default"
+    In previous versions, TLS verification was always skipped (`insecure` was
+    hardcoded to `true`) when using secret-based GitHub App credentials. This
+    has been fixed to default to `false`, matching the behavior of repository
+    credentials configured through Argo CD settings.
+
+    If you use a self-signed certificate on your GitHub Enterprise instance and
+    have not set `insecure` in your secret, you must either:
+
+    * Add `insecure: "true"` to your secret, or
+    * Provide your CA certificate via `tlsClientCertData` and `tlsClientCertKey`
+
 If the repository is accessed using SSH, the secret must contain the field
 `sshPrivateKey`, which holds a SSH private key in OpenSSH-compatible PEM
 format. To create such a secret from an existing private key, you can use
