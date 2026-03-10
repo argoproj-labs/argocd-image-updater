@@ -187,11 +187,11 @@ kubectl -n argocd-image-updater create secret generic git-creds \
     has been fixed to default to `false`, matching the behavior of repository
     credentials configured through Argo CD settings.
 
-    If you use a self-signed certificate on your GitHub Enterprise instance and
-    have not set `insecure` in your secret, you must either:
+    If your GitHub Enterprise instance uses a self-signed or internal CA
+    certificate and you have not set `insecure` in your secret, you must either:
 
     * Add `insecure: "true"` to your secret, or
-    * Provide your CA certificate via `tlsClientCertData` and `tlsClientCertKey`
+    * Install your CA certificate in the container's trust store
 
 If the repository is accessed using SSH, the secret must contain the field
 `sshPrivateKey`, which holds a SSH private key in OpenSSH-compatible PEM
