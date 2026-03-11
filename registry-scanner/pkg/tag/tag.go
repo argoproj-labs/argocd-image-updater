@@ -12,12 +12,14 @@ import (
 	"github.com/Masterminds/semver/v3"
 )
 
-// ImageTag is a representation of an image tag with metadata
-// Use NewImageTag to initialize a new object.
+// ImageTag is a representation of an image tag with metadata.
+// Use NewImageTag or NewImageTagWithLabels to initialize a new object.
 type ImageTag struct {
 	TagName   string
 	TagDate   *time.Time
 	TagDigest string
+	// Labels contains the image labels extracted from the container image manifest.
+	Labels map[string]string
 }
 
 // ImageTagList is a collection of ImageTag objects.
@@ -31,17 +33,28 @@ type ImageTagList struct {
 type TagInfo struct {
 	CreatedAt time.Time
 	Digest    [32]byte
+	Labels    map[string]string
 }
 
 // SortableImageTagList is just that - a sortable list of ImageTag entries
 type SortableImageTagList []*ImageTag
 
-// NewImageTag initializes an ImageTag object and returns it
+// NewImageTag initializes an ImageTag object with an empty labels map and returns it.
+// For tags with labels, use NewImageTagWithLabels instead.
 func NewImageTag(tagName string, tagDate time.Time, tagDigest string) *ImageTag {
+	return NewImageTagWithLabels(tagName, tagDate, tagDigest, nil)
+}
+
+// NewImageTagWithLabels initializes an ImageTag object with the provided labels and returns it. If no labels are present, an empty labels map is created
+func NewImageTagWithLabels(tagName string, tagDate time.Time, tagDigest string, labels map[string]string) *ImageTag {
 	tag := &ImageTag{}
 	tag.TagName = tagName
 	tag.TagDate = &tagDate
 	tag.TagDigest = tagDigest
+	tag.Labels = make(map[string]string, len(labels))
+	for k, v := range labels {
+		tag.Labels[k] = v
+	}
 	return tag
 }
 
@@ -170,7 +183,8 @@ func (il *ImageTagList) SortBySemVer(ctx context.Context) SortableImageTagList {
 	}
 	sort.Sort(semverCollection(svl))
 	for _, svi := range svl {
-		sil = append(sil, NewImageTag(svi.Original(), *il.items[svi.Original()].TagDate, il.items[svi.Original()].TagDigest))
+		origTag := il.items[svi.Original()]
+		sil = append(sil, NewImageTagWithLabels(svi.Original(), *origTag.TagDate, origTag.TagDigest, origTag.Labels))
 	}
 	return sil
 }
