@@ -82,7 +82,7 @@ func TestNewRepository_ACR_Actions(t *testing.T) {
 		}
 	})
 
-	t.Run("Non-ACR endpoint triggers token request with only pull action", func(t *testing.T) {
+	t.Run("NewRepository with mock server validates non-ACR token scope", func(t *testing.T) {
 		// Mock registry server that simulates /v2/ ping with Bearer challenge
 		var capturedTokenRequest *http.Request
 		var serverURL string
@@ -90,7 +90,7 @@ func TestNewRepository_ACR_Actions(t *testing.T) {
 		mux := http.NewServeMux()
 		mux.HandleFunc("/v2/", func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("WWW-Authenticate",
-				fmt.Sprintf(`Bearer realm="%s/oauth2/token",service="myacr.azurecr.io"`, serverURL))
+				fmt.Sprintf(`Bearer realm="%s/oauth2/token",service="mock-registry"`, serverURL))
 			w.WriteHeader(http.StatusUnauthorized)
 		})
 		mux.HandleFunc("/oauth2/token", func(w http.ResponseWriter, r *http.Request) {
@@ -131,25 +131,6 @@ func TestNewRepository_ACR_Actions(t *testing.T) {
 		assert.NotContains(t, scope, "content_read", "Non-ACR endpoint should not request content_read")
 	})
 
-	t.Run("Non-ACR endpoint NewRepository with mock server - only pull", func(t *testing.T) {
-		mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if r.URL.Path == "/v2/" {
-				w.WriteHeader(http.StatusOK)
-				return
-			}
-			w.WriteHeader(http.StatusOK)
-		}))
-		defer mockServer.Close()
-
-		ep := &RegistryEndpoint{
-			RegistryAPI: mockServer.URL,
-			Limiter:     ratelimit.New(100),
-		}
-		client, err := NewClient(ep, "user", "pass")
-		require.NoError(t, err)
-		err = client.NewRepository("library/nginx")
-		require.NoError(t, err)
-	})
 }
 
 func TestNewRepository(t *testing.T) {
