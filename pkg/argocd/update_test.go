@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,6 +12,8 @@ import (
 	"time"
 
 	yaml "sigs.k8s.io/yaml/goyaml.v3"
+
+	distclient "github.com/distribution/distribution/v3/registry/client"
 
 	iuapi "github.com/argoproj-labs/argocd-image-updater/api/v1alpha1"
 	"github.com/argoproj-labs/argocd-image-updater/ext/git"
@@ -579,6 +582,240 @@ func Test_UpdateApplication(t *testing.T) {
 		assert.Equal(t, 1, res.NumApplicationsProcessed)
 		assert.Equal(t, 1, res.NumImagesConsidered)
 		assert.Equal(t, 1, res.NumImagesUpdated)
+	})
+
+	// ErrCredentialsInvalid retry: first GetTags returns 401, refetch creds and retry, second GetTags succeeds.
+	t.Run("ErrCredentialsInvalid retry succeeds", func(t *testing.T) {
+		regConfig := `
+registries:
+- name: Docker Hub
+  prefix: docker.io
+  api_url: https://registry-1.docker.io
+  defaultns: library
+  credsexpire: 1s
+`
+		regList, err := registry.ParseRegistryConfiguration(regConfig)
+		require.NoError(t, err)
+		require.NotEmpty(t, regList.Items)
+		ctx := context.Background()
+		err = registry.AddRegistryEndpointFromConfig(ctx, regList.Items[0])
+		require.NoError(t, err)
+		defer registry.RestoreDefaultRegistryConfiguration()
+
+		callCount := 0
+		mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
+			regMock := regmock.RegistryClient{}
+			regMock.On("NewRepository", mock.Anything).Return(nil)
+			callCount++
+			authErr := &distclient.UnexpectedHTTPResponseError{StatusCode: http.StatusUnauthorized, ParseErr: errors.New("unauthorized")}
+			if callCount == 1 {
+				regMock.On("Tags", mock.Anything).Return([]string(nil), authErr)
+			} else {
+				regMock.On("Tags", mock.Anything).Return([]string{"1.0.1"}, nil)
+			}
+			return &regMock, nil
+		}
+
+		argoClient := argomock.ArgoCD{}
+		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+
+		kubeClient := kube.ImageUpdaterKubernetesClient{
+			KubeClient: &registryKube.KubernetesClient{
+				Clientset: fake.NewFakeClientsetWithResources(fixture.NewSecret("foo", "bar", map[string][]byte{"creds": []byte("myuser:mypass")})),
+			},
+		}
+
+		// Use docker.io prefix so GetRegistryEndpoint uses our config with CredsExpire
+		img := NewImage(image.NewFromIdentifier("dummy=docker.io/jannfis/foobar:1.0.0"))
+		img.PullSecret = "secret:foo/bar#creds"
+		img.UpdateStrategy = image.StrategySemVer
+
+		appImages := &ApplicationImages{
+			Application: v1alpha1.Application{
+				ObjectMeta: v1.ObjectMeta{
+					Name:      "guestbook",
+					Namespace: "guestbook",
+				},
+				Spec: v1alpha1.ApplicationSpec{
+					Source: &v1alpha1.ApplicationSource{
+						Kustomize: &v1alpha1.ApplicationSourceKustomize{
+							Images: v1alpha1.KustomizeImages{
+								"docker.io/jannfis/foobar:1.0.0",
+							},
+						},
+					},
+				},
+				Status: v1alpha1.ApplicationStatus{
+					SourceType: v1alpha1.ApplicationSourceTypeKustomize,
+					Summary: v1alpha1.ApplicationSummary{
+						Images: []string{
+							"docker.io/jannfis/foobar:1.0.0",
+						},
+					},
+				},
+			},
+			Images: ImageList{img},
+			WriteBackConfig: &WriteBackConfig{
+				Method: WriteBackApplication,
+			},
+		}
+		res := UpdateApplication(ctx, &UpdateConfiguration{
+			NewRegFN:   mockClientFn,
+			ArgoClient: &argoClient,
+			KubeClient: &kubeClient,
+			UpdateApp:  appImages,
+			DryRun:     false,
+		}, NewSyncIterationState())
+		assert.Equal(t, 0, res.NumErrors, "retry path should complete without error")
+		assert.GreaterOrEqual(t, callCount, 2, "NewRegFN should be called at least twice (initial + retry)")
+	})
+
+	// GetTags returns non-auth error (e.g. 500): no retry, one error counted.
+	t.Run("GetTags non-auth error no retry", func(t *testing.T) {
+		callCount := 0
+		mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
+			regMock := regmock.RegistryClient{}
+			regMock.On("NewRepository", mock.Anything).Return(nil)
+			callCount++
+			// 500 is not an auth error, so no retry
+			err500 := &distclient.UnexpectedHTTPResponseError{StatusCode: http.StatusInternalServerError, ParseErr: errors.New("internal server error")}
+			regMock.On("Tags", mock.Anything).Return([]string(nil), err500)
+			return &regMock, nil
+		}
+
+		argoClient := argomock.ArgoCD{}
+		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+
+		kubeClient := kube.ImageUpdaterKubernetesClient{
+			KubeClient: &registryKube.KubernetesClient{
+				Clientset: fake.NewFakeKubeClient(),
+			},
+		}
+
+		appImages := &ApplicationImages{
+			Application: v1alpha1.Application{
+				ObjectMeta: v1.ObjectMeta{
+					Name:      "guestbook",
+					Namespace: "guestbook",
+				},
+				Spec: v1alpha1.ApplicationSpec{
+					Source: &v1alpha1.ApplicationSource{
+						Kustomize: &v1alpha1.ApplicationSourceKustomize{
+							Images: v1alpha1.KustomizeImages{
+								"jannfis/foobar:1.0.0",
+							},
+						},
+					},
+				},
+				Status: v1alpha1.ApplicationStatus{
+					SourceType: v1alpha1.ApplicationSourceTypeKustomize,
+					Summary: v1alpha1.ApplicationSummary{
+						Images: []string{
+							"jannfis/foobar:1.0.0",
+						},
+					},
+				},
+			},
+			Images: ImageList{
+				NewImage(image.NewFromIdentifier("jannfis/foobar:1.0.0")),
+			},
+			WriteBackConfig: &WriteBackConfig{
+				Method: WriteBackApplication,
+			},
+		}
+		res := UpdateApplication(context.Background(), &UpdateConfiguration{
+			NewRegFN:   mockClientFn,
+			ArgoClient: &argoClient,
+			KubeClient: &kubeClient,
+			UpdateApp:  appImages,
+			DryRun:     false,
+		}, NewSyncIterationState())
+		assert.Equal(t, 1, res.NumErrors)
+		assert.Equal(t, 0, res.NumImagesUpdated)
+		assert.Equal(t, 1, callCount, "NewRegFN should be called once (no retry for non-auth error)")
+	})
+
+	// ErrCredentialsInvalid retry: first GetTags returns 401, retry still fails (e.g. second GetTags returns error).
+	t.Run("ErrCredentialsInvalid retry still fails", func(t *testing.T) {
+		regConfig := `
+registries:
+- name: Docker Hub
+  prefix: docker.io
+  api_url: https://registry-1.docker.io
+  defaultns: library
+  credsexpire: 1s
+`
+		regList, err := registry.ParseRegistryConfiguration(regConfig)
+		require.NoError(t, err)
+		require.NotEmpty(t, regList.Items)
+		ctx := context.Background()
+		err = registry.AddRegistryEndpointFromConfig(ctx, regList.Items[0])
+		require.NoError(t, err)
+		defer registry.RestoreDefaultRegistryConfiguration()
+
+		callCount := 0
+		mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
+			regMock := regmock.RegistryClient{}
+			regMock.On("NewRepository", mock.Anything).Return(nil)
+			callCount++
+			// Both first and second Tags call return auth error so retry also fails.
+			authErr := &distclient.UnexpectedHTTPResponseError{StatusCode: http.StatusUnauthorized, ParseErr: errors.New("unauthorized")}
+			regMock.On("Tags", mock.Anything).Return([]string(nil), authErr)
+			return &regMock, nil
+		}
+
+		argoClient := argomock.ArgoCD{}
+		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+
+		kubeClient := kube.ImageUpdaterKubernetesClient{
+			KubeClient: &registryKube.KubernetesClient{
+				Clientset: fake.NewFakeClientsetWithResources(fixture.NewSecret("foo", "bar", map[string][]byte{"creds": []byte("myuser:mypass")})),
+			},
+		}
+
+		// Use docker.io prefix so GetRegistryEndpoint uses our config with CredsExpire
+		img := NewImage(image.NewFromIdentifier("dummy=docker.io/jannfis/foobar:1.0.0"))
+		img.PullSecret = "secret:foo/bar#creds"
+
+		appImages := &ApplicationImages{
+			Application: v1alpha1.Application{
+				ObjectMeta: v1.ObjectMeta{
+					Name:      "guestbook",
+					Namespace: "guestbook",
+				},
+				Spec: v1alpha1.ApplicationSpec{
+					Source: &v1alpha1.ApplicationSource{
+						Kustomize: &v1alpha1.ApplicationSourceKustomize{
+							Images: v1alpha1.KustomizeImages{
+								"docker.io/jannfis/foobar:1.0.0",
+							},
+						},
+					},
+				},
+				Status: v1alpha1.ApplicationStatus{
+					SourceType: v1alpha1.ApplicationSourceTypeKustomize,
+					Summary: v1alpha1.ApplicationSummary{
+						Images: []string{
+							"docker.io/jannfis/foobar:1.0.0",
+						},
+					},
+				},
+			},
+			Images: ImageList{img},
+			WriteBackConfig: &WriteBackConfig{
+				Method: WriteBackApplication,
+			},
+		}
+		res := UpdateApplication(ctx, &UpdateConfiguration{
+			NewRegFN:   mockClientFn,
+			ArgoClient: &argoClient,
+			KubeClient: &kubeClient,
+			UpdateApp:  appImages,
+			DryRun:     false,
+		}, NewSyncIterationState())
+		assert.Equal(t, 1, res.NumErrors)
+		assert.Equal(t, 0, res.NumImagesUpdated)
+		assert.GreaterOrEqual(t, callCount, 2, "NewRegFN should be called at least twice (initial + retry)")
 	})
 
 	t.Run("Test skip because of image not in list", func(t *testing.T) {

@@ -26,6 +26,11 @@ const (
 	MaxMetadataConcurrency = 20
 )
 
+// ErrCredentialsInvalid is returned by GetTags when the registry responded 401/403
+// and CredsExpire is set. Callers should call SetEndpointCredentials again, create
+// a new registry client, and retry GetTags.
+var ErrCredentialsInvalid = fmt.Errorf("registry credentials invalid (401/403)")
+
 // GetTags returns a list of available tags for the given image
 func (ep *RegistryEndpoint) GetTags(ctx context.Context, img *image.ContainerImage, regClient RegistryClient, vc *image.VersionConstraint) (*tag.ImageTagList, error) {
 	var tagList *tag.ImageTagList = tag.NewImageTagList()
@@ -49,6 +54,13 @@ func (ep *RegistryEndpoint) GetTags(ctx context.Context, img *image.ContainerIma
 	}
 	tTags, err := regClient.Tags(ctx)
 	if err != nil {
+		// If registry returned 401/403 (from distribution client error types) and credsexpire is set,
+		// clear cached creds so caller can refetch and retry
+		if ep.CredsExpire > 0 && IsAuthError(err) {
+			ep.Username = ""
+			ep.Password = ""
+			return nil, ErrCredentialsInvalid
+		}
 		return nil, err
 	}
 
@@ -190,36 +202,45 @@ func (ep *RegistryEndpoint) expireCredentials() bool {
 }
 
 // SetEndpointCredentials Sets endpoint credentials for this registry from a reference to a K8s secret
-func (ep *RegistryEndpoint) SetEndpointCredentials(ctx context.Context, kubeClient *kube.KubernetesClient) error {
+func (ep *RegistryEndpoint) SetEndpointCredentials(ctx context.Context, kubeClient *kube.KubernetesClient, secretVal string) (*image.Credential, error) {
 	// Use singleflight to prevent concurrent credential fetching for the same registry
-	_, err, _ := credentialGroup.Do(ep.RegistryAPI, func() (interface{}, error) {
-		return nil, ep.setEndpointCredentialsInternal(ctx, kubeClient)
+	result, err, _ := credentialGroup.Do(ep.RegistryAPI, func() (interface{}, error) {
+		return ep.setEndpointCredentialsInternal(ctx, kubeClient, secretVal)
 	})
-	return err
+	if err != nil {
+		return nil, err
+	}
+	return result.(*image.Credential), nil
 }
 
 // setEndpointCredentialsInternal performs the actual credential fetching
-func (ep *RegistryEndpoint) setEndpointCredentialsInternal(ctx context.Context, kubeClient *kube.KubernetesClient) error {
+func (ep *RegistryEndpoint) setEndpointCredentialsInternal(ctx context.Context, kubeClient *kube.KubernetesClient, secretVal string) (*image.Credential, error) {
 	baseLogger := log.LoggerFromContext(ctx)
 	if ep.expireCredentials() {
 		baseLogger.Debugf("expired credentials for registry %s (updated:%s, expiry:%0fs)", ep.RegistryAPI, ep.CredsUpdated, ep.CredsExpire.Seconds())
 	}
-	if ep.Username == "" && ep.Password == "" && ep.Credentials != "" {
-		credSrc, err := image.ParseCredentialSource(ep.Credentials, false)
+	creds := &image.Credential{Username: ep.Username, Password: ep.Password}
+	if ep.Username == "" && ep.Password == "" && (ep.Credentials != "" || secretVal != "") {
+		if secretVal == "" {
+			secretVal = ep.Credentials
+		}
+		credSrc, err := image.ParseCredentialSource(secretVal, false)
 		if err != nil {
-			return err
+			baseLogger.Warnf("Invalid credential reference specified: %s", secretVal)
+			return nil, err
 		}
 
 		// For fetching credentials, we must have working Kubernetes client.
 		if (credSrc.Type == image.CredentialSourcePullSecret || credSrc.Type == image.CredentialSourceSecret) && kubeClient == nil {
 			logger := log.ContextWithLogger(ctx, baseLogger.WithField("registry", ep.RegistryAPI))
 			log.LoggerFromContext(logger).Warnf("cannot use K8s credentials without Kubernetes client")
-			return fmt.Errorf("could not fetch image tags")
+			return nil, fmt.Errorf("could not fetch image tags")
 		}
 
-		creds, err := credSrc.FetchCredentials(ctx, ep.RegistryAPI, kubeClient)
+		creds, err = credSrc.FetchCredentials(ctx, ep.RegistryAPI, kubeClient)
 		if err != nil {
-			return err
+			baseLogger.Warnf("Could not fetch credentials: %v", err)
+			return nil, err
 		}
 
 		ep.CredsUpdated = time.Now()
@@ -228,5 +249,5 @@ func (ep *RegistryEndpoint) setEndpointCredentialsInternal(ctx context.Context, 
 		ep.Password = creds.Password
 	}
 
-	return nil
+	return creds, nil
 }
