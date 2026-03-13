@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"regexp"
@@ -111,23 +112,17 @@ func UpdateApplication(ctx context.Context, updateConf *UpdateConfiguration, sta
 			imgCtx.Infof("taglistsort is set to '%s' but update strategy '%s' requires metadata. Results may not be what you expect.", rep.TagListSort.String(), vc.Strategy.String())
 		}
 
+		// retrieves an image's pull secret credentials
+		secretVal := applicationImage.PullSecret
+		if secretVal == "" {
+			log.Tracef("No pull secret configured for this image")
+		}
 		// The endpoint can provide default credentials for pulling images
-		err = rep.SetEndpointCredentials(imageOpCtx, updateConf.KubeClient.KubeClient)
+		creds, err := rep.SetEndpointCredentials(imageOpCtx, updateConf.KubeClient.KubeClient, secretVal)
 		if err != nil {
 			imgCtx.Errorf("Could not set registry endpoint credentials: %v", err)
 			result.NumErrors += 1
 			continue
-		}
-
-		imgCredSrc := GetParameterPullSecret(imageOpCtx, applicationImage)
-		var creds *image.Credential = &image.Credential{}
-		if imgCredSrc != nil {
-			creds, err = imgCredSrc.FetchCredentials(imageOpCtx, rep.RegistryAPI, updateConf.KubeClient.KubeClient)
-			if err != nil {
-				imgCtx.Warnf("Could not fetch credentials: %v", err)
-				result.NumErrors += 1
-				continue
-			}
 		}
 
 		regClient, err := updateConf.NewRegFN(rep, creds.Username, creds.Password)
@@ -138,11 +133,32 @@ func UpdateApplication(ctx context.Context, updateConf *UpdateConfiguration, sta
 		}
 
 		// Get list of available image tags from the repository
+		// Load creds, create registry client, fetch tags (retry once on 401/403)
 		tags, err := rep.GetTags(imageOpCtx, applicationImage.ContainerImage, regClient, &vc)
 		if err != nil {
-			imgCtx.Errorf("Could not get tags from registry: %v", err)
-			result.NumErrors += 1
-			continue
+			// Retry once on 401/403
+			if errors.Is(err, registry.ErrCredentialsInvalid) {
+				// The endpoint can provide default credentials for pulling images
+				creds, err = rep.SetEndpointCredentials(imageOpCtx, updateConf.KubeClient.KubeClient, secretVal)
+				if err != nil {
+					imgCtx.Errorf("Could not set registry endpoint credentials: %v", err)
+					result.NumErrors += 1
+					continue
+				}
+
+				regClient, err = updateConf.NewRegFN(rep, creds.Username, creds.Password)
+				if err != nil {
+					imgCtx.Errorf("Could not create registry client: %v", err)
+					result.NumErrors += 1
+					continue
+				}
+				tags, err = rep.GetTags(imageOpCtx, applicationImage.ContainerImage, regClient, &vc)
+			}
+			if err != nil {
+				imgCtx.Errorf("Could not get tags from registry: %v", err)
+				result.NumErrors += 1
+				continue
+			}
 		}
 
 		imgCtx.Tracef("List of available tags found: %v", tags.Tags())
