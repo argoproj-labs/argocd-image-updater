@@ -3,7 +3,11 @@ package registry
 import (
 	"context"
 	"crypto/sha256"
+	"errors"
 	"fmt"
+	"net/http"
+	"net/url"
+	"strings"
 	"time"
 
 	"github.com/argoproj/pkg/json"
@@ -18,6 +22,7 @@ import (
 	"github.com/distribution/distribution/v3/manifest/schema1" //nolint:staticcheck
 	"github.com/distribution/distribution/v3/manifest/schema2"
 	"github.com/distribution/distribution/v3/reference"
+	"github.com/distribution/distribution/v3/registry/api/errcode"
 	"github.com/distribution/distribution/v3/registry/client"
 	"github.com/distribution/distribution/v3/registry/client/auth"
 	"github.com/distribution/distribution/v3/registry/client/auth/challenge"
@@ -27,10 +32,6 @@ import (
 	ociv1 "github.com/opencontainers/image-spec/specs-go/v1"
 
 	"go.uber.org/ratelimit"
-
-	"net/http"
-	"net/url"
-	"strings"
 )
 
 // TODO: Check image's architecture and OS
@@ -449,6 +450,45 @@ func TagInfoFromReferences(ctx context.Context, client *registryClient, opts *op
 	}
 
 	return ti, nil
+}
+
+// IsAuthError reports whether err is an authentication/authorization failure (401/403)
+// from the distribution registry client. It uses errors.As to detect the client's
+// typed errors and errcode instead of matching error strings.
+func IsAuthError(ctx context.Context, err error) bool {
+	log := log.LoggerFromContext(ctx)
+	if err == nil {
+		return false
+	}
+	var u *client.UnexpectedHTTPResponseError
+	if errors.As(err, &u) {
+		if u.StatusCode == http.StatusUnauthorized || u.StatusCode == http.StatusForbidden {
+			log.Debugf("auth error from registry: HTTP %d", u.StatusCode)
+			return true
+		}
+		return false
+	}
+	var s *client.UnexpectedHTTPStatusError
+	if errors.As(err, &s) {
+		if strings.Contains(s.Status, "401") || strings.Contains(s.Status, "403") {
+			log.Debugf("auth error from registry: %s", s.Status)
+			return true
+		}
+		return false
+	}
+	var errs errcode.Errors
+	if errors.As(err, &errs) {
+		for _, e := range errs {
+			var errcodeErr errcode.Error
+			if errors.As(e, &errcodeErr) {
+				if errors.Is(errcodeErr.Code, errcode.ErrorCodeUnauthorized) || errors.Is(errcodeErr.Code, errcode.ErrorCodeDenied) {
+					log.Debugf("auth error from registry: %s", errcodeErr.Code.Message())
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 // Implementation of ping method to initialize the challenge list

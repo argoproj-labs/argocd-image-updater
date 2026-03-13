@@ -17,6 +17,8 @@ import (
 
 	"github.com/distribution/distribution/v3"
 	"github.com/distribution/distribution/v3/manifest/schema1" //nolint:staticcheck
+	"github.com/distribution/distribution/v3/registry/api/errcode"
+	distclient "github.com/distribution/distribution/v3/registry/client"
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -747,5 +749,60 @@ func TestPing(t *testing.T) {
 		require.Error(t, err)
 		assert.ErrorContains(t, err, "unsupported protocol scheme")
 	})
+}
 
+func TestIsAuthError(t *testing.T) {
+	ctx := context.Background()
+	t.Run("nil returns false", func(t *testing.T) {
+		assert.False(t, IsAuthError(ctx, nil))
+	})
+
+	t.Run("plain error returns false", func(t *testing.T) {
+		assert.False(t, IsAuthError(ctx, errors.New("some error")))
+	})
+
+	t.Run("UnexpectedHTTPResponseError 401 returns true", func(t *testing.T) {
+		err := &distclient.UnexpectedHTTPResponseError{StatusCode: http.StatusUnauthorized}
+		assert.True(t, IsAuthError(ctx, err))
+	})
+
+	t.Run("UnexpectedHTTPResponseError 403 returns true", func(t *testing.T) {
+		err := &distclient.UnexpectedHTTPResponseError{StatusCode: http.StatusForbidden}
+		assert.True(t, IsAuthError(ctx, err))
+	})
+
+	t.Run("UnexpectedHTTPResponseError 404 returns false", func(t *testing.T) {
+		err := &distclient.UnexpectedHTTPResponseError{StatusCode: http.StatusNotFound}
+		assert.False(t, IsAuthError(ctx, err))
+	})
+
+	t.Run("UnexpectedHTTPStatusError 401 returns true", func(t *testing.T) {
+		err := &distclient.UnexpectedHTTPStatusError{Status: "401 Unauthorized"}
+		assert.True(t, IsAuthError(ctx, err))
+	})
+
+	t.Run("UnexpectedHTTPStatusError 403 returns true", func(t *testing.T) {
+		err := &distclient.UnexpectedHTTPStatusError{Status: "403 Forbidden"}
+		assert.True(t, IsAuthError(ctx, err))
+	})
+
+	t.Run("UnexpectedHTTPStatusError 500 returns false", func(t *testing.T) {
+		err := &distclient.UnexpectedHTTPStatusError{Status: "500 Internal Server Error"}
+		assert.False(t, IsAuthError(ctx, err))
+	})
+
+	t.Run("errcode.Errors with Unauthorized returns true", func(t *testing.T) {
+		err := errcode.Errors{errcode.ErrorCodeUnauthorized.WithMessage("authentication required")}
+		assert.True(t, IsAuthError(ctx, err))
+	})
+
+	t.Run("errcode.Errors with Denied returns true", func(t *testing.T) {
+		err := errcode.Errors{errcode.ErrorCodeDenied.WithMessage("access denied")}
+		assert.True(t, IsAuthError(ctx, err))
+	})
+
+	t.Run("errcode.Errors with other code returns false", func(t *testing.T) {
+		err := errcode.Errors{errcode.ErrorCodeUnknown.WithMessage("something else")}
+		assert.False(t, IsAuthError(ctx, err))
+	})
 }

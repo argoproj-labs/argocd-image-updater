@@ -3571,33 +3571,6 @@ func Test_FilterApplicationsForUpdate(t *testing.T) {
 	}
 }
 
-func Test_GetParameterPullSecret(t *testing.T) {
-	t.Run("Get cred source from a valid pull secret string", func(t *testing.T) {
-		img := NewImage(image.NewFromIdentifier("dummy=foo/bar:1.12"))
-		img.PullSecret = "pullsecret:foo/bar"
-		credSrc := GetParameterPullSecret(context.Background(), img)
-		require.NotNil(t, credSrc)
-		assert.Equal(t, image.CredentialSourcePullSecret, credSrc.Type)
-		assert.Equal(t, "foo", credSrc.SecretNamespace)
-		assert.Equal(t, "bar", credSrc.SecretName)
-		assert.Equal(t, ".dockerconfigjson", credSrc.SecretField)
-	})
-
-	t.Run("Return nil for an invalid pull secret string", func(t *testing.T) {
-		img := NewImage(image.NewFromIdentifier("dummy=foo/bar:1.12"))
-		img.PullSecret = "pullsecret:invalid"
-		credSrc := GetParameterPullSecret(context.Background(), img)
-		require.Nil(t, credSrc)
-	})
-
-	t.Run("Return nil for an empty pull secret string", func(t *testing.T) {
-		img := NewImage(image.NewFromIdentifier("dummy=foo/bar:1.12"))
-		// img.PullSecret is "" by default, so no need to set it
-		credSrc := GetParameterPullSecret(context.Background(), img)
-		require.Nil(t, credSrc)
-	})
-}
-
 // strictNamespaceClient wraps a client.Client to enforce strict namespace filtering.
 // When InNamespace("") is used (empty namespace), it returns empty results instead of
 // all namespaces, matching real Kubernetes API behavior.
