@@ -204,11 +204,11 @@ func (ep *RegistryEndpoint) credsExpiredByTime() bool {
 
 // expireCredentials clears cached creds when past validity window.
 func (ep *RegistryEndpoint) expireCredentials() bool {
+	ep.lock.Lock()
+	defer ep.lock.Unlock()
 	if ep.credsExpiredByTime() {
-		ep.lock.Lock()
 		ep.Username = ""
 		ep.Password = ""
-		ep.lock.Unlock()
 		return true
 	}
 	return false
@@ -238,8 +238,10 @@ func (ep *RegistryEndpoint) setEndpointCredentialsInternal(ctx context.Context, 
 	if ep.expireCredentials() {
 		baseLogger.Debugf("expired credentials for registry %s (updated:%s, expiry:%0fs)", ep.RegistryAPI, ep.CredsUpdated, ep.CredsExpire.Seconds())
 	}
+	ep.lock.RLock()
 	creds := &image.Credential{Username: ep.Username, Password: ep.Password}
 	useCachedEndpointCreds := secretVal == "" && ep.Username != "" && ep.Password != ""
+	ep.lock.RUnlock()
 	if !useCachedEndpointCreds && (ep.Credentials != "" || secretVal != "") {
 		if secretVal == "" {
 			secretVal = ep.Credentials
