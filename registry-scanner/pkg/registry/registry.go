@@ -216,8 +216,14 @@ func (ep *RegistryEndpoint) expireCredentials() bool {
 
 // SetEndpointCredentials Sets endpoint credentials for this registry from a reference to a K8s secret
 func (ep *RegistryEndpoint) SetEndpointCredentials(ctx context.Context, kubeClient *kube.KubernetesClient, secretVal string) (*image.Credential, error) {
+	effectiveSource := ep.Credentials
+	if secretVal != "" {
+		effectiveSource = secretVal
+	}
+	flightKey := ep.RegistryAPI + "|" + effectiveSource
+
 	// Use singleflight to prevent concurrent credential fetching for the same registry
-	result, err, _ := credentialGroup.Do(ep.RegistryAPI, func() (interface{}, error) {
+	result, err, _ := credentialGroup.Do(flightKey, func() (interface{}, error) {
 		return ep.setEndpointCredentialsInternal(ctx, kubeClient, secretVal)
 	})
 	if err != nil {
@@ -233,7 +239,8 @@ func (ep *RegistryEndpoint) setEndpointCredentialsInternal(ctx context.Context, 
 		baseLogger.Debugf("expired credentials for registry %s (updated:%s, expiry:%0fs)", ep.RegistryAPI, ep.CredsUpdated, ep.CredsExpire.Seconds())
 	}
 	creds := &image.Credential{Username: ep.Username, Password: ep.Password}
-	if ep.Username == "" && ep.Password == "" && (ep.Credentials != "" || secretVal != "") {
+	useCachedEndpointCreds := secretVal == "" && ep.Username != "" && ep.Password != ""
+	if !useCachedEndpointCreds && (ep.Credentials != "" || secretVal != "") {
 		if secretVal == "" {
 			secretVal = ep.Credentials
 		}

@@ -409,6 +409,29 @@ func Test_RegistryEndpoint_SetEndpointCredentials(t *testing.T) {
 		assert.Equal(t, "p", creds.Password)
 	})
 
+	t.Run("second call with different secretVal uses secret B not cached A (secret rotation)", func(t *testing.T) {
+		secretA := fixture.NewSecret("ns", "secret-a", map[string][]byte{"creds": []byte("userA:passA")})
+		secretB := fixture.NewSecret("ns", "secret-b", map[string][]byte{"creds": []byte("userB:passB")})
+		kubeClient := &kube.KubernetesClient{Clientset: fake.NewFakeClientsetWithResources(secretA, secretB)}
+		ep := &RegistryEndpoint{RegistryAPI: "https://registry.example.com"}
+
+		creds1, err := ep.SetEndpointCredentials(ctx, kubeClient, "secret:ns/secret-a#creds")
+		require.NoError(t, err)
+		require.NotNil(t, creds1)
+		assert.Equal(t, "userA", creds1.Username)
+		assert.Equal(t, "passA", creds1.Password)
+		assert.Equal(t, "userA", ep.Username)
+		assert.Equal(t, "passA", ep.Password)
+
+		creds2, err := ep.SetEndpointCredentials(ctx, kubeClient, "secret:ns/secret-b#creds")
+		require.NoError(t, err)
+		require.NotNil(t, creds2)
+		assert.Equal(t, "userB", creds2.Username)
+		assert.Equal(t, "passB", creds2.Password)
+		assert.Equal(t, "userB", ep.Username)
+		assert.Equal(t, "passB", ep.Password)
+	})
+
 	t.Run("invalid credential reference returns error", func(t *testing.T) {
 		ep := &RegistryEndpoint{RegistryAPI: "https://r.example.com", Credentials: "invalid-ref"}
 
