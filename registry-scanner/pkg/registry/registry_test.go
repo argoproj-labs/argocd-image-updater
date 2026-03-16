@@ -176,8 +176,8 @@ func Test_GetTags(t *testing.T) {
 		assert.Nil(t, tl)
 		assert.NotErrorIs(t, err, ErrCredentialsInvalid)
 		assert.ErrorIs(t, err, authErr)
-		assert.Empty(t, ep.Username)
-		assert.Empty(t, ep.Password)
+		assert.Equal(t, "olduser", ep.Username)
+		assert.Equal(t, "oldpass", ep.Password)
 	})
 }
 
@@ -417,7 +417,7 @@ func Test_RegistryEndpoint_SetEndpointCredentials(t *testing.T) {
 		assert.Nil(t, creds)
 	})
 
-	t.Run("pull secret with nil kube client returns error", func(t *testing.T) {
+	t.Run("secret: credential source with nil kube client returns error", func(t *testing.T) {
 		ep := &RegistryEndpoint{RegistryAPI: "https://r.example.com"}
 
 		creds, err := ep.SetEndpointCredentials(ctx, nil, "secret:foo/bar#creds")
@@ -426,7 +426,7 @@ func Test_RegistryEndpoint_SetEndpointCredentials(t *testing.T) {
 		assert.Contains(t, err.Error(), "could not fetch image tags")
 	})
 
-	t.Run("pullsecret with nil kube client returns error", func(t *testing.T) {
+	t.Run("pullsecret: credential source with nil kube client returns error", func(t *testing.T) {
 		ep := &RegistryEndpoint{RegistryAPI: "https://r.example.com"}
 
 		creds, err := ep.SetEndpointCredentials(ctx, nil, "pullsecret:foo/bar")

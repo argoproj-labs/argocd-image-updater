@@ -115,7 +115,7 @@ func UpdateApplication(ctx context.Context, updateConf *UpdateConfiguration, sta
 		// retrieves an image's pull secret credentials
 		secretVal := applicationImage.PullSecret
 		if secretVal == "" {
-			log.Tracef("No pull secret configured for this image")
+			imgCtx.Tracef("No pull secret configured for this image")
 		}
 		// The endpoint can provide default credentials for pulling images
 		creds, err := rep.SetEndpointCredentials(imageOpCtx, updateConf.KubeClient.KubeClient, secretVal)

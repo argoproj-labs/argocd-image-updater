@@ -57,12 +57,15 @@ func (ep *RegistryEndpoint) GetTags(ctx context.Context, img *image.ContainerIma
 		// Only treat 401/403 as invalid cached creds when creds are still within their validity window:
 		// credsexpire is set, we got auth error, and cache has not yet expired (e.g. registry changed password).
 		// When creds are already expired, do not return ErrCredentialsInvalid; let the original error propagate.
-		if ep.CredsExpire > 0 && !ep.expireCredentials() && IsAuthError(ctx, err) {
+		ep.lock.Lock()
+		if ep.CredsExpire > 0 && !ep.credsExpiredByTime() && IsAuthError(ctx, err) {
 			logCtx.Infof("registry returned 401/403 with valid cached creds, clearing cache for refetch")
 			ep.Username = ""
 			ep.Password = ""
+			ep.lock.Unlock()
 			return nil, ErrCredentialsInvalid
 		}
+		ep.lock.Unlock()
 		return nil, err
 	}
 
@@ -194,10 +197,18 @@ func (ep *RegistryEndpoint) GetTags(ctx context.Context, img *image.ContainerIma
 	return tagList, err
 }
 
+// credsExpiredByTime returns true when cached creds are past their validity window.
+func (ep *RegistryEndpoint) credsExpiredByTime() bool {
+	return ep.Credentials != "" && !ep.CredsUpdated.IsZero() && ep.CredsExpire > 0 && time.Since(ep.CredsUpdated) >= ep.CredsExpire
+}
+
+// expireCredentials clears cached creds when past validity window.
 func (ep *RegistryEndpoint) expireCredentials() bool {
-	if ep.Credentials != "" && !ep.CredsUpdated.IsZero() && ep.CredsExpire > 0 && time.Since(ep.CredsUpdated) >= ep.CredsExpire {
+	if ep.credsExpiredByTime() {
+		ep.lock.Lock()
 		ep.Username = ""
 		ep.Password = ""
+		ep.lock.Unlock()
 		return true
 	}
 	return false
@@ -245,10 +256,12 @@ func (ep *RegistryEndpoint) setEndpointCredentialsInternal(ctx context.Context, 
 			return nil, err
 		}
 
+		ep.lock.Lock()
 		ep.CredsUpdated = time.Now()
 
 		ep.Username = creds.Username
 		ep.Password = creds.Password
+		ep.lock.Unlock()
 	}
 
 	return creds, nil
