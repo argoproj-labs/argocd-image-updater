@@ -44,6 +44,62 @@ updates image bar/baz tag '2.0' to '2.1'
 		assert.NotEmpty(t, r)
 		assert.Equal(t, exp, r)
 	})
+
+	t.Run("Template commit message with labels", func(t *testing.T) {
+		tplStr := `build: automatic update of {{ .AppName }}
+
+{{ range .AppChanges -}}
+updates image {{ .Image }} tag '{{ .OldTag }}' to '{{ .NewTag }}'
+{{ if index .Labels "org.opencontainers.image.revision" -}}
+Upstream Commit: {{ index .Labels "org.opencontainers.image.source" }}/commit/{{ index .Labels "org.opencontainers.image.revision" }}
+{{ end -}}
+{{ end -}}`
+		exp := `build: automatic update of foobar
+
+updates image foo/bar tag '1.0' to '1.1'
+Upstream Commit: https://github.com/org/repo/commit/abc123
+`
+		tpl := template.Must(template.New("labelstemplate").Parse(tplStr))
+		cl := []ChangeEntry{
+			{
+				Image:  image.NewFromIdentifier("foo/bar"),
+				OldTag: tag.NewImageTag("1.0", time.Now(), ""),
+				NewTag: tag.NewImageTagWithLabels("1.1", time.Now(), "", map[string]string{
+					"org.opencontainers.image.source":   "https://github.com/org/repo",
+					"org.opencontainers.image.revision": "abc123",
+				}),
+			},
+		}
+		r := TemplateCommitMessage(context.Background(), tpl, "foobar", cl)
+		assert.NotEmpty(t, r)
+		assert.Equal(t, exp, r)
+	})
+
+	t.Run("Template commit message with empty labels", func(t *testing.T) {
+		tplStr := `build: automatic update of {{ .AppName }}
+
+{{ range .AppChanges -}}
+updates image {{ .Image }} tag '{{ .OldTag }}' to '{{ .NewTag }}'
+{{ if index .Labels "org.opencontainers.image.revision" -}}
+Upstream Commit: {{ index .Labels "org.opencontainers.image.source" }}/commit/{{ index .Labels "org.opencontainers.image.revision" }}
+{{ end -}}
+{{ end -}}`
+		exp := `build: automatic update of foobar
+
+updates image foo/bar tag '1.0' to '1.1'
+`
+		tpl := template.Must(template.New("emptylabels").Parse(tplStr))
+		cl := []ChangeEntry{
+			{
+				Image:  image.NewFromIdentifier("foo/bar"),
+				OldTag: tag.NewImageTag("1.0", time.Now(), ""),
+				NewTag: tag.NewImageTag("1.1", time.Now(), ""),
+			},
+		}
+		r := TemplateCommitMessage(context.Background(), tpl, "foobar", cl)
+		assert.NotEmpty(t, r)
+		assert.Equal(t, exp, r)
+	})
 }
 
 func Test_TemplateBranchName(t *testing.T) {

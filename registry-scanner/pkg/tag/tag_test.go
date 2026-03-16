@@ -19,6 +19,32 @@ func Test_NewImageTag(t *testing.T) {
 	})
 }
 
+func Test_NewImageTagWithLabels(t *testing.T) {
+	t.Run("Tag with labels are deep copied", func(t *testing.T) {
+		labels := map[string]string{
+			"org.opencontainers.image.source":   "https://github.com/org/repo",
+			"org.opencontainers.image.revision": "abc123",
+		}
+		imgTag := NewImageTagWithLabels("v1.0.0", time.Now(), "digest123", labels)
+		require.NotNil(t, imgTag)
+		assert.Equal(t, "https://github.com/org/repo", imgTag.Labels["org.opencontainers.image.source"])
+		assert.Equal(t, "abc123", imgTag.Labels["org.opencontainers.image.revision"])
+		// Verify deep copy — mutating original map does not affect the tag
+		labels["org.opencontainers.image.source"] = "mutated"
+		assert.Equal(t, "https://github.com/org/repo", imgTag.Labels["org.opencontainers.image.source"])
+	})
+
+	t.Run("Nil labels and NewImageTag both initialize empty map", func(t *testing.T) {
+		imgTag1 := NewImageTagWithLabels("v1.0.0", time.Now(), "", nil)
+		imgTag2 := NewImageTag("v1.0.0", time.Now(), "")
+		for _, imgTag := range []*ImageTag{imgTag1, imgTag2} {
+			require.NotNil(t, imgTag)
+			assert.NotNil(t, imgTag.Labels)
+			assert.Empty(t, imgTag.Labels)
+		}
+	})
+}
+
 func Test_ImageTagEqual(t *testing.T) {
 	t.Run("Versions are similar", func(t *testing.T) {
 		tag1 := NewImageTag("v1.0.0", time.Now(), "")

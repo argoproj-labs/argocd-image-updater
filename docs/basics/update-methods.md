@@ -382,7 +382,7 @@ data:
     build: automatic update of {{ .AppName }}
 
     {{ range .AppChanges -}}
-    Updates image {{ .Image }} tag '{{ .OldTag }}' to '{{ .NewTag }}'
+    updates image {{ .Image }} tag '{{ .OldTag }}' to '{{ .NewTag }}'
     {{ end -}}
 ```
 
@@ -395,7 +395,7 @@ data:
     build: Automatic update of {{ .AppName }}
 
     {{ range .AppChanges -}}
-    Updates image {{ .Image }} tag '{{ .OldTag }}' to '{{ .NewTag }}'
+    updates image {{ .Image }} tag '{{ .OldTag }}' to '{{ .NewTag }}'
     {{- if index .Labels "org.opencontainers.image.revision" }}
     {{- $source := index .Labels "org.opencontainers.image.source" }}
     {{- $revision := index .Labels "org.opencontainers.image.revision" }}
