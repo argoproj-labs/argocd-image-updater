@@ -14,7 +14,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/bmatcuk/doublestar/v4"
@@ -823,13 +822,10 @@ func (m *nativeGitClient) runCmdOutput(ctx context.Context, cmd *exec.Cmd, ropts
 
 	// Run git in its own process group so that child processes (e.g. git-remote-https)
 	// can be cleaned up when the parent is killed on timeout or context cancellation.
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	setSysProcAttr(cmd)
 
 	opts := executil.ExecRunOpts{
-		TimeoutBehavior: executil.TimeoutBehavior{
-			Signal:     syscall.SIGTERM,
-			ShouldWait: true,
-		},
+		TimeoutBehavior:  newTimeoutBehavior(),
 		SkipErrorLogging: ropts.SkipErrorLogging,
 		CaptureStderr:    ropts.CaptureStderr,
 	}
@@ -837,15 +833,8 @@ func (m *nativeGitClient) runCmdOutput(ctx context.Context, cmd *exec.Cmd, ropts
 
 	// After the git command finishes (normally or via timeout/context cancellation),
 	// kill the entire process group to clean up any orphaned child processes such as
-	// git-remote-https. Without this, child processes accumulate over time and
-	// eventually exhaust the container's PID limit, causing "cannot fork()" errors.
-	//
-	// The negative int `-cmd.Process.Pid` denotes the process group id, which was set
-	// to PID in `SysProcAttr{Setpgid: true}` earlier. The `syscall.Kill()` below will
-	// send SIGKILL to all processes in the group.
-	if cmd.Process != nil {
-		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
-	}
+	// git-remote-https.
+	killProcessGroup(cmd)
 
 	return output, err
 }
