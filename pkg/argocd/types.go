@@ -81,6 +81,7 @@ type WriteBackConfig struct {
 	Target                 string
 	GitRepo                string
 	GitCreds               git.CredsStore
+	PRProvider             PRProvider
 }
 
 // RequiresLocking returns true if write-back method requires repository locking

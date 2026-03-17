@@ -46,6 +46,22 @@ type githubAppInstallationTransport struct {
 	httpTransport *http.Transport
 }
 
+// SCMTokenProvider is implemented by credential types that can produce a token
+// suitable for SCM provider REST API calls (e.g. opening a PR or MR).
+// SSHCreds, GoogleCloudCreds, and NopCreds intentionally do not implement this
+// interface — they cannot authenticate to a REST API directly.
+type SCMTokenProvider interface {
+	SCMToken(ctx context.Context) (string, error)
+}
+
+// SCMAPIBaseURLProvider is implemented by credential types that carry an
+// explicit SCM API base URL (e.g. GitHub App configured for a GitHub Enterprise
+// instance). When a credential type does not implement this interface, the caller
+// should derive the API base URL from the repository URL instead.
+type SCMAPIBaseURLProvider interface {
+	SCMAPIBaseURL() string
+}
+
 const (
 	// ASKPASS_NONCE_ENV is the environment variable that is used to pass the nonce to the askpass script
 	ASKPASS_NONCE_ENV = "ARGOCD_GIT_ASKPASS_NONCE"
@@ -137,7 +153,7 @@ type GenericHTTPSCreds interface {
 
 var _ GenericHTTPSCreds = HTTPSCreds{}
 
-// HTTPS creds implementation
+// HTTPSCreds implementation
 type HTTPSCreds struct {
 	// Username for authentication
 	username string
@@ -260,6 +276,11 @@ func (c HTTPSCreds) GetClientCertData() string {
 
 func (c HTTPSCreds) GetClientCertKey() string {
 	return c.clientCertKey
+}
+
+// SCMToken returns the HTTPS password, which is expected to be a PAT or OAuth token.
+func (c HTTPSCreds) SCMToken(_ context.Context) (string, error) {
+	return c.password, nil
 }
 
 // SSH implementation
@@ -509,6 +530,19 @@ func (g GitHubAppCreds) GetClientCertData() string {
 
 func (g GitHubAppCreds) GetClientCertKey() string {
 	return g.clientCertKey
+}
+
+// SCMToken returns a GitHub App installation token for use with the GitHub API.
+func (g GitHubAppCreds) SCMToken(ctx context.Context) (string, error) {
+	return g.getAccessToken(ctx)
+}
+
+// SCMAPIBaseURL returns the configured GitHub Enterprise API base URL.
+// Returns an empty string when using github.com (no enterprise URL configured).
+// HTTPSCreds does not implement SCMAPIBaseURLProvider — its API base URL is
+// derived from the repository URL by the caller.
+func (g GitHubAppCreds) SCMAPIBaseURL() string {
+	return g.baseURL
 }
 
 // GoogleCloudCreds to authenticate to Google Cloud Source repositories

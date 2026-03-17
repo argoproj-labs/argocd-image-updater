@@ -677,6 +677,75 @@ var _ = Describe("HelmTarget Validation", func() {
 	})
 })
 
+var _ = Describe("PullRequest Validation", func() {
+	// baseCR returns a minimal valid CR that can have a pullRequest injected at
+	// the spec-level writeBackConfig.gitConfig.pullRequest path.
+	baseWithPR := func(name string, pr *PullRequest) *ImageUpdater {
+		method := "git"
+		return &ImageUpdater{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      name,
+				Namespace: "argocd",
+			},
+			Spec: ImageUpdaterSpec{
+				WriteBackConfig: &WriteBackConfig{
+					Method: &method,
+					GitConfig: &GitConfig{
+						PullRequest: pr,
+					},
+				},
+				ApplicationRefs: []ApplicationRef{
+					{
+						NamePattern:    "*",
+						UseAnnotations: boolPtr(true),
+					},
+				},
+			},
+		}
+	}
+
+	Context("when exactly one provider is set", func() {
+		It("should accept pullRequest with only github", func() {
+			cr := baseWithPR("pr-github-only", &PullRequest{
+				GitHub: &PullRequestGitHub{},
+			})
+			err := k8sClient.Create(context.Background(), cr)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(k8sClient.Delete(context.Background(), cr)).To(Succeed())
+		})
+
+		It("should accept pullRequest with only gitlab", func() {
+			cr := baseWithPR("pr-gitlab-only", &PullRequest{
+				GitLab: &PullRequestGitLab{},
+			})
+			err := k8sClient.Create(context.Background(), cr)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(k8sClient.Delete(context.Background(), cr)).To(Succeed())
+		})
+	})
+
+	Context("when zero providers are set", func() {
+		It("should reject pullRequest with neither github nor gitlab", func() {
+			cr := baseWithPR("pr-no-provider", &PullRequest{})
+			err := k8sClient.Create(context.Background(), cr)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("Exactly one of github or gitlab must be set"))
+		})
+	})
+
+	Context("when both providers are set", func() {
+		It("should reject pullRequest with both github and gitlab", func() {
+			cr := baseWithPR("pr-both-providers", &PullRequest{
+				GitHub: &PullRequestGitHub{},
+				GitLab: &PullRequestGitLab{},
+			})
+			err := k8sClient.Create(context.Background(), cr)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("Exactly one of github or gitlab must be set"))
+		})
+	})
+})
+
 // Helper function to create a bool pointer
 func boolPtr(b bool) *bool {
 	return &b

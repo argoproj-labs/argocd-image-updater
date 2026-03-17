@@ -902,6 +902,14 @@ func commitChanges(ctx context.Context, applicationImages *ApplicationImages, ch
 			return err
 		}
 	case WriteBackGit:
+		if wbc.PRProvider > 0 {
+			// create a Pull Request if provider was set
+			// if the kustomize base is set, the target is a kustomization
+			if wbc.KustomizeBase != "" {
+				return commitChangesPR(ctx, applicationImages, changeList, writeKustomization)
+			}
+			return commitChangesPR(ctx, applicationImages, changeList, writeOverrides)
+		}
 		// if the kustomize base is set, the target is a kustomization
 		if wbc.KustomizeBase != "" {
 			return commitChangesGit(ctx, applicationImages, changeList, writeKustomization)

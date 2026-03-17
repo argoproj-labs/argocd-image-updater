@@ -119,6 +119,12 @@ type GitConfig struct {
 	// Required if write-back method is Git and this is not specified at the spec level.
 	// +optional
 	WriteBackTarget *string `json:"writeBackTarget,omitempty"`
+
+	// PullRequest configures creation of pull requests when writing back image updates to Git.
+	// When set, the controller opens a PR instead of pushing to the branch.
+	// If not specified write back config method is `git`.
+	// +optional
+	*PullRequest `json:"pullRequest,omitempty"`
 }
 
 // ImageConfig defines how a specific container image should be discovered, updated,
@@ -206,6 +212,48 @@ type WriteBackConfig struct {
 	// This can only be used when method is "git" or starts with "git:".
 	// +optional
 	*GitConfig `json:"gitConfig,omitempty"`
+}
+
+// PullRequest holds provider-specific configuration for creating pull requests
+// when writing back image updates to Git. Exactly one of the providers must be set.
+// based on https://github.com/argoproj/argo-cd/blob/master/pkg/apis/application/v1alpha1/applicationset_types.go
+// +kubebuilder:validation:XValidation:rule="(has(self.github) ? 1 : 0) + (has(self.gitlab) ? 1 : 0) == 1",message="Exactly one of github or gitlab must be set"
+type PullRequest struct {
+	// GitHub configures PR creation via the GitHub API.
+	// +optional
+	GitHub *PullRequestGitHub `json:"github,omitempty"`
+
+	// GitLab configures MR creation via the GitLab API.
+	// +optional
+	GitLab *PullRequestGitLab `json:"gitlab,omitempty"`
+}
+
+// PullRequestGitHub defines connection and filter options for creating GitHub pull requests.
+// Empty struct because all nessessary data for GitHub PR can be fetched from GitConfig.
+type PullRequestGitHub struct {
+}
+
+// PullRequestGitLab defines connection and filter options for creating GitLab merge requests.
+// TODO: placeholder for gitlab. Will be implemented in GITOPS-9155
+type PullRequestGitLab struct {
+	// Insecure skips TLS verification for the GitLab API. Use for self-signed certificates; default false.
+	// +optional
+	Insecure bool `json:"insecure,omitempty"`
+
+	// CARef references a ConfigMap key containing CA certificates for TLS verification.
+	// +optional
+	CARef *ConfigMapKeyRef `json:"caRef,omitempty"`
+}
+
+// ConfigMapKeyRef references a key in a ConfigMap (e.g. for CA bundles).
+type ConfigMapKeyRef struct {
+	// ConfigMapName is the name of the ConfigMap.
+	// +kubebuilder:validation:Required
+	ConfigMapName string `json:"configMapName"`
+
+	// Key is the key within the ConfigMap.
+	// +kubebuilder:validation:Required
+	Key string `json:"key"`
 }
 
 // ManifestTarget specifies the mechanism and details for updating image references in application manifests.
