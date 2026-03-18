@@ -20,7 +20,6 @@ import (
 	"context"
 	"time"
 
-	applicationFixture "github.com/argoproj-labs/argocd-image-updater/test/ginkgo/fixture/application"
 	appv1alpha1 "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1"
 	"github.com/argoproj/gitops-engine/pkg/health"
 	. "github.com/onsi/ginkgo/v2"
@@ -29,9 +28,13 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	applicationFixture "github.com/argoproj-labs/argocd-image-updater/test/ginkgo/fixture/application"
+
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	imageUpdaterApi "github.com/argoproj-labs/argocd-image-updater/api/v1alpha1"
+
+	argov1beta1api "github.com/argoproj-labs/argocd-operator/api/v1beta1"
 
 	"github.com/argoproj-labs/argocd-image-updater/test/ginkgo/fixture"
 	argocdFixture "github.com/argoproj-labs/argocd-image-updater/test/ginkgo/fixture/argocd"
@@ -40,7 +43,6 @@ import (
 	k8sFixture "github.com/argoproj-labs/argocd-image-updater/test/ginkgo/fixture/k8s"
 	ssFixture "github.com/argoproj-labs/argocd-image-updater/test/ginkgo/fixture/statefulset"
 	fixtureUtils "github.com/argoproj-labs/argocd-image-updater/test/ginkgo/fixture/utils"
-	argov1beta1api "github.com/argoproj-labs/argocd-operator/api/v1beta1"
 )
 
 var _ = Describe("ArgoCD Image Updater Sequential E2E Tests", func() {
