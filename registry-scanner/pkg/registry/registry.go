@@ -243,6 +243,7 @@ func (ep *RegistryEndpoint) setEndpointCredentialsInternal(ctx context.Context, 
 	useCachedEndpointCreds := secretVal == "" && ep.Username != "" && ep.Password != ""
 	ep.lock.RUnlock()
 	if !useCachedEndpointCreds && (ep.Credentials != "" || secretVal != "") {
+		fetchForEndpoint := secretVal == "" // caller did not pass image-specific secret; we will use ep.Credentials
 		if secretVal == "" {
 			secretVal = ep.Credentials
 		}
@@ -265,12 +266,15 @@ func (ep *RegistryEndpoint) setEndpointCredentialsInternal(ctx context.Context, 
 			return nil, err
 		}
 
-		ep.lock.Lock()
-		ep.CredsUpdated = time.Now()
-
-		ep.Username = creds.Username
-		ep.Password = creds.Password
-		ep.lock.Unlock()
+		// Only cache on the endpoint when creds are for the registry-level source. Image-specific
+		// pull secrets (secretVal != "" from caller) must not overwrite shared endpoint state.
+		if fetchForEndpoint {
+			ep.lock.Lock()
+			ep.CredsUpdated = time.Now()
+			ep.Username = creds.Username
+			ep.Password = creds.Password
+			ep.lock.Unlock()
+		}
 	}
 
 	return creds, nil

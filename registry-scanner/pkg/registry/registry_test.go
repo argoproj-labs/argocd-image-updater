@@ -393,8 +393,9 @@ func Test_RegistryEndpoint_SetEndpointCredentials(t *testing.T) {
 		require.NotNil(t, creds)
 		assert.Equal(t, "secretuser", creds.Username)
 		assert.Equal(t, "secretpass", creds.Password)
-		assert.Equal(t, "secretuser", ep.Username)
-		assert.Equal(t, "secretpass", ep.Password)
+		// Image-specific pull secret is not cached on shared endpoint
+		assert.Empty(t, ep.Username)
+		assert.Empty(t, ep.Password)
 	})
 
 	t.Run("prefers secretVal over endpoint credentials when both empty endpoint and secretVal given", func(t *testing.T) {
@@ -420,16 +421,15 @@ func Test_RegistryEndpoint_SetEndpointCredentials(t *testing.T) {
 		require.NotNil(t, creds1)
 		assert.Equal(t, "userA", creds1.Username)
 		assert.Equal(t, "passA", creds1.Password)
-		assert.Equal(t, "userA", ep.Username)
-		assert.Equal(t, "passA", ep.Password)
 
 		creds2, err := ep.SetEndpointCredentials(ctx, kubeClient, "secret:ns/secret-b#creds")
 		require.NoError(t, err)
 		require.NotNil(t, creds2)
 		assert.Equal(t, "userB", creds2.Username)
 		assert.Equal(t, "passB", creds2.Password)
-		assert.Equal(t, "userB", ep.Username)
-		assert.Equal(t, "passB", ep.Password)
+		// Image-specific secrets are not cached on the endpoint; ep remains unchanged
+		assert.Empty(t, ep.Username)
+		assert.Empty(t, ep.Password)
 	})
 
 	t.Run("invalid credential reference returns error", func(t *testing.T) {
