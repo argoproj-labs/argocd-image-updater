@@ -569,6 +569,53 @@ func Test_TagMetadata(t *testing.T) {
 		assert.Nil(t, tagInfo)
 		assert.Nil(t, err)
 	})
+
+	t.Run("Check manifest labels are extracted", func(t *testing.T) {
+		ts := time.Now().Format(time.RFC3339Nano)
+		v1Compat := `{"created":"` + ts + `","config":{"Labels":{"org.opencontainers.image.source":"https://github.com/org/repo","org.opencontainers.image.revision":"abc123"}}}`
+		meta1 := &schema1.SignedManifest{ //nolint:staticcheck
+			Manifest: schema1.Manifest{ //nolint:staticcheck
+				History: []schema1.History{ //nolint:staticcheck
+					{
+						V1Compatibility: v1Compat,
+					},
+				},
+			},
+		}
+		ctx := context.Background()
+		ep, err := GetRegistryEndpoint(ctx, &image.ContainerImage{RegistryURL: ""})
+		require.NoError(t, err)
+		client, err := NewClient(ep, "", "")
+		require.NoError(t, err)
+		opts := &options.ManifestOptions{}
+		tagInfo, err := client.TagMetadata(ctx, meta1, opts)
+		require.NoError(t, err)
+		require.NotNil(t, tagInfo)
+		assert.Equal(t, "https://github.com/org/repo", tagInfo.Labels["org.opencontainers.image.source"])
+		assert.Equal(t, "abc123", tagInfo.Labels["org.opencontainers.image.revision"])
+	})
+
+	t.Run("Check manifest without labels", func(t *testing.T) {
+		ts := time.Now().Format(time.RFC3339Nano)
+		meta1 := &schema1.SignedManifest{ //nolint:staticcheck
+			Manifest: schema1.Manifest{ //nolint:staticcheck
+				History: []schema1.History{ //nolint:staticcheck
+					{
+						V1Compatibility: `{"created":"` + ts + `"}`,
+					},
+				},
+			},
+		}
+		ctx := context.Background()
+		ep, err := GetRegistryEndpoint(ctx, &image.ContainerImage{RegistryURL: ""})
+		require.NoError(t, err)
+		client, err := NewClient(ep, "", "")
+		require.NoError(t, err)
+		tagInfo, err := client.TagMetadata(ctx, meta1, &options.ManifestOptions{})
+		require.NoError(t, err)
+		require.NotNil(t, tagInfo)
+		assert.Nil(t, tagInfo.Labels)
+	})
 }
 
 func Test_TagMetadata_2(t *testing.T) {
