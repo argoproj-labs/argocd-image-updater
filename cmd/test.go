@@ -121,7 +121,7 @@ argocd-image-updater test nginx --allow-tags '^1.19.\d+(\-.*)*$' --update-strate
 				imgLogger.Fatalf("could not get registry endpoint: %v", err)
 			}
 
-			if err := ep.SetEndpointCredentials(imgCtx, kubeClient.KubeClient); err != nil {
+			if _, err = ep.SetEndpointCredentials(imgCtx, kubeClient.KubeClient, ""); err != nil {
 				imgLogger.Fatalf("could not set registry credentials: %v", err)
 			}
 
@@ -156,7 +156,7 @@ argocd-image-updater test nginx --allow-tags '^1.19.\d+(\-.*)*$' --update-strate
 
 			imgLogger.Infof("Fetching available tags and metadata from registry")
 
-			tags, err := ep.GetTags(imgCtx, img, regClient, vc)
+			tags, err := ep.GetTags(imgCtx, img, regClient, vc, true)
 			if err != nil {
 				imgLogger.Fatalf("could not get tags: %v", err)
 			}

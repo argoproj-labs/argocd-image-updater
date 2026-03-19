@@ -26,8 +26,16 @@ const (
 	MaxMetadataConcurrency = 20
 )
 
-// GetTags returns a list of available tags for the given image
-func (ep *RegistryEndpoint) GetTags(ctx context.Context, img *image.ContainerImage, regClient RegistryClient, vc *image.VersionConstraint) (*tag.ImageTagList, error) {
+// ErrCredentialsInvalid is returned by GetTags when the registry responded 401/403
+// and CredsExpire is set. Callers should call SetEndpointCredentials again, create
+// a new registry client, and retry GetTags.
+var ErrCredentialsInvalid = fmt.Errorf("registry credentials invalid (401/403)")
+
+// GetTags returns a list of available tags for the given image.
+// usingEndpointCreds must be true when the RegistryClient was built from
+// endpoint-cached credentials (i.e. no per-image pull secret was provided).
+// Only in that case will a 401/403 response clear the endpoint credential cache.
+func (ep *RegistryEndpoint) GetTags(ctx context.Context, img *image.ContainerImage, regClient RegistryClient, vc *image.VersionConstraint, usingEndpointCreds bool) (*tag.ImageTagList, error) {
 	var tagList *tag.ImageTagList = tag.NewImageTagList()
 	var err error
 
@@ -49,6 +57,18 @@ func (ep *RegistryEndpoint) GetTags(ctx context.Context, img *image.ContainerIma
 	}
 	tTags, err := regClient.Tags(ctx)
 	if err != nil {
+		// Only treat 401/403 as invalid cached creds when creds are still within their validity window:
+		// credsexpire is set, we got auth error, and cache has not yet expired (e.g. registry changed password).
+		// When creds are already expired, do not return ErrCredentialsInvalid; let the original error propagate.
+		ep.lock.Lock()
+		if usingEndpointCreds && ep.CredsExpire > 0 && !ep.credsExpiredByTime() && IsAuthError(ctx, err) {
+			logCtx.Infof("registry returned 401/403 with valid cached creds, clearing cache for refetch")
+			ep.Username = ""
+			ep.Password = ""
+			ep.lock.Unlock()
+			return nil, ErrCredentialsInvalid
+		}
+		ep.lock.Unlock()
 		return nil, err
 	}
 
@@ -180,8 +200,16 @@ func (ep *RegistryEndpoint) GetTags(ctx context.Context, img *image.ContainerIma
 	return tagList, err
 }
 
+// credsExpiredByTime returns true when cached creds are past their validity window.
+func (ep *RegistryEndpoint) credsExpiredByTime() bool {
+	return ep.Credentials != "" && !ep.CredsUpdated.IsZero() && ep.CredsExpire > 0 && time.Since(ep.CredsUpdated) >= ep.CredsExpire
+}
+
+// expireCredentials clears cached creds when past validity window.
 func (ep *RegistryEndpoint) expireCredentials() bool {
-	if ep.Credentials != "" && !ep.CredsUpdated.IsZero() && ep.CredsExpire > 0 && time.Since(ep.CredsUpdated) >= ep.CredsExpire {
+	ep.lock.Lock()
+	defer ep.lock.Unlock()
+	if ep.credsExpiredByTime() {
 		ep.Username = ""
 		ep.Password = ""
 		return true
@@ -190,43 +218,67 @@ func (ep *RegistryEndpoint) expireCredentials() bool {
 }
 
 // SetEndpointCredentials Sets endpoint credentials for this registry from a reference to a K8s secret
-func (ep *RegistryEndpoint) SetEndpointCredentials(ctx context.Context, kubeClient *kube.KubernetesClient) error {
+func (ep *RegistryEndpoint) SetEndpointCredentials(ctx context.Context, kubeClient *kube.KubernetesClient, secretVal string) (*image.Credential, error) {
+	effectiveSource := ep.Credentials
+	if secretVal != "" {
+		effectiveSource = secretVal
+	}
+	flightKey := ep.RegistryAPI + "|" + effectiveSource
+
 	// Use singleflight to prevent concurrent credential fetching for the same registry
-	_, err, _ := credentialGroup.Do(ep.RegistryAPI, func() (interface{}, error) {
-		return nil, ep.setEndpointCredentialsInternal(ctx, kubeClient)
+	result, err, _ := credentialGroup.Do(flightKey, func() (interface{}, error) {
+		return ep.setEndpointCredentialsInternal(ctx, kubeClient, secretVal)
 	})
-	return err
+	if err != nil {
+		return nil, err
+	}
+	return result.(*image.Credential), nil
 }
 
 // setEndpointCredentialsInternal performs the actual credential fetching
-func (ep *RegistryEndpoint) setEndpointCredentialsInternal(ctx context.Context, kubeClient *kube.KubernetesClient) error {
+func (ep *RegistryEndpoint) setEndpointCredentialsInternal(ctx context.Context, kubeClient *kube.KubernetesClient, secretVal string) (*image.Credential, error) {
 	baseLogger := log.LoggerFromContext(ctx)
 	if ep.expireCredentials() {
 		baseLogger.Debugf("expired credentials for registry %s (updated:%s, expiry:%0fs)", ep.RegistryAPI, ep.CredsUpdated, ep.CredsExpire.Seconds())
 	}
-	if ep.Username == "" && ep.Password == "" && ep.Credentials != "" {
-		credSrc, err := image.ParseCredentialSource(ep.Credentials, false)
+	ep.lock.RLock()
+	creds := &image.Credential{Username: ep.Username, Password: ep.Password}
+	useCachedEndpointCreds := secretVal == "" && ep.Username != "" && ep.Password != ""
+	ep.lock.RUnlock()
+	if !useCachedEndpointCreds && (ep.Credentials != "" || secretVal != "") {
+		fetchForEndpoint := secretVal == "" // caller did not pass image-specific secret; we will use ep.Credentials
+		if secretVal == "" {
+			secretVal = ep.Credentials
+		}
+		credSrc, err := image.ParseCredentialSource(secretVal, false)
 		if err != nil {
-			return err
+			baseLogger.Warnf("Invalid credential reference specified: %s", secretVal)
+			return nil, err
 		}
 
 		// For fetching credentials, we must have working Kubernetes client.
 		if (credSrc.Type == image.CredentialSourcePullSecret || credSrc.Type == image.CredentialSourceSecret) && kubeClient == nil {
 			logger := log.ContextWithLogger(ctx, baseLogger.WithField("registry", ep.RegistryAPI))
 			log.LoggerFromContext(logger).Warnf("cannot use K8s credentials without Kubernetes client")
-			return fmt.Errorf("could not fetch image tags")
+			return nil, fmt.Errorf("could not fetch image tags")
 		}
 
-		creds, err := credSrc.FetchCredentials(ctx, ep.RegistryAPI, kubeClient)
+		creds, err = credSrc.FetchCredentials(ctx, ep.RegistryAPI, kubeClient)
 		if err != nil {
-			return err
+			baseLogger.Warnf("Could not fetch credentials: %v", err)
+			return nil, err
 		}
 
-		ep.CredsUpdated = time.Now()
-
-		ep.Username = creds.Username
-		ep.Password = creds.Password
+		// Only cache on the endpoint when creds are for the registry-level source. Image-specific
+		// pull secrets (secretVal != "" from caller) must not overwrite shared endpoint state.
+		if fetchForEndpoint {
+			ep.lock.Lock()
+			ep.CredsUpdated = time.Now()
+			ep.Username = creds.Username
+			ep.Password = creds.Password
+			ep.lock.Unlock()
+		}
 	}
 
-	return nil
+	return creds, nil
 }

@@ -1017,20 +1017,3 @@ func getApplicationSource(ctx context.Context, app *argocdapi.Application, wbc *
 
 	return app.Spec.Source
 }
-
-// GetParameterPullSecret retrieves an image's pull secret credentials
-func GetParameterPullSecret(ctx context.Context, img *Image) *image.CredentialSource {
-	log := log.LoggerFromContext(ctx)
-
-	var pullSecretVal = img.PullSecret
-	if pullSecretVal == "" {
-		log.Tracef("No pull secret configured for this image")
-		return nil
-	}
-	credSrc, err := image.ParseCredentialSource(pullSecretVal, false)
-	if err != nil {
-		log.Warnf("Invalid credential reference specified: %s", pullSecretVal)
-		return nil
-	}
-	return credSrc
-}
