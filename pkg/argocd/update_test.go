@@ -6274,19 +6274,19 @@ func Test_sortHelmParameters(t *testing.T) {
 				{Name: "alpha", Value: "1"},
 				{Name: "bravo", Value: "2"},
 			}, []v1alpha1.HelmParameter{
-			{Name: "alpha", Value: "1"},
-			{Name: "bravo", Value: "2"},
-			{Name: "charlie", Value: "3"},
-		}},
+				{Name: "alpha", Value: "1"},
+				{Name: "bravo", Value: "2"},
+				{Name: "charlie", Value: "3"},
+			}},
 		{
 			"already sorted",
 			[]v1alpha1.HelmParameter{
 				{Name: "a", Value: "1"},
 				{Name: "b", Value: "2"},
 			}, []v1alpha1.HelmParameter{
-			{Name: "a", Value: "1"},
-			{Name: "b", Value: "2"},
-		}},
+				{Name: "a", Value: "1"},
+				{Name: "b", Value: "2"},
+			}},
 		{
 			"empty",
 			[]v1alpha1.HelmParameter{},
@@ -6296,17 +6296,17 @@ func Test_sortHelmParameters(t *testing.T) {
 			[]v1alpha1.HelmParameter{
 				{Name: "only", Value: "1"},
 			}, []v1alpha1.HelmParameter{
-			{Name: "only", Value: "1"},
-		}},
+				{Name: "only", Value: "1"},
+			}},
 		{
 			"preserves all fields",
 			[]v1alpha1.HelmParameter{
 				{Name: "image.tag", Value: "v2.0.0", ForceString: true},
 				{Name: "image.name", Value: "nginx", ForceString: false},
 			}, []v1alpha1.HelmParameter{
-			{Name: "image.name", Value: "nginx", ForceString: false},
-			{Name: "image.tag", Value: "v2.0.0", ForceString: true},
-		}},
+				{Name: "image.name", Value: "nginx", ForceString: false},
+				{Name: "image.tag", Value: "v2.0.0", ForceString: true},
+			}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
