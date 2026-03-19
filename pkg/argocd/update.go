@@ -134,7 +134,7 @@ func UpdateApplication(ctx context.Context, updateConf *UpdateConfiguration, sta
 
 		// Get list of available image tags from the repository
 		// Load creds, create registry client, fetch tags (retry once on 401/403)
-		tags, err := rep.GetTags(imageOpCtx, applicationImage.ContainerImage, regClient, &vc)
+		tags, err := rep.GetTags(imageOpCtx, applicationImage.ContainerImage, regClient, &vc, secretVal == "")
 		if err != nil {
 			// Retry once on 401/403
 			if errors.Is(err, registry.ErrCredentialsInvalid) {
@@ -153,7 +153,7 @@ func UpdateApplication(ctx context.Context, updateConf *UpdateConfiguration, sta
 					result.NumErrors += 1
 					continue
 				}
-				tags, err = rep.GetTags(imageOpCtx, applicationImage.ContainerImage, regClient, &vc)
+				tags, err = rep.GetTags(imageOpCtx, applicationImage.ContainerImage, regClient, &vc, secretVal == "")
 			}
 			if err != nil {
 				imgCtx.Errorf("Could not get tags from registry: %v", err)

@@ -40,7 +40,7 @@ func Test_GetTags(t *testing.T) {
 
 		img := image.NewFromIdentifier("foo/bar:1.2.0")
 
-		tl, err := ep.GetTags(context.Background(), img, &regClient, &image.VersionConstraint{Strategy: image.StrategySemVer, Options: options.NewManifestOptions()})
+		tl, err := ep.GetTags(context.Background(), img, &regClient, &image.VersionConstraint{Strategy: image.StrategySemVer, Options: options.NewManifestOptions()}, true)
 		require.NoError(t, err)
 		assert.NotEmpty(t, tl)
 
@@ -62,7 +62,7 @@ func Test_GetTags(t *testing.T) {
 		tl, err := ep.GetTags(ctx, img, &regClient, &image.VersionConstraint{
 			Strategy:  image.StrategySemVer,
 			MatchFunc: image.MatchFuncNone,
-			Options:   options.NewManifestOptions()})
+			Options:   options.NewManifestOptions()}, true)
 		require.NoError(t, err)
 		assert.Empty(t, tl.Tags())
 
@@ -82,7 +82,7 @@ func Test_GetTags(t *testing.T) {
 
 		img := image.NewFromIdentifier("foo/bar:1.2.0")
 
-		tl, err := ep.GetTags(context.Background(), img, &regClient, &image.VersionConstraint{Strategy: image.StrategyAlphabetical, Options: options.NewManifestOptions()})
+		tl, err := ep.GetTags(context.Background(), img, &regClient, &image.VersionConstraint{Strategy: image.StrategyAlphabetical, Options: options.NewManifestOptions()}, true)
 		require.NoError(t, err)
 		assert.NotEmpty(t, tl)
 
@@ -113,7 +113,7 @@ func Test_GetTags(t *testing.T) {
 		ep.Cache.ClearCache()
 
 		img := image.NewFromIdentifier("foo/bar:1.2.0")
-		tl, err := ep.GetTags(ctx, img, &regClient, &image.VersionConstraint{Strategy: image.StrategyNewestBuild, Options: options.NewManifestOptions()})
+		tl, err := ep.GetTags(ctx, img, &regClient, &image.VersionConstraint{Strategy: image.StrategyNewestBuild, Options: options.NewManifestOptions()}, true)
 		require.NoError(t, err)
 		assert.NotEmpty(t, tl)
 
@@ -143,7 +143,7 @@ func Test_GetTags(t *testing.T) {
 		img := image.NewFromIdentifier("foo/bar:1.0.0")
 		vc := &image.VersionConstraint{Strategy: image.StrategySemVer, Options: options.NewManifestOptions()}
 
-		tl, err := ep.GetTags(context.Background(), img, &regClient, vc)
+		tl, err := ep.GetTags(context.Background(), img, &regClient, vc, true)
 		require.Error(t, err)
 		assert.Nil(t, tl)
 		assert.ErrorIs(t, err, ErrCredentialsInvalid)
@@ -171,7 +171,7 @@ func Test_GetTags(t *testing.T) {
 		img := image.NewFromIdentifier("foo/bar:1.0.0")
 		vc := &image.VersionConstraint{Strategy: image.StrategySemVer, Options: options.NewManifestOptions()}
 
-		tl, err := ep.GetTags(context.Background(), img, &regClient, vc)
+		tl, err := ep.GetTags(context.Background(), img, &regClient, vc, true)
 		require.Error(t, err)
 		assert.Nil(t, tl)
 		assert.NotErrorIs(t, err, ErrCredentialsInvalid)

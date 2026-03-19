@@ -31,8 +31,11 @@ const (
 // a new registry client, and retry GetTags.
 var ErrCredentialsInvalid = fmt.Errorf("registry credentials invalid (401/403)")
 
-// GetTags returns a list of available tags for the given image
-func (ep *RegistryEndpoint) GetTags(ctx context.Context, img *image.ContainerImage, regClient RegistryClient, vc *image.VersionConstraint) (*tag.ImageTagList, error) {
+// GetTags returns a list of available tags for the given image.
+// usingEndpointCreds must be true when the RegistryClient was built from
+// endpoint-cached credentials (i.e. no per-image pull secret was provided).
+// Only in that case will a 401/403 response clear the endpoint credential cache.
+func (ep *RegistryEndpoint) GetTags(ctx context.Context, img *image.ContainerImage, regClient RegistryClient, vc *image.VersionConstraint, usingEndpointCreds bool) (*tag.ImageTagList, error) {
 	var tagList *tag.ImageTagList = tag.NewImageTagList()
 	var err error
 
@@ -58,7 +61,7 @@ func (ep *RegistryEndpoint) GetTags(ctx context.Context, img *image.ContainerIma
 		// credsexpire is set, we got auth error, and cache has not yet expired (e.g. registry changed password).
 		// When creds are already expired, do not return ErrCredentialsInvalid; let the original error propagate.
 		ep.lock.Lock()
-		if ep.CredsExpire > 0 && !ep.credsExpiredByTime() && IsAuthError(ctx, err) {
+		if usingEndpointCreds && ep.CredsExpire > 0 && !ep.credsExpiredByTime() && IsAuthError(ctx, err) {
 			logCtx.Infof("registry returned 401/403 with valid cached creds, clearing cache for refetch")
 			ep.Username = ""
 			ep.Password = ""

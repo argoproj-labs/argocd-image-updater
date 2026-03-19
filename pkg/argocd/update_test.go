@@ -586,6 +586,8 @@ func Test_UpdateApplication(t *testing.T) {
 
 	// ErrCredentialsInvalid retry: first GetTags returns 401, refetch creds and retry, second GetTags succeeds.
 	t.Run("ErrCredentialsInvalid retry succeeds", func(t *testing.T) {
+		// Endpoint-level credentials + credsexpire so GetTags(..., usingEndpointCreds=true) can return
+		// ErrCredentialsInvalid on 401. Per-image PullSecret sets usingEndpointCreds=false and skips that path.
 		regConfig := `
 registries:
 - name: Docker Hub
@@ -593,6 +595,7 @@ registries:
   api_url: https://registry-1.docker.io
   defaultns: library
   credsexpire: 1s
+  credentials: secret:foo/bar#creds
 `
 		regList, err := registry.ParseRegistryConfiguration(regConfig)
 		require.NoError(t, err)
@@ -627,7 +630,6 @@ registries:
 
 		// Use docker.io prefix so GetRegistryEndpoint uses our config with CredsExpire
 		img := NewImage(image.NewFromIdentifier("dummy=docker.io/jannfis/foobar:1.0.0"))
-		img.PullSecret = "secret:foo/bar#creds"
 		img.UpdateStrategy = image.StrategySemVer
 
 		appImages := &ApplicationImages{
@@ -744,6 +746,7 @@ registries:
   api_url: https://registry-1.docker.io
   defaultns: library
   credsexpire: 1s
+  credentials: secret:foo/bar#creds
 `
 		regList, err := registry.ParseRegistryConfiguration(regConfig)
 		require.NoError(t, err)
@@ -775,7 +778,6 @@ registries:
 
 		// Use docker.io prefix so GetRegistryEndpoint uses our config with CredsExpire
 		img := NewImage(image.NewFromIdentifier("dummy=docker.io/jannfis/foobar:1.0.0"))
-		img.PullSecret = "secret:foo/bar#creds"
 
 		appImages := &ApplicationImages{
 			Application: v1alpha1.Application{
@@ -6272,19 +6274,19 @@ func Test_sortHelmParameters(t *testing.T) {
 				{Name: "alpha", Value: "1"},
 				{Name: "bravo", Value: "2"},
 			}, []v1alpha1.HelmParameter{
-				{Name: "alpha", Value: "1"},
-				{Name: "bravo", Value: "2"},
-				{Name: "charlie", Value: "3"},
-			}},
+			{Name: "alpha", Value: "1"},
+			{Name: "bravo", Value: "2"},
+			{Name: "charlie", Value: "3"},
+		}},
 		{
 			"already sorted",
 			[]v1alpha1.HelmParameter{
 				{Name: "a", Value: "1"},
 				{Name: "b", Value: "2"},
 			}, []v1alpha1.HelmParameter{
-				{Name: "a", Value: "1"},
-				{Name: "b", Value: "2"},
-			}},
+			{Name: "a", Value: "1"},
+			{Name: "b", Value: "2"},
+		}},
 		{
 			"empty",
 			[]v1alpha1.HelmParameter{},
@@ -6294,17 +6296,17 @@ func Test_sortHelmParameters(t *testing.T) {
 			[]v1alpha1.HelmParameter{
 				{Name: "only", Value: "1"},
 			}, []v1alpha1.HelmParameter{
-				{Name: "only", Value: "1"},
-			}},
+			{Name: "only", Value: "1"},
+		}},
 		{
 			"preserves all fields",
 			[]v1alpha1.HelmParameter{
 				{Name: "image.tag", Value: "v2.0.0", ForceString: true},
 				{Name: "image.name", Value: "nginx", ForceString: false},
 			}, []v1alpha1.HelmParameter{
-				{Name: "image.name", Value: "nginx", ForceString: false},
-				{Name: "image.tag", Value: "v2.0.0", ForceString: true},
-			}},
+			{Name: "image.name", Value: "nginx", ForceString: false},
+			{Name: "image.tag", Value: "v2.0.0", ForceString: true},
+		}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
