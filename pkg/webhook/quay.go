@@ -47,7 +47,7 @@ func (q *QuayWebhook) Validate(r *http.Request) error {
 }
 
 // Parse process the Quay webhook and returns a Webhook event from the event
-func (q *QuayWebhook) Parse(r *http.Request) (*argocd.WebhookEvent, error) {
+func (q *QuayWebhook) Parse(r *http.Request) ([]*argocd.WebhookEvent, error) {
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read request body: %w", err)
@@ -75,9 +75,9 @@ func (q *QuayWebhook) Parse(r *http.Request) (*argocd.WebhookEvent, error) {
 	}
 	tag = payload.UpdatedTags[0]
 
-	return &argocd.WebhookEvent{
+	return []*argocd.WebhookEvent{&argocd.WebhookEvent{
 		RegistryURL: "quay.io",
 		Repository:  payload.Repository,
 		Tag:         tag,
-	}, nil
+	}}, nil
 }

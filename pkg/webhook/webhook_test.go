@@ -176,12 +176,12 @@ func TestWebhookHandler_ProcessWebhook(t *testing.T) {
 				return
 			}
 
-			if event == nil {
+			if len(event) == 0 {
 				t.Fatal("expected event to be non-nil")
-			} else if event.Repository != tt.expectedRepo {
-				t.Errorf("expected repository to be %q, got %q", tt.expectedRepo, event.Repository)
-			} else if event.Tag != tt.expectedTag {
-				t.Errorf("expected tag to be %q, got %q", tt.expectedTag, event.Tag)
+			} else if event[0].Repository != tt.expectedRepo {
+				t.Errorf("expected repository to be %q, got %q", tt.expectedRepo, event[0].Repository)
+			} else if event[0].Tag != tt.expectedTag {
+				t.Errorf("expected tag to be %q, got %q", tt.expectedTag, event[0].Tag)
 			}
 		})
 	}
@@ -211,12 +211,12 @@ func TestWebhookHandler_ProcessWebhookWithHeader(t *testing.T) {
 		t.Fatalf("expected no error but got: %v", err)
 	}
 
-	if event == nil {
+	if len(event) == 0 {
 		t.Fatal("expected event to be non-nil")
-	} else if event.Repository != "myuser/myapp" {
-		t.Errorf("expected repository to be 'myuser/myapp', got %q", event.Repository)
-	} else if event.Tag != "v2.0.0" {
-		t.Errorf("expected tag to be 'v2.0.0', got %q", event.Tag)
+	} else if event[0].Repository != "myuser/myapp" {
+		t.Errorf("expected repository to be 'myuser/myapp', got %q", event[0].Repository)
+	} else if event[0].Tag != "v2.0.0" {
+		t.Errorf("expected tag to be 'v2.0.0', got %q", event[0].Tag)
 	}
 }
 

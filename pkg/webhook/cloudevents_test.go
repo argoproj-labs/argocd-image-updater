@@ -254,11 +254,11 @@ func TestCloudEventsWebhook_Parse_ECR(t *testing.T) {
 				}
 			} else {
 				require.NoError(t, err)
-				require.NotNil(t, event)
-				assert.Equal(t, tt.wantRegistryURL, event.RegistryURL)
-				assert.Equal(t, tt.wantRepository, event.Repository)
-				assert.Equal(t, tt.wantTag, event.Tag)
-				assert.Equal(t, tt.wantDigest, event.Digest)
+				require.NotEmpty(t, event)
+				assert.Equal(t, tt.wantRegistryURL, event[0].RegistryURL)
+				assert.Equal(t, tt.wantRepository, event[0].Repository)
+				assert.Equal(t, tt.wantTag, event[0].Tag)
+				assert.Equal(t, tt.wantDigest, event[0].Digest)
 			}
 		})
 	}
@@ -407,12 +407,12 @@ func TestCloudEventsWebhook_Parse_Generic(t *testing.T) {
 				}
 			} else {
 				require.NoError(t, err)
-				require.NotNil(t, event)
-				assert.Equal(t, tt.wantRegistryURL, event.RegistryURL)
-				assert.Equal(t, tt.wantRepository, event.Repository)
-				assert.Equal(t, tt.wantTag, event.Tag)
+				require.NotEmpty(t, event)
+				assert.Equal(t, tt.wantRegistryURL, event[0].RegistryURL)
+				assert.Equal(t, tt.wantRepository, event[0].Repository)
+				assert.Equal(t, tt.wantTag, event[0].Tag)
 				if tt.wantDigest != "" {
-					assert.Equal(t, tt.wantDigest, event.Digest)
+					assert.Equal(t, tt.wantDigest, event[0].Digest)
 				}
 			}
 		})

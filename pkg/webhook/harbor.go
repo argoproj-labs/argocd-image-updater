@@ -17,6 +17,8 @@ type HarborWebhook struct {
 	secret string
 }
 
+var _ RegistryWebhook = &HarborWebhook{}
+
 // NewHarborWebhook creates a new Harbor webhook handler
 func NewHarborWebhook(secret string) *HarborWebhook {
 	return &HarborWebhook{
@@ -59,7 +61,7 @@ func (h *HarborWebhook) Validate(r *http.Request) error {
 }
 
 // Parse processes the Harbor webhook payload and returns a WebhookEvent
-func (h *HarborWebhook) Parse(r *http.Request) (*argocd.WebhookEvent, error) {
+func (h *HarborWebhook) Parse(r *http.Request) ([]*argocd.WebhookEvent, error) {
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read request body: %w", err)
@@ -142,10 +144,10 @@ func (h *HarborWebhook) Parse(r *http.Request) (*argocd.WebhookEvent, error) {
 		}
 	}
 
-	return &argocd.WebhookEvent{
+	return []*argocd.WebhookEvent{&argocd.WebhookEvent{
 		RegistryURL: registryURL,
 		Repository:  repository,
 		Tag:         resource.Tag,
 		Digest:      resource.Digest,
-	}, nil
+	}}, nil
 }

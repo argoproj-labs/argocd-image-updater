@@ -22,6 +22,8 @@ type CloudEventsWebhook struct {
 	secret string
 }
 
+var _ RegistryWebhook = &CloudEventsWebhook{}
+
 // NewCloudEventsWebhook creates a new CloudEvents webhook handler
 func NewCloudEventsWebhook(secret string) *CloudEventsWebhook {
 	return &CloudEventsWebhook{
@@ -92,7 +94,7 @@ func (c *CloudEventsWebhook) Validate(r *http.Request) error {
 }
 
 // Parse processes the CloudEvents webhook payload and returns a WebhookEvent
-func (c *CloudEventsWebhook) Parse(r *http.Request) (*argocd.WebhookEvent, error) {
+func (c *CloudEventsWebhook) Parse(r *http.Request) ([]*argocd.WebhookEvent, error) {
 	webhookLogger := log.Log().WithFields(logrus.Fields{
 		"logger": "cloudevents-webhook",
 	})
@@ -128,7 +130,7 @@ func (c *CloudEventsWebhook) Parse(r *http.Request) (*argocd.WebhookEvent, error
 }
 
 // parseEvent extracts webhook event data from CloudEvents payload
-func (c *CloudEventsWebhook) parseEvent(payload *cloudEventsPayload, ctx context.Context) (*argocd.WebhookEvent, error) {
+func (c *CloudEventsWebhook) parseEvent(payload *cloudEventsPayload, ctx context.Context) ([]*argocd.WebhookEvent, error) {
 	logCtx := log.LoggerFromContext(ctx)
 
 	var repository, tag, digest, registryURL string
@@ -221,12 +223,12 @@ func (c *CloudEventsWebhook) parseEvent(payload *cloudEventsPayload, ctx context
 	logCtx.Tracef("Final webhook event: registry=%s, repository=%s, tag=%s, digest=%s",
 		registryURL, repository, tag, digest)
 
-	return &argocd.WebhookEvent{
+	return []*argocd.WebhookEvent{&argocd.WebhookEvent{
 		RegistryURL: registryURL,
 		Repository:  repository,
 		Tag:         tag,
 		Digest:      digest,
-	}, nil
+	}}, nil
 }
 
 // extractECRRegistryURL extracts ECR registry URL from CloudEvents source
