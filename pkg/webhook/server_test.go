@@ -3,10 +3,12 @@ package webhook
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -14,6 +16,7 @@ import (
 
 	"github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
@@ -102,6 +105,7 @@ func TestNewWebhookServer(t *testing.T) {
 // TestWebhookServerStart ensures that the server is created with the correct endpoints
 func TestWebhookServerStart(t *testing.T) {
 	server := createMockServer(t, 8080)
+	server.DisableTLS = true
 	go func() {
 		err := server.Start(context.Background())
 		if err != http.ErrServerClosed {
@@ -122,6 +126,7 @@ func TestWebhookServerStart(t *testing.T) {
 func TestWebhookServerStop(t *testing.T) {
 	// Use a unique port to avoid conflicts with other tests running in parallel
 	server := createMockServer(t, 8081)
+	server.DisableTLS = true
 	errorChannel := make(chan error)
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
@@ -174,6 +179,7 @@ func TestWebhookServerHandleHealth(t *testing.T) {
 // TestWebhookServerHealthEndpoint ensures that the health endpoint of the server is working properly
 func TestWebhookServerHealthEndpoint(t *testing.T) {
 	server := createMockServer(t, 8080)
+	server.DisableTLS = true
 	ctx := context.Background()
 	go func() {
 		err := server.Start(ctx)
@@ -330,6 +336,7 @@ func TestProcessWebhookEvent(t *testing.T) {
 // TestWebhookServerWebhookEndpoint ensures that the webhook endpoint of the server is working properly
 func TestWebhookServerWebhookEndpoint(t *testing.T) {
 	server := createMockServer(t, 8080)
+	server.DisableTLS = true
 	ctx := context.Background()
 
 	handler := NewDockerHubWebhook("")
@@ -416,4 +423,354 @@ func TestWebhookServerRateLimit(t *testing.T) {
 	time.Sleep(time.Second)
 
 	assert.True(t, mock.Called, "Take was not called")
+}
+
+func TestParseTLSVersion(t *testing.T) {
+	tests := []struct {
+		name      string
+		input     string
+		expected  uint16
+		expectErr bool
+	}{
+		{"empty string returns zero", "", 0, false},
+		{"1.0 is not supported", "1.0", 0, true},
+		{"1.1", "1.1", tls.VersionTLS11, false},
+		{"1.2", "1.2", tls.VersionTLS12, false},
+		{"1.3", "1.3", tls.VersionTLS13, false},
+		{"TLS1.2 uppercase", "TLS1.2", tls.VersionTLS12, false},
+		{"tls1.3 lowercase", "tls1.3", tls.VersionTLS13, false},
+		{"with whitespace", " 1.2 ", tls.VersionTLS12, false},
+		{"invalid version", "1.4", 0, true},
+		{"garbage", "foo", 0, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := ParseTLSVersion(tt.input)
+			if tt.expectErr {
+				assert.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				assert.Equal(t, tt.expected, result)
+			}
+		})
+	}
+}
+
+func TestParseTLSCiphers(t *testing.T) {
+	tests := []struct {
+		name      string
+		input     string
+		expectNil bool
+		expectLen int
+		expectErr bool
+	}{
+		{"empty string returns nil", "", true, 0, false},
+		{"single valid cipher", "TLS_AES_128_GCM_SHA256", false, 1, false},
+		{"multiple valid ciphers colon-separated", "TLS_AES_128_GCM_SHA256:TLS_AES_256_GCM_SHA384", false, 2, false},
+		{"with whitespace", " TLS_AES_128_GCM_SHA256 : TLS_AES_256_GCM_SHA384 ", false, 2, false},
+		{"invalid cipher", "NOT_A_REAL_CIPHER", false, 0, true},
+		{"trailing colon ignored", "TLS_AES_128_GCM_SHA256:", false, 1, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := ParseTLSCiphers(tt.input)
+			if tt.expectErr {
+				assert.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				if tt.expectNil {
+					assert.Nil(t, result)
+				} else {
+					assert.Len(t, result, tt.expectLen)
+				}
+			}
+		})
+	}
+}
+
+func TestBuildTLSConfig(t *testing.T) {
+	t.Run("default config", func(t *testing.T) {
+		cfg := &TLSConfig{}
+		tlsCfg, err := cfg.buildTLSConfig()
+		require.NoError(t, err)
+		assert.Equal(t, uint16(0), tlsCfg.MinVersion)
+		assert.Equal(t, uint16(0), tlsCfg.MaxVersion)
+		assert.Nil(t, tlsCfg.CipherSuites)
+	})
+
+	t.Run("with min and max version", func(t *testing.T) {
+		cfg := &TLSConfig{
+			MinVersion: "1.2",
+			MaxVersion: "1.3",
+		}
+		tlsCfg, err := cfg.buildTLSConfig()
+		require.NoError(t, err)
+		assert.Equal(t, uint16(tls.VersionTLS12), tlsCfg.MinVersion)
+		assert.Equal(t, uint16(tls.VersionTLS13), tlsCfg.MaxVersion)
+	})
+
+	t.Run("min equals max is valid", func(t *testing.T) {
+		cfg := &TLSConfig{
+			MinVersion: "1.3",
+			MaxVersion: "1.3",
+		}
+		tlsCfg, err := cfg.buildTLSConfig()
+		require.NoError(t, err)
+		assert.Equal(t, uint16(tls.VersionTLS13), tlsCfg.MinVersion)
+		assert.Equal(t, uint16(tls.VersionTLS13), tlsCfg.MaxVersion)
+	})
+
+	t.Run("min greater than max is invalid", func(t *testing.T) {
+		cfg := &TLSConfig{
+			MinVersion: "1.3",
+			MaxVersion: "1.2",
+		}
+		_, err := cfg.buildTLSConfig()
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "cannot be higher than")
+	})
+
+	t.Run("invalid min version", func(t *testing.T) {
+		cfg := &TLSConfig{
+			MinVersion: "invalid",
+		}
+		_, err := cfg.buildTLSConfig()
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "--tlsminversion")
+	})
+
+	t.Run("invalid max version", func(t *testing.T) {
+		cfg := &TLSConfig{
+			MaxVersion: "invalid",
+		}
+		_, err := cfg.buildTLSConfig()
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "--tlsmaxversion")
+	})
+
+	t.Run("invalid cipher", func(t *testing.T) {
+		cfg := &TLSConfig{
+			Ciphers: "NOT_REAL",
+		}
+		_, err := cfg.buildTLSConfig()
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "--tlsciphers")
+	})
+
+	t.Run("with valid ciphers colon-separated", func(t *testing.T) {
+		cfg := &TLSConfig{
+			Ciphers: "TLS_AES_128_GCM_SHA256:TLS_AES_256_GCM_SHA384",
+		}
+		tlsCfg, err := cfg.buildTLSConfig()
+		require.NoError(t, err)
+		assert.Len(t, tlsCfg.CipherSuites, 2)
+	})
+}
+
+func TestValidateTLSConfig(t *testing.T) {
+	t.Run("valid config", func(t *testing.T) {
+		err := ValidateTLSConfig(tls.VersionTLS12, tls.VersionTLS13, nil)
+		assert.NoError(t, err)
+	})
+
+	t.Run("min greater than max", func(t *testing.T) {
+		err := ValidateTLSConfig(tls.VersionTLS13, tls.VersionTLS12, nil)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "cannot be higher than")
+	})
+
+	t.Run("cipher incompatible with min version", func(t *testing.T) {
+		// TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256 only supports TLS 1.2, not 1.3
+		var tls12OnlyCipherID uint16
+		for _, cs := range tls.CipherSuites() {
+			isTLS12Only := false
+			for _, v := range cs.SupportedVersions {
+				if v == tls.VersionTLS12 {
+					isTLS12Only = true
+				}
+				if v == tls.VersionTLS13 {
+					isTLS12Only = false
+					break
+				}
+			}
+			if isTLS12Only {
+				tls12OnlyCipherID = cs.ID
+				break
+			}
+		}
+		if tls12OnlyCipherID != 0 {
+			err := ValidateTLSConfig(tls.VersionTLS13, tls.VersionTLS13, []uint16{tls12OnlyCipherID})
+			assert.Error(t, err)
+			assert.Contains(t, err.Error(), "is not supported by minimum TLS version")
+		}
+	})
+
+	t.Run("cipher compatible with min version", func(t *testing.T) {
+		// Find a cipher that supports TLS 1.2
+		var tls12CipherID uint16
+		for _, cs := range tls.CipherSuites() {
+			for _, v := range cs.SupportedVersions {
+				if v == tls.VersionTLS12 {
+					tls12CipherID = cs.ID
+					break
+				}
+			}
+			if tls12CipherID != 0 {
+				break
+			}
+		}
+		if tls12CipherID != 0 {
+			err := ValidateTLSConfig(tls.VersionTLS12, tls.VersionTLS13, []uint16{tls12CipherID})
+			assert.NoError(t, err)
+		}
+	})
+
+	t.Run("no ciphers is valid", func(t *testing.T) {
+		err := ValidateTLSConfig(tls.VersionTLS13, tls.VersionTLS13, nil)
+		assert.NoError(t, err)
+	})
+
+	t.Run("zero versions skip validation", func(t *testing.T) {
+		err := ValidateTLSConfig(0, 0, nil)
+		assert.NoError(t, err)
+	})
+}
+
+func TestInsecureCipherRejected(t *testing.T) {
+	// Pick an insecure cipher name
+	insecureCiphers := tls.InsecureCipherSuites()
+	if len(insecureCiphers) > 0 {
+		_, err := ParseTLSCiphers(insecureCiphers[0].Name)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "unsupported TLS cipher suite")
+	}
+}
+
+func TestBuildTLSConfigCipherVersionIncompatibility(t *testing.T) {
+	// Find a TLS 1.2-only cipher
+	var tls12OnlyCipher string
+	for _, cs := range tls.CipherSuites() {
+		isTLS12Only := false
+		for _, v := range cs.SupportedVersions {
+			if v == tls.VersionTLS12 {
+				isTLS12Only = true
+			}
+			if v == tls.VersionTLS13 {
+				isTLS12Only = false
+				break
+			}
+		}
+		if isTLS12Only {
+			tls12OnlyCipher = cs.Name
+			break
+		}
+	}
+	if tls12OnlyCipher == "" {
+		t.Skip("no TLS 1.2-only cipher found")
+	}
+
+	cfg := &TLSConfig{
+		MinVersion: "1.3",
+		MaxVersion: "1.3",
+		Ciphers:    tls12OnlyCipher,
+	}
+	_, err := cfg.buildTLSConfig()
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "is not supported by minimum TLS version")
+}
+
+func TestGenerateSelfSignedCert(t *testing.T) {
+	cert, err := generateSelfSignedCert()
+	require.NoError(t, err)
+	assert.NotEmpty(t, cert.Certificate, "certificate should not be empty")
+	assert.NotNil(t, cert.PrivateKey, "private key should not be nil")
+}
+
+func TestCertFilesExist(t *testing.T) {
+	t.Run("nonexistent files", func(t *testing.T) {
+		assert.False(t, certFilesExist("/nonexistent/cert.pem", "/nonexistent/key.pem"))
+	})
+
+	t.Run("partial files", func(t *testing.T) {
+		// Create a temp file for cert only
+		tmpFile, err := os.CreateTemp("", "cert-*.pem")
+		require.NoError(t, err)
+		defer os.Remove(tmpFile.Name())
+		tmpFile.Close()
+
+		assert.False(t, certFilesExist(tmpFile.Name(), "/nonexistent/key.pem"))
+	})
+}
+
+func TestWebhookServerStartWithTLS(t *testing.T) {
+	server := createMockServer(t, 8083)
+	server.TLS = &TLSConfig{
+		CertFile:   "/nonexistent/cert.pem",
+		KeyFile:    "/nonexistent/key.pem",
+		MinVersion: DefaultTLSMinVersion,
+		MaxVersion: DefaultTLSMaxVersion,
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- server.Start(ctx)
+	}()
+
+	// Server should start with self-signed cert since files don't exist
+	// Wait for it to start by polling the HTTPS endpoint
+	tlsClient := &http.Client{
+		Timeout: 1 * time.Second,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // test only
+		},
+	}
+
+	address := fmt.Sprintf("https://localhost:%d/healthz", server.Port)
+	var lastErr error
+	for i := 0; i < 50; i++ {
+		resp, err := tlsClient.Get(address)
+		if err == nil {
+			resp.Body.Close()
+			assert.Equal(t, http.StatusOK, resp.StatusCode)
+			lastErr = nil
+			break
+		}
+		lastErr = err
+		time.Sleep(100 * time.Millisecond)
+	}
+	assert.NoError(t, lastErr, "Server with self-signed TLS did not start in time")
+
+	cancel()
+	<-errCh
+}
+
+func TestWebhookServerStartWithCorruptCert(t *testing.T) {
+	// Create temp files with invalid cert/key content
+	certFile, err := os.CreateTemp("", "bad-cert-*.pem")
+	require.NoError(t, err)
+	defer os.Remove(certFile.Name())
+	_, _ = certFile.WriteString("not a valid certificate")
+	certFile.Close()
+
+	keyFile, err := os.CreateTemp("", "bad-key-*.pem")
+	require.NoError(t, err)
+	defer os.Remove(keyFile.Name())
+	_, _ = keyFile.WriteString("not a valid key")
+	keyFile.Close()
+
+	server := createMockServer(t, 8084)
+	server.TLS = &TLSConfig{
+		CertFile:   certFile.Name(),
+		KeyFile:    keyFile.Name(),
+		MinVersion: DefaultTLSMinVersion,
+		MaxVersion: DefaultTLSMaxVersion,
+	}
+
+	// Start should return an error immediately for corrupt certs
+	err = server.Start(context.Background())
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to load TLS certificate")
 }
