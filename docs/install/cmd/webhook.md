@@ -16,6 +16,7 @@ Supported Registries:
 - Harbor
 - Aliyun ACR (Alibaba Cloud Container Registry)
 - AWS EventBridge (CloudEvents)
+- GitLab (self-hosted)
 
 ### Flags
 
@@ -84,6 +85,12 @@ Can also be set using the *GIT_COMMIT_SIGNING_METHOD* environment variable.
 Username to use for Git commits (default "argocd-image-updater")
 
 Can also be set using the *GIT_COMMIT_USER* environment variable.
+
+**--gitlab-webhook-secret *secret***
+
+Secret for validating GitLab webhooks
+
+Can also be set with the `GITLAB_WEBHOOK_SECRET` environment variable.
 
 **--harbor-webhook-secret *secret***
 

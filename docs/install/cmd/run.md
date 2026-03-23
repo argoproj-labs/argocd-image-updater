@@ -94,6 +94,12 @@ Username to use for Git commits (default "argocd-image-updater")
 
 Can also be set using the *GIT_COMMIT_USER* environment variable.
 
+**--gitlab-webhook-secret *secret***
+
+Secret for validating GitLab registry webhooks.
+
+Can also be set with the `GITLAB_WEBHOOK_SECRET` environment variable.
+
 **--harbor-webhook-secret *secret***
 
 Secret for validating Harbor webhooks
