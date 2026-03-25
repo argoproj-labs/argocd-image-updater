@@ -42,7 +42,7 @@ spec:
           caRef:
             configMapName: argocd-tls-certs-cm
             key: gitlab-ca
-      repository: "git@github.com:example/example.git"
+      repository: "git@gitlab.com:example/example.git"
   applicationRefs:
     - namePattern: "app-001"
       images:
