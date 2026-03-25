@@ -2140,9 +2140,8 @@ func Test_newWBCFromSettings(t *testing.T) {
 				PullRequest: &api.PullRequest{GitLab: &api.PullRequestGitLab{}},
 			},
 		}
-		wbc, err := newWBCFromSettings(context.Background(), app, kubeClient, settings)
-		assert.NoError(t, err)
-		assert.Equal(t, PRProviderUnsupported, wbc.PRProvider)
+		_, err := newWBCFromSettings(context.Background(), app, kubeClient, settings)
+		assert.Error(t, err)
 	})
 
 	t.Run("pullRequest with no provider should error", func(t *testing.T) {

@@ -38,11 +38,11 @@ func commitChangesPR(ctx context.Context, applicationImages *ApplicationImages, 
 
 	switch wbc.PRProvider {
 	case PRProviderGitHub:
-		p, err := NewGithubService(ctx, wbc, tokenProvider)
+		_, err := NewGithubService(ctx, wbc, tokenProvider)
 		if err != nil {
 			return err
 		}
-		return p.create(ctx)
+		return fmt.Errorf("PR-based git write-back is not implemented yet")
 
 	// TODO: placeholder for gitlab. Will be implemented in GITOPS-9155
 	//case PRProviderGitLab:

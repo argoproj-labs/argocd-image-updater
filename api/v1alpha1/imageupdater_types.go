@@ -229,7 +229,7 @@ type PullRequest struct {
 }
 
 // PullRequestGitHub defines connection and filter options for creating GitHub pull requests.
-// Empty struct because all nessessary data for GitHub PR can be fetched from GitConfig.
+// Empty struct because all necessary data for GitHub PR can be fetched from GitConfig.
 type PullRequestGitHub struct {
 }
 

@@ -9,13 +9,6 @@ metadata:
 spec:
   writeBackConfig:
     method: "git:secret:argocd-image-updater/git-creds"
-    # Secret data:
-    # kubectl -n argocd-image-updater create secret generic git-creds \
-    #  --from-literal=githubAppID=12345 \
-    #  --from-literal=githubAppInstallationID=67890 \
-    #  --from-literal=githubAppPrivateKey='-----BEGIN RSA PRIVATE KEY-----PRIVATEKEYDATA-----END RSA PRIVATE KEY-----' \
-    #  --from-literal=githubAppEnterpriseBaseUrl='https://github.example.com/api/v3' \
-    #  --from-literal=insecure='true'
     gitConfig: # Group git-related settings. Should be ignored when writeBackMethod: "argocd"
       pullRequest:
         github: {}
@@ -26,7 +19,7 @@ spec:
         - alias: "nginx"
           imageName: "nginx:1.17.10"
       writeBackConfig:
-        method: "git"
+        method: "git:secret:argocd-image-updater/git-creds"
         gitConfig:
           branch: "main:image-updater{{range .Images}}-{{.Name}}-{{.NewTag}}{{end}}"
           writeBackTarget: "helmvalues:/helm/config/test-values.yaml" # OR "kustomization:/config/overlays/bar" OR "helmvalues:/{{ .app.path.path }}/values.yaml" - for ApplicationSet.
@@ -56,7 +49,7 @@ spec:
         - alias: "nginx"
           imageName: "nginx:1.17.10"
       writeBackConfig:
-        method: "git"
+        method: "git:secret:argocd-image-updater/git-creds"
         gitConfig:
           branch: "main:image-updater{{range .Images}}-{{.Name}}-{{.NewTag}}{{end}}"
           writeBackTarget: "helmvalues:/helm/config/test-values.yaml" # OR "kustomization:/config/overlays/bar" OR "helmvalues:/{{ .app.path.path }}/values.yaml" - for ApplicationSet.
