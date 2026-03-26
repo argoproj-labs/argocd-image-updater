@@ -272,15 +272,15 @@ func FilterApplicationsForUpdate(ctx context.Context, ctrlClient *ArgoCDK8sClien
 	// For each app in the list, find its best matching rule from the CR.
 	for _, app := range allAppsInNamespace.Items {
 		appNSName := fmt.Sprintf("%s/%s", app.Namespace, app.Name)
-		baseLogger = baseLogger.WithField("application", appNSName)
-		ctx = log.ContextWithLogger(ctx, baseLogger)
+		appLogger := baseLogger.WithField("application", appNSName)
+		appCtx := log.ContextWithLogger(ctx, appLogger)
 
 		// Find the first matching rule for this application
 		for _, applicationRef := range applicationRefsSorted {
 			// We can ignore the error here because we pre-validated all patterns above.
 			// An error from filepath.Match is the only error condition.
-			matches, _ := nameMatchesPattern(ctx, app.Name, applicationRef.NamePattern)
-			if matches && nameMatchesLabels(ctx, app.Labels, applicationRef.LabelSelectors) {
+			matches, _ := nameMatchesPattern(appCtx, app.Name, applicationRef.NamePattern)
+			if matches && nameMatchesLabels(appCtx, app.Labels, applicationRef.LabelSelectors) {
 				localAppRef := applicationRef
 				var mergedCommonUpdateSettings *iuapi.CommonUpdateSettings
 				var appWBCSettings *WriteBackConfig
@@ -289,18 +289,18 @@ func FilterApplicationsForUpdate(ctx context.Context, ctrlClient *ArgoCDK8sClien
 				// (Images, CommonUpdateSettings, WriteBackConfig) and instead read everything from
 				// the Application's legacy argocd-image-updater.argoproj.io/* annotations.
 				if applicationRef.UseAnnotations != nil && *applicationRef.UseAnnotations {
-					baseLogger.Debugf("Read settings from application Annotations for app %s/%s", app.Namespace, app.Name)
+					appLogger.Debugf("Read settings from application Annotations for app %s/%s", app.Namespace, app.Name)
 
 					appRefImages, err := getImagesFromAnnotations(&app)
 					if err != nil {
-						baseLogger.Warnf("Could not create image list for app %s/%s, skipping: %v", app.Namespace, app.Name, err)
+						appLogger.Warnf("Could not create image list for app %s/%s, skipping: %v", app.Namespace, app.Name, err)
 						continue
 					}
 
 					appRefWBC := getWriteBackConfigFromAnnotations(&app)
-					appWBCSettings, err = newWBCFromSettings(ctx, &app, kubeClient, appRefWBC)
+					appWBCSettings, err = newWBCFromSettings(appCtx, &app, kubeClient, appRefWBC)
 					if err != nil {
-						baseLogger.Warnf("Could not create write-back config for app %s/%s, skipping: %v", app.Namespace, app.Name, err)
+						appLogger.Warnf("Could not create write-back config for app %s/%s, skipping: %v", app.Namespace, app.Name, err)
 						continue
 					}
 
@@ -308,7 +308,7 @@ func FilterApplicationsForUpdate(ctx context.Context, ctrlClient *ArgoCDK8sClien
 					updateStrategyAnnotations := getImageUpdateStrategyAnnotations("")
 					mergedCommonUpdateSettings, err = getCommonUpdateSettingsFromAnnotations(&app, updateStrategyAnnotations)
 					if err != nil {
-						baseLogger.Warnf("Could not create common update settings for app %s/%s, skipping: %v", app.Namespace, app.Name, err)
+						appLogger.Warnf("Could not create common update settings for app %s/%s, skipping: %v", app.Namespace, app.Name, err)
 						continue
 					}
 
@@ -317,26 +317,26 @@ func FilterApplicationsForUpdate(ctx context.Context, ctrlClient *ArgoCDK8sClien
 					localAppRef.WriteBackConfig = appRefWBC
 				} else {
 					// Calculate the effective settings for this ApplicationRef by layering on top of global.
-					baseLogger.Debugf("Read settings from Image Updater CR for app %s/%s", app.Namespace, app.Name)
+					appLogger.Debugf("Read settings from Image Updater CR for app %s/%s", app.Namespace, app.Name)
 					mergedCommonUpdateSettings = mergeCommonUpdateSettings(globalUpdateSettings, applicationRef.CommonUpdateSettings)
 					mergedWBCSettings := mergeWBCSettings(cr.Spec.WriteBackConfig, applicationRef.WriteBackConfig)
-					appWBCSettings, err = newWBCFromSettings(ctx, &app, kubeClient, mergedWBCSettings)
+					appWBCSettings, err = newWBCFromSettings(appCtx, &app, kubeClient, mergedWBCSettings)
 					if err != nil {
-						baseLogger.Warnf("Could not create write-back config for app %s/%s, skipping: %v", app.Namespace, app.Name, err)
+						appLogger.Warnf("Could not create write-back config for app %s/%s, skipping: %v", app.Namespace, app.Name, err)
 						continue
 					}
 				}
 
 				// Only perform expensive marshaling if trace logging is enabled
-				if baseLogger.Logger.IsLevelEnabled(logrus.TraceLevel) {
+				if appLogger.Logger.IsLevelEnabled(logrus.TraceLevel) {
 					appRefJSON, err := json.MarshalIndent(localAppRef, "", "  ")
 					if err != nil {
-						baseLogger.Warnf("Could not marshal application reference for app %s/%s", app.Namespace, app.Name)
+						appLogger.Warnf("Could not marshal application reference for app %s/%s", app.Namespace, app.Name)
 					} else {
-						baseLogger.Tracef("Resulted Image Updater object for app %s/%s: %s", app.Namespace, app.Name, string(appRefJSON))
+						appLogger.Tracef("Resulted Image Updater object for app %s/%s: %s", app.Namespace, app.Name, string(appRefJSON))
 					}
 				}
-				processApplicationForUpdate(ctx, &app, localAppRef, mergedCommonUpdateSettings, appWBCSettings, appNSName, appsForUpdate, webhookEvent)
+				processApplicationForUpdate(appCtx, &app, localAppRef, mergedCommonUpdateSettings, appWBCSettings, appNSName, appsForUpdate, webhookEvent)
 				break // Found the best match, move to the next app
 			}
 		}
