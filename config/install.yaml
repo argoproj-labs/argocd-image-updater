@@ -331,27 +331,6 @@ spec:
                                 gitlab:
                                   description: GitLab configures MR creation via the
                                     GitLab API.
-                                  properties:
-                                    caRef:
-                                      description: CARef references a ConfigMap key
-                                        containing CA certificates for TLS verification.
-                                      properties:
-                                        configMapName:
-                                          description: ConfigMapName is the name of
-                                            the ConfigMap.
-                                          type: string
-                                        key:
-                                          description: Key is the key within the ConfigMap.
-                                          type: string
-                                      required:
-                                      - configMapName
-                                      - key
-                                      type: object
-                                    insecure:
-                                      description: Insecure skips TLS verification
-                                        for the GitLab API. Use for self-signed certificates;
-                                        default false.
-                                      type: boolean
                                   type: object
                               type: object
                               x-kubernetes-validations:
@@ -478,27 +457,6 @@ spec:
                           gitlab:
                             description: GitLab configures MR creation via the GitLab
                               API.
-                            properties:
-                              caRef:
-                                description: CARef references a ConfigMap key containing
-                                  CA certificates for TLS verification.
-                                properties:
-                                  configMapName:
-                                    description: ConfigMapName is the name of the
-                                      ConfigMap.
-                                    type: string
-                                  key:
-                                    description: Key is the key within the ConfigMap.
-                                    type: string
-                                required:
-                                - configMapName
-                                - key
-                                type: object
-                              insecure:
-                                description: Insecure skips TLS verification for the
-                                  GitLab API. Use for self-signed certificates; default
-                                  false.
-                                type: boolean
                             type: object
                         type: object
                         x-kubernetes-validations:

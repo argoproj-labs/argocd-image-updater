@@ -236,24 +236,6 @@ type PullRequestGitHub struct {
 // PullRequestGitLab defines connection and filter options for creating GitLab merge requests.
 // TODO: placeholder for gitlab. Will be implemented in GITOPS-9155
 type PullRequestGitLab struct {
-	// Insecure skips TLS verification for the GitLab API. Use for self-signed certificates; default false.
-	// +optional
-	Insecure bool `json:"insecure,omitempty"`
-
-	// CARef references a ConfigMap key containing CA certificates for TLS verification.
-	// +optional
-	CARef *ConfigMapKeyRef `json:"caRef,omitempty"`
-}
-
-// ConfigMapKeyRef references a key in a ConfigMap (e.g. for CA bundles).
-type ConfigMapKeyRef struct {
-	// ConfigMapName is the name of the ConfigMap.
-	// +kubebuilder:validation:Required
-	ConfigMapName string `json:"configMapName"`
-
-	// Key is the key within the ConfigMap.
-	// +kubebuilder:validation:Required
-	Key string `json:"key"`
 }
 
 // ManifestTarget specifies the mechanism and details for updating image references in application manifests.
