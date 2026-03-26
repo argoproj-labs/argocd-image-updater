@@ -271,7 +271,8 @@ func FilterApplicationsForUpdate(ctx context.Context, ctrlClient *ArgoCDK8sClien
 
 	// For each app in the list, find its best matching rule from the CR.
 	for _, app := range allAppsInNamespace.Items {
-		baseLogger = baseLogger.WithField("application", app)
+		appNSName := fmt.Sprintf("%s/%s", app.Namespace, app.Name)
+		baseLogger = baseLogger.WithField("application", appNSName)
 		ctx = log.ContextWithLogger(ctx, baseLogger)
 
 		// Find the first matching rule for this application
@@ -335,7 +336,6 @@ func FilterApplicationsForUpdate(ctx context.Context, ctrlClient *ArgoCDK8sClien
 						baseLogger.Tracef("Resulted Image Updater object for app %s/%s: %s", app.Namespace, app.Name, string(appRefJSON))
 					}
 				}
-				appNSName := fmt.Sprintf("%s/%s", app.Namespace, app.Name)
 				processApplicationForUpdate(ctx, &app, localAppRef, mergedCommonUpdateSettings, appWBCSettings, appNSName, appsForUpdate, webhookEvent)
 				break // Found the best match, move to the next app
 			}
