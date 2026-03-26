@@ -1932,6 +1932,85 @@ func Test_mergeWBCSettings(t *testing.T) {
 		require.NotNil(t, merged.GitConfig)
 		assert.Equal(t, "app-repo", *merged.GitConfig.Repository)
 	})
+
+	t.Run("app PullRequest GitHub should be set when global has none", func(t *testing.T) {
+		global := &api.WriteBackConfig{Method: strPtr("git")}
+		app := &api.WriteBackConfig{
+			GitConfig: &api.GitConfig{
+				PullRequest: &api.PullRequest{GitHub: &api.PullRequestGitHub{}},
+			},
+		}
+		merged := mergeWBCSettings(global, app)
+		require.NotNil(t, merged.GitConfig)
+		require.NotNil(t, merged.GitConfig.PullRequest)
+		assert.NotNil(t, merged.GitConfig.PullRequest.GitHub)
+		assert.Nil(t, merged.GitConfig.PullRequest.GitLab)
+	})
+
+	t.Run("app PullRequest GitLab should be set when global has none", func(t *testing.T) {
+		global := &api.WriteBackConfig{Method: strPtr("git")}
+		app := &api.WriteBackConfig{
+			GitConfig: &api.GitConfig{
+				PullRequest: &api.PullRequest{GitLab: &api.PullRequestGitLab{}},
+			},
+		}
+		merged := mergeWBCSettings(global, app)
+		require.NotNil(t, merged.GitConfig)
+		require.NotNil(t, merged.GitConfig.PullRequest)
+		assert.Nil(t, merged.GitConfig.PullRequest.GitHub)
+		assert.NotNil(t, merged.GitConfig.PullRequest.GitLab)
+	})
+
+	t.Run("app PullRequest GitHub should override global PullRequest GitHub", func(t *testing.T) {
+		global := &api.WriteBackConfig{
+			GitConfig: &api.GitConfig{
+				PullRequest: &api.PullRequest{GitHub: &api.PullRequestGitHub{}},
+			},
+		}
+		app := &api.WriteBackConfig{
+			GitConfig: &api.GitConfig{
+				PullRequest: &api.PullRequest{GitHub: &api.PullRequestGitHub{}},
+			},
+		}
+		merged := mergeWBCSettings(global, app)
+		require.NotNil(t, merged.GitConfig.PullRequest)
+		assert.NotNil(t, merged.GitConfig.PullRequest.GitHub)
+		assert.Nil(t, merged.GitConfig.PullRequest.GitLab)
+	})
+
+	t.Run("app PullRequest GitLab should replace global PullRequest GitHub", func(t *testing.T) {
+		global := &api.WriteBackConfig{
+			GitConfig: &api.GitConfig{
+				PullRequest: &api.PullRequest{GitHub: &api.PullRequestGitHub{}},
+			},
+		}
+		app := &api.WriteBackConfig{
+			GitConfig: &api.GitConfig{
+				PullRequest: &api.PullRequest{GitLab: &api.PullRequestGitLab{}},
+			},
+		}
+		merged := mergeWBCSettings(global, app)
+		require.NotNil(t, merged.GitConfig.PullRequest)
+		// App-level PullRequest fully replaces global: GitLab is set, GitHub is cleared.
+		assert.Nil(t, merged.GitConfig.PullRequest.GitHub)
+		assert.NotNil(t, merged.GitConfig.PullRequest.GitLab)
+	})
+
+	t.Run("global PullRequest should be preserved when app PullRequest is nil", func(t *testing.T) {
+		globalGH := &api.PullRequestGitHub{}
+		global := &api.WriteBackConfig{
+			GitConfig: &api.GitConfig{
+				PullRequest: &api.PullRequest{GitHub: globalGH},
+			},
+		}
+		app := &api.WriteBackConfig{
+			GitConfig: &api.GitConfig{Branch: strPtr("app-branch")},
+		}
+		merged := mergeWBCSettings(global, app)
+		require.NotNil(t, merged.GitConfig.PullRequest)
+		assert.Same(t, globalGH, merged.GitConfig.PullRequest.GitHub)
+		assert.Nil(t, merged.GitConfig.PullRequest.GitLab)
+	})
 }
 
 // Assisted-by: Gemini AI
@@ -2038,6 +2117,68 @@ func Test_newWBCFromSettings(t *testing.T) {
 		}
 		_, err := newWBCFromSettings(context.Background(), app, kubeClient, settings)
 		assert.Error(t, err)
+	})
+
+	t.Run("pullRequest github should set PRProviderGitHub", func(t *testing.T) {
+		app, kubeClient := createTestAppAndClient()
+		settings := &api.WriteBackConfig{
+			Method: strPtr("git"),
+			GitConfig: &api.GitConfig{
+				PullRequest: &api.PullRequest{GitHub: &api.PullRequestGitHub{}},
+			},
+		}
+		wbc, err := newWBCFromSettings(context.Background(), app, kubeClient, settings)
+		assert.NoError(t, err)
+		assert.Equal(t, PRProviderGitHub, wbc.PRProvider)
+	})
+
+	t.Run("pullRequest gitlab should not error but leave PRProvider unsupported (implementation pending)", func(t *testing.T) {
+		app, kubeClient := createTestAppAndClient()
+		settings := &api.WriteBackConfig{
+			Method: strPtr("git"),
+			GitConfig: &api.GitConfig{
+				PullRequest: &api.PullRequest{GitLab: &api.PullRequestGitLab{}},
+			},
+		}
+		_, err := newWBCFromSettings(context.Background(), app, kubeClient, settings)
+		assert.Error(t, err)
+	})
+
+	t.Run("pullRequest with no provider should error", func(t *testing.T) {
+		app, kubeClient := createTestAppAndClient()
+		settings := &api.WriteBackConfig{
+			Method: strPtr("git"),
+			GitConfig: &api.GitConfig{
+				PullRequest: &api.PullRequest{},
+			},
+		}
+		_, err := newWBCFromSettings(context.Background(), app, kubeClient, settings)
+		assert.ErrorContains(t, err, "pullRequest must have exactly one provider configured, got 0")
+	})
+
+	t.Run("pullRequest with both providers should error", func(t *testing.T) {
+		app, kubeClient := createTestAppAndClient()
+		settings := &api.WriteBackConfig{
+			Method: strPtr("git"),
+			GitConfig: &api.GitConfig{
+				PullRequest: &api.PullRequest{
+					GitHub: &api.PullRequestGitHub{},
+					GitLab: &api.PullRequestGitLab{},
+				},
+			},
+		}
+		_, err := newWBCFromSettings(context.Background(), app, kubeClient, settings)
+		assert.ErrorContains(t, err, "pullRequest must have exactly one provider configured, got 2")
+	})
+
+	t.Run("no pullRequest should leave PRProvider unsupported", func(t *testing.T) {
+		app, kubeClient := createTestAppAndClient()
+		settings := &api.WriteBackConfig{
+			Method: strPtr("git"),
+		}
+		wbc, err := newWBCFromSettings(context.Background(), app, kubeClient, settings)
+		assert.NoError(t, err)
+		assert.Equal(t, PRProviderUnsupported, wbc.PRProvider)
 	})
 }
 
@@ -3646,5 +3787,40 @@ func (a ApplicationType) String() string {
 		return "Unsupported"
 	default:
 		return "Unknown"
+	}
+}
+
+func Test_countPullRequestProviders(t *testing.T) {
+	tests := []struct {
+		name     string
+		pr       *api.PullRequest
+		expected int
+	}{
+		{
+			name:     "nil GitHub and GitLab",
+			pr:       &api.PullRequest{},
+			expected: 0,
+		},
+		{
+			name:     "only GitHub",
+			pr:       &api.PullRequest{GitHub: &api.PullRequestGitHub{}},
+			expected: 1,
+		},
+		{
+			name:     "only GitLab",
+			pr:       &api.PullRequest{GitLab: &api.PullRequestGitLab{}},
+			expected: 1,
+		},
+		{
+			name:     "both GitHub and GitLab",
+			pr:       &api.PullRequest{GitHub: &api.PullRequestGitHub{}, GitLab: &api.PullRequestGitLab{}},
+			expected: 2,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, countPullRequestProviders(tt.pr))
+		})
 	}
 }

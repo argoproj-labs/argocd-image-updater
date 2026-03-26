@@ -163,7 +163,7 @@ func getWriteBackBranch(ctx context.Context, app *v1alpha1.Application, wbc *Wri
 	return getApplicationSource(ctx, app, wbc).TargetRevision
 }
 
-// commitChanges commits any changes required for updating one or more images
+// commitChangesGit commits any changes required for updating one or more images
 // after the UpdateApplication cycle has finished.
 func commitChangesGit(ctx context.Context, applicationImages *ApplicationImages, changeList []ChangeEntry, write changeWriter) error {
 	logCtx := log.LoggerFromContext(ctx)

@@ -318,6 +318,25 @@ spec:
                                 Branch to commit updates to.
                                 Required if write-back method is Git and this is not specified at the spec level.
                               type: string
+                            pullRequest:
+                              description: |-
+                                PullRequest configures creation of pull requests when writing back image updates to Git.
+                                When set, the controller opens a PR instead of pushing to the branch.
+                                If not specified write back config method is `git`.
+                              properties:
+                                github:
+                                  description: GitHub configures PR creation via the
+                                    GitHub API.
+                                  type: object
+                                gitlab:
+                                  description: GitLab configures MR creation via the
+                                    GitLab API.
+                                  type: object
+                              type: object
+                              x-kubernetes-validations:
+                              - message: Exactly one of github or gitlab must be set
+                                rule: '(has(self.github) ? 1 : 0) + (has(self.gitlab)
+                                  ? 1 : 0) == 1'
                             repository:
                               description: |-
                                 Repository URL to commit changes to.
@@ -425,6 +444,25 @@ spec:
                           Branch to commit updates to.
                           Required if write-back method is Git and this is not specified at the spec level.
                         type: string
+                      pullRequest:
+                        description: |-
+                          PullRequest configures creation of pull requests when writing back image updates to Git.
+                          When set, the controller opens a PR instead of pushing to the branch.
+                          If not specified write back config method is `git`.
+                        properties:
+                          github:
+                            description: GitHub configures PR creation via the GitHub
+                              API.
+                            type: object
+                          gitlab:
+                            description: GitLab configures MR creation via the GitLab
+                              API.
+                            type: object
+                        type: object
+                        x-kubernetes-validations:
+                        - message: Exactly one of github or gitlab must be set
+                          rule: '(has(self.github) ? 1 : 0) + (has(self.gitlab) ?
+                            1 : 0) == 1'
                       repository:
                         description: |-
                           Repository URL to commit changes to.
