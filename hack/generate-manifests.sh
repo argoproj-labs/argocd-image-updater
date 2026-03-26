@@ -20,9 +20,9 @@ if [ "$IMAGE_TAG" = "" ]; then
     IMAGE_TAG=v$(cat $SRCROOT/VERSION)
   fi
 fi
-# otherwise, use latest
+# otherwise, use latest-annotation-based
 if [ "$IMAGE_TAG" = "" ]; then
-  IMAGE_TAG=latest
+  IMAGE_TAG=latest-annotation-based
 fi
 
 cd ${SRCROOT}/manifests/base && ${KUSTOMIZE} edit set image ${IMAGE_NAMESPACE}/argocd-image-updater:${IMAGE_TAG}

@@ -1,9 +1,11 @@
 owners:
 - jannfis
+- chengfang
 
 approvers:
 - chengfang
 - pasha-codefresh
 - ishitasequeira
+- dkarpele
 
 reviewers:

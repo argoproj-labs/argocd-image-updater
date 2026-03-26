@@ -7,12 +7,15 @@ import (
 	"testing"
 
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
-	"github.com/argoproj-labs/argocd-image-updater/pkg/image"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/kube"
 
-	"github.com/argoproj/argo-cd/v2/pkg/apiclient/application"
-	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
-	"github.com/argoproj/argo-cd/v2/pkg/client/clientset/versioned/fake"
+	registryCommon "github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/common"
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/image"
+	registryKube "github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/kube"
+
+	"github.com/argoproj/argo-cd/v3/pkg/apiclient/application"
+	"github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1"
+	"github.com/argoproj/argo-cd/v3/pkg/client/clientset/versioned/fake"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -64,8 +67,8 @@ func Test_GetImagesFromApplication(t *testing.T) {
 				Name:      "test-app",
 				Namespace: "argocd",
 				Annotations: map[string]string{
-					fmt.Sprintf(common.ForceUpdateOptionAnnotation, "nginx"): "true",
-					common.ImageUpdaterAnnotation:                            "nginx=nginx",
+					fmt.Sprintf(registryCommon.Prefixed(common.ImageUpdaterAnnotationPrefix, registryCommon.ForceUpdateOptionAnnotationSuffix), "nginx"): "true",
+					common.ImageUpdaterAnnotation: "nginx=nginx",
 				},
 			},
 			Spec: v1alpha1.ApplicationSpec{},
@@ -556,8 +559,8 @@ func Test_FilterApplicationsForUpdate(t *testing.T) {
 func Test_GetHelmParamAnnotations(t *testing.T) {
 	t.Run("Get parameter names without symbolic names", func(t *testing.T) {
 		annotations := map[string]string{
-			fmt.Sprintf(common.HelmParamImageSpecAnnotation, "myimg"): "image.blub",
-			fmt.Sprintf(common.HelmParamImageTagAnnotation, "myimg"):  "image.blab",
+			fmt.Sprintf(registryCommon.Prefixed(common.ImageUpdaterAnnotationPrefix, registryCommon.HelmParamImageSpecAnnotationSuffix), "myimg"): "image.blub",
+			fmt.Sprintf(registryCommon.Prefixed(common.ImageUpdaterAnnotationPrefix, registryCommon.HelmParamImageTagAnnotationSuffix), "myimg"):  "image.blab",
 		}
 		name, tag := getHelmParamNamesFromAnnotation(annotations, &image.ContainerImage{
 			ImageAlias: "",
@@ -568,8 +571,8 @@ func Test_GetHelmParamAnnotations(t *testing.T) {
 
 	t.Run("Find existing image spec annotation", func(t *testing.T) {
 		annotations := map[string]string{
-			fmt.Sprintf(common.HelmParamImageSpecAnnotation, "myimg"): "image.path",
-			fmt.Sprintf(common.HelmParamImageTagAnnotation, "myimg"):  "image.tag",
+			fmt.Sprintf(registryCommon.Prefixed(common.ImageUpdaterAnnotationPrefix, registryCommon.HelmParamImageSpecAnnotationSuffix), "myimg"): "image.path",
+			fmt.Sprintf(registryCommon.Prefixed(common.ImageUpdaterAnnotationPrefix, registryCommon.HelmParamImageTagAnnotationSuffix), "myimg"):  "image.tag",
 		}
 		name, tag := getHelmParamNamesFromAnnotation(annotations, &image.ContainerImage{
 			ImageAlias: "myimg",
@@ -580,8 +583,8 @@ func Test_GetHelmParamAnnotations(t *testing.T) {
 
 	t.Run("Find existing image name and image tag annotations", func(t *testing.T) {
 		annotations := map[string]string{
-			fmt.Sprintf(common.HelmParamImageNameAnnotation, "myimg"): "image.name",
-			fmt.Sprintf(common.HelmParamImageTagAnnotation, "myimg"):  "image.tag",
+			fmt.Sprintf(registryCommon.Prefixed(common.ImageUpdaterAnnotationPrefix, registryCommon.HelmParamImageNameAnnotationSuffix), "myimg"): "image.name",
+			fmt.Sprintf(registryCommon.Prefixed(common.ImageUpdaterAnnotationPrefix, registryCommon.HelmParamImageTagAnnotationSuffix), "myimg"):  "image.tag",
 		}
 		name, tag := getHelmParamNamesFromAnnotation(annotations, &image.ContainerImage{
 			ImageAlias: "myimg",
@@ -592,8 +595,8 @@ func Test_GetHelmParamAnnotations(t *testing.T) {
 
 	t.Run("Find non-existing image name and image tag annotations", func(t *testing.T) {
 		annotations := map[string]string{
-			fmt.Sprintf(common.HelmParamImageNameAnnotation, "otherimg"): "image.name",
-			fmt.Sprintf(common.HelmParamImageTagAnnotation, "otherimg"):  "image.tag",
+			fmt.Sprintf(registryCommon.Prefixed(common.ImageUpdaterAnnotationPrefix, registryCommon.HelmParamImageNameAnnotationSuffix), "otherimg"): "image.name",
+			fmt.Sprintf(registryCommon.Prefixed(common.ImageUpdaterAnnotationPrefix, registryCommon.HelmParamImageTagAnnotationSuffix), "otherimg"):  "image.tag",
 		}
 		name, tag := getHelmParamNamesFromAnnotation(annotations, &image.ContainerImage{
 			ImageAlias: "myimg",
@@ -604,7 +607,7 @@ func Test_GetHelmParamAnnotations(t *testing.T) {
 
 	t.Run("Find existing image tag annotations", func(t *testing.T) {
 		annotations := map[string]string{
-			fmt.Sprintf(common.HelmParamImageTagAnnotation, "myimg"): "image.tag",
+			fmt.Sprintf(registryCommon.Prefixed(common.ImageUpdaterAnnotationPrefix, registryCommon.HelmParamImageTagAnnotationSuffix), "myimg"): "image.tag",
 		}
 		name, tag := getHelmParamNamesFromAnnotation(annotations, &image.ContainerImage{
 			ImageAlias: "myimg",
@@ -793,7 +796,7 @@ func Test_SetKustomizeImage(t *testing.T) {
 				Name:      "test-app",
 				Namespace: "testns",
 				Annotations: map[string]string{
-					fmt.Sprintf(common.KustomizeApplicationNameAnnotation, "foobar"): "foobar",
+					fmt.Sprintf(registryCommon.Prefixed(common.ImageUpdaterAnnotationPrefix, registryCommon.KustomizeApplicationNameAnnotationSuffix), "foobar"): "foobar",
 				},
 			},
 			Spec: v1alpha1.ApplicationSpec{
@@ -831,8 +834,8 @@ func Test_SetHelmImage(t *testing.T) {
 				Name:      "test-app",
 				Namespace: "testns",
 				Annotations: map[string]string{
-					fmt.Sprintf(common.HelmParamImageNameAnnotation, "foobar"): "image.name",
-					fmt.Sprintf(common.HelmParamImageTagAnnotation, "foobar"):  "image.tag",
+					fmt.Sprintf(registryCommon.Prefixed(common.ImageUpdaterAnnotationPrefix, registryCommon.HelmParamImageNameAnnotationSuffix), "foobar"): "image.name",
+					fmt.Sprintf(registryCommon.Prefixed(common.ImageUpdaterAnnotationPrefix, registryCommon.HelmParamImageTagAnnotationSuffix), "foobar"):  "image.tag",
 				},
 			},
 			Spec: v1alpha1.ApplicationSpec{
@@ -885,8 +888,8 @@ func Test_SetHelmImage(t *testing.T) {
 				Name:      "test-app",
 				Namespace: "testns",
 				Annotations: map[string]string{
-					fmt.Sprintf(common.HelmParamImageNameAnnotation, "foobar"): "image.name",
-					fmt.Sprintf(common.HelmParamImageTagAnnotation, "foobar"):  "image.tag",
+					fmt.Sprintf(registryCommon.Prefixed(common.ImageUpdaterAnnotationPrefix, registryCommon.HelmParamImageNameAnnotationSuffix), "foobar"): "image.name",
+					fmt.Sprintf(registryCommon.Prefixed(common.ImageUpdaterAnnotationPrefix, registryCommon.HelmParamImageTagAnnotationSuffix), "foobar"):  "image.tag",
 				},
 			},
 			Spec: v1alpha1.ApplicationSpec{
@@ -928,8 +931,8 @@ func Test_SetHelmImage(t *testing.T) {
 				Name:      "test-app",
 				Namespace: "testns",
 				Annotations: map[string]string{
-					fmt.Sprintf(common.HelmParamImageNameAnnotation, "foobar"): "foobar.image.name",
-					fmt.Sprintf(common.HelmParamImageTagAnnotation, "foobar"):  "foobar.image.tag",
+					fmt.Sprintf(registryCommon.Prefixed(common.ImageUpdaterAnnotationPrefix, registryCommon.HelmParamImageNameAnnotationSuffix), "foobar"): "foobar.image.name",
+					fmt.Sprintf(registryCommon.Prefixed(common.ImageUpdaterAnnotationPrefix, registryCommon.HelmParamImageTagAnnotationSuffix), "foobar"):  "foobar.image.tag",
 				},
 			},
 			Spec: v1alpha1.ApplicationSpec{
@@ -982,8 +985,8 @@ func Test_SetHelmImage(t *testing.T) {
 				Name:      "test-app",
 				Namespace: "testns",
 				Annotations: map[string]string{
-					fmt.Sprintf(common.HelmParamImageNameAnnotation, "foobar"): "foobar.image.name",
-					fmt.Sprintf(common.HelmParamImageTagAnnotation, "foobar"):  "foobar.image.tag",
+					fmt.Sprintf(registryCommon.Prefixed(common.ImageUpdaterAnnotationPrefix, registryCommon.HelmParamImageNameAnnotationSuffix), "foobar"): "foobar.image.name",
+					fmt.Sprintf(registryCommon.Prefixed(common.ImageUpdaterAnnotationPrefix, registryCommon.HelmParamImageTagAnnotationSuffix), "foobar"):  "foobar.image.tag",
 				},
 			},
 			Spec: v1alpha1.ApplicationSpec{
@@ -1005,6 +1008,79 @@ func Test_SetHelmImage(t *testing.T) {
 		require.Error(t, err)
 	})
 
+	t.Run("Test set Helm image with empty tag preserves existing tag (issue #1351)", func(t *testing.T) {
+		// This test verifies the fix for issue #1351:
+		// https://github.com/argoproj-labs/argocd-image-updater/issues/1351
+		//
+		// Scenario from the issue:
+		// - User has a Helm application with global.image.tag set to "mq@sha256:123456"
+		// - Application annotation specifies:
+		//   - imageName: "example-registry/docker/frontend-partners" (NO TAG!)
+		//   - forceUpdate: true
+		//   - updateStrategy: digest
+		// - Bug: SetHelmImage was setting global.image.tag to empty string "",
+		//   causing "invalid reference format" error when parsing "example-registry/docker/frontend-partners:"
+		// - Fix: When the new image has no tag, preserve the existing tag parameter value
+		//
+		// This test simulates the SetHelmImage call with an image that has no tag
+		// and verifies the existing tag parameter is NOT overwritten with empty string.
+		app := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "frontend-partners",
+				Namespace: "argocd",
+				Annotations: map[string]string{
+					fmt.Sprintf(registryCommon.Prefixed(common.ImageUpdaterAnnotationPrefix, registryCommon.HelmParamImageNameAnnotationSuffix), "frontend-partners"): "global.image.name",
+					fmt.Sprintf(registryCommon.Prefixed(common.ImageUpdaterAnnotationPrefix, registryCommon.HelmParamImageTagAnnotationSuffix), "frontend-partners"):  "global.image.tag",
+				},
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: &v1alpha1.ApplicationSource{
+					Helm: &v1alpha1.ApplicationSourceHelm{
+						Parameters: []v1alpha1.HelmParameter{
+							{
+								Name:  "global.image.tag",
+								Value: "mq@sha256:123456", // Existing tag from the issue
+							},
+							{
+								Name:  "global.image.name",
+								Value: "example-registry/docker/frontend-partners",
+							},
+						},
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypeHelm,
+				Summary: v1alpha1.ApplicationSummary{
+					// Empty - simulating a Job that doesn't appear in app status
+					Images: []string{},
+				},
+			},
+		}
+
+		// Create an image WITHOUT a tag - exactly as in the issue
+		// User specified: imageName: "example-registry/docker/frontend-partners"
+		img := image.NewFromIdentifier("frontend-partners=example-registry/docker/frontend-partners")
+
+		err := SetHelmImage(app, img)
+		require.NoError(t, err)
+		require.NotNil(t, app.Spec.Source.Helm)
+
+		// Find the tag parameter - it should still have the original value
+		var tagParam *v1alpha1.HelmParameter
+		for i, p := range app.Spec.Source.Helm.Parameters {
+			if p.Name == "global.image.tag" {
+				tagParam = &app.Spec.Source.Helm.Parameters[i]
+				break
+			}
+		}
+
+		// CRITICAL: The tag parameter should still exist with its original value "mq@sha256:123456"
+		// Before the fix, this would be "" causing "invalid reference format" error
+		require.NotNil(t, tagParam, "Tag parameter should be preserved")
+		assert.Equal(t, "mq@sha256:123456", tagParam.Value, "Existing tag value should not be overwritten with empty string")
+	})
+
 }
 
 func TestKubernetesClient(t *testing.T) {
@@ -1015,10 +1091,12 @@ func TestKubernetesClient(t *testing.T) {
 		ObjectMeta: v1.ObjectMeta{Name: "test-app2", Namespace: "testns2"},
 	}
 
-	client, err := NewK8SClient(&kube.KubernetesClient{
-		Namespace:             "testns1",
+	client, err := NewK8SClient(&kube.ImageUpdaterKubernetesClient{
+		KubeClient: &registryKube.KubernetesClient{
+			Namespace: "testns1",
+		},
 		ApplicationsClientset: fake.NewSimpleClientset(app1, app2),
-	})
+	}, nil)
 
 	require.NoError(t, err)
 
@@ -1030,19 +1108,19 @@ func TestKubernetesClient(t *testing.T) {
 	})
 
 	t.Run("Get application test-app1 successful", func(t *testing.T) {
-		app, err := client.GetApplication(context.TODO(), "test-app1")
+		app, err := client.GetApplication(context.Background(), "test-app1")
 		require.NoError(t, err)
 		assert.Equal(t, "test-app1", app.GetName())
 	})
 
 	t.Run("Get application test-app2 successful", func(t *testing.T) {
-		app, err := client.GetApplication(context.TODO(), "test-app2")
+		app, err := client.GetApplication(context.Background(), "test-app2")
 		require.NoError(t, err)
 		assert.Equal(t, "test-app2", app.GetName())
 	})
 
 	t.Run("Get application not found", func(t *testing.T) {
-		_, err := client.GetApplication(context.TODO(), "test-app-non-existent")
+		_, err := client.GetApplication(context.Background(), "test-app-non-existent")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "application test-app-non-existent not found")
 	})
@@ -1057,9 +1135,9 @@ func TestKubernetesClient(t *testing.T) {
 		})
 
 		// Create the Kubernetes client
-		client, err := NewK8SClient(&kube.KubernetesClient{
+		client, err := NewK8SClient(&kube.ImageUpdaterKubernetesClient{
 			ApplicationsClientset: clientset,
-		})
+		}, nil)
 		require.NoError(t, err)
 
 		// Test ListApplications error handling
@@ -1068,7 +1146,7 @@ func TestKubernetesClient(t *testing.T) {
 		assert.EqualError(t, err, "error listing applications: Internal error occurred: list error")
 
 		// Test GetApplication error handling
-		_, err = client.GetApplication(context.TODO(), "test-app")
+		_, err = client.GetApplication(context.Background(), "test-app")
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "error listing applications: Internal error occurred: list error")
 	})
@@ -1087,13 +1165,13 @@ func TestKubernetesClient(t *testing.T) {
 		)
 
 		// Create the Kubernetes client
-		client, err := NewK8SClient(&kube.KubernetesClient{
+		client, err := NewK8SClient(&kube.ImageUpdaterKubernetesClient{
 			ApplicationsClientset: clientset,
-		})
+		}, nil)
 		require.NoError(t, err)
 
 		// Test GetApplication with multiple matching applications
-		_, err = client.GetApplication(context.TODO(), "test-app")
+		_, err = client.GetApplication(context.Background(), "test-app")
 		assert.Error(t, err)
 		assert.EqualError(t, err, "multiple applications found matching test-app")
 	})
@@ -1117,13 +1195,13 @@ func TestKubernetesClientUpdateSpec(t *testing.T) {
 			}
 		})
 
-		client, err := NewK8SClient(&kube.KubernetesClient{
+		client, err := NewK8SClient(&kube.ImageUpdaterKubernetesClient{
 			ApplicationsClientset: clientset,
-		})
+		}, nil)
 		require.NoError(t, err)
 
 		appName := "test-app"
-		spec, err := client.UpdateSpec(context.TODO(), &application.ApplicationUpdateSpecRequest{
+		spec, err := client.UpdateSpec(context.Background(), &application.ApplicationUpdateSpecRequest{
 			Name: &appName,
 			Spec: &v1alpha1.ApplicationSpec{Source: &v1alpha1.ApplicationSource{
 				RepoURL: "https://github.com/argoproj/argocd-example-apps",
@@ -1138,9 +1216,9 @@ func TestKubernetesClientUpdateSpec(t *testing.T) {
 		// Create a fake empty clientset
 		clientset := fake.NewSimpleClientset()
 
-		client, err := NewK8SClient(&kube.KubernetesClient{
+		client, err := NewK8SClient(&kube.ImageUpdaterKubernetesClient{
 			ApplicationsClientset: clientset,
-		})
+		}, nil)
 		require.NoError(t, err)
 
 		appName := "test-app"
@@ -1151,7 +1229,7 @@ func TestKubernetesClientUpdateSpec(t *testing.T) {
 			Spec:         &v1alpha1.ApplicationSpec{},
 		}
 
-		_, err = client.UpdateSpec(context.TODO(), spec)
+		_, err = client.UpdateSpec(context.Background(), spec)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "error getting application: application test-app not found")
 	})
@@ -1162,9 +1240,9 @@ func TestKubernetesClientUpdateSpec(t *testing.T) {
 			Spec:       v1alpha1.ApplicationSpec{},
 		})
 
-		client, err := NewK8SClient(&kube.KubernetesClient{
+		client, err := NewK8SClient(&kube.ImageUpdaterKubernetesClient{
 			ApplicationsClientset: clientset,
-		})
+		}, nil)
 		require.NoError(t, err)
 
 		clientset.PrependReactor("update", "applications", func(action k8stesting.Action) (handled bool, ret runtime.Object, err error) {
@@ -1180,7 +1258,7 @@ func TestKubernetesClientUpdateSpec(t *testing.T) {
 			Spec: &v1alpha1.ApplicationSpec{},
 		}
 
-		_, err = client.UpdateSpec(context.TODO(), spec)
+		_, err = client.UpdateSpec(context.Background(), spec)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "max retries(0) reached while updating application: test-app")
 	})
@@ -1191,9 +1269,9 @@ func TestKubernetesClientUpdateSpec(t *testing.T) {
 			Spec:       v1alpha1.ApplicationSpec{},
 		})
 
-		client, err := NewK8SClient(&kube.KubernetesClient{
+		client, err := NewK8SClient(&kube.ImageUpdaterKubernetesClient{
 			ApplicationsClientset: clientset,
-		})
+		}, nil)
 		require.NoError(t, err)
 
 		clientset.PrependReactor("update", "applications", func(action k8stesting.Action) (handled bool, ret runtime.Object, err error) {
@@ -1208,7 +1286,7 @@ func TestKubernetesClientUpdateSpec(t *testing.T) {
 			Spec:         &v1alpha1.ApplicationSpec{},
 		}
 
-		_, err = client.UpdateSpec(context.TODO(), spec)
+		_, err = client.UpdateSpec(context.Background(), spec)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "error updating application: non-conflict error")
 	})
@@ -1223,8 +1301,8 @@ func Test_parseImageList(t *testing.T) {
 	})
 	t.Run("Test kustomize override", func(t *testing.T) {
 		imgs := *parseImageList(map[string]string{
-			common.ImageUpdaterAnnotation:                                 "foo=bar",
-			fmt.Sprintf(common.KustomizeApplicationNameAnnotation, "foo"): "baz",
+			common.ImageUpdaterAnnotation: "foo=bar",
+			fmt.Sprintf(registryCommon.Prefixed(common.ImageUpdaterAnnotationPrefix, registryCommon.KustomizeApplicationNameAnnotationSuffix), "foo"): "baz",
 		})
 		assert.Equal(t, "bar", imgs[0].ImageName)
 		assert.Equal(t, "baz", imgs[0].KustomizeImage.ImageName)

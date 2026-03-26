@@ -5,11 +5,12 @@ import (
 	"fmt"
 	"runtime"
 
-	"github.com/argoproj-labs/argocd-image-updater/pkg/image"
-	"github.com/argoproj-labs/argocd-image-updater/pkg/kube"
-	"github.com/argoproj-labs/argocd-image-updater/pkg/log"
-	"github.com/argoproj-labs/argocd-image-updater/pkg/options"
-	"github.com/argoproj-labs/argocd-image-updater/pkg/registry"
+	kube "github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/kube"
+
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/image"
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/options"
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/registry"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -65,13 +66,13 @@ argocd-image-updater test nginx --allow-tags '^1.19.\d+(\-.*)*$' --update-strate
 			}
 
 			var kubeClient *kube.KubernetesClient
-			var err error
 			if !disableKubernetes {
 				ctx := context.Background()
-				kubeClient, err = getKubeConfig(ctx, "", kubeConfig)
+				kc, err := getKubeConfig(ctx, "", kubeConfig)
 				if err != nil {
 					log.Fatalf("could not create K8s client: %v", err)
 				}
+				kubeClient = kc.KubeClient
 			}
 
 			img := image.NewFromIdentifier(args[0])
@@ -113,7 +114,7 @@ argocd-image-updater test nginx --allow-tags '^1.19.\d+(\-.*)*$' --update-strate
 				}
 			}
 
-			ep, err := registry.GetRegistryEndpoint(img.RegistryURL)
+			ep, err := registry.GetRegistryEndpoint(img)
 			if err != nil {
 				logCtx.Fatalf("could not get registry endpoint: %v", err)
 			}

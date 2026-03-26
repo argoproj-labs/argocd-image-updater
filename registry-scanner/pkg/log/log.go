@@ -9,6 +9,7 @@ package log
 // It might seem redundant, but we really want the different output streams.
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -40,21 +41,40 @@ func NewContext() *LogContext {
 
 // SetLogLevel sets the log level to use for the logger
 func SetLogLevel(logLevel string) error {
+	var level logrus.Level
 	switch strings.ToLower(logLevel) {
 	case "trace":
-		logger.SetLevel(logrus.TraceLevel)
+		level = logrus.TraceLevel
 	case "debug":
-		logger.SetLevel(logrus.DebugLevel)
+		level = logrus.DebugLevel
 	case "info":
-		logger.SetLevel(logrus.InfoLevel)
+		level = logrus.InfoLevel
 	case "warn":
-		logger.SetLevel(logrus.WarnLevel)
+		level = logrus.WarnLevel
 	case "error":
-		logger.SetLevel(logrus.ErrorLevel)
+		level = logrus.ErrorLevel
 	default:
 		return fmt.Errorf("invalid loglevel: %s", logLevel)
 	}
+	logger.SetLevel(level)
+	logrus.SetLevel(level) // set loglevel for the default logrus.logger
 	return nil
+}
+
+type LogFormat int
+
+const (
+	LogFormatText LogFormat = iota
+	LogFormatJSON
+)
+
+func SetLogFormat(logFormat LogFormat) {
+	switch logFormat {
+	case LogFormatText:
+		logger.SetFormatter(&logrus.TextFormatter{DisableColors: disableLogColors()})
+	case LogFormatJSON:
+		logger.SetFormatter(&logrus.JSONFormatter{})
+	}
 }
 
 // WithContext is an alias for NewContext
@@ -173,6 +193,26 @@ func Fatalf(format string, args ...interface{}) {
 
 func disableLogColors() bool {
 	return strings.ToLower(os.Getenv("ENABLE_LOG_COLORS")) == "false"
+}
+
+// A private key type is used to prevent collisions with context keys from other packages.
+type loggerKey struct{}
+
+// ContextWithLogger returns a new context.Context that carries the provided logrus Entry.
+// Use this to pass a contextual logger down through a call stack.
+func ContextWithLogger(ctx context.Context, logger *logrus.Entry) context.Context {
+	return context.WithValue(ctx, loggerKey{}, logger)
+}
+
+// LoggerFromContext retrieves the logrus Entry from the context.
+// If no logger is found in the context, it returns the global logger, ensuring
+// that a valid logger is always returned.
+func LoggerFromContext(ctx context.Context) *logrus.Entry {
+	if logger, ok := ctx.Value(loggerKey{}).(*logrus.Entry); ok {
+		return logger
+	}
+	// Fallback to the global logger if none is found in the context.
+	return logrus.NewEntry(Log())
 }
 
 // Initializes the logging subsystem with default values

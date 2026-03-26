@@ -1,0 +1,31 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: image-updater-e2e-007
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: image-updater-007
+  annotations:
+    argocd-image-updater.argoproj.io/image-list: test=10.42.0.1:30000/test-image:1.X.X
+    argocd-image-updater.argoproj.io/update-strategy: semver
+    argocd-image-updater.argoproj.io/force-update: "false"
+    argocd-image-updater.argoproj.io/write-back-method: git
+    argocd-image-updater.argoproj.io/write-back-target: kustomization
+    argocd-image-updater.argoproj.io/git-repository: https://10.42.0.1:30003/testdata.git
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://10.42.0.1:30003/testdata.git
+    path: ./001-simple-kustomize-app
+    targetRevision: master
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: image-updater-e2e-007
+  syncPolicy:
+    automated: {}
+    retry:
+      limit: 2

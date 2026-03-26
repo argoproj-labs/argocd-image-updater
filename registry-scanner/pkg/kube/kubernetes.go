@@ -54,12 +54,7 @@ func NewKubernetesClientFromConfig(ctx context.Context, namespace string, kubeco
 		return nil, err
 	}
 
-	applicationsClientset, err := versioned.NewForConfig(config)
-	if err != nil {
-		return nil, err
-	}
-
-	return NewKubernetesClient(ctx, clientset, applicationsClientset, namespace), nil
+	return NewKubernetesClient(ctx, clientset, namespace), nil
 }
 
 // GetSecretData returns the raw data from named K8s secret in given namespace

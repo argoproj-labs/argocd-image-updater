@@ -6,6 +6,7 @@ build:
     python: "3.12"
 mkdocs:
   fail_on_warning: false
+  configuration: mkdocs.yml
 python:
   install:
     - requirements: docs/requirements.txt

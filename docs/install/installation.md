@@ -19,18 +19,18 @@ Argo CD is running. Don't worry, without any configuration, it will not start me
     We also provide a Kustomize base in addition to the plain Kubernetes YAML
     manifests. You can use it as remote base and create overlays with your
     configuration on top of it. The remote base's URL is
-    `https://github.com/argoproj-labs/argocd-image-updater/manifests/base`. 
-    You can view the manifests [here](https://github.com/argoproj-labs/argocd-image-updater/tree/stable/manifests/base)
+    `https://github.com/argoproj-labs/argocd-image-updater//manifests/base?ref=latest-annotation-based`. 
+    You can view the manifests [here](https://github.com/argoproj-labs/argocd-image-updater/tree/latest-annotation-based/manifests/base)
 
 ### Apply the installation manifests
 
 ```shell
-kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj-labs/argocd-image-updater/stable/manifests/install.yaml
+kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj-labs/argocd-image-updater/latest-annotation-based/manifests/install.yaml
 ```
 
 !!! warning
-     The installation manifests include `ClusterRoleBinding` resources that reference `argocd` namespace. If you are installing Argo CD into a different
-namespace then make sure to update the namespace reference.
+    The installation manifests include `ClusterRoleBinding` resources that reference `argocd` namespace. If you are installing Argo CD into a different
+    namespace then make sure to update the namespace reference.
 
 !!!note "A word on high availability"
     It is not advised to run multiple replicas of the same Argo CD Image Updater
@@ -71,12 +71,12 @@ First, create a namespace and apply the manifests to your cluster
 
 ```shell
 kubectl create namespace argocd-image-updater
-kubectl apply -n argocd-image-updater -f https://raw.githubusercontent.com/argoproj-labs/argocd-image-updater/stable/manifests/install.yaml
+kubectl apply -n argocd-image-updater -f https://raw.githubusercontent.com/argoproj-labs/argocd-image-updater/latest-annotation-based/manifests/install.yaml
 ```
 
 !!! warning
-     The installation manifests include `ClusterRoleBinding` resources that reference `argocd` namespace. If you are installing Argo CD into a different
-namespace then make sure to update the namespace reference.
+    The installation manifests include `ClusterRoleBinding` resources that reference `argocd` namespace. If you are installing Argo CD into a different
+    namespace then make sure to update the namespace reference.
 
 !!!note "A word on high availability"
     It is not advised to run multiple replicas of the same Argo CD Image Updater
@@ -165,11 +165,11 @@ kubectl -n argocd-image-updater rollout restart deployment argocd-image-updater
 
 When installed from the manifests into a Kubernetes cluster, the Argo CD Image
 Updater reads the token required for accessing Argo CD API from an environment
-variable named `ARGOCD_TOKEN`, which is set from a a field named
+variable named `ARGOCD_TOKEN`, which is set from a field named
 `argocd.token` in a secret named `argocd-image-updater-secret`.
 
 The value for `argocd.token` should be set to the *base64 encoded* value of the
-access token you have generated above. As a short-cut, you can use generate the
+access token you have generated above. As a short-cut, you can use generate
 secret with `kubectl` and apply it over the existing resource:
 
 ```shell
@@ -272,4 +272,4 @@ The following metrics are being made available:
     * `argocd_image_updater_registry_requests_failed_total`
 
 A (very) rudimentary example dashboard definition for Grafana is provided
-[here](https://github.com/argoproj-labs/argocd-image-updater/tree/master/config)
+[here](https://github.com/argoproj-labs/argocd-image-updater/tree/master-annotation-based/config)

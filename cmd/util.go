@@ -3,11 +3,9 @@ package main
 import (
 	"context"
 	"fmt"
-	"path/filepath"
 	"time"
 
 	"github.com/argoproj-labs/argocd-image-updater/pkg/kube"
-	"github.com/argoproj-labs/argocd-image-updater/pkg/log"
 )
 
 func getPrintableInterval(interval time.Duration) string {
@@ -26,25 +24,9 @@ func getPrintableHealthPort(port int) string {
 	}
 }
 
-func getKubeConfig(ctx context.Context, namespace string, kubeConfig string) (*kube.KubernetesClient, error) {
-	var fullKubeConfigPath string
-	var kubeClient *kube.KubernetesClient
-	var err error
+func getKubeConfig(ctx context.Context, namespace string, kubeConfig string) (*kube.ImageUpdaterKubernetesClient, error) {
 
-	if kubeConfig != "" {
-		fullKubeConfigPath, err = filepath.Abs(kubeConfig)
-		if err != nil {
-			return nil, fmt.Errorf("cannot expand path %s: %v", kubeConfig, err)
-		}
-	}
-
-	if fullKubeConfigPath != "" {
-		log.Debugf("Creating Kubernetes client from %s", fullKubeConfigPath)
-	} else {
-		log.Debugf("Creating in-cluster Kubernetes client")
-	}
-
-	kubeClient, err = kube.NewKubernetesClientFromConfig(ctx, namespace, fullKubeConfigPath)
+	kubeClient, err := kube.NewKubernetesClient(ctx, kubeConfig, namespace)
 	if err != nil {
 		return nil, err
 	}

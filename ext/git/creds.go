@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"net/url"
 	"os"
 	"strconv"
@@ -22,11 +23,12 @@ import (
 	argoio "github.com/argoproj/gitops-engine/pkg/utils/io"
 	"github.com/argoproj/gitops-engine/pkg/utils/text"
 	"github.com/bradleyfalzon/ghinstallation/v2"
-	log "github.com/sirupsen/logrus"
 
-	"github.com/argoproj/argo-cd/v2/common"
-	certutil "github.com/argoproj/argo-cd/v2/util/cert"
-	argoioutils "github.com/argoproj/argo-cd/v2/util/io"
+	"github.com/argoproj/argo-cd/v3/common"
+	certutil "github.com/argoproj/argo-cd/v3/util/cert"
+	argoioutils "github.com/argoproj/argo-cd/v3/util/io"
+
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
 )
 
 var (
@@ -35,6 +37,13 @@ var (
 	// In memory cache for storing oauth2.TokenSource used to generate Google Cloud OAuth tokens
 	googleCloudTokenSource *gocache.Cache
 )
+
+// githubAppInstallationTransport holds both the ghinstallation transport and
+// the underlying HTTP transport, allowing proper cleanup when cache entries expire.
+type githubAppInstallationTransport struct {
+	transport     *ghinstallation.Transport
+	httpTransport *http.Transport
+}
 
 const (
 	// ASKPASS_NONCE_ENV is the environment variable that is used to pass the nonce to the askpass script
@@ -53,6 +62,13 @@ func init() {
 	}
 
 	githubAppTokenCache = gocache.New(githubAppCredsExp, 1*time.Minute)
+	// Set up eviction callback to close idle HTTP connections when cache entries expire.
+	// This prevents resource exhaustion from orphaned HTTP transports.
+	githubAppTokenCache.OnEvicted(func(_ string, value interface{}) {
+		if t, ok := value.(*githubAppInstallationTransport); ok && t.httpTransport != nil {
+			t.httpTransport.CloseIdleConnections()
+		}
+	})
 	// oauth2.TokenSource handles fetching new Tokens once they are expired. The oauth2.TokenSource itself does not expire.
 	googleCloudTokenSource = gocache.New(gocache.NoExpiration, 0)
 }
@@ -286,10 +302,10 @@ func (c SSHCreds) Environ() (io.Closer, []string, error) {
 	}
 	defer func() {
 		if err = file.Close(); err != nil {
-			log.WithFields(log.Fields{
-				common.SecurityField:    common.SecurityMedium,
-				common.SecurityCWEField: common.SecurityCWEMissingReleaseOfFileDescriptor,
-			}).Errorf("error closing file %q: %v", file.Name(), err)
+			log.WithContext().
+				AddField(common.SecurityField, common.SecurityMedium).
+				AddField(common.SecurityCWEField, common.SecurityCWEMissingReleaseOfFileDescriptor).
+				Errorf("error closing file %q: %v", file.Name(), err)
 		}
 	}()
 
@@ -304,7 +320,7 @@ func (c SSHCreds) Environ() (io.Closer, []string, error) {
 		env = append(env, fmt.Sprintf("GIT_SSL_CAINFO=%s", c.caPath))
 	}
 	if c.insecure {
-		log.Warn("temporarily disabling strict host key checking (i.e. '-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'), please don't use in production")
+		log.Warnf("temporarily disabling strict host key checking (i.e. '-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'), please don't use in production")
 		// StrictHostKeyChecking will add the host to the knownhosts file,  we don't want that - a security issue really,
 		// UserKnownHostsFile=/dev/null is therefore used so we write the new insecure host to /dev/null
 		args = append(args, "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null")
@@ -438,9 +454,9 @@ func (g GitHubAppCreds) getAccessToken() (string, error) {
 	// Check cache for GitHub transport which helps fetch an API token
 	t, found := githubAppTokenCache.Get(key)
 	if found {
-		itr := t.(*ghinstallation.Transport)
+		cachedTransport := t.(*githubAppInstallationTransport)
 		// This method caches the token and if it's expired retrieves a new one
-		return itr.Token(ctx)
+		return cachedTransport.transport.Token(ctx)
 	}
 
 	// GitHub API url
@@ -451,6 +467,8 @@ func (g GitHubAppCreds) getAccessToken() (string, error) {
 
 	// Create a new GitHub transport
 	c := GetRepoHTTPClient(baseUrl, g.insecure, g, g.proxy)
+	// Store reference to the underlying HTTP transport for cleanup on eviction
+	httpTransport, _ := c.Transport.(*http.Transport)
 	itr, err := ghinstallation.New(c.Transport,
 		g.appID,
 		g.appInstallId,
@@ -462,8 +480,12 @@ func (g GitHubAppCreds) getAccessToken() (string, error) {
 
 	itr.BaseURL = baseUrl
 
-	// Add transport to cache
-	githubAppTokenCache.Set(key, itr, time.Minute*60)
+	// Add transport to cache with both the ghinstallation transport and underlying HTTP transport
+	// The HTTP transport reference allows proper cleanup when the cache entry is evicted
+	githubAppTokenCache.Set(key, &githubAppInstallationTransport{
+		transport:     itr,
+		httpTransport: httpTransport,
+	}, time.Minute*60)
 
 	return itr.Token(ctx)
 }

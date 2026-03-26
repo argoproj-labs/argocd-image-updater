@@ -38,7 +38,7 @@ main() {
 
 initialize_services() {
   # Check permissions on $GIT_PROJECT_ROOT
-  chown -R git:git $GIT_PROJECT_ROOT
+  chown -R nginx:git $GIT_PROJECT_ROOT
   chmod -R 775 $GIT_PROJECT_ROOT
 
   /usr/bin/spawn-fcgi \

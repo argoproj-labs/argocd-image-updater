@@ -32,7 +32,7 @@ following:
 argocd-image-updater.argoproj.io/image-list: nginx
 ```
 
-The above example would specify to update the image `nginx` to it's most recent
+The above example would specify to update the image `nginx` to its most recent
 version found in the container registry, without taking any version constraints
 into consideration.
 
@@ -118,8 +118,8 @@ Argo CD Image Updater can update images according to the following strategies:
 |Strategy|Description|
 |--------|-----------|
 |`semver`| Update to the tag with the highest allowed semantic version|
-|`latest`| Update to the tag with the most recent creation date|
-|`name`  | Update to the tag with the latest entry from an alphabetically sorted list|
+|`latest/newest-build`| Update to the tag with the most recent creation date|
+|`name/alphabetical`  | Update to the tag with the latest entry from an alphabetically sorted list|
 |`digest`| Update to the most recent pushed version of a mutable tag|
 
 You can define the update strategy for each image independently by setting the
@@ -132,13 +132,18 @@ argocd-image-updater.argoproj.io/<image_alias>.update-strategy: <strategy>
 If no update strategy is given, or an invalid value is used, the default
 strategy `semver` will be used.
 
+!!!warning "Renamed image update strategies"
+    The `latest` strategy has been renamed to `newest-build`, and `name` strategy has been renamed to `alphabetical`. 
+    Please switch to the new convention as support for the old naming convention will be removed in future releases.
+
 !!!warning
     As of November 2020, Docker Hub has introduced pull limits for accounts on
-    the free plan and unauthenticated requests. The `latest` update strategy
+    the free plan and unauthenticated requests. The `latest/newest-build` update strategy
     will perform manifest pulls for determining the most recently pushed tags,
     and these will count into your pull limits. So unless you are not affected
-    by these pull limits, it is **not recommended** to use the `latest` update
+    by these pull limits, it is **not recommended** to use the `latest/newest-build` update
     strategy with images hosted on Docker Hub.
+
 
 ## Filtering tags
 
@@ -353,6 +358,10 @@ If the `<image_alias>.helm.image-spec` annotation is set, the two other
 annotations `<image_alias>.helm.image-name` and `<image_alias>.helm.image-tag`
 will be ignored.
 
+If the image is in the yaml list, then the index can be specified
+in the annotations `<image_alias>.helm.image-spec`, `<image_alias>.helm.image-name`
+or `<image_alias>.helm.image-tag` in square brackets.
+
 ## Examples
 
 ### Following an image's patch branch
@@ -440,6 +449,28 @@ Argo CD Image Updater will update your configuration to use the SHA256 sum of
 the image, and Kubernetes will restart your pods automatically to have them
 use the new image.
 
+### Updating the image in the yaml list
+
+*Scenario:* You want to automatically update the image `nginx:1.19` that is inside the yaml list, e.g.
+
+```yaml
+foo:
+- name: foo-1
+  image: busybox:latest
+  command: ['sh', '-c', 'echo "Custom container running"']
+- name: foo-2
+  image: nginx:1.19
+```
+
+*Solution:* Use the index in square brackets of the item that needs to be updated, i.e.
+
+```yaml
+argocd-image-updater.argoproj.io/fooalias.helm.image-spec: foo[1].image
+```
+
+This works for annotations `<image_alias>.helm.image-name`, `<image_alias>.helm.image-tag` and `<image_alias>.helm.image-spec`.
+
+
 ## Appendix
 
 ### <a name="appendix-annotations"></a>Available annotations
@@ -479,3 +510,16 @@ prefixed with `argocd-image-updater.argoproj.io/`.
 |`allow-tags`|A function to match tag names from the registry against to be considered for update|
 |`ignore-tags`|A comma-separated list of glob patterns that when matched, ignore a certain tag from the registry|
 |`pull-secret`|A reference to a secret to be used as registry credentials for this image|
+
+### <a name="appendix-defaults"></a>Application update configurations
+
+If you would like to change settings related to write-backs the 
+following annotations are available. Please note, all annotations must be 
+prefixed with `argocd-image-updater.argoproj.io`.
+
+|Annotation name|Description|
+|-------------- |-----------|
+|`write-back-method`|The method used for writing back updates. Either can be `argocd` (imperative) or `git` (declarative)|
+|`write-back-target`|The target used for writing back updates. Either can be `kustomization` (For kustomize) or `helmvalues` (For helm)| 
+|`git-branch`|Specify the branch in which updates will be wrote to|
+|`git-repository`|A URL to a git repository. If provided will override the RepoURL that is provided to the ArgoCD application|

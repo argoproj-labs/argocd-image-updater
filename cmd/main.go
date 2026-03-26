@@ -31,11 +31,13 @@ type ImageUpdaterConfig struct {
 	ApplicationsAPIKind    string
 	ClientOpts             argocd.ClientOptions
 	ArgocdNamespace        string
+	AppNamespace           string
 	DryRun                 bool
 	CheckInterval          time.Duration
 	ArgoClient             argocd.ArgoCD
 	LogLevel               string
-	KubeClient             *kube.KubernetesClient
+	LogFormat              string
+	KubeClient             *kube.ImageUpdaterKubernetesClient
 	MaxConcurrency         int
 	HealthPort             int
 	MetricsPort            int
@@ -50,6 +52,7 @@ type ImageUpdaterConfig struct {
 	GitCommitSignOff       bool
 	DisableKubeEvents      bool
 	GitCreds               git.CredsStore
+	EnableWebhook          bool
 }
 
 // newRootCommand implements the root command of argocd-image-updater
@@ -62,6 +65,7 @@ func newRootCommand() error {
 	rootCmd.AddCommand(newVersionCommand())
 	rootCmd.AddCommand(newTestCommand())
 	rootCmd.AddCommand(newTemplateCommand())
+	rootCmd.AddCommand(NewWebhookCommand())
 	err := rootCmd.Execute()
 	return err
 }

@@ -1,4 +1,4 @@
-This test case verifies [filtering applications by name](https://argocd-image-updater.readthedocs.io/en/stable/install/reference/#flags) with `--match-application-name` command line options
+This test case verifies [filtering applications by name](https://argocd-image-updater.readthedocs.io/en/release-0.18/install/reference/#flags) with `--match-application-name` command line options
 * match against a non-existent application name
 * match against an exact application name
 * specify `--match-application-name` option multiple times to match against multiple application names
@@ -10,7 +10,7 @@ To run this individual test case,
 
 * make sure both docker daemon and k8s cluster is running
 * `cd $HOME/go/src/image-updater/test/e2e`
-* `SRC_DIR=$HOME/go/src/image-updater kubectl kuttl test --namespace argocd-image-updater-e2e --timeout 120 --test 102-kustomize-match-application-name`
+* `SRC_DIR=$HOME/go/src/argocd-image-updater kubectl kuttl test --namespace argocd-image-updater-e2e --timeout 120 --test 102-kustomize-match-application-name`
 
 The test output logs that during each test step, 0, 1, 2, or 3 images are updated, as specified by argocd-image-updater `--match-application-name` option:
 ```bash

@@ -19,7 +19,7 @@ The following update strategies are currently supported:
 * [digest](#strategy-digest) - Update to the latest version of a given version (tag), using the tag's SHA digest
 * [name/alphabetical](#strategy-name) - Sorts tags alphabetically and update to the one with the highest cardinality
 
-!!!warning "Renamed image update strategies
+!!!warning "Renamed image update strategies"
     The `latest` strategy has been renamed to `newest-build`, and `name` strategy has been renamed to `alphabetical`. 
     Please switch to the new convention as support for the old naming convention will be removed in future releases.
 
@@ -226,13 +226,6 @@ Argo CD Image Updater will then update the image when either
 * The currently running image has a non-digest specification (e.g. uses a tag),
   or
 * the currently used digest differs from what is found in the registry
-
-!!!note "Tags and digests"
-    Note that the `digest` update strategy will use image digests for updating
-    the image tags in your applications, so the image running in your
-    application will appear as `some/image@sha256:<somelonghashstring>` instead
-    of `some/image:latest`. So in your running system, the tag information will
-    be effectively lost.
 
 For example, the following specification would always update the image for an
 application on each new push of the image `some/image` with the tag `latest`:

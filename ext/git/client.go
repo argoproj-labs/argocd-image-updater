@@ -13,10 +13,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
-	argoexec "github.com/argoproj/pkg/exec"
 	"github.com/bmatcuk/doublestar/v4"
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/config"
@@ -25,17 +23,18 @@ import (
 	githttp "github.com/go-git/go-git/v5/plumbing/transport/http"
 	"github.com/go-git/go-git/v5/storage/memory"
 	"github.com/google/uuid"
-	log "github.com/sirupsen/logrus"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/knownhosts"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	utilnet "k8s.io/apimachinery/pkg/util/net"
 
-	"github.com/argoproj/argo-cd/v2/common"
-	certutil "github.com/argoproj/argo-cd/v2/util/cert"
-	"github.com/argoproj/argo-cd/v2/util/env"
-	executil "github.com/argoproj/argo-cd/v2/util/exec"
-	"github.com/argoproj/argo-cd/v2/util/proxy"
+	"github.com/argoproj/argo-cd/v3/common"
+	certutil "github.com/argoproj/argo-cd/v3/util/cert"
+	"github.com/argoproj/argo-cd/v3/util/env"
+	executil "github.com/argoproj/argo-cd/v3/util/exec"
+	"github.com/argoproj/argo-cd/v3/util/proxy"
+
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
 )
 
 var ErrInvalidRepoURL = fmt.Errorf("repo URL is invalid")
@@ -490,7 +489,7 @@ func (m *nativeGitClient) getRefs() ([]*plumbing.Reference, error) {
 	myLockUUID, err := uuid.NewRandom()
 	myLockId := ""
 	if err != nil {
-		log.Debug("Error generating git references cache lock id: ", err)
+		log.Debugf("Error generating git references cache lock id: %v", err)
 	} else {
 		myLockId = myLockUUID.String()
 	}
@@ -669,7 +668,7 @@ func (m *nativeGitClient) CommitSHA() (string, error) {
 	return strings.TrimSpace(out), nil
 }
 
-// returns the meta-data for the commit
+// RevisionMetadata returns the meta-data for the commit
 func (m *nativeGitClient) RevisionMetadata(revision string) (*RevisionMetadata, error) {
 	out, err := m.runCmd("show", "-s", "--format=%an <%ae>|%at|%B", revision)
 	if err != nil {
@@ -712,7 +711,7 @@ func (m *nativeGitClient) IsAnnotatedTag(revision string) bool {
 	}
 }
 
-// returns the meta-data for the commit
+// ChangedFiles returns the meta-data for the commit
 func (m *nativeGitClient) ChangedFiles(revision string, targetRevision string) ([]string, error) {
 	if revision == targetRevision {
 		return []string{}, nil
@@ -803,13 +802,22 @@ func (m *nativeGitClient) runCmdOutput(cmd *exec.Cmd, ropts runOpts) (string, er
 		}
 	}
 	cmd.Env = proxy.UpsertEnv(cmd, m.proxy, "")
+
+	// Run git in its own process group so that child processes (e.g. git-remote-https)
+	// can be cleaned up when the parent is killed on timeout or context cancellation.
+	setSysProcAttr(cmd)
+
 	opts := executil.ExecRunOpts{
-		TimeoutBehavior: argoexec.TimeoutBehavior{
-			Signal:     syscall.SIGTERM,
-			ShouldWait: true,
-		},
+		TimeoutBehavior:  newTimeoutBehavior(),
 		SkipErrorLogging: ropts.SkipErrorLogging,
 		CaptureStderr:    ropts.CaptureStderr,
 	}
-	return executil.RunWithExecRunOpts(cmd, opts)
+	output, err := executil.RunWithExecRunOpts(cmd, opts)
+
+	// After the git command finishes (normally or via timeout/context cancellation),
+	// kill the entire process group to clean up any orphaned child processes such as
+	// git-remote-https.
+	killProcessGroup(cmd)
+
+	return output, err
 }

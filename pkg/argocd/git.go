@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"os"
 	"path"
@@ -12,15 +13,17 @@ import (
 
 	"sigs.k8s.io/kustomize/api/konfig"
 	"sigs.k8s.io/kustomize/api/types"
+	"sigs.k8s.io/kustomize/kyaml/kio"
 	"sigs.k8s.io/kustomize/kyaml/order"
 	kyaml "sigs.k8s.io/kustomize/kyaml/yaml"
 
-	"github.com/argoproj-labs/argocd-image-updater/pkg/image"
+	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/image"
 
 	"github.com/argoproj-labs/argocd-image-updater/ext/git"
-	"github.com/argoproj-labs/argocd-image-updater/pkg/log"
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
 
-	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
+	"github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1"
 )
 
 // templateCommitMessage renders a commit message template and returns it as
@@ -126,6 +129,33 @@ func TemplateBranchName(branchName string, changeList []ChangeEntry) string {
 
 type changeWriter func(app *v1alpha1.Application, wbc *WriteBackConfig, gitC git.Client) (err error, skip bool)
 
+// getWriteBackBranch returns the branch to use for write-back operations.
+// It first checks for a branch specified in annotations, then uses the
+// targetRevision from the matching git source, falling back to getApplicationSource.
+func getWriteBackBranch(app *v1alpha1.Application) string {
+	if app == nil {
+		return ""
+	}
+	// If git repository is specified, find matching source
+	if gitRepo, ok := app.GetAnnotations()[common.GitRepositoryAnnotation]; ok {
+		if app.Spec.HasMultipleSources() {
+			for _, s := range app.Spec.Sources {
+				if s.RepoURL == gitRepo {
+					log.WithContext().AddField("application", app.GetName()).
+						Debugf("Using target revision '%s' from matching source '%s'", s.TargetRevision, gitRepo)
+					return s.TargetRevision
+				}
+			}
+			log.WithContext().AddField("application", app.GetName()).
+				Debugf("No matching source found for git repository %s, falling back to primary source", gitRepo)
+		}
+	}
+
+	// Fall back to getApplicationSource's targetRevision
+	// This maintains consistency with how other parts of the code select the source
+	return getApplicationSource(app).TargetRevision
+}
+
 // commitChanges commits any changes required for updating one or more images
 // after the UpdateApplication cycle has finished.
 func commitChangesGit(app *v1alpha1.Application, wbc *WriteBackConfig, changeList []ChangeEntry, write changeWriter) error {
@@ -162,9 +192,11 @@ func commitChangesGit(app *v1alpha1.Application, wbc *WriteBackConfig, changeLis
 	// config, or taken from the application spec's targetRevision. If the
 	// target revision is set to the special value HEAD, or is the empty
 	// string, we'll try to resolve it to a branch name.
-	checkOutBranch := getApplicationSource(app).TargetRevision
+	var checkOutBranch string
 	if wbc.GitBranch != "" {
 		checkOutBranch = wbc.GitBranch
+	} else {
+		checkOutBranch = getWriteBackBranch(app)
 	}
 	logCtx.Tracef("targetRevision for update is '%s'", checkOutBranch)
 	if checkOutBranch == "" || checkOutBranch == "HEAD" {
@@ -226,7 +258,7 @@ func commitChangesGit(app *v1alpha1.Application, wbc *WriteBackConfig, changeLis
 	if wbc.GitCommitMessage != "" {
 		cm, err := os.CreateTemp("", "image-updater-commit-msg")
 		if err != nil {
-			return fmt.Errorf("cold not create temp file: %v", err)
+			return fmt.Errorf("could not create temp file: %v", err)
 		}
 		logCtx.Debugf("Writing commit message to %s", cm.Name())
 		err = os.WriteFile(cm.Name(), []byte(wbc.GitCommitMessage), 0600)
@@ -335,8 +367,18 @@ func writeKustomization(app *v1alpha1.Application, wbc *WriteBackConfig, gitC gi
 	if kustFile == "" {
 		return fmt.Errorf("could not find kustomization in %s", base), false
 	}
+	source := getApplicationSource(app)
+	if source == nil {
+		return fmt.Errorf("failed to find source for kustomization in %s", base), false
+	}
 
-	filterFunc, err := imagesFilter(getApplicationSource(app).Kustomize.Images)
+	kustomize := source.Kustomize
+	images := v1alpha1.KustomizeImages{}
+	if kustomize != nil {
+		images = kustomize.Images
+	}
+
+	filterFunc, err := imagesFilter(images)
 	if err != nil {
 		return err, false
 	}
@@ -345,43 +387,83 @@ func writeKustomization(app *v1alpha1.Application, wbc *WriteBackConfig, gitC gi
 }
 
 // updateKustomizeFile reads the kustomization file at path, applies the filter to it, and writes the result back
-// to the file. This is the same behavior as kyaml.UpdateFile, but it preserves the original order
-// of YAML fields to minimize git diffs.
+// to the file. This is the same behavior as kyaml.UpdateFile, but it preserves the original order of YAML fields
+// and indentation of YAML sequences to minimize git diffs.
 func updateKustomizeFile(filter kyaml.Filter, path string) (error, bool) {
-	// Read the yaml
-	y, err := kyaml.ReadFile(path)
+	// Open the input file for read
+	yRaw, err := os.ReadFile(path)
 	if err != nil {
 		return err, false
 	}
 
-	originalData, err := y.String()
+	// Read the yaml document from bytes
+	originalYSlice, err := kio.FromBytes(yRaw)
 	if err != nil {
 		return err, false
 	}
+
+	// Check that we are dealing with a single document
+	if len(originalYSlice) != 1 {
+		return errors.New("target parameter file should contain a single YAML document"), false
+	}
+	originalY := originalYSlice[0]
+
+	// Get the (parsed) original document
+	originalData, err := originalY.String()
+	if err != nil {
+		return err, false
+	}
+
+	// Create a reader, preserving indentation of sequences
+	var out bytes.Buffer
+	rw := &kio.ByteReadWriter{
+		Reader:            bytes.NewBuffer(yRaw),
+		Writer:            &out,
+		PreserveSeqIndent: true,
+	}
+
+	// Read from input buffer
+	newYSlice, err := rw.Read()
+	if err != nil {
+		return err, false
+	}
+	// We can safely assume we have a single document from the previous check
+	newY := newYSlice[0]
 
 	// Update the yaml
-	yCpy := y.Copy()
-	if err := yCpy.PipeE(filter); err != nil {
+	if err := newY.PipeE(filter); err != nil {
 		return err, false
 	}
 
 	// Preserve the original order of fields
-	if err := order.SyncOrder(y, yCpy); err != nil {
+	if err := order.SyncOrder(originalY, newY); err != nil {
 		return err, false
 	}
 
-	override, err := yCpy.String()
+	// Write the yaml document to the output buffer
+	if err = rw.Write([]*kyaml.RNode{newY}); err != nil {
+		return err, false
+	}
+
+	// newY contains metadata used by kio to preserve sequence indentation,
+	// hence we need to parse the output buffer instead
+	newParsedY, err := kyaml.Parse(out.String())
+	if err != nil {
+		return err, false
+	}
+	newData, err := newParsedY.String()
 	if err != nil {
 		return err, false
 	}
 
-	if originalData == override {
+	// Compare the updated document with the original document
+	if originalData == newData {
 		log.Debugf("target parameter file and marshaled data are the same, skipping commit.")
 		return nil, true
 	}
 
-	// Write the yaml
-	if err := os.WriteFile(path, []byte(override), 0600); err != nil {
+	// Write to file the changes
+	if err := os.WriteFile(path, out.Bytes(), 0600); err != nil {
 		return err, false
 	}
 

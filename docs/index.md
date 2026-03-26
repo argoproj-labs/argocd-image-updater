@@ -5,6 +5,11 @@ that are managed by
 [Argo CD](https://github.com/argoproj/argo-cd).
 
 !!!warning "A note on the current status"
+    This documentation covers the legacy, annotation-based configuration for
+    versions v0.x of Argo CD Image Updater. A newer, CRD-based configuration
+    is available for versions v1.x and later, which is covered in separate
+    documentation.
+
     Argo CD Image Updater is under active development.
 
     You are welcome to test it out on non-critical environments, and of
@@ -16,10 +21,6 @@ that are managed by
     best to indicate any breaking change and how to un-break it in the
     respective
     [release notes](https://github.com/argoproj-labs/argocd-image-updater/releases).
-
-    Argo CD Image Updater is not currently compatible with
-    [Argo CD Applications in any namespace](https://argo-cd.readthedocs.io/en/stable/operator-manual/app-any-namespace/).
-
 
 ## Overview
 

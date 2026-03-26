@@ -40,9 +40,13 @@ fi
 
 echo $NEW_VERSION > VERSION
 IMAGE_TAG="v${NEW_VERSION}"
+# Update manifests
 make manifests
 
+# Create PR for the release
 git checkout -b "feat/new-version-${NEW_VERSION}"
+
+# Commit and push the changes
 git commit -m "Release ${NEW_VERSION}" VERSION manifests/
 git push --set-upstream ${REMOTE} "feat/new-version-${NEW_VERSION}"
 gh label --repo ${REMOTE_URL} create --force release

@@ -1,4 +1,4 @@
-This test case verifies [filtering applications by labels](https://argocd-image-updater.readthedocs.io/en/stable/install/reference/#flags) with `--match-application-label` command line options
+This test case verifies [filtering applications by labels](https://argocd-image-updater.readthedocs.io/en/release-0.18/install/reference/#flags) with `--match-application-label` command line options
 
 This test case uses image from public container registry and application source from public GitHub repo.
 
@@ -6,7 +6,7 @@ To run this individual test case,
 
 * make sure both docker daemon and k8s cluster is running
 * `cd $HOME/go/src/image-updater/test/e2e`
-* `SRC_DIR=$HOME/go/src/image-updater kubectl kuttl test --namespace argocd-image-updater-e2e --timeout 120 --test 101-kustomize-match-application-label`
+* `SRC_DIR=$HOME/go/src/argocd-image-updater kubectl kuttl test --namespace argocd-image-updater-e2e --timeout 120 --test 101-kustomize-match-application-label`
 
 Test output:
 ```bash

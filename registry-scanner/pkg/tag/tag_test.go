@@ -27,7 +27,7 @@ func Test_ImageTagEqual(t *testing.T) {
 
 	t.Run("Digests are similar but version is not", func(t *testing.T) {
 		tag1 := NewImageTag("v1.0.0", time.Now(), "abcdef")
-		tag2 := NewImageTag("v1.0.1", time.Now(), "abcdef")
+		tag2 := NewImageTag("v1.0.0-variant2", time.Now(), "abcdef")
 		assert.True(t, tag1.Equals(tag2))
 	})
 
@@ -53,8 +53,8 @@ func Test_ImageTagEqual(t *testing.T) {
 		tag1 := NewImageTag("v1.0.0", time.Now(), "abc")
 		tag2 := NewImageTag("v1.0.0", time.Now(), "")
 		assert.False(t, tag1.Equals(tag2))
+		assert.False(t, tag2.Equals(tag1))
 	})
-
 }
 
 func Test_AppendToImageTagList(t *testing.T) {
