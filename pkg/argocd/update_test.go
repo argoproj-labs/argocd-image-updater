@@ -5564,7 +5564,7 @@ func Test_CommitUpdates(t *testing.T) {
 				NewTag: tag.NewImageTag("1.1", time.Now(), ""),
 			},
 		}
-		gitMock.On("Checkout", TemplateBranchName(ctx, wbc.GitWriteBranch, cl), mock.Anything).Return(nil)
+		gitMock.On("Checkout", TemplateBranchName(ctx, wbc.GitWriteBranch, "", "", cl), mock.Anything).Return(nil)
 
 		applicationImages := &ApplicationImages{
 			Application:     app,

@@ -2119,6 +2119,33 @@ func Test_newWBCFromSettings(t *testing.T) {
 		assert.Error(t, err)
 	})
 
+	t.Run("pullRequest with colon branch format should error", func(t *testing.T) {
+		app, kubeClient := createTestAppAndClient()
+		settings := &api.WriteBackConfig{
+			Method: strPtr("git"),
+			GitConfig: &api.GitConfig{
+				Branch:      strPtr("main:target"),
+				PullRequest: &api.PullRequest{GitHub: &api.PullRequestGitHub{}},
+			},
+		}
+		_, err := newWBCFromSettings(context.Background(), app, kubeClient, settings)
+		assert.ErrorContains(t, err, "pullRequest mode does not support colon branch format")
+	})
+
+	t.Run("pullRequest with plain branch should not error on branch format", func(t *testing.T) {
+		app, kubeClient := createTestAppAndClient()
+		settings := &api.WriteBackConfig{
+			Method: strPtr("git"),
+			GitConfig: &api.GitConfig{
+				Branch:      strPtr("main"),
+				PullRequest: &api.PullRequest{GitHub: &api.PullRequestGitHub{}},
+			},
+		}
+		wbc, err := newWBCFromSettings(context.Background(), app, kubeClient, settings)
+		assert.NoError(t, err)
+		assert.Equal(t, PRProviderGitHub, wbc.PRProvider)
+	})
+
 	t.Run("pullRequest github should set PRProviderGitHub", func(t *testing.T) {
 		app, kubeClient := createTestAppAndClient()
 		settings := &api.WriteBackConfig{

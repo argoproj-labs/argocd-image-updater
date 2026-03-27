@@ -23,9 +23,18 @@ type PullRequestService interface {
 }
 
 func commitChangesPR(ctx context.Context, applicationImages *ApplicationImages, changeList []ChangeEntry, write changeWriter) error {
+	// Push changes to pushBranch first
+	err := commitChangesGit(ctx, applicationImages, changeList, write)
+	if err != nil {
+		return err
+	}
+
 	app := applicationImages.Application
 	wbc := applicationImages.WriteBackConfig
 
+	// GetCreds is called again here (also called inside commitChangesGit).
+	// This is safe: GitHubAppCreds tokens are cached by ghinstallation;
+	// HTTPSCreds return a plain string. No redundant network calls occur.
 	creds, err := wbc.GetCreds(&app)
 	if err != nil {
 		return fmt.Errorf("could not get creds for repo '%s': %v", wbc.GitRepo, err)
@@ -38,7 +47,7 @@ func commitChangesPR(ctx context.Context, applicationImages *ApplicationImages, 
 
 	switch wbc.PRProvider {
 	case PRProviderGitHub:
-		_, err := NewGithubService(ctx, wbc, tokenProvider)
+		_, err = NewGithubService(ctx, wbc, tokenProvider)
 		if err != nil {
 			return err
 		}

@@ -283,24 +283,25 @@ func FilterApplicationsForUpdate(ctx context.Context, ctrlClient *ArgoCDK8sClien
 			if matches && nameMatchesLabels(appCtx, app.Labels, applicationRef.LabelSelectors) {
 				localAppRef := applicationRef
 				var mergedCommonUpdateSettings *iuapi.CommonUpdateSettings
+				var mergedWBCSettings *iuapi.WriteBackConfig
 				var appWBCSettings *WriteBackConfig
 				var err error
 				// When UseAnnotations is true, we ignore all CR-based configuration
 				// (Images, CommonUpdateSettings, WriteBackConfig) and instead read everything from
 				// the Application's legacy argocd-image-updater.argoproj.io/* annotations.
 				if applicationRef.UseAnnotations != nil && *applicationRef.UseAnnotations {
-					appLogger.Debugf("Read settings from application Annotations for app %s/%s", app.Namespace, app.Name)
+					appLogger.Debugf("Read settings from application Annotations")
 
 					appRefImages, err := getImagesFromAnnotations(&app)
 					if err != nil {
-						appLogger.Warnf("Could not create image list for app %s/%s, skipping: %v", app.Namespace, app.Name, err)
+						appLogger.Warnf("Could not create image list, skipping: %v", err)
 						continue
 					}
 
 					appRefWBC := getWriteBackConfigFromAnnotations(&app)
 					appWBCSettings, err = newWBCFromSettings(appCtx, &app, kubeClient, appRefWBC)
 					if err != nil {
-						appLogger.Warnf("Could not create write-back config for app %s/%s, skipping: %v", app.Namespace, app.Name, err)
+						appLogger.Warnf("Could not create write-back config, skipping: %v", err)
 						continue
 					}
 
@@ -308,32 +309,40 @@ func FilterApplicationsForUpdate(ctx context.Context, ctrlClient *ArgoCDK8sClien
 					updateStrategyAnnotations := getImageUpdateStrategyAnnotations("")
 					mergedCommonUpdateSettings, err = getCommonUpdateSettingsFromAnnotations(&app, updateStrategyAnnotations)
 					if err != nil {
-						appLogger.Warnf("Could not create common update settings for app %s/%s, skipping: %v", app.Namespace, app.Name, err)
+						appLogger.Warnf("Could not create common update settings f, skipping: %v", err)
 						continue
 					}
 
 					// Create a local copy of applicationRef with annotation-derived values
 					localAppRef.Images = appRefImages
 					localAppRef.WriteBackConfig = appRefWBC
+					mergedWBCSettings = appRefWBC
 				} else {
 					// Calculate the effective settings for this ApplicationRef by layering on top of global.
-					appLogger.Debugf("Read settings from Image Updater CR for app %s/%s", app.Namespace, app.Name)
+					appLogger.Debugf("Read settings from Image Updater CR")
 					mergedCommonUpdateSettings = mergeCommonUpdateSettings(globalUpdateSettings, applicationRef.CommonUpdateSettings)
-					mergedWBCSettings := mergeWBCSettings(cr.Spec.WriteBackConfig, applicationRef.WriteBackConfig)
+					mergedWBCSettings = mergeWBCSettings(cr.Spec.WriteBackConfig, applicationRef.WriteBackConfig)
 					appWBCSettings, err = newWBCFromSettings(appCtx, &app, kubeClient, mergedWBCSettings)
 					if err != nil {
-						appLogger.Warnf("Could not create write-back config for app %s/%s, skipping: %v", app.Namespace, app.Name, err)
+						appLogger.Warnf("Could not create write-back config, skipping: %v", err)
 						continue
 					}
 				}
 
 				// Only perform expensive marshaling if trace logging is enabled
 				if appLogger.Logger.IsLevelEnabled(logrus.TraceLevel) {
-					appRefJSON, err := json.MarshalIndent(localAppRef, "", "  ")
+					appRefJSON, err := json.MarshalIndent(iuapi.ApplicationRef{
+						NamePattern:          localAppRef.NamePattern,
+						LabelSelectors:       localAppRef.LabelSelectors,
+						UseAnnotations:       localAppRef.UseAnnotations,
+						CommonUpdateSettings: mergedCommonUpdateSettings,
+						WriteBackConfig:      mergedWBCSettings,
+						Images:               localAppRef.Images,
+					}, "", "  ")
 					if err != nil {
-						appLogger.Warnf("Could not marshal application reference for app %s/%s", app.Namespace, app.Name)
+						appLogger.Warnf("Could not marshal application reference")
 					} else {
-						appLogger.Tracef("Resulted Image Updater object for app %s/%s: %s", app.Namespace, app.Name, string(appRefJSON))
+						appLogger.Tracef("Resulted Image Updater object: %s", string(appRefJSON))
 					}
 				}
 				processApplicationForUpdate(appCtx, &app, localAppRef, mergedCommonUpdateSettings, appWBCSettings, appNSName, appsForUpdate, webhookEvent)
@@ -545,10 +554,17 @@ func newWBCFromSettings(ctx context.Context, app *argocdapi.Application, kubeCli
 			return nil, err
 		}
 		if settings.GitConfig != nil && settings.GitConfig.PullRequest != nil {
+			// Pull request mode doesn't support the colon branch format `base:target`.
+			// Specify only the PR base branch (e.g. branch: "main").
+			if settings.GitConfig.Branch != nil && strings.Contains(*settings.GitConfig.Branch, ":") {
+				return nil, fmt.Errorf("pullRequest mode does not support colon branch format %q: specify only the PR base branch (e.g. \"main\")", *settings.GitConfig.Branch)
+			}
+
 			n := countPullRequestProviders(settings.GitConfig.PullRequest)
 			if n != 1 {
 				return nil, fmt.Errorf("pullRequest must have exactly one provider configured, got %d", n)
 			}
+
 			if settings.GitConfig.PullRequest.GitHub != nil {
 				wbc.PRProvider = PRProviderGitHub
 			}
