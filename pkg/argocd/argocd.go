@@ -340,7 +340,7 @@ func FilterApplicationsForUpdate(ctx context.Context, ctrlClient *ArgoCDK8sClien
 						Images:               localAppRef.Images,
 					}, "", "  ")
 					if err != nil {
-						appLogger.Warnf("Could not marshal application reference")
+						appLogger.Warnf("Could not marshal application reference: %v", err)
 					} else {
 						appLogger.Tracef("Resulted Image Updater object: %s", string(appRefJSON))
 					}
