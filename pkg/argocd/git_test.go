@@ -118,7 +118,7 @@ func Test_TemplateBranchName(t *testing.T) {
 				NewTag: tag.NewImageTag("2.1", time.Now(), ""),
 			},
 		}
-		r := TemplateBranchName(context.Background(), tpl, cl)
+		r := TemplateBranchName(context.Background(), tpl, "", "", cl)
 		assert.NotEmpty(t, r)
 		assert.Equal(t, exp, r)
 	})
@@ -132,7 +132,7 @@ func Test_TemplateBranchName(t *testing.T) {
 				NewTag: tag.NewImageTag("1.1", time.Now(), ""),
 			},
 		}
-		r := TemplateBranchName(context.Background(), tpl, cl)
+		r := TemplateBranchName(context.Background(), tpl, "", "", cl)
 		assert.NotEmpty(t, r)
 		assert.Equal(t, exp, r)
 	})
@@ -147,7 +147,7 @@ func Test_TemplateBranchName(t *testing.T) {
 				NewTag: tag.NewImageTag("1.1", time.Now(), ""),
 			},
 		}
-		r := TemplateBranchName(context.Background(), tpl, cl)
+		r := TemplateBranchName(context.Background(), tpl, "", "", cl)
 		assert.NotEmpty(t, r)
 		assert.Equal(t, exp, r)
 	})
@@ -159,10 +159,60 @@ func Test_TemplateBranchName(t *testing.T) {
 			"in-blandit-vel-pharetra-vel-urna-aliquam-euismod-elit-vel-mi"
 		exp := tpl[:255]
 		cl := []ChangeEntry{}
-		r := TemplateBranchName(context.Background(), tpl, cl)
+		r := TemplateBranchName(context.Background(), tpl, "", "", cl)
 		assert.NotEmpty(t, r)
 		assert.Equal(t, exp, r)
 		assert.Len(t, r, 255)
+	})
+	t.Run("AppNamespace and AppName available at top level", func(t *testing.T) {
+		tpl := "image-updater-{{.AppNamespace}}-{{.AppName}}"
+		cl := []ChangeEntry{
+			{
+				Image:  image.NewFromIdentifier("nginx"),
+				OldTag: tag.NewImageTag("1.0", time.Now(), ""),
+				NewTag: tag.NewImageTag("1.1", time.Now(), ""),
+			},
+		}
+		r := TemplateBranchName(context.Background(), tpl, "my-namespace", "my-app", cl)
+		assert.Equal(t, "image-updater-my-namespace-my-app", r)
+	})
+	t.Run("AppNamespace and AppName are stable regardless of image changes", func(t *testing.T) {
+		tpl := "image-updater-{{.AppNamespace}}-{{.AppName}}"
+		clV1 := []ChangeEntry{
+			{
+				Image:  image.NewFromIdentifier("nginx"),
+				OldTag: tag.NewImageTag("1.0", time.Now(), ""),
+				NewTag: tag.NewImageTag("1.1", time.Now(), ""),
+			},
+		}
+		clV2 := []ChangeEntry{
+			{
+				Image:  image.NewFromIdentifier("nginx"),
+				OldTag: tag.NewImageTag("1.1", time.Now(), ""),
+				NewTag: tag.NewImageTag("1.2", time.Now(), ""),
+			},
+		}
+		r1 := TemplateBranchName(context.Background(), tpl, "my-namespace", "my-app", clV1)
+		r2 := TemplateBranchName(context.Background(), tpl, "my-namespace", "my-app", clV2)
+		assert.Equal(t, "image-updater-my-namespace-my-app", r1)
+		assert.Equal(t, r1, r2, "branch name should be stable across different image updates")
+	})
+	t.Run("AppNamespace and AppName empty when not provided", func(t *testing.T) {
+		tpl := "image-updater-{{.AppNamespace}}-{{.AppName}}"
+		r := TemplateBranchName(context.Background(), tpl, "", "", []ChangeEntry{})
+		assert.Equal(t, "image-updater--", r)
+	})
+	t.Run("AppName usable alongside image variables", func(t *testing.T) {
+		tpl := "{{.AppName}}{{range .Images}}-{{.Name}}-{{.NewTag}}{{end}}"
+		cl := []ChangeEntry{
+			{
+				Image:  image.NewFromIdentifier("nginx"),
+				OldTag: tag.NewImageTag("1.0", time.Now(), ""),
+				NewTag: tag.NewImageTag("1.5", time.Now(), ""),
+			},
+		}
+		r := TemplateBranchName(context.Background(), tpl, "prod", "my-app", cl)
+		assert.Equal(t, "my-app-nginx-1.5", r)
 	})
 }
 
