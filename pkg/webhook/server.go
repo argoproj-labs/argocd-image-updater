@@ -198,6 +198,13 @@ func (t *TLSConfig) buildTLSConfig() (*tls.Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("invalid --tlsciphers: %w", err)
 	}
+
+	// Go's tls.Config.CipherSuites only applies to TLS 1.0–1.2.
+	// TLS 1.3 cipher suites are not configurable and are always enabled.
+	if len(ciphers) > 0 && minVer >= tls.VersionTLS13 {
+		log.Log().Warnf("--tlsciphers has no effect when --tlsminversion is 1.3 or higher (TLS 1.3 cipher suites are not configurable), ignoring")
+		ciphers = nil
+	}
 	tlsCfg.CipherSuites = ciphers
 
 	// Validate TLS version range and cipher/version compatibility
@@ -268,13 +275,16 @@ func validateCertValidity(cert tls.Certificate, certPath string) error {
 	return nil
 }
 
-// certFilesExist checks whether both the certificate and key files exist on disk.
+// certFilesExist checks whether both the certificate and key files exist on
+// disk and are non-empty. Zero-byte files (e.g. from an uninitialized
+// Kubernetes TLS secret) are treated as absent so the server can fall back
+// to self-signed certificate generation.
 func certFilesExist(certFile, keyFile string) bool {
-	if _, err := os.Stat(certFile); err != nil {
-		return false
-	}
-	if _, err := os.Stat(keyFile); err != nil {
-		return false
+	for _, f := range []string{certFile, keyFile} {
+		info, err := os.Stat(f)
+		if err != nil || info.Size() == 0 {
+			return false
+		}
 	}
 	return true
 }
@@ -306,6 +316,15 @@ func (s *WebhookServer) Start(ctx context.Context) error {
 			}
 		}()
 	} else {
+		// Default TLS settings if not explicitly configured
+		if s.TLS == nil {
+			s.TLS = &TLSConfig{
+				CertFile:   DefaultTLSCertPath,
+				KeyFile:    DefaultTLSKeyPath,
+				MinVersion: DefaultTLSMinVersion,
+				MaxVersion: DefaultTLSMaxVersion,
+			}
+		}
 		// Build TLS config from settings
 		tlsCfg, err := s.TLS.buildTLSConfig()
 		if err != nil {

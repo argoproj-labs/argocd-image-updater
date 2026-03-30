@@ -672,13 +672,27 @@ func TestBuildTLSConfigCipherVersionIncompatibility(t *testing.T) {
 	}
 
 	cfg := &TLSConfig{
-		MinVersion: "1.3",
+		MinVersion: "1.2",
 		MaxVersion: "1.3",
 		Ciphers:    tls12OnlyCipher,
 	}
-	_, err := cfg.buildTLSConfig()
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "is not supported by minimum TLS version")
+	// With min=1.2, the cipher is accepted (it supports 1.2) — no error
+	tlsCfg, err := cfg.buildTLSConfig()
+	require.NoError(t, err)
+	assert.Len(t, tlsCfg.CipherSuites, 1)
+}
+
+func TestBuildTLSConfigCiphersIgnoredForTLS13Only(t *testing.T) {
+	cfg := &TLSConfig{
+		MinVersion: "1.3",
+		MaxVersion: "1.3",
+		Ciphers:    "TLS_AES_128_GCM_SHA256",
+	}
+	tlsCfg, err := cfg.buildTLSConfig()
+	require.NoError(t, err)
+	// Ciphers should be silently dropped (warning logged) since TLS 1.3
+	// cipher suites are not configurable in Go.
+	assert.Nil(t, tlsCfg.CipherSuites)
 }
 
 func TestGenerateSelfSignedCert(t *testing.T) {
@@ -698,9 +712,24 @@ func TestCertFilesExist(t *testing.T) {
 		tmpFile, err := os.CreateTemp("", "cert-*.pem")
 		require.NoError(t, err)
 		defer os.Remove(tmpFile.Name())
+		_, _ = tmpFile.WriteString("some content")
 		tmpFile.Close()
 
 		assert.False(t, certFilesExist(tmpFile.Name(), "/nonexistent/key.pem"))
+	})
+
+	t.Run("zero-byte files treated as absent", func(t *testing.T) {
+		certFile, err := os.CreateTemp("", "cert-*.pem")
+		require.NoError(t, err)
+		defer os.Remove(certFile.Name())
+		certFile.Close()
+
+		keyFile, err := os.CreateTemp("", "key-*.pem")
+		require.NoError(t, err)
+		defer os.Remove(keyFile.Name())
+		keyFile.Close()
+
+		assert.False(t, certFilesExist(certFile.Name(), keyFile.Name()))
 	})
 }
 
