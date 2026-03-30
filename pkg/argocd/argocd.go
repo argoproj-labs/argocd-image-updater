@@ -309,7 +309,7 @@ func FilterApplicationsForUpdate(ctx context.Context, ctrlClient *ArgoCDK8sClien
 					updateStrategyAnnotations := getImageUpdateStrategyAnnotations("")
 					mergedCommonUpdateSettings, err = getCommonUpdateSettingsFromAnnotations(&app, updateStrategyAnnotations)
 					if err != nil {
-						appLogger.Warnf("Could not create common update settings f, skipping: %v", err)
+						appLogger.Warnf("Could not create common update settings, skipping: %v", err)
 						continue
 					}
 
