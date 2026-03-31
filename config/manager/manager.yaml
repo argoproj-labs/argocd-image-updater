@@ -180,6 +180,30 @@ spec:
                 name: argocd-image-updater-config
                 key: webhook.ratelimit-allowed
                 optional: true
+          - name: DISABLE_TLS
+            valueFrom:
+              configMapKeyRef:
+                name: argocd-image-updater-config
+                key: disable-tls
+                optional: true
+          - name: TLS_MIN_VERSION
+            valueFrom:
+              configMapKeyRef:
+                name: argocd-image-updater-config
+                key: tls.min-version
+                optional: true
+          - name: TLS_MAX_VERSION
+            valueFrom:
+              configMapKeyRef:
+                name: argocd-image-updater-config
+                key: tls.max-version
+                optional: true
+          - name: TLS_CIPHERS
+            valueFrom:
+              configMapKeyRef:
+                name: argocd-image-updater-config
+                key: tls.ciphers
+                optional: true
         securityContext:
           allowPrivilegeEscalation: false
           capabilities:
@@ -223,6 +247,9 @@ spec:
             mountPath: /app/ssh-keys/id_rsa
             readOnly: true
             subPath: sshPrivateKey
+          - name: argocd-image-updater-tls
+            mountPath: /app/config/tls
+            readOnly: true
       serviceAccountName: argocd-image-updater-controller
       terminationGracePeriodSeconds: 10
       volumes:
@@ -247,5 +274,14 @@ spec:
           secret:
             secretName: ssh-git-creds
             optional: true
+        - name: argocd-image-updater-tls
+          secret:
+            secretName: argocd-image-updater-tls
+            optional: true
+            items:
+              - key: tls.crt
+                path: tls.crt
+              - key: tls.key
+                path: tls.key
         - emptyDir: {}
           name: tmp

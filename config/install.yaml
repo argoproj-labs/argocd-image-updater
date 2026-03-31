@@ -1041,6 +1041,30 @@ spec:
               key: webhook.ratelimit-allowed
               name: argocd-image-updater-config
               optional: true
+        - name: DISABLE_TLS
+          valueFrom:
+            configMapKeyRef:
+              key: disable-tls
+              name: argocd-image-updater-config
+              optional: true
+        - name: TLS_MIN_VERSION
+          valueFrom:
+            configMapKeyRef:
+              key: tls.min-version
+              name: argocd-image-updater-config
+              optional: true
+        - name: TLS_MAX_VERSION
+          valueFrom:
+            configMapKeyRef:
+              key: tls.max-version
+              name: argocd-image-updater-config
+              optional: true
+        - name: TLS_CIPHERS
+          valueFrom:
+            configMapKeyRef:
+              key: tls.ciphers
+              name: argocd-image-updater-config
+              optional: true
         image: quay.io/argoprojlabs/argocd-image-updater:latest
         livenessProbe:
           httpGet:
@@ -1084,6 +1108,9 @@ spec:
           name: ssh-signing-key
           readOnly: true
           subPath: sshPrivateKey
+        - mountPath: /app/config/tls
+          name: argocd-image-updater-tls
+          readOnly: true
       securityContext:
         runAsNonRoot: true
       serviceAccountName: argocd-image-updater-controller
@@ -1110,6 +1137,15 @@ spec:
         secret:
           optional: true
           secretName: ssh-git-creds
+      - name: argocd-image-updater-tls
+        secret:
+          items:
+          - key: tls.crt
+            path: tls.crt
+          - key: tls.key
+            path: tls.key
+          optional: true
+          secretName: argocd-image-updater-tls
       - emptyDir: {}
         name: tmp
 ---

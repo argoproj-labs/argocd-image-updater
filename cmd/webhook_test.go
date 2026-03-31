@@ -46,5 +46,11 @@ func TestNewWebhookCommand(t *testing.T) {
 	asser.Equal(env.GetStringVal("ALIYUN_ACR_WEBHOOK_SECRET", ""), controllerCommand.Flag("aliyun-acr-webhook-secret").Value.String())
 	asser.Equal(strconv.Itoa(env.ParseNumFromEnv("WEBHOOK_RATELIMIT_ALLOWED", 0, 0, math.MaxInt)), controllerCommand.Flag("webhook-ratelimit-allowed").Value.String())
 
+	// TLS flags
+	asser.Equal("false", controllerCommand.Flag("disable-tls").Value.String())
+	asser.Equal(env.GetStringVal("TLS_MIN_VERSION", "1.3"), controllerCommand.Flag("tlsminversion").Value.String())
+	asser.Equal(env.GetStringVal("TLS_MAX_VERSION", "1.3"), controllerCommand.Flag("tlsmaxversion").Value.String())
+	asser.Equal(env.GetStringVal("TLS_CIPHERS", ""), controllerCommand.Flag("tlsciphers").Value.String())
+
 	asser.Nil(controllerCommand.Help())
 }
