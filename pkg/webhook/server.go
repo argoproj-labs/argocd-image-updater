@@ -359,6 +359,7 @@ func (s *WebhookServer) Start(ctx context.Context) error {
 			}
 			tlsCfg.Certificates = []tls.Certificate{cert}
 			s.Server.TLSConfig = tlsCfg
+			log.Infof("Starting webhook server with TLS on port %d (using generated self-signed certificate)", s.Port)
 			// Pass empty strings since certs are already in TLSConfig.Certificates
 			go func() {
 				if err := s.Server.ListenAndServeTLS("", ""); err != nil && !errors.Is(err, http.ErrServerClosed) {
