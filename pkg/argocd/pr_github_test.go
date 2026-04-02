@@ -179,7 +179,10 @@ func Test_parseGitHubOwnerRepo(t *testing.T) {
 // newTestGithubPRService creates a GithubPRService whose client is pointed at
 // the provided httptest.Server instead of the real GitHub API.
 func newTestGithubPRService(server *httptest.Server, pr *PullRequest) *GithubPRService {
-	client, _ := github.NewClient(nil).WithEnterpriseURLs(server.URL, server.URL)
+	client, err := github.NewClient(nil).WithEnterpriseURLs(server.URL, server.URL)
+	if err != nil {
+		panic(fmt.Sprintf("newTestGithubPRService: WithEnterpriseURLs failed: %v", err))
+	}
 	return &GithubPRService{
 		client: client,
 		owner:  "org",
@@ -334,6 +337,36 @@ func Test_NewGithubPRService(t *testing.T) {
 			wantRepo:      "repo",
 			wantBaseURL:   "http://github.example.com/api/v3/",
 			wantUploadURL: "http://github.example.com/api/uploads/",
+		},
+
+		// --- invalid apiBaseURL from SCMAPIBaseURLProvider (GitHub App path) ---
+		// url.Parse almost never errors, so the guard relies on Scheme/Host being empty.
+		{
+			name:    "GitHub App: apiBaseURL with no scheme — rejected",
+			gitRepo: "https://github.example.com/org/repo.git",
+			tokenProvider: &mockTokenAndBaseURLProvider{
+				mockTokenProvider: mockTokenProvider{token: "ghs_token"},
+				baseURL:           "//github.example.com/api/v3", // missing scheme
+			},
+			wantErrMsg: "invalid GitHub API base URL",
+		},
+		{
+			name:    "GitHub App: apiBaseURL with no host — rejected",
+			gitRepo: "https://github.example.com/org/repo.git",
+			tokenProvider: &mockTokenAndBaseURLProvider{
+				mockTokenProvider: mockTokenProvider{token: "ghs_token"},
+				baseURL:           "https:///api/v3", // missing host
+			},
+			wantErrMsg: "invalid GitHub API base URL",
+		},
+		{
+			name:    "GitHub App: apiBaseURL is a bare path — rejected",
+			gitRepo: "https://github.example.com/org/repo.git",
+			tokenProvider: &mockTokenAndBaseURLProvider{
+				mockTokenProvider: mockTokenProvider{token: "ghs_token"},
+				baseURL:           "/api/v3", // no scheme, no host
+			},
+			wantErrMsg: "invalid GitHub API base URL",
 		},
 
 		// --- GitHub App (mockTokenAndBaseURLProvider also implements SCMAPIBaseURLProvider) ---

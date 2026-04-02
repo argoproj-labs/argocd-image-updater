@@ -36,6 +36,10 @@ var _ PullRequestService = (*GithubPRService)(nil)
 func (g *GithubPRService) create(ctx context.Context) error {
 	logCtx := log.LoggerFromContext(ctx)
 
+	if g.pr == nil {
+		return fmt.Errorf("cannot create PR: pull request metadata is nil")
+	}
+
 	newPR := &github.NewPullRequest{
 		Title: github.Ptr(g.pr.title),
 		Head:  github.Ptr(g.pr.head),
@@ -120,7 +124,10 @@ func NewGithubPRService(ctx context.Context, wbc *WriteBackConfig, tokenProvider
 		// uploadURL must be scheme+host only so WithEnterpriseURLs appends
 		// /api/uploads/ correctly — passing apiBaseURL for both would produce
 		// /api/v3/api/uploads/ when apiBaseURL already contains /api/v3.
-		u, _ := url.Parse(apiBaseURL)
+		u, parseErr := url.Parse(apiBaseURL)
+		if parseErr != nil || u == nil || u.Scheme == "" || u.Host == "" {
+			return nil, fmt.Errorf("invalid GitHub API base URL %q: %w", apiBaseURL, parseErr)
+		}
 		uploadURL := u.Scheme + "://" + u.Host
 		client, err = github.NewClient(nil).WithAuthToken(token).WithEnterpriseURLs(apiBaseURL, uploadURL)
 		if err != nil {

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/argoproj-labs/argocd-image-updater/ext/git"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
@@ -72,12 +73,12 @@ func buildPullRequest(ctx context.Context, wbc *WriteBackConfig, appNamespace, a
 		}
 	}
 
-	if len(title) > 255 {
-		title = title[:255]
+	if utf8.RuneCountInString(title) > 255 {
+		title = string([]rune(title)[:255])
 		logCtx.Warnf("PR title exceeded 255 characters and was truncated: %s", title)
 	}
-	if len(body) > 65536 {
-		body = body[:65536]
+	if utf8.RuneCountInString(body) > 65536 {
+		body = string([]rune(body)[:65536])
 		logCtx.Warnf("PR body exceeded 65536 characters and was truncated")
 	}
 
