@@ -90,20 +90,23 @@ func buildPullRequest(ctx context.Context, wbc *WriteBackConfig, appNamespace, a
 	}, nil
 }
 
-// commitChangesPR first pushes the image update commit to the head branch via
-// commitChangesGit, then opens a pull/merge request from head → base using the
-// configured SCM provider. If an open PR for the same branch pair already exists
-// the function returns without creating a duplicate.
+// commitChangesPR validates all PR preconditions (non-nil PullRequest, supported
+// provider, valid SCM credentials) before pushing the branch via commitChangesGit,
+// then opens a pull/merge request from head → base. Failing fast avoids orphaned
+// branches when a configuration error would prevent PR creation anyway.
 func commitChangesPR(ctx context.Context, applicationImages *ApplicationImages, changeList []ChangeEntry, write changeWriter) error {
-	// Push the image update commit to the head branch first.
-	err := commitChangesGit(ctx, applicationImages, changeList, write)
-	if err != nil {
-		return err
-	}
-
 	app := applicationImages.Application
 	wbc := applicationImages.WriteBackConfig
 
+	if wbc.PullRequest == nil {
+		return fmt.Errorf("pull request structure is not initialized")
+	}
+
+	switch wbc.PRProvider {
+	case PRProviderGitHub:
+	default:
+		return fmt.Errorf("unsupported PR provider: %d", wbc.PRProvider)
+	}
 	// GetCreds is called again here (also called inside commitChangesGit).
 	// This is safe: GitHubAppCreds tokens are cached by ghinstallation;
 	// HTTPSCreds return a plain string. No redundant network calls occur.
@@ -117,8 +120,10 @@ func commitChangesPR(ctx context.Context, applicationImages *ApplicationImages, 
 		return fmt.Errorf("credentials type %T do not support PR creation (use HTTPS or GitHub App credentials)", creds)
 	}
 
-	if wbc.PullRequest == nil {
-		return fmt.Errorf("pull request structure is not initialized")
+	// Push the image update commit to the head branch first.
+	err = commitChangesGit(ctx, applicationImages, changeList, write)
+	if err != nil {
+		return err
 	}
 
 	switch wbc.PRProvider {

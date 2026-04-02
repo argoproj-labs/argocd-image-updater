@@ -175,30 +175,44 @@ func Test_buildPullRequest(t *testing.T) {
 
 // --- Test_commitChangesPR ---
 
+// prePlaceholder is a non-nil PullRequest used to satisfy the nil-check that
+// now runs before commitChangesGit. buildPullRequest inside commitChangesGit
+// will overwrite it with real values when the git path is exercised.
+var prePlaceholder = &PullRequest{head: "pre-head", base: "main"}
+
 func Test_commitChangesPR(t *testing.T) {
 	ctx := context.Background()
 
-	t.Run("commitChangesGit fails: git init error", func(t *testing.T) {
+	// --- precondition checks (fail before commitChangesGit is called) ---
+
+	t.Run("wbc.PullRequest is nil — rejected before git push", func(t *testing.T) {
+		// No GitClient or GetCreds needed: the nil check is the very first guard.
 		wbc := &WriteBackConfig{
-			GitRepo:    "https://github.com/org/repo.git",
-			GitBranch:  "main",
-			PRProvider: PRProviderGitHub,
-			GitClient:  &mockGitClient{initErr: fmt.Errorf("init failed")},
-			GetCreds: func(_ *argocdapi.Application) (git.Creds, error) {
-				return &mockGitAndSCMCreds{token: "token"}, nil
-			},
+			PRProvider:  PRProviderGitHub,
+			PullRequest: nil,
 		}
 		err := commitChangesPR(ctx, makeTestAppImages(wbc), nil, noopWriter)
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "init failed")
+		assert.Contains(t, err.Error(), "pull request structure is not initialized")
 	})
 
-	t.Run("GetCreds fails", func(t *testing.T) {
+	t.Run("unsupported PR provider — rejected before git push", func(t *testing.T) {
+		// No GitClient needed: the provider check fires before commitChangesGit.
 		wbc := &WriteBackConfig{
-			GitRepo:    "https://github.com/org/repo.git",
-			GitBranch:  "main",
-			PRProvider: PRProviderGitHub,
-			GitClient:  &mockGitClient{},
+			PRProvider:  PRProviderGitLab, // TODO not yet implemented
+			PullRequest: prePlaceholder,
+		}
+		err := commitChangesPR(ctx, makeTestAppImages(wbc), nil, noopWriter)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "unsupported PR provider")
+	})
+
+	t.Run("GetCreds fails — rejected before git push", func(t *testing.T) {
+		// No GitClient needed: GetCreds is called before commitChangesGit.
+		wbc := &WriteBackConfig{
+			GitRepo:     "https://github.com/org/repo.git",
+			PRProvider:  PRProviderGitHub,
+			PullRequest: prePlaceholder,
 			GetCreds: func(_ *argocdapi.Application) (git.Creds, error) {
 				return nil, fmt.Errorf("secret not found")
 			},
@@ -208,12 +222,12 @@ func Test_commitChangesPR(t *testing.T) {
 		assert.Contains(t, err.Error(), "could not get creds")
 	})
 
-	t.Run("creds do not implement SCMTokenProvider", func(t *testing.T) {
+	t.Run("creds do not implement SCMTokenProvider — rejected before git push", func(t *testing.T) {
+		// No GitClient needed: the type-assertion check fires before commitChangesGit.
 		wbc := &WriteBackConfig{
-			GitRepo:    "https://github.com/org/repo.git",
-			GitBranch:  "main",
-			PRProvider: PRProviderGitHub,
-			GitClient:  &mockGitClient{},
+			GitRepo:     "https://github.com/org/repo.git",
+			PRProvider:  PRProviderGitHub,
+			PullRequest: prePlaceholder,
 			GetCreds: func(_ *argocdapi.Application) (git.Creds, error) {
 				// NopCreds satisfies git.Creds but NOT git.SCMTokenProvider.
 				return git.NopCreds{}, nil
@@ -224,20 +238,25 @@ func Test_commitChangesPR(t *testing.T) {
 		assert.Contains(t, err.Error(), "do not support PR creation")
 	})
 
-	t.Run("unsupported PR provider", func(t *testing.T) {
+	// --- git push phase ---
+
+	t.Run("commitChangesGit fails: git init error", func(t *testing.T) {
 		wbc := &WriteBackConfig{
-			GitRepo:    "https://github.com/org/repo.git",
-			GitBranch:  "main",
-			PRProvider: PRProviderGitLab, // TODO not yet implemented
-			GitClient:  &mockGitClient{},
+			GitRepo:     "https://github.com/org/repo.git",
+			GitBranch:   "main",
+			PRProvider:  PRProviderGitHub,
+			PullRequest: prePlaceholder,
+			GitClient:   &mockGitClient{initErr: fmt.Errorf("init failed")},
 			GetCreds: func(_ *argocdapi.Application) (git.Creds, error) {
 				return &mockGitAndSCMCreds{token: "token"}, nil
 			},
 		}
 		err := commitChangesPR(ctx, makeTestAppImages(wbc), nil, noopWriter)
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "unsupported PR provider")
+		assert.Contains(t, err.Error(), "init failed")
 	})
+
+	// --- GitHub API phase ---
 
 	t.Run("GitHub: PR created successfully", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -251,10 +270,11 @@ func Test_commitChangesPR(t *testing.T) {
 		defer server.Close()
 
 		wbc := &WriteBackConfig{
-			GitRepo:    server.URL + "/org/repo.git",
-			GitBranch:  "main",
-			PRProvider: PRProviderGitHub,
-			GitClient:  &mockGitClient{},
+			GitRepo:     server.URL + "/org/repo.git",
+			GitBranch:   "main",
+			PRProvider:  PRProviderGitHub,
+			PullRequest: prePlaceholder,
+			GitClient:   &mockGitClient{},
 			GetCreds: func(_ *argocdapi.Application) (git.Creds, error) {
 				return &mockGitAndSCMCreds{token: "github-token"}, nil
 			},
@@ -274,10 +294,11 @@ func Test_commitChangesPR(t *testing.T) {
 		defer server.Close()
 
 		wbc := &WriteBackConfig{
-			GitRepo:    server.URL + "/org/repo.git",
-			GitBranch:  "main",
-			PRProvider: PRProviderGitHub,
-			GitClient:  &mockGitClient{},
+			GitRepo:     server.URL + "/org/repo.git",
+			GitBranch:   "main",
+			PRProvider:  PRProviderGitHub,
+			PullRequest: prePlaceholder,
+			GitClient:   &mockGitClient{},
 			GetCreds: func(_ *argocdapi.Application) (git.Creds, error) {
 				return &mockGitAndSCMCreds{token: "github-token"}, nil
 			},
@@ -297,10 +318,11 @@ func Test_commitChangesPR(t *testing.T) {
 		defer server.Close()
 
 		wbc := &WriteBackConfig{
-			GitRepo:    server.URL + "/org/repo.git",
-			GitBranch:  "main",
-			PRProvider: PRProviderGitHub,
-			GitClient:  &mockGitClient{},
+			GitRepo:     server.URL + "/org/repo.git",
+			GitBranch:   "main",
+			PRProvider:  PRProviderGitHub,
+			PullRequest: prePlaceholder,
+			GitClient:   &mockGitClient{},
 			GetCreds: func(_ *argocdapi.Application) (git.Creds, error) {
 				return &mockGitAndSCMCreds{token: "github-token"}, nil
 			},
