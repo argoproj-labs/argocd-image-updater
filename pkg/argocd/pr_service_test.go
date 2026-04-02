@@ -175,32 +175,15 @@ func Test_buildPullRequest(t *testing.T) {
 
 // --- Test_commitChangesPR ---
 
-// prePlaceholder is a non-nil PullRequest used to satisfy the nil-check that
-// now runs before commitChangesGit. buildPullRequest inside commitChangesGit
-// will overwrite it with real values when the git path is exercised.
-var prePlaceholder = &PullRequest{head: "pre-head", base: "main"}
-
 func Test_commitChangesPR(t *testing.T) {
 	ctx := context.Background()
 
 	// --- precondition checks (fail before commitChangesGit is called) ---
 
-	t.Run("wbc.PullRequest is nil — rejected before git push", func(t *testing.T) {
-		// No GitClient or GetCreds needed: the nil check is the very first guard.
-		wbc := &WriteBackConfig{
-			PRProvider:  PRProviderGitHub,
-			PullRequest: nil,
-		}
-		err := commitChangesPR(ctx, makeTestAppImages(wbc), nil, noopWriter)
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "pull request structure is not initialized")
-	})
-
 	t.Run("unsupported PR provider — rejected before git push", func(t *testing.T) {
-		// No GitClient needed: the provider check fires before commitChangesGit.
+		// No GitClient needed: the provider switch fires before commitChangesGit.
 		wbc := &WriteBackConfig{
-			PRProvider:  PRProviderGitLab, // TODO not yet implemented
-			PullRequest: prePlaceholder,
+			PRProvider: PRProviderGitLab, // TODO not yet implemented
 		}
 		err := commitChangesPR(ctx, makeTestAppImages(wbc), nil, noopWriter)
 		require.Error(t, err)
@@ -210,9 +193,8 @@ func Test_commitChangesPR(t *testing.T) {
 	t.Run("GetCreds fails — rejected before git push", func(t *testing.T) {
 		// No GitClient needed: GetCreds is called before commitChangesGit.
 		wbc := &WriteBackConfig{
-			GitRepo:     "https://github.com/org/repo.git",
-			PRProvider:  PRProviderGitHub,
-			PullRequest: prePlaceholder,
+			GitRepo:    "https://github.com/org/repo.git",
+			PRProvider: PRProviderGitHub,
 			GetCreds: func(_ *argocdapi.Application) (git.Creds, error) {
 				return nil, fmt.Errorf("secret not found")
 			},
@@ -223,11 +205,10 @@ func Test_commitChangesPR(t *testing.T) {
 	})
 
 	t.Run("creds do not implement SCMTokenProvider — rejected before git push", func(t *testing.T) {
-		// No GitClient needed: the type-assertion check fires before commitChangesGit.
+		// No GitClient needed: the type-assertion fires before commitChangesGit.
 		wbc := &WriteBackConfig{
-			GitRepo:     "https://github.com/org/repo.git",
-			PRProvider:  PRProviderGitHub,
-			PullRequest: prePlaceholder,
+			GitRepo:    "https://github.com/org/repo.git",
+			PRProvider: PRProviderGitHub,
 			GetCreds: func(_ *argocdapi.Application) (git.Creds, error) {
 				// NopCreds satisfies git.Creds but NOT git.SCMTokenProvider.
 				return git.NopCreds{}, nil
@@ -242,11 +223,10 @@ func Test_commitChangesPR(t *testing.T) {
 
 	t.Run("commitChangesGit fails: git init error", func(t *testing.T) {
 		wbc := &WriteBackConfig{
-			GitRepo:     "https://github.com/org/repo.git",
-			GitBranch:   "main",
-			PRProvider:  PRProviderGitHub,
-			PullRequest: prePlaceholder,
-			GitClient:   &mockGitClient{initErr: fmt.Errorf("init failed")},
+			GitRepo:    "https://github.com/org/repo.git",
+			GitBranch:  "main",
+			PRProvider: PRProviderGitHub,
+			GitClient:  &mockGitClient{initErr: fmt.Errorf("init failed")},
 			GetCreds: func(_ *argocdapi.Application) (git.Creds, error) {
 				return &mockGitAndSCMCreds{token: "token"}, nil
 			},
@@ -270,11 +250,10 @@ func Test_commitChangesPR(t *testing.T) {
 		defer server.Close()
 
 		wbc := &WriteBackConfig{
-			GitRepo:     server.URL + "/org/repo.git",
-			GitBranch:   "main",
-			PRProvider:  PRProviderGitHub,
-			PullRequest: prePlaceholder,
-			GitClient:   &mockGitClient{},
+			GitRepo:    server.URL + "/org/repo.git",
+			GitBranch:  "main",
+			PRProvider: PRProviderGitHub,
+			GitClient:  &mockGitClient{},
 			GetCreds: func(_ *argocdapi.Application) (git.Creds, error) {
 				return &mockGitAndSCMCreds{token: "github-token"}, nil
 			},
@@ -294,11 +273,10 @@ func Test_commitChangesPR(t *testing.T) {
 		defer server.Close()
 
 		wbc := &WriteBackConfig{
-			GitRepo:     server.URL + "/org/repo.git",
-			GitBranch:   "main",
-			PRProvider:  PRProviderGitHub,
-			PullRequest: prePlaceholder,
-			GitClient:   &mockGitClient{},
+			GitRepo:    server.URL + "/org/repo.git",
+			GitBranch:  "main",
+			PRProvider: PRProviderGitHub,
+			GitClient:  &mockGitClient{},
 			GetCreds: func(_ *argocdapi.Application) (git.Creds, error) {
 				return &mockGitAndSCMCreds{token: "github-token"}, nil
 			},
@@ -318,11 +296,10 @@ func Test_commitChangesPR(t *testing.T) {
 		defer server.Close()
 
 		wbc := &WriteBackConfig{
-			GitRepo:     server.URL + "/org/repo.git",
-			GitBranch:   "main",
-			PRProvider:  PRProviderGitHub,
-			PullRequest: prePlaceholder,
-			GitClient:   &mockGitClient{},
+			GitRepo:    server.URL + "/org/repo.git",
+			GitBranch:  "main",
+			PRProvider: PRProviderGitHub,
+			GitClient:  &mockGitClient{},
 			GetCreds: func(_ *argocdapi.Application) (git.Creds, error) {
 				return &mockGitAndSCMCreds{token: "github-token"}, nil
 			},

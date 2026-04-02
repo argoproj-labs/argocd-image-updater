@@ -90,17 +90,13 @@ func buildPullRequest(ctx context.Context, wbc *WriteBackConfig, appNamespace, a
 	}, nil
 }
 
-// commitChangesPR validates all PR preconditions (non-nil PullRequest, supported
-// provider, valid SCM credentials) before pushing the branch via commitChangesGit,
-// then opens a pull/merge request from head → base. Failing fast avoids orphaned
-// branches when a configuration error would prevent PR creation anyway.
+// commitChangesPR validates the provider and SCM credentials before pushing the
+// branch via commitChangesGit (which also populates wbc.PullRequest), then opens
+// a pull/merge request from head → base. The provider and credential checks run
+// first so configuration errors are caught before an orphaned branch is pushed.
 func commitChangesPR(ctx context.Context, applicationImages *ApplicationImages, changeList []ChangeEntry, write changeWriter) error {
 	app := applicationImages.Application
 	wbc := applicationImages.WriteBackConfig
-
-	if wbc.PullRequest == nil {
-		return fmt.Errorf("pull request structure is not initialized")
-	}
 
 	switch wbc.PRProvider {
 	case PRProviderGitHub:
@@ -124,6 +120,10 @@ func commitChangesPR(ctx context.Context, applicationImages *ApplicationImages, 
 	err = commitChangesGit(ctx, applicationImages, changeList, write)
 	if err != nil {
 		return err
+	}
+
+	if wbc.PullRequest == nil {
+		return fmt.Errorf("pull request structure is not initialized")
 	}
 
 	switch wbc.PRProvider {
