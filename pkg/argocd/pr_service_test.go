@@ -180,10 +180,15 @@ func Test_commitChangesPR(t *testing.T) {
 
 	// --- precondition checks (fail before commitChangesGit is called) ---
 
-	t.Run("unsupported PR provider — rejected before git push", func(t *testing.T) {
-		// No GitClient needed: the provider switch fires before commitChangesGit.
+	t.Run("unsupported PR provider", func(t *testing.T) {
 		wbc := &WriteBackConfig{
+			GitRepo:    "https://github.com/org/repo.git",
+			GitBranch:  "main",
 			PRProvider: PRProviderGitLab, // TODO not yet implemented
+			GitClient:  &mockGitClient{},
+			GetCreds: func(_ *argocdapi.Application) (git.Creds, error) {
+				return &mockGitAndSCMCreds{token: "token"}, nil
+			},
 		}
 		err := commitChangesPR(ctx, makeTestAppImages(wbc), nil, noopWriter)
 		require.Error(t, err)

@@ -98,11 +98,6 @@ func commitChangesPR(ctx context.Context, applicationImages *ApplicationImages, 
 	app := applicationImages.Application
 	wbc := applicationImages.WriteBackConfig
 
-	switch wbc.PRProvider {
-	case PRProviderGitHub:
-	default:
-		return fmt.Errorf("unsupported PR provider: %d", wbc.PRProvider)
-	}
 	// GetCreds is called again here (also called inside commitChangesGit).
 	// This is safe: GitHubAppCreds tokens are cached by ghinstallation;
 	// HTTPSCreds return a plain string. No redundant network calls occur.
