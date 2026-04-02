@@ -2,9 +2,13 @@ package argocd
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
+	"github.com/google/go-github/v69/github"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -172,7 +176,86 @@ func Test_parseGitHubOwnerRepo(t *testing.T) {
 	}
 }
 
-func Test_NewGithubService(t *testing.T) {
+// newTestGithubPRService creates a GithubPRService whose client is pointed at
+// the provided httptest.Server instead of the real GitHub API.
+func newTestGithubPRService(server *httptest.Server, pr *PullRequest) *GithubPRService {
+	client, _ := github.NewClient(nil).WithEnterpriseURLs(server.URL, server.URL)
+	return &GithubPRService{
+		client: client,
+		owner:  "org",
+		repo:   "repo",
+		pr:     pr,
+	}
+}
+
+func Test_GithubPRService_create(t *testing.T) {
+	ctx := context.Background()
+
+	pr := &PullRequest{
+		title: "chore: update images",
+		head:  "image-updater-branch",
+		base:  "main",
+		body:  "automated update",
+	}
+
+	tests := []struct {
+		name       string
+		handler    http.HandlerFunc
+		wantErrMsg string
+	}{
+		{
+			name: "success — GitHub returns 201 with PR number and URL",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, http.MethodPost, r.Method)
+				assert.Equal(t, "/api/v3/repos/org/repo/pulls", r.URL.Path)
+
+				w.WriteHeader(http.StatusCreated)
+				resp := github.PullRequest{
+					Number:  github.Ptr(42),
+					HTMLURL: github.Ptr("https://github.com/org/repo/pull/42"),
+				}
+				_ = json.NewEncoder(w).Encode(resp)
+			},
+		},
+		{
+			name: "API error — GitHub returns 422 validation failed",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusUnprocessableEntity)
+				_ = json.NewEncoder(w).Encode(map[string]any{
+					"message": "Validation Failed",
+					"errors":  []map[string]string{{"message": "some validation error"}},
+				})
+			},
+			wantErrMsg: "could not create PR",
+		},
+		{
+			name: "API error — GitHub returns 500 internal server error",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusInternalServerError)
+			},
+			wantErrMsg: "could not create PR",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(tt.handler)
+			defer server.Close()
+
+			svc := newTestGithubPRService(server, pr)
+			err := svc.create(ctx)
+
+			if tt.wantErrMsg != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.wantErrMsg)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
+func Test_NewGithubPRService(t *testing.T) {
 	ctx := context.Background()
 
 	tests := []struct {
@@ -285,7 +368,7 @@ func Test_NewGithubService(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			wbc := &WriteBackConfig{GitRepo: tt.gitRepo}
 
-			svc, err := NewGithubService(ctx, wbc, tt.tokenProvider)
+			svc, err := NewGithubPRService(ctx, wbc, tt.tokenProvider)
 
 			if tt.wantErrMsg != "" {
 				require.Error(t, err)

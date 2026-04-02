@@ -12,31 +12,48 @@ import (
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
 )
 
-// GithubService implements PullRequestService for GitHub and GitHub Enterprise.
-type GithubService struct {
+// GithubPRService implements PullRequestService for GitHub and GitHub Enterprise.
+type GithubPRService struct {
 	client *github.Client
 	owner  string
 	repo   string
+	pr     *PullRequest
 }
 
-var _ PullRequestService = (*GithubService)(nil)
+var _ PullRequestService = (*GithubPRService)(nil)
 
 // create opens a pull request using the already-configured client.
-func (g *GithubService) create(ctx context.Context) error {
-	// TODO: implement PR creation using g.client, g.owner, g.repo
+func (g *GithubPRService) create(ctx context.Context) error {
+	logCtx := log.LoggerFromContext(ctx)
+
+	newPR := &github.NewPullRequest{
+		Title: github.Ptr(g.pr.title),
+		Head:  github.Ptr(g.pr.head),
+		Base:  github.Ptr(g.pr.base),
+		Body:  github.Ptr(g.pr.body),
+	}
+	githubPullRequest, response, err := g.client.PullRequests.Create(ctx, g.owner, g.repo, newPR)
+	if err != nil {
+		return fmt.Errorf("could not create PR %q → %q: %w", g.pr.head, g.pr.base, err)
+	}
+	logCtx.Infof("github response status %s", response.Status)
+	logCtx.Infof("created PR #%d %q → %q: %s", githubPullRequest.GetNumber(), g.pr.head, g.pr.base, githubPullRequest.GetHTMLURL())
+
 	return nil
 }
 
-func (g *GithubService) list(ctx context.Context, checkOutBranch, pushBranch string) error {
+// list returns true if there is already an open PR from pushBranch into
+// checkOutBranch.
+func (g *GithubPRService) list(ctx context.Context, checkOutBranch, pushBranch string) (bool, error) {
 	// TODO: implement PR listing for idempotency check
-	return nil
+	return false, nil
 }
 
-// NewGithubService builds a GithubService from the resolved write-back config
+// NewGithubPRService builds a GithubPRService from the resolved write-back config
 // and the credential token provider. It obtains a token, resolves the API base
 // URL, and parses the owner/repo from the repo URL.
-func NewGithubService(ctx context.Context, wbc *WriteBackConfig, tokenProvider git.SCMTokenProvider) (*GithubService, error) {
-	log := log.LoggerFromContext(ctx)
+func NewGithubPRService(ctx context.Context, wbc *WriteBackConfig, tokenProvider git.SCMTokenProvider) (*GithubPRService, error) {
+	logCtx := log.LoggerFromContext(ctx)
 
 	token, err := tokenProvider.SCMToken(ctx)
 	if err != nil {
@@ -84,11 +101,12 @@ func NewGithubService(ctx context.Context, wbc *WriteBackConfig, tokenProvider g
 		return nil, fmt.Errorf("could not parse owner/repo from %q: %w", wbc.GitRepo, err)
 	}
 
-	log.Infof("GitHub PR service initialised for %s/%s", owner, repoName)
-	return &GithubService{
+	logCtx.Infof("GitHub PR service initialised for %s/%s", owner, repoName)
+	return &GithubPRService{
 		client: client,
 		owner:  owner,
 		repo:   repoName,
+		pr:     wbc.PullRequest,
 	}, nil
 }
 
