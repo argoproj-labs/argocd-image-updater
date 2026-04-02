@@ -201,7 +201,8 @@ func Test_GithubPRService_create(t *testing.T) {
 	tests := []struct {
 		name       string
 		handler    http.HandlerFunc
-		wantErrMsg string
+		wantErr    error  // exact sentinel to check with errors.Is
+		wantErrMsg string // substring match for non-sentinel errors
 	}{
 		{
 			name: "success — GitHub returns 201 with PR number and URL",
@@ -218,12 +219,23 @@ func Test_GithubPRService_create(t *testing.T) {
 			},
 		},
 		{
-			name: "API error — GitHub returns 422 validation failed",
+			name: "PR already exists — GitHub returns 422 with already-exists message — no error",
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusUnprocessableEntity)
 				_ = json.NewEncoder(w).Encode(map[string]any{
 					"message": "Validation Failed",
-					"errors":  []map[string]string{{"message": "some validation error"}},
+					"errors":  []map[string]string{{"message": "A pull request already exists for org:image-updater-branch."}},
+				})
+			},
+			wantErr: ErrPRAlreadyExists,
+		},
+		{
+			name: "API error — GitHub returns 422 validation failed (other reason)",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusUnprocessableEntity)
+				_ = json.NewEncoder(w).Encode(map[string]any{
+					"message": "Validation Failed",
+					"errors":  []map[string]string{{"message": "some other validation error"}},
 				})
 			},
 			wantErrMsg: "could not create PR",
@@ -245,10 +257,13 @@ func Test_GithubPRService_create(t *testing.T) {
 			svc := newTestGithubPRService(server, pr)
 			err := svc.create(ctx)
 
-			if tt.wantErrMsg != "" {
+			switch {
+			case tt.wantErr != nil:
+				require.ErrorIs(t, err, tt.wantErr)
+			case tt.wantErrMsg != "":
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), tt.wantErrMsg)
-			} else {
+			default:
 				require.NoError(t, err)
 			}
 		})

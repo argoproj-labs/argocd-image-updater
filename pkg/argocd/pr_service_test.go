@@ -11,8 +11,8 @@ import (
 	"strings"
 	"testing"
 
-	gogithub "github.com/google/go-github/v69/github"
 	argocdapi "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1"
+	gogithub "github.com/google/go-github/v69/github"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -28,29 +28,37 @@ type mockGitClient struct {
 	initErr error
 }
 
-func (m *mockGitClient) Root() string                                                          { return m.root }
-func (m *mockGitClient) Init(_ context.Context) error                                         { return m.initErr }
-func (m *mockGitClient) Fetch(_ context.Context, _ string) error                              { return nil }
-func (m *mockGitClient) ShallowFetch(_ context.Context, _ string, _ int) error                { return nil }
-func (m *mockGitClient) Submodule(_ context.Context) error                                    { return nil }
-func (m *mockGitClient) Checkout(_ context.Context, _ string, _ bool) error                   { return nil }
-func (m *mockGitClient) LsRefs(_ context.Context) (*git.Refs, error)                         { return &git.Refs{}, nil }
-func (m *mockGitClient) LsRemote(_ context.Context, _ string) (string, error)                 { return "", nil }
-func (m *mockGitClient) LsFiles(_ context.Context, _ string, _ bool) ([]string, error)        { return nil, nil }
-func (m *mockGitClient) LsLargeFiles(_ context.Context) ([]string, error)                     { return nil, nil }
-func (m *mockGitClient) CommitSHA(_ context.Context) (string, error)                          { return "", nil }
+func (m *mockGitClient) Root() string                                          { return m.root }
+func (m *mockGitClient) Init(_ context.Context) error                          { return m.initErr }
+func (m *mockGitClient) Fetch(_ context.Context, _ string) error               { return nil }
+func (m *mockGitClient) ShallowFetch(_ context.Context, _ string, _ int) error { return nil }
+func (m *mockGitClient) Submodule(_ context.Context) error                     { return nil }
+func (m *mockGitClient) Checkout(_ context.Context, _ string, _ bool) error    { return nil }
+func (m *mockGitClient) LsRefs(_ context.Context) (*git.Refs, error)           { return &git.Refs{}, nil }
+func (m *mockGitClient) LsRemote(_ context.Context, _ string) (string, error)  { return "", nil }
+func (m *mockGitClient) LsFiles(_ context.Context, _ string, _ bool) ([]string, error) {
+	return nil, nil
+}
+func (m *mockGitClient) LsLargeFiles(_ context.Context) ([]string, error) { return nil, nil }
+func (m *mockGitClient) CommitSHA(_ context.Context) (string, error)      { return "", nil }
 func (m *mockGitClient) RevisionMetadata(_ context.Context, _ string) (*git.RevisionMetadata, error) {
 	return nil, nil
 }
-func (m *mockGitClient) VerifyCommitSignature(_ context.Context, _ string) (string, error) { return "", nil }
-func (m *mockGitClient) IsAnnotatedTag(_ context.Context, _ string) bool                   { return false }
-func (m *mockGitClient) ChangedFiles(_ context.Context, _, _ string) ([]string, error)     { return nil, nil }
-func (m *mockGitClient) Commit(_ context.Context, _ string, _ *git.CommitOptions) error    { return nil }
-func (m *mockGitClient) Branch(_ context.Context, _, _ string) error                       { return nil }
-func (m *mockGitClient) Push(_ context.Context, _, _ string, _ bool) error                 { return nil }
-func (m *mockGitClient) Add(_ context.Context, _ string) error                             { return nil }
-func (m *mockGitClient) SymRefToBranch(_ context.Context, _ string) (string, error)       { return "main", nil }
-func (m *mockGitClient) Config(_ context.Context, _, _ string) error                       { return nil }
+func (m *mockGitClient) VerifyCommitSignature(_ context.Context, _ string) (string, error) {
+	return "", nil
+}
+func (m *mockGitClient) IsAnnotatedTag(_ context.Context, _ string) bool { return false }
+func (m *mockGitClient) ChangedFiles(_ context.Context, _, _ string) ([]string, error) {
+	return nil, nil
+}
+func (m *mockGitClient) Commit(_ context.Context, _ string, _ *git.CommitOptions) error { return nil }
+func (m *mockGitClient) Branch(_ context.Context, _, _ string) error                    { return nil }
+func (m *mockGitClient) Push(_ context.Context, _, _ string, _ bool) error              { return nil }
+func (m *mockGitClient) Add(_ context.Context, _ string) error                          { return nil }
+func (m *mockGitClient) SymRefToBranch(_ context.Context, _ string) (string, error) {
+	return "main", nil
+}
+func (m *mockGitClient) Config(_ context.Context, _, _ string) error { return nil }
 
 // mockGitAndSCMCreds implements both git.Creds (required return type of
 // GetCreds) and git.SCMTokenProvider (required by commitChangesPR).
@@ -238,6 +246,29 @@ func Test_commitChangesPR(t *testing.T) {
 			_ = json.NewEncoder(w).Encode(gogithub.PullRequest{
 				Number:  gogithub.Ptr(1),
 				HTMLURL: gogithub.Ptr("http://example.com/pull/1"),
+			})
+		}))
+		defer server.Close()
+
+		wbc := &WriteBackConfig{
+			GitRepo:    server.URL + "/org/repo.git",
+			GitBranch:  "main",
+			PRProvider: PRProviderGitHub,
+			GitClient:  &mockGitClient{},
+			GetCreds: func(_ *argocdapi.Application) (git.Creds, error) {
+				return &mockGitAndSCMCreds{token: "github-token"}, nil
+			},
+		}
+		err := commitChangesPR(ctx, makeTestAppImages(wbc), nil, noopWriter)
+		require.NoError(t, err)
+	})
+
+	t.Run("GitHub: PR already exists — treated as no-op, no error", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusUnprocessableEntity)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"message": "Validation Failed",
+				"errors":  []map[string]string{{"message": "A pull request already exists for org:image-updater-branch."}},
 			})
 		}))
 		defer server.Close()

@@ -2,7 +2,9 @@ package argocd
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net/http"
 	"net/url"
 	"strings"
 
@@ -11,6 +13,11 @@ import (
 	"github.com/argoproj-labs/argocd-image-updater/ext/git"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
 )
+
+// ErrPRAlreadyExists is returned by create when GitHub reports that an open
+// PR for the same head → base pair already exists. The caller can treat this
+// as a successful no-op rather than a reconciliation failure.
+var ErrPRAlreadyExists = errors.New("PR already exists")
 
 // GithubPRService implements PullRequestService for GitHub and GitHub Enterprise.
 type GithubPRService struct {
@@ -23,6 +30,9 @@ type GithubPRService struct {
 var _ PullRequestService = (*GithubPRService)(nil)
 
 // create opens a pull request using the already-configured client.
+// If GitHub reports that an open PR for the same head → base pair already
+// exists (HTTP 422), ErrPRAlreadyExists is returned so the caller can treat
+// the situation as a no-op rather than a reconciliation failure.
 func (g *GithubPRService) create(ctx context.Context) error {
 	logCtx := log.LoggerFromContext(ctx)
 
@@ -34,12 +44,34 @@ func (g *GithubPRService) create(ctx context.Context) error {
 	}
 	githubPullRequest, response, err := g.client.PullRequests.Create(ctx, g.owner, g.repo, newPR)
 	if err != nil {
+		if isAlreadyExistsError(err) {
+			logCtx.Infof("PR %q → %q already exists, skipping creation", g.pr.head, g.pr.base)
+			return ErrPRAlreadyExists
+		}
 		return fmt.Errorf("could not create PR %q → %q: %w", g.pr.head, g.pr.base, err)
 	}
 	logCtx.Infof("github response status %s", response.Status)
 	logCtx.Infof("created PR #%d %q → %q: %s", githubPullRequest.GetNumber(), g.pr.head, g.pr.base, githubPullRequest.GetHTMLURL())
 
 	return nil
+}
+
+// isAlreadyExistsError reports whether err is a GitHub 422 response whose
+// error list contains an "A pull request already exists" message.
+func isAlreadyExistsError(err error) bool {
+	var ghErr *github.ErrorResponse
+	if !errors.As(err, &ghErr) {
+		return false
+	}
+	if ghErr.Response == nil || ghErr.Response.StatusCode != http.StatusUnprocessableEntity {
+		return false
+	}
+	for _, e := range ghErr.Errors {
+		if strings.Contains(e.Message, "A pull request already exists") {
+			return true
+		}
+	}
+	return false
 }
 
 // list returns true if there is already an open PR from pushBranch into

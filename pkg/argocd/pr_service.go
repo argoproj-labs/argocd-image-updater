@@ -2,6 +2,7 @@ package argocd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -61,7 +62,9 @@ func buildPullRequest(ctx context.Context, wbc *WriteBackConfig, appNamespace, a
 
 	if wbc.GitCommitMessage != "" {
 		parts := strings.SplitN(wbc.GitCommitMessage, "\n", 2)
-		title = strings.TrimSpace(parts[0])
+		if trimmed := strings.TrimSpace(parts[0]); trimmed != "" {
+			title = trimmed
+		}
 		if len(parts) == 2 {
 			body = strings.TrimSpace(parts[1])
 		} else {
@@ -124,7 +127,13 @@ func commitChangesPR(ctx context.Context, applicationImages *ApplicationImages, 
 			return err
 		}
 
-		return g.create(ctx)
+		if err := g.create(ctx); err != nil {
+			if errors.Is(err, ErrPRAlreadyExists) {
+				return nil
+			}
+			return err
+		}
+		return nil
 
 	// TODO: placeholder for gitlab. Will be implemented in GITOPS-9155
 	//case PRProviderGitLab:
