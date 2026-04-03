@@ -223,7 +223,7 @@ func (c *CloudEventsWebhook) parseEvent(payload *cloudEventsPayload, ctx context
 	logCtx.Tracef("Final webhook event: registry=%s, repository=%s, tag=%s, digest=%s",
 		registryURL, repository, tag, digest)
 
-	return []*argocd.WebhookEvent{&argocd.WebhookEvent{
+	return []*argocd.WebhookEvent{{
 		RegistryURL: registryURL,
 		Repository:  repository,
 		Tag:         tag,

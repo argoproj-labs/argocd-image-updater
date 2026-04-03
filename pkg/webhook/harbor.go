@@ -144,7 +144,7 @@ func (h *HarborWebhook) Parse(r *http.Request) ([]*argocd.WebhookEvent, error) {
 		}
 	}
 
-	return []*argocd.WebhookEvent{&argocd.WebhookEvent{
+	return []*argocd.WebhookEvent{{
 		RegistryURL: registryURL,
 		Repository:  repository,
 		Tag:         resource.Tag,

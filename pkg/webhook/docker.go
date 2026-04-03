@@ -90,7 +90,7 @@ func (d *DockerHubWebhook) Parse(r *http.Request) ([]*argocd.WebhookEvent, error
 		return nil, fmt.Errorf("tag not found in webhook payload")
 	}
 
-	return []*argocd.WebhookEvent{&argocd.WebhookEvent{
+	return []*argocd.WebhookEvent{{
 		RegistryURL: "docker.io",
 		Repository:  repository,
 		Tag:         payload.PushData.Tag,

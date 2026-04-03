@@ -131,11 +131,11 @@ func (s *WebhookServer) handleWebhook(w http.ResponseWriter, r *http.Request) {
 
 	// Process webhooks asynchronously
 	go func() {
-		for _, event := range events {
-			if s.RateLimiter != nil {
-				s.RateLimiter.Take()
-			}
+		if s.RateLimiter != nil {
+			s.RateLimiter.Take()
+		}
 
+		for _, event := range events {
 			eventLogger := baseLogger.WithFields(logrus.Fields{
 				"webhook_registry":   event.RegistryURL,
 				"webhook_repository": event.Repository,

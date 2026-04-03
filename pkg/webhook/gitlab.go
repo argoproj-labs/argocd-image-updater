@@ -11,8 +11,6 @@ import (
 	"strings"
 
 	"github.com/argoproj-labs/argocd-image-updater/pkg/argocd"
-	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
-	"github.com/sirupsen/logrus"
 )
 
 // GitLabWebhook handles GitLab webhook events
@@ -64,12 +62,6 @@ func (g *GitLabWebhook) Validate(r *http.Request) error {
 
 // Parse processes the GitLab webhook payload and returns a slice of WebhookEvent
 func (g *GitLabWebhook) Parse(r *http.Request) ([]*argocd.WebhookEvent, error) {
-	webhookLogger := log.Log().WithFields(logrus.Fields{
-		"logger": "gitlab-webhook",
-	})
-	ctx := log.ContextWithLogger(r.Context(), webhookLogger)
-	logCtx := log.LoggerFromContext(ctx)
-
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read request body: %w", err)
@@ -95,8 +87,7 @@ func (g *GitLabWebhook) Parse(r *http.Request) ([]*argocd.WebhookEvent, error) {
 	}
 
 	if len(payload.Events) == 0 {
-		logCtx.Info("Received GitLab webhook with no events")
-		return nil, nil
+		return nil, fmt.Errorf("no events found in webhook payload")
 	}
 
 	events := make([]*argocd.WebhookEvent, 0, len(payload.Events))

@@ -108,7 +108,7 @@ func (a *AliyunACRWebhook) Parse(r *http.Request) ([]*argocd.WebhookEvent, error
 		registryURL = fmt.Sprintf("registry.%s.aliyuncs.com", payload.Repository.Region)
 	}
 
-	return []*argocd.WebhookEvent{&argocd.WebhookEvent{
+	return []*argocd.WebhookEvent{{
 		RegistryURL: registryURL,
 		Repository:  repository,
 		Tag:         payload.PushData.Tag,
