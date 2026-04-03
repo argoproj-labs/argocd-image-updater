@@ -254,7 +254,7 @@ func TestCloudEventsWebhook_Parse_ECR(t *testing.T) {
 				}
 			} else {
 				require.NoError(t, err)
-				require.NotEmpty(t, event)
+				require.Len(t, event, 1)
 				assert.Equal(t, tt.wantRegistryURL, event[0].RegistryURL)
 				assert.Equal(t, tt.wantRepository, event[0].Repository)
 				assert.Equal(t, tt.wantTag, event[0].Tag)
@@ -407,7 +407,7 @@ func TestCloudEventsWebhook_Parse_Generic(t *testing.T) {
 				}
 			} else {
 				require.NoError(t, err)
-				require.NotEmpty(t, event)
+				require.Len(t, event, 1)
 				assert.Equal(t, tt.wantRegistryURL, event[0].RegistryURL)
 				assert.Equal(t, tt.wantRepository, event[0].Repository)
 				assert.Equal(t, tt.wantTag, event[0].Tag)

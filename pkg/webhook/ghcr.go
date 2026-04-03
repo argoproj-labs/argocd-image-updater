@@ -140,7 +140,7 @@ func (g *GHCRWebhook) Parse(r *http.Request) ([]*argocd.WebhookEvent, error) {
 	// Construct repository name: owner/package
 	repository := fmt.Sprintf("%s/%s", payload.Package.Owner.Login, payload.Package.Name)
 
-	return []*argocd.WebhookEvent{&argocd.WebhookEvent{
+	return []*argocd.WebhookEvent{{
 		RegistryURL: "ghcr.io",
 		Repository:  repository,
 		Tag:         tagName,
