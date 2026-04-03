@@ -196,6 +196,33 @@ func (list ImageList) ToContainerImageList() image.ContainerImageList {
 	return cil
 }
 
+// PendingWrite represents a deferred git write-back operation for a single application.
+// It is produced by the registry polling phase and consumed by the batched git write phase.
+type PendingWrite struct {
+	// AppName is the namespaced name of the application (e.g. "namespace/appname")
+	AppName string
+	// App holds the application and its write-back configuration
+	App *ApplicationImages
+	// ChangeList records which images were changed
+	ChangeList []ChangeEntry
+	// Result holds the polling-phase result for this application
+	Result ImageUpdaterResult
+	// UpdateConf holds the full update config needed for kube events etc.
+	UpdateConf *UpdateConfiguration
+}
+
+// BatchKey returns the grouping key for batching git operations.
+// Operations targeting the same repository and branch can share a single
+// clone/fetch/checkout cycle.
+func (pw *PendingWrite) BatchKey() string {
+	wbc := pw.App.WriteBackConfig
+	branch := wbc.GitBranch
+	if branch == "" {
+		branch = "_default_"
+	}
+	return wbc.GitRepo + "::" + branch
+}
+
 // WebhookEvent represents a generic webhook payload
 type WebhookEvent struct {
 	// RegistryURL is the URL of the registry that sent the webhook
