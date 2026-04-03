@@ -10,6 +10,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strings"
 	"text/template"
 
 	"sigs.k8s.io/kustomize/api/konfig"
@@ -320,6 +321,215 @@ func commitChangesGit(ctx context.Context, applicationImages *ApplicationImages,
 	}
 
 	return nil
+}
+
+// BatchCommitChangesGit performs git write-back for multiple applications in a single
+// git transaction. Instead of each app doing its own clone→fetch→checkout→write→commit→push
+// cycle, it does a single clone→fetch→checkout, writes all files, then one commit→push.
+// For N apps sharing the same repo+branch, this reduces N round-trips to 1.
+//
+// All pending writes must target the same git repository and branch.
+// Returns a map of app names to errors for any individual write failures.
+func BatchCommitChangesGit(ctx context.Context, pendingWrites []*PendingWrite, state *SyncIterationState) map[string]error {
+	logCtx := log.LoggerFromContext(ctx)
+	errors := make(map[string]error)
+
+	if len(pendingWrites) == 0 {
+		return errors
+	}
+
+	// Use the first write's config as representative for repo/branch/creds.
+	// All writes in this batch must share the same repo+branch.
+	firstWBC := pendingWrites[0].App.WriteBackConfig
+	firstApp := pendingWrites[0].App.Application
+
+	// Acquire the repo lock once for the entire batch
+	if firstWBC.RequiresLocking() {
+		lock := state.GetRepositoryLock(firstWBC.GitRepo)
+		lock.Lock()
+		defer lock.Unlock()
+	}
+
+	creds, err := firstWBC.GetCreds(&firstApp)
+	if err != nil {
+		for _, pw := range pendingWrites {
+			errors[pw.AppName] = fmt.Errorf("could not get creds for repo '%s': %v", firstWBC.GitRepo, err)
+		}
+		return errors
+	}
+
+	// Create a single temp directory and git client for the entire batch
+	var gitC git.Client
+	if firstWBC.GitClient != nil {
+		// Use injected git client (e.g. for testing)
+		gitC = firstWBC.GitClient
+	} else {
+		tempRoot, err := os.MkdirTemp(os.TempDir(), "git-batch")
+		if err != nil {
+			for _, pw := range pendingWrites {
+				errors[pw.AppName] = err
+			}
+			return errors
+		}
+		defer func() {
+			if removeErr := os.RemoveAll(tempRoot); removeErr != nil {
+				logCtx.Errorf("could not remove temp dir: %v", removeErr)
+			}
+		}()
+
+		gitC, err = git.NewClientExt(firstWBC.GitRepo, tempRoot, creds, false, false, "")
+		if err != nil {
+			for _, pw := range pendingWrites {
+				errors[pw.AppName] = err
+			}
+			return errors
+		}
+	}
+	if err = gitC.Init(ctx); err != nil {
+		for _, pw := range pendingWrites {
+			errors[pw.AppName] = err
+		}
+		return errors
+	}
+
+	// Determine the checkout branch from the first app's config
+	var checkOutBranch string
+	if firstWBC.GitBranch != "" {
+		checkOutBranch = firstWBC.GitBranch
+	} else {
+		checkOutBranch = getWriteBackBranch(ctx, &firstApp, firstWBC)
+	}
+	if checkOutBranch == "" || checkOutBranch == "HEAD" {
+		checkOutBranch, err = gitC.SymRefToBranch(ctx, checkOutBranch)
+		logCtx.Infof("resolved remote default branch to '%s' and using that for operations", checkOutBranch)
+		if err != nil {
+			for _, pw := range pendingWrites {
+				errors[pw.AppName] = err
+			}
+			return errors
+		}
+	}
+
+	// Single fetch + checkout for the entire batch
+	if err = gitC.ShallowFetch(ctx, checkOutBranch, 1); err != nil {
+		for _, pw := range pendingWrites {
+			errors[pw.AppName] = err
+		}
+		return errors
+	}
+	if err = gitC.Checkout(ctx, checkOutBranch, false); err != nil {
+		for _, pw := range pendingWrites {
+			errors[pw.AppName] = err
+		}
+		return errors
+	}
+
+	logCtx.Infof("Batch writing %d application(s) in a single git transaction", len(pendingWrites))
+
+	// Phase: Write all files. Track which apps had actual changes.
+	var appsWithChanges []*PendingWrite
+	for _, pw := range pendingWrites {
+		wbc := pw.App.WriteBackConfig
+		var write changeWriter
+		if wbc.KustomizeBase != "" {
+			write = writeKustomization
+		} else {
+			write = writeOverrides
+		}
+
+		appCtx := log.ContextWithLogger(ctx, logCtx.WithField("application", pw.AppName))
+		if writeErr, skip := write(appCtx, pw.App, gitC); writeErr != nil {
+			logCtx.Errorf("Error writing changes for app %s: %v", pw.AppName, writeErr)
+			errors[pw.AppName] = writeErr
+		} else if !skip {
+			appsWithChanges = append(appsWithChanges, pw)
+		} else {
+			logCtx.Debugf("App %s: file already up-to-date, skipping", pw.AppName)
+		}
+	}
+
+	if len(appsWithChanges) == 0 {
+		logCtx.Infof("Batch: all %d app file(s) already up-to-date, nothing to commit", len(pendingWrites))
+		return errors
+	}
+
+	// Build a combined commit message
+	commitMsg := buildBatchCommitMessage(appsWithChanges)
+
+	// Use git config from the first app (they should all share the same user/email)
+	if firstWBC.GitCommitUser != "" && firstWBC.GitCommitEmail != "" {
+		if err = gitC.Config(ctx, firstWBC.GitCommitUser, firstWBC.GitCommitEmail); err != nil {
+			for _, pw := range appsWithChanges {
+				errors[pw.AppName] = err
+			}
+			return errors
+		}
+	}
+
+	commitOpts := &git.CommitOptions{}
+
+	// Write commit message to temp file
+	cm, err := os.CreateTemp("", "image-updater-batch-commit-msg")
+	if err != nil {
+		for _, pw := range appsWithChanges {
+			errors[pw.AppName] = fmt.Errorf("could not create temp file: %v", err)
+		}
+		return errors
+	}
+	if err = os.WriteFile(cm.Name(), []byte(commitMsg), 0600); err != nil {
+		_ = cm.Close()
+		for _, pw := range appsWithChanges {
+			errors[pw.AppName] = fmt.Errorf("could not write commit message: %v", err)
+		}
+		return errors
+	}
+	commitOpts.CommitMessagePath = cm.Name()
+	_ = cm.Close()
+	defer os.Remove(cm.Name())
+
+	if firstWBC.GitCommitSigningKey != "" {
+		commitOpts.SigningKey = firstWBC.GitCommitSigningKey
+	}
+	commitOpts.SigningMethod = firstWBC.GitCommitSigningMethod
+	commitOpts.SignOff = firstWBC.GitCommitSignOff
+
+	// Single commit + push for all changes
+	if err = gitC.Commit(ctx, "", commitOpts); err != nil {
+		for _, pw := range appsWithChanges {
+			errors[pw.AppName] = fmt.Errorf("git commit failed: %v", err)
+		}
+		return errors
+	}
+	if err = gitC.Push(ctx, "origin", checkOutBranch, false); err != nil {
+		for _, pw := range appsWithChanges {
+			errors[pw.AppName] = fmt.Errorf("git push failed: %v", err)
+		}
+		return errors
+	}
+
+	logCtx.Infof("Batch: successfully committed and pushed %d app update(s) in a single transaction", len(appsWithChanges))
+	return errors
+}
+
+// buildBatchCommitMessage creates a commit message summarizing all batched updates.
+func buildBatchCommitMessage(writes []*PendingWrite) string {
+	if len(writes) == 1 {
+		// For a single app, use the app's own commit message if available
+		if msg := writes[0].App.WriteBackConfig.GitCommitMessage; msg != "" {
+			return msg
+		}
+	}
+
+	var b strings.Builder
+	b.WriteString(fmt.Sprintf("build: batch update of %d application(s)\n\n", len(writes)))
+	for _, pw := range writes {
+		b.WriteString(fmt.Sprintf("- %s:", pw.AppName))
+		for _, c := range pw.ChangeList {
+			b.WriteString(fmt.Sprintf(" %s %s→%s", c.Image.ImageName, c.OldTag.String(), c.NewTag.String()))
+		}
+		b.WriteString("\n")
+	}
+	return b.String()
 }
 
 func writeOverrides(ctx context.Context, applicationImages *ApplicationImages, gitC git.Client) (err error, skip bool) {

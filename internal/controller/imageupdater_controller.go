@@ -64,6 +64,9 @@ type ImageUpdaterConfig struct {
 	// EnableCRMetrics enables per-ImageUpdater-CR Prometheus metrics. Set false in webhook-only
 	// mode (no controller/reconcile) so metrics are not written and never orphaned on CR delete.
 	EnableCRMetrics bool
+	// EnableBatchCommit batches git write-back operations per repository+branch,
+	// reducing clone/fetch/push overhead when many apps share the same git repo.
+	EnableBatchCommit bool
 }
 
 // ImageUpdaterReconciler reconciles a ImageUpdater object

@@ -46,6 +46,20 @@ Secret for validating Docker Hub webhooks.
 
 Can also be set with the `DOCKER_WEBHOOK_SECRET` environment variable.
 
+**--enable-batch-commit**
+
+Enable batching of git write-back operations per repository. When enabled,
+the controller uses a two-phase approach: first all registries are polled in
+parallel, then pending git writes are grouped by repository and branch and
+committed in a single clone/fetch/checkout/commit/push cycle per group.
+This dramatically reduces git overhead when many applications share the same
+git repository.
+
+When disabled (the default), each application clones, commits, and pushes
+individually — the original behavior.
+
+Can also be set with the `ENABLE_BATCH_COMMIT` environment variable.
+
 **--enable-http2 *disabled***
 
 If set, HTTP/2 will be enabled for the metrics and webhook servers.
