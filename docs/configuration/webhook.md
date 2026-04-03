@@ -7,6 +7,7 @@ Currently Supported Registries:
 
 - Docker Hub
 - GitHub Container Registry
+- GitLab Container Registry
 - Harbor
 - Quay
 - Aliyun ACR
@@ -82,12 +83,13 @@ To set up a webhook notification, refer to your container registries
 documentation on how to do that. Documentation for the supported registries 
 can be found here:
 
-- [Docker Hub](https://docs.docker.com/docker-hub/repos/manage/webhooks/)
-- [GitHub Container Registry](https://docs.github.com/en/webhooks/webhook-events-and-payloads)
-- [Harbor](https://goharbor.io/docs/2.2.0/working-with-projects/project-configuration/configure-webhooks/)
-- [Quay](https://docs.quay.io/guides/notifications.html)
 - [Aliyun ACR](https://www.alibabacloud.com/help/en/acr/user-guide/manage-webhooks)
 - [AWS ECR via EventBridge](#aws-ecr-via-eventbridge-cloudevents) (see below)
+- [Docker Hub](https://docs.docker.com/docker-hub/repos/manage/webhooks/)
+- [GitHub Container Registry](https://docs.github.com/en/webhooks/webhook-events-and-payloads)
+- [GitLab self-hosted](https://docs.gitlab.com/administration/packages/container_registry/#configure-container-registry-notifications)
+- [Harbor](https://goharbor.io/docs/2.2.0/working-with-projects/project-configuration/configure-webhooks/)
+- [Quay](https://docs.quay.io/guides/notifications.html)
 
 For the URL that you set for the webhook, your link should go as the following:
 
@@ -96,6 +98,7 @@ https://app1.example.com/webhook?type=<YOUR_REGISTRY_TYPE>
 # Value of `type` for each supported container registry
 # Docker = docker.io
 # GitHub Container Registry = ghcr.io
+# GitLab Container Registry = gitlab
 # Harbor = harbor
 # Quay = quay.io
 # Aliyun ACR = aliyun-acr
@@ -220,6 +223,7 @@ validate the incoming notification. The secrets can be set by editing the
 stringData:
   webhook.docker-secret: <YOUR_SECRET>
   webhook.ghcr-secret: <YOUR_SECRET>
+  webhook.gitlab-secret: <YOUR_SECRET>
   webhook.harbor-secret: <YOUR_SECRET>
   webhook.quay-secret: <YOUR_SECRET>
   webhook.aliyun-acr-secret: <YOUR_SECRET>
@@ -238,6 +242,7 @@ instructions linked in the documentation for that registry.
 Supported Registries That Use This:
 
 - GitHub Container Registry
+- GitLab Container Registry
 - Harbor
 
 ### Parameter Secrets
@@ -300,6 +305,7 @@ environment variables. Below is the list of which variables correspond to which 
 |`WEBHOOK_PORT`|`--webhook-port`|
 |`DOCKER_WEBHOOK_SECRET` |`--docker-webhook-secret`|
 |`GHCR_WEBHOOK_SECRET` |`--ghcr-webhook-secret`|
+|`GITLAB_WEBHOOK_SECRET` |`--gitlab-webhook-secret`|
 |`HARBOR_WEBHOOK_SECRET` |`--harbor-webhook-secret`|
 |`QUAY_WEBHOOK_SECRET` |`--quay-webhook-secret`|
 |`ALIYUN_ACR_WEBHOOK_SECRET` |`--aliyun-acr-webhook-secret`|
@@ -321,6 +327,7 @@ registries supported.
 
 - [Docker Hub](https://docs.docker.com/docker-hub/repos/manage/webhooks/#example-webhook-payload)
 - [GitHub Container Registry](https://docs.github.com/en/webhooks/webhook-events-and-payloads#example-webhook-delivery)
+- [GitLab Container Registry](https://docs.gitlab.com/administration/packages/container_registry/#configure-container-registry-notifications)
 - [Harbor](https://goharbor.io/docs/2.2.0/working-with-projects/project-configuration/configure-webhooks/)
 (View Payload Format Section)
 - [Quay](https://docs.quay.io/guides/notifications.html)
