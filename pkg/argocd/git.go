@@ -236,6 +236,10 @@ func commitChangesGit(ctx context.Context, applicationImages *ApplicationImages,
 		if pushBranch == "" {
 			return fmt.Errorf("git branch name could not be created from the template: %s", customTemplate)
 		}
+		wbc.PullRequest, err = buildPullRequest(ctx, wbc, app.Namespace, app.Name, checkOutBranch, pushBranch)
+		if err != nil {
+			return err
+		}
 	} else if wbc.GitWriteBranch != "" {
 		// use GitWriteBranch for git mode without PR
 		logCtx.Debugf("Using branch template: %s", wbc.GitWriteBranch)
