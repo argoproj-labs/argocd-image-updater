@@ -104,8 +104,10 @@ func (r *ImageUpdaterReconciler) RunImageUpdater(ctx context.Context, cr *iuapi.
 
 			if r.Config.EnableBatchCommit {
 				// Two-phase approach: poll only, collect pending git writes for Phase 2.
-				// Image-update success metrics are deferred to phase 2 so they
-				// reflect actual commit outcomes rather than pending writes.
+				// CheckApplicationImages returns pw==nil in two cases:
+				//   (a) no updates needed
+				//   (b) already committed immediately (non-git, PR mode, write-branch)
+				// In case (b) we must emit success metrics and collect changes here.
 				res, pw := argocd.CheckApplicationImages(appCtx, upconf, syncState)
 
 				pendingMu.Lock()
@@ -114,15 +116,19 @@ func (r *ImageUpdaterReconciler) RunImageUpdater(ctx context.Context, cr *iuapi.
 				result.NumImagesConsidered += res.NumImagesConsidered
 				result.NumImagesUpdated += res.NumImagesUpdated
 				result.NumSkipped += res.NumSkipped
+				allChanges = append(allChanges, res.Changes...)
 				if pw != nil {
 					pendingWrites = append(pendingWrites, pw)
 				}
 				pendingMu.Unlock()
 
-				// Only emit error metrics in phase 1; success metrics are
-				// deferred to phase 2 after BatchCommitChangesGit confirms push.
 				if !warmUp && r.Config != nil && r.Config.EnableCRMetrics && metrics.ImageUpdaterCR() != nil {
 					metrics.ImageUpdaterCR().IncreaseUpdateErrors(cr.Name, cr.Namespace, res.NumErrors)
+					// For immediate commits (pw == nil), emit success metrics now.
+					// For batched writes (pw != nil), defer to phase 2.
+					if pw == nil && !r.Config.DryRun {
+						metrics.ImageUpdaterCR().IncreaseImageUpdate(cr.Name, cr.Namespace, res.NumImagesUpdated)
+					}
 				}
 			} else {
 				// Original path: poll + commit per app individually.

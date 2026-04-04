@@ -303,6 +303,7 @@ func CheckApplicationImages(ctx context.Context, updateConf *UpdateConfiguration
 	var needUpdate bool = false
 	result := ImageUpdaterResult{}
 	app := updateConf.UpdateApp.Application.GetName()
+	appNs := updateConf.UpdateApp.Application.GetNamespace()
 	changeList := make([]ChangeEntry, 0)
 
 	applicationImages := GetImagesFromApplication(updateConf.UpdateApp)
@@ -483,11 +484,13 @@ func CheckApplicationImages(ctx context.Context, updateConf *UpdateConfiguration
 	}
 
 	if !needUpdate {
+		result.Changes = changeList
 		return result, nil
 	}
 
 	if updateConf.DryRun {
 		baseLogger.Infof("Dry run - not committing %d changes to application", result.NumImagesUpdated)
+		result.Changes = changeList
 		return result, nil
 	}
 
@@ -503,6 +506,7 @@ func CheckApplicationImages(ctx context.Context, updateConf *UpdateConfiguration
 			baseLogger.Infof("Successfully updated the live application spec")
 			EmitKubeEvents(ctx, updateConf, changeList, app)
 		}
+		result.Changes = changeList
 		return result, nil
 	}
 
@@ -520,13 +524,20 @@ func CheckApplicationImages(ctx context.Context, updateConf *UpdateConfiguration
 			baseLogger.Infof("Successfully updated the live application spec")
 			EmitKubeEvents(ctx, updateConf, changeList, app)
 		}
+		result.Changes = changeList
 		return result, nil
 	}
 
-	// For git write-back to the base branch, return a PendingWrite for batching
-	baseLogger.Infof("Preparing batched write for application %s (%d image update(s))", app, result.NumImagesUpdated)
+	// For git write-back to the base branch, return a PendingWrite for batching.
+	// Use namespace/name as AppName to avoid collisions across namespaces.
+	appKey := app
+	if appNs != "" {
+		appKey = appNs + "/" + app
+	}
+	baseLogger.Infof("Preparing batched write for application %s (%d image update(s))", appKey, result.NumImagesUpdated)
+	result.Changes = changeList
 	pw := &PendingWrite{
-		AppName:    app,
+		AppName:    appKey,
 		App:        updateConf.UpdateApp,
 		ChangeList: changeList,
 		Result:     result,
