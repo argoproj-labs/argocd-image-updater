@@ -104,6 +104,8 @@ func (r *ImageUpdaterReconciler) RunImageUpdater(ctx context.Context, cr *iuapi.
 
 			if r.Config.EnableBatchCommit {
 				// Two-phase approach: poll only, collect pending git writes for Phase 2.
+				// Image-update success metrics are deferred to phase 2 so they
+				// reflect actual commit outcomes rather than pending writes.
 				res, pw := argocd.CheckApplicationImages(appCtx, upconf, syncState)
 
 				pendingMu.Lock()
@@ -117,10 +119,9 @@ func (r *ImageUpdaterReconciler) RunImageUpdater(ctx context.Context, cr *iuapi.
 				}
 				pendingMu.Unlock()
 
+				// Only emit error metrics in phase 1; success metrics are
+				// deferred to phase 2 after BatchCommitChangesGit confirms push.
 				if !warmUp && r.Config != nil && r.Config.EnableCRMetrics && metrics.ImageUpdaterCR() != nil {
-					if !r.Config.DryRun {
-						metrics.ImageUpdaterCR().IncreaseImageUpdate(cr.Name, cr.Namespace, res.NumImagesUpdated)
-					}
 					metrics.ImageUpdaterCR().IncreaseUpdateErrors(cr.Name, cr.Namespace, res.NumErrors)
 				}
 			} else {
@@ -167,11 +168,12 @@ func (r *ImageUpdaterReconciler) RunImageUpdater(ctx context.Context, cr *iuapi.
 			batches[key] = append(batches[key], pw)
 		}
 
-		for batchKey, batch := range batches {
-			baseLogger.Infof("Executing batch for %s: %d app(s)", batchKey, len(batch))
+		for _, batch := range batches {
+			baseLogger.Infof("Executing batch of %d app(s)", len(batch))
 			batchErrors := argocd.BatchCommitChangesGit(ctx, batch, syncState)
 
-			// Process results: emit kube events for successful writes, count errors for failed ones
+			// Process results: emit kube events and metrics for successful writes,
+			// count errors for failed ones.
 			for _, pw := range batch {
 				if batchErr, hasBatchErr := batchErrors[pw.AppName]; hasBatchErr {
 					baseLogger.Errorf("Batch commit failed for app %s: %v", pw.AppName, batchErr)
@@ -181,6 +183,10 @@ func (r *ImageUpdaterReconciler) RunImageUpdater(ctx context.Context, cr *iuapi.
 				} else {
 					baseLogger.Infof("Successfully updated application %s via batch commit", pw.AppName)
 					argocd.EmitKubeEvents(ctx, pw.UpdateConf, pw.ChangeList, pw.AppName)
+					// Emit image-update success metric now that the push succeeded.
+					if !warmUp && r.Config != nil && r.Config.EnableCRMetrics && metrics.ImageUpdaterCR() != nil && !r.Config.DryRun {
+						metrics.ImageUpdaterCR().IncreaseImageUpdate(cr.Name, cr.Namespace, pw.Result.NumImagesUpdated)
+					}
 				}
 			}
 		}
