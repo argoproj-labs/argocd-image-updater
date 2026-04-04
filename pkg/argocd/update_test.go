@@ -6563,6 +6563,76 @@ func Test_CheckApplicationImages(t *testing.T) {
 		assert.Equal(t, 1, res.NumImagesUpdated)
 		assert.Nil(t, pw, "PendingWrite should be nil in dry-run mode")
 	})
+
+	t.Run("Commits immediately for git write-branch mode (not batchable)", func(t *testing.T) {
+		mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
+			regClient := regmock.RegistryClient{}
+			regClient.On("NewRepository", mock.Anything).Return(nil)
+			regClient.On("Tags", mock.Anything).Return([]string{"1.0.1", "1.0.2"}, nil)
+			regClient.On("ManifestForTag", mock.Anything, mock.Anything).Return(&schema1.SignedManifest{}, nil)
+			return &regClient, nil
+		}
+
+		argoClient := argomock.ArgoCD{}
+		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+
+		kubeClient := kube.ImageUpdaterKubernetesClient{
+			KubeClient: &registryKube.KubernetesClient{
+				Clientset: fake.NewFakeKubeClient(),
+			},
+		}
+
+		imageList := ImageList{
+			NewImage(image.NewFromIdentifier("foobar=gcr.io/jannfis/foobar:>=1.0.1")),
+		}
+
+		appImages := &ApplicationImages{
+			Application: v1alpha1.Application{
+				ObjectMeta: v1.ObjectMeta{
+					Name:      "guestbook",
+					Namespace: "guestbook",
+				},
+				Spec: v1alpha1.ApplicationSpec{
+					Source: &v1alpha1.ApplicationSource{
+						RepoURL:        "https://github.com/example/repo.git",
+						TargetRevision: "main",
+						Kustomize: &v1alpha1.ApplicationSourceKustomize{
+							Images: v1alpha1.KustomizeImages{"jannfis/foobar:1.0.1"},
+						},
+					},
+				},
+				Status: v1alpha1.ApplicationStatus{
+					SourceType: v1alpha1.ApplicationSourceTypeKustomize,
+					Summary: v1alpha1.ApplicationSummary{
+						Images: []string{"gcr.io/jannfis/foobar:1.0.1"},
+					},
+				},
+			},
+			WriteBackConfig: &WriteBackConfig{
+				Method:         WriteBackGit,
+				GitRepo:        "https://github.com/example/repo.git",
+				GitWriteBranch: "image-updates-{{.SHA256}}",
+				GetCreds: func(app *v1alpha1.Application) (git.Creds, error) {
+					return git.NopCreds{}, nil
+				},
+			},
+			Images: imageList,
+		}
+
+		res, pw := CheckApplicationImages(context.Background(), &UpdateConfiguration{
+			NewRegFN:   mockClientFn,
+			ArgoClient: &argoClient,
+			KubeClient: &kubeClient,
+			UpdateApp:  appImages,
+			DryRun:     false,
+		}, NewSyncIterationState())
+
+		assert.Nil(t, pw, "PendingWrite should be nil for write-branch mode (commits immediately)")
+		// The immediate commit fails (no real git repo), which resets NumImagesUpdated to 0
+		// and increments NumErrors. The key assertion is pw == nil (correct routing).
+		assert.Equal(t, 0, res.NumImagesUpdated)
+		assert.Equal(t, 1, res.NumErrors)
+	})
 }
 
 func Test_BatchCommitChangesGit(t *testing.T) {
