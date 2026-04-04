@@ -65,6 +65,7 @@ func (r *ImageUpdaterReconciler) RunImageUpdater(ctx context.Context, cr *iuapi.
 	var wg sync.WaitGroup
 	var pendingMu sync.Mutex
 	var pendingWrites []*argocd.PendingWrite
+	var allChanges []argocd.ChangeEntry
 	wg.Add(len(appList))
 
 	for app, curApplication := range appList {
@@ -132,6 +133,7 @@ func (r *ImageUpdaterReconciler) RunImageUpdater(ctx context.Context, cr *iuapi.
 				result.NumImagesConsidered += res.NumImagesConsidered
 				result.NumImagesUpdated += res.NumImagesUpdated
 				result.NumSkipped += res.NumSkipped
+				allChanges = append(allChanges, res.Changes...)
 				pendingMu.Unlock()
 
 				if !warmUp && r.Config != nil && r.Config.EnableCRMetrics && metrics.ImageUpdaterCR() != nil {
@@ -146,6 +148,8 @@ func (r *ImageUpdaterReconciler) RunImageUpdater(ctx context.Context, cr *iuapi.
 
 	// Wait for all goroutines to finish
 	wg.Wait()
+
+	result.Changes = allChanges
 
 	// Set images-watched gauge once here with the CR-wide aggregate.
 	if !warmUp && r.Config != nil && r.Config.EnableCRMetrics && metrics.ImageUpdaterCR() != nil {
