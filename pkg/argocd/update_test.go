@@ -6569,7 +6569,7 @@ func Test_CheckApplicationImages(t *testing.T) {
 			regClient := regmock.RegistryClient{}
 			regClient.On("NewRepository", mock.Anything).Return(nil)
 			regClient.On("Tags", mock.Anything).Return([]string{"1.0.1", "1.0.2"}, nil)
-			regClient.On("ManifestForTag", mock.Anything, mock.Anything).Return(&schema1.SignedManifest{}, nil)
+			regClient.On("ManifestForTag", mock.Anything, mock.Anything).Return(&schema1.SignedManifest{}, nil) //nolint:staticcheck
 			return &regClient, nil
 		}
 
