@@ -506,7 +506,24 @@ func CheckApplicationImages(ctx context.Context, updateConf *UpdateConfiguration
 		return result, nil
 	}
 
-	// For git write-back, return a PendingWrite for batching
+	// Apps using PR mode or a custom write-branch template push to per-app
+	// branches and cannot be batched. Commit them immediately via the
+	// original per-app git path.
+	if wbc.PRProvider > 0 || wbc.GitWriteBranch != "" {
+		baseLogger.Infof("Committing %d parameter update(s) for application %s (write-branch/PR mode, not batchable)", result.NumImagesUpdated, app)
+		err := commitChangesLocked(ctx, updateConf.UpdateApp, state, changeList)
+		if err != nil {
+			baseLogger.Errorf("Could not update application spec: %v", err)
+			result.NumErrors += 1
+			result.NumImagesUpdated = 0
+		} else {
+			baseLogger.Infof("Successfully updated the live application spec")
+			EmitKubeEvents(ctx, updateConf, changeList, app)
+		}
+		return result, nil
+	}
+
+	// For git write-back to the base branch, return a PendingWrite for batching
 	baseLogger.Infof("Preparing batched write for application %s (%d image update(s))", app, result.NumImagesUpdated)
 	pw := &PendingWrite{
 		AppName:    app,
