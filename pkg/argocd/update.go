@@ -292,6 +292,279 @@ func UpdateApplication(ctx context.Context, updateConf *UpdateConfiguration, sta
 	return result
 }
 
+// CheckApplicationImages performs the registry polling phase for a single application.
+// It checks for newer image versions and prepares a PendingWrite if updates are needed,
+// but does NOT commit to git. The PendingWrite can be batched with other writes later.
+// For non-git write-back methods (e.g., WriteBackApplication), the commit is performed
+// immediately since those don't benefit from batching.
+func CheckApplicationImages(ctx context.Context, updateConf *UpdateConfiguration, state *SyncIterationState) (ImageUpdaterResult, *PendingWrite) {
+	baseLogger := log.LoggerFromContext(ctx)
+
+	var needUpdate bool = false
+	result := ImageUpdaterResult{}
+	app := updateConf.UpdateApp.Application.GetName()
+	appNs := updateConf.UpdateApp.Application.GetNamespace()
+	changeList := make([]ChangeEntry, 0)
+
+	applicationImages := GetImagesFromApplication(updateConf.UpdateApp)
+	result.NumApplicationsProcessed += 1
+
+	for _, applicationImage := range updateConf.UpdateApp.Images {
+		updateableImage := applicationImages.ContainsImage(applicationImage.ContainerImage, false)
+		if updateableImage == nil {
+			baseLogger.Debugf("Image '%s' seems not to be live in this application, skipping", applicationImage.ImageName)
+			result.NumSkipped += 1
+			continue
+		}
+
+		if updateableImage.ImageTag == nil {
+			updateableImage.ImageTag = tag.NewImageTag("", time.Unix(0, 0), "")
+		}
+
+		result.NumImagesConsidered += 1
+
+		fields := updateableImage.GetLogFields(applicationImage.ImageAlias)
+		imgCtx := baseLogger.WithFields(fields)
+		imageOpCtx := log.ContextWithLogger(ctx, imgCtx)
+
+		if updateableImage.KustomizeImage != nil {
+			imgCtx = imgCtx.WithField("kustomize_image", updateableImage.KustomizeImage)
+		}
+
+		imgCtx.Debugf("Considering this image for update")
+
+		rep, err := registry.GetRegistryEndpoint(imageOpCtx, applicationImage.ContainerImage)
+		if err != nil {
+			imgCtx.Errorf("Could not get registry endpoint from configuration: %v", err)
+			result.NumErrors += 1
+			continue
+		}
+
+		var vc image.VersionConstraint
+		if applicationImage.ImageTag != nil {
+			vc.Constraint = applicationImage.ImageTag.TagName
+		}
+
+		vc.Strategy = applicationImage.UpdateStrategy
+		vc.MatchFunc, vc.MatchArgs = applicationImage.ParseMatch(imageOpCtx, applicationImage.AllowTags)
+		vc.IgnoreList = applicationImage.IgnoreTags
+		vc.Options = applicationImage.
+			GetPlatformOptions(imageOpCtx, updateConf.IgnorePlatforms, applicationImage.Platforms).
+			WithMetadata(vc.Strategy.NeedsMetadata())
+
+		if rep.TagListSort > registry.TagListSortUnsorted && vc.Strategy.NeedsMetadata() {
+			imgCtx.Infof("taglistsort is set to '%s' but update strategy '%s' requires metadata. Results may not be what you expect.", rep.TagListSort.String(), vc.Strategy.String())
+		}
+
+		// retrieves an image's pull secret credentials
+		secretVal := applicationImage.PullSecret
+		if secretVal == "" {
+			imgCtx.Tracef("No pull secret configured for this image")
+		}
+		// The endpoint can provide default credentials for pulling images
+		creds, err := rep.SetEndpointCredentials(imageOpCtx, updateConf.KubeClient.KubeClient, secretVal)
+		if err != nil {
+			imgCtx.Errorf("Could not set registry endpoint credentials: %v", err)
+			result.NumErrors += 1
+			continue
+		}
+
+		regClient, err := updateConf.NewRegFN(rep, creds.Username, creds.Password)
+		if err != nil {
+			imgCtx.Errorf("Could not create registry client: %v", err)
+			result.NumErrors += 1
+			continue
+		}
+
+		// Get list of available image tags from the repository
+		// Load creds, create registry client, fetch tags (retry once on 401/403)
+		tags, err := rep.GetTags(imageOpCtx, applicationImage.ContainerImage, regClient, &vc, secretVal == "")
+		if err != nil {
+			// Retry once on 401/403
+			if errors.Is(err, registry.ErrCredentialsInvalid) {
+				imgCtx.Infof("credentials invalid (401/403), refetching and retrying once")
+				creds, err = rep.SetEndpointCredentials(imageOpCtx, updateConf.KubeClient.KubeClient, secretVal)
+				if err != nil {
+					imgCtx.Errorf("Could not set registry endpoint credentials: %v", err)
+					result.NumErrors += 1
+					continue
+				}
+
+				regClient, err = updateConf.NewRegFN(rep, creds.Username, creds.Password)
+				if err != nil {
+					imgCtx.Errorf("Could not create registry client: %v", err)
+					result.NumErrors += 1
+					continue
+				}
+				tags, err = rep.GetTags(imageOpCtx, applicationImage.ContainerImage, regClient, &vc, secretVal == "")
+			}
+			if err != nil {
+				imgCtx.Errorf("Could not get tags from registry: %v", err)
+				result.NumErrors += 1
+				continue
+			}
+		}
+
+		imgCtx.Tracef("List of available tags found: %v", tags.Tags())
+
+		latest, err := updateableImage.GetNewestVersionFromTags(imageOpCtx, &vc, tags)
+		if err != nil {
+			imgCtx.Errorf("Unable to find newest version from available tags: %v", err)
+			result.NumErrors += 1
+			continue
+		}
+
+		if latest == nil {
+			imgCtx.Debugf("No suitable image tag for upgrade found in list of available tags.")
+			result.NumSkipped += 1
+			continue
+		}
+
+		if needsUpdate(updateableImage, applicationImage.ContainerImage, latest, vc.Strategy) {
+			appImageWithTag := applicationImage.WithTag(latest)
+			appImageFullNameWithTag := appImageWithTag.GetFullNameWithTag()
+
+			appImageSpec, err := getAppImage(imageOpCtx, &updateConf.UpdateApp.Application, updateConf.UpdateApp.WriteBackConfig, applicationImage)
+			if err != nil {
+				continue
+			}
+			if appImageSpec == appImageFullNameWithTag {
+				imgCtx.Infof("New image %s already set in spec", appImageFullNameWithTag)
+				continue
+			}
+
+			needUpdate = true
+			imgCtx.Infof("Setting new image to %s", appImageFullNameWithTag)
+
+			err = setAppImage(imageOpCtx, &updateConf.UpdateApp.Application, appImageWithTag, updateConf.UpdateApp.WriteBackConfig, applicationImage)
+			if err != nil {
+				imgCtx.Errorf("Error while trying to update image: %v", err)
+				result.NumErrors += 1
+				continue
+			} else {
+				imgCtx.Infof("Successfully updated image '%s' to '%s', but pending spec update (dry run=%v)", updateableImage.GetFullNameWithTag(), appImageFullNameWithTag, updateConf.DryRun)
+				changeList = append(changeList, ChangeEntry{appImageWithTag, updateableImage.ImageTag, appImageWithTag.ImageTag})
+				result.NumImagesUpdated += 1
+			}
+		} else {
+			err = setAppImage(imageOpCtx, &updateConf.UpdateApp.Application, applicationImage.WithTag(updateableImage.ImageTag), updateConf.UpdateApp.WriteBackConfig, applicationImage)
+			if err != nil {
+				imgCtx.Errorf("Error while trying to update image: %v", err)
+				result.NumErrors += 1
+			}
+			imgCtx.Debugf("Image '%s' already on latest allowed version", updateableImage.GetFullNameWithTag())
+		}
+	}
+
+	// Prepare the write-back config
+	wbc := updateConf.UpdateApp.WriteBackConfig
+	wbc.ArgoClient = updateConf.ArgoClient
+
+	if updateConf.GitCreds == nil {
+		wbc.GitCreds = git.NoopCredsStore{}
+	} else {
+		wbc.GitCreds = updateConf.GitCreds
+	}
+
+	if wbc.Method == WriteBackGit {
+		if updateConf.GitCommitUser != "" {
+			wbc.GitCommitUser = updateConf.GitCommitUser
+		}
+		if updateConf.GitCommitEmail != "" {
+			wbc.GitCommitEmail = updateConf.GitCommitEmail
+		}
+		if len(changeList) > 0 && updateConf.GitCommitMessage != nil {
+			wbc.GitCommitMessage = TemplateCommitMessage(ctx, updateConf.GitCommitMessage, updateConf.UpdateApp.Application.Name, changeList)
+		}
+		if updateConf.GitCommitSigningKey != "" {
+			wbc.GitCommitSigningKey = updateConf.GitCommitSigningKey
+		}
+		wbc.GitCommitSigningMethod = updateConf.GitCommitSigningMethod
+		wbc.GitCommitSignOff = updateConf.GitCommitSignOff
+	}
+
+	if !needUpdate {
+		result.Changes = changeList
+		return result, nil
+	}
+
+	if updateConf.DryRun {
+		baseLogger.Infof("Dry run - not committing %d changes to application", result.NumImagesUpdated)
+		result.Changes = changeList
+		return result, nil
+	}
+
+	// For non-git methods, commit immediately (no batching benefit)
+	if wbc.Method != WriteBackGit {
+		baseLogger.Infof("Committing %d parameter update(s) for application %s", result.NumImagesUpdated, app)
+		err := commitChangesLocked(ctx, updateConf.UpdateApp, state, changeList)
+		if err != nil {
+			baseLogger.Errorf("Could not update application spec: %v", err)
+			result.NumErrors += 1
+			result.NumImagesUpdated = 0
+		} else {
+			baseLogger.Infof("Successfully updated the live application spec")
+			EmitKubeEvents(ctx, updateConf, changeList, app)
+		}
+		result.Changes = changeList
+		return result, nil
+	}
+
+	// Apps using PR mode or a custom write-branch template push to per-app
+	// branches and cannot be batched. Commit them immediately via the
+	// original per-app git path.
+	if wbc.PRProvider > 0 || wbc.GitWriteBranch != "" {
+		baseLogger.Infof("Committing %d parameter update(s) for application %s (write-branch/PR mode, not batchable)", result.NumImagesUpdated, app)
+		err := commitChangesLocked(ctx, updateConf.UpdateApp, state, changeList)
+		if err != nil {
+			baseLogger.Errorf("Could not update application spec: %v", err)
+			result.NumErrors += 1
+			result.NumImagesUpdated = 0
+		} else {
+			baseLogger.Infof("Successfully updated the live application spec")
+			EmitKubeEvents(ctx, updateConf, changeList, app)
+		}
+		result.Changes = changeList
+		return result, nil
+	}
+
+	// For git write-back to the base branch, return a PendingWrite for batching.
+	// Use namespace/name as AppName to avoid collisions across namespaces.
+	appKey := app
+	if appNs != "" {
+		appKey = appNs + "/" + app
+	}
+	baseLogger.Infof("Preparing batched write for application %s (%d image update(s))", appKey, result.NumImagesUpdated)
+	result.Changes = changeList
+	pw := &PendingWrite{
+		AppName:    appKey,
+		App:        updateConf.UpdateApp,
+		ChangeList: changeList,
+		Result:     result,
+		UpdateConf: updateConf,
+	}
+	return result, pw
+}
+
+// EmitKubeEvents sends Kubernetes events for image updates if configured.
+func EmitKubeEvents(ctx context.Context, updateConf *UpdateConfiguration, changeList []ChangeEntry, app string) {
+	baseLogger := log.LoggerFromContext(ctx)
+	if !updateConf.DisableKubeEvents && updateConf.KubeClient != nil {
+		annotations := map[string]string{}
+		for i, c := range changeList {
+			annotations[fmt.Sprintf("argocd-image-updater.image-%d/full-image-name", i)] = c.Image.GetFullNameWithoutTag()
+			annotations[fmt.Sprintf("argocd-image-updater.image-%d/image-name", i)] = c.Image.ImageName
+			annotations[fmt.Sprintf("argocd-image-updater.image-%d/old-tag", i)] = c.OldTag.String()
+			annotations[fmt.Sprintf("argocd-image-updater.image-%d/new-tag", i)] = c.NewTag.String()
+		}
+		message := fmt.Sprintf("Successfully updated application '%s'", app)
+		_, err := updateConf.KubeClient.CreateApplicationEvent(&updateConf.UpdateApp.Application, "ImagesUpdated", message, annotations)
+		if err != nil {
+			baseLogger.Warnf("Event could not be sent: %v", err)
+		}
+	}
+}
+
 // needsUpdate determines if an image needs to be updated based on the provided
 // updateableImage, applicationImage, latest available tag, and update strategy.
 // It considers digest strategy, tag equality, and Kustomize image differences.
