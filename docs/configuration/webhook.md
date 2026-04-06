@@ -1,5 +1,11 @@
 # Webhook Configuration
 
+!!!warning "Breaking Change"
+    Starting with this release, the webhook server runs with **TLS enabled by default**.
+    If you previously relied on plain HTTP, you must explicitly opt out by setting the
+    `--disable-tls` flag or the `DISABLE_TLS` environment variable. For details, see
+    [TLS Configuration](#tls-configuration) below.
+
 Image Updater can be configured to respond to webhook notifications from 
 various container registries. 
 
@@ -291,12 +297,7 @@ data:
 
 ## TLS Configuration
 
-!!!warning "Breaking Change"
-    Starting with this release, the webhook server runs with **TLS enabled by default**.
-    If you previously relied on plain HTTP, you must explicitly opt out by setting the
-    `--disable-tls` flag or the `DISABLE_TLS` environment variable.
-
-By default the webhook server listens over HTTPS using TLS 1.3. It loads a TLS
+By default, the webhook server listens over HTTPS using TLS 1.3. It loads a TLS
 certificate and key from the `argocd-image-updater-tls` Kubernetes Secret (mounted
 at `/app/config/tls/`). If the secret is not provided or its fields are empty, the
 server automatically generates a self-signed certificate in memory so that TLS is
@@ -318,7 +319,8 @@ DISABLE_TLS=true argocd-image-updater webhook
 
 ### TLS Version and Cipher Configuration
 
-The minimum and maximum TLS versions both default to **1.3**. Valid values are `1.1`, `1.2`, and `1.3`. TLS 1.0 is not supported.
+The minimum and maximum TLS versions both default to **1.3**. Valid values are `1.1`,
+`1.2`, and `1.3`. TLS 1.0 is not supported.
 
 ```bash
 # Allow TLS 1.2 and 1.3
