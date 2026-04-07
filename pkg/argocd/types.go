@@ -209,6 +209,9 @@ type PendingWrite struct {
 	Result ImageUpdaterResult
 	// UpdateConf holds the full update config needed for kube events etc.
 	UpdateConf *UpdateConfiguration
+	// ResolvedBranch is the effective target branch resolved at polling time
+	// from the app's targetRevision or explicit annotation.
+	ResolvedBranch string
 }
 
 // BatchKey returns the grouping key for batching git operations.
@@ -216,7 +219,7 @@ type PendingWrite struct {
 // clone/fetch/checkout cycle.
 func (pw *PendingWrite) BatchKey() string {
 	wbc := pw.App.WriteBackConfig
-	branch := wbc.GitBranch
+	branch := pw.ResolvedBranch
 	if branch == "" {
 		branch = "_default_"
 	}

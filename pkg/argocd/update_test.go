@@ -6666,14 +6666,16 @@ func Test_BatchCommitChangesGit(t *testing.T) {
 
 		pendingWrites := []*PendingWrite{
 			{
-				AppName: "app1",
+				AppName:        "app1",
+				ResolvedBranch: "main",
 				App: &ApplicationImages{
 					Application:     app1,
 					WriteBackConfig: wbc,
 				},
 			},
 			{
-				AppName: "app2",
+				AppName:        "app2",
+				ResolvedBranch: "main",
 				App: &ApplicationImages{
 					Application:     *app2,
 					WriteBackConfig: wbc,
@@ -6709,7 +6711,8 @@ func Test_BatchCommitChangesGit(t *testing.T) {
 
 		pendingWrites := []*PendingWrite{
 			{
-				AppName: "app1",
+				AppName:        "app1",
+				ResolvedBranch: "main",
 				App: &ApplicationImages{
 					Application:     app1,
 					WriteBackConfig: wbc,
@@ -6736,6 +6739,7 @@ func Test_BatchCommitChangesGit(t *testing.T) {
 func Test_PendingWrite_BatchKey(t *testing.T) {
 	t.Run("Groups by repo and branch", func(t *testing.T) {
 		pw1 := &PendingWrite{
+			ResolvedBranch: "main",
 			App: &ApplicationImages{
 				WriteBackConfig: &WriteBackConfig{
 					GitRepo:   "https://github.com/example/repo.git",
@@ -6744,6 +6748,7 @@ func Test_PendingWrite_BatchKey(t *testing.T) {
 			},
 		}
 		pw2 := &PendingWrite{
+			ResolvedBranch: "main",
 			App: &ApplicationImages{
 				WriteBackConfig: &WriteBackConfig{
 					GitRepo:   "https://github.com/example/repo.git",
@@ -6752,6 +6757,7 @@ func Test_PendingWrite_BatchKey(t *testing.T) {
 			},
 		}
 		pw3 := &PendingWrite{
+			ResolvedBranch: "staging",
 			App: &ApplicationImages{
 				WriteBackConfig: &WriteBackConfig{
 					GitRepo:   "https://github.com/example/repo.git",
@@ -6760,6 +6766,7 @@ func Test_PendingWrite_BatchKey(t *testing.T) {
 			},
 		}
 		pw4 := &PendingWrite{
+			ResolvedBranch: "main",
 			App: &ApplicationImages{
 				WriteBackConfig: &WriteBackConfig{
 					GitRepo:   "https://github.com/other/repo.git",
@@ -6775,6 +6782,7 @@ func Test_PendingWrite_BatchKey(t *testing.T) {
 
 	t.Run("Uses default branch placeholder when empty", func(t *testing.T) {
 		pw := &PendingWrite{
+			ResolvedBranch: "",
 			App: &ApplicationImages{
 				WriteBackConfig: &WriteBackConfig{
 					GitRepo:   "https://github.com/example/repo.git",
@@ -6783,6 +6791,30 @@ func Test_PendingWrite_BatchKey(t *testing.T) {
 			},
 		}
 		assert.Contains(t, pw.BatchKey(), "_default_")
+	})
+
+	t.Run("Groups by resolved branch not annotation branch", func(t *testing.T) {
+		// Two apps pointing at same repo, no annotation branch, but different targetRevisions
+		pwMaster := &PendingWrite{
+			ResolvedBranch: "master",
+			App: &ApplicationImages{
+				WriteBackConfig: &WriteBackConfig{
+					GitRepo: "https://github.com/example/repo.git",
+				},
+			},
+		}
+		pwFeature := &PendingWrite{
+			ResolvedBranch: "feature/my-branch",
+			App: &ApplicationImages{
+				WriteBackConfig: &WriteBackConfig{
+					GitRepo: "https://github.com/example/repo.git",
+				},
+			},
+		}
+		assert.NotEqual(t, pwMaster.BatchKey(), pwFeature.BatchKey(),
+			"Apps with different resolved branches must NOT be batched together")
+		assert.Contains(t, pwMaster.BatchKey(), "master")
+		assert.Contains(t, pwFeature.BatchKey(), "feature/my-branch")
 	})
 }
 

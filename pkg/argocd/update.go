@@ -534,14 +534,23 @@ func CheckApplicationImages(ctx context.Context, updateConf *UpdateConfiguration
 	if appNs != "" {
 		appKey = appNs + "/" + app
 	}
-	baseLogger.Infof("Preparing batched write for application %s (%d image update(s))", appKey, result.NumImagesUpdated)
+
+	// Resolve the effective target branch now so BatchKey groups correctly.
+	// This mirrors the logic in commitChangesGit / BatchCommitChangesGit.
+	resolvedBranch := wbc.GitBranch
+	if resolvedBranch == "" {
+		resolvedBranch = getWriteBackBranch(ctx, &updateConf.UpdateApp.Application, wbc)
+	}
+
+	baseLogger.Infof("Preparing batched write for application %s (%d image update(s), branch=%s)", appKey, result.NumImagesUpdated, resolvedBranch)
 	result.Changes = changeList
 	pw := &PendingWrite{
-		AppName:    appKey,
-		App:        updateConf.UpdateApp,
-		ChangeList: changeList,
-		Result:     result,
-		UpdateConf: updateConf,
+		AppName:        appKey,
+		App:            updateConf.UpdateApp,
+		ChangeList:     changeList,
+		Result:         result,
+		UpdateConf:     updateConf,
+		ResolvedBranch: resolvedBranch,
 	}
 	return result, pw
 }

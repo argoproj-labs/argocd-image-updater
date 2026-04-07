@@ -396,13 +396,9 @@ func BatchCommitChangesGit(ctx context.Context, pendingWrites []*PendingWrite, s
 		return batchErrs
 	}
 
-	// Determine the checkout branch from the first app's config
-	var checkOutBranch string
-	if firstWBC.GitBranch != "" {
-		checkOutBranch = firstWBC.GitBranch
-	} else {
-		checkOutBranch = getWriteBackBranch(ctx, &firstApp, firstWBC)
-	}
+	// Determine the checkout branch from the pre-resolved branch.
+	// All writes in this batch share the same resolved branch (guaranteed by BatchKey).
+	checkOutBranch := pendingWrites[0].ResolvedBranch
 	if checkOutBranch == "" || checkOutBranch == "HEAD" {
 		checkOutBranch, err = gitC.SymRefToBranch(ctx, checkOutBranch)
 		logCtx.Infof("resolved remote default branch to '%s' and using that for operations", checkOutBranch)
