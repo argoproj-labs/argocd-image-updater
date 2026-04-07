@@ -2,7 +2,9 @@ package argocd
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net/http"
 	"net/url"
 	"strings"
 
@@ -12,31 +14,81 @@ import (
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
 )
 
-// GithubService implements PullRequestService for GitHub and GitHub Enterprise.
-type GithubService struct {
+// ErrPRAlreadyExists is returned by create when GitHub reports that an open
+// PR for the same head → base pair already exists. The caller can treat this
+// as a successful no-op rather than a reconciliation failure.
+var ErrPRAlreadyExists = errors.New("PR already exists")
+
+// GithubPRService implements PullRequestService for GitHub and GitHub Enterprise.
+type GithubPRService struct {
 	client *github.Client
 	owner  string
 	repo   string
+	pr     *PullRequest
 }
 
-var _ PullRequestService = (*GithubService)(nil)
+var _ PullRequestService = (*GithubPRService)(nil)
 
 // create opens a pull request using the already-configured client.
-func (g *GithubService) create(ctx context.Context) error {
-	// TODO: implement PR creation using g.client, g.owner, g.repo
+// If GitHub reports that an open PR for the same head → base pair already
+// exists (HTTP 422), ErrPRAlreadyExists is returned so the caller can treat
+// the situation as a no-op rather than a reconciliation failure.
+func (g *GithubPRService) create(ctx context.Context) error {
+	logCtx := log.LoggerFromContext(ctx)
+
+	if g.pr == nil {
+		return fmt.Errorf("cannot create PR: pull request metadata is nil")
+	}
+
+	newPR := &github.NewPullRequest{
+		Title: github.Ptr(g.pr.title),
+		Head:  github.Ptr(g.pr.head),
+		Base:  github.Ptr(g.pr.base),
+		Body:  github.Ptr(g.pr.body),
+	}
+	githubPullRequest, _, err := g.client.PullRequests.Create(ctx, g.owner, g.repo, newPR)
+	if err != nil {
+		if isAlreadyExistsError(err) {
+			logCtx.Infof("PR %q → %q already exists, skipping creation", g.pr.head, g.pr.base)
+			return ErrPRAlreadyExists
+		}
+		return fmt.Errorf("could not create PR %q → %q: %w", g.pr.head, g.pr.base, err)
+	}
+	logCtx.Infof("created PR #%d %q → %q: %s", githubPullRequest.GetNumber(), g.pr.head, g.pr.base, githubPullRequest.GetHTMLURL())
+
 	return nil
 }
 
-func (g *GithubService) list(ctx context.Context, checkOutBranch, pushBranch string) error {
+// isAlreadyExistsError reports whether err is a GitHub 422 response whose
+// error list contains an "A pull request already exists" message.
+func isAlreadyExistsError(err error) bool {
+	var ghErr *github.ErrorResponse
+	if !errors.As(err, &ghErr) {
+		return false
+	}
+	if ghErr.Response == nil || ghErr.Response.StatusCode != http.StatusUnprocessableEntity {
+		return false
+	}
+	for _, e := range ghErr.Errors {
+		if strings.Contains(e.Message, "A pull request already exists") {
+			return true
+		}
+	}
+	return false
+}
+
+// list returns true if there is already an open PR from pushBranch into
+// checkOutBranch.
+func (g *GithubPRService) list(ctx context.Context, checkOutBranch, pushBranch string) (bool, error) {
 	// TODO: implement PR listing for idempotency check
-	return nil
+	return false, nil
 }
 
-// NewGithubService builds a GithubService from the resolved write-back config
+// NewGithubPRService builds a GithubPRService from the resolved write-back config
 // and the credential token provider. It obtains a token, resolves the API base
 // URL, and parses the owner/repo from the repo URL.
-func NewGithubService(ctx context.Context, wbc *WriteBackConfig, tokenProvider git.SCMTokenProvider) (*GithubService, error) {
-	log := log.LoggerFromContext(ctx)
+func NewGithubPRService(ctx context.Context, wbc *WriteBackConfig, tokenProvider git.SCMTokenProvider) (*GithubPRService, error) {
+	logCtx := log.LoggerFromContext(ctx)
 
 	token, err := tokenProvider.SCMToken(ctx)
 	if err != nil {
@@ -71,7 +123,10 @@ func NewGithubService(ctx context.Context, wbc *WriteBackConfig, tokenProvider g
 		// uploadURL must be scheme+host only so WithEnterpriseURLs appends
 		// /api/uploads/ correctly — passing apiBaseURL for both would produce
 		// /api/v3/api/uploads/ when apiBaseURL already contains /api/v3.
-		u, _ := url.Parse(apiBaseURL)
+		u, parseErr := url.Parse(apiBaseURL)
+		if parseErr != nil || u == nil || u.Scheme == "" || u.Host == "" {
+			return nil, fmt.Errorf("invalid GitHub API base URL %q: %w", apiBaseURL, parseErr)
+		}
 		uploadURL := u.Scheme + "://" + u.Host
 		client, err = github.NewClient(nil).WithAuthToken(token).WithEnterpriseURLs(apiBaseURL, uploadURL)
 		if err != nil {
@@ -84,11 +139,12 @@ func NewGithubService(ctx context.Context, wbc *WriteBackConfig, tokenProvider g
 		return nil, fmt.Errorf("could not parse owner/repo from %q: %w", wbc.GitRepo, err)
 	}
 
-	log.Infof("GitHub PR service initialised for %s/%s", owner, repoName)
-	return &GithubService{
+	logCtx.Infof("GitHub PR service initialised for %s/%s", owner, repoName)
+	return &GithubPRService{
 		client: client,
 		owner:  owner,
 		repo:   repoName,
+		pr:     wbc.PullRequest,
 	}, nil
 }
 
