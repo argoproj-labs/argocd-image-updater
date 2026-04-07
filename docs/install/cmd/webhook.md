@@ -41,6 +41,13 @@ Disable kubernetes events
 
 Can also be set with the *IMAGE_UPDATER_KUBE_EVENTS* environment variable.
 
+**--disable-tls**
+
+Disable TLS and run the webhook server with plain HTTP. By default, the server
+starts with TLS enabled.
+
+Can also be set with the `DISABLE_TLS` environment variable.
+
 **--docker-webhook-secret *secret***
 
 Secret for validating Docker Hub webhooks.
@@ -136,6 +143,28 @@ Load the registry configuration from file at *path*. Defaults to the path
 `/app/config/registries.conf`. If no configuration should be loaded, and the
 default configuration should be used instead, specify the empty string, i.e.
 `--registries-conf-path=""`.
+
+**--tlsciphers *suites***
+
+Colon-separated list of TLS cipher suite names to allow (e.g.
+`TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384:TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256`).
+Only applies to TLS 1.1 and 1.2 connections; TLS 1.3 cipher suites are not configurable.
+Defaults to the Go standard library's secure defaults.
+
+Can also be set with the `TLS_CIPHERS` environment variable.
+
+**--tlsmaxversion *version***
+
+Maximum TLS version to accept. Valid values are `1.1`, `1.2`, and `1.3`. Defaults to `1.3`.
+
+Can also be set with the `TLS_MAX_VERSION` environment variable.
+
+**--tlsminversion *version***
+
+Minimum TLS version to accept. Valid values are `1.1`, `1.2`, and `1.3`. Defaults to `1.3`.
+TLS 1.0 is not supported.
+
+Can also be set with the `TLS_MIN_VERSION` environment variable.
 
 **--webhook-port *int***
 

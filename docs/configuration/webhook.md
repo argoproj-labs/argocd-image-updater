@@ -1,5 +1,11 @@
 # Webhook Configuration
 
+!!!warning "Breaking Change"
+    Starting with this release, the webhook server runs with **TLS enabled by default**.
+    If you previously relied on plain HTTP, you must explicitly opt out by setting the
+    `--disable-tls` flag or the `DISABLE_TLS` environment variable. For details, see
+    [TLS Configuration](#tls-configuration) below.
+
 Image Updater can be configured to respond to webhook notifications from 
 various container registries. 
 
@@ -289,6 +295,84 @@ data:
   webhook.ratelimit-allowed: <SOME_NUMBER>
 ```
 
+## TLS Configuration
+
+By default, the webhook server listens over HTTPS using TLS 1.3. It loads a TLS
+certificate and key from the `argocd-image-updater-tls` Kubernetes Secret (mounted
+at `/app/config/tls/`). If the secret is not provided or its fields are empty, the
+server automatically generates a self-signed certificate in memory so that TLS is
+still active.
+
+### Disabling TLS (plain HTTP)
+
+To revert to plain HTTP, pass `--disable-tls` or set the environment variable:
+
+```bash
+argocd-image-updater webhook --disable-tls
+```
+
+or via environment variable:
+
+```bash
+DISABLE_TLS=true argocd-image-updater webhook
+```
+
+### TLS Version and Cipher Configuration
+
+The minimum and maximum TLS versions both default to **1.3**. Valid values are `1.1`,
+`1.2`, and `1.3`. TLS 1.0 is not supported.
+
+```bash
+# Allow TLS 1.2 and 1.3
+argocd-image-updater webhook --tlsminversion 1.2 --tlsmaxversion 1.3
+
+# Restrict cipher suites (only applies when min version < 1.3)
+argocd-image-updater webhook \
+  --tlsminversion 1.2 \
+  --tlsciphers TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384:TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
+```
+
+!!!note
+    TLS 1.3 cipher suites are not configurable by design. The `--tlsciphers` flag only
+    affects connections that negotiate TLS 1.2 or lower. A warning is logged if ciphers
+    are specified while the minimum version is 1.3.
+
+### Providing Your Own Certificate
+
+To use your own TLS certificate, create the Secret `argocd-image-updater-tls`, which is
+configured as an optional volume mount in the install manifest.
+
+```yaml
+apiVersion: v1
+kind: Secret
+type: kubernetes.io/tls
+metadata:
+  name: argocd-image-updater-tls
+  labels:
+    app.kubernetes.io/name: argocd-image-updater-tls
+    app.kubernetes.io/part-of: argocd-image-updater-controller
+data:
+  # Base64-encoded TLS certificate and private key
+  tls.crt: <BASE64_ENCODED_CERT>
+  tls.key: <BASE64_ENCODED_KEY>
+```
+
+### Configuring TLS via ConfigMap
+
+TLS settings can also be configured through the `argocd-image-updater-config` ConfigMap:
+
+```yaml
+data:
+  # Disable TLS (use plain HTTP)
+  disable-tls: "true"
+  # Minimum TLS version (default: 1.3)
+  tls.min-version: "1.2"
+  # Maximum TLS version (default: 1.3)
+  tls.max-version: "1.3"
+  # Colon-separated list of TLS cipher suites
+  tls.ciphers: "TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384:TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256"
+```
+
 ## Environment Variables
 
 The flags for both the `run` and `webhook` CLI commands can also be set via 
@@ -305,6 +389,10 @@ environment variables. Below is the list of which variables correspond to which 
 |`ALIYUN_ACR_WEBHOOK_SECRET` |`--aliyun-acr-webhook-secret`|
 |`CLOUDEVENTS_WEBHOOK_SECRET` |`--cloudevents-webhook-secret`|
 |`WEBHOOK_RATELIMIT_ALLOWED`|`--webhook-ratelimit-allowed`|
+|`DISABLE_TLS`|`--disable-tls`|
+|`TLS_MIN_VERSION`|`--tlsminversion`|
+|`TLS_MAX_VERSION`|`--tlsmaxversion`|
+|`TLS_CIPHERS`|`--tlsciphers`|
 
 ## Adding Support For Other Registries
 
