@@ -46,7 +46,7 @@ func (g *GithubPRService) create(ctx context.Context) error {
 		Base:  github.Ptr(g.pr.base),
 		Body:  github.Ptr(g.pr.body),
 	}
-	githubPullRequest, response, err := g.client.PullRequests.Create(ctx, g.owner, g.repo, newPR)
+	githubPullRequest, _, err := g.client.PullRequests.Create(ctx, g.owner, g.repo, newPR)
 	if err != nil {
 		if isAlreadyExistsError(err) {
 			logCtx.Infof("PR %q → %q already exists, skipping creation", g.pr.head, g.pr.base)
@@ -54,7 +54,6 @@ func (g *GithubPRService) create(ctx context.Context) error {
 		}
 		return fmt.Errorf("could not create PR %q → %q: %w", g.pr.head, g.pr.base, err)
 	}
-	logCtx.Infof("github response status %s", response.Status)
 	logCtx.Infof("created PR #%d %q → %q: %s", githubPullRequest.GetNumber(), g.pr.head, g.pr.base, githubPullRequest.GetHTMLURL())
 
 	return nil
