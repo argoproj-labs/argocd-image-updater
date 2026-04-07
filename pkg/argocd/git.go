@@ -343,10 +343,10 @@ func BatchCommitChangesGit(ctx context.Context, pendingWrites []*PendingWrite, s
 	}
 
 	// Use the first write's config as representative for repo/branch/creds.
-	// All writes in this batch must share the same repo+branch (guaranteed by BatchKey).
-	// NOTE: git credentials, commit user/email, and signing config are taken from the
-	// first app. If apps sharing the same repo have different credentials configured,
-	// only the first app's credentials are used for the batch push.
+	// All writes in this batch share the same repo+branch+credential source
+	// (guaranteed by BatchKey, which includes GitCredsID).
+	// Commit user/email and signing config are taken from the first app;
+	// this is safe because these settings are typically global, not per-app.
 	firstWBC := pendingWrites[0].App.WriteBackConfig
 	firstApp := pendingWrites[0].App.Application
 

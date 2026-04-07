@@ -83,6 +83,9 @@ type WriteBackConfig struct {
 	GitCreds               git.CredsStore
 	PRProvider             PRProvider
 	PullRequest            *PullRequest
+	// GitCredsID identifies the credential source (e.g. "repocreds" or "secret:ns/name").
+	// Used by BatchKey() to ensure only apps sharing the same credential source are batched.
+	GitCredsID string
 }
 
 // RequiresLocking returns true if write-back method requires repository locking
@@ -215,15 +218,20 @@ type PendingWrite struct {
 }
 
 // BatchKey returns the grouping key for batching git operations.
-// Operations targeting the same repository and branch can share a single
-// clone/fetch/checkout cycle.
+// Operations targeting the same repository, branch, and credential source
+// can share a single clone/fetch/checkout cycle. Including the credential
+// source ensures apps with different git credentials are never batched.
 func (pw *PendingWrite) BatchKey() string {
 	wbc := pw.App.WriteBackConfig
 	branch := pw.ResolvedBranch
 	if branch == "" {
 		branch = "_default_"
 	}
-	return wbc.GitRepo + "::" + branch
+	credsKey := wbc.GitCredsID
+	if credsKey == "" {
+		credsKey = "_unknown_"
+	}
+	return wbc.GitRepo + "::" + branch + "::" + credsKey
 }
 
 // WebhookEvent represents a generic webhook payload

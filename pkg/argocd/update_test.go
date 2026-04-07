@@ -6742,8 +6742,9 @@ func Test_PendingWrite_BatchKey(t *testing.T) {
 			ResolvedBranch: "main",
 			App: &ApplicationImages{
 				WriteBackConfig: &WriteBackConfig{
-					GitRepo:   "https://github.com/example/repo.git",
-					GitBranch: "main",
+					GitRepo:    "https://github.com/example/repo.git",
+					GitBranch:  "main",
+					GitCredsID: "repocreds",
 				},
 			},
 		}
@@ -6751,8 +6752,9 @@ func Test_PendingWrite_BatchKey(t *testing.T) {
 			ResolvedBranch: "main",
 			App: &ApplicationImages{
 				WriteBackConfig: &WriteBackConfig{
-					GitRepo:   "https://github.com/example/repo.git",
-					GitBranch: "main",
+					GitRepo:    "https://github.com/example/repo.git",
+					GitBranch:  "main",
+					GitCredsID: "repocreds",
 				},
 			},
 		}
@@ -6760,8 +6762,9 @@ func Test_PendingWrite_BatchKey(t *testing.T) {
 			ResolvedBranch: "staging",
 			App: &ApplicationImages{
 				WriteBackConfig: &WriteBackConfig{
-					GitRepo:   "https://github.com/example/repo.git",
-					GitBranch: "staging",
+					GitRepo:    "https://github.com/example/repo.git",
+					GitBranch:  "staging",
+					GitCredsID: "repocreds",
 				},
 			},
 		}
@@ -6769,13 +6772,14 @@ func Test_PendingWrite_BatchKey(t *testing.T) {
 			ResolvedBranch: "main",
 			App: &ApplicationImages{
 				WriteBackConfig: &WriteBackConfig{
-					GitRepo:   "https://github.com/other/repo.git",
-					GitBranch: "main",
+					GitRepo:    "https://github.com/other/repo.git",
+					GitBranch:  "main",
+					GitCredsID: "repocreds",
 				},
 			},
 		}
 
-		assert.Equal(t, pw1.BatchKey(), pw2.BatchKey(), "Same repo+branch should have same key")
+		assert.Equal(t, pw1.BatchKey(), pw2.BatchKey(), "Same repo+branch+creds should have same key")
 		assert.NotEqual(t, pw1.BatchKey(), pw3.BatchKey(), "Different branches should have different keys")
 		assert.NotEqual(t, pw1.BatchKey(), pw4.BatchKey(), "Different repos should have different keys")
 	})
@@ -6785,8 +6789,9 @@ func Test_PendingWrite_BatchKey(t *testing.T) {
 			ResolvedBranch: "",
 			App: &ApplicationImages{
 				WriteBackConfig: &WriteBackConfig{
-					GitRepo:   "https://github.com/example/repo.git",
-					GitBranch: "",
+					GitRepo:    "https://github.com/example/repo.git",
+					GitBranch:  "",
+					GitCredsID: "repocreds",
 				},
 			},
 		}
@@ -6799,7 +6804,8 @@ func Test_PendingWrite_BatchKey(t *testing.T) {
 			ResolvedBranch: "master",
 			App: &ApplicationImages{
 				WriteBackConfig: &WriteBackConfig{
-					GitRepo: "https://github.com/example/repo.git",
+					GitRepo:    "https://github.com/example/repo.git",
+					GitCredsID: "repocreds",
 				},
 			},
 		}
@@ -6807,7 +6813,8 @@ func Test_PendingWrite_BatchKey(t *testing.T) {
 			ResolvedBranch: "feature/my-branch",
 			App: &ApplicationImages{
 				WriteBackConfig: &WriteBackConfig{
-					GitRepo: "https://github.com/example/repo.git",
+					GitRepo:    "https://github.com/example/repo.git",
+					GitCredsID: "repocreds",
 				},
 			},
 		}
@@ -6815,6 +6822,40 @@ func Test_PendingWrite_BatchKey(t *testing.T) {
 			"Apps with different resolved branches must NOT be batched together")
 		assert.Contains(t, pwMaster.BatchKey(), "master")
 		assert.Contains(t, pwFeature.BatchKey(), "feature/my-branch")
+	})
+
+	t.Run("Separates by credential source", func(t *testing.T) {
+		pwRepocreds := &PendingWrite{
+			ResolvedBranch: "main",
+			App: &ApplicationImages{
+				WriteBackConfig: &WriteBackConfig{
+					GitRepo:    "https://github.com/example/repo.git",
+					GitCredsID: "repocreds",
+				},
+			},
+		}
+		pwSecret := &PendingWrite{
+			ResolvedBranch: "main",
+			App: &ApplicationImages{
+				WriteBackConfig: &WriteBackConfig{
+					GitRepo:    "https://github.com/example/repo.git",
+					GitCredsID: "secret:myns/my-git-secret",
+				},
+			},
+		}
+		pwSecretSame := &PendingWrite{
+			ResolvedBranch: "main",
+			App: &ApplicationImages{
+				WriteBackConfig: &WriteBackConfig{
+					GitRepo:    "https://github.com/example/repo.git",
+					GitCredsID: "secret:myns/my-git-secret",
+				},
+			},
+		}
+		assert.NotEqual(t, pwRepocreds.BatchKey(), pwSecret.BatchKey(),
+			"Apps with different credential sources must NOT be batched together")
+		assert.Equal(t, pwSecret.BatchKey(), pwSecretSame.BatchKey(),
+			"Apps with same credential source should be batched together")
 	})
 }
 
