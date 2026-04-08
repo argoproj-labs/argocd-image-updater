@@ -60,6 +60,12 @@ spec:
                 name: argocd-image-updater-config
                 key: argocd.namespace
                 optional: true
+          - name: IMAGE_UPDATER_WATCH_NAMESPACES
+            valueFrom:
+              configMapKeyRef:
+                name: argocd-image-updater-config
+                key: watch.namespaces
+                optional: true
           - name: IMAGE_UPDATER_INTERVAL
             valueFrom:
               configMapKeyRef:
@@ -203,12 +209,6 @@ spec:
               configMapKeyRef:
                 name: argocd-image-updater-config
                 key: tls.ciphers
-                optional: true
-          - name: IMAGE_UPDATER_WATCH_NAMESPACES
-            valueFrom:
-              configMapKeyRef:
-                name: argocd-image-updater-config
-                key: watch-namespaces
                 optional: true
         securityContext:
           allowPrivilegeEscalation: false

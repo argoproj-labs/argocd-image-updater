@@ -153,6 +153,15 @@ there is only one active controller manager.
 The namespace used for the leader election lease. If empty, the controller will
 use the namespace of the pod it is running in. When running locally this value must be set.
 
+!!!warning "Namespace-scoped deployments"
+    When using `--watch-namespaces` with a specific list of namespaces (not `"*"`),
+    the `leader-election-role` `Role` is only bound in the watched namespaces.
+    If `--leader-election-namespace` is set to a namespace **not** included in
+    `--watch-namespaces`, the controller will fail to acquire the leadership lease
+    due to missing RBAC permissions. Either leave `--leader-election-namespace`
+    empty (defaults to the pod's own namespace) or ensure it is one of the
+    namespaces listed in `--watch-namespaces`.
+
 **--loglevel *level***
 
 Set the log level to *level*, where *level* can be one of `trace`, `debug`,
@@ -185,19 +194,6 @@ Can also be set using the *MAX_CONCURRENT_RECONCILES* environment variable.
 **--metrics-bind-address *port***
 
 port to start the metrics server on, "0" to disable (default "0")
-
-**--watch-namespaces *namespace-list***
-
-Comma-separated list of namespaces to watch. When set, the controller operates
-in namespace-scoped mode, only watching ImageUpdater CRs and Applications in
-the specified namespaces. This allows deployment with namespace-scoped RBAC
-(Role/RoleBinding) instead of cluster-wide RBAC (ClusterRole/ClusterRoleBinding).
-
-When not set or empty, the controller watches all namespaces (cluster-wide mode).
-
-Example: `--watch-namespaces=argocd,team-a,team-b`
-
-Can also be set using the *IMAGE_UPDATER_WATCH_NAMESPACES* environment variable.
 
 **--metrics-secure *enabled***
 
@@ -246,6 +242,18 @@ Can also be set with the `TLS_MIN_VERSION` environment variable.
 **--warmup-cache**
 
 whether to perform a cache warm-up on startup (default true)
+
+**--watch-namespaces *namespace-list***
+
+Controls which namespaces the controller watches for ImageUpdater CRs:
+
+- **Not set** (default): controller's own namespace only. Requires Role+RoleBinding in that namespace.
+- **`*`**: all namespaces, cluster-scoped. Requires ClusterRole+ClusterRoleBinding.
+- **`ns1,ns2,...`**: specific namespaces. Requires Role+RoleBinding in each namespace.
+
+Example: `--watch-namespaces=argocd,team-a,team-b`
+
+Can also be set with the `IMAGE_UPDATER_WATCH_NAMESPACES` environment variable.
 
 **--webhook-port *port***
 

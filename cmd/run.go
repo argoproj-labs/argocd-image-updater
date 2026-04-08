@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/bombsimon/logrusr/v2"
-
+	"github.com/go-logr/logr"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -163,22 +163,9 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 			}
 
 			// Build cache options for namespace-scoped operation
-			var cacheOptions cache.Options
-			if cfg.WatchNamespaces != "" {
-				setupLogger.Info("Configuring namespace-scoped operation", "watchNamespaces", cfg.WatchNamespaces)
-				nsMap := make(map[string]cache.Config)
-				for _, ns := range strings.Split(cfg.WatchNamespaces, ",") {
-					ns = strings.TrimSpace(ns)
-					if ns != "" {
-						nsMap[ns] = cache.Config{}
-					}
-				}
-				if len(nsMap) == 0 {
-					return fmt.Errorf("--watch-namespaces flag provided but no valid namespaces specified")
-				}
-				cacheOptions = cache.Options{
-					DefaultNamespaces: nsMap,
-				}
+			cacheOptions, err := getCacheOptions(setupLogger, cfg)
+			if err != nil {
+				return err
 			}
 
 			mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
@@ -324,7 +311,7 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 	controllerCmd.Flags().IntVar(&cfg.MaxConcurrentApps, "max-concurrent-apps", env.ParseNumFromEnv("MAX_CONCURRENT_APPS", 10, 1, 100), "maximum number of ArgoCD applications that can be updated concurrently (must be >= 1)")
 	controllerCmd.Flags().IntVar(&MaxConcurrentReconciles, "max-concurrent-reconciles", env.ParseNumFromEnv("MAX_CONCURRENT_RECONCILES", 1, 1, 10), "maximum number of concurrent Reconciles which can be run (must be >= 1)")
 	controllerCmd.Flags().StringVar(&cfg.ArgocdNamespace, "argocd-namespace", env.GetStringVal("ARGOCD_NAMESPACE", ""), "namespace where ArgoCD runs in (controller namespace by default)")
-	controllerCmd.Flags().StringVar(&cfg.WatchNamespaces, "watch-namespaces", env.GetStringVal("IMAGE_UPDATER_WATCH_NAMESPACES", ""), "Comma-separated list of namespaces to watch. Restricts controller to namespace-scoped operation. Empty means cluster-wide.")
+	controllerCmd.Flags().StringVar(&cfg.WatchNamespaces, "watch-namespaces", env.GetStringVal("IMAGE_UPDATER_WATCH_NAMESPACES", ""), `Namespaces to watch: "" = controller's own namespace, "*" = all namespaces (cluster-scoped), "ns1,ns2" = specific namespaces.`)
 	controllerCmd.Flags().BoolVar(&warmUpCache, "warmup-cache", true, "whether to perform a cache warm-up on startup")
 	controllerCmd.Flags().BoolVar(&cfg.DisableKubeEvents, "disable-kube-events", env.GetBoolVal("IMAGE_UPDATER_KUBE_EVENTS", false), "Disable kubernetes events")
 
@@ -471,4 +458,44 @@ func (ws *WebhookServerRunnable) Start(ctx context.Context) error {
 // run on the leader replica.
 func (ws *WebhookServerRunnable) NeedLeaderElection() bool {
 	return true
+}
+
+// getCacheOptions builds controller-runtime cache options from cfg.WatchNamespaces.
+//
+// Three modes are supported:
+//   - "" (default): namespace-scoped, watches only the controller's own namespace.
+//     Requires a Role and RoleBinding in that namespace.
+//   - "*": cluster-scoped, watches all namespaces.
+//     Requires a ClusterRole and ClusterRoleBinding.
+//   - "ns1,ns2,...": namespace-scoped, watches the listed namespaces.
+//     Requires a Role and RoleBinding in each namespace.
+func getCacheOptions(setupLogger logr.Logger, cfg *controller.ImageUpdaterConfig) (cache.Options, error) {
+	// Default: watch only the controller's own namespace.
+	if cfg.WatchNamespaces == "" {
+		ns := cfg.KubeClient.KubeClient.Namespace
+		setupLogger.Info("Watching controller namespace only", "namespace", ns)
+		return cache.Options{
+			DefaultNamespaces: map[string]cache.Config{ns: {}},
+		}, nil
+	}
+
+	// "*": cluster-scoped, watches all namespaces.
+	if cfg.WatchNamespaces == "*" {
+		setupLogger.Info("Watching all namespaces (cluster-scoped)")
+		return cache.Options{}, nil
+	}
+
+	// Comma-separated list: watch specific namespaces.
+	nsMap := make(map[string]cache.Config)
+	for _, ns := range strings.Split(cfg.WatchNamespaces, ",") {
+		ns = strings.TrimSpace(ns)
+		if ns != "" {
+			nsMap[ns] = cache.Config{}
+		}
+	}
+	if len(nsMap) == 0 {
+		return cache.Options{}, fmt.Errorf("--watch-namespaces flag provided but no valid namespaces specified")
+	}
+	setupLogger.Info("Watching specific namespaces", "namespaces", cfg.WatchNamespaces)
+	return cache.Options{DefaultNamespaces: nsMap}, nil
 }
