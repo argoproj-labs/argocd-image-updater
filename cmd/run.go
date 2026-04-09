@@ -495,8 +495,10 @@ func controllerNamespace(log logr.Logger, cfg *controller.ImageUpdaterConfig) st
 //   - "ns1,ns2,...": namespace-scoped, watches the listed namespaces.
 //     Requires a Role and RoleBinding in each namespace.
 func getCacheOptions(setupLogger logr.Logger, cfg *controller.ImageUpdaterConfig) (cache.Options, error) {
+	watchNamespaces := strings.TrimSpace(cfg.WatchNamespaces)
+
 	// Default: watch only the controller's own namespace.
-	if cfg.WatchNamespaces == "" {
+	if watchNamespaces == "" {
 		ns := controllerNamespace(setupLogger, cfg)
 		setupLogger.Info("Watching controller namespace only", "namespace", ns)
 		return cache.Options{
@@ -505,14 +507,14 @@ func getCacheOptions(setupLogger logr.Logger, cfg *controller.ImageUpdaterConfig
 	}
 
 	// "*": cluster-scoped, watches all namespaces.
-	if cfg.WatchNamespaces == "*" {
+	if watchNamespaces == "*" {
 		setupLogger.Info("Watching all namespaces (cluster-scoped)")
 		return cache.Options{}, nil
 	}
 
 	// Comma-separated list: watch specific namespaces.
 	nsMap := make(map[string]cache.Config)
-	for _, ns := range strings.Split(cfg.WatchNamespaces, ",") {
+	for _, ns := range strings.Split(watchNamespaces, ",") {
 		ns = strings.TrimSpace(ns)
 		if ns != "" {
 			nsMap[ns] = cache.Config{}
@@ -521,6 +523,6 @@ func getCacheOptions(setupLogger logr.Logger, cfg *controller.ImageUpdaterConfig
 	if len(nsMap) == 0 {
 		return cache.Options{}, fmt.Errorf("--watch-namespaces flag provided but no valid namespaces specified")
 	}
-	setupLogger.Info("Watching specific namespaces", "namespaces", cfg.WatchNamespaces)
+	setupLogger.Info("Watching specific namespaces", "namespaces", watchNamespaces)
 	return cache.Options{DefaultNamespaces: nsMap}, nil
 }
