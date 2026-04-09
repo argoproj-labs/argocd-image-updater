@@ -153,14 +153,16 @@ there is only one active controller manager.
 The namespace used for the leader election lease. If empty, the controller will
 use the namespace of the pod it is running in. When running locally this value must be set.
 
-!!!warning "Namespace-scoped deployments"
-    When using `--watch-namespaces` with a specific list of namespaces (not `"*"`),
-    the `leader-election-role` `Role` is only bound in the watched namespaces.
-    If `--leader-election-namespace` is set to a namespace **not** included in
-    `--watch-namespaces`, the controller will fail to acquire the leadership lease
-    due to missing RBAC permissions. Either leave `--leader-election-namespace`
-    empty (defaults to the pod's own namespace) or ensure it is one of the
-    namespaces listed in `--watch-namespaces`.
+!!!warning "Non-default lease namespace requires manual RBAC"
+    The `argocd-image-updater-leader-election-role` `Role` and its `RoleBinding`
+    are created only once, in the controller's own namespace, by the installation
+    manifests. If `--leader-election-namespace` is set to any other namespace,
+    those resources must be created there manually — the controller will fail to
+    acquire the leadership lease without them. This is independent of
+    `--watch-namespaces`: including a namespace in the watch list does **not**
+    create the leader election `Role`/`RoleBinding` there. Leave
+    `--leader-election-namespace` empty to use the pod's own namespace and avoid
+    this requirement.
 
 **--loglevel *level***
 

@@ -103,7 +103,11 @@ Let's assume Argo CD runs in `<argocd_namespace>` and you are installing the ima
 
     Alternatively, you can add the `--argocd-namespace=<argocd_namespace>` and `--watch-namespaces=<updater_namespace>,<argocd_namespace>` flags to the container's `command` arguments in the deployment manifest.
 
-3. **Grant permissions in the Argo CD namespace**
+3. **Patch the metrics ClusterRoleBindings**
+
+    The `install.yaml` manifest hardcodes `namespace: argocd` in the subjects of the metrics `ClusterRoleBinding` resources (`argocd-image-updater-metrics-auth-rolebinding` and `argocd-image-updater-metrics-reader-rolebinding`). Patch both to reference `<updater_namespace>` instead, otherwise the controller's ServiceAccount will not receive the `TokenReview`/`SubjectAccessReview`/metrics-reader permissions.
+
+4. **Grant permissions in the Argo CD namespace**
 
     The controller needs a `Role` and `RoleBinding` in `<argocd_namespace>` to watch `Applications` and read Argo CD `Secrets`/`ConfigMaps`:
 

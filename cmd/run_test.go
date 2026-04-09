@@ -51,6 +51,7 @@ func TestNewRunCommand(t *testing.T) {
 	asser.Equal(strconv.Itoa(env.ParseNumFromEnv("MAX_CONCURRENT_APPS", 10, 1, 100)), controllerCommand.Flag("max-concurrent-apps").Value.String())
 	asser.Equal(strconv.Itoa(env.ParseNumFromEnv("MAX_CONCURRENT_RECONCILES", 1, 1, 10)), controllerCommand.Flag("max-concurrent-reconciles").Value.String())
 	asser.Equal(env.GetStringVal("ARGOCD_NAMESPACE", ""), controllerCommand.Flag("argocd-namespace").Value.String())
+	asser.Equal(env.GetStringVal("IMAGE_UPDATER_WATCH_NAMESPACES", ""), controllerCommand.Flag("watch-namespaces").Value.String())
 	asser.Equal("true", controllerCommand.Flag("warmup-cache").Value.String())
 	asser.Equal(env.GetStringVal("GIT_COMMIT_USER", "argocd-image-updater"), controllerCommand.Flag("git-commit-user").Value.String())
 	asser.Equal(env.GetStringVal("GIT_COMMIT_EMAIL", "noreply@argoproj.io"), controllerCommand.Flag("git-commit-email").Value.String())
