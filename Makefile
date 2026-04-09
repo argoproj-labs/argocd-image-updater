@@ -82,7 +82,7 @@ help: ## Display this help.
 ##@ Development
 
 .PHONY: manifests
-manifests: controller-gen ## Generate WebhookConfiguration and CustomResourceDefinition objects. RBAC is maintained manually in config/rbac/role.yaml.
+manifests: controller-gen ## Generate WebhookConfiguration and CustomResourceDefinition objects. RBAC is maintained manually in config/rbac.
 	$(CONTROLLER_GEN) crd webhook paths="./..." output:crd:artifacts:config=config/crd/bases
 
 .PHONY: generate
