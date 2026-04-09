@@ -109,30 +109,24 @@ Let's assume Argo CD runs in `<argocd_namespace>` and you are installing the ima
 
 4. **Grant permissions in the Argo CD namespace**
 
-    The controller needs a `Role` and `RoleBinding` in `<argocd_namespace>` to watch `Applications` and read Argo CD `Secrets`/`ConfigMaps`:
+    The controller needs a `Role` and `RoleBinding` in `<argocd_namespace>` to watch
+    `Applications` and read Argo CD `Secrets`/`ConfigMaps`. Only these resources
+    exist in the Argo CD namespace — `ImageUpdater` CRs live in `<updater_namespace>`
+    and are already covered by the `Role` installed there by `install.yaml`.
 
     ```yaml
     apiVersion: rbac.authorization.k8s.io/v1
     kind: Role
     metadata:
-      name: argocd-image-updater-manager-role
+      name: argocd-image-updater-argocd-ns-role
       namespace: <argocd_namespace>
     rules:
     - apiGroups: [""]
-      resources: ["events"]
-      verbs: ["create"]
-    - apiGroups: [""]
       resources: ["secrets", "configmaps"]
       verbs: ["get", "list", "watch"]
-    - apiGroups: ["argocd-image-updater.argoproj.io"]
-      resources: ["imageupdaters"]
-      verbs: ["create", "delete", "get", "list", "patch", "update", "watch"]
-    - apiGroups: ["argocd-image-updater.argoproj.io"]
-      resources: ["imageupdaters/finalizers"]
-      verbs: ["update"]
-    - apiGroups: ["argocd-image-updater.argoproj.io"]
-      resources: ["imageupdaters/status"]
-      verbs: ["get", "patch", "update"]
+    - apiGroups: [""]
+      resources: ["events"]
+      verbs: ["create"]
     - apiGroups: ["argoproj.io"]
       resources: ["applications"]
       verbs: ["get", "list", "patch", "update", "watch"]
@@ -140,12 +134,12 @@ Let's assume Argo CD runs in `<argocd_namespace>` and you are installing the ima
     apiVersion: rbac.authorization.k8s.io/v1
     kind: RoleBinding
     metadata:
-      name: argocd-image-updater-manager-rolebinding
+      name: argocd-image-updater-argocd-ns-rolebinding
       namespace: <argocd_namespace>
     roleRef:
       apiGroup: rbac.authorization.k8s.io
       kind: Role
-      name: argocd-image-updater-manager-role
+      name: argocd-image-updater-argocd-ns-role
     subjects:
     - kind: ServiceAccount
       name: argocd-image-updater-controller
