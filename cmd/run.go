@@ -469,16 +469,20 @@ func (ws *WebhookServerRunnable) NeedLeaderElection() bool {
 //  2. In-cluster service account token file (standard Kubernetes pod identity).
 //  3. cfg.KubeClient.KubeClient.Namespace — last resort, may reflect kubeconfig
 //     context or --argocd-namespace rather than the real pod namespace.
-func controllerNamespace(cfg *controller.ImageUpdaterConfig) string {
+func controllerNamespace(log logr.Logger, cfg *controller.ImageUpdaterConfig) string {
 	if ns := os.Getenv("POD_NAMESPACE"); ns != "" {
+		log.Info("Resolved controller namespace from POD_NAMESPACE", "namespace", ns)
 		return ns
 	}
 	if data, err := os.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/namespace"); err == nil {
 		if ns := strings.TrimSpace(string(data)); ns != "" {
+			log.Info("Resolved controller namespace from service account token", "namespace", ns)
 			return ns
 		}
 	}
-	return cfg.KubeClient.KubeClient.Namespace
+	ns := cfg.KubeClient.KubeClient.Namespace
+	log.Info("Resolved controller namespace from kubeconfig context", "namespace", ns)
+	return ns
 }
 
 // getCacheOptions builds controller-runtime cache options from cfg.WatchNamespaces.
@@ -493,7 +497,7 @@ func controllerNamespace(cfg *controller.ImageUpdaterConfig) string {
 func getCacheOptions(setupLogger logr.Logger, cfg *controller.ImageUpdaterConfig) (cache.Options, error) {
 	// Default: watch only the controller's own namespace.
 	if cfg.WatchNamespaces == "" {
-		ns := controllerNamespace(cfg)
+		ns := controllerNamespace(setupLogger, cfg)
 		setupLogger.Info("Watching controller namespace only", "namespace", ns)
 		return cache.Options{
 			DefaultNamespaces: map[string]cache.Config{ns: {}},
