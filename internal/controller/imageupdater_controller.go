@@ -61,6 +61,7 @@ type ImageUpdaterConfig struct {
 	DisableKubeEvents      bool
 	GitCreds               git.CredsStore
 	EnableWebhook          bool
+	WatchNamespaces        string
 	// EnableCRMetrics enables per-ImageUpdater-CR Prometheus metrics. Set false in webhook-only
 	// mode (no controller/reconcile) so metrics are not written and never orphaned on CR delete.
 	EnableCRMetrics bool
@@ -85,12 +86,6 @@ const (
 	// ResourcesFinalizerName is the name of the finalizer used by the ImageUpdater controller.
 	ResourcesFinalizerName = "resources-finalizer.argocd-image-updater.argoproj.io"
 )
-
-// +kubebuilder:rbac:groups=argocd-image-updater.argoproj.io,resources=imageupdaters,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=argocd-image-updater.argoproj.io,resources=imageupdaters/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=argocd-image-updater.argoproj.io,resources=imageupdaters/finalizers,verbs=update
-// +kubebuilder:rbac:groups=argoproj.io,resources=applications,verbs=get;list;update;patch;watch
-// +kubebuilder:rbac:groups="",resources=events,verbs=create
 
 // Reconcile is the core operational loop of the ImageUpdater controller.
 // It is invoked in response to events on ImageUpdater custom resources (CRs)

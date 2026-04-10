@@ -153,6 +153,17 @@ there is only one active controller manager.
 The namespace used for the leader election lease. If empty, the controller will
 use the namespace of the pod it is running in. When running locally this value must be set.
 
+!!!warning "Non-default lease namespace requires manual RBAC"
+    The `argocd-image-updater-leader-election-role` `Role` and its `RoleBinding`
+    are created only once, in the controller's own namespace, by the installation
+    manifests. If `--leader-election-namespace` is set to any other namespace,
+    those resources must be created there manually — the controller will fail to
+    acquire the leadership lease without them. This is independent of
+    `--watch-namespaces`: including a namespace in the watch list does **not**
+    create the leader election `Role`/`RoleBinding` there. Leave
+    `--leader-election-namespace` empty to use the pod's own namespace and avoid
+    this requirement.
+
 **--loglevel *level***
 
 Set the log level to *level*, where *level* can be one of `trace`, `debug`,
@@ -233,6 +244,18 @@ Can also be set with the `TLS_MIN_VERSION` environment variable.
 **--warmup-cache**
 
 whether to perform a cache warm-up on startup (default true)
+
+**--watch-namespaces *namespace-list***
+
+Controls which namespaces the controller watches for ImageUpdater CRs:
+
+- **Not set** (default): controller's own namespace only. Requires Role+RoleBinding in that namespace.
+- **`*`**: all namespaces, cluster-scoped. Requires ClusterRole+ClusterRoleBinding.
+- **`ns1,ns2,...`**: specific namespaces. Requires Role+RoleBinding in each namespace.
+
+Example: `--watch-namespaces=argocd,team-a,team-b`
+
+Can also be set with the `IMAGE_UPDATER_WATCH_NAMESPACES` environment variable.
 
 **--webhook-port *port***
 

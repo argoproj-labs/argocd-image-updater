@@ -6,15 +6,17 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"os"
 	"strings"
 	"sync/atomic"
 	"time"
 
 	"github.com/bombsimon/logrusr/v2"
-
+	"github.com/go-logr/logr"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
@@ -161,6 +163,12 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 				metricsServerOptions.FilterProvider = filters.WithAuthenticationAndAuthorization
 			}
 
+			// Build cache options for namespace-scoped operation
+			cacheOptions, err := getCacheOptions(setupLogger, cfg)
+			if err != nil {
+				return err
+			}
+
 			mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 				Scheme:                  scheme,
 				Metrics:                 metricsServerOptions,
@@ -168,6 +176,7 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 				LeaderElection:          enableLeaderElection,
 				LeaderElectionID:        "c21b75f2.argoproj.io",
 				LeaderElectionNamespace: leaderElectionNamespace,
+				Cache:                   cacheOptions,
 			})
 			if err != nil {
 				setupLogger.Error(err, "unable to start manager")
@@ -303,6 +312,7 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 	controllerCmd.Flags().IntVar(&cfg.MaxConcurrentApps, "max-concurrent-apps", env.ParseNumFromEnv("MAX_CONCURRENT_APPS", 10, 1, 100), "maximum number of ArgoCD applications that can be updated concurrently (must be >= 1)")
 	controllerCmd.Flags().IntVar(&MaxConcurrentReconciles, "max-concurrent-reconciles", env.ParseNumFromEnv("MAX_CONCURRENT_RECONCILES", 1, 1, 10), "maximum number of concurrent Reconciles which can be run (must be >= 1)")
 	controllerCmd.Flags().StringVar(&cfg.ArgocdNamespace, "argocd-namespace", env.GetStringVal("ARGOCD_NAMESPACE", ""), "namespace where ArgoCD runs in (controller namespace by default)")
+	controllerCmd.Flags().StringVar(&cfg.WatchNamespaces, "watch-namespaces", env.GetStringVal("IMAGE_UPDATER_WATCH_NAMESPACES", ""), `Namespaces to watch: "" = controller's own namespace, "*" = all namespaces (cluster-scoped), "ns1,ns2" = specific namespaces.`)
 	controllerCmd.Flags().BoolVar(&warmUpCache, "warmup-cache", true, "whether to perform a cache warm-up on startup")
 	controllerCmd.Flags().BoolVar(&cfg.DisableKubeEvents, "disable-kube-events", env.GetBoolVal("IMAGE_UPDATER_KUBE_EVENTS", false), "Disable kubernetes events")
 
@@ -449,4 +459,70 @@ func (ws *WebhookServerRunnable) Start(ctx context.Context) error {
 // run on the leader replica.
 func (ws *WebhookServerRunnable) NeedLeaderElection() bool {
 	return true
+}
+
+// controllerNamespace resolves the namespace the controller pod is actually
+// running in, independently of --argocd-namespace or kubeconfig context.
+//
+// Resolution order:
+//  1. POD_NAMESPACE environment variable (explicit override, useful in tests).
+//  2. In-cluster service account token file (standard Kubernetes pod identity).
+//  3. cfg.KubeClient.KubeClient.Namespace — last resort, may reflect kubeconfig
+//     context or --argocd-namespace rather than the real pod namespace.
+func controllerNamespace(log logr.Logger, cfg *controller.ImageUpdaterConfig) string {
+	if ns := os.Getenv("POD_NAMESPACE"); ns != "" {
+		log.Info("Resolved controller namespace from POD_NAMESPACE", "namespace", ns)
+		return ns
+	}
+	if data, err := os.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/namespace"); err == nil {
+		if ns := strings.TrimSpace(string(data)); ns != "" {
+			log.Info("Resolved controller namespace from service account token", "namespace", ns)
+			return ns
+		}
+	}
+	ns := cfg.KubeClient.KubeClient.Namespace
+	log.Info("Resolved controller namespace from kubeconfig context", "namespace", ns)
+	return ns
+}
+
+// getCacheOptions builds controller-runtime cache options from cfg.WatchNamespaces.
+//
+// Three modes are supported:
+//   - "" (default): namespace-scoped, watches only the controller's own namespace.
+//     Requires a Role and RoleBinding in that namespace.
+//   - "*": cluster-scoped, watches all namespaces.
+//     Requires a ClusterRole and ClusterRoleBinding.
+//   - "ns1,ns2,...": namespace-scoped, watches the listed namespaces.
+//     Requires a Role and RoleBinding in each namespace.
+func getCacheOptions(setupLogger logr.Logger, cfg *controller.ImageUpdaterConfig) (cache.Options, error) {
+	watchNamespaces := strings.TrimSpace(cfg.WatchNamespaces)
+
+	// Default: watch only the controller's own namespace.
+	if watchNamespaces == "" {
+		ns := controllerNamespace(setupLogger, cfg)
+		setupLogger.Info("Watching controller namespace only", "namespace", ns)
+		return cache.Options{
+			DefaultNamespaces: map[string]cache.Config{ns: {}},
+		}, nil
+	}
+
+	// "*": cluster-scoped, watches all namespaces.
+	if watchNamespaces == "*" {
+		setupLogger.Info("Watching all namespaces (cluster-scoped)")
+		return cache.Options{}, nil
+	}
+
+	// Comma-separated list: watch specific namespaces.
+	nsMap := make(map[string]cache.Config)
+	for _, ns := range strings.Split(watchNamespaces, ",") {
+		ns = strings.TrimSpace(ns)
+		if ns != "" {
+			nsMap[ns] = cache.Config{}
+		}
+	}
+	if len(nsMap) == 0 {
+		return cache.Options{}, fmt.Errorf("--watch-namespaces flag provided but no valid namespaces specified")
+	}
+	setupLogger.Info("Watching specific namespaces", "namespaces", watchNamespaces)
+	return cache.Options{DefaultNamespaces: nsMap}, nil
 }

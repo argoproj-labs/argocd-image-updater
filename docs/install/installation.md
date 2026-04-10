@@ -1,5 +1,15 @@
 # Getting Started
 
+!!!warning "Breaking Change: Default watch scope is now namespace-scoped"
+    Previously, the controller operated in cluster-wide mode by default, watching
+    all namespaces using a `ClusterRole` and `ClusterRoleBinding`. The default is
+    now **namespace-scoped**: the controller watches only its own namespace using a
+    `Role` and `RoleBinding`. Existing installations that rely on cluster-wide
+    watching must explicitly set `--watch-namespaces="*"` and switch to
+    `ClusterRole`+`ClusterRoleBinding` RBAC. See
+    [Choosing an installation namespace](#choosing-an-installation-namespace) for
+    details.
+
 ## Installation methods
 
 The Argo CD Image Updater controller **must** be run in the same Kubernetes cluster where your Argo CD `Application` resources are managed. The current controller architecture does not support connecting to a remote Kubernetes cluster to manage applications.
@@ -17,13 +27,23 @@ The controller cannot discover or process `ImageUpdater` CRs created on cluster 
 
 In short: The Image Updater controller and its `ImageUpdater` CRs must reside with your Argo CD `Application` resources, not with the deployed application workloads.
 
-### Choosing an installation namespace
+### Namespace scope
 
-You have two options for where to install the Argo CD Image Updater:
+The controller's watch scope is controlled by the `--watch-namespaces` flag (or `IMAGE_UPDATER_WATCH_NAMESPACES` env var) and determines which namespaces it monitors for `ImageUpdater` CRs and Argo CD `Applications`:
+
+| Value             | Scope                           | RBAC required                                |
+|-------------------|---------------------------------|----------------------------------------------|
+| Not set (default) | Controller's own namespace only | `Role` + `RoleBinding` in that namespace     |
+| `"ns1,ns2,..."`   | Listed namespaces only          | `Role` + `RoleBinding` in **each** namespace |
+| `"*"`             | All namespaces, cluster-wide    | `ClusterRole` + `ClusterRoleBinding`         |
+
+The default installation (`install.yaml`) uses `Role` and `RoleBinding` scoped to the controller's namespace. For `--watch-namespaces="*"`, replace these with a `ClusterRole` and `ClusterRoleBinding` (see Option 3 below).
+
+### Choosing an installation namespace
 
 #### Option 1: Install into the Argo CD namespace (Recommended)
 
-The simplest approach is to install the image updater into the same namespace as your Argo CD installation. This requires minimal configuration.
+The simplest approach. The controller runs in the same namespace as Argo CD, so the default scope (own namespace) covers both `ImageUpdater` CRs and `Applications` without any extra configuration.
 
 If Argo CD is running in the `argocd` namespace, use the following command:
 
@@ -38,8 +58,7 @@ If Argo CD is running in the `argocd` namespace, use the following command:
 kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj-labs/argocd-image-updater/stable/config/install.yaml
 ```
 
-!!! warning
-    The default installation manifests assume Argo CD is in the `argocd` namespace. If your Argo CD runs in a different namespace (e.g., `my-argocd`), you must download the `install.yaml` manifest and manually update the `namespace` field in the `subjects` section of all `ClusterRoleBinding` resources from `argocd` to your target namespace.
+By default, the controller watches only its own namespace. If you use Argo CD's [Applications in any namespace](https://argo-cd.readthedocs.io/en/stable/operator-manual/app-any-namespace/) feature and have `Application` resources in additional namespaces, configure `--watch-namespaces` and create a `Role` + `RoleBinding` in **each** extra namespace (see the [Namespace scope](#namespace-scope) table above).
 
 #### Option 2: Install into a separate namespace
 
@@ -49,73 +68,155 @@ Let's assume Argo CD runs in `<argocd_namespace>` and you are installing the ima
 
 1. **Install the Controller**
 
-First, create the target namespace and apply the installation manifest.
+    First, create the target namespace and apply the installation manifest.
 
-```shell
-kubectl create namespace <updater_namespace>
-kubectl apply -n <updater_namespace> -f https://raw.githubusercontent.com/argoproj-labs/argocd-image-updater/stable/config/install.yaml
-```
+    ```shell
+    kubectl create namespace <updater_namespace>
+    kubectl apply -n <updater_namespace> -f https://raw.githubusercontent.com/argoproj-labs/argocd-image-updater/stable/config/install.yaml
+    ```
 
 2. **Configure the Argo CD Namespace**
 
-The controller needs to know where to find Argo CD resources. Edit the `argocd-image-updater-controller` deployment manifest and add the `ARGOCD_NAMESPACE` environment variable to the `argocd-image-updater-controller` container or add `argocd.namespace` key to the ConfigMap `argocd-image-updater-config`, pointing to the namespace where Argo CD is installed.
+    The controller needs to know where to find Argo CD resources. Edit the `argocd-image-updater-controller` deployment manifest and add the `ARGOCD_NAMESPACE` environment variable to the `argocd-image-updater-controller` container or add `argocd.namespace` key to the ConfigMap `argocd-image-updater-config`, pointing to the namespace where Argo CD is installed.
 
-```yaml
-...
-      env:
-      - name: ARGOCD_NAMESPACE
-        value: <argocd_namespace>
-...
-```
+    Also set `IMAGE_UPDATER_WATCH_NAMESPACES` (or `--watch-namespaces`) to include both namespaces, since by default the controller only watches its own namespace and would not see `Applications` in `<argocd_namespace>`.
 
-or
+    ```yaml
+    ...
+          env:
+          - name: ARGOCD_NAMESPACE
+            value: "<argocd_namespace>"
+          - name: IMAGE_UPDATER_WATCH_NAMESPACES
+            value: "<updater_namespace>,<argocd_namespace>"
+    ...
+    ```
 
-```yaml
-...
-      data:
-        argocd.namespace: <argocd_namespace>
-...
-```
+    or
 
-Alternatively, you can add the `--argocd-namespace=<argocd_namespace>` flag to the container's `command` arguments in the deployment manifest.
+    ```yaml
+    ...
+          data:
+            argocd.namespace: "<argocd_namespace>"
+            watch.namespaces: "<updater_namespace>,<argocd_namespace>"
+    ...
+    ```
 
-3. **Adjust ClusterRoleBinding**
+    Alternatively, you can add the `--argocd-namespace=<argocd_namespace>` and `--watch-namespaces=<updater_namespace>,<argocd_namespace>` flags to the container's `command` arguments in the deployment manifest.
 
-The installation manifest contains `ClusterRoleBinding` resources that grant the controller's `ServiceAccount` cluster-wide permissions. You must update these bindings to reference the namespace where the image updater is installed (`<updater_namespace>`).
+3. **Patch the metrics ClusterRoleBindings**
 
-To do this, download `install.yaml` and manually change the `namespace` in the `subjects` section of all `ClusterRoleBinding` resources from `argocd` to `<updater_namespace>` before applying the manifest.
+    The `install.yaml` manifest hardcodes `namespace: argocd` in the subjects of the metrics `ClusterRoleBinding` resources (`argocd-image-updater-metrics-auth-rolebinding` and `argocd-image-updater-metrics-reader-rolebinding`). Patch both to reference `<updater_namespace>` instead, otherwise the controller's ServiceAccount will not receive the `TokenReview`/`SubjectAccessReview`/metrics-reader permissions.
 
-4. **Grant Permissions in the Argo CD Namespace**
+4. **Grant permissions in the Argo CD namespace**
 
-The image updater needs to read resources from the Argo CD namespace, such as `Secrets` containing repository credentials. The default installation does not grant these cross-namespace permissions. You must create a `Role` and `RoleBinding` in the Argo CD namespace to allow the image updater's ServiceAccount (from `<updater_namespace>`) to access these resources.
+    `ImageUpdater` CRs must be in the same namespace as the `Applications` they
+    reference, so they belong in `<argocd_namespace>`. The controller needs a full
+    `Role` and `RoleBinding` there to manage them alongside `Applications` and Argo CD
+    `Secrets`/`ConfigMaps`:
 
-Create and apply the following manifest in the `<argocd_namespace>`:
+    ```yaml
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: Role
+    metadata:
+      name: argocd-image-updater-argocd-ns-role
+      namespace: <argocd_namespace>
+    rules:
+    - apiGroups: [""]
+      resources: ["secrets", "configmaps"]
+      verbs: ["get", "list", "watch"]
+    - apiGroups: [""]
+      resources: ["events"]
+      verbs: ["create"]
+    - apiGroups: ["argocd-image-updater.argoproj.io"]
+      resources: ["imageupdaters"]
+      verbs: ["create", "delete", "get", "list", "patch", "update", "watch"]
+    - apiGroups: ["argocd-image-updater.argoproj.io"]
+      resources: ["imageupdaters/finalizers"]
+      verbs: ["update"]
+    - apiGroups: ["argocd-image-updater.argoproj.io"]
+      resources: ["imageupdaters/status"]
+      verbs: ["get", "patch", "update"]
+    - apiGroups: ["argoproj.io"]
+      resources: ["applications"]
+      verbs: ["get", "list", "patch", "update", "watch"]
+    ---
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: RoleBinding
+    metadata:
+      name: argocd-image-updater-argocd-ns-rolebinding
+      namespace: <argocd_namespace>
+    roleRef:
+      apiGroup: rbac.authorization.k8s.io
+      kind: Role
+      name: argocd-image-updater-argocd-ns-role
+    subjects:
+    - kind: ServiceAccount
+      name: argocd-image-updater-controller
+      namespace: <updater_namespace>
+    ```
 
-```yaml
-apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
-metadata:
-  name: argocd-image-updater-cross-namespace-reader
-  namespace: <argocd_namespace>
-rules:
-- apiGroups: [""]
-  resources: ["secrets", "configmaps"]
-  verbs: ["get", "list", "watch"]
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
-metadata:
-  name: argocd-image-updater-cross-namespace-reader
-  namespace: <argocd_namespace>
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: Role
-  name: argocd-image-updater-cross-namespace-reader
-subjects:
-- kind: ServiceAccount
-  name: argocd-image-updater-controller
-  namespace: <updater_namespace>
-```
+#### Option 3: Cluster-scoped installation
+
+For environments where the controller must watch `ImageUpdater` CRs in any namespace, use `--watch-namespaces="*"`. This requires a `ClusterRole` and `ClusterRoleBinding`.
+
+1. **Install the Controller**
+
+    ```shell
+    kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj-labs/argocd-image-updater/stable/config/install.yaml
+    ```
+
+2. **Replace Role with ClusterRole**
+
+    Delete the namespace-scoped RBAC from the default install and apply cluster-scoped equivalents. The required permissions mirror `config/rbac/role.yaml`:
+
+    ```shell
+    kubectl delete role argocd-image-updater-manager-role -n argocd
+    kubectl delete rolebinding argocd-image-updater-manager-rolebinding -n argocd
+    ```
+
+    ```yaml
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRole
+    metadata:
+      name: argocd-image-updater-manager-role
+    rules:
+    - apiGroups: [""]
+      resources: ["events"]
+      verbs: ["create"]
+    - apiGroups: ["argocd-image-updater.argoproj.io"]
+      resources: ["imageupdaters"]
+      verbs: ["create", "delete", "get", "list", "patch", "update", "watch"]
+    - apiGroups: ["argocd-image-updater.argoproj.io"]
+      resources: ["imageupdaters/finalizers"]
+      verbs: ["update"]
+    - apiGroups: ["argocd-image-updater.argoproj.io"]
+      resources: ["imageupdaters/status"]
+      verbs: ["get", "patch", "update"]
+    - apiGroups: ["argoproj.io"]
+      resources: ["applications"]
+      verbs: ["get", "list", "patch", "update", "watch"]
+    ---
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRoleBinding
+    metadata:
+      name: argocd-image-updater-manager-rolebinding
+    roleRef:
+      apiGroup: rbac.authorization.k8s.io
+      kind: ClusterRole
+      name: argocd-image-updater-manager-role
+    subjects:
+    - kind: ServiceAccount
+      name: argocd-image-updater-controller
+      namespace: argocd  # Replace with your controller namespace
+    ```
+
+3. **Enable cluster-scoped watching**
+
+    ```yaml
+    env:
+    - name: IMAGE_UPDATER_WATCH_NAMESPACES
+      value: "*"
+    ```
 
 ### Configure the desired log level
 

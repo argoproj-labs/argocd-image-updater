@@ -26,6 +26,7 @@ import (
 	. "github.com/onsi/gomega"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	applicationFixture "github.com/argoproj-labs/argocd-image-updater/test/ginkgo/fixture/application"
@@ -171,6 +172,10 @@ var _ = Describe("ArgoCD Image Updater Sequential E2E Tests", func() {
 								Name:  "IMAGE_UPDATER_INTERVAL",
 								Value: "0",
 							},
+							{
+								Name:  "IMAGE_UPDATER_WATCH_NAMESPACES",
+								Value: nsDev.Name,
+							},
 						},
 						Enabled: true},
 				},
@@ -193,6 +198,42 @@ var _ = Describe("ArgoCD Image Updater Sequential E2E Tests", func() {
 			Eventually(statefulSet).Should(k8sFixture.ExistByName())
 			Eventually(statefulSet).Should(ssFixture.HaveReplicas(1))
 			Eventually(statefulSet, "3m", "3s").Should(ssFixture.HaveReadyReplicas(1))
+
+			By("creating Role and RoleBinding in dev namespace for Image Updater ServiceAccount")
+			role := &rbacv1.Role{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "argocd-image-updater-manager-role",
+					Namespace: nsDev.Name,
+				},
+				Rules: []rbacv1.PolicyRule{
+					{APIGroups: []string{""}, Resources: []string{"events"}, Verbs: []string{"create"}},
+					{APIGroups: []string{"argocd-image-updater.argoproj.io"}, Resources: []string{"imageupdaters"}, Verbs: []string{"create", "delete", "get", "list", "patch", "update", "watch"}},
+					{APIGroups: []string{"argocd-image-updater.argoproj.io"}, Resources: []string{"imageupdaters/finalizers"}, Verbs: []string{"update"}},
+					{APIGroups: []string{"argocd-image-updater.argoproj.io"}, Resources: []string{"imageupdaters/status"}, Verbs: []string{"get", "patch", "update"}},
+					{APIGroups: []string{"argoproj.io"}, Resources: []string{"applications"}, Verbs: []string{"get", "list", "patch", "update", "watch"}},
+				},
+			}
+			Expect(k8sClient.Create(ctx, role)).To(Succeed())
+
+			roleBinding := &rbacv1.RoleBinding{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "argocd-image-updater-manager-rolebinding",
+					Namespace: nsDev.Name,
+				},
+				RoleRef: rbacv1.RoleRef{
+					APIGroup: "rbac.authorization.k8s.io",
+					Kind:     "Role",
+					Name:     "argocd-image-updater-manager-role",
+				},
+				Subjects: []rbacv1.Subject{
+					{
+						Kind:      "ServiceAccount",
+						Name:      "argocd-argocd-image-updater-controller",
+						Namespace: ns.Name,
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, roleBinding)).To(Succeed())
 
 			By("creating AppProject")
 			appProject := &appv1alpha1.AppProject{
