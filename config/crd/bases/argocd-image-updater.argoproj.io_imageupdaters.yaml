@@ -191,6 +191,12 @@ spec:
                                   Helm specifies update parameters if the target manifest is managed by Helm
                                   and updates are to be made to Helm values files.
                                 properties:
+                                  chartName:
+                                    description: |-
+                                      ChartName is the name of the Helm chart within a multi-source Argo CD Application.
+                                      When an Application uses multiple sources, this field identifies which source's
+                                      Helm values should be updated. If not specified, the first Helm source is used.
+                                    type: string
                                   name:
                                     description: |-
                                       Name is the dot-separated path to the Helm key for the image repository/name part.

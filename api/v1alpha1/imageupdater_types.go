@@ -255,6 +255,12 @@ type ManifestTarget struct {
 
 // HelmTarget defines parameters for updating image references within Helm values.
 type HelmTarget struct {
+	// ChartName is the name of the Helm chart within a multi-source Argo CD Application.
+	// When an Application uses multiple sources, this field identifies which source's
+	// Helm values should be updated. If not specified, the first Helm source is used.
+	// +optional
+	ChartName *string `json:"chartName,omitempty"`
+
 	// Name is the dot-separated path to the Helm key for the image repository/name part.
 	// Example: "image.repository", "frontend.deployment.image.name".
 	// If neither spec nor name/tag are set, defaults to "image.name".

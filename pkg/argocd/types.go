@@ -169,6 +169,7 @@ type Image struct {
 	Platforms      []string
 
 	// ManifestTarget settings
+	HelmChartName      string
 	HelmImageName      string
 	HelmImageTag       string
 	HelmImageSpec      string
