@@ -1,0 +1,19 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  schemaVersion: v1.0.0
+  name: argocd-image-updater
+  description: Forked from https://github.com/argoproj-labs/argocd-image-updater
+  annotations:
+    github.com/project-slug: Bandwidth/argocd-image-updater
+  organization: BW
+  costCenter: undefined
+  platformType: OCP4
+  buildPlatform: GitHub Actions
+spec:
+  type: Service
+  owner: github/band-platform
+  lifecycle: Prototype
+  dependsOn:
+    - resource:platform/GitHub Actions
+    - resource:cost-center/undefined
