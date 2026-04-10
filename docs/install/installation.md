@@ -109,10 +109,10 @@ Let's assume Argo CD runs in `<argocd_namespace>` and you are installing the ima
 
 4. **Grant permissions in the Argo CD namespace**
 
-    The controller needs a `Role` and `RoleBinding` in `<argocd_namespace>` to watch
-    `Applications` and read Argo CD `Secrets`/`ConfigMaps`. Only these resources
-    exist in the Argo CD namespace — `ImageUpdater` CRs live in `<updater_namespace>`
-    and are already covered by the `Role` installed there by `install.yaml`.
+    `ImageUpdater` CRs must be in the same namespace as the `Applications` they
+    reference, so they belong in `<argocd_namespace>`. The controller needs a full
+    `Role` and `RoleBinding` there to manage them alongside `Applications` and Argo CD
+    `Secrets`/`ConfigMaps`:
 
     ```yaml
     apiVersion: rbac.authorization.k8s.io/v1
@@ -127,6 +127,15 @@ Let's assume Argo CD runs in `<argocd_namespace>` and you are installing the ima
     - apiGroups: [""]
       resources: ["events"]
       verbs: ["create"]
+    - apiGroups: ["argocd-image-updater.argoproj.io"]
+      resources: ["imageupdaters"]
+      verbs: ["create", "delete", "get", "list", "patch", "update", "watch"]
+    - apiGroups: ["argocd-image-updater.argoproj.io"]
+      resources: ["imageupdaters/finalizers"]
+      verbs: ["update"]
+    - apiGroups: ["argocd-image-updater.argoproj.io"]
+      resources: ["imageupdaters/status"]
+      verbs: ["get", "patch", "update"]
     - apiGroups: ["argoproj.io"]
       resources: ["applications"]
       verbs: ["get", "list", "patch", "update", "watch"]
