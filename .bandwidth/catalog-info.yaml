@@ -1,0 +1,11 @@
+apiVersion: backstage.io/v1alpha1
+kind: Location
+metadata:
+  schemaVersion: v1.0.0
+  name: argocd-image-updater-location
+  description: Links to additional entities in the argocd-image-updater repository.
+  annotations:
+    github.com/project-slug: Bandwidth/argocd-image-updater
+spec:
+  targets:
+    - ./component.yaml
