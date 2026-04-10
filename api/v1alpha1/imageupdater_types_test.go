@@ -466,6 +466,115 @@ var _ = Describe("ApplicationRef UseAnnotations Validation", func() {
 	})
 })
 
+var _ = Describe("HelmTarget ChartName Validation", func() {
+	Context("when chartName is set", func() {
+		It("should accept HelmTarget with only chartName", func() {
+			cr := &ImageUpdater{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "image-updater-helm-chartname-only",
+					Namespace: "argocd",
+				},
+				Spec: ImageUpdaterSpec{
+					ApplicationRefs: []ApplicationRef{
+						{
+							NamePattern: "*",
+							Images: []ImageConfig{
+								{
+									Alias:     "test",
+									ImageName: "nginx:1.21.0",
+									ManifestTarget: &ManifestTarget{
+										Helm: &HelmTarget{
+											ChartName: strPtr("my-chart"),
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			}
+
+			err := k8sClient.Create(context.Background(), cr)
+			Expect(err).NotTo(HaveOccurred())
+
+			// Cleanup
+			err = k8sClient.Delete(context.Background(), cr)
+			Expect(err).NotTo(HaveOccurred())
+		})
+
+		It("should accept HelmTarget with chartName and name/tag", func() {
+			cr := &ImageUpdater{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "image-updater-helm-chartname-name-tag",
+					Namespace: "argocd",
+				},
+				Spec: ImageUpdaterSpec{
+					ApplicationRefs: []ApplicationRef{
+						{
+							NamePattern: "*",
+							Images: []ImageConfig{
+								{
+									Alias:     "test",
+									ImageName: "nginx:1.21.0",
+									ManifestTarget: &ManifestTarget{
+										Helm: &HelmTarget{
+											ChartName: strPtr("my-chart"),
+											Name:      strPtr("image.repository"),
+											Tag:       strPtr("image.tag"),
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			}
+
+			err := k8sClient.Create(context.Background(), cr)
+			Expect(err).NotTo(HaveOccurred())
+
+			// Cleanup
+			err = k8sClient.Delete(context.Background(), cr)
+			Expect(err).NotTo(HaveOccurred())
+		})
+
+		It("should accept HelmTarget with chartName and spec", func() {
+			cr := &ImageUpdater{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "image-updater-helm-chartname-spec",
+					Namespace: "argocd",
+				},
+				Spec: ImageUpdaterSpec{
+					ApplicationRefs: []ApplicationRef{
+						{
+							NamePattern: "*",
+							Images: []ImageConfig{
+								{
+									Alias:     "test",
+									ImageName: "nginx:1.21.0",
+									ManifestTarget: &ManifestTarget{
+										Helm: &HelmTarget{
+											ChartName: strPtr("my-chart"),
+											Spec:      strPtr("image"),
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			}
+
+			err := k8sClient.Create(context.Background(), cr)
+			Expect(err).NotTo(HaveOccurred())
+
+			// Cleanup
+			err = k8sClient.Delete(context.Background(), cr)
+			Expect(err).NotTo(HaveOccurred())
+		})
+	})
+})
+
 var _ = Describe("HelmTarget Validation", func() {
 	Context("when spec is set", func() {
 		It("should accept HelmTarget with only spec", func() {
