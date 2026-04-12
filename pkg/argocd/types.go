@@ -83,6 +83,9 @@ type WriteBackConfig struct {
 	GitCreds               git.CredsStore
 	PRProvider             PRProvider
 	PullRequest            *PullRequest
+	// GitCredsID identifies the credential source (e.g. "repocreds" or "secret:ns/name").
+	// Used by BatchKey() to ensure only apps sharing the same credential source are batched.
+	GitCredsID string
 }
 
 // RequiresLocking returns true if write-back method requires repository locking
@@ -194,6 +197,41 @@ func (list ImageList) ToContainerImageList() image.ContainerImageList {
 		cil[i] = img.ContainerImage
 	}
 	return cil
+}
+
+// PendingWrite represents a deferred git write-back operation for a single application.
+// It is produced by the registry polling phase and consumed by the batched git write phase.
+type PendingWrite struct {
+	// AppName is the namespaced name of the application (e.g. "namespace/appname")
+	AppName string
+	// App holds the application and its write-back configuration
+	App *ApplicationImages
+	// ChangeList records which images were changed
+	ChangeList []ChangeEntry
+	// Result holds the polling-phase result for this application
+	Result ImageUpdaterResult
+	// UpdateConf holds the full update config needed for kube events etc.
+	UpdateConf *UpdateConfiguration
+	// ResolvedBranch is the effective target branch resolved at polling time
+	// from the app's targetRevision or explicit annotation.
+	ResolvedBranch string
+}
+
+// BatchKey returns the grouping key for batching git operations.
+// Operations targeting the same repository, branch, and credential source
+// can share a single clone/fetch/checkout cycle. Including the credential
+// source ensures apps with different git credentials are never batched.
+func (pw *PendingWrite) BatchKey() string {
+	wbc := pw.App.WriteBackConfig
+	branch := pw.ResolvedBranch
+	if branch == "" {
+		branch = "_default_"
+	}
+	credsKey := wbc.GitCredsID
+	if credsKey == "" {
+		credsKey = "_unknown_"
+	}
+	return wbc.GitRepo + "::" + branch + "::" + credsKey
 }
 
 // WebhookEvent represents a generic webhook payload
