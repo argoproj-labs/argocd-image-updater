@@ -419,7 +419,7 @@ func (s *WebhookServer) handleWebhook(w http.ResponseWriter, r *http.Request) {
 	baseLogger.Debugf("Received webhook request from %s", r.RemoteAddr)
 	r.Body = http.MaxBytesReader(w, r.Body, maxWebhookBodySize)
 
-	event, err := s.Handler.ProcessWebhook(r)
+	events, err := s.Handler.ProcessWebhook(r)
 	if err != nil {
 		var maxBytesErr *http.MaxBytesError
 		if errors.As(err, &maxBytesErr) {
@@ -432,32 +432,40 @@ func (s *WebhookServer) handleWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fields := logrus.Fields{
-		"webhook_registry":   event.RegistryURL,
-		"webhook_repository": event.Repository,
-		"webhook_tag":        event.Tag,
+	if len(events) == 0 {
+		baseLogger.Debugf("Webhook request produced no events, ignoring")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("Webhook received, no actionable events"))
+		return
 	}
-	eventCtx := baseLogger.WithFields(fields)
-	eventOpCtx := log.ContextWithLogger(ctx, eventCtx)
 
-	eventCtx.Infof("Received valid webhook event")
+	baseLogger.Infof("Received %d webhook event(s)", len(events))
 
-	// Process webhook asynchronously
+	// Process webhooks asynchronously
 	go func() {
 		if s.RateLimiter != nil {
 			s.RateLimiter.Take()
 		}
 
-		err := s.processWebhookEvent(eventOpCtx, event)
-		if err != nil {
-			eventCtx.Errorf("Failed to process webhook event: %v", err)
+		for _, event := range events {
+			eventLogger := baseLogger.WithFields(logrus.Fields{
+				"webhook_registry":   event.RegistryURL,
+				"webhook_repository": event.Repository,
+				"webhook_tag":        event.Tag,
+			})
+			eventLogger.Infof("Processing webhook event")
+			eventCtx := log.ContextWithLogger(ctx, eventLogger)
+
+			if err := s.processWebhookEvent(eventCtx, event); err != nil {
+				eventLogger.Errorf("Failed to process webhook event: %v", err)
+			}
 		}
 	}()
 
 	// Return success immediately
 	w.WriteHeader(http.StatusOK)
 	if _, err := w.Write([]byte("Webhook received and processing")); err != nil {
-		eventCtx.Errorf("Failed to write webhook response: %v", err)
+		baseLogger.Errorf("Failed to write webhook response: %v", err)
 	}
 }
 
