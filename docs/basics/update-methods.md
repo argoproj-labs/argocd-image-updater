@@ -307,125 +307,6 @@ The following variables are provided for this template:
 
 Please note that if the output of the template exceeds 255 characters (git branch name limit) it will be truncated.
 
-### <a name="method-git-commit-user"></a>Specifying the user and email address for commits
-
-Each Git commit is associated with an author's name and email address. If not
-configured, commits performed by Argo CD Image Updater will use
-`argocd-image-updater <noreply@argoproj.io>`
-as the author. You can override the author using the
-`--git-commit-user` and `--git-commit-email` command line switches or set
-`git.user` and `git.email`
-in the `argocd-image-updater-config` ConfigMap.
-
-## <a name="method-git-commit-signing"></a>Enabling commit signature signing using an SSH or GPG key
-
-### 1. SCM branch protection rules require signed commits
-Commit signing for SCM branch protection rules require the repository be accessed using HTTPS or SSH with a user account.
-Repositories accessed using a GitHub App can not be verified when using the git command line at this time.
-
-Each Git commit associated with an author's name and email address can be signed via a private SSH key or GPG key.
-
-Commit signing requires a bot account with a GPG or SSH key and the username and email address configured to match the bot account.
-
-Your preferred signing key must be associated with your bot account. See SCM provider documentation for further details:
-* [GitHub](https://docs.github.com/en/authentication/managing-commit-signature-verification/about-commit-signature-verification)
-* [GitLab](https://docs.gitlab.com/ee/user/project/repository/signed_commits/)
-* [Bitbucket](https://confluence.atlassian.com/bitbucketserver/controlling-access-to-code-776639770.html)
-
-### 2. Signing commits for future use with ArgoCD Source Verification Policies
-Commits can also be signed for use with source verification.
-In this case signing keys do not need to be associated with an SCM user account.
-
-**SSH:**
-
-The private key must be mounted and accessible on the `argocd-image-updater` pod.
-
-Set `git.commit-signing-key` `argocd-image-updater-config` ConfigMap to the path of your private key:
-
-```yaml
-data:
-  git.commit-sign-off: "true"
-  git.commit-signing-key: /app/ssh-keys/id_rsa
-  git.commit-signing-method: "ssh"
-```
-
-Create a new SSH secret or use your existing SSH secret:
-```bash
-kubectl -n argocd-image-updater create secret generic ssh-git-creds \
-  --from-file=sshPrivateKey=~/.ssh/id_rsa
-```
-
-**GPG:**
-
-The GPG private key must be installed and available in the `argocd-image-updater` pod.
-The `git.commit-signing-method` defaults to `openpgp`.
-Set `git.commit-signing-key` in the `argocd-image-updater-config` ConfigMap to the GPG key ID you want to use:
-
-```yaml
-data:
-  git.commit-sign-off: "true"
-  git.commit-signing-key: 3AA5C34371567BD2
-```
-
-#### Commit Sign Off can be enabled by setting `git.commit-sign-off: "true"`
-
-### <a name="method-git-commit-message"></a>Changing the Git commit message
-
-You can change the default commit message used by Argo CD Image Updater to some
-message that best suites your processes and regulations. For this, a simple
-template can be created (evaluating using the `text/template` Golang package)
-and made available through setting the key `git.commit-message-template` in the
-`argocd-image-updater-config` ConfigMap to the template's contents, e.g.
-```yaml
-data:
-  git.commit-message-template: |
-    build: automatic update of {{ .AppName }}
-
-    {{ range .AppChanges -}}
-    updates image {{ .Image }} tag '{{ .OldTag }}' to '{{ .NewTag }}'
-    {{ end -}}
-```
-
-If we want a more detailed message, we can add custom labels during the build process, and use them for adding custom details to the commit messages. The example below uses OCI image labels to show the parent commit in GitHub.  
-- `org.opencontainers.image.source` label showing the Git repo URL.  
-- `org.opencontainers.image.revision` label showing Git commit SHA
-```yaml
-data:
-  git.commit-message-template: |
-    build: Automatic update of {{ .AppName }}
-
-    {{ range .AppChanges -}}
-    updates image {{ .Image }} tag '{{ .OldTag }}' to '{{ .NewTag }}'
-    {{- if index .Labels "org.opencontainers.image.revision" }}
-    {{- $source := index .Labels "org.opencontainers.image.source" }}
-    {{- $revision := index .Labels "org.opencontainers.image.revision" }}
-    Upstream Commit: {{ $source }}/commit/{{ $revision }}
-    {{ end }}
-    {{ end -}}
-```
-**Note:** This template assumes `org.opencontainers.image.source` contains a clean Git repository URL (e.g., `https://github.com/org/repo`) without trailing slashes or `.git` suffixes. Most container build tools automatically generate labels in this format. It also assumes that `org.opencontainers.image.revision` is provided at build time. 
-
-To update the `Upstream Commit` message for different Git providers, following examples can be used.  
-1. **GitLab**:    `Upstream Commit: {{ $source }}/-/commit/{{ $revision }}`.  
-2. **BitBucket**:  `Upstream Commit: {{ $source }}/commits/{{ $revision }}`
-
- 
-Two top-level variables are provided to the template:
-
-* `.AppName` is the name of the application that is being updated
-* `.AppChanges` is a list of changes that were performed by the update. Each
-  entry in this list is a struct providing the following information for
-  each change:
-  * `.Image` holds the full name of the image that was updated
-  * `.OldTag` holds the tag name or SHA digest previous to the update
-  * `.NewTag` holds the tag name or SHA digest that was updated to
-  * `.Labels` is a map of the labels contained in the created Docker/OCI image, and in case no labels are being assigned to created image, an empty map is created
-
-In order to test a template before configuring it for use in Image Updater,
-you can store the template you want to use in a temporary file, and then use
-the `argocd-image-updater template /path/to/file` command to render the
-template using pre-defined data and see its outcome on the terminal.
-
 ### <a name="method-git-target"></a>Git Write-Back Target
 
 By default, git write-back will create or update `.argocd-source-<appName>.yaml`.
@@ -502,3 +383,240 @@ spec:
 
 Note that using the helmvalues option needs the Helm values filename to be specified in the
 `writeBackConfig.gitConfig.writeBackTarget`.
+
+### <a name="method-git-pull-request"></a>Git Pull Request
+
+The Git Pull Request mode extends the `git` write-back method so that instead
+of pushing directly to the tracking branch, Argo CD Image Updater:
+
+1. Pushes the image update commit to an automatically generated **head branch**
+   (`image-updater-<namespace>-<appName>-<sha256>`).
+2. Opens a **pull request** or **merge request** from that head
+   branch into the configured base branch.
+
+If a pull request for the same head → base pair already exists, the controller
+treats the situation as a successful no-op and does not open a duplicate.
+
+#### When to use Pull Request mode
+
+Use this mode when the target branch is protected and direct pushes are
+forbidden, or when you want every image update to go through a review workflow
+before it is merged and applied by Argo CD.
+
+#### Branch configuration
+
+!!!warning "Colon branch format is not supported in PR mode"
+    The `base:target` shorthand used for [separate base and commit branches](#method-git-base-commit-branch)
+    is **not** supported when `pullRequest` is configured. Specify only the
+    **base branch** (the branch the PR will be merged into), e.g.:
+
+    ```yaml
+    gitConfig:
+      branch: "main"
+    ```
+
+    Configuring a branch value that contains a colon (`:`) together with
+    `pullRequest` is a validation error and will prevent the `ImageUpdater` CR
+    from being reconciled.
+
+The head branch (PR source) is derived automatically by the controller using
+the template `image-updater-<appNamespace>-<appName>-<sha256>`, ensuring a
+stable, unique branch name per application and set of image changes.
+
+#### Credentials
+
+PR creation requires credentials that carry a bearer token — either a **personal
+access token (PAT)** or a **GitHub App**. SSH keys cannot be used because they
+do not provide the HTTP token needed to call the SCM API.
+
+Configure credentials via the `writeBackConfig.method` field using the
+`git:secret:<namespace>/<secret>` format (see
+[Specifying Git credentials](#method-git-credentials) for how to create the
+secret). The author identity of the commits and the PR is derived from those
+credentials.
+
+#### PR title and body
+
+The pull request title is taken from the **first line** of the rendered Git
+commit message template, and the body from everything after the first newline.
+If no custom commit message template is configured the defaults are:
+
+* **Title**: `chore: update images for <namespace>/<appName>`
+* **Body**: `This pull request was created automatically by argocd-image-updater for application <namespace>/<appName>.`
+
+Titles longer than 255 characters and bodies longer than 65 536 characters are
+truncated automatically.
+
+To customise the title and body, configure the
+[commit message template](#method-git-commit-message).
+
+#### GitHub
+
+GitHub pull requests are supported for both github.com and GitHub Enterprise
+Server. For GitHub Enterprise the API base URL is derived automatically from the
+repository URL.
+
+```yaml
+spec:
+  writeBackConfig:
+    method: "git:secret:argocd-image-updater/git-creds"
+    gitConfig:
+      repository: "git@github.com:example/example.git"
+      branch: "main"        # base branch; colon format not supported here
+      pullRequest:
+        github: {}
+```
+
+Full example with per-application override and Helm values write-back target:
+
+```yaml
+apiVersion: argocd-image-updater.argoproj.io/v1alpha1
+kind: ImageUpdater
+metadata:
+  name: my-image-updater
+  namespace: argocd
+spec:
+  writeBackConfig:
+    method: "git:secret:argocd-image-updater/git-creds"
+    gitConfig:
+      repository: "git@github.com:example/example.git"
+      branch: "main"
+      pullRequest:
+        github: {}
+  applicationRefs:
+    - namePattern: "my-app"
+      images:
+        - alias: "nginx"
+          imageName: "nginx:1.17.10"
+      writeBackConfig:
+        method: "git:secret:argocd-image-updater/git-creds"
+        gitConfig:
+          branch: "main"
+          writeBackTarget: "helmvalues:/helm/config/values.yaml"
+```
+
+#### GitLab
+
+!!!note "Not yet available"
+    GitLab merge request support is planned and is not
+    implemented yet. Configuring `pullRequest.gitlab` will result in a
+    reconciliation error until the feature is released.
+
+### <a name="method-git-commit-user"></a>Specifying the user and email address for commits
+
+Each Git commit is associated with an author's name and email address. If not
+configured, commits performed by Argo CD Image Updater will use
+`argocd-image-updater <noreply@argoproj.io>`
+as the author. You can override the author using the
+`--git-commit-user` and `--git-commit-email` command line switches or set
+`git.user` and `git.email`
+in the `argocd-image-updater-config` ConfigMap.
+
+### <a name="method-git-commit-message"></a>Changing the Git commit message
+
+You can change the default commit message used by Argo CD Image Updater to some
+message that best suites your processes and regulations. For this, a simple
+template can be created (evaluating using the `text/template` Golang package)
+and made available through setting the key `git.commit-message-template` in the
+`argocd-image-updater-config` ConfigMap to the template's contents, e.g.
+```yaml
+data:
+  git.commit-message-template: |
+    build: automatic update of {{ .AppName }}
+
+    {{ range .AppChanges -}}
+    updates image {{ .Image }} tag '{{ .OldTag }}' to '{{ .NewTag }}'
+    {{ end -}}
+```
+
+If we want a more detailed message, we can add custom labels during the build process, and use them for adding custom details to the commit messages. The example below uses OCI image labels to show the parent commit in GitHub.
+- `org.opencontainers.image.source` label showing the Git repo URL.
+- `org.opencontainers.image.revision` label showing Git commit SHA
+```yaml
+data:
+  git.commit-message-template: |
+    build: Automatic update of {{ .AppName }}
+
+    {{ range .AppChanges -}}
+    updates image {{ .Image }} tag '{{ .OldTag }}' to '{{ .NewTag }}'
+    {{- if index .Labels "org.opencontainers.image.revision" }}
+    {{- $source := index .Labels "org.opencontainers.image.source" }}
+    {{- $revision := index .Labels "org.opencontainers.image.revision" }}
+    Upstream Commit: {{ $source }}/commit/{{ $revision }}
+    {{ end }}
+    {{ end -}}
+```
+**Note:** This template assumes `org.opencontainers.image.source` contains a clean Git repository URL (e.g., `https://github.com/org/repo`) without trailing slashes or `.git` suffixes. Most container build tools automatically generate labels in this format. It also assumes that `org.opencontainers.image.revision` is provided at build time.
+
+To update the `Upstream Commit` message for different Git providers, following examples can be used.
+1. **GitLab**:    `Upstream Commit: {{ $source }}/-/commit/{{ $revision }}`.
+2. **BitBucket**:  `Upstream Commit: {{ $source }}/commits/{{ $revision }}`
+
+
+Two top-level variables are provided to the template:
+
+* `.AppName` is the name of the application that is being updated
+* `.AppChanges` is a list of changes that were performed by the update. Each
+  entry in this list is a struct providing the following information for
+  each change:
+    * `.Image` holds the full name of the image that was updated
+    * `.OldTag` holds the tag name or SHA digest previous to the update
+    * `.NewTag` holds the tag name or SHA digest that was updated to
+    * `.Labels` is a map of the labels contained in the created Docker/OCI image, and in case no labels are being assigned to created image, an empty map is created
+
+In order to test a template before configuring it for use in Image Updater,
+you can store the template you want to use in a temporary file, and then use
+the `argocd-image-updater template /path/to/file` command to render the
+template using pre-defined data and see its outcome on the terminal.
+
+## <a name="method-git-commit-signing"></a>Enabling commit signature signing using an SSH or GPG key
+
+### 1. SCM branch protection rules require signed commits
+Commit signing for SCM branch protection rules require the repository be accessed using HTTPS or SSH with a user account.
+Repositories accessed using a GitHub App can not be verified when using the git command line at this time.
+
+Each Git commit associated with an author's name and email address can be signed via a private SSH key or GPG key.
+
+Commit signing requires a bot account with a GPG or SSH key and the username and email address configured to match the bot account.
+
+Your preferred signing key must be associated with your bot account. See SCM provider documentation for further details:
+* [GitHub](https://docs.github.com/en/authentication/managing-commit-signature-verification/about-commit-signature-verification)
+* [GitLab](https://docs.gitlab.com/ee/user/project/repository/signed_commits/)
+* [Bitbucket](https://confluence.atlassian.com/bitbucketserver/controlling-access-to-code-776639770.html)
+
+### 2. Signing commits for future use with ArgoCD Source Verification Policies
+Commits can also be signed for use with source verification.
+In this case signing keys do not need to be associated with an SCM user account.
+
+**SSH:**
+
+The private key must be mounted and accessible on the `argocd-image-updater` pod.
+
+Set `git.commit-signing-key` `argocd-image-updater-config` ConfigMap to the path of your private key:
+
+```yaml
+data:
+  git.commit-sign-off: "true"
+  git.commit-signing-key: /app/ssh-keys/id_rsa
+  git.commit-signing-method: "ssh"
+```
+
+Create a new SSH secret or use your existing SSH secret:
+```bash
+kubectl -n argocd-image-updater create secret generic ssh-git-creds \
+  --from-file=sshPrivateKey=~/.ssh/id_rsa
+```
+
+**GPG:**
+
+The GPG private key must be installed and available in the `argocd-image-updater` pod.
+The `git.commit-signing-method` defaults to `openpgp`.
+Set `git.commit-signing-key` in the `argocd-image-updater-config` ConfigMap to the GPG key ID you want to use:
+
+```yaml
+data:
+  git.commit-sign-off: "true"
+  git.commit-signing-key: 3AA5C34371567BD2
+```
+
+#### Commit Sign Off can be enabled by setting `git.commit-sign-off: "true"`

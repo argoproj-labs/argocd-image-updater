@@ -591,11 +591,31 @@ update strategies and set options for images.
 
 #### GitConfig fields
 
-| Field             | Type   | Required | Description                                                  |
-|-------------------|--------|----------|--------------------------------------------------------------|
-| `repository`      | string | No       | Git repository URL (defaults to Application's repoURL)       |
-| `branch`          | string | No       | Git branch for commits                                       |
-| `writeBackTarget` | string | No       | Target file path and type (e.g., `helmvalues:./values.yaml`) |
+| Field             | Type        | Required | Description                                                                                              |
+|-------------------|-------------|----------|----------------------------------------------------------------------------------------------------------|
+| `repository`      | string      | No       | Git repository URL (defaults to Application's repoURL)                                                   |
+| `branch`          | string      | No       | Git branch for commits                                                                                   |
+| `writeBackTarget` | string      | No       | Target file path and type (e.g., `helmvalues:./values.yaml`)                                             |
+| `pullRequest`     | PullRequest | No       | Holds provider-specific configuration for creating pull requests when writing back image updates to Git. |
+
+#### PullRequest fields
+
+| Field    | Type              | Required | Description                                        |
+|----------|-------------------|----------|----------------------------------------------------|
+| `github` | PullRequestGitHub | No       | GitHub configures PR creation via the GitHub API.  |
+| `gitlab` | PullRequestGitLab | No       | GitLab configures MR creation via the GitLab API.  |
+
+#### PullRequestGitHub fields
+
+| Field | Type | Required | Description                                                                                                                                           |
+|-------|------|----------|-------------------------------------------------------------------------------------------------------------------------------------------------------|
+| —     | —    | —        | No configurable fields. All required data (repository URL, branch, credentials) is taken from the enclosing `gitConfig` and `writeBackConfig.method`. |
+
+#### PullRequestGitLab fields
+
+| Field | Type | Required | Description                                                                  |
+|-------|------|----------|------------------------------------------------------------------------------|
+| —     | —    | —        | No configurable fields. GitLab merge request support is not yet implemented. |
 
 #### ManifestTarget fields
 
