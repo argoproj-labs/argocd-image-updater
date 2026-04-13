@@ -605,6 +605,8 @@ update strategies and set options for images.
 | `github` | PullRequestGitHub | No       | GitHub configures PR creation via the GitHub API.  |
 | `gitlab` | PullRequestGitLab | No       | GitLab configures MR creation via the GitLab API.  |
 
+Exactly one provider must be configured in `pullRequest`.
+
 #### PullRequestGitHub fields
 
 | Field | Type | Required | Description                                                                                                                                           |

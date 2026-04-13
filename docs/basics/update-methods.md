@@ -461,7 +461,7 @@ spec:
   writeBackConfig:
     method: "git:secret:argocd-image-updater/git-creds"
     gitConfig:
-      repository: "git@github.com:example/example.git"
+      repository: "https://github.com/example/example.git"
       branch: "main"        # base branch; colon format not supported here
       pullRequest:
         github: {}
@@ -477,9 +477,9 @@ metadata:
   namespace: argocd
 spec:
   writeBackConfig:
-    method: "git:secret:argocd-image-updater/git-creds"
+    method: "git:secret:argocd/git-creds"
     gitConfig:
-      repository: "git@github.com:example/example.git"
+      repository: "https://github.com/example/example.git"
       branch: "main"
       pullRequest:
         github: {}
@@ -489,7 +489,7 @@ spec:
         - alias: "nginx"
           imageName: "nginx:1.17.10"
       writeBackConfig:
-        method: "git:secret:argocd-image-updater/git-creds"
+        method: "git:secret:argocd/git-creds"
         gitConfig:
           branch: "main"
           writeBackTarget: "helmvalues:/helm/config/values.yaml"
