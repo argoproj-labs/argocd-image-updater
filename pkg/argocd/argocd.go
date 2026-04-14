@@ -839,7 +839,11 @@ func SetHelmImage(ctx context.Context, app *argocdapi.Application, newImage *ima
 		if applicationImage.HelmSourceIndex >= len(sources) {
 			return fmt.Errorf("sourceIndex %d is out of range for application %s (has %d sources)", applicationImage.HelmSourceIndex, app.Name, len(sources))
 		}
-		appSource = &sources[applicationImage.HelmSourceIndex]
+		s := &sources[applicationImage.HelmSourceIndex]
+		if !s.IsHelm() {
+			return fmt.Errorf("source at index %d in application %s is not a Helm source", applicationImage.HelmSourceIndex, app.Name)
+		}
+		appSource = s
 	} else if app.Spec.HasMultipleSources() && applicationImage.HelmChartName != "" {
 		for i := range app.Spec.Sources {
 			s := &app.Spec.Sources[i]

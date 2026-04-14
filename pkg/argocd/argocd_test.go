@@ -1564,6 +1564,45 @@ func Test_SetHelmImage(t *testing.T) {
 		assert.Contains(t, err.Error(), "out of range")
 	})
 
+	t.Run("Test set Helm image with SourceIndex pointing to non-Helm source returns error", func(t *testing.T) {
+		app := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "test-app",
+				Namespace: "testns",
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Sources: v1alpha1.ApplicationSources{
+					{
+						RepoURL: "https://git.example.com",
+						Path:    "k8s/",
+					},
+					{
+						RepoURL: "https://charts.example.com",
+						Chart:   "my-app",
+						Helm:    &v1alpha1.ApplicationSourceHelm{},
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceTypes: []v1alpha1.ApplicationSourceType{
+					v1alpha1.ApplicationSourceTypeDirectory,
+					v1alpha1.ApplicationSourceTypeHelm,
+				},
+			},
+		}
+
+		img := image.NewFromIdentifier("foobar=jannfis/foobar:1.0.1")
+		wbc := &WriteBackConfig{Target: "helmvalues:."}
+		appImage := &Image{
+			HelmSourceIndex: 0, // points to the Git source, not Helm
+			HelmImageName:   "image.name",
+			HelmImageTag:    "image.tag",
+		}
+		err := SetHelmImage(context.Background(), app, img, wbc, appImage)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "not a Helm source")
+	})
+
 	t.Run("Test SourceIndex takes precedence over ChartName in multi-source app", func(t *testing.T) {
 		app := &v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
