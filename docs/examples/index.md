@@ -151,6 +151,46 @@ status:
       message: "No errors during last reconciliation."
 ```
 
+## ImageUpdater with GitHub Pull Request write-back
+
+Opens a pull request for each image update instead of pushing directly to the
+tracked branch. Useful when the base branch is protected.
+
+```yaml
+apiVersion: argocd-image-updater.argoproj.io/v1alpha1
+kind: ImageUpdater
+metadata:
+  name: my-pr-image-updater
+  namespace: argocd
+spec:
+  writeBackConfig:
+    # HTTPS PAT or GitHub App credentials are required; SSH is not supported for PR mode.
+    method: "git:secret:argocd/git-creds"
+    gitConfig:
+      repository: "https://github.com/myorg/myrepo.git"
+      # Specify only the base branch. The colon "base:target" format is not
+      # supported in PR mode and will cause a validation error.
+      branch: "main"
+      pullRequest:
+        github: {}
+  applicationRefs:
+    - namePattern: "my-app"
+      images:
+        - alias: "api"
+          imageName: "registry.com/myorg/api:1.x"
+          commonUpdateSettings:
+            updateStrategy: "semver"
+      writeBackConfig:
+        method: "git:secret:argocd/git-creds"
+        gitConfig:
+          writeBackTarget: "helmvalues:/helm/values.yaml"
+```
+
+The controller automatically pushes the update to a branch named
+`image-updater-<namespace>-<appName>-<sha256>` and opens a pull request from
+that branch into `main`. If an open PR for the same pair already exists it is
+left untouched.
+
 ## Using `semver` update strategy with version constraints
 
 ```yaml
