@@ -165,7 +165,7 @@ metadata:
 spec:
   writeBackConfig:
     # HTTPS PAT or GitHub App credentials are required; SSH is not supported for PR mode.
-    method: "git:secret:argocd-image-updater/git-creds"
+    method: "git:secret:argocd/git-creds"
     gitConfig:
       repository: "https://github.com/myorg/myrepo.git"
       # Specify only the base branch. The colon "base:target" format is not
@@ -181,7 +181,7 @@ spec:
           commonUpdateSettings:
             updateStrategy: "semver"
       writeBackConfig:
-        method: "git:secret:argocd-image-updater/git-creds"
+        method: "git:secret:argocd/git-creds"
         gitConfig:
           writeBackTarget: "helmvalues:/helm/values.yaml"
 ```
