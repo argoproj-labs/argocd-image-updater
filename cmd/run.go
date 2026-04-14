@@ -138,6 +138,7 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 			if !enableHTTP2 {
 				tlsOpts = append(tlsOpts, disableHTTP2)
 			}
+			webhookCfg.EnableHTTP2 = enableHTTP2
 
 			// Metrics endpoint is enabled in 'config/default/kustomization.yaml'. The Metrics options configure the server.
 			// More info:
