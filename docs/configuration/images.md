@@ -415,6 +415,51 @@ images:
         tag: "images[0].tag"
 ```
 
+## Multi-source Helm applications
+
+Argo CD supports [multiple sources](https://argo-cd.readthedocs.io/en/stable/user-guide/multiple_sources/)
+in a single Application. When an Application has more than one Helm chart source,
+you need to tell Image Updater which source to update. Use the `manifestTargets.helm.chartName`
+field to specify the chart name of the target source.
+
+The `chartName` value must match the `spec.sources[].chart` field of the Argo CD
+Application source you want to update.
+
+For example, if your Application has two Helm sources — a plain-manifest source
+and a Helm chart named `my-app` — and you want to update the image in `my-app`:
+
+```yaml
+images:
+  - alias: "myimage"
+    imageName: "myorg/myimage:1.0.0"
+    manifestTargets:
+      helm:
+        chartName: "my-app"
+        name: "image.repository"
+        tag: "image.tag"
+```
+
+This also works with `spec` instead of `name`/`tag`:
+
+```yaml
+images:
+  - alias: "myimage"
+    imageName: "myorg/myimage:1.0.0"
+    manifestTargets:
+      helm:
+        chartName: "my-app"
+        spec: "image"
+```
+
+If `chartName` is not set, Image Updater falls back to the existing behavior: it
+selects the first Helm source it finds in the Application. For single-source
+Applications, `chartName` is ignored.
+
+!!!note
+    `chartName` only applies to Helm chart repository sources where the Argo CD
+    Application's `spec.sources[].chart` field is set. It cannot be used to
+    select a Git repository source by path.
+
 ## Examples
 
 ### Following an image's patch branch
@@ -606,11 +651,12 @@ update strategies and set options for images.
 
 #### HelmTarget fields
 
-| Field  | Type   | Required | Description                                                                                                                        |
-|--------|--------|----------|------------------------------------------------------------------------------------------------------------------------------------|
-| `name` | string | No       | Dot-separated path to Helm key for image name                                                                                      |
-| `tag`  | string | No       | Dot-separated path to Helm key for image tag                                                                                       |
-| `spec` | string | No       | Dot-separated path to Helm key for full image specification. If this is set, other Helm parameter-related options will be ignored. |
+| Field       | Type   | Required | Description                                                                                                                        |
+|-------------|--------|----------|------------------------------------------------------------------------------------------------------------------------------------|
+| `chartName` | string | No       | Chart name of the Helm source to update in a multi-source Argo CD Application. Must match `spec.sources[].chart`. Ignored for single-source Applications. |
+| `name`      | string | No       | Dot-separated path to Helm key for image name                                                                                      |
+| `tag`       | string | No       | Dot-separated path to Helm key for image tag                                                                                       |
+| `spec`      | string | No       | Dot-separated path to Helm key for full image specification. If this is set, other Helm parameter-related options will be ignored. |
 
 #### KustomizeTarget fields
 
