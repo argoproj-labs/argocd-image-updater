@@ -184,7 +184,7 @@ func Test_commitChangesPR(t *testing.T) {
 		wbc := &WriteBackConfig{
 			GitRepo:    "https://github.com/org/repo.git",
 			GitBranch:  "main",
-			PRProvider: PRProviderGitLab, // TODO not yet implemented
+			PRProvider: PRProvider(99), // truly unsupported
 			GitClient:  &mockGitClient{},
 			GetCreds: func(_ *argocdapi.Application) (git.Creds, error) {
 				return &mockGitAndSCMCreds{token: "token"}, nil
@@ -312,5 +312,76 @@ func Test_commitChangesPR(t *testing.T) {
 		err := commitChangesPR(ctx, makeTestAppImages(wbc), nil, noopWriter)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "could not create PR")
+	})
+
+	// --- GitLab API phase ---
+
+	t.Run("GitLab: MR created successfully", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			assert.Equal(t, http.MethodPost, r.Method)
+			w.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"iid":     1,
+				"web_url": "http://example.com/-/merge_requests/1",
+			})
+		}))
+		defer server.Close()
+
+		wbc := &WriteBackConfig{
+			GitRepo:    server.URL + "/group/repo.git",
+			GitBranch:  "main",
+			PRProvider: PRProviderGitLab,
+			GitClient:  &mockGitClient{},
+			GetCreds: func(_ *argocdapi.Application) (git.Creds, error) {
+				return &mockGitAndSCMCreds{token: "gitlab-token"}, nil
+			},
+		}
+		err := commitChangesPR(ctx, makeTestAppImages(wbc), nil, noopWriter)
+		require.NoError(t, err)
+	})
+
+	t.Run("GitLab: MR already exists — treated as no-op, no error", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusConflict)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"message": []string{"Another open merge request already exists for this source branch: !1"},
+			})
+		}))
+		defer server.Close()
+
+		wbc := &WriteBackConfig{
+			GitRepo:    server.URL + "/group/repo.git",
+			GitBranch:  "main",
+			PRProvider: PRProviderGitLab,
+			GitClient:  &mockGitClient{},
+			GetCreds: func(_ *argocdapi.Application) (git.Creds, error) {
+				return &mockGitAndSCMCreds{token: "gitlab-token"}, nil
+			},
+		}
+		err := commitChangesPR(ctx, makeTestAppImages(wbc), nil, noopWriter)
+		require.NoError(t, err)
+	})
+
+	t.Run("GitLab: create fails with 422", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusUnprocessableEntity)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"message": "some validation error",
+			})
+		}))
+		defer server.Close()
+
+		wbc := &WriteBackConfig{
+			GitRepo:    server.URL + "/group/repo.git",
+			GitBranch:  "main",
+			PRProvider: PRProviderGitLab,
+			GitClient:  &mockGitClient{},
+			GetCreds: func(_ *argocdapi.Application) (git.Creds, error) {
+				return &mockGitAndSCMCreds{token: "gitlab-token"}, nil
+			},
+		}
+		err := commitChangesPR(ctx, makeTestAppImages(wbc), nil, noopWriter)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "could not create MR")
 	})
 }

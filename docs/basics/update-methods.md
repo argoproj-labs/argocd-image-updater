@@ -497,10 +497,19 @@ spec:
 
 #### GitLab
 
-!!!note "Not yet available"
-    GitLab merge request support is planned and is not
-    implemented yet. Configuring `pullRequest.gitlab` will result in a
-    reconciliation error until the feature is released.
+To create a merge request on GitLab (including self-managed instances),
+add `pullRequest.gitlab` to your `gitConfig`:
+
+```yaml
+writeBackConfig:
+  method: "git:secret:argocd/gitlab-creds"
+  gitConfig:
+    repository: "https://gitlab.com/org/repo.git"
+    branch: "main"
+    writeBackTarget: "helmvalues:/helm/config/values.yaml"
+    pullRequest:
+      gitlab: {}
+```
 
 ### <a name="method-git-commit-user"></a>Specifying the user and email address for commits
 
