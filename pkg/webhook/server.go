@@ -44,6 +44,8 @@ type TLSConfig struct {
 	CertFile string
 	// KeyFile is the path to the TLS private key file
 	KeyFile string
+	// EnableHTTP2 allows the TLS server to negotiate HTTP/2
+	EnableHTTP2 bool
 	// MinVersion is the minimum TLS version (e.g. "1.2", "1.3")
 	MinVersion string
 	// MaxVersion is the maximum TLS version (e.g. "1.2", "1.3")
@@ -210,6 +212,10 @@ func (t *TLSConfig) buildTLSConfig() (*tls.Config, error) {
 	// Validate TLS version range and cipher/version compatibility
 	if err := ValidateTLSConfig(minVer, maxVer, ciphers); err != nil {
 		return nil, err
+	}
+
+	if !t.EnableHTTP2 {
+		tlsCfg.NextProtos = []string{"http/1.1"}
 	}
 
 	return tlsCfg, nil
