@@ -355,7 +355,6 @@ func TestCustomHTTPClient(t *testing.T) {
 	// GetRepoHTTPClient with root ca — use a freshly generated server cert.
 	serverCert := generateTestTLSCert(t)
 	temppath := t.TempDir()
-	defer os.RemoveAll(temppath)
 	err := os.WriteFile(filepath.Join(temppath, "127.0.0.1"), serverCert.CertPEM, 0600)
 	assert.NoError(t, err)
 	t.Setenv(common.EnvVarTLSDataPath, temppath)

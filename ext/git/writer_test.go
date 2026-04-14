@@ -358,8 +358,7 @@ func TestSymRefToBranch_NoRemote(t *testing.T) {
 	ctx := context.Background()
 
 	// A repo with no remote configured must return an error.
-	dir, client := newWriterTestRepo(t)
-	_ = dir
+	_, client := newWriterTestRepo(t)
 
 	_, err := client.SymRefToBranch(ctx, "HEAD")
 	assert.Error(t, err)

@@ -22,6 +22,19 @@ import (
 	"golang.org/x/oauth2/google"
 )
 
+// TestMain sets a minimal git author identity for the whole package so that
+// git commit calls succeed even on CI runners that have no global git config.
+// Git environment variables take priority over every config file and are
+// inherited by all subprocesses, so this covers both the shell-based helpers
+// (runCmd / runCmdOut) and the go-git operations.
+func TestMain(m *testing.M) {
+	os.Setenv("GIT_AUTHOR_NAME", "Test User")
+	os.Setenv("GIT_AUTHOR_EMAIL", "test@example.com")
+	os.Setenv("GIT_COMMITTER_NAME", "Test User")
+	os.Setenv("GIT_COMMITTER_EMAIL", "test@example.com")
+	os.Exit(m.Run())
+}
+
 func runCmd(workingDir string, name string, args ...string) error {
 	cmd := exec.Command(name, args...)
 	cmd.Dir = workingDir
