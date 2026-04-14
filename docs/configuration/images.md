@@ -419,10 +419,13 @@ images:
 
 Argo CD supports [multiple sources](https://argo-cd.readthedocs.io/en/stable/user-guide/multiple_sources/)
 in a single Application. When an Application has more than one Helm chart source,
-you need to tell Image Updater which source to update. Use the `manifestTargets.helm.chartName`
-field to specify the chart name of the target source.
+you need to tell Image Updater which source to update. There are two ways to do
+this: `chartName` and `sourceIndex`.
 
-The `chartName` value must match the `spec.sources[].chart` field of the Argo CD
+### Using `chartName`
+
+Use `manifestTargets.helm.chartName` to identify the target source by its Helm
+chart name. The value must match the `spec.sources[].chart` field of the Argo CD
 Application source you want to update.
 
 For example, if your Application has two Helm sources — a plain-manifest source
@@ -451,14 +454,45 @@ images:
         spec: "image"
 ```
 
-If `chartName` is not set, Image Updater falls back to the existing behavior: it
-selects the first Helm source it finds in the Application. For single-source
-Applications, `chartName` is ignored.
-
 !!!note
     `chartName` only applies to Helm chart repository sources where the Argo CD
     Application's `spec.sources[].chart` field is set. It cannot be used to
     select a Git repository source by path.
+
+### Using `sourceIndex`
+
+When multiple sources in the same Application reference the same Helm chart,
+`chartName` is ambiguous — it will always match the first occurrence. Use
+`manifestTargets.helm.sourceIndex` instead to target a source by its zero-based
+position in `spec.sources`.
+
+For example, if your Application has two sources that both use the `my-app` chart
+and you want to update the second one:
+
+```yaml
+images:
+  - alias: "myimage"
+    imageName: "myorg/myimage:1.0.0"
+    manifestTargets:
+      helm:
+        sourceIndex: 1
+        name: "image.repository"
+        tag: "image.tag"
+```
+
+`sourceIndex` takes precedence over `chartName` when both are set. For
+single-source Applications, `sourceIndex` is ignored and the existing source
+selection logic applies.
+
+!!!note
+    `sourceIndex` is zero-based, so the first source in `spec.sources` is `0`,
+    the second is `1`, and so on.
+
+### Fallback behavior
+
+If neither `chartName` nor `sourceIndex` is set, Image Updater selects the first
+Helm source it finds in the Application. For single-source Applications, both
+fields are ignored.
 
 ## Examples
 
@@ -651,12 +685,13 @@ update strategies and set options for images.
 
 #### HelmTarget fields
 
-| Field       | Type   | Required | Description                                                                                                                        |
-|-------------|--------|----------|------------------------------------------------------------------------------------------------------------------------------------|
-| `chartName` | string | No       | Chart name of the Helm source to update in a multi-source Argo CD Application. Must match `spec.sources[].chart`. Ignored for single-source Applications. |
-| `name`      | string | No       | Dot-separated path to Helm key for image name                                                                                      |
-| `tag`       | string | No       | Dot-separated path to Helm key for image tag                                                                                       |
-| `spec`      | string | No       | Dot-separated path to Helm key for full image specification. If this is set, other Helm parameter-related options will be ignored. |
+| Field         | Type    | Required | Description                                                                                                                                                                            |
+|---------------|---------|----------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `sourceIndex` | integer | No       | Zero-based index into `spec.sources` of the target Helm source in a multi-source Application. Takes precedence over `chartName`. Ignored for single-source Applications.               |
+| `chartName`   | string  | No       | Chart name of the Helm source to update in a multi-source Application. Must match `spec.sources[].chart`. Ignored if `sourceIndex` is set or for single-source Applications.           |
+| `name`        | string  | No       | Dot-separated path to Helm key for image name                                                                                                                                          |
+| `tag`         | string  | No       | Dot-separated path to Helm key for image tag                                                                                                                                           |
+| `spec`        | string  | No       | Dot-separated path to Helm key for full image specification. If this is set, other Helm parameter-related options will be ignored.                                                     |
 
 #### KustomizeTarget fields
 
