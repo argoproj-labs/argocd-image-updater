@@ -469,18 +469,20 @@ func newTestGitHubAppCreds(t *testing.T, privateKeyPEM []byte, serverURL string,
 // GitHubAppCreds constructor / getters
 // ---------------------------------------------------------------------------
 
+// Compile-time checks: GitHubAppCreds must satisfy the SCM provider interfaces.
+var _ SCMTokenProvider = GitHubAppCreds{}
+var _ SCMAPIBaseURLProvider = GitHubAppCreds{}
+
 func TestNewGitHubAppCreds(t *testing.T) {
 	key := generateRSAPrivateKeyPEM(t)
+	// NewGitHubAppCreds already returns GenericHTTPSCreds; assert the value is
+	// non-nil and that the underlying concrete type also satisfies the two SCM
+	// provider interfaces (verified at compile time above).
 	creds := NewGitHubAppCreds(42, 7, string(key), "https://github.example.com", "https://github.example.com/org/repo",
 		"certdata", "keydata", false, "", &NoopCredsStore{})
 	assert.NotNil(t, creds)
-
-	_, isHTTPS := creds.(GenericHTTPSCreds)
-	assert.True(t, isHTTPS)
-	_, isSCMToken := creds.(SCMTokenProvider)
-	assert.True(t, isSCMToken)
-	_, isSCMBase := creds.(SCMAPIBaseURLProvider)
-	assert.True(t, isSCMBase)
+	assert.Implements(t, (*SCMTokenProvider)(nil), creds)
+	assert.Implements(t, (*SCMAPIBaseURLProvider)(nil), creds)
 }
 
 func TestGitHubAppCreds_HasClientCert(t *testing.T) {
