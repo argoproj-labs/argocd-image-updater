@@ -498,6 +498,7 @@ func TestBuildTLSConfig(t *testing.T) {
 		assert.Equal(t, uint16(0), tlsCfg.MinVersion)
 		assert.Equal(t, uint16(0), tlsCfg.MaxVersion)
 		assert.Nil(t, tlsCfg.CipherSuites)
+		assert.Equal(t, []string{"http/1.1"}, tlsCfg.NextProtos)
 	})
 
 	t.Run("with min and max version", func(t *testing.T) {
@@ -566,6 +567,15 @@ func TestBuildTLSConfig(t *testing.T) {
 		tlsCfg, err := cfg.buildTLSConfig()
 		require.NoError(t, err)
 		assert.Len(t, tlsCfg.CipherSuites, 2)
+	})
+
+	t.Run("http2 can be enabled explicitly", func(t *testing.T) {
+		cfg := &TLSConfig{
+			EnableHTTP2: true,
+		}
+		tlsCfg, err := cfg.buildTLSConfig()
+		require.NoError(t, err)
+		assert.Empty(t, tlsCfg.NextProtos)
 	})
 }
 
