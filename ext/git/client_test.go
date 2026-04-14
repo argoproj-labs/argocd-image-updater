@@ -2,15 +2,24 @@ package git
 
 import (
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
+	"encoding/pem"
 	"fmt"
 	"os"
 	"os/exec"
 	"path"
 	"path/filepath"
+	"sync"
 	"testing"
 
+	"github.com/go-git/go-git/v5/plumbing"
+	githttp "github.com/go-git/go-git/v5/plumbing/transport/http"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/crypto/ssh"
+	"golang.org/x/oauth2"
+	"golang.org/x/oauth2/google"
 )
 
 func runCmd(workingDir string, name string, args ...string) error {
@@ -270,4 +279,286 @@ func TestNewClient_invalidSSHURL(t *testing.T) {
 	client, err := NewClient("ssh://bitbucket.org:org/repo", NopCreds{}, false, false, "")
 	assert.Nil(t, client)
 	assert.ErrorIs(t, err, ErrInvalidRepoURL)
+}
+
+// ---------------------------------------------------------------------------
+// Helpers shared by newAuth and getRefs tests
+// ---------------------------------------------------------------------------
+
+// generateSSHPrivateKeyPEM creates an ed25519 private key encoded in the
+// OpenSSH PEM format that ssh.ParsePrivateKey accepts.
+func generateSSHPrivateKeyPEM(t *testing.T) []byte {
+	t.Helper()
+	_, priv, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	block, err := ssh.MarshalPrivateKey(priv, "")
+	require.NoError(t, err)
+	return pem.EncodeToMemory(block)
+}
+
+// memoryRefCache is a simple in-memory implementation of gitRefCache used in
+// tests. GetOrLockGitReferences returns a cache hit when refs have already been
+// stored, or returns the caller's own lockId (making the caller the lock owner)
+// when the cache is empty.
+type memoryRefCache struct {
+	mu          sync.Mutex
+	refs        map[string][]*plumbing.Reference
+	setCount    int
+	unlockCount int
+}
+
+func newMemoryRefCache() *memoryRefCache {
+	return &memoryRefCache{refs: make(map[string][]*plumbing.Reference)}
+}
+
+func (c *memoryRefCache) GetOrLockGitReferences(repo, myLockId string, out *[]*plumbing.Reference) (string, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if refs, ok := c.refs[repo]; ok {
+		*out = refs
+		return "", nil // cache hit — caller is not the lock owner
+	}
+	return myLockId, nil // cache miss — caller becomes the lock owner
+}
+
+func (c *memoryRefCache) SetGitReferences(repo string, refs []*plumbing.Reference) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.refs[repo] = refs
+	c.setCount++
+	return nil
+}
+
+func (c *memoryRefCache) UnlockGitReferences(_ string, _ string) error {
+	c.unlockCount++
+	return nil
+}
+
+// ---------------------------------------------------------------------------
+// newAuth tests
+// ---------------------------------------------------------------------------
+
+func TestNewAuth_NopCreds(t *testing.T) {
+	auth, err := newAuth(context.Background(), "https://github.com/org/repo", NopCreds{})
+	require.NoError(t, err)
+	assert.Nil(t, auth, "NopCreds must produce nil auth")
+}
+
+func TestNewAuth_HTTPSCreds(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("WithUsername", func(t *testing.T) {
+		creds := NewHTTPSCreds("alice", "secret", "", "", false, "", &NoopCredsStore{}, false)
+		auth, err := newAuth(ctx, "https://github.com/org/repo", creds)
+		require.NoError(t, err)
+		basic, ok := auth.(*githttp.BasicAuth)
+		require.True(t, ok, "expected *githttp.BasicAuth")
+		assert.Equal(t, "alice", basic.Username)
+		assert.Equal(t, "secret", basic.Password)
+	})
+
+	t.Run("EmptyUsername_defaultsToXAccessToken", func(t *testing.T) {
+		creds := NewHTTPSCreds("", "mytoken", "", "", false, "", &NoopCredsStore{}, false)
+		auth, err := newAuth(ctx, "https://github.com/org/repo", creds)
+		require.NoError(t, err)
+		basic, ok := auth.(*githttp.BasicAuth)
+		require.True(t, ok)
+		assert.Equal(t, "x-access-token", basic.Username)
+		assert.Equal(t, "mytoken", basic.Password)
+	})
+}
+
+func TestNewAuth_SSHCreds(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("ValidKey_insecure", func(t *testing.T) {
+		keyPEM := generateSSHPrivateKeyPEM(t)
+		creds := NewSSHCreds(string(keyPEM), "", true, &NoopCredsStore{}, "")
+		auth, err := newAuth(ctx, "git@github.com:org/repo.git", creds)
+		require.NoError(t, err)
+		pk, ok := auth.(*PublicKeysWithOptions)
+		require.True(t, ok, "expected *PublicKeysWithOptions")
+		assert.NotNil(t, pk.Signer)
+		// Insecure: host key callback must be the permissive one (non-nil).
+		assert.NotNil(t, pk.HostKeyCallback)
+	})
+
+	t.Run("ValidKey_SSHURLExtractsUser", func(t *testing.T) {
+		keyPEM := generateSSHPrivateKeyPEM(t)
+		creds := NewSSHCreds(string(keyPEM), "", true, &NoopCredsStore{}, "")
+		auth, err := newAuth(ctx, "ssh://bob@github.com/org/repo", creds)
+		require.NoError(t, err)
+		pk, ok := auth.(*PublicKeysWithOptions)
+		require.True(t, ok)
+		assert.Equal(t, "bob", pk.User)
+	})
+
+	t.Run("InvalidKey_returnsError", func(t *testing.T) {
+		creds := NewSSHCreds("not-a-valid-pem-key", "", true, &NoopCredsStore{}, "")
+		_, err := newAuth(ctx, "git@github.com:org/repo.git", creds)
+		assert.Error(t, err)
+	})
+}
+
+func TestNewAuth_GitHubAppCreds(t *testing.T) {
+	ctx := context.Background()
+
+	key := generateRSAPrivateKeyPEM(t)
+	server, _ := githubAppMockServer(t, "ghs_newauth_token")
+	creds := newTestGitHubAppCreds(t, key, server.URL, &NoopCredsStore{})
+
+	auth, err := newAuth(ctx, "https://github.com/org/repo", creds)
+	require.NoError(t, err)
+	basic, ok := auth.(*githttp.BasicAuth)
+	require.True(t, ok, "expected *githttp.BasicAuth")
+	assert.Equal(t, "x-access-token", basic.Username)
+	assert.Equal(t, "ghs_newauth_token", basic.Password)
+}
+
+func TestNewAuth_GoogleCloudCreds(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("ValidCreds", func(t *testing.T) {
+		gcpCreds := GoogleCloudCreds{
+			creds: &google.Credentials{
+				ProjectID:   "my-google-project",
+				TokenSource: oauth2.StaticTokenSource(&oauth2.Token{AccessToken: "gcp-test-token"}),
+				JSON:        []byte(gcpServiceAccountKeyJSON),
+			},
+			store: &NoopCredsStore{},
+		}
+		auth, err := newAuth(ctx, "https://source.developers.google.com/p/project/r/repo", gcpCreds)
+		require.NoError(t, err)
+		basic, ok := auth.(*githttp.BasicAuth)
+		require.True(t, ok, "expected *githttp.BasicAuth")
+		assert.Equal(t, "argocd-service-account@my-google-project.iam.gserviceaccount.com", basic.Username)
+		assert.NotEmpty(t, basic.Password)
+	})
+
+	t.Run("NilCreds_returnsError", func(t *testing.T) {
+		gcpCreds := GoogleCloudCreds{creds: nil, store: &NoopCredsStore{}}
+		_, err := newAuth(ctx, "https://source.developers.google.com/p/project/r/repo", gcpCreds)
+		assert.Error(t, err)
+	})
+}
+
+// ---------------------------------------------------------------------------
+// getRefs tests
+// ---------------------------------------------------------------------------
+
+func TestGetRefs_Basic(t *testing.T) {
+	ctx := context.Background()
+	repoURL, _ := setupLocalRemoteRepo(t)
+
+	c, err := NewClient(repoURL, NopCreds{}, true, false, "")
+	require.NoError(t, err)
+
+	refs, err := c.(*nativeGitClient).getRefs(ctx)
+	require.NoError(t, err)
+	require.NotEmpty(t, refs, "at least one ref (the initial branch) must be returned")
+
+	var branchNames []string
+	for _, r := range refs {
+		if r.Name().IsBranch() {
+			branchNames = append(branchNames, r.Name().Short())
+		}
+	}
+	assert.Contains(t, branchNames, "master")
+}
+
+func TestGetRefs_OnLsRemoteCallback(t *testing.T) {
+	ctx := context.Background()
+	repoURL, _ := setupLocalRemoteRepo(t)
+
+	called := false
+	doneCalled := false
+	handlers := EventHandlers{
+		OnLsRemote: func(repo string) func() {
+			assert.Equal(t, repoURL, repo)
+			called = true
+			return func() { doneCalled = true }
+		},
+	}
+
+	c, err := NewClient(repoURL, NopCreds{}, true, false, "", WithEventHandlers(handlers))
+	require.NoError(t, err)
+
+	_, err = c.(*nativeGitClient).getRefs(ctx)
+	require.NoError(t, err)
+	assert.True(t, called, "OnLsRemote must be invoked")
+	assert.True(t, doneCalled, "OnLsRemote done callback must be invoked")
+}
+
+func TestGetRefs_CacheHit(t *testing.T) {
+	ctx := context.Background()
+	repoURL, _ := setupLocalRemoteRepo(t)
+
+	// Pre-populate the cache with a sentinel reference so we can tell whether
+	// getRefs returned from cache or from the remote.
+	sentinel := plumbing.NewHashReference(
+		plumbing.NewBranchReferenceName("cached-sentinel"),
+		plumbing.NewHash("0000000000000000000000000000000000000000"),
+	)
+	cache := newMemoryRefCache()
+	cache.refs[repoURL] = []*plumbing.Reference{sentinel}
+
+	c, err := NewClient(repoURL, NopCreds{}, true, false, "", WithCache(cache, true))
+	require.NoError(t, err)
+
+	refs, err := c.(*nativeGitClient).getRefs(ctx)
+	require.NoError(t, err)
+	require.Len(t, refs, 1)
+	assert.Equal(t, "cached-sentinel", refs[0].Name().Short())
+
+	// Cache must not have been written again (it was a hit).
+	assert.Equal(t, 0, cache.setCount, "SetGitReferences must not be called on a cache hit")
+}
+
+func TestGetRefs_CacheMiss_StoresResult(t *testing.T) {
+	ctx := context.Background()
+	repoURL, _ := setupLocalRemoteRepo(t)
+
+	cache := newMemoryRefCache() // empty — triggers a cache miss
+
+	c, err := NewClient(repoURL, NopCreds{}, true, false, "", WithCache(cache, true))
+	require.NoError(t, err)
+
+	refs, err := c.(*nativeGitClient).getRefs(ctx)
+	require.NoError(t, err)
+	assert.NotEmpty(t, refs)
+
+	// Fetched refs must have been stored in the cache.
+	assert.Equal(t, 1, cache.setCount, "SetGitReferences must be called exactly once on a cache miss")
+	assert.NotEmpty(t, cache.refs[repoURL])
+}
+
+func TestGetRefs_WithoutCacheLoading(t *testing.T) {
+	ctx := context.Background()
+	repoURL, _ := setupLocalRemoteRepo(t)
+
+	// Cache is set but loadRefFromCache=false: getRefs must skip GetOrLockGitReferences
+	// but still store the result via SetGitReferences.
+	sentinel := plumbing.NewHashReference(
+		plumbing.NewBranchReferenceName("should-not-be-returned"),
+		plumbing.NewHash("0000000000000000000000000000000000000000"),
+	)
+	cache := newMemoryRefCache()
+	cache.refs[repoURL] = []*plumbing.Reference{sentinel}
+
+	c, err := NewClient(repoURL, NopCreds{}, true, false, "", WithCache(cache, false))
+	require.NoError(t, err)
+
+	refs, err := c.(*nativeGitClient).getRefs(ctx)
+	require.NoError(t, err)
+
+	// Must have fetched from remote (not returned the sentinel).
+	var names []string
+	for _, r := range refs {
+		names = append(names, r.Name().Short())
+	}
+	assert.NotContains(t, names, "should-not-be-returned",
+		"without loadRefFromCache, stale cache must be bypassed")
+
+	// Result must still be stored.
+	assert.Equal(t, 1, cache.setCount)
 }
