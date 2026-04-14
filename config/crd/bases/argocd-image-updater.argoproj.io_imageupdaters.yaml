@@ -422,14 +422,6 @@ spec:
                       This acts as the default if not overridden at a more specific level.
                     type: string
                 type: object
-              namespace:
-                description: |-
-                  Namespace indicates the target namespace of the applications.
-
-                  Deprecated: This field is deprecated and will be removed in a future release.
-                  The controller now uses the ImageUpdater CR's namespace (metadata.namespace)
-                  to determine which namespace to search for applications. This field is ignored.
-                type: string
               writeBackConfig:
                 description: |-
                   WriteBackConfig provides global default settings for how and where to write back image updates.

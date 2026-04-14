@@ -7,8 +7,8 @@ apiVersion: argocd-image-updater.argoproj.io/v1alpha1
 kind: ImageUpdater
 metadata:
   name: my-image-updater
-spec:
   namespace: argocd
+spec:
   commonUpdateSettings:
     updateStrategy: "semver"
     forceUpdate: false
@@ -26,8 +26,8 @@ apiVersion: argocd-image-updater.argoproj.io/v1alpha1
 kind: ImageUpdater
 metadata:
   name: my-image-updater
-spec:
   namespace: argocd
+spec:
   commonUpdateSettings:
     updateStrategy: "semver"
   applicationRefs:
@@ -52,8 +52,8 @@ apiVersion: argocd-image-updater.argoproj.io/v1alpha1
 kind: ImageUpdater
 metadata:
   name: my-image-updater
-spec:
   namespace: argocd
+spec:
   writeBackConfig:
     method: "git"
     gitConfig:
@@ -78,8 +78,8 @@ apiVersion: argocd-image-updater.argoproj.io/v1alpha1
 kind: ImageUpdater
 metadata:
   name: dev-image-updater
-spec:
   namespace: argocd
+spec:
   commonUpdateSettings:
     updateStrategy: "digest"
   writeBackConfig:
@@ -158,8 +158,8 @@ apiVersion: argocd-image-updater.argoproj.io/v1alpha1
 kind: ImageUpdater
 metadata:
   name: prod-image-updater
-spec:
   namespace: argocd
+spec:
   writeBackConfig:
     method: "argocd"
   applicationRefs:
