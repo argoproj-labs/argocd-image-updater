@@ -265,6 +265,70 @@ app:
 		assert.Contains(t, output, "        nested: value2")
 	})
 
+	t.Run("Updates null value", func(t *testing.T) {
+		input := `image:
+  tag: null
+`
+		expected := `image:
+  tag: v1.0.0
+`
+		valuesFile, err := ParseValuesFile([]byte(input))
+		require.NoError(t, err)
+
+		err = valuesFile.SetValue("image.tag", "v1.0.0")
+		require.NoError(t, err)
+
+		assert.Equal(t, expected, valuesFile.String())
+	})
+
+	t.Run("Updates tilde null value", func(t *testing.T) {
+		input := `image:
+  tag: ~
+`
+		valuesFile, err := ParseValuesFile([]byte(input))
+		require.NoError(t, err)
+
+		err = valuesFile.SetValue("image.tag", "v1.0.0")
+		require.NoError(t, err)
+
+		output := valuesFile.String()
+		assert.Contains(t, output, "v1.0.0")
+	})
+
+	t.Run("Fails on array index out of bounds", func(t *testing.T) {
+		input := `images:
+- name: app1
+  tag: v1.0.0
+`
+		valuesFile, err := ParseValuesFile([]byte(input))
+		require.NoError(t, err)
+
+		err = valuesFile.SetValue("images[5].tag", "v2.0.0")
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "out of range")
+	})
+
+	t.Run("CreateEmptyValuesFile and SetValue", func(t *testing.T) {
+		valuesFile := CreateEmptyValuesFile("auto generated")
+
+		err := valuesFile.SetValue("image.tag", "v1.0.0")
+		require.NoError(t, err)
+
+		output := valuesFile.String()
+		assert.Contains(t, output, "auto generated")
+		assert.Contains(t, output, "tag: v1.0.0")
+	})
+
+	t.Run("Bytes returns same content as String", func(t *testing.T) {
+		input := `image:
+  tag: v1.0.0
+`
+		valuesFile, err := ParseValuesFile([]byte(input))
+		require.NoError(t, err)
+
+		assert.Equal(t, []byte(valuesFile.String()), valuesFile.Bytes())
+	})
+
 	t.Run("Uses default 2-space indent when structure is flat", func(t *testing.T) {
 		input := `key1: value1
 key2: value2
@@ -336,6 +400,18 @@ app:
 		val, err := valuesFile.GetValue("defaults.tag")
 		require.NoError(t, err)
 		assert.Equal(t, "v1.0.0", val)
+	})
+
+	t.Run("Gets null value", func(t *testing.T) {
+		input := `image:
+  tag: null
+`
+		valuesFile, err := ParseValuesFile([]byte(input))
+		require.NoError(t, err)
+
+		val, err := valuesFile.GetValue("image.tag")
+		require.NoError(t, err)
+		assert.Equal(t, "null", val)
 	})
 
 	t.Run("Gets root level key", func(t *testing.T) {

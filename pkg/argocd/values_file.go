@@ -74,7 +74,11 @@ func (y *ValuesFile) SetValue(key string, value string) error {
 	}
 
 	// First, check if the full key exists as a literal key
-	if node := findKeyInMapping(rootMapping, key); node != nil {
+	if item := findItemInMapping(rootMapping, key); item != nil {
+		node := unwrapNode(item.Value)
+		if _, ok := node.(*ast.NullNode); ok {
+			return replaceNullNode(item, value)
+		}
 		return setNodeValue(node, value)
 	}
 
@@ -113,9 +117,17 @@ func (y *ValuesFile) GetValue(key string) (string, error) {
 
 // findKeyInMapping finds a key in a mapping node and returns its value node.
 func findKeyInMapping(mapping *ast.MappingNode, key string) ast.Node {
+	if item := findItemInMapping(mapping, key); item != nil {
+		return item.Value
+	}
+	return nil
+}
+
+// findItemInMapping finds a key in a mapping node and returns the MappingValueNode.
+func findItemInMapping(mapping *ast.MappingNode, key string) *ast.MappingValueNode {
 	for _, item := range mapping.Values {
 		if keyNode, ok := item.Key.(*ast.StringNode); ok && keyNode.Value == key {
-			return item.Value
+			return item
 		}
 	}
 	return nil
@@ -192,6 +204,8 @@ func getScalarValue(node ast.Node) (string, error) {
 		return n.GetToken().Value, nil
 	case *ast.BoolNode:
 		return n.GetToken().Value, nil
+	case *ast.NullNode:
+		return n.GetToken().Value, nil
 	default:
 		return "", fmt.Errorf("node is not a scalar value (type: %T)", node)
 	}
@@ -211,6 +225,25 @@ func unwrapNode(node ast.Node) ast.Node {
 	}
 }
 
+// replaceNullNode replaces a NullNode value in a MappingValueNode with a new StringNode.
+func replaceNullNode(item *ast.MappingValueNode, value string) error {
+	nullNode := item.Value.(*ast.NullNode)
+	tok := nullNode.GetToken()
+	tok.Type = token.StringType
+	tok.Value = value
+	tok.Origin = value
+
+	newNode := ast.String(tok)
+	comment := nullNode.GetComment()
+	if comment != nil {
+		if err := newNode.SetComment(comment); err != nil {
+			return fmt.Errorf("failed to preserve comment: %w", err)
+		}
+	}
+	item.Value = newNode
+	return nil
+}
+
 // setNestedValue sets a value at a nested path, creating nodes as needed.
 func setNestedValue(mapping *ast.MappingNode, keys []string, value string) error {
 	current := mapping
@@ -221,9 +254,11 @@ func setNestedValue(mapping *ast.MappingNode, keys []string, value string) error
 		keyPart, arrayIdx := parseArrayIndex(k)
 
 		var valueNode ast.Node
+		var parentItem *ast.MappingValueNode
 		for _, item := range current.Values {
 			if keyNode, ok := item.Key.(*ast.StringNode); ok && keyNode.Value == keyPart {
 				valueNode = item.Value
+				parentItem = item
 				break
 			}
 		}
@@ -263,6 +298,10 @@ func setNestedValue(mapping *ast.MappingNode, keys []string, value string) error
 		}
 
 		if i == len(keys)-1 {
+			// NullNodes need to be replaced rather than updated in place
+			if _, ok := valueNode.(*ast.NullNode); ok && parentItem != nil {
+				return replaceNullNode(parentItem, value)
+			}
 			return setNodeValue(valueNode, value)
 		}
 
