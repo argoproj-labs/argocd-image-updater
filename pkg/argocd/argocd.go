@@ -935,15 +935,22 @@ func GetImagesFromApplication(applicationImages *ApplicationImages) image.Contai
 	return images
 }
 
-// GetImagesAndAliasesFromApplication returns only the images that are live in the
-// cluster, with ImageAlias and ContainerImage set from the corresponding entry in
-// app.Status.Summary.Images.
+// GetImagesAndAliasesFromApplication returns only the images that are considered
+// "live", with ImageAlias and ContainerImage set from the corresponding entry
+// returned by GetImagesFromApplication.
+//
+// The live-image set is built by GetImagesFromApplication from two sources:
+//   - app.Status.Summary.Images — images actually running in the cluster.
+//   - Force-update images — configured images with ForceUpdate == true are
+//     injected with a nil tag so they are always treated as live even when no
+//     running container is detected.
 //
 // For each image in applicationImages.Images the function checks whether it is live
 // (i.e. present in GetImagesFromApplication). Images that are not live are silently
 // dropped from the result. For each live image:
 //   - ContainerImage is replaced with the live instance, which carries the actual
-//     running tag. This is a mutation of the original *Image element.
+//     running tag (or nil for force-update images). This is a mutation of the
+//     original *Image element.
 //   - ImageAlias is set from the configured alias (or ImageName as fallback).
 //
 // When two configured aliases reference the same live image, the second alias
