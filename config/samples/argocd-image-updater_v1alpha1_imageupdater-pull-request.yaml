@@ -8,44 +8,18 @@ metadata:
   namespace: argocd
 spec:
   writeBackConfig:
-    method: "git:secret:argocd-image-updater/git-creds"
-    gitConfig: # Group git-related settings. Should be ignored when writeBackMethod: "argocd"
+    method: "git:secret:argocd/git-creds"
+    gitConfig:
       pullRequest:
         github: {}
-      repository: "git@github.com:example/example.git"
+      repository: "https://github.com/example/example.git"
   applicationRefs:
     - namePattern: "app-001"
       images:
         - alias: "nginx"
           imageName: "nginx:1.17.10"
       writeBackConfig:
-        method: "git:secret:argocd-image-updater/git-creds"
+        method: "git:secret:argocd/git-creds"
         gitConfig:
-          branch: "main:image-updater{{range .Images}}-{{.Name}}-{{.NewTag}}{{end}}"
-          writeBackTarget: "helmvalues:/helm/config/test-values.yaml" # OR "kustomization:/config/overlays/bar" OR "helmvalues:/{{ .app.path.path }}/values.yaml" - for ApplicationSet.
----
-apiVersion: argocd-image-updater.argoproj.io/v1alpha1
-kind: ImageUpdater
-metadata:
-  labels:
-    app.kubernetes.io/name: argocd-image-updater
-    app.kubernetes.io/managed-by: kustomize
-  name: argocd-image-updater-gitlab
-  namespace: argocd
-spec:
-  writeBackConfig:
-    method: "git:secret:argocd-image-updater/git-creds"
-    gitConfig: # Group git-related settings. Should be ignored when writeBackMethod: "argocd"
-      pullRequest:
-        gitlab: {}
-      repository: "git@gitlab.com:example/example.git"
-  applicationRefs:
-    - namePattern: "app-001"
-      images:
-        - alias: "nginx"
-          imageName: "nginx:1.17.10"
-      writeBackConfig:
-        method: "git:secret:argocd-image-updater/git-creds"
-        gitConfig:
-          branch: "main:image-updater{{range .Images}}-{{.Name}}-{{.NewTag}}{{end}}"
-          writeBackTarget: "helmvalues:/helm/config/test-values.yaml" # OR "kustomization:/config/overlays/bar" OR "helmvalues:/{{ .app.path.path }}/values.yaml" - for ApplicationSet.
+          branch: "main"
+          writeBackTarget: "helmvalues:/helm/config/test-values.yaml"
