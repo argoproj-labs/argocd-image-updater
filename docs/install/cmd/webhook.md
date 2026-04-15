@@ -54,9 +54,9 @@ Secret for validating Docker Hub webhooks.
 
 Can also be set with the `DOCKER_WEBHOOK_SECRET` environment variable.
 
-**--enable-http2 *disabled***
+**--enable-http2**
 
-If set, HTTP/2 will be enabled for the standalone webhook server.
+Enable HTTP/2 for the standalone webhook server. Disabled by default.
 
 **--ghcr-webhook-secret *secret***
 
