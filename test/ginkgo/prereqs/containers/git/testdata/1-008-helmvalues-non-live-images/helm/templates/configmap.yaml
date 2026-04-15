@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: non-live-image-tags
+  namespace: {{ .Release.Namespace }}
+data:
+  # These values are sourced directly from values.yaml.
+  # After argocd-image-updater writes back only the live manager tag, these
+  # non-live image tags must remain at their original non-empty values.
+  # If issue #1584 regresses, these will be blanked to "".
+  session-tag: {{ .Values.session.image.tag | quote }}
+  reaper-tag: {{ .Values.reaper.image.tag | quote }}

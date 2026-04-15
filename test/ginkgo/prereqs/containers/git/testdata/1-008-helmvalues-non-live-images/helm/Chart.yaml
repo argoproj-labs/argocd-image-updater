@@ -1,0 +1,6 @@
+apiVersion: v2
+name: non-live-images-test
+description: Helm chart for testing that helmvalues write-back does not blank non-live image tags (issue #1584)
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
