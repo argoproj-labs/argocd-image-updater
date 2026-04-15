@@ -4,8 +4,8 @@ A tool to automatically update the container images of Kubernetes workloads
 that are managed by
 [Argo CD](https://github.com/argoproj/argo-cd).
 
-!!!warning "Breaking Change: spec.namespace Field Deprecated"
-    The `spec.namespace` field is now optional and deprecated. It will be removed in a future release. The controller now uses the ImageUpdater CR's `metadata.namespace` to determine which namespace to search for applications. This is a breaking change for configurations where `spec.namespace` differs from `metadata.namespace`. For details and migration examples, see [Namespace Field Deprecation](#namespace-field-deprecation) below.
+!!!warning "Breaking Change: spec.namespace Field Removed"
+    The `spec.namespace` field has been removed from the `ImageUpdater` API. Any CR that includes `spec.namespace` will fail validation. The controller uses the ImageUpdater CR's `metadata.namespace` to determine which namespace to search for applications. For details and migration examples, see [Namespace Field Removal](#namespace-field-removal) below.
 
 !!!warning "A note on the current status"
     There has been a major transition from an annotation-based configuration to a
@@ -121,30 +121,30 @@ discuss something, feel free to
 * join us in the `#argo-cd-image-updater` channel on the
   [CNCF slack](https://argoproj.github.io/community/join-slack/)
 
-## Namespace Field Deprecation
+## Namespace Field Removal
 
-The `spec.namespace` field in `ImageUpdater` resources is now **deprecated and optional**. The controller now uses the ImageUpdater CR's `metadata.namespace` field to determine which namespace to search for Argo CD Applications.
+The `spec.namespace` field has been **removed** from the `ImageUpdater` API. Any CR that includes `spec.namespace` will be **rejected by the API server** due to a validation failure. The controller uses the ImageUpdater CR's `metadata.namespace` field to determine which namespace to search for Argo CD Applications.
 
 ### Impact
 
-**Breaking Change**: This affects configurations where `spec.namespace` differs from `metadata.namespace`. In such cases, the ImageUpdater CR will no longer update Applications in the namespace specified by `spec.namespace`.
+**Validation failure**: CRs that still contain `spec.namespace` will be rejected — they will not be created or updated.
 
-**No Impact**: If your configuration already uses `metadata.namespace == spec.namespace`, your setup will continue to work without changes.
+**Behavior change**: If you previously relied on `spec.namespace` pointing to a different namespace than `metadata.namespace`, the controller will now only search for Applications in the CR's own `metadata.namespace`.
 
 ### Examples
 
-#### Broken Configuration (Will Stop Working)
+#### Invalid Configuration (Will Be Rejected)
 
-This configuration will **stop working** because the CR is in `argocd` namespace but tries to update Applications in `production` namespace:
+This configuration will be **rejected** at admission because `spec.namespace` no longer exists in the API:
 
 ```yaml
 apiVersion: argocd-image-updater.argoproj.io/v1alpha1
 kind: ImageUpdater
 metadata:
   name: my-updater
-  namespace: argocd  # CR is in argocd namespace
+  namespace: argocd
 spec:
-  namespace: production  # Trying to update apps in different namespace
+  namespace: production  # INVALID: this field has been removed
   applicationRefs:
     - namePattern: "my-app"
       images:
@@ -152,37 +152,17 @@ spec:
           imageName: "nginx:1.20"
 ```
 
-#### Correct Configuration (Option 1: Same Namespace)
+#### Correct Configuration
 
-Move the ImageUpdater CR to the same namespace as your Applications:
-
-```yaml
-apiVersion: argocd-image-updater.argoproj.io/v1alpha1
-kind: ImageUpdater
-metadata:
-  name: my-updater
-  namespace: production  # CR is in same namespace as Applications
-spec:
-  # spec.namespace can be omitted or set to same value
-  applicationRefs:
-    - namePattern: "my-app"
-      images:
-        - alias: "nginx"
-          imageName: "nginx:1.20"
-```
-
-#### Correct Configuration (Option 2: Remove spec.namespace)
-
-If your CR and Applications are already in the same namespace, simply remove `spec.namespace`:
+Place the ImageUpdater CR in the same namespace as the Applications it should manage. The controller will use `metadata.namespace` automatically:
 
 ```yaml
 apiVersion: argocd-image-updater.argoproj.io/v1alpha1
 kind: ImageUpdater
 metadata:
   name: my-updater
-  namespace: argocd  # CR and Applications in same namespace
+  namespace: production  # CR must be in the same namespace as the Applications
 spec:
-  # spec.namespace removed - controller uses metadata.namespace
   applicationRefs:
     - namePattern: "my-app"
       images:
@@ -192,7 +172,6 @@ spec:
 
 ### Migration Steps
 
-1. **Identify affected configurations**: Find ImageUpdater CRs where `spec.namespace` differs from `metadata.namespace`
-2. **Move CRs to target namespace**: Create new ImageUpdater CRs in the namespace where your Applications are located
-3. **Remove spec.namespace**: Delete the `spec.namespace` field from existing CRs (it will be ignored anyway)
-4. **Verify**: Ensure Applications are found and updated correctly after migration
+1. **Identify affected CRs**: Find all `ImageUpdater` resources that include `spec.namespace`.
+2. **Remove `spec.namespace`**: Delete the field from every CR — it is no longer a valid field.
+3. **Verify**: Ensure Applications are found and updated correctly after migration.

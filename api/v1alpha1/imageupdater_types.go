@@ -24,14 +24,6 @@ import (
 // It specifies which applications to target, default update strategies,
 // and a list of images to manage.
 type ImageUpdaterSpec struct {
-	// Namespace indicates the target namespace of the applications.
-	//
-	// Deprecated: This field is deprecated and will be removed in a future release.
-	// The controller now uses the ImageUpdater CR's namespace (metadata.namespace)
-	// to determine which namespace to search for applications. This field is ignored.
-	// +optional
-	Namespace *string `json:"namespace,omitempty"`
-
 	// CommonUpdateSettings provides global default settings for update strategies,
 	// tag filtering, pull secrets, etc., for all applications matched by this CR.
 	// These can be overridden at the ApplicationRef or ImageConfig level.
