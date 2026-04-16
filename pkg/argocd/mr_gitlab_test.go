@@ -315,6 +315,19 @@ func Test_NewGitLabMRService(t *testing.T) {
 			wantBaseURL:   "https://gitlab.com/api/v4",
 		},
 
+		// --- SCP-style SSH without SCMAPIBaseURLProvider ---
+		{
+			// SCP-style SSH URLs can't be parsed by url.Parse to derive a host.
+			// Without SCMAPIBaseURLProvider the code falls back to the gitlab.com
+			// default, which is correct for gitlab.com repos and a safe fallback
+			// for self-managed (SSH creds can't reach this path at runtime anyway).
+			name:          "SCP-style SSH without base URL provider — falls back to gitlab.com default",
+			gitRepo:       "git@gitlab.example.com:group/repo.git",
+			tokenProvider: &mockTokenProvider{token: "glpat-token"},
+			wantProject:   "group/repo",
+			wantBaseURL:   "https://gitlab.com/api/v4",
+		},
+
 		// --- SCMAPIBaseURLProvider (e.g. app-based credentials with explicit base URL) ---
 		{
 			name:    "base URL provider against gitlab.com — empty base URL",

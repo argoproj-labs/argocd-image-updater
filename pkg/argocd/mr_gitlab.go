@@ -86,7 +86,10 @@ func NewGitLabMRService(ctx context.Context, wbc *WriteBackConfig, tokenProvider
 	apiBaseURL := ""
 	if urlProvider, ok := tokenProvider.(git.SCMAPIBaseURLProvider); ok {
 		apiBaseURL = urlProvider.SCMAPIBaseURL()
-	} else {
+	} else if isSSH, _ := git.IsSSHURL(wbc.GitRepo); !isSSH || strings.HasPrefix(wbc.GitRepo, "ssh://") {
+		// SCP-style SSH URLs (git@host:path) are not valid for url.Parse —
+		// skip them and fall through with the default gitlab.com base URL.
+		// Only HTTPS and ssh:// scheme URLs can be parsed to derive the host.
 		u, parseErr := url.Parse(wbc.GitRepo)
 		if parseErr != nil {
 			return nil, fmt.Errorf("could not parse repo URL %q: %w", wbc.GitRepo, parseErr)
