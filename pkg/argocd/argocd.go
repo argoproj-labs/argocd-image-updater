@@ -568,9 +568,8 @@ func newWBCFromSettings(ctx context.Context, app *argocdapi.Application, kubeCli
 			if settings.GitConfig.PullRequest.GitHub != nil {
 				wbc.PRProvider = PRProviderGitHub
 			}
-			// TODO: placeholder for gitlab. Will be implemented in GITOPS-9155
 			if settings.GitConfig.PullRequest.GitLab != nil {
-				return nil, fmt.Errorf("pullRequest.gitlab is not implemented yet")
+				wbc.PRProvider = PRProviderGitLab
 			}
 		}
 	} else {

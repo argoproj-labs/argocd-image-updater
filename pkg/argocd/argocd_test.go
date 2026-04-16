@@ -2188,7 +2188,7 @@ func Test_newWBCFromSettings(t *testing.T) {
 		assert.Equal(t, PRProviderGitHub, wbc.PRProvider)
 	})
 
-	t.Run("pullRequest gitlab should not error but leave PRProvider unsupported (implementation pending)", func(t *testing.T) {
+	t.Run("pullRequest gitlab should set PRProviderGitLab", func(t *testing.T) {
 		app, kubeClient := createTestAppAndClient()
 		settings := &api.WriteBackConfig{
 			Method: strPtr("git"),
@@ -2196,8 +2196,9 @@ func Test_newWBCFromSettings(t *testing.T) {
 				PullRequest: &api.PullRequest{GitLab: &api.PullRequestGitLab{}},
 			},
 		}
-		_, err := newWBCFromSettings(context.Background(), app, kubeClient, settings)
-		assert.Error(t, err)
+		wbc, err := newWBCFromSettings(context.Background(), app, kubeClient, settings)
+		assert.NoError(t, err)
+		assert.Equal(t, PRProviderGitLab, wbc.PRProvider)
 	})
 
 	t.Run("pullRequest with no provider should error", func(t *testing.T) {
