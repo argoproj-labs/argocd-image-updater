@@ -134,6 +134,22 @@ app:
 		assert.Equal(t, expected, valuesFile.String())
 	})
 
+	t.Run("Updates null array element", func(t *testing.T) {
+		input := `images:
+- null
+- name: app2
+  tag: v1.0.0
+`
+		valuesFile, err := ParseValuesFile([]byte(input))
+		require.NoError(t, err)
+
+		err = valuesFile.SetValue("images[0]", "replaced")
+		require.NoError(t, err)
+
+		output := valuesFile.String()
+		assert.Contains(t, output, "replaced")
+	})
+
 	t.Run("Creates new key when not exists", func(t *testing.T) {
 		input := `image:
   repository: nginx
@@ -398,6 +414,19 @@ app:
 
 		// Note: This tests that we can follow aliases in the getter
 		val, err := valuesFile.GetValue("defaults.tag")
+		require.NoError(t, err)
+		assert.Equal(t, "v1.0.0", val)
+	})
+
+	t.Run("Gets anchored literal key value", func(t *testing.T) {
+		input := `tag: &tag v1.0.0
+image:
+  ref: *tag
+`
+		valuesFile, err := ParseValuesFile([]byte(input))
+		require.NoError(t, err)
+
+		val, err := valuesFile.GetValue("tag")
 		require.NoError(t, err)
 		assert.Equal(t, "v1.0.0", val)
 	})

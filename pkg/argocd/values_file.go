@@ -107,7 +107,7 @@ func (y *ValuesFile) GetValue(key string) (string, error) {
 
 	// First, check if the full key exists as a literal key
 	if node := findKeyInMapping(rootMapping, key); node != nil {
-		return getScalarValue(node)
+		return getScalarValue(unwrapNode(node))
 	}
 
 	// Try navigating as a nested path
@@ -225,9 +225,8 @@ func unwrapNode(node ast.Node) ast.Node {
 	}
 }
 
-// replaceNullNode replaces a NullNode value in a MappingValueNode with a new StringNode.
-func replaceNullNode(item *ast.MappingValueNode, value string) error {
-	nullNode := item.Value.(*ast.NullNode)
+// nullToStringNode converts a NullNode into a StringNode with the given value.
+func nullToStringNode(nullNode *ast.NullNode, value string) (*ast.StringNode, error) {
 	tok := nullNode.GetToken()
 	tok.Type = token.StringType
 	tok.Value = value
@@ -237,8 +236,17 @@ func replaceNullNode(item *ast.MappingValueNode, value string) error {
 	comment := nullNode.GetComment()
 	if comment != nil {
 		if err := newNode.SetComment(comment); err != nil {
-			return fmt.Errorf("failed to preserve comment: %w", err)
+			return nil, fmt.Errorf("failed to preserve comment: %w", err)
 		}
+	}
+	return newNode, nil
+}
+
+// replaceNullNode replaces a NullNode value in a MappingValueNode with a new StringNode.
+func replaceNullNode(item *ast.MappingValueNode, value string) error {
+	newNode, err := nullToStringNode(item.Value.(*ast.NullNode), value)
+	if err != nil {
+		return err
 	}
 	item.Value = newNode
 	return nil
@@ -286,21 +294,34 @@ func setNestedValue(mapping *ast.MappingNode, keys []string, value string) error
 		valueNode = unwrapNode(valueNode)
 
 		// Handle array index
+		var seqNode *ast.SequenceNode
+		var seqIdx int
 		if arrayIdx != nil {
-			seqNode, ok := valueNode.(*ast.SequenceNode)
+			var ok bool
+			seqNode, ok = valueNode.(*ast.SequenceNode)
 			if !ok {
 				return fmt.Errorf("key %q is not a sequence", keyPart)
 			}
-			if *arrayIdx < 0 || *arrayIdx >= len(seqNode.Values) {
-				return fmt.Errorf("array index %d out of range for key %q", *arrayIdx, keyPart)
+			seqIdx = *arrayIdx
+			if seqIdx < 0 || seqIdx >= len(seqNode.Values) {
+				return fmt.Errorf("array index %d out of range for key %q", seqIdx, keyPart)
 			}
-			valueNode = unwrapNode(seqNode.Values[*arrayIdx])
+			valueNode = unwrapNode(seqNode.Values[seqIdx])
 		}
 
 		if i == len(keys)-1 {
 			// NullNodes need to be replaced rather than updated in place
-			if _, ok := valueNode.(*ast.NullNode); ok && parentItem != nil {
-				return replaceNullNode(parentItem, value)
+			if nullNode, ok := valueNode.(*ast.NullNode); ok {
+				newNode, err := nullToStringNode(nullNode, value)
+				if err != nil {
+					return err
+				}
+				if seqNode != nil {
+					seqNode.Values[seqIdx] = newNode
+				} else if parentItem != nil {
+					parentItem.Value = newNode
+				}
+				return nil
 			}
 			return setNodeValue(valueNode, value)
 		}
