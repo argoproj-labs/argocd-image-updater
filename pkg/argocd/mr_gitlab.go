@@ -95,7 +95,13 @@ func NewGitLabMRService(ctx context.Context, wbc *WriteBackConfig, tokenProvider
 			return nil, fmt.Errorf("could not parse repo URL %q: %w", wbc.GitRepo, parseErr)
 		}
 		if u.Host != "gitlab.com" {
-			apiBaseURL = u.Scheme + "://" + u.Host
+			scheme := u.Scheme
+			if scheme != "http" && scheme != "https" {
+				// ssh:// repo URLs can be parsed for the host, but the
+				// GitLab API is HTTP-only — default to HTTPS.
+				scheme = "https"
+			}
+			apiBaseURL = scheme + "://" + u.Host
 		}
 	}
 
