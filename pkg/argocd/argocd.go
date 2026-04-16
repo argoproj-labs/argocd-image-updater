@@ -394,6 +394,7 @@ func newImageFromCommonUpdateSettings(ctx context.Context, settings *iuapi.Commo
 		PullSecret:         "",
 		IgnoreTags:         []string{},
 		Platforms:          []string{},
+		HelmSourceIndex:    -1,
 		HelmImageName:      "",
 		HelmImageTag:       "",
 		HelmImageSpec:      "",
@@ -592,14 +593,22 @@ func newImageFromManifestTargetSettings(settings *iuapi.ManifestTarget, img *Ima
 	}
 
 	// Layer the new settings on top, only if they are explicitly set (non-nil).
-	if settings.Helm != nil && settings.Helm.Spec != nil {
-		img.HelmImageSpec = *settings.Helm.Spec
-	} else {
-		if settings.Helm != nil && settings.Helm.Name != nil {
-			img.HelmImageName = *settings.Helm.Name
+	if settings.Helm != nil {
+		if settings.Helm.SourceIndex != nil {
+			img.HelmSourceIndex = int(*settings.Helm.SourceIndex)
 		}
-		if settings.Helm != nil && settings.Helm.Tag != nil {
-			img.HelmImageTag = *settings.Helm.Tag
+		if settings.Helm.ChartName != nil {
+			img.HelmChartName = *settings.Helm.ChartName
+		}
+		if settings.Helm.Spec != nil {
+			img.HelmImageSpec = *settings.Helm.Spec
+		} else {
+			if settings.Helm.Name != nil {
+				img.HelmImageName = *settings.Helm.Name
+			}
+			if settings.Helm.Tag != nil {
+				img.HelmImageTag = *settings.Helm.Tag
+			}
 		}
 	}
 	if settings.Kustomize != nil && settings.Kustomize.Name != nil {
@@ -824,7 +833,31 @@ func SetHelmImage(ctx context.Context, app *argocdapi.Application, newImage *ima
 		}
 	}
 
-	appSource := getApplicationSource(ctx, app, wbc)
+	var appSource *argocdapi.ApplicationSource
+	if app.Spec.HasMultipleSources() && applicationImage.HelmSourceIndex >= 0 {
+		sources := app.Spec.Sources
+		if applicationImage.HelmSourceIndex >= len(sources) {
+			return fmt.Errorf("sourceIndex %d is out of range for application %s (has %d sources)", applicationImage.HelmSourceIndex, app.Name, len(sources))
+		}
+		s := &sources[applicationImage.HelmSourceIndex]
+		if !s.IsHelm() {
+			return fmt.Errorf("source at index %d in application %s is not a Helm source", applicationImage.HelmSourceIndex, app.Name)
+		}
+		appSource = s
+	} else if app.Spec.HasMultipleSources() && applicationImage.HelmChartName != "" {
+		for i := range app.Spec.Sources {
+			s := &app.Spec.Sources[i]
+			if s.Chart == applicationImage.HelmChartName {
+				appSource = s
+				break
+			}
+		}
+		if appSource == nil {
+			return fmt.Errorf("no Helm source with chart name %q found in application %s", applicationImage.HelmChartName, app.Name)
+		}
+	} else {
+		appSource = getApplicationSource(ctx, app, wbc)
+	}
 
 	if appSource.Helm == nil {
 		appSource.Helm = &argocdapi.ApplicationSourceHelm{}
