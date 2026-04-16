@@ -935,43 +935,65 @@ func GetImagesFromApplication(applicationImages *ApplicationImages) image.Contai
 	return images
 }
 
-// GetImagesAndAliasesFromApplication returns the list of known images for the given application
+// GetImagesAndAliasesFromApplication returns only the images that are considered
+// "live", with ImageAlias and ContainerImage set from the corresponding entry
+// returned by GetImagesFromApplication.
+//
+// The live-image set is built by GetImagesFromApplication from two sources:
+//   - app.Status.Summary.Images — images actually running in the cluster.
+//   - Force-update images — configured images with ForceUpdate == true are
+//     injected with a nil tag so they are always treated as live even when no
+//     running container is detected.
+//
+// For each image in applicationImages.Images the function checks whether it is live
+// (i.e. present in GetImagesFromApplication). Images that are not live are silently
+// dropped from the result. For each live image:
+//   - ContainerImage is replaced with the live instance, which carries the actual
+//     running tag (or nil for force-update images). This is a mutation of the
+//     original *Image element.
+//   - ImageAlias is set from the configured alias (or ImageName as fallback).
+//
+// When two configured aliases reference the same live image, the second alias
+// receives a shallow copy of the live ContainerImage so that both alias entries
+// carry independent ImageAlias values without interfering with each other.
+//
 // TODO: this function together with GetImagesFromApplication should be refactored. We iterate through
 // applicationImages.Images 3 times in one place (2 in functions and in containerImages.ContainsImage).
 // Also the 4th loop is in marshalParamsOverride. See GITOPS-7415
 func GetImagesAndAliasesFromApplication(applicationImages *ApplicationImages) ImageList {
 	containerImages := GetImagesFromApplication(applicationImages)
 
+	result := make(ImageList, 0, len(applicationImages.Images))
+
 	// We iterate through the list of images with alias information.
 	for _, aliasedImage := range applicationImages.Images {
-		// For each one, we find its corresponding entry in the list of images found in the app source.
+		// For each one, we find its corresponding entry in the list of live images.
+		// Images not found here are not live and are excluded from the result.
 		if sourceImage := containerImages.ContainsImage(aliasedImage.ContainerImage, false); sourceImage != nil {
 			if sourceImage.ImageAlias != "" {
-				// this image has already been matched to an alias, so create a copy
-				// and assign this alias to the image copy to avoid overwriting the existing alias association
+				// This live image has already been matched to a previous alias, so create
+				// a copy to avoid overwriting the existing alias association.
 				imageCopy := *sourceImage
 				if aliasedImage.ImageAlias == "" {
 					imageCopy.ImageAlias = aliasedImage.ImageName
 				} else {
 					imageCopy.ImageAlias = aliasedImage.ImageAlias
 				}
-				// We update the aliasedImage to point to this new copy.
 				aliasedImage.ContainerImage = &imageCopy
 			} else {
-				// This is the first alias for this image. We can modify it in place.
+				// This is the first alias for this live image. We can modify it in place.
 				if aliasedImage.ImageAlias == "" {
 					sourceImage.ImageAlias = aliasedImage.ImageName
 				} else {
 					sourceImage.ImageAlias = aliasedImage.ImageAlias
 				}
-				// We update the aliasedImage to point to the now-aliased source image.
 				aliasedImage.ContainerImage = sourceImage
 			}
+			result = append(result, aliasedImage)
 		}
 	}
 
-	// The applicationImages.Images list is now correctly aliased.
-	return applicationImages.Images
+	return result
 }
 
 // GetApplicationType returns the type of the ArgoCD application

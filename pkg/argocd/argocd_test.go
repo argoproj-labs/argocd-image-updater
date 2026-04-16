@@ -224,6 +224,35 @@ func Test_GetImagesAndAliasesFromApplication(t *testing.T) {
 		imageList := GetImagesAndAliasesFromApplication(applicationImages)
 		assert.Empty(t, imageList)
 	})
+
+	t.Run("Non-live images are excluded from the result", func(t *testing.T) {
+		// Only nginx is live; redis is configured but not running in the cluster.
+		// GetImagesAndAliasesFromApplication must return only nginx.
+		application := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "test-app",
+				Namespace: "argocd",
+			},
+			Spec: v1alpha1.ApplicationSpec{},
+			Status: v1alpha1.ApplicationStatus{
+				Summary: v1alpha1.ApplicationSummary{
+					Images: []string{"nginx:1.25.0"},
+				},
+			},
+		}
+		applicationImages := &ApplicationImages{
+			Application: *application,
+			Images: ImageList{
+				NewImage(image.NewFromIdentifier("nginx:1.25.0")),
+				NewImage(image.NewFromIdentifier("redis:7.0")),
+			},
+		}
+
+		imageList := GetImagesAndAliasesFromApplication(applicationImages)
+
+		require.Len(t, imageList, 1)
+		assert.Equal(t, "nginx", imageList[0].ImageName)
+	})
 }
 
 func Test_GetApplicationType(t *testing.T) {
