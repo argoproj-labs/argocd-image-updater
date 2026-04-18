@@ -54,6 +54,10 @@ Secret for validating Docker Hub webhooks.
 
 Can also be set with the `DOCKER_WEBHOOK_SECRET` environment variable.
 
+**--enable-http2**
+
+Enable HTTP/2 for the standalone webhook server. Disabled by default.
+
 **--ghcr-webhook-secret *secret***
 
 Secret for validating GitHub container registry secrets.
@@ -78,9 +82,9 @@ Whether to sign-off git commits
 
 GnuPG key ID or path to Private SSH Key used to sign the commits
 
-Can also be set using the *GIT_COMMIT_SIGNING_KEY* environment variable. 
+Can also be set using the *GIT_COMMIT_SIGNING_KEY* environment variable.
 
-**--git-commit-signing-method *method*** 
+**--git-commit-signing-method *method***
 
 Method used to sign Git commits ('openpgp' or 'ssh') (default "openpgp")
 

@@ -101,6 +101,7 @@ Supported registries:
 	webhookCmd.Flags().IntVar(&webhookCfg.RateLimitNumAllowedRequests, "webhook-ratelimit-allowed", env.ParseNumFromEnv("WEBHOOK_RATELIMIT_ALLOWED", 0, 0, math.MaxInt), "The number of allowed requests in an hour for webhook rate limiting, setting to 0 disables ratelimiting")
 
 	// TLS flags
+	webhookCmd.Flags().BoolVar(&webhookCfg.EnableHTTP2, "enable-http2", false, "If set, HTTP/2 will be enabled for the standalone webhook server")
 	webhookCmd.Flags().BoolVar(&webhookCfg.DisableTLS, "disable-tls", env.GetBoolVal("DISABLE_TLS", false), "Disable TLS and run the server with plain HTTP")
 	webhookCmd.Flags().StringVar(&webhookCfg.TLSMinVersion, "tlsminversion", env.GetStringVal("TLS_MIN_VERSION", webhook.DefaultTLSMinVersion), "Minimum TLS version (e.g. 1.2, 1.3)")
 	webhookCmd.Flags().StringVar(&webhookCfg.TLSMaxVersion, "tlsmaxversion", env.GetStringVal("TLS_MAX_VERSION", webhook.DefaultTLSMaxVersion), "Maximum TLS version (e.g. 1.2, 1.3)")
