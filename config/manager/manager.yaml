@@ -180,6 +180,12 @@ spec:
                 name: argocd-image-updater-secret
                 key: webhook.cloudevents-secret
                 optional: true
+          - name: GITLAB_WEBHOOK_SECRET
+            valueFrom:
+              secretKeyRef:
+                name: argocd-image-updater-secret
+                key: webhook.gitlab-secret
+                optional: true
           - name: WEBHOOK_RATELIMIT_ALLOWED
             valueFrom:
               configMapKeyRef:

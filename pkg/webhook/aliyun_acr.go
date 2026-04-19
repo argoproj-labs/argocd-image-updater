@@ -15,6 +15,8 @@ type AliyunACRWebhook struct {
 	secret string
 }
 
+var _ RegistryWebhook = &AliyunACRWebhook{}
+
 // NewAliyunACRWebhook creates a new Aliyun ACR webhook handler
 func NewAliyunACRWebhook(secret string) *AliyunACRWebhook {
 	return &AliyunACRWebhook{
@@ -49,7 +51,7 @@ func (a *AliyunACRWebhook) Validate(r *http.Request) error {
 }
 
 // Parse processes the Aliyun ACR webhook payload and returns a WebhookEvent
-func (a *AliyunACRWebhook) Parse(r *http.Request) (*argocd.WebhookEvent, error) {
+func (a *AliyunACRWebhook) Parse(r *http.Request) ([]*argocd.WebhookEvent, error) {
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read request body: %w", err)
@@ -106,10 +108,10 @@ func (a *AliyunACRWebhook) Parse(r *http.Request) (*argocd.WebhookEvent, error) 
 		registryURL = fmt.Sprintf("registry.%s.aliyuncs.com", payload.Repository.Region)
 	}
 
-	return &argocd.WebhookEvent{
+	return []*argocd.WebhookEvent{{
 		RegistryURL: registryURL,
 		Repository:  repository,
 		Tag:         payload.PushData.Tag,
 		Digest:      payload.PushData.Digest,
-	}, nil
+	}}, nil
 }

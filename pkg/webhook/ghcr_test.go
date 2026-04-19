@@ -370,14 +370,14 @@ func TestGHCRWebhook_Parse(t *testing.T) {
 				return
 			}
 
-			if event == nil {
+			if len(event) == 0 {
 				t.Fatal("expected event to be non-nil")
-			} else if event.RegistryURL != "ghcr.io" {
-				t.Errorf("expected registry URL to be 'ghcr.io', got %q", event.RegistryURL)
-			} else if event.Repository != tt.expectedRepo {
-				t.Errorf("expected repository to be %q, got %q", tt.expectedRepo, event.Repository)
-			} else if event.Tag != tt.expectedTag {
-				t.Errorf("expected tag to be %q, got %q", tt.expectedTag, event.Tag)
+			} else if event[0].RegistryURL != "ghcr.io" {
+				t.Errorf("expected registry URL to be 'ghcr.io', got %q", event[0].RegistryURL)
+			} else if event[0].Repository != tt.expectedRepo {
+				t.Errorf("expected repository to be %q, got %q", tt.expectedRepo, event[0].Repository)
+			} else if event[0].Tag != tt.expectedTag {
+				t.Errorf("expected tag to be %q, got %q", tt.expectedTag, event[0].Tag)
 			}
 		})
 	}
@@ -475,12 +475,12 @@ func TestGHCRWebhook_ParseWithBodyReuse(t *testing.T) {
 		t.Fatalf("parsing failed: %v", err)
 	}
 
-	if event.Repository != "myuser/myapp" {
-		t.Errorf("expected repository to be 'myuser/myapp', got %q", event.Repository)
+	if event[0].Repository != "myuser/myapp" {
+		t.Errorf("expected repository to be 'myuser/myapp', got %q", event[0].Repository)
 	}
 
-	if event.Tag != "v1.0.0" {
-		t.Errorf("expected tag to be 'v1.0.0', got %q", event.Tag)
+	if event[0].Tag != "v1.0.0" {
+		t.Errorf("expected tag to be 'v1.0.0', got %q", event[0].Tag)
 	}
 }
 

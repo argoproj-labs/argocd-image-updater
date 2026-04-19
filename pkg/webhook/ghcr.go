@@ -18,6 +18,8 @@ type GHCRWebhook struct {
 	secret string
 }
 
+var _ RegistryWebhook = &GHCRWebhook{}
+
 // NewGHCRWebhook creates a new GHCR webhook handler
 func NewGHCRWebhook(secret string) *GHCRWebhook {
 	return &GHCRWebhook{
@@ -71,7 +73,7 @@ func (g *GHCRWebhook) Validate(r *http.Request) error {
 }
 
 // Parse processes the GHCR webhook payload and returns a WebhookEvent
-func (g *GHCRWebhook) Parse(r *http.Request) (*argocd.WebhookEvent, error) {
+func (g *GHCRWebhook) Parse(r *http.Request) ([]*argocd.WebhookEvent, error) {
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read request body: %w", err)
@@ -138,11 +140,11 @@ func (g *GHCRWebhook) Parse(r *http.Request) (*argocd.WebhookEvent, error) {
 	// Construct repository name: owner/package
 	repository := fmt.Sprintf("%s/%s", payload.Package.Owner.Login, payload.Package.Name)
 
-	return &argocd.WebhookEvent{
+	return []*argocd.WebhookEvent{{
 		RegistryURL: "ghcr.io",
 		Repository:  repository,
 		Tag:         tagName,
-	}, nil
+	}}, nil
 }
 
 // validateSignature validates the webhook signature using HMAC-SHA256
