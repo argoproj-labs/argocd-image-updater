@@ -617,7 +617,7 @@ Exactly one provider must be configured in `pullRequest`.
 
 | Field | Type | Required | Description                                                                  |
 |-------|------|----------|------------------------------------------------------------------------------|
-| —     | —    | —        | No configurable fields. GitLab merge request support is not yet implemented. |
+| —     | —    | —        | No configurable fields. All required data (repository URL, branch, credentials) is taken from the enclosing `gitConfig` and `writeBackConfig.method`. |
 
 #### ManifestTarget fields
 

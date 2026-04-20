@@ -1,0 +1,24 @@
+# manager is the only image that runs as a live container.
+# session and reaper are configured here but are not used in any Deployment
+# template, so they will never appear in app.Status.Summary.Images (non-live).
+# After argocd-image-updater updates manager, the tags for session and reaper
+# must remain unchanged ("1.0.0") and must NOT be blanked to "".
+#
+# IMPORTANT: session and reaper intentionally use distinct image repositories so
+# that ContainsImage does NOT match them against the running manager pod.  Using
+# the same repository for all three would cause all aliases to resolve to the same
+# live image, defeating the purpose of this regression test.
+manager:
+  image:
+    repository: quay.io/dkarpele/my-guestbook
+    tag: "1.0.0"
+session:
+  image:
+    repository: 127.0.0.1:30000/session
+    tag: "1.0.0"
+reaper:
+  image:
+    repository: 127.0.0.1:30000/reaper
+    tag: "1.0.0"
+
+replicaCount: 1

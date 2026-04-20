@@ -136,9 +136,20 @@ func commitChangesPR(ctx context.Context, applicationImages *ApplicationImages, 
 		}
 		return nil
 
-	// TODO: placeholder for gitlab. Will be implemented in GITOPS-9155
-	//case PRProviderGitLab:
-	//	return createGitLabService(ctx, wbc, tokenProvider)
+	case PRProviderGitLab:
+		g, err := NewGitLabMRService(ctx, wbc, tokenProvider)
+		if err != nil {
+			return err
+		}
+
+		if err := g.create(ctx); err != nil {
+			if errors.Is(err, ErrMRAlreadyExists) {
+				return nil
+			}
+			return err
+		}
+		return nil
+
 	default:
 		return fmt.Errorf("unsupported PR provider: %d", wbc.PRProvider)
 	}

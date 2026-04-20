@@ -2625,6 +2625,92 @@ redis:
 		assert.Equal(t, strings.TrimSpace(strings.ReplaceAll(expected, "\t", "  ")), strings.TrimSpace(string(yaml)))
 	})
 
+	t.Run("Helmvalues write-back must not blank tags of non-live images (issue #1584)", func(t *testing.T) {
+		// Reproduce the regression from issue #1584:
+		// CRD mode with useAnnotations:true + multiple image aliases in a shared helmvalues file.
+		// When one alias is updated, non-live aliases must NOT have their tags blanked in the file.
+		originalData := []byte(`
+image:
+  tag: "main-0000000"
+  repository: registry.local/aiu/manager
+session:
+  image:
+    tag: "main-0000000"
+    repository: registry.local/aiu/session
+reaper:
+  image:
+    tag: "main-0000000"
+    repository: registry.local/aiu/reaper
+tokenRotator:
+  image:
+    tag: "main-0000000"
+    repository: registry.local/aiu/token_rotator
+`)
+		// Only manager is live in the cluster
+		app := v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name: "aiu-repro",
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: &v1alpha1.ApplicationSource{
+					RepoURL:        "https://example.com/repo",
+					TargetRevision: "main",
+					Helm: &v1alpha1.ApplicationSourceHelm{
+						// Simulates state after SetHelmImage(manager, "main-1111111"):
+						// only manager params are set, because session/reaper/tokenRotator are not live.
+						Parameters: []v1alpha1.HelmParameter{
+							{Name: "image.repository", Value: "registry.local/aiu/manager", ForceString: true},
+							{Name: "image.tag", Value: "main-1111111", ForceString: true},
+						},
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypeHelm,
+				Summary: v1alpha1.ApplicationSummary{
+					// Only manager is live; session, reaper, tokenRotator are not
+					Images: []string{"registry.local/aiu/manager:main-0000000"},
+				},
+			},
+		}
+
+		// All four images are configured (as they would be from annotations or CRD)
+		imManager := NewImage(image.NewFromIdentifier("manager=registry.local/aiu/manager"))
+		imManager.HelmImageName = "image.repository"
+		imManager.HelmImageTag = "image.tag"
+
+		imSession := NewImage(image.NewFromIdentifier("session=registry.local/aiu/session"))
+		imSession.HelmImageName = "session.image.repository"
+		imSession.HelmImageTag = "session.image.tag"
+
+		imReaper := NewImage(image.NewFromIdentifier("reaper=registry.local/aiu/reaper"))
+		imReaper.HelmImageName = "reaper.image.repository"
+		imReaper.HelmImageTag = "reaper.image.tag"
+
+		imTokenRotator := NewImage(image.NewFromIdentifier("tokenrotator=registry.local/aiu/token_rotator"))
+		imTokenRotator.HelmImageName = "tokenRotator.image.repository"
+		imTokenRotator.HelmImageTag = "tokenRotator.image.tag"
+
+		applicationImages := &ApplicationImages{
+			Application: app,
+			Images:      ImageList{imManager, imSession, imReaper, imTokenRotator},
+			WriteBackConfig: &WriteBackConfig{
+				Target: "./env/values.yaml",
+			},
+		}
+
+		result, err := marshalParamsOverride(context.Background(), applicationImages, originalData)
+		require.NoError(t, err)
+		require.NotEmpty(t, result)
+
+		// Manager tag must be updated to the new value
+		assert.Contains(t, string(result), "main-1111111")
+
+		// Non-live images' tags must NOT be blanked - they must keep their original values
+		assert.NotContains(t, string(result), `tag: ""`)
+		assert.Contains(t, string(result), "main-0000000", "non-live image tags must be preserved")
+	})
+
 	t.Run("Valid Helm source with Helm values file with multiple aliases", func(t *testing.T) {
 		expected := `
 foo.image.name: nginx
