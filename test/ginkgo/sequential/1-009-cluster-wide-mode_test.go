@@ -48,20 +48,22 @@ import (
 
 var _ = Describe("ArgoCD Image Updater Sequential E2E Tests", func() {
 
-	Context("1-008-app-in-any-ns_test", func() {
+	Context("1-009-cluster-wide-mode_test", func() {
 
 		var (
-			k8sClient      client.Client
-			ctx            context.Context
-			ns             *corev1.Namespace
-			nsDev          *corev1.Namespace
-			nsQE           *corev1.Namespace
-			cleanupFunc    func()
-			cleanupFuncDev func()
-			cleanupFuncQE  func()
-			imageUpdater   *imageUpdaterApi.ImageUpdater
-			imageUpdaterQE *imageUpdaterApi.ImageUpdater
-			argoCD         *argov1beta1api.ArgoCD
+			k8sClient           client.Client
+			ctx                 context.Context
+			ns                  *corev1.Namespace
+			nsDev               *corev1.Namespace
+			nsQE                *corev1.Namespace
+			cleanupFunc         func()
+			cleanupFuncDev      func()
+			cleanupFuncQE       func()
+			imageUpdater        *imageUpdaterApi.ImageUpdater
+			imageUpdaterQE      *imageUpdaterApi.ImageUpdater
+			argoCD              *argov1beta1api.ArgoCD
+			clusterRoleName     string
+			clusterRoleBinding  *rbacv1.ClusterRoleBinding
 		)
 
 		BeforeEach(func() {
@@ -91,6 +93,7 @@ var _ = Describe("ArgoCD Image Updater Sequential E2E Tests", func() {
 				operatorDeploy.Spec.Template.ObjectMeta.Annotations["kubectl.kubernetes.io/restartedAt"] = time.Now().Format(time.RFC3339)
 				_ = k8sClient.Update(ctx, operatorDeploy)
 			}
+
 			if imageUpdater != nil {
 				By("deleting ImageUpdater CR")
 				_ = k8sClient.Delete(ctx, imageUpdater)
@@ -104,6 +107,16 @@ var _ = Describe("ArgoCD Image Updater Sequential E2E Tests", func() {
 			if argoCD != nil {
 				By("deleting ArgoCD CR")
 				_ = k8sClient.Delete(ctx, argoCD)
+			}
+
+			if clusterRoleBinding != nil {
+				By("deleting ClusterRoleBinding")
+				_ = k8sClient.Delete(ctx, clusterRoleBinding)
+			}
+
+			if clusterRoleName != "" {
+				By("deleting ClusterRole")
+				_ = k8sClient.Delete(ctx, &rbacv1.ClusterRole{ObjectMeta: metav1.ObjectMeta{Name: clusterRoleName}})
 			}
 
 			if cleanupFunc != nil {
@@ -123,7 +136,7 @@ var _ = Describe("ArgoCD Image Updater Sequential E2E Tests", func() {
 			fixture.OutputDebugOnFail(nsQE)
 		})
 
-		It("ensures that Image Updater will update Argo CD Application in any namespace", func() {
+		It("ensures that Image Updater in cluster-wide mode will update Argo CD Applications across namespaces", func() {
 
 			By("creating namespaces")
 			ns, cleanupFunc = fixture.CreateRandomE2ETestNamespaceWithCleanupFunc()
@@ -166,7 +179,7 @@ var _ = Describe("ArgoCD Image Updater Sequential E2E Tests", func() {
 				"3s",
 			).Should(deplFixture.HaveReadyReplicas(1))
 
-			By("creating simple namespace-scoped Argo CD instance with image updater enabled")
+			By("creating simple namespace-scoped Argo CD instance with image updater enabled in cluster-wide mode")
 			argoCD = &argov1beta1api.ArgoCD{
 				ObjectMeta: metav1.ObjectMeta{Name: "argocd", Namespace: ns.Name},
 				Spec: argov1beta1api.ArgoCDSpec{
@@ -175,7 +188,7 @@ var _ = Describe("ArgoCD Image Updater Sequential E2E Tests", func() {
 						nsQE.Name,
 					},
 					CmdParams: map[string]string{
-						"application.namespaces": nsDev.Name + "," + nsQE.Name,
+						"application.namespaces": "*",
 					},
 					ImageUpdater: argov1beta1api.ArgoCDImageUpdaterSpec{
 						Env: []corev1.EnvVar{
@@ -189,7 +202,7 @@ var _ = Describe("ArgoCD Image Updater Sequential E2E Tests", func() {
 							},
 							{
 								Name:  "IMAGE_UPDATER_WATCH_NAMESPACES",
-								Value: nsDev.Name + "," + nsQE.Name,
+								Value: "*",
 							},
 						},
 						Enabled: true},
@@ -214,12 +227,13 @@ var _ = Describe("ArgoCD Image Updater Sequential E2E Tests", func() {
 			Eventually(statefulSet).Should(ssFixture.HaveReplicas(1))
 			Eventually(statefulSet, "3m", "3s").Should(ssFixture.HaveReadyReplicas(1))
 
-			// TODO: Role+RB creation should be removed after updating to ArgoCD Operator with the fix https://github.com/argoproj-labs/argocd-operator/pull/2172
-			By("creating Role and RoleBinding in dev namespace for Image Updater ServiceAccount")
-			role := &rbacv1.Role{
+			// TODO: ClusterRole+CRB creation should be removed after updating to ArgoCD Operator with the fix https://github.com/argoproj-labs/argocd-operator/pull/2172
+			By("creating ClusterRole and ClusterRoleBinding for Image Updater ServiceAccount (cluster-wide mode)")
+			// Use the ArgoCD instance namespace as a suffix to keep names unique across parallel test runs.
+			clusterRoleName = "argocd-image-updater-manager-role-" + ns.Name
+			clusterRole := &rbacv1.ClusterRole{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      "argocd-image-updater-manager-role",
-					Namespace: nsDev.Name,
+					Name: clusterRoleName,
 				},
 				Rules: []rbacv1.PolicyRule{
 					{APIGroups: []string{""}, Resources: []string{"events"}, Verbs: []string{"create"}},
@@ -229,17 +243,16 @@ var _ = Describe("ArgoCD Image Updater Sequential E2E Tests", func() {
 					{APIGroups: []string{"argoproj.io"}, Resources: []string{"applications"}, Verbs: []string{"get", "list", "patch", "update", "watch"}},
 				},
 			}
-			Expect(k8sClient.Create(ctx, role)).To(Succeed())
+			Expect(k8sClient.Create(ctx, clusterRole)).To(Succeed())
 
-			roleBinding := &rbacv1.RoleBinding{
+			clusterRoleBinding = &rbacv1.ClusterRoleBinding{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      "argocd-image-updater-manager-rolebinding",
-					Namespace: nsDev.Name,
+					Name: "argocd-image-updater-manager-rolebinding-" + ns.Name,
 				},
 				RoleRef: rbacv1.RoleRef{
 					APIGroup: "rbac.authorization.k8s.io",
-					Kind:     "Role",
-					Name:     "argocd-image-updater-manager-role",
+					Kind:     "ClusterRole",
+					Name:     clusterRoleName,
 				},
 				Subjects: []rbacv1.Subject{
 					{
@@ -249,45 +262,9 @@ var _ = Describe("ArgoCD Image Updater Sequential E2E Tests", func() {
 					},
 				},
 			}
-			Expect(k8sClient.Create(ctx, roleBinding)).To(Succeed())
+			Expect(k8sClient.Create(ctx, clusterRoleBinding)).To(Succeed())
 
-			By("creating Role and RoleBinding in QE namespace for Image Updater ServiceAccount")
-			roleQE := &rbacv1.Role{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "argocd-image-updater-manager-role",
-					Namespace: nsQE.Name,
-				},
-				Rules: []rbacv1.PolicyRule{
-					{APIGroups: []string{""}, Resources: []string{"events"}, Verbs: []string{"create"}},
-					{APIGroups: []string{"argocd-image-updater.argoproj.io"}, Resources: []string{"imageupdaters"}, Verbs: []string{"create", "delete", "get", "list", "patch", "update", "watch"}},
-					{APIGroups: []string{"argocd-image-updater.argoproj.io"}, Resources: []string{"imageupdaters/finalizers"}, Verbs: []string{"update"}},
-					{APIGroups: []string{"argocd-image-updater.argoproj.io"}, Resources: []string{"imageupdaters/status"}, Verbs: []string{"get", "patch", "update"}},
-					{APIGroups: []string{"argoproj.io"}, Resources: []string{"applications"}, Verbs: []string{"get", "list", "patch", "update", "watch"}},
-				},
-			}
-			Expect(k8sClient.Create(ctx, roleQE)).To(Succeed())
-
-			roleBindingQE := &rbacv1.RoleBinding{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "argocd-image-updater-manager-rolebinding",
-					Namespace: nsQE.Name,
-				},
-				RoleRef: rbacv1.RoleRef{
-					APIGroup: "rbac.authorization.k8s.io",
-					Kind:     "Role",
-					Name:     "argocd-image-updater-manager-role",
-				},
-				Subjects: []rbacv1.Subject{
-					{
-						Kind:      "ServiceAccount",
-						Name:      "argocd-argocd-image-updater-controller",
-						Namespace: ns.Name,
-					},
-				},
-			}
-			Expect(k8sClient.Create(ctx, roleBindingQE)).To(Succeed())
-
-			By("creating AppProject")
+			By("creating AppProject for dev namespace")
 			appProject := &appv1alpha1.AppProject{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      nsDev.Name,
@@ -329,7 +306,7 @@ var _ = Describe("ArgoCD Image Updater Sequential E2E Tests", func() {
 			}
 			Expect(k8sClient.Create(ctx, appProjectQE)).To(Succeed())
 
-			By("creating Application")
+			By("creating Application in dev namespace")
 			app := &appv1alpha1.Application{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "app-01",
@@ -351,7 +328,7 @@ var _ = Describe("ArgoCD Image Updater Sequential E2E Tests", func() {
 			}
 			Expect(k8sClient.Create(ctx, app)).To(Succeed())
 
-			By("verifying deploying the Application succeeded")
+			By("verifying deploying the dev Application succeeded")
 			Eventually(app, "4m", "3s").Should(applicationFixture.HaveHealthStatusCode(health.HealthStatusHealthy))
 			Eventually(app, "4m", "3s").Should(applicationFixture.HaveSyncStatusCode(appv1alpha1.SyncStatusCodeSynced))
 
@@ -381,7 +358,7 @@ var _ = Describe("ArgoCD Image Updater Sequential E2E Tests", func() {
 			Eventually(appQE, "4m", "3s").Should(applicationFixture.HaveHealthStatusCode(health.HealthStatusHealthy))
 			Eventually(appQE, "4m", "3s").Should(applicationFixture.HaveSyncStatusCode(appv1alpha1.SyncStatusCodeSynced))
 
-			By("creating ImageUpdater CR")
+			By("creating ImageUpdater CR in dev namespace")
 			updateStrategy := "semver"
 			imageUpdater = &imageUpdaterApi.ImageUpdater{
 				ObjectMeta: metav1.ObjectMeta{
@@ -405,10 +382,9 @@ var _ = Describe("ArgoCD Image Updater Sequential E2E Tests", func() {
 					},
 				},
 			}
-
 			Expect(k8sClient.Create(ctx, imageUpdater)).To(Succeed())
 
-			By("ensuring that the Application image has `29437546.0` version after update")
+			By("ensuring that the dev Application image has `29437546.0` version after update")
 			triggerRefresh := iuFixture.TriggerArgoCDRefresh(ctx, k8sClient, app)
 			Eventually(func() string {
 				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(app), app)
@@ -430,7 +406,7 @@ var _ = Describe("ArgoCD Image Updater Sequential E2E Tests", func() {
 				return ""
 			}, "5m", "3s").Should(Equal("quay.io/dkarpele/my-guestbook:29437546.0"))
 
-			By("creating ImageUpdater CR for QE namespace")
+			By("creating ImageUpdater CR in QE namespace")
 			updateStrategyQE := "semver"
 			imageUpdaterQE = &imageUpdaterApi.ImageUpdater{
 				ObjectMeta: metav1.ObjectMeta{
