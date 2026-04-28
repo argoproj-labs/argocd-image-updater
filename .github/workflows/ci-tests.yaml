@@ -15,6 +15,9 @@ on:
   # workflow_dispatch lets maintainers trigger the full suite (including E2E)
   # manually from the Actions UI or via the GitHub CLI.
   workflow_dispatch:
+permissions:
+  contents: read
+  pull-requests: read
 
 jobs:
   check-go:
@@ -170,6 +173,15 @@ jobs:
           files: coverage.out
   test-e2e:
     name: Run end-to-end tests
+    # At most one E2E run per PR at a time.  When a pull_request_target run
+    # (triggered by the "ok-to-test" label) starts while a pull_request run
+    # for the same PR is already in flight, the older run is cancelled so the
+    # new one — which carries real secrets — takes its place immediately.
+    # For workflow_dispatch and push events github.event.pull_request.number is
+    # empty, so the group falls back to github.ref (e.g. refs/heads/master).
+    concurrency:
+      group: e2e-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
     # Run for every pull_request (secrets absent → credential tests skip gracefully).
     # Run for pull_request_target ONLY when a maintainer adds the "ok-to-test"
     # label (secrets present → credential tests execute).
