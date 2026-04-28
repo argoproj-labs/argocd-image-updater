@@ -103,13 +103,15 @@ jobs:
             local inspect
             inspect=$(docker manifest inspect "${IMAGE_NAME}:${tag}" 2>/dev/null) || return 1
             if echo "${inspect}" | jq -e '.manifests' >/dev/null 2>&1; then
+              # Manifest list: extract the digest for the requested platform
               local digest
               digest=$(echo "${inspect}" | jq -r --arg a "${arch}" '.manifests[] | select(.platform.architecture == $a) | .digest' | head -n1)
               [ -n "${digest}" ] && echo "${IMAGE_NAME}@${digest}" || return 1
             else
+              # Single-platform image: get digest from verbose inspect descriptor
               local digest
-              digest=$(docker buildx imagetools inspect "${IMAGE_NAME}:${tag}" --format '{{.Digest}}' 2>/dev/null) || return 1
-              [ -n "${digest}" ] && echo "${IMAGE_NAME}@${digest}" || return 1
+              digest=$(docker manifest inspect --verbose "${IMAGE_NAME}:${tag}" 2>/dev/null | jq -r '.Descriptor.digest')
+              [ -n "${digest}" ] && [ "${digest}" != "null" ] && echo "${IMAGE_NAME}@${digest}" || return 1
             fi
           }
 
