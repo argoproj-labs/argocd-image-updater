@@ -299,6 +299,7 @@ func FilterApplicationsForUpdate(ctx context.Context, ctrlClient *ArgoCDK8sClien
 					}
 
 					appRefWBC := getWriteBackConfigFromAnnotations(&app)
+					appRefWBC = mergeWBCSettings(cr.Spec.WriteBackConfig, appRefWBC)
 					appWBCSettings, err = newWBCFromSettings(appCtx, &app, kubeClient, appRefWBC)
 					if err != nil {
 						appLogger.Warnf("Could not create write-back config, skipping: %v", err)
