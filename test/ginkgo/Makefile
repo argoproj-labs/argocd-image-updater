@@ -106,7 +106,7 @@ configure-docker-daemon: ## Configure Docker daemon.json to allow insecure regis
 
 k3d-image-import: ## Import local image to k3d cluster
 	@echo "--- Importing image $(ARGOCD_IMAGE_UPDATER_IMAGE) to k3d cluster $(K3D_CLUSTER_NAME) ---"
-	$(K3D) image import $(ARGOCD_IMAGE_UPDATER_IMAGE) -c $(K3D_CLUSTER_NAME)
+	$(K3D) image import $(ARGOCD_IMAGE_UPDATER_IMAGE) -c $(K3D_CLUSTER_NAME) --mode=direct
 
 # Currently run only parallel tests because we don't have sequential tests yet.
 test-e2e: ## Build local image updater, deploy operator, and run parallel e2e tests.
