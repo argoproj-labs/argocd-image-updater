@@ -7,6 +7,7 @@ require (
 	github.com/argoproj-labs/argocd-operator v0.17.0
 	github.com/argoproj/argo-cd/v3 v3.3.8
 	github.com/argoproj/gitops-engine v0.7.1-0.20251217140045-5baed5604d2d
+	github.com/google/go-github/v69 v69.2.0
 	github.com/onsi/ginkgo/v2 v2.28.1
 	github.com/onsi/gomega v1.39.1
 	github.com/openshift/api v0.0.0-20240906151052-5d963dce87aa
@@ -76,7 +77,6 @@ require (
 	github.com/google/btree v1.1.3 // indirect
 	github.com/google/gnostic-models v0.7.0 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
-	github.com/google/go-github/v69 v69.2.0 // indirect
 	github.com/google/go-github/v75 v75.0.0 // indirect
 	github.com/google/go-querystring v1.2.0 // indirect
 	github.com/google/pprof v0.0.0-20260115054156-294ebfa9ad83 // indirect

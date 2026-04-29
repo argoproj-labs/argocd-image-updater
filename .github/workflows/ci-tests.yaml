@@ -182,13 +182,24 @@ jobs:
     concurrency:
       group: e2e-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
-    # Run for every pull_request (secrets absent → credential tests skip gracefully).
-    # Run for pull_request_target ONLY when a maintainer adds the "ok-to-test"
-    # label (secrets present → credential tests execute).
-    # Run unconditionally for workflow_dispatch (manual trigger by maintainers).
+    # Execution policy:
+    #
+    #  pull_request from the SAME repo  → run (secrets are available, all tests execute).
+    #  pull_request from a FORK         → SKIP entirely.
+    #    Skipped jobs show as neutral (grey) on the PR — not as a red cancelled check.
+    #    A fork PR should get its secrets-bearing run via pull_request_target below.
+    #
+    #  pull_request_target + ok-to-test → run (secrets injected by GitHub for any PR,
+    #    including forks; label is the maintainer-controlled security gate).
+    #
+    #  workflow_dispatch                 → run unconditionally (manual trigger).
+    #
+    # The concurrency group (e2e-<PR-number>) still prevents duplicate runs when a
+    # same-repo PR triggers both pull_request and pull_request_target simultaneously.
     if: >-
       github.event_name == 'workflow_dispatch' ||
-      github.event_name == 'pull_request' ||
+      (github.event_name == 'pull_request' &&
+       github.event.pull_request.head.repo.full_name == github.repository) ||
       (github.event_name == 'pull_request_target' && github.event.label.name == 'ok-to-test')
     runs-on: ubuntu-latest
     timeout-minutes: 100
