@@ -823,7 +823,7 @@ func setupRepoWithSignedCommit(t *testing.T) (repoPath, signedSHA, unsignedSHA s
 	signedSHA, err = runCmdOut(repoPath, "git", "rev-parse", "HEAD")
 	require.NoError(t, err)
 
-	require.NoError(t, runCmd(repoPath, "git", "commit", "--allow-empty", "-m", "unsigned commit"))
+	require.NoError(t, runCmd(repoPath, "git", "commit", "--allow-empty", "--no-gpg-sign", "-m", "unsigned commit"))
 	unsignedSHA, err = runCmdOut(repoPath, "git", "rev-parse", "HEAD")
 	require.NoError(t, err)
 
