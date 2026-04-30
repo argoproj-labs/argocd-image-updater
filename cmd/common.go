@@ -23,6 +23,8 @@ import (
 type WebhookConfig struct {
 	// Port is the port number for the webhook server to listen on
 	Port int
+	// EnableHTTP2 allows the webhook TLS server to negotiate HTTP/2
+	EnableHTTP2 bool
 	// DockerSecret is the secret for validating Docker Hub webhooks
 	DockerSecret string
 	// GHCRSecret is the secret for validating GitHub Container Registry webhooks
@@ -144,11 +146,12 @@ func SetupWebhookServer(webhookCfg *WebhookConfig, reconciler *controller.ImageU
 	// Configure TLS
 	server.DisableTLS = webhookCfg.DisableTLS
 	server.TLS = &webhook.TLSConfig{
-		CertFile:   webhook.DefaultTLSCertPath,
-		KeyFile:    webhook.DefaultTLSKeyPath,
-		MinVersion: webhookCfg.TLSMinVersion,
-		MaxVersion: webhookCfg.TLSMaxVersion,
-		Ciphers:    webhookCfg.TLSCiphers,
+		CertFile:    webhook.DefaultTLSCertPath,
+		KeyFile:     webhook.DefaultTLSKeyPath,
+		MinVersion:  webhookCfg.TLSMinVersion,
+		MaxVersion:  webhookCfg.TLSMaxVersion,
+		Ciphers:     webhookCfg.TLSCiphers,
+		EnableHTTP2: webhookCfg.EnableHTTP2,
 	}
 
 	if webhookCfg.RateLimitNumAllowedRequests > 0 {
