@@ -6406,3 +6406,596 @@ func Test_sortHelmParameters(t *testing.T) {
 func stringPtr(s string) *string {
 	return &s
 }
+
+func Test_CheckApplicationImages(t *testing.T) {
+	t.Run("Returns PendingWrite for git write-back when update needed", func(t *testing.T) {
+		mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
+			regMock := regmock.RegistryClient{}
+			regMock.On("NewRepository", mock.Anything).Return(nil)
+			regMock.On("Tags", mock.Anything).Return([]string{"1.0.2", "1.0.3"}, nil)
+			return &regMock, nil
+		}
+
+		argoClient := argomock.ArgoCD{}
+		kubeClient := kube.ImageUpdaterKubernetesClient{
+			KubeClient: &registryKube.KubernetesClient{
+				Clientset: fake.NewFakeKubeClient(),
+			},
+		}
+
+		imageList := ImageList{
+			NewImage(image.NewFromIdentifier("foobar=gcr.io/jannfis/foobar:>=1.0.1")),
+		}
+
+		appImages := &ApplicationImages{
+			Application: v1alpha1.Application{
+				ObjectMeta: v1.ObjectMeta{
+					Name:      "guestbook",
+					Namespace: "guestbook",
+				},
+				Spec: v1alpha1.ApplicationSpec{
+					Source: &v1alpha1.ApplicationSource{
+						RepoURL: "https://github.com/example/repo.git",
+						Kustomize: &v1alpha1.ApplicationSourceKustomize{
+							Images: v1alpha1.KustomizeImages{
+								"jannfis/foobar:1.0.1",
+							},
+						},
+					},
+				},
+				Status: v1alpha1.ApplicationStatus{
+					SourceType: v1alpha1.ApplicationSourceTypeKustomize,
+					Summary: v1alpha1.ApplicationSummary{
+						Images: []string{"gcr.io/jannfis/foobar:1.0.1"},
+					},
+				},
+			},
+			WriteBackConfig: &WriteBackConfig{
+				Method:  WriteBackGit,
+				GitRepo: "https://github.com/example/repo.git",
+			},
+			Images: imageList,
+		}
+
+		res, pw := CheckApplicationImages(context.Background(), &UpdateConfiguration{
+			NewRegFN:   mockClientFn,
+			ArgoClient: &argoClient,
+			KubeClient: &kubeClient,
+			UpdateApp:  appImages,
+			DryRun:     false,
+		}, NewSyncIterationState())
+
+		assert.Equal(t, 0, res.NumErrors)
+		assert.Equal(t, 1, res.NumImagesUpdated)
+		assert.NotNil(t, pw, "PendingWrite should be returned for git write-back")
+		assert.Equal(t, 1, len(pw.ChangeList))
+		assert.Equal(t, "1.0.3", pw.ChangeList[0].NewTag.TagName)
+	})
+
+	t.Run("Returns nil PendingWrite when no update needed", func(t *testing.T) {
+		mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
+			regMock := regmock.RegistryClient{}
+			regMock.On("NewRepository", mock.Anything).Return(nil)
+			regMock.On("Tags", mock.Anything).Return([]string{"1.0.1"}, nil)
+			return &regMock, nil
+		}
+
+		argoClient := argomock.ArgoCD{}
+		kubeClient := kube.ImageUpdaterKubernetesClient{
+			KubeClient: &registryKube.KubernetesClient{
+				Clientset: fake.NewFakeKubeClient(),
+			},
+		}
+
+		imageList := ImageList{
+			NewImage(image.NewFromIdentifier("foobar=gcr.io/jannfis/foobar:>=1.0.1")),
+		}
+
+		appImages := &ApplicationImages{
+			Application: v1alpha1.Application{
+				ObjectMeta: v1.ObjectMeta{
+					Name:      "guestbook",
+					Namespace: "guestbook",
+				},
+				Spec: v1alpha1.ApplicationSpec{
+					Source: &v1alpha1.ApplicationSource{
+						Kustomize: &v1alpha1.ApplicationSourceKustomize{
+							Images: v1alpha1.KustomizeImages{"jannfis/foobar:1.0.1"},
+						},
+					},
+				},
+				Status: v1alpha1.ApplicationStatus{
+					SourceType: v1alpha1.ApplicationSourceTypeKustomize,
+					Summary: v1alpha1.ApplicationSummary{
+						Images: []string{"gcr.io/jannfis/foobar:1.0.1"},
+					},
+				},
+			},
+			WriteBackConfig: &WriteBackConfig{
+				Method:  WriteBackGit,
+				GitRepo: "https://github.com/example/repo.git",
+			},
+			Images: imageList,
+		}
+
+		res, pw := CheckApplicationImages(context.Background(), &UpdateConfiguration{
+			NewRegFN:   mockClientFn,
+			ArgoClient: &argoClient,
+			KubeClient: &kubeClient,
+			UpdateApp:  appImages,
+			DryRun:     false,
+		}, NewSyncIterationState())
+
+		assert.Equal(t, 0, res.NumErrors)
+		assert.Equal(t, 0, res.NumImagesUpdated)
+		assert.Nil(t, pw, "PendingWrite should be nil when no update needed")
+	})
+
+	t.Run("Commits immediately for argocd write-back method", func(t *testing.T) {
+		mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
+			regMock := regmock.RegistryClient{}
+			regMock.On("NewRepository", mock.Anything).Return(nil)
+			regMock.On("Tags", mock.Anything).Return([]string{"1.0.2"}, nil)
+			return &regMock, nil
+		}
+
+		argoClient := argomock.ArgoCD{}
+		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+
+		kubeClient := kube.ImageUpdaterKubernetesClient{
+			KubeClient: &registryKube.KubernetesClient{
+				Clientset: fake.NewFakeKubeClient(),
+			},
+		}
+
+		imageList := ImageList{
+			NewImage(image.NewFromIdentifier("foobar=gcr.io/jannfis/foobar:>=1.0.1")),
+		}
+
+		appImages := &ApplicationImages{
+			Application: v1alpha1.Application{
+				ObjectMeta: v1.ObjectMeta{
+					Name:      "guestbook",
+					Namespace: "guestbook",
+				},
+				Spec: v1alpha1.ApplicationSpec{
+					Source: &v1alpha1.ApplicationSource{
+						Kustomize: &v1alpha1.ApplicationSourceKustomize{
+							Images: v1alpha1.KustomizeImages{"jannfis/foobar:1.0.1"},
+						},
+					},
+				},
+				Status: v1alpha1.ApplicationStatus{
+					SourceType: v1alpha1.ApplicationSourceTypeKustomize,
+					Summary: v1alpha1.ApplicationSummary{
+						Images: []string{"gcr.io/jannfis/foobar:1.0.1"},
+					},
+				},
+			},
+			WriteBackConfig: &WriteBackConfig{
+				Method: WriteBackApplication,
+			},
+			Images: imageList,
+		}
+
+		res, pw := CheckApplicationImages(context.Background(), &UpdateConfiguration{
+			NewRegFN:   mockClientFn,
+			ArgoClient: &argoClient,
+			KubeClient: &kubeClient,
+			UpdateApp:  appImages,
+			DryRun:     false,
+		}, NewSyncIterationState())
+
+		assert.Equal(t, 0, res.NumErrors)
+		assert.Equal(t, 1, res.NumImagesUpdated)
+		assert.Nil(t, pw, "PendingWrite should be nil for argocd write-back (committed immediately)")
+	})
+
+	t.Run("Returns nil PendingWrite in dry-run mode", func(t *testing.T) {
+		mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
+			regMock := regmock.RegistryClient{}
+			regMock.On("NewRepository", mock.Anything).Return(nil)
+			regMock.On("Tags", mock.Anything).Return([]string{"1.0.2"}, nil)
+			return &regMock, nil
+		}
+
+		argoClient := argomock.ArgoCD{}
+		kubeClient := kube.ImageUpdaterKubernetesClient{
+			KubeClient: &registryKube.KubernetesClient{
+				Clientset: fake.NewFakeKubeClient(),
+			},
+		}
+
+		imageList := ImageList{
+			NewImage(image.NewFromIdentifier("foobar=gcr.io/jannfis/foobar:>=1.0.1")),
+		}
+
+		appImages := &ApplicationImages{
+			Application: v1alpha1.Application{
+				ObjectMeta: v1.ObjectMeta{
+					Name:      "guestbook",
+					Namespace: "guestbook",
+				},
+				Spec: v1alpha1.ApplicationSpec{
+					Source: &v1alpha1.ApplicationSource{
+						Kustomize: &v1alpha1.ApplicationSourceKustomize{
+							Images: v1alpha1.KustomizeImages{"jannfis/foobar:1.0.1"},
+						},
+					},
+				},
+				Status: v1alpha1.ApplicationStatus{
+					SourceType: v1alpha1.ApplicationSourceTypeKustomize,
+					Summary: v1alpha1.ApplicationSummary{
+						Images: []string{"gcr.io/jannfis/foobar:1.0.1"},
+					},
+				},
+			},
+			WriteBackConfig: &WriteBackConfig{
+				Method:  WriteBackGit,
+				GitRepo: "https://github.com/example/repo.git",
+			},
+			Images: imageList,
+		}
+
+		res, pw := CheckApplicationImages(context.Background(), &UpdateConfiguration{
+			NewRegFN:   mockClientFn,
+			ArgoClient: &argoClient,
+			KubeClient: &kubeClient,
+			UpdateApp:  appImages,
+			DryRun:     true,
+		}, NewSyncIterationState())
+
+		assert.Equal(t, 0, res.NumErrors)
+		assert.Equal(t, 1, res.NumImagesUpdated)
+		assert.Nil(t, pw, "PendingWrite should be nil in dry-run mode")
+	})
+
+	t.Run("Commits immediately for git write-branch mode (not batchable)", func(t *testing.T) {
+		mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
+			regClient := regmock.RegistryClient{}
+			regClient.On("NewRepository", mock.Anything).Return(nil)
+			regClient.On("Tags", mock.Anything).Return([]string{"1.0.1", "1.0.2"}, nil)
+			regClient.On("ManifestForTag", mock.Anything, mock.Anything).Return(&schema1.SignedManifest{}, nil) //nolint:staticcheck
+			return &regClient, nil
+		}
+
+		argoClient := argomock.ArgoCD{}
+		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+
+		kubeClient := kube.ImageUpdaterKubernetesClient{
+			KubeClient: &registryKube.KubernetesClient{
+				Clientset: fake.NewFakeKubeClient(),
+			},
+		}
+
+		imageList := ImageList{
+			NewImage(image.NewFromIdentifier("foobar=gcr.io/jannfis/foobar:>=1.0.1")),
+		}
+
+		appImages := &ApplicationImages{
+			Application: v1alpha1.Application{
+				ObjectMeta: v1.ObjectMeta{
+					Name:      "guestbook",
+					Namespace: "guestbook",
+				},
+				Spec: v1alpha1.ApplicationSpec{
+					Source: &v1alpha1.ApplicationSource{
+						RepoURL:        "https://github.com/example/repo.git",
+						TargetRevision: "main",
+						Kustomize: &v1alpha1.ApplicationSourceKustomize{
+							Images: v1alpha1.KustomizeImages{"jannfis/foobar:1.0.1"},
+						},
+					},
+				},
+				Status: v1alpha1.ApplicationStatus{
+					SourceType: v1alpha1.ApplicationSourceTypeKustomize,
+					Summary: v1alpha1.ApplicationSummary{
+						Images: []string{"gcr.io/jannfis/foobar:1.0.1"},
+					},
+				},
+			},
+			WriteBackConfig: &WriteBackConfig{
+				Method:         WriteBackGit,
+				GitRepo:        "https://github.com/example/repo.git",
+				GitWriteBranch: "image-updates-{{.SHA256}}",
+				GetCreds: func(app *v1alpha1.Application) (git.Creds, error) {
+					return git.NopCreds{}, nil
+				},
+			},
+			Images: imageList,
+		}
+
+		res, pw := CheckApplicationImages(context.Background(), &UpdateConfiguration{
+			NewRegFN:   mockClientFn,
+			ArgoClient: &argoClient,
+			KubeClient: &kubeClient,
+			UpdateApp:  appImages,
+			DryRun:     false,
+		}, NewSyncIterationState())
+
+		assert.Nil(t, pw, "PendingWrite should be nil for write-branch mode (commits immediately)")
+		// The immediate commit fails (no real git repo), which resets NumImagesUpdated to 0
+		// and increments NumErrors. The key assertion is pw == nil (correct routing).
+		assert.Equal(t, 0, res.NumImagesUpdated)
+		assert.Equal(t, 1, res.NumErrors)
+	})
+}
+
+func Test_BatchCommitChangesGit(t *testing.T) {
+	t.Run("Empty pending writes returns empty errors", func(t *testing.T) {
+		state := NewSyncIterationState()
+		errs := BatchCommitChangesGit(context.Background(), []*PendingWrite{}, state)
+		assert.Empty(t, errs)
+	})
+
+	t.Run("Creds error fails all apps in batch", func(t *testing.T) {
+		state := NewSyncIterationState()
+		wbc := &WriteBackConfig{
+			GitRepo:   "https://github.com/example/repo.git",
+			GitBranch: "main",
+			Method:    WriteBackGit,
+			GetCreds: func(app *v1alpha1.Application) (git.Creds, error) {
+				return nil, fmt.Errorf("creds unavailable")
+			},
+		}
+		app1 := v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{Name: "app1"},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: &v1alpha1.ApplicationSource{
+					RepoURL:        "https://github.com/example/repo.git",
+					TargetRevision: "main",
+				},
+			},
+		}
+		app2 := app1.DeepCopy()
+		app2.Name = "app2"
+
+		pendingWrites := []*PendingWrite{
+			{
+				AppName:        "app1",
+				ResolvedBranch: "main",
+				App: &ApplicationImages{
+					Application:     app1,
+					WriteBackConfig: wbc,
+				},
+			},
+			{
+				AppName:        "app2",
+				ResolvedBranch: "main",
+				App: &ApplicationImages{
+					Application:     *app2,
+					WriteBackConfig: wbc,
+				},
+			},
+		}
+
+		errs := BatchCommitChangesGit(context.Background(), pendingWrites, state)
+		assert.Len(t, errs, 2)
+		assert.Contains(t, errs["app1"].Error(), "creds unavailable")
+		assert.Contains(t, errs["app2"].Error(), "creds unavailable")
+	})
+
+	t.Run("Acquires repo lock and releases on error", func(t *testing.T) {
+		state := NewSyncIterationState()
+		wbc := &WriteBackConfig{
+			GitRepo:   "/nonexistent/repo.git",
+			GitBranch: "main",
+			Method:    WriteBackGit,
+			GetCreds: func(app *v1alpha1.Application) (git.Creds, error) {
+				return git.NopCreds{}, nil
+			},
+		}
+		app1 := v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{Name: "app1"},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: &v1alpha1.ApplicationSource{
+					RepoURL:        "/nonexistent/repo.git",
+					TargetRevision: "main",
+				},
+			},
+		}
+
+		pendingWrites := []*PendingWrite{
+			{
+				AppName:        "app1",
+				ResolvedBranch: "main",
+				App: &ApplicationImages{
+					Application:     app1,
+					WriteBackConfig: wbc,
+				},
+			},
+		}
+
+		errs := BatchCommitChangesGit(context.Background(), pendingWrites, state)
+		// Should fail (no valid git repo) but not panic or deadlock
+		assert.NotEmpty(t, errs)
+		assert.Contains(t, errs, "app1")
+
+		// Verify the lock is not held (we can acquire it)
+		lock := state.GetRepositoryLock("/nonexistent/repo.git")
+		assert.NotNil(t, lock)
+		locked := lock.TryLock()
+		assert.True(t, locked, "Lock should be released after BatchCommitChangesGit returns")
+		if locked {
+			lock.Unlock()
+		}
+	})
+}
+
+func Test_PendingWrite_BatchKey(t *testing.T) {
+	t.Run("Groups by repo and branch", func(t *testing.T) {
+		pw1 := &PendingWrite{
+			ResolvedBranch: "main",
+			App: &ApplicationImages{
+				WriteBackConfig: &WriteBackConfig{
+					GitRepo:    "https://github.com/example/repo.git",
+					GitBranch:  "main",
+					GitCredsID: "repocreds",
+				},
+			},
+		}
+		pw2 := &PendingWrite{
+			ResolvedBranch: "main",
+			App: &ApplicationImages{
+				WriteBackConfig: &WriteBackConfig{
+					GitRepo:    "https://github.com/example/repo.git",
+					GitBranch:  "main",
+					GitCredsID: "repocreds",
+				},
+			},
+		}
+		pw3 := &PendingWrite{
+			ResolvedBranch: "staging",
+			App: &ApplicationImages{
+				WriteBackConfig: &WriteBackConfig{
+					GitRepo:    "https://github.com/example/repo.git",
+					GitBranch:  "staging",
+					GitCredsID: "repocreds",
+				},
+			},
+		}
+		pw4 := &PendingWrite{
+			ResolvedBranch: "main",
+			App: &ApplicationImages{
+				WriteBackConfig: &WriteBackConfig{
+					GitRepo:    "https://github.com/other/repo.git",
+					GitBranch:  "main",
+					GitCredsID: "repocreds",
+				},
+			},
+		}
+
+		assert.Equal(t, pw1.BatchKey(), pw2.BatchKey(), "Same repo+branch+creds should have same key")
+		assert.NotEqual(t, pw1.BatchKey(), pw3.BatchKey(), "Different branches should have different keys")
+		assert.NotEqual(t, pw1.BatchKey(), pw4.BatchKey(), "Different repos should have different keys")
+	})
+
+	t.Run("Uses default branch placeholder when empty", func(t *testing.T) {
+		pw := &PendingWrite{
+			ResolvedBranch: "",
+			App: &ApplicationImages{
+				WriteBackConfig: &WriteBackConfig{
+					GitRepo:    "https://github.com/example/repo.git",
+					GitBranch:  "",
+					GitCredsID: "repocreds",
+				},
+			},
+		}
+		assert.Contains(t, pw.BatchKey(), "_default_")
+	})
+
+	t.Run("Groups by resolved branch not annotation branch", func(t *testing.T) {
+		// Two apps pointing at same repo, no annotation branch, but different targetRevisions
+		pwMaster := &PendingWrite{
+			ResolvedBranch: "master",
+			App: &ApplicationImages{
+				WriteBackConfig: &WriteBackConfig{
+					GitRepo:    "https://github.com/example/repo.git",
+					GitCredsID: "repocreds",
+				},
+			},
+		}
+		pwFeature := &PendingWrite{
+			ResolvedBranch: "feature/my-branch",
+			App: &ApplicationImages{
+				WriteBackConfig: &WriteBackConfig{
+					GitRepo:    "https://github.com/example/repo.git",
+					GitCredsID: "repocreds",
+				},
+			},
+		}
+		assert.NotEqual(t, pwMaster.BatchKey(), pwFeature.BatchKey(),
+			"Apps with different resolved branches must NOT be batched together")
+		assert.Contains(t, pwMaster.BatchKey(), "master")
+		assert.Contains(t, pwFeature.BatchKey(), "feature/my-branch")
+	})
+
+	t.Run("Separates by credential source", func(t *testing.T) {
+		pwRepocreds := &PendingWrite{
+			ResolvedBranch: "main",
+			App: &ApplicationImages{
+				WriteBackConfig: &WriteBackConfig{
+					GitRepo:    "https://github.com/example/repo.git",
+					GitCredsID: "repocreds",
+				},
+			},
+		}
+		pwSecret := &PendingWrite{
+			ResolvedBranch: "main",
+			App: &ApplicationImages{
+				WriteBackConfig: &WriteBackConfig{
+					GitRepo:    "https://github.com/example/repo.git",
+					GitCredsID: "secret:myns/my-git-secret",
+				},
+			},
+		}
+		pwSecretSame := &PendingWrite{
+			ResolvedBranch: "main",
+			App: &ApplicationImages{
+				WriteBackConfig: &WriteBackConfig{
+					GitRepo:    "https://github.com/example/repo.git",
+					GitCredsID: "secret:myns/my-git-secret",
+				},
+			},
+		}
+		assert.NotEqual(t, pwRepocreds.BatchKey(), pwSecret.BatchKey(),
+			"Apps with different credential sources must NOT be batched together")
+		assert.Equal(t, pwSecret.BatchKey(), pwSecretSame.BatchKey(),
+			"Apps with same credential source should be batched together")
+	})
+}
+
+func Test_buildBatchCommitMessage(t *testing.T) {
+	t.Run("Single app uses app's own message", func(t *testing.T) {
+		writes := []*PendingWrite{
+			{
+				AppName: "ns/myapp",
+				App: &ApplicationImages{
+					WriteBackConfig: &WriteBackConfig{
+						GitCommitMessage: "build: update myapp",
+					},
+				},
+				ChangeList: []ChangeEntry{},
+			},
+		}
+		msg := buildBatchCommitMessage(writes)
+		assert.Equal(t, "build: update myapp", msg)
+	})
+
+	t.Run("Multiple apps get combined message", func(t *testing.T) {
+		writes := []*PendingWrite{
+			{
+				AppName: "ns/app1",
+				App: &ApplicationImages{
+					WriteBackConfig: &WriteBackConfig{},
+				},
+				ChangeList: []ChangeEntry{
+					{
+						Image:  image.NewFromIdentifier("nginx"),
+						OldTag: tag.NewImageTag("1.0", time.Now(), ""),
+						NewTag: tag.NewImageTag("1.1", time.Now(), ""),
+					},
+				},
+			},
+			{
+				AppName: "ns/app2",
+				App: &ApplicationImages{
+					WriteBackConfig: &WriteBackConfig{},
+				},
+				ChangeList: []ChangeEntry{
+					{
+						Image:  image.NewFromIdentifier("redis"),
+						OldTag: tag.NewImageTag("6.0", time.Now(), ""),
+						NewTag: tag.NewImageTag("7.0", time.Now(), ""),
+					},
+				},
+			},
+		}
+		msg := buildBatchCommitMessage(writes)
+		assert.Contains(t, msg, "batch update of 2 application(s)")
+		assert.Contains(t, msg, "ns/app1")
+		assert.Contains(t, msg, "ns/app2")
+		assert.Contains(t, msg, "nginx")
+		assert.Contains(t, msg, "redis")
+	})
+}
