@@ -247,6 +247,21 @@ type ManifestTarget struct {
 
 // HelmTarget defines parameters for updating image references within Helm values.
 type HelmTarget struct {
+	// SourceIndex is the zero-based index of the source within a multi-source Argo CD
+	// Application's spec.sources list. When set, it takes precedence over ChartName for
+	// identifying which source's Helm values should be updated. Use this to disambiguate
+	// when multiple sources reference the same Helm chart.
+	// +optional
+	// +kubebuilder:validation:Minimum=0
+	SourceIndex *int32 `json:"sourceIndex,omitempty"`
+
+	// ChartName is the name of the Helm chart within a multi-source Argo CD Application.
+	// When an Application uses multiple sources, this field identifies which source's
+	// Helm values should be updated. If not specified, the first Helm source is used.
+	// If multiple sources use the same chart, use SourceIndex instead.
+	// +optional
+	ChartName *string `json:"chartName,omitempty"`
+
 	// Name is the dot-separated path to the Helm key for the image repository/name part.
 	// Example: "image.repository", "frontend.deployment.image.name".
 	// If neither spec nor name/tag are set, defaults to "image.name".

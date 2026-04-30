@@ -1345,6 +1345,394 @@ func Test_SetHelmImage(t *testing.T) {
 		assert.Equal(t, "mq@sha256:123456", tagParam.Value, "Existing tag value should not be overwritten with empty string")
 	})
 
+	t.Run("Test set Helm image on multi-source app with matching ChartName", func(t *testing.T) {
+		app := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "test-app",
+				Namespace: "testns",
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Sources: v1alpha1.ApplicationSources{
+					{
+						RepoURL: "https://github.com/org/manifests",
+						Path:    "k8s/",
+					},
+					{
+						RepoURL: "https://charts.example.com",
+						Chart:   "my-app",
+						Helm: &v1alpha1.ApplicationSourceHelm{
+							Parameters: []v1alpha1.HelmParameter{
+								{Name: "image.tag", Value: "1.0.0"},
+								{Name: "image.name", Value: "jannfis/foobar"},
+							},
+						},
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceTypes: []v1alpha1.ApplicationSourceType{
+					v1alpha1.ApplicationSourceTypeDirectory,
+					v1alpha1.ApplicationSourceTypeHelm,
+				},
+				Summary: v1alpha1.ApplicationSummary{
+					Images: []string{"jannfis/foobar:1.0.0"},
+				},
+			},
+		}
+
+		img := image.NewFromIdentifier("foobar=jannfis/foobar:1.0.1")
+		wbc := &WriteBackConfig{Target: "helmvalues:."}
+		appImage := &Image{
+			HelmSourceIndex: -1,
+			HelmChartName:   "my-app",
+			HelmImageName:   "image.name",
+			HelmImageTag:    "image.tag",
+		}
+		err := SetHelmImage(context.Background(), app, img, wbc, appImage)
+		require.NoError(t, err)
+
+		// Only the second source (my-app chart) should be updated
+		require.NotNil(t, app.Spec.Sources[1].Helm)
+		var tagParam v1alpha1.HelmParameter
+		for _, p := range app.Spec.Sources[1].Helm.Parameters {
+			if p.Name == "image.tag" {
+				tagParam = p
+				break
+			}
+		}
+		assert.Equal(t, "1.0.1", tagParam.Value)
+
+		// First source should be untouched (no Helm block)
+		assert.Nil(t, app.Spec.Sources[0].Helm)
+	})
+
+	t.Run("Test set Helm image on multi-source app with non-existent ChartName returns error", func(t *testing.T) {
+		app := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "test-app",
+				Namespace: "testns",
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Sources: v1alpha1.ApplicationSources{
+					{
+						RepoURL: "https://charts.example.com",
+						Chart:   "my-app",
+						Helm:    &v1alpha1.ApplicationSourceHelm{},
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceTypes: []v1alpha1.ApplicationSourceType{
+					v1alpha1.ApplicationSourceTypeHelm,
+				},
+			},
+		}
+
+		img := image.NewFromIdentifier("foobar=jannfis/foobar:1.0.1")
+		wbc := &WriteBackConfig{Target: "helmvalues:."}
+		appImage := &Image{
+			HelmSourceIndex: -1,
+			HelmChartName:   "does-not-exist",
+			HelmImageName:   "image.name",
+			HelmImageTag:    "image.tag",
+		}
+		err := SetHelmImage(context.Background(), app, img, wbc, appImage)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "does-not-exist")
+	})
+
+	t.Run("Test set Helm image on multi-source app using SourceIndex", func(t *testing.T) {
+		app := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "test-app",
+				Namespace: "testns",
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Sources: v1alpha1.ApplicationSources{
+					{
+						RepoURL: "https://git.example.com",
+						Path:    ".",
+					},
+					{
+						RepoURL: "https://charts.example.com",
+						Chart:   "my-app",
+						Helm:    &v1alpha1.ApplicationSourceHelm{},
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceTypes: []v1alpha1.ApplicationSourceType{
+					v1alpha1.ApplicationSourceTypeDirectory,
+					v1alpha1.ApplicationSourceTypeHelm,
+				},
+				Summary: v1alpha1.ApplicationSummary{
+					Images: []string{"jannfis/foobar:1.0.0"},
+				},
+			},
+		}
+
+		img := image.NewFromIdentifier("foobar=jannfis/foobar:1.0.1")
+		wbc := &WriteBackConfig{Target: "helmvalues:."}
+		appImage := &Image{
+			HelmSourceIndex: 1,
+			HelmImageName:   "image.name",
+			HelmImageTag:    "image.tag",
+		}
+		err := SetHelmImage(context.Background(), app, img, wbc, appImage)
+		require.NoError(t, err)
+
+		require.NotNil(t, app.Spec.Sources[1].Helm)
+		var tagParam v1alpha1.HelmParameter
+		for _, p := range app.Spec.Sources[1].Helm.Parameters {
+			if p.Name == "image.tag" {
+				tagParam = p
+				break
+			}
+		}
+		assert.Equal(t, "1.0.1", tagParam.Value)
+		assert.Nil(t, app.Spec.Sources[0].Helm)
+	})
+
+	t.Run("Test set Helm image disambiguates duplicate chart names via SourceIndex", func(t *testing.T) {
+		app := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "test-app",
+				Namespace: "testns",
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Sources: v1alpha1.ApplicationSources{
+					{
+						RepoURL: "https://charts.example.com",
+						Chart:   "my-app",
+						Helm: &v1alpha1.ApplicationSourceHelm{
+							Parameters: []v1alpha1.HelmParameter{
+								{Name: "image.tag", Value: "1.0.0"},
+							},
+						},
+					},
+					{
+						RepoURL: "https://charts.example.com",
+						Chart:   "my-app",
+						Helm:    &v1alpha1.ApplicationSourceHelm{},
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceTypes: []v1alpha1.ApplicationSourceType{
+					v1alpha1.ApplicationSourceTypeHelm,
+					v1alpha1.ApplicationSourceTypeHelm,
+				},
+				Summary: v1alpha1.ApplicationSummary{
+					Images: []string{"jannfis/foobar:1.0.0"},
+				},
+			},
+		}
+
+		img := image.NewFromIdentifier("foobar=jannfis/foobar:1.0.1")
+		wbc := &WriteBackConfig{Target: "helmvalues:."}
+		appImage := &Image{
+			HelmSourceIndex: 1, // target the second source, not the first
+			HelmImageName:   "image.name",
+			HelmImageTag:    "image.tag",
+		}
+		err := SetHelmImage(context.Background(), app, img, wbc, appImage)
+		require.NoError(t, err)
+
+		// index 1 should be updated
+		var idx1Tag v1alpha1.HelmParameter
+		for _, p := range app.Spec.Sources[1].Helm.Parameters {
+			if p.Name == "image.tag" {
+				idx1Tag = p
+				break
+			}
+		}
+		assert.Equal(t, "1.0.1", idx1Tag.Value)
+
+		// index 0 should be untouched
+		var idx0Tag v1alpha1.HelmParameter
+		for _, p := range app.Spec.Sources[0].Helm.Parameters {
+			if p.Name == "image.tag" {
+				idx0Tag = p
+				break
+			}
+		}
+		assert.Equal(t, "1.0.0", idx0Tag.Value)
+	})
+
+	t.Run("Test set Helm image with out-of-range SourceIndex returns error", func(t *testing.T) {
+		app := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "test-app",
+				Namespace: "testns",
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Sources: v1alpha1.ApplicationSources{
+					{
+						RepoURL: "https://charts.example.com",
+						Chart:   "my-app",
+						Helm:    &v1alpha1.ApplicationSourceHelm{},
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceTypes: []v1alpha1.ApplicationSourceType{
+					v1alpha1.ApplicationSourceTypeHelm,
+				},
+			},
+		}
+
+		img := image.NewFromIdentifier("foobar=jannfis/foobar:1.0.1")
+		wbc := &WriteBackConfig{Target: "helmvalues:."}
+		appImage := &Image{
+			HelmSourceIndex: 5,
+			HelmImageName:   "image.name",
+			HelmImageTag:    "image.tag",
+		}
+		err := SetHelmImage(context.Background(), app, img, wbc, appImage)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "out of range")
+	})
+
+	t.Run("Test set Helm image with SourceIndex pointing to non-Helm source returns error", func(t *testing.T) {
+		app := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "test-app",
+				Namespace: "testns",
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Sources: v1alpha1.ApplicationSources{
+					{
+						RepoURL: "https://git.example.com",
+						Path:    "k8s/",
+					},
+					{
+						RepoURL: "https://charts.example.com",
+						Chart:   "my-app",
+						Helm:    &v1alpha1.ApplicationSourceHelm{},
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceTypes: []v1alpha1.ApplicationSourceType{
+					v1alpha1.ApplicationSourceTypeDirectory,
+					v1alpha1.ApplicationSourceTypeHelm,
+				},
+			},
+		}
+
+		img := image.NewFromIdentifier("foobar=jannfis/foobar:1.0.1")
+		wbc := &WriteBackConfig{Target: "helmvalues:."}
+		appImage := &Image{
+			HelmSourceIndex: 0, // points to the Git source, not Helm
+			HelmImageName:   "image.name",
+			HelmImageTag:    "image.tag",
+		}
+		err := SetHelmImage(context.Background(), app, img, wbc, appImage)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "not a Helm source")
+	})
+
+	t.Run("Test SourceIndex takes precedence over ChartName in multi-source app", func(t *testing.T) {
+		app := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "test-app",
+				Namespace: "testns",
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Sources: v1alpha1.ApplicationSources{
+					{
+						RepoURL: "https://charts.example.com",
+						Chart:   "my-app",
+						Helm:    &v1alpha1.ApplicationSourceHelm{},
+					},
+					{
+						RepoURL: "https://charts.example.com",
+						Chart:   "my-app",
+						Helm:    &v1alpha1.ApplicationSourceHelm{},
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceTypes: []v1alpha1.ApplicationSourceType{
+					v1alpha1.ApplicationSourceTypeHelm,
+					v1alpha1.ApplicationSourceTypeHelm,
+				},
+				Summary: v1alpha1.ApplicationSummary{
+					Images: []string{"jannfis/foobar:1.0.0"},
+				},
+			},
+		}
+
+		img := image.NewFromIdentifier("foobar=jannfis/foobar:1.0.1")
+		wbc := &WriteBackConfig{Target: "helmvalues:."}
+		appImage := &Image{
+			HelmSourceIndex: 1,
+			HelmChartName:   "my-app", // would match both; SourceIndex should win and pick index 1
+			HelmImageName:   "image.name",
+			HelmImageTag:    "image.tag",
+		}
+		err := SetHelmImage(context.Background(), app, img, wbc, appImage)
+		require.NoError(t, err)
+
+		// index 1 should be updated
+		var idx1Tag v1alpha1.HelmParameter
+		for _, p := range app.Spec.Sources[1].Helm.Parameters {
+			if p.Name == "image.tag" {
+				idx1Tag = p
+				break
+			}
+		}
+		assert.Equal(t, "1.0.1", idx1Tag.Value)
+
+		// index 0 should be untouched
+		assert.Empty(t, app.Spec.Sources[0].Helm.Parameters)
+	})
+
+	t.Run("Test set Helm image on single-source app ignores ChartName and uses existing logic", func(t *testing.T) {
+		app := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "test-app",
+				Namespace: "testns",
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: &v1alpha1.ApplicationSource{
+					Helm: &v1alpha1.ApplicationSourceHelm{
+						Parameters: []v1alpha1.HelmParameter{
+							{Name: "image.tag", Value: "1.0.0"},
+							{Name: "image.name", Value: "jannfis/foobar"},
+						},
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypeHelm,
+				Summary: v1alpha1.ApplicationSummary{
+					Images: []string{"jannfis/foobar:1.0.0"},
+				},
+			},
+		}
+
+		img := image.NewFromIdentifier("foobar=jannfis/foobar:1.0.1")
+		wbc := &WriteBackConfig{Target: "helmvalues:."}
+		appImage := &Image{
+			HelmChartName: "my-app", // set but should be ignored for single-source
+			HelmImageName: "image.name",
+			HelmImageTag:  "image.tag",
+		}
+		err := SetHelmImage(context.Background(), app, img, wbc, appImage)
+		require.NoError(t, err)
+		require.NotNil(t, app.Spec.Source.Helm)
+
+		var tagParam v1alpha1.HelmParameter
+		for _, p := range app.Spec.Source.Helm.Parameters {
+			if p.Name == "image.tag" {
+				tagParam = p
+				break
+			}
+		}
+		assert.Equal(t, "1.0.1", tagParam.Value)
+	})
+
 }
 
 func TestKubernetesClient(t *testing.T) {
@@ -1664,6 +2052,7 @@ func Test_parseImageList(t *testing.T) {
 			PullSecret:         "",
 			IgnoreTags:         []string{},
 			Platforms:          []string{},
+			HelmSourceIndex:    -1,
 			HelmImageName:      "",
 			HelmImageTag:       "",
 			HelmImageSpec:      "",
@@ -2323,6 +2712,57 @@ func Test_newImageFromManifestTargetSettings(t *testing.T) {
 		img, err := newImageFromManifestTargetSettings(settings, image)
 		assert.NoError(t, err)
 		assert.Equal(t, "child-kustomize", img.KustomizeImageName)
+	})
+
+	t.Run("should populate HelmChartName from settings", func(t *testing.T) {
+		settings := &api.ManifestTarget{
+			Helm: &api.HelmTarget{
+				ChartName: strPtr("my-chart"),
+				Name:      strPtr("image.name"),
+				Tag:       strPtr("image.tag"),
+			},
+		}
+		img, err := newImageFromManifestTargetSettings(settings, &Image{})
+		assert.NoError(t, err)
+		assert.Equal(t, "my-chart", img.HelmChartName)
+		assert.Equal(t, "image.name", img.HelmImageName)
+		assert.Equal(t, "image.tag", img.HelmImageTag)
+	})
+
+	t.Run("should not overwrite HelmChartName when settings has no ChartName", func(t *testing.T) {
+		settings := &api.ManifestTarget{
+			Helm: &api.HelmTarget{
+				Name: strPtr("image.name"),
+			},
+		}
+		img, err := newImageFromManifestTargetSettings(settings, &Image{HelmChartName: "inherited-chart"})
+		assert.NoError(t, err)
+		assert.Equal(t, "inherited-chart", img.HelmChartName)
+	})
+
+	t.Run("should populate HelmSourceIndex from settings", func(t *testing.T) {
+		idx := int32(2)
+		settings := &api.ManifestTarget{
+			Helm: &api.HelmTarget{
+				SourceIndex: &idx,
+				Name:        strPtr("image.name"),
+				Tag:         strPtr("image.tag"),
+			},
+		}
+		img, err := newImageFromManifestTargetSettings(settings, &Image{HelmSourceIndex: -1})
+		assert.NoError(t, err)
+		assert.Equal(t, 2, img.HelmSourceIndex)
+	})
+
+	t.Run("should not overwrite HelmSourceIndex when settings has no SourceIndex", func(t *testing.T) {
+		settings := &api.ManifestTarget{
+			Helm: &api.HelmTarget{
+				Name: strPtr("image.name"),
+			},
+		}
+		img, err := newImageFromManifestTargetSettings(settings, &Image{HelmSourceIndex: 1})
+		assert.NoError(t, err)
+		assert.Equal(t, 1, img.HelmSourceIndex)
 	})
 
 	t.Run("should return error when both helm and kustomize are set", func(t *testing.T) {
