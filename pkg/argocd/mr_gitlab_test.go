@@ -247,6 +247,77 @@ func Test_GitLabMRService_create(t *testing.T) {
 	}
 }
 
+func Test_GitLabMRService_list(t *testing.T) {
+	ctx := context.Background()
+
+	tests := []struct {
+		name       string
+		handler    http.HandlerFunc
+		wantExists bool
+		wantErrMsg string
+	}{
+		{
+			name: "no open MRs — returns false",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, http.MethodGet, r.Method)
+				assert.Equal(t, "image-updater-branch", r.URL.Query().Get("source_branch"))
+				assert.Equal(t, "main", r.URL.Query().Get("target_branch"))
+				assert.Equal(t, "opened", r.URL.Query().Get("state"))
+
+				w.WriteHeader(http.StatusOK)
+				_ = json.NewEncoder(w).Encode([]map[string]any{})
+			},
+			wantExists: false,
+		},
+		{
+			name: "one open MR — returns true",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusOK)
+				_ = json.NewEncoder(w).Encode([]map[string]any{
+					{"iid": 1},
+				})
+			},
+			wantExists: true,
+		},
+		{
+			name: "multiple open MRs — returns true",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusOK)
+				_ = json.NewEncoder(w).Encode([]map[string]any{
+					{"iid": 1},
+					{"iid": 2},
+				})
+			},
+			wantExists: true,
+		},
+		{
+			name: "API error — returns error",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusInternalServerError)
+			},
+			wantErrMsg: "could not list MRs for group/repo",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(tt.handler)
+			defer server.Close()
+
+			svc := newTestGitLabMRService(server, nil)
+			exists, err := svc.list(ctx, "main", "image-updater-branch")
+
+			if tt.wantErrMsg != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.wantErrMsg)
+			} else {
+				require.NoError(t, err)
+				assert.Equal(t, tt.wantExists, exists)
+			}
+		})
+	}
+}
+
 func Test_NewGitLabMRService(t *testing.T) {
 	ctx := context.Background()
 

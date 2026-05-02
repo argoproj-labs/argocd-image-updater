@@ -232,7 +232,7 @@ func commitChangesGit(ctx context.Context, applicationImages *ApplicationImages,
 
 	// Set custom pushBranch name for PR/MR mode
 	if wbc.PRProvider > 0 {
-		customTemplate := "image-updater-{{.TargetKey}}-{{.SHA256}}"
+		customTemplate := PRBranchTemplate
 		logCtx.Tracef("setting git push branch for PR/MR mode using custom template '%s'", customTemplate)
 		pushBranch = TemplateBranchName(ctx, customTemplate, app.Namespace, app.Name, wbc.WriteBackTargetKey(), changeList)
 		if pushBranch == "" {
