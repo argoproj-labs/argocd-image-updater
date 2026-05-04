@@ -45,6 +45,7 @@ Supported registries:
 - Harbor
 - Aliyun ACR
 - AWS ECR (via EventBridge CloudEvents)
+- GitLab
 `,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := log.SetLogLevel(cfg.LogLevel); err != nil {
@@ -98,6 +99,7 @@ Supported registries:
 	webhookCmd.Flags().StringVar(&webhookCfg.HarborSecret, "harbor-webhook-secret", env.GetStringVal("HARBOR_WEBHOOK_SECRET", ""), "Secret for validating Harbor webhooks")
 	webhookCmd.Flags().StringVar(&webhookCfg.AliyunACRSecret, "aliyun-acr-webhook-secret", env.GetStringVal("ALIYUN_ACR_WEBHOOK_SECRET", ""), "Secret for validating Aliyun ACR webhooks")
 	webhookCmd.Flags().StringVar(&webhookCfg.CloudEventsSecret, "cloudevents-webhook-secret", env.GetStringVal("CLOUDEVENTS_WEBHOOK_SECRET", ""), "Secret for validating CloudEvents webhooks")
+	webhookCmd.Flags().StringVar(&webhookCfg.GitLabSecret, "gitlab-webhook-secret", env.GetStringVal("GITLAB_WEBHOOK_SECRET", ""), "Secret for validating GitLab webhooks")
 	webhookCmd.Flags().IntVar(&webhookCfg.RateLimitNumAllowedRequests, "webhook-ratelimit-allowed", env.ParseNumFromEnv("WEBHOOK_RATELIMIT_ALLOWED", 0, 0, math.MaxInt), "The number of allowed requests in an hour for webhook rate limiting, setting to 0 disables ratelimiting")
 
 	// TLS flags

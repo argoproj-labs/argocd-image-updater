@@ -206,17 +206,17 @@ func TestAliyunACRWebhook_Parse(t *testing.T) {
 				return
 			}
 
-			if event == nil {
+			if len(event) == 0 {
 				t.Fatal("expected event to be non-nil")
 			}
-			if event.RegistryURL != tt.expectedRegistryURL {
-				t.Errorf("expected registry URL to be %q, got %q", tt.expectedRegistryURL, event.RegistryURL)
+			if event[0].RegistryURL != tt.expectedRegistryURL {
+				t.Errorf("expected registry URL to be %q, got %q", tt.expectedRegistryURL, event[0].RegistryURL)
 			}
-			if event.Repository != tt.expectedRepo {
-				t.Errorf("expected repository to be %q, got %q", tt.expectedRepo, event.Repository)
+			if event[0].Repository != tt.expectedRepo {
+				t.Errorf("expected repository to be %q, got %q", tt.expectedRepo, event[0].Repository)
 			}
-			if event.Tag != tt.expectedTag {
-				t.Errorf("expected tag to be %q, got %q", tt.expectedTag, event.Tag)
+			if event[0].Tag != tt.expectedTag {
+				t.Errorf("expected tag to be %q, got %q", tt.expectedTag, event[0].Tag)
 			}
 		})
 	}
