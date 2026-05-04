@@ -840,6 +840,18 @@ subjects:
   namespace: argocd
 ---
 apiVersion: v1
+data:
+  log.level: trace
+  registries.conf: |
+    registries:
+    - name: Test Registry
+      api_url: https://host.docker.internal:30000
+      ping: yes
+      prefix: 127.0.0.1:30000
+      insecure: true
+      # secret: re-reads from the Kubernetes API when credsexpire triggers (no pod restart).
+      credentials: secret:argocd/argocd-image-updater-secret#registry-creds
+  watch.namespaces: argocd,dev
 kind: ConfigMap
 metadata:
   labels:
@@ -856,6 +868,8 @@ metadata:
   name: argocd-image-updater-ssh-config
 ---
 apiVersion: v1
+data:
+  registry-creds: ZTJlOmUyZQ==
 kind: Secret
 metadata:
   labels:
@@ -1062,7 +1076,7 @@ spec:
               key: tls.ciphers
               name: argocd-image-updater-config
               optional: true
-        image: quay.io/argoprojlabs/argocd-image-updater:latest
+        image: quay.io/argoprojlabs/argocd-image-updater:v1.2.0
         livenessProbe:
           httpGet:
             path: /healthz

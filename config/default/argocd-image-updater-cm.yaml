@@ -5,3 +5,16 @@ metadata:
   labels:
     app.kubernetes.io/name: argocd-image-updater-config
     app.kubernetes.io/part-of: argocd-image-updater-controller
+data:
+  log.level: "trace"
+  watch.namespaces: "argocd,dev"
+  registries.conf: |
+    registries:
+    - name: Test Registry
+      api_url: https://host.docker.internal:30000
+      ping: yes
+      prefix: 127.0.0.1:30000
+      insecure: true
+      # secret: re-reads from the Kubernetes API when credsexpire triggers (no pod restart).
+      credentials: secret:argocd/argocd-image-updater-secret#registry-creds
+#      credsexpire: 10m
