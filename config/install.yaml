@@ -1062,7 +1062,7 @@ spec:
               key: tls.ciphers
               name: argocd-image-updater-config
               optional: true
-        image: quay.io/argoprojlabs/argocd-image-updater:latest
+        image: quay.io/argoprojlabs/argocd-image-updater:v1.2.0
         livenessProbe:
           httpGet:
             path: /healthz
