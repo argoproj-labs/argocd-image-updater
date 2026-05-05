@@ -274,11 +274,28 @@ not be able to use this method.
 
 ## Exposing the Server
 
-To expose the webhook server we have provided a service and ingress to get 
-started. These manifests are not applied with `install.yaml` so you will need 
-to apply them yourself. 
+To expose the webhook server we have provided a service and ingress to get
+started. These manifests are not applied with `install.yaml` so you will need
+to apply them yourself.
 
-They are located in the `manifets/base/networking` directory.
+They are located in the `config/networking` directory.
+
+### NetworkPolicy Considerations
+
+The default installation includes a NetworkPolicy for the Image Updater controller.
+If you expose the webhook server through the provided Service and Ingress manifests,
+make sure the source namespace is allowed by the webhook NetworkPolicy.
+
+By default, the webhook Service exposes port 8080 and forwards traffic to the
+controller webhook port 8082. If you use the default NetworkPolicy, label the
+namespace of your ingress controller or webhook client with:
+
+```bash
+kubectl label namespace <namespace> webhooks=enabled
+```
+
+If you customize webhook.port or the Service targetPort, update the NetworkPolicy
+port accordingly.
 
 ## Rate Limiting
 

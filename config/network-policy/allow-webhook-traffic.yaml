@@ -1,0 +1,26 @@
+# This NetworkPolicy allows ingress traffic to the webhook server
+# from Pods running in namespaces labeled with 'webhooks: enabled'. Only Pods in those
+# namespaces are able to send webhook notifications to the controller.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  labels:
+    control-plane: argocd-image-updater-controller
+    app.kubernetes.io/name: argocd-image-updater-controller
+    app.kubernetes.io/managed-by: kustomize
+  name: allow-webhook-traffic
+spec:
+  podSelector:
+    matchLabels:
+      control-plane: argocd-image-updater-controller
+  policyTypes:
+    - Ingress
+  ingress:
+    # This allows ingress traffic from any namespace with the label webhooks: enabled
+    - from:
+      - namespaceSelector:
+          matchLabels:
+            webhooks: enabled  # Only from namespaces with this label
+      ports:
+        - port: 8082
+          protocol: TCP
