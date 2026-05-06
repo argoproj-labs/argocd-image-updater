@@ -13,6 +13,10 @@ linters:
       - common-false-positives
       - legacy
       - std-error-handling
+    rules:
+      - linters: [staticcheck]
+        text: "ST1001" # dot imports - common practice in Ginkgo/Gomega tests for readability
+        path: "test/"
     paths:
       - .*\.pb\.go
       - vendor/
@@ -20,6 +24,10 @@ linters:
       - builtin$
       - examples$
   settings:
+    govet:
+      disable:
+        # TODO: re-enable after golangci-lint supports generics in inline analyzer
+        - inline # false positives on generic stdlib functions (slices.SortFunc, etc.)
     staticcheck:
       checks:
         - all
