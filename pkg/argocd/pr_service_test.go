@@ -53,8 +53,8 @@ func (m *mockGitClient) ChangedFiles(_ context.Context, _, _ string) ([]string, 
 }
 func (m *mockGitClient) Commit(_ context.Context, _ string, _ *git.CommitOptions) error { return nil }
 func (m *mockGitClient) Branch(_ context.Context, _, _ string) error                    { return nil }
-func (m *mockGitClient) Push(_ context.Context, _, _ string, _ bool) error              { return nil }
-func (m *mockGitClient) Add(_ context.Context, _ string) error                          { return nil }
+func (m *mockGitClient) Push(_ context.Context, _, _ string, _ bool) error { return nil }
+func (m *mockGitClient) Add(_ context.Context, _ string) error             { return nil }
 func (m *mockGitClient) SymRefToBranch(_ context.Context, _ string) (string, error) {
 	return "main", nil
 }

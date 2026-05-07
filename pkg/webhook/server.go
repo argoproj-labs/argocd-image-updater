@@ -52,6 +52,13 @@ type TLSConfig struct {
 	Ciphers string
 }
 
+const (
+	// webhookQueueSize is the maximum number of webhook events that can be
+	// buffered before the server starts returning 503. Sized generously so that
+	// a large CI burst (e.g. 50 services pushing at once) does not drop events.
+	webhookQueueSize = 256
+)
+
 // WebhookServer manages webhook endpoints and triggers update checks
 type WebhookServer struct {
 	// We pass the whole Reconciler struct here, since it now holds all dependencies.
@@ -68,6 +75,9 @@ type WebhookServer struct {
 	TLS *TLSConfig
 	// DisableTLS disables TLS and runs plain HTTP
 	DisableTLS bool
+	// eventQueue serialises webhook processing so that only one event is
+	// handled at a time, preventing concurrent git-push conflicts.
+	eventQueue chan *argocd.WebhookEvent
 }
 
 // NewWebhookServer creates a new webhook server
@@ -77,6 +87,7 @@ func NewWebhookServer(port int, handler *WebhookHandler, reconciler *controller.
 		Port:        port,
 		Handler:     handler,
 		RateLimiter: nil,
+		eventQueue:  make(chan *argocd.WebhookEvent, webhookQueueSize),
 	}
 }
 
@@ -369,6 +380,21 @@ func (s *WebhookServer) Start(ctx context.Context) error {
 		}
 	}
 
+	// Single worker goroutine — processes webhook events one at a time so that
+	// concurrent CI pushes never race on the same git branch.
+	go func() {
+		for {
+			select {
+			case event := <-s.eventQueue:
+				if err := s.processWebhookEvent(context.Background(), event); err != nil {
+					log.Errorf("Failed to process webhook event: %v", err)
+				}
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+
 	// Wait for context cancellation or a startup error
 	select {
 	case err := <-errCh:
@@ -438,49 +464,45 @@ func (s *WebhookServer) handleWebhook(w http.ResponseWriter, r *http.Request) {
 		"webhook_tag":        event.Tag,
 	}
 	eventCtx := baseLogger.WithFields(fields)
-	eventOpCtx := log.ContextWithLogger(ctx, eventCtx)
 
 	eventCtx.Infof("Received valid webhook event")
 
-	// Process webhook asynchronously
-	go func() {
-		if s.RateLimiter != nil {
-			s.RateLimiter.Take()
-		}
+	if s.RateLimiter != nil {
+		s.RateLimiter.Take()
+	}
 
-		err := s.processWebhookEvent(eventOpCtx, event)
-		if err != nil {
-			eventCtx.Errorf("Failed to process webhook event: %v", err)
+	// Enqueue for sequential processing. A non-blocking send means we never
+	// stall the HTTP handler; if the queue is full we reject with 503 so the
+	// caller can retry rather than silently dropping the event.
+	select {
+	case s.eventQueue <- event:
+		w.WriteHeader(http.StatusOK)
+		if _, err := w.Write([]byte("Webhook received and queued for processing")); err != nil {
+			eventCtx.Errorf("Failed to write webhook response: %v", err)
 		}
-	}()
-
-	// Return success immediately
-	w.WriteHeader(http.StatusOK)
-	if _, err := w.Write([]byte("Webhook received and processing")); err != nil {
-		eventCtx.Errorf("Failed to write webhook response: %v", err)
+	default:
+		eventCtx.Warnf("Webhook event queue full (%d), rejecting event", webhookQueueSize)
+		http.Error(w, "webhook queue full, retry later", http.StatusServiceUnavailable)
 	}
 }
 
-// processWebhookEvent processes a webhook event and triggers image update checks
+// processWebhookEvent processes a webhook event and triggers image update checks.
+// Must be called from the single worker goroutine to ensure sequential git operations.
 func (s *WebhookServer) processWebhookEvent(ctx context.Context, event *argocd.WebhookEvent) error {
 	logCtx := log.LoggerFromContext(ctx)
-	// The request's context is canceled as soon as the HTTP handler returns.
-	// We create a new background context for our asynchronous processing to
-	// prevent it from being prematurely terminated.
-	processingCtx := log.ContextWithLogger(context.Background(), logCtx)
 	logCtx.Infof("Processing webhook event for %s/%s:%s", event.RegistryURL, event.Repository, event.Tag)
 
 	imageList := &api.ImageUpdaterList{}
 
 	logCtx.Debugf("Listing all ImageUpdater CRs...")
-	if err := s.Reconciler.List(processingCtx, imageList); err != nil {
+	if err := s.Reconciler.List(ctx, imageList); err != nil {
 		logCtx.Errorf("Failed to list ImageUpdater CRs: %v", err)
 		return err
 	}
 
 	logCtx.Debugf("Found %d ImageUpdater CRs to process.", len(imageList.Items))
 
-	if err := s.Reconciler.ProcessImageUpdaterCRs(processingCtx, imageList.Items, false, event); err != nil {
+	if err := s.Reconciler.ProcessImageUpdaterCRs(ctx, imageList.Items, false, event); err != nil {
 		logCtx.Errorf("Failed to process ImageUpdater CRs for webhook: %v", err)
 		return err
 	}
