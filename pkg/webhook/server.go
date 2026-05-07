@@ -380,6 +380,12 @@ func (s *WebhookServer) Start(ctx context.Context) error {
 		}
 	}
 
+	// workerCtx is derived from the caller's ctx so that the worker goroutine
+	// is guaranteed to stop whenever Start() returns — including on a server
+	// startup failure received via errCh (where ctx is not yet cancelled).
+	workerCtx, cancelWorker := context.WithCancel(ctx)
+	defer cancelWorker()
+
 	// Single worker goroutine — processes webhook events one at a time so that
 	// concurrent CI pushes never race on the same git branch.
 	go func() {
@@ -389,7 +395,10 @@ func (s *WebhookServer) Start(ctx context.Context) error {
 				if err := s.processWebhookEvent(context.Background(), event); err != nil {
 					log.Errorf("Failed to process webhook event: %v", err)
 				}
-			case <-ctx.Done():
+			case <-workerCtx.Done():
+				if n := len(s.eventQueue); n > 0 {
+					log.Warnf("Webhook worker shutting down with %d unprocessed events in queue", n)
+				}
 				return
 			}
 		}
@@ -467,15 +476,16 @@ func (s *WebhookServer) handleWebhook(w http.ResponseWriter, r *http.Request) {
 
 	eventCtx.Infof("Received valid webhook event")
 
-	if s.RateLimiter != nil {
-		s.RateLimiter.Take()
-	}
-
 	// Enqueue for sequential processing. A non-blocking send means we never
 	// stall the HTTP handler; if the queue is full we reject with 503 so the
 	// caller can retry rather than silently dropping the event.
+	// Rate limiting is applied only on successful enqueue so that a full queue
+	// does not consume rate-limit tokens for events that were never accepted.
 	select {
 	case s.eventQueue <- event:
+		if s.RateLimiter != nil {
+			s.RateLimiter.Take()
+		}
 		w.WriteHeader(http.StatusOK)
 		if _, err := w.Write([]byte("Webhook received and queued for processing")); err != nil {
 			eventCtx.Errorf("Failed to write webhook response: %v", err)
