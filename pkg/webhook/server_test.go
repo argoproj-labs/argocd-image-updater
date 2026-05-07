@@ -425,7 +425,7 @@ func TestWebhookServerRateLimit(t *testing.T) {
 		server.Handler.RegisterHandler(NewDockerHubWebhook(""))
 		// Replace the queue with an unbuffered channel so the non-blocking send
 		// always falls through to the default (503) branch.
-		server.eventQueue = make(chan *argocd.WebhookEvent, 0)
+		server.eventQueue = make(chan *argocd.WebhookEvent)
 
 		mock := &mockRateLimiter{}
 		server.RateLimiter = mock
