@@ -1,9 +1,7 @@
 package webhook
 
 import (
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/hex"
+	"crypto/subtle"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -41,23 +39,17 @@ func (h *HarborWebhook) Validate(r *http.Request) error {
 		return fmt.Errorf("invalid content type: %s", eventType)
 	}
 
-	// If secret is configured, validate the signature
+	// If secret is configured, validate the secret
+	// See: https://github.com/akuity/kargo/blob/main/pkg/webhook/external/harbor.go
 	if h.secret != "" {
-		signature := r.Header.Get("Authorization")
-		if signature == "" {
-			return fmt.Errorf("missing webhook signature")
+		authHeader := r.Header.Get("Authorization")
+		if authHeader == "" {
+			return fmt.Errorf("missing Authorization header when secret is configured")
 		}
 
-		body, err := io.ReadAll(r.Body)
-		if err != nil {
-			return fmt.Errorf("failed to read request body: %w", err)
-		}
-
-		// Reset body for later reading
-		r.Body = io.NopCloser(strings.NewReader(string(body)))
-
-		if !h.validateSignature(body, signature) {
-			return fmt.Errorf("invalid webhook signature")
+		// Harbor sends plain secret value directly in Authorization header for external webhooks
+		if subtle.ConstantTimeCompare([]byte(authHeader), []byte(h.secret)) != 1 {
+			return fmt.Errorf("incorrect webhook secret")
 		}
 	}
 
@@ -154,24 +146,4 @@ func (h *HarborWebhook) Parse(r *http.Request) (*WebhookEvent, error) {
 		Tag:         resource.Tag,
 		Digest:      resource.Digest,
 	}, nil
-}
-
-// validateSignature validates the webhook signature using HMAC-SHA256
-func (h *HarborWebhook) validateSignature(body []byte, signature string) bool {
-	// Harbor signature format can vary, commonly uses sha256=<hex> in Authorization header
-	var expectedSig string
-
-	if strings.HasPrefix(signature, "sha256=") {
-		expectedSig = signature[7:] // Remove "sha256=" prefix
-	} else if strings.HasPrefix(signature, "Bearer ") {
-		expectedSig = signature[7:] // Remove "Bearer " prefix
-	} else {
-		expectedSig = signature
-	}
-
-	mac := hmac.New(sha256.New, []byte(h.secret))
-	mac.Write(body)
-	calculatedSig := hex.EncodeToString(mac.Sum(nil))
-
-	return hmac.Equal([]byte(expectedSig), []byte(calculatedSig))
 }
