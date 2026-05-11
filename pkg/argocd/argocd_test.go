@@ -81,6 +81,79 @@ func Test_GetImagesFromApplication(t *testing.T) {
 		assert.Equal(t, "nginx", imageList[0].ImageName)
 		assert.Nil(t, imageList[0].ImageTag)
 	})
+
+	t.Run("Get list of images from application with force-update and zero replicas - Helm", func(t *testing.T) {
+		application := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "test-app",
+				Namespace: "argocd",
+				Annotations: map[string]string{
+					fmt.Sprintf(registryCommon.Prefixed(common.ImageUpdaterAnnotationPrefix, registryCommon.ForceUpdateOptionAnnotationSuffix), "myapp"): "true",
+					common.ImageUpdaterAnnotation: "myapp=myregistry/myapp",
+				},
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: &v1alpha1.ApplicationSource{
+					Helm: &v1alpha1.ApplicationSourceHelm{
+						Parameters: []v1alpha1.HelmParameter{
+							{
+								Name:  "image.name",
+								Value: "myregistry/myapp",
+							},
+							{
+								Name:  "image.tag",
+								Value: "1.2.3",
+							},
+						},
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypeHelm,
+				Summary: v1alpha1.ApplicationSummary{
+					Images: []string{}, // Empty - simulating 0 replicas
+				},
+			},
+		}
+		imageList := GetImagesFromApplication(application)
+		require.Len(t, imageList, 1)
+		assert.Equal(t, "myregistry/myapp", imageList[0].ImageName)
+		assert.NotNil(t, imageList[0].ImageTag)
+		assert.Equal(t, "1.2.3", imageList[0].ImageTag.TagName)
+	})
+
+	t.Run("Get list of images from application with force-update and zero replicas - Kustomize", func(t *testing.T) {
+		application := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "test-app",
+				Namespace: "argocd",
+				Annotations: map[string]string{
+					fmt.Sprintf(registryCommon.Prefixed(common.ImageUpdaterAnnotationPrefix, registryCommon.ForceUpdateOptionAnnotationSuffix), "myapp"): "true",
+					common.ImageUpdaterAnnotation: "myapp=myregistry/myapp",
+				},
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: &v1alpha1.ApplicationSource{
+					Kustomize: &v1alpha1.ApplicationSourceKustomize{
+						Images: v1alpha1.KustomizeImages{
+							"myregistry/myapp:2.3.4",
+						},
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypeKustomize,
+				Summary: v1alpha1.ApplicationSummary{
+					Images: []string{}, // Empty - simulating 0 replicas
+				},
+			},
+		}
+		imageList := GetImagesFromApplication(application)
+		require.Len(t, imageList, 1)
+		assert.Equal(t, "myregistry/myapp", imageList[0].ImageName)
+		assert.NotNil(t, imageList[0].ImageTag)
+		assert.Equal(t, "2.3.4", imageList[0].ImageTag.TagName)
+	})
 }
 
 func Test_GetImagesAndAliasesFromApplication(t *testing.T) {
