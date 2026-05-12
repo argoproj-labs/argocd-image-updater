@@ -242,6 +242,30 @@ func TestGHCRWebhook_Parse(t *testing.T) {
 			expectError:  false,
 		},
 		{
+			name: "normalizes owner and package casing to lowercase",
+			payload: `{
+				"action": "published",
+				"package": {
+					"name": "MyApp",
+					"package_type": "container",
+					"owner": {
+						"login": "MyOrg"
+					},
+					"package_version": {
+						"name": "v1.2.3",
+						"container_metadata": {
+							"tag": {
+								"name": "v1.2.3"
+							}
+						}
+					}
+				}
+			}`,
+			expectedRepo: "myorg/myapp",
+			expectedTag:  "v1.2.3",
+			expectError:  false,
+		},
+		{
 			name: "fallback to package version name when tag name is missing",
 			payload: `{
 				"action": "published",
