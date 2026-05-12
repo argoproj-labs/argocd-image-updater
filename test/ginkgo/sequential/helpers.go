@@ -45,43 +45,6 @@ func imageUpdaterManagerPolicyRules() []rbacv1.PolicyRule {
 	}
 }
 
-// createImageUpdaterRoleAndBinding creates a namespace-scoped Role and RoleBinding
-// in targetNamespace granting the Image Updater ServiceAccount in controllerNamespace
-// the permissions it needs to manage ImageUpdater CRs and Applications.
-//
-// TODO: Remove after ArgoCD Operator fix https://github.com/argoproj-labs/argocd-operator/pull/2172
-func createImageUpdaterRoleAndBinding(ctx context.Context, k8sClient client.Client, targetNamespace, controllerNamespace string) {
-	By("creating Role and RoleBinding in " + targetNamespace + " for Image Updater ServiceAccount")
-	role := &rbacv1.Role{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "argocd-image-updater-manager-role",
-			Namespace: targetNamespace,
-		},
-		Rules: imageUpdaterManagerPolicyRules(),
-	}
-	Expect(k8sClient.Create(ctx, role)).To(Succeed())
-
-	roleBinding := &rbacv1.RoleBinding{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "argocd-image-updater-manager-rolebinding",
-			Namespace: targetNamespace,
-		},
-		RoleRef: rbacv1.RoleRef{
-			APIGroup: "rbac.authorization.k8s.io",
-			Kind:     "Role",
-			Name:     "argocd-image-updater-manager-role",
-		},
-		Subjects: []rbacv1.Subject{
-			{
-				Kind:      "ServiceAccount",
-				Name:      "argocd-argocd-image-updater-controller",
-				Namespace: controllerNamespace,
-			},
-		},
-	}
-	Expect(k8sClient.Create(ctx, roleBinding)).To(Succeed())
-}
-
 // createAppProject creates an ArgoCD AppProject named after sourceNamespace,
 // hosted in argoCDNamespace, permitting all sources and destinations.
 func createAppProject(ctx context.Context, k8sClient client.Client, sourceNamespace, argoCDNamespace string) {
