@@ -253,6 +253,72 @@ func Test_GetImagesAndAliasesFromApplication(t *testing.T) {
 		require.Len(t, imageList, 1)
 		assert.Equal(t, "nginx", imageList[0].ImageName)
 	})
+
+	// Models a Kyverno-style admission webhook rewriting the registry on
+	// running pods: the configured image points at ghcr.io but
+	// Status.Summary.Images carries the rewritten registry.example.com path.
+	// MatchName must steer the live lookup to the rewritten identifier;
+	// without it, the lookup misses.
+	matchNameCases := []struct {
+		name      string
+		matchName *string
+		assert    func(t *testing.T, got ImageList)
+	}{
+		{
+			name:      "MatchName present: live lookup succeeds against rewritten registry",
+			matchName: strPtr("registry.example.com/cache/myorg/nginx"),
+			assert: func(t *testing.T, got ImageList) {
+				require.Len(t, got, 1)
+				img := got[0]
+				assert.Equal(t, "web", img.ImageAlias)
+				assert.Equal(t, "registry.example.com", img.RegistryURL)
+				assert.Equal(t, "cache/myorg/nginx", img.ImageName)
+				require.NotNil(t, img.ImageTag)
+				assert.Equal(t, "1.20.0", img.ImageTag.TagName)
+				// Write-back identifier must be untouched — MatchName only steers the
+				// lookup, Kustomize.Name still drives the Kustomize image override on write.
+				assert.Equal(t, "ghcr.io/myorg/nginx", img.KustomizeImageName)
+			},
+		},
+		{
+			name:      "MatchName absent: live lookup misses rewritten registry",
+			matchName: nil,
+			assert: func(t *testing.T, got ImageList) {
+				assert.Empty(t, got)
+			},
+		},
+	}
+
+	for _, tc := range matchNameCases {
+		t.Run(tc.name, func(t *testing.T) {
+			parsed := parseImageList(context.Background(), []api.ImageConfig{
+				{
+					Alias:     "web",
+					ImageName: "ghcr.io/myorg/nginx:1.21.0",
+					ManifestTarget: &api.ManifestTarget{
+						Kustomize: &api.KustomizeTarget{
+							Name:      strPtr("ghcr.io/myorg/nginx"),
+							MatchName: tc.matchName,
+						},
+					},
+				},
+			}, nil, nil)
+			require.NotNil(t, parsed)
+
+			application := &v1alpha1.Application{
+				ObjectMeta: v1.ObjectMeta{Name: "test-app", Namespace: "argocd"},
+				Status: v1alpha1.ApplicationStatus{
+					Summary: v1alpha1.ApplicationSummary{
+						Images: []string{"registry.example.com/cache/myorg/nginx:1.20.0"},
+					},
+				},
+			}
+			tc.assert(t, GetImagesAndAliasesFromApplication(&ApplicationImages{
+				Application: *application,
+				Images:      *parsed,
+			}))
+		})
+	}
 }
 
 func Test_GetApplicationType(t *testing.T) {
@@ -1773,6 +1839,27 @@ func Test_parseImageList(t *testing.T) {
 					img.KustomizeImage = image.NewFromIdentifier("registry.example.com/cache/nginx")
 					return img
 				}(),
+			},
+		},
+		{
+			// Empty-string MatchName must be treated as unset and fall back to Name —
+			// the *string is set but carries no useful value (e.g. a CR templated
+			// with an empty default). Behavior must equal the Name-only case.
+			name: "Kustomize MatchName empty string falls back to Name",
+			inputImages: []api.ImageConfig{
+				{
+					Alias:     "web",
+					ImageName: "nginx:1.21.0",
+					ManifestTarget: &api.ManifestTarget{
+						Kustomize: &api.KustomizeTarget{
+							Name:      strPtr("my-custom-nginx-name"),
+							MatchName: strPtr(""),
+						},
+					},
+				},
+			},
+			expectedImages: ImageList{
+				newExpectedImageForIuCR("web=nginx:1.21.0", "my-custom-nginx-name"),
 			},
 		},
 		{
