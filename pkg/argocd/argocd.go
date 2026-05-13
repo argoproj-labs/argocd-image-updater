@@ -652,6 +652,7 @@ func parseImageList(ctx context.Context, images []iuapi.ImageConfig, appSettings
 			matchName := ""
 			if im.ManifestTarget.Kustomize.MatchName != nil && *im.ManifestTarget.Kustomize.MatchName != "" {
 				matchName = *im.ManifestTarget.Kustomize.MatchName
+				img.KustomizeMatchName = matchName
 			} else if im.ManifestTarget.Kustomize.Name != nil && *im.ManifestTarget.Kustomize.Name != "" {
 				matchName = *im.ManifestTarget.Kustomize.Name
 			}

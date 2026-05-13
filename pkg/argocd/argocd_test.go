@@ -1815,6 +1815,7 @@ func Test_parseImageList(t *testing.T) {
 					// KustomizeImageName stays from Kustomize.Name (write-back unchanged),
 					// but the matcher uses MatchName.
 					img.KustomizeImage = image.NewFromIdentifier("registry.example.com/cache/nginx")
+					img.KustomizeMatchName = "registry.example.com/cache/nginx"
 					return img
 				}(),
 			},
@@ -1837,6 +1838,7 @@ func Test_parseImageList(t *testing.T) {
 					// No Kustomize.Name → KustomizeImageName stays empty (no write-back override).
 					img := newExpectedImageForIuCR("web=nginx:1.21.0", "")
 					img.KustomizeImage = image.NewFromIdentifier("registry.example.com/cache/nginx")
+					img.KustomizeMatchName = "registry.example.com/cache/nginx"
 					return img
 				}(),
 			},
