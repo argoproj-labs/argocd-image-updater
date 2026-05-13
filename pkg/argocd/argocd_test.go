@@ -1730,6 +1730,52 @@ func Test_parseImageList(t *testing.T) {
 			},
 		},
 		{
+			name: "Kustomize MatchName overrides Name for live-image matching",
+			inputImages: []api.ImageConfig{
+				{
+					Alias:     "web",
+					ImageName: "nginx:1.21.0",
+					ManifestTarget: &api.ManifestTarget{
+						Kustomize: &api.KustomizeTarget{
+							Name:      strPtr("nginx-kustomize"),
+							MatchName: strPtr("registry.example.com/cache/nginx"),
+						},
+					},
+				},
+			},
+			expectedImages: ImageList{
+				func() *Image {
+					img := newExpectedImageForIuCR("web=nginx:1.21.0", "nginx-kustomize")
+					// KustomizeImageName stays from Kustomize.Name (write-back unchanged),
+					// but the matcher uses MatchName.
+					img.KustomizeImage = image.NewFromIdentifier("registry.example.com/cache/nginx")
+					return img
+				}(),
+			},
+		},
+		{
+			name: "Kustomize MatchName alone sets only the matcher",
+			inputImages: []api.ImageConfig{
+				{
+					Alias:     "web",
+					ImageName: "nginx:1.21.0",
+					ManifestTarget: &api.ManifestTarget{
+						Kustomize: &api.KustomizeTarget{
+							MatchName: strPtr("registry.example.com/cache/nginx"),
+						},
+					},
+				},
+			},
+			expectedImages: ImageList{
+				func() *Image {
+					// No Kustomize.Name → KustomizeImageName stays empty (no write-back override).
+					img := newExpectedImageForIuCR("web=nginx:1.21.0", "")
+					img.KustomizeImage = image.NewFromIdentifier("registry.example.com/cache/nginx")
+					return img
+				}(),
+			},
+		},
+		{
 			name:           "Empty input slice",
 			inputImages:    []api.ImageConfig{},
 			expectedImages: ImageList{},
