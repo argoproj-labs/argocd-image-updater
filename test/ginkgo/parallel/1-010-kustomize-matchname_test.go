@@ -127,7 +127,7 @@ var _ = Describe("ArgoCD Image Updater Parallel E2E Tests", func() {
 			Eventually(statefulSet).Should(ssFixture.HaveReplicas(1))
 			Eventually(statefulSet, "3m", "3s").Should(ssFixture.HaveReadyReplicas(1))
 
-			By("creating Application that deploys quay.io/dkarpele/my-guestbook")
+			By("creating Application that deploys quay.io/example/my-guestbook")
 			app := &appv1alpha1.Application{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "app-01",
@@ -155,11 +155,11 @@ var _ = Describe("ArgoCD Image Updater Parallel E2E Tests", func() {
 
 			updateStrategy := "semver"
 			kustomizeName := "ghcr.io/example/my-guestbook"
-			matchName := "quay.io/dkarpele/my-guestbook"
+			matchName := "quay.io/example/my-guestbook"
 
 			// Phase 1: without matchName, the configured kustomize.name and imageName
 			// both point at ghcr.io/example/my-guestbook, which does NOT appear in
-			// app.Status.Summary.Images (only quay.io/dkarpele/my-guestbook does). The
+			// app.Status.Summary.Images (only quay.io/example/my-guestbook does). The
 			// live-image lookup must miss and the updater must NOT write any
 			// kustomize override.
 			By("creating ImageUpdater CR WITHOUT matchName")
@@ -212,7 +212,7 @@ var _ = Describe("ArgoCD Image Updater Parallel E2E Tests", func() {
 
 			// Phase 2: matchName points at the live image's registry, so the lookup
 			// succeeds. After matching, the registry-tag query runs against the live
-			// image (quay.io/dkarpele/my-guestbook) and resolves to 29437546.0. The
+			// image (quay.io/example/my-guestbook) and resolves to 29437546.0. The
 			// write-back override uses kustomize.Name as the LHS.
 			By("creating ImageUpdater CR WITH matchName")
 			imageUpdater = &imageUpdaterApi.ImageUpdater{
@@ -256,7 +256,7 @@ var _ = Describe("ArgoCD Image Updater Parallel E2E Tests", func() {
 					return string(app.Spec.Source.Kustomize.Images[0])
 				}
 				return ""
-			}, "5m", "3s").Should(Equal("ghcr.io/example/my-guestbook=quay.io/dkarpele/my-guestbook:29437546.0"))
+			}, "5m", "3s").Should(Equal("ghcr.io/example/my-guestbook=quay.io/example/my-guestbook:29437546.0"))
 		})
 	})
 })
