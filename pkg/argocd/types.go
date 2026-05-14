@@ -51,6 +51,10 @@ const (
 	WriteBackGit         WriteBackMethod = 1
 )
 
+// WriteBackMethodArgoCD is the string name of the ArgoCD write-back method as used in the CR spec.
+// It is the default when no method is specified.
+const WriteBackMethodArgoCD = "argocd"
+
 const defaultIndent = 2
 
 // ApplicationType Type of the application
