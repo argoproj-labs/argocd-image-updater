@@ -3,10 +3,27 @@ on:
   pull_request:
     branches:
     - 'master'
+  # pull_request_target runs in the context of the BASE repo, so repository
+  # secrets ARE available. It fires when a maintainer applies the
+  # "ok-to-test" label to a PR (including fork PRs), allowing E2E tests that
+  # require credentials to run.  The label acts as the security gate: only
+  # maintainers with "Triage" role or above can apply it.
+  pull_request_target:
+    types: [labeled]
+    branches:
+    - 'master'
+  # workflow_dispatch lets maintainers trigger the full suite (including E2E)
+  # manually from the Actions UI or via the GitHub CLI.
+  workflow_dispatch:
+permissions:
+  contents: read
+  pull-requests: read
 
 jobs:
   check-go:
     name: Ensure Go modules synchronicity
+    # Skip on label events — this job is already covered by the pull_request run.
+    if: github.event_name != 'pull_request_target'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -24,6 +41,7 @@ jobs:
           git diff --exit-code -- .
   codegen:
     name: Run codegen
+    if: github.event_name != 'pull_request_target'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -51,6 +69,7 @@ jobs:
           git diff --exit-code -- . ':!go.sum' ':!go.mod' ':!assets/swagger.json' | tee codegen.patch
   lint:
     name: Ensure code is correctly linted
+    if: github.event_name != 'pull_request_target'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -64,16 +83,17 @@ jobs:
       - name: Run golangci-lint on main module
         uses: golangci/golangci-lint-action@v9
         with:
-          version: v2.5.0
+          version: v2.12.2
           args: --timeout 5m
       - name: Run golangci-lint on registry-scanner
         uses: golangci/golangci-lint-action@v9
         with:
-          version: v2.5.0
+          version: v2.12.2
           args: --timeout 5m
           working-directory: registry-scanner
   test:
     name: Ensure unit tests are passing
+    if: github.event_name != 'pull_request_target'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -122,6 +142,7 @@ jobs:
 
   registry-scanner:
     name: Ensure registry-scanner Go modules synchronicity and run tests
+    if: github.event_name != 'pull_request_target'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -152,6 +173,34 @@ jobs:
           files: coverage.out
   test-e2e:
     name: Run end-to-end tests
+    # At most one E2E run per PR at a time.  When a pull_request_target run
+    # (triggered by the "ok-to-test" label) starts while a pull_request run
+    # for the same PR is already in flight, the older run is cancelled so the
+    # new one — which carries real secrets — takes its place immediately.
+    # For workflow_dispatch and push events github.event.pull_request.number is
+    # empty, so the group falls back to github.ref (e.g. refs/heads/master).
+    concurrency:
+      group: e2e-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
+    # Execution policy:
+    #
+    #  pull_request from the SAME repo  → run (secrets are available, all tests execute).
+    #  pull_request from a FORK         → SKIP entirely.
+    #    Skipped jobs show as neutral (grey) on the PR — not as a red cancelled check.
+    #    A fork PR should get its secrets-bearing run via pull_request_target below.
+    #
+    #  pull_request_target + ok-to-test → run (secrets injected by GitHub for any PR,
+    #    including forks; label is the maintainer-controlled security gate).
+    #
+    #  workflow_dispatch                 → run unconditionally (manual trigger).
+    #
+    # The concurrency group (e2e-<PR-number>) still prevents duplicate runs when a
+    # same-repo PR triggers both pull_request and pull_request_target simultaneously.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' &&
+       github.event.pull_request.head.repo.full_name == github.repository) ||
+      (github.event_name == 'pull_request_target' && github.event.label.name == 'ok-to-test')
     runs-on: ubuntu-latest
     timeout-minutes: 100
     strategy:
@@ -174,6 +223,13 @@ jobs:
           df -h /
       - name: Checkout code
         uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+          # For pull_request_target, check out the contributor's commit rather
+          # than the base branch (which is the default for that event).
+          # github.event.pull_request.head.sha is set for both pull_request and
+          # pull_request_target; it falls back to github.sha for workflow_dispatch.
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - name: Setup Golang
         uses: actions/setup-go@v6
         with:
@@ -201,6 +257,13 @@ jobs:
           ARGOCD_CLUSTER_CONFIG_NAMESPACES: argocd-e2e-cluster-config, argocd-operator-system
           K3D_CLUSTER_NAME: k3s-default
           LOCAL: false
+          # GitHub PR E2E credentials.
+          # When absent (e.g. fork PRs where secrets are not exposed) the
+          # test is automatically skipped via Ginkgo's Skip() call.
+          E2E_GITHUB_TOKEN:  ${{ secrets.E2E_GITHUB_TOKEN }}
+          E2E_GITHUB_OWNER:  ${{ secrets.E2E_GITHUB_OWNER }}
+          E2E_GITHUB_REPO:   ${{ secrets.E2E_GITHUB_REPO }}
+          E2E_GITHUB_BRANCH: ${{ secrets.E2E_GITHUB_BRANCH }}
         run: |
           set -o pipefail
           make -C test/ginkgo test-e2e 2>&1 | tee /tmp/e2e-test-ginkgo.log

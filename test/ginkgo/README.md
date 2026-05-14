@@ -48,6 +48,80 @@ make -C test/ginkgo test-e2e
 make -C test/ginkgo k3d-cluster-delete
 ```
 
+### Running SCM pull-request E2E tests
+
+Tests `1-009` (GitHub PR) verify the Image Updater's
+write-back mode that opens a pull request on an external SCM instead of
+committing directly to a branch. Because they push real branches and create
+real PRs/MRs, they require credentials for an actual GitHub repository.
+
+Both tests **skip gracefully** (via Ginkgo's `Skip()`) when the required
+environment variables are absent, so they never block the rest of the test
+suite.
+
+#### Prerequisites — target repository
+
+You need a repository on GitHub that the Image Updater can use as the
+write-back target:
+
+* **GitHub**: any repository where you have write access, with at least one commit on the base branch (e.g. `main`).
+
+The test pushes a branch and opens a PR against that repository.  It cleans
+up after itself (closes the PR and deletes the branch in `AfterEach`), but
+you should use a **dedicated test repository** to avoid polluting a production
+repo.
+
+#### Running locally
+
+Pass the credentials as environment variables to the `make test-e2e` target:
+
+**GitHub (test 1-009)**
+
+```bash
+make -C test/ginkgo test-e2e \
+  E2E_GITHUB_TOKEN=ghp_...          \   # PAT with repo + pull_requests scopes
+  E2E_GITHUB_OWNER=<user-or-org>    \   # owner of the target repo
+  E2E_GITHUB_REPO=<repo-name>       \   # repository name (not the full URL)
+  E2E_GITHUB_BRANCH=main                # base branch for the PR (default: main)
+```
+
+#### Running in CI — `pull_request_target` + label gate
+
+The CI workflow (`ci-tests.yaml`) uses GitHub Actions'
+[`pull_request_target`](https://docs.github.com/en/actions/writing-workflows/choosing-when-your-workflow-runs/events-that-trigger-workflows#pull_request_target)
+event to expose repository secrets to trusted fork PRs.
+
+| CI trigger                            | Secrets available               | Credential tests |
+|---------------------------------------|---------------------------------|------------------|
+| `pull_request` from a fork            | No                              | Skipped          |
+| `pull_request` from the same repo     | Yes                             | Run              |
+| Maintainer applies `ok-to-test` label | Yes (via `pull_request_target`) | Run              |
+| `workflow_dispatch` (manual)          | Yes                             | Run              |
+
+**Security model**: `pull_request_target` runs in the context of the *base*
+repository, so repository secrets are available even for fork PRs. The
+`ok-to-test` label is the security gate — only users with *Triage* role or
+above on the repository can apply it, preventing untrusted fork code from
+self-triggering a secrets-bearing run.
+
+#### For maintainers — approving a fork PR to run the credential tests
+
+1. Review the PR to confirm it does not contain malicious code.
+2. Apply the `ok-to-test` label to the PR:
+   GitHub Actions fires a `pull_request_target` event, which starts the
+   `test-e2e` job with all repository secrets available.
+3. Alternatively, trigger the full suite manually at any time.
+
+#### For external contributors
+
+You do **not** need any SCM credentials to contribute. The credential tests
+skip automatically when the environment variables are absent. Your PR will pass
+the full test suite without them.
+
+If you want to validate your changes to the PR/MR write-back code locally
+before submitting, create a personal test repository and pass your own
+credentials to `make test-e2e` as shown above.
+
 ### Run a specific test:
 
 ```bash

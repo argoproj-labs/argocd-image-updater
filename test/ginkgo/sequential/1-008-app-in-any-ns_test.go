@@ -212,10 +212,6 @@ var _ = Describe("ArgoCD Image Updater Sequential E2E Tests", func() {
 			Eventually(statefulSet).Should(ssFixture.HaveReplicas(1))
 			Eventually(statefulSet, "3m", "3s").Should(ssFixture.HaveReadyReplicas(1))
 
-			// TODO: Remove after ArgoCD Operator fix https://github.com/argoproj-labs/argocd-operator/pull/2172
-			createImageUpdaterRoleAndBinding(ctx, k8sClient, nsDev.Name, ns.Name)
-			createImageUpdaterRoleAndBinding(ctx, k8sClient, nsQE.Name, ns.Name)
-
 			createAppProject(ctx, k8sClient, nsDev.Name, ns.Name)
 			createAppProject(ctx, k8sClient, nsQE.Name, ns.Name)
 

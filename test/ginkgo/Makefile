@@ -47,6 +47,26 @@ K3D ?= k3d
 K3D_CLUSTER_NAME ?= test-e2e
 LOCAL ?= true
 
+# ---------------------------------------------------------------------------
+# GitHub Pull Request E2E test credentials
+# ---------------------------------------------------------------------------
+# The test is automatically skipped when these variables are absent, so they
+# are never required for the full test-e2e run.
+#
+#   E2E_GITHUB_TOKEN  — GitHub PAT (repo + pull_requests scopes) or a GitHub
+#                       App installation token (Contents r/w, Pull requests r/w).
+#   E2E_GITHUB_OWNER  — GitHub user / organisation that owns the target repo.
+#   E2E_GITHUB_REPO   — Repository name (not the full URL).
+#   E2E_GITHUB_BRANCH — Base branch the PR targets (default: "main").
+#
+# Example:
+#   make test-e2e \
+#     E2E_GITHUB_TOKEN=ghp_... \
+#     E2E_GITHUB_OWNER=my-org \
+#     E2E_GITHUB_REPO=my-test-repo \
+#     E2E_GITHUB_BRANCH=main
+# ---------------------------------------------------------------------------
+
 ifndef ignore-not-found
   ignore-not-found = false
 endif
@@ -106,7 +126,7 @@ configure-docker-daemon: ## Configure Docker daemon.json to allow insecure regis
 
 k3d-image-import: ## Import local image to k3d cluster
 	@echo "--- Importing image $(ARGOCD_IMAGE_UPDATER_IMAGE) to k3d cluster $(K3D_CLUSTER_NAME) ---"
-	$(K3D) image import $(ARGOCD_IMAGE_UPDATER_IMAGE) -c $(K3D_CLUSTER_NAME)
+	$(K3D) image import $(ARGOCD_IMAGE_UPDATER_IMAGE) -c $(K3D_CLUSTER_NAME) --mode=direct
 
 # Currently run only parallel tests because we don't have sequential tests yet.
 test-e2e: ## Build local image updater, deploy operator, and run parallel e2e tests.
@@ -132,6 +152,13 @@ ifeq ($(LOCAL),true)
 	@echo "--- Deleting k3d cluster ---"
 	$(MAKE) k3d-cluster-delete
 endif
+
+## Pass GitHub PR environment variables through to the ginkgo process when
+## running tests so test picks them up automatically.
+export E2E_GITHUB_TOKEN
+export E2E_GITHUB_OWNER
+export E2E_GITHUB_REPO
+export E2E_GITHUB_BRANCH
 
 GIT_IMAGE_REPO		?= 127.0.0.1:30000
 GIT_IMAGE_NAME		?= git-http

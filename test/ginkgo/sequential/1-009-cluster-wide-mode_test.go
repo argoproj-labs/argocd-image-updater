@@ -225,35 +225,6 @@ var _ = Describe("ArgoCD Image Updater Sequential E2E Tests", func() {
 			Eventually(statefulSet).Should(ssFixture.HaveReplicas(1))
 			Eventually(statefulSet, "3m", "3s").Should(ssFixture.HaveReadyReplicas(1))
 
-			// TODO: Remove after ArgoCD Operator fix https://github.com/argoproj-labs/argocd-operator/pull/2172
-			// Use ns.Name as a suffix to keep cluster-scoped names unique across parallel test runs.
-			By("creating ClusterRole and ClusterRoleBinding for Image Updater ServiceAccount (cluster-wide mode)")
-			clusterRoleName = "argocd-image-updater-manager-role-" + ns.Name
-			clusterRole := &rbacv1.ClusterRole{
-				ObjectMeta: metav1.ObjectMeta{Name: clusterRoleName},
-				Rules:      imageUpdaterManagerPolicyRules(),
-			}
-			Expect(k8sClient.Create(ctx, clusterRole)).To(Succeed())
-
-			clusterRoleBinding = &rbacv1.ClusterRoleBinding{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "argocd-image-updater-manager-rolebinding-" + ns.Name,
-				},
-				RoleRef: rbacv1.RoleRef{
-					APIGroup: "rbac.authorization.k8s.io",
-					Kind:     "ClusterRole",
-					Name:     clusterRoleName,
-				},
-				Subjects: []rbacv1.Subject{
-					{
-						Kind:      "ServiceAccount",
-						Name:      "argocd-argocd-image-updater-controller",
-						Namespace: ns.Name,
-					},
-				},
-			}
-			Expect(k8sClient.Create(ctx, clusterRoleBinding)).To(Succeed())
-
 			createAppProject(ctx, k8sClient, nsDev.Name, ns.Name)
 			createAppProject(ctx, k8sClient, nsQE.Name, ns.Name)
 
