@@ -362,14 +362,11 @@ spec:
                               type: string
                           type: object
                         method:
-                          default: argocd
                           description: |-
                             Method defines the method for writing back updated image versions.
                             This acts as the default if not overridden. If not specified, defaults to "argocd".
                           pattern: ^(argocd|git|git:[a-zA-Z0-9][a-zA-Z0-9-._/:]*)$
                           type: string
-                      required:
-                      - method
                       type: object
                   required:
                   - namePattern
@@ -480,14 +477,11 @@ spec:
                         type: string
                     type: object
                   method:
-                    default: argocd
                     description: |-
                       Method defines the method for writing back updated image versions.
                       This acts as the default if not overridden. If not specified, defaults to "argocd".
                     pattern: ^(argocd|git|git:[a-zA-Z0-9][a-zA-Z0-9-._/:]*)$
                     type: string
-                required:
-                - method
                 type: object
             required:
             - applicationRefs

@@ -195,8 +195,6 @@ type CommonUpdateSettings struct {
 type WriteBackConfig struct {
 	// Method defines the method for writing back updated image versions.
 	// This acts as the default if not overridden. If not specified, defaults to "argocd".
-	// +kubebuilder:validation:Required
-	// +kubebuilder:default:="argocd"
 	// +kubebuilder:validation:Pattern=`^(argocd|git|git:[a-zA-Z0-9][a-zA-Z0-9-._/:]*)$`
 	Method *string `json:"method,omitempty"`
 
