@@ -444,6 +444,8 @@ func countPullRequestProviders(pr *iuapi.PullRequest) int {
 
 // mergeWBCSettings merges global and app-specific WriteBackConfig settings.
 // App-specific settings take precedence over global settings.
+// A nil Method on the app level means "inherit from global" (not "default to argocd").
+// Defaulting a nil Method to WriteBackMethodArgoCD is the sole responsibility of newWBCFromSettings.
 func mergeWBCSettings(global *iuapi.WriteBackConfig, appWBC *iuapi.WriteBackConfig) *iuapi.WriteBackConfig {
 	if global == nil && appWBC == nil {
 		return &iuapi.WriteBackConfig{}
@@ -523,8 +525,8 @@ func newWBCFromSettings(ctx context.Context, app *argocdapi.Application, kubeCli
 		return wbc, nil
 	}
 
-	// If no method is specified, or it's explicitly 'argocd', we are done.
-	if settings.Method == nil || strings.TrimSpace(*settings.Method) == "argocd" {
+	// If no method is specified, or it's explicitly the argocd method, we are done.
+	if settings.Method == nil || strings.TrimSpace(*settings.Method) == WriteBackMethodArgoCD {
 		return wbc, nil
 	}
 

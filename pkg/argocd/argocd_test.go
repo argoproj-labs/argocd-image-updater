@@ -1903,34 +1903,99 @@ func Test_newImageFromSettings(t *testing.T) {
 	})
 }
 
-// Assisted-by: Gemini AI
 func Test_mergeWBCSettings(t *testing.T) {
+	// --- Nil / empty inputs ---
+
 	t.Run("should return empty config when both are nil", func(t *testing.T) {
 		merged := mergeWBCSettings(nil, nil)
 		assert.Equal(t, &api.WriteBackConfig{}, merged)
 	})
 
-	t.Run("should return global when app is nil", func(t *testing.T) {
+	t.Run("global nil method stays nil when app is nil", func(t *testing.T) {
+		// Defaulting nil→argocd is newWBCFromSettings' job, not the merge function's.
+		global := &api.WriteBackConfig{}
+		merged := mergeWBCSettings(global, nil)
+		assert.Nil(t, merged.Method)
+		assert.NotSame(t, global, merged) // must be a copy
+	})
+
+	t.Run("global set method is returned as-is when app is nil", func(t *testing.T) {
 		global := &api.WriteBackConfig{Method: strPtr("git")}
 		merged := mergeWBCSettings(global, nil)
 		assert.Equal(t, "git", *merged.Method)
-		assert.NotSame(t, global, merged) // Ensure it's a copy
+		assert.NotSame(t, global, merged)
 	})
 
-	t.Run("should return app when global is nil", func(t *testing.T) {
-		app := &api.WriteBackConfig{Method: strPtr("argocd")}
-		merged := mergeWBCSettings(nil, app)
-		assert.Equal(t, "argocd", *merged.Method)
-	})
-
-	t.Run("app method should override global method", func(t *testing.T) {
-		global := &api.WriteBackConfig{Method: strPtr("git")}
-		app := &api.WriteBackConfig{Method: strPtr("argocd")}
+	t.Run("global nil method stays nil when app is non-nil with nil method", func(t *testing.T) {
+		global := &api.WriteBackConfig{}
+		app := &api.WriteBackConfig{}
 		merged := mergeWBCSettings(global, app)
-		assert.Equal(t, "argocd", *merged.Method)
+		assert.Nil(t, merged.Method)
 	})
 
-	t.Run("should merge GitConfig with app-level overrides", func(t *testing.T) {
+	// --- global is nil ---
+
+	t.Run("app explicit method is used when global is nil", func(t *testing.T) {
+		app := &api.WriteBackConfig{Method: strPtr("git")}
+		merged := mergeWBCSettings(nil, app)
+		assert.Equal(t, "git", *merged.Method)
+	})
+
+	t.Run("app nil method stays nil when global is nil", func(t *testing.T) {
+		// The caller (newWBCFromSettings) will treat nil as argocd.
+		app := &api.WriteBackConfig{}
+		merged := mergeWBCSettings(nil, app)
+		assert.Nil(t, merged.Method)
+	})
+
+	// --- Method inheritance ---
+
+	t.Run("app inherits global method when app method is nil", func(t *testing.T) {
+		global := &api.WriteBackConfig{Method: strPtr("git")}
+		app := &api.WriteBackConfig{} // Method is nil — should inherit
+		merged := mergeWBCSettings(global, app)
+		assert.Equal(t, "git", *merged.Method)
+	})
+
+	t.Run("app method overrides global method when explicitly set", func(t *testing.T) {
+		global := &api.WriteBackConfig{Method: strPtr("git")}
+		app := &api.WriteBackConfig{Method: strPtr(WriteBackMethodArgoCD)}
+		merged := mergeWBCSettings(global, app)
+		assert.Equal(t, WriteBackMethodArgoCD, *merged.Method)
+	})
+
+	// --- GitConfig: nil/empty appWBC edge cases ---
+
+	t.Run("global GitConfig is preserved when appWBC is nil", func(t *testing.T) {
+		global := &api.WriteBackConfig{
+			Method: strPtr("git"),
+			GitConfig: &api.GitConfig{
+				Repository: strPtr("global-repo"),
+				Branch:     strPtr("global-branch"),
+			},
+		}
+		merged := mergeWBCSettings(global, nil)
+		require.NotNil(t, merged.GitConfig)
+		assert.Equal(t, "global-repo", *merged.GitConfig.Repository)
+		assert.Equal(t, "global-branch", *merged.GitConfig.Branch)
+	})
+
+	t.Run("app GitConfig is used when global is nil", func(t *testing.T) {
+		app := &api.WriteBackConfig{
+			GitConfig: &api.GitConfig{
+				Repository: strPtr("app-repo"),
+				Branch:     strPtr("app-branch"),
+			},
+		}
+		merged := mergeWBCSettings(nil, app)
+		require.NotNil(t, merged.GitConfig)
+		assert.Equal(t, "app-repo", *merged.GitConfig.Repository)
+		assert.Equal(t, "app-branch", *merged.GitConfig.Branch)
+	})
+
+	// --- GitConfig field-level merge ---
+
+	t.Run("app GitConfig fields override global GitConfig fields", func(t *testing.T) {
 		global := &api.WriteBackConfig{
 			Method: strPtr("git"),
 			GitConfig: &api.GitConfig{
@@ -1946,11 +2011,26 @@ func Test_mergeWBCSettings(t *testing.T) {
 		merged := mergeWBCSettings(global, app)
 		require.NotNil(t, merged.GitConfig)
 		assert.Equal(t, "git", *merged.Method)
-		assert.Equal(t, "global-repo", *merged.GitConfig.Repository)
-		assert.Equal(t, "app-branch", *merged.GitConfig.Branch)
+		assert.Equal(t, "global-repo", *merged.GitConfig.Repository) // inherited
+		assert.Equal(t, "app-branch", *merged.GitConfig.Branch)      // overridden
 	})
 
-	t.Run("should create GitConfig if it only exists on app level", func(t *testing.T) {
+	t.Run("global GitConfig is fully inherited when app has no GitConfig", func(t *testing.T) {
+		global := &api.WriteBackConfig{
+			Method: strPtr("git"),
+			GitConfig: &api.GitConfig{
+				Repository: strPtr("global-repo"),
+				Branch:     strPtr("global-branch"),
+			},
+		}
+		app := &api.WriteBackConfig{} // no GitConfig at all
+		merged := mergeWBCSettings(global, app)
+		require.NotNil(t, merged.GitConfig)
+		assert.Equal(t, "global-repo", *merged.GitConfig.Repository)
+		assert.Equal(t, "global-branch", *merged.GitConfig.Branch)
+	})
+
+	t.Run("app GitConfig is created when only app has GitConfig", func(t *testing.T) {
 		global := &api.WriteBackConfig{Method: strPtr("git")}
 		app := &api.WriteBackConfig{
 			GitConfig: &api.GitConfig{
@@ -1961,6 +2041,42 @@ func Test_mergeWBCSettings(t *testing.T) {
 		require.NotNil(t, merged.GitConfig)
 		assert.Equal(t, "app-repo", *merged.GitConfig.Repository)
 	})
+
+	t.Run("WriteBackTarget is overridden by app when set", func(t *testing.T) {
+		global := &api.WriteBackConfig{
+			Method: strPtr("git"),
+			GitConfig: &api.GitConfig{
+				WriteBackTarget: strPtr("helmvalues:global/values.yaml"),
+			},
+		}
+		app := &api.WriteBackConfig{
+			GitConfig: &api.GitConfig{
+				WriteBackTarget: strPtr("helmvalues:app/values.yaml"),
+			},
+		}
+		merged := mergeWBCSettings(global, app)
+		require.NotNil(t, merged.GitConfig)
+		assert.Equal(t, "helmvalues:app/values.yaml", *merged.GitConfig.WriteBackTarget)
+	})
+
+	t.Run("WriteBackTarget is inherited from global when app does not set it", func(t *testing.T) {
+		global := &api.WriteBackConfig{
+			Method: strPtr("git"),
+			GitConfig: &api.GitConfig{
+				WriteBackTarget: strPtr("helmvalues:global/values.yaml"),
+			},
+		}
+		app := &api.WriteBackConfig{
+			GitConfig: &api.GitConfig{
+				Branch: strPtr("app-branch"),
+			},
+		}
+		merged := mergeWBCSettings(global, app)
+		require.NotNil(t, merged.GitConfig)
+		assert.Equal(t, "helmvalues:global/values.yaml", *merged.GitConfig.WriteBackTarget)
+	})
+
+	// --- PullRequest merge ---
 
 	t.Run("app PullRequest GitHub should be set when global has none", func(t *testing.T) {
 		global := &api.WriteBackConfig{Method: strPtr("git")}
@@ -2026,10 +2142,9 @@ func Test_mergeWBCSettings(t *testing.T) {
 	})
 
 	t.Run("global PullRequest should be preserved when app PullRequest is nil", func(t *testing.T) {
-		globalGH := &api.PullRequestGitHub{}
 		global := &api.WriteBackConfig{
 			GitConfig: &api.GitConfig{
-				PullRequest: &api.PullRequest{GitHub: globalGH},
+				PullRequest: &api.PullRequest{GitHub: &api.PullRequestGitHub{}},
 			},
 		}
 		app := &api.WriteBackConfig{
@@ -2037,8 +2152,32 @@ func Test_mergeWBCSettings(t *testing.T) {
 		}
 		merged := mergeWBCSettings(global, app)
 		require.NotNil(t, merged.GitConfig.PullRequest)
-		assert.Same(t, globalGH, merged.GitConfig.PullRequest.GitHub)
+		assert.NotNil(t, merged.GitConfig.PullRequest.GitHub)
 		assert.Nil(t, merged.GitConfig.PullRequest.GitLab)
+	})
+
+	// --- Deep copy immutability ---
+
+	t.Run("mutating merged Method does not affect global", func(t *testing.T) {
+		global := &api.WriteBackConfig{Method: strPtr("git")}
+		merged := mergeWBCSettings(global, nil)
+		newMethod := WriteBackMethodArgoCD
+		merged.Method = &newMethod
+		assert.Equal(t, "git", *global.Method)
+	})
+
+	t.Run("mutating merged GitConfig does not affect global GitConfig", func(t *testing.T) {
+		global := &api.WriteBackConfig{
+			GitConfig: &api.GitConfig{
+				Repository: strPtr("global-repo"),
+				Branch:     strPtr("global-branch"),
+			},
+		}
+		merged := mergeWBCSettings(global, nil)
+		require.NotNil(t, merged.GitConfig)
+		newBranch := "mutated-branch"
+		merged.GitConfig.Branch = &newBranch
+		assert.Equal(t, "global-branch", *global.GitConfig.Branch)
 	})
 }
 
