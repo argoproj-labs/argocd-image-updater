@@ -6,7 +6,7 @@ require (
 	github.com/argoproj-labs/argocd-image-updater v1.1.1
 	github.com/argoproj-labs/argocd-operator v0.17.0
 	github.com/argoproj/argo-cd/gitops-engine v0.7.1-0.20250908182407-97ad5b59a627
-	github.com/argoproj/argo-cd/v3 v3.4.1
+	github.com/argoproj/argo-cd/v3 v3.4.2
 	github.com/google/go-github/v69 v69.2.0
 	github.com/onsi/ginkgo/v2 v2.28.1
 	github.com/onsi/gomega v1.39.1
@@ -128,8 +128,8 @@ require (
 	github.com/x448/float16 v0.8.4 // indirect
 	github.com/xanzy/ssh-agent v0.3.3 // indirect
 	github.com/xlab/treeprint v1.2.0 // indirect
-	go.opentelemetry.io/otel v1.42.0 // indirect
-	go.opentelemetry.io/otel/trace v1.42.0 // indirect
+	go.opentelemetry.io/otel v1.43.0 // indirect
+	go.opentelemetry.io/otel/trace v1.43.0 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.0 // indirect
@@ -177,10 +177,10 @@ replace (
 	// Use local image-updater module to ensure tests use the latest API types from master
 	github.com/argoproj-labs/argocd-image-updater => ../../
 
-	// argo-cd v3.4.1 declares gitops-engine at a pseudo-version where go.mod
+	// argo-cd v3.4.2 declares gitops-engine at a pseudo-version where go.mod
 	// didn't exist yet, then overrides with replace => ./gitops-engine locally.
-	// Downstream consumers must resolve it themselves; pin to the v3.4.1 commit.
-	github.com/argoproj/argo-cd/gitops-engine => github.com/argoproj/argo-cd/gitops-engine v0.0.0-20260506074604-bafd59bd3713
+	// Downstream consumers must resolve it themselves; pin to the v3.4.2 commit.
+	github.com/argoproj/argo-cd/gitops-engine => github.com/argoproj/argo-cd/gitops-engine v0.0.0-20260512203152-0dc6b1b57dd5
 
 	// This replace block is from Argo CD v3.2.3 go.mod
 	github.com/golang/protobuf => github.com/golang/protobuf v1.5.4
