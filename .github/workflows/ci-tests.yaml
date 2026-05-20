@@ -83,12 +83,12 @@ jobs:
       - name: Run golangci-lint on main module
         uses: golangci/golangci-lint-action@v9
         with:
-          version: v2.5.0
+          version: v2.12.2
           args: --timeout 5m
       - name: Run golangci-lint on registry-scanner
         uses: golangci/golangci-lint-action@v9
         with:
-          version: v2.5.0
+          version: v2.12.2
           args: --timeout 5m
           working-directory: registry-scanner
   test:
