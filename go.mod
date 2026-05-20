@@ -3,7 +3,7 @@ module github.com/argoproj-labs/argocd-image-updater
 go 1.26.0
 
 require (
-	github.com/argoproj-labs/argocd-image-updater/registry-scanner v1.2.0
+	github.com/argoproj-labs/argocd-image-updater/registry-scanner v1.2.1
 	github.com/argoproj/argo-cd/gitops-engine v0.7.1-0.20250908182407-97ad5b59a627
 	github.com/argoproj/argo-cd/v3 v3.4.2
 	github.com/bmatcuk/doublestar/v4 v4.10.0
