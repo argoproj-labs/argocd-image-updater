@@ -20,13 +20,14 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/argoproj/argo-cd/gitops-engine/pkg/health"
 	appv1alpha1 "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1"
-	"github.com/argoproj/gitops-engine/pkg/health"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	applicationFixture "github.com/argoproj-labs/argocd-image-updater/test/ginkgo/fixture/application"
@@ -170,7 +171,7 @@ var _ = Describe("ArgoCD Image Updater Parallel E2E Tests", func() {
 					},
 					SyncPolicy: &appv1alpha1.SyncPolicy{
 						Automated: &appv1alpha1.SyncPolicyAutomated{
-							Prune: true, // Automatically delete old resources (pods) that are no longer in git
+							Prune: ptr.To(true),
 						},
 					},
 				},

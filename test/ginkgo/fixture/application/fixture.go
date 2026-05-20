@@ -3,8 +3,8 @@ package application
 import (
 	"github.com/argoproj-labs/argocd-image-updater/test/ginkgo/fixture/utils"
 
-	"github.com/argoproj/gitops-engine/pkg/health"
-	"github.com/argoproj/gitops-engine/pkg/sync/common"
+	"github.com/argoproj/argo-cd/gitops-engine/pkg/health"
+	"github.com/argoproj/argo-cd/gitops-engine/pkg/sync/common"
 
 	//lint:ignore ST1001 "This is a common practice in Gomega tests for readability."
 	. "github.com/onsi/gomega" //nolint:all
