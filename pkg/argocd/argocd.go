@@ -510,6 +510,9 @@ func newWBCFromSettings(ctx context.Context, app *argocdapi.Application, kubeCli
 		GitRepo:                "",
 		GitCreds:               nil,
 		PRProvider:             PRProviderUnsupported,
+		PRTitle:                "",
+		PRUpsertBranch:         "",
+		PRReopenClosed:         false,
 	}
 
 	appSource := getApplicationSource(ctx, app, nil)
@@ -572,6 +575,15 @@ func newWBCFromSettings(ctx context.Context, app *argocdapi.Application, kubeCli
 			}
 			if settings.GitConfig.PullRequest.GitLab != nil {
 				wbc.PRProvider = PRProviderGitLab
+			}
+			if settings.GitConfig.PullRequest.Title != nil {
+				wbc.PRTitle = strings.TrimSpace(*settings.GitConfig.PullRequest.Title)
+			}
+			if settings.GitConfig.PullRequest.UpsertBranch != nil {
+				wbc.PRUpsertBranch = strings.TrimSpace(*settings.GitConfig.PullRequest.UpsertBranch)
+			}
+			if settings.GitConfig.PullRequest.ReopenClosed != nil {
+				wbc.PRReopenClosed = *settings.GitConfig.PullRequest.ReopenClosed
 			}
 		}
 	} else {

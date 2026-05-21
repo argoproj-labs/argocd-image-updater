@@ -2327,6 +2327,27 @@ func Test_newWBCFromSettings(t *testing.T) {
 		assert.Equal(t, PRProviderGitHub, wbc.PRProvider)
 	})
 
+	t.Run("pullRequest upsert settings should be parsed", func(t *testing.T) {
+		app, kubeClient := createTestAppAndClient()
+		settings := &api.WriteBackConfig{
+			Method: strPtr("git"),
+			GitConfig: &api.GitConfig{
+				PullRequest: &api.PullRequest{
+					Title:        strPtr(" chore: update platform images "),
+					UpsertBranch: strPtr("argocd-image-updater/platform-images"),
+					ReopenClosed: boolPtr(true),
+					GitHub:       &api.PullRequestGitHub{},
+				},
+			},
+		}
+		wbc, err := newWBCFromSettings(context.Background(), app, kubeClient, settings)
+		assert.NoError(t, err)
+		assert.Equal(t, PRProviderGitHub, wbc.PRProvider)
+		assert.Equal(t, "chore: update platform images", wbc.PRTitle)
+		assert.Equal(t, "argocd-image-updater/platform-images", wbc.PRUpsertBranch)
+		assert.True(t, wbc.PRReopenClosed)
+	})
+
 	t.Run("pullRequest gitlab should set PRProviderGitLab", func(t *testing.T) {
 		app, kubeClient := createTestAppAndClient()
 		settings := &api.WriteBackConfig{
