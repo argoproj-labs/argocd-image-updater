@@ -17,7 +17,7 @@ const maxWebhookBodySize = 1 << 20 // 1 MiB
 // RegistryWebhook interface defines methods for handling registry webhooks
 type RegistryWebhook interface {
 	// Parse processes the webhook payload and returns a WebhookEvent
-	Parse(r *http.Request) (*argocd.WebhookEvent, error)
+	Parse(r *http.Request) ([]*argocd.WebhookEvent, error)
 	// Validate validates the webhook payload
 	Validate(r *http.Request) error
 	// GetRegistryType returns the type of registry this handler supports
@@ -42,7 +42,7 @@ func (h *WebhookHandler) RegisterHandler(handler RegistryWebhook) {
 }
 
 // ProcessWebhook processes an incoming webhook request and returns a WebhookEvent
-func (h *WebhookHandler) ProcessWebhook(r *http.Request) (*argocd.WebhookEvent, error) {
+func (h *WebhookHandler) ProcessWebhook(r *http.Request) ([]*argocd.WebhookEvent, error) {
 	// Try to determine registry type from request headers or path
 	registryType := h.detectRegistryType(r)
 

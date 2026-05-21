@@ -44,6 +44,7 @@ func TestNewWebhookCommand(t *testing.T) {
 	asser.Equal(env.GetStringVal("HARBOR_WEBHOOK_SECRET", ""), controllerCommand.Flag("harbor-webhook-secret").Value.String())
 	asser.Equal(env.GetStringVal("CLOUDEVENTS_WEBHOOK_SECRET", ""), controllerCommand.Flag("cloudevents-webhook-secret").Value.String())
 	asser.Equal(env.GetStringVal("ALIYUN_ACR_WEBHOOK_SECRET", ""), controllerCommand.Flag("aliyun-acr-webhook-secret").Value.String())
+	asser.Equal(env.GetStringVal("GITLAB_WEBHOOK_SECRET", ""), controllerCommand.Flag("gitlab-webhook-secret").Value.String())
 	asser.Equal(strconv.Itoa(env.ParseNumFromEnv("WEBHOOK_RATELIMIT_ALLOWED", 0, 0, math.MaxInt)), controllerCommand.Flag("webhook-ratelimit-allowed").Value.String())
 
 	// TLS flags

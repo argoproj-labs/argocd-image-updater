@@ -185,10 +185,10 @@ func TestQuayWebhook_Parse(t *testing.T) {
 				return
 			}
 
-			assert.NotNil(t, event, "Event was nil")
-			assert.Equal(t, event.RegistryURL, "quay.io", "Expected repository url to be %s, but got %s", "quay.io", event.RegistryURL)
-			assert.Equal(t, event.Repository, tt.expectedRepo, "Expect repository to be %s, but got %s", tt.expectedRepo, event.Repository)
-			assert.Equal(t, event.Tag, tt.expectedTag, "Expected tag to be %s, but got %s", tt.expectedTag, event.Tag)
+			assert.NotEmpty(t, event, "Event was nil")
+			assert.Equal(t, event[0].RegistryURL, "quay.io", "Expected repository url to be %s, but got %s", "quay.io", event[0].RegistryURL)
+			assert.Equal(t, event[0].Repository, tt.expectedRepo, "Expect repository to be %s, but got %s", tt.expectedRepo, event[0].Repository)
+			assert.Equal(t, event[0].Tag, tt.expectedTag, "Expected tag to be %s, but got %s", tt.expectedTag, event[0].Tag)
 		})
 	}
 }

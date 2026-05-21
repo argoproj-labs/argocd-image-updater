@@ -33,6 +33,8 @@ type WebhookConfig struct {
 	HarborSecret string
 	// AliyunACRSecret is the secret for validating Aliyun ACR webhooks
 	AliyunACRSecret string
+	// GitLabSecret is the secret for validating GitLab webhooks
+	GitLabSecret string
 	// CloudEventsSecret is the secret for validating CloudEvents webhooks
 	CloudEventsSecret string
 	// RateLimitNumAllowedRequests is the number of allowed requests per hour for rate limiting (0 disables rate limiting)
@@ -137,6 +139,7 @@ func SetupWebhookServer(webhookCfg *WebhookConfig, reconciler *controller.ImageU
 	handler.RegisterHandler(webhook.NewQuayWebhook(webhookCfg.QuaySecret))
 	handler.RegisterHandler(webhook.NewAliyunACRWebhook(webhookCfg.AliyunACRSecret))
 	handler.RegisterHandler(webhook.NewCloudEventsWebhook(webhookCfg.CloudEventsSecret))
+	handler.RegisterHandler(webhook.NewGitLabWebhook(webhookCfg.GitLabSecret))
 
 	// Create webhook server
 	server := webhook.NewWebhookServer(webhookCfg.Port, handler, reconciler)

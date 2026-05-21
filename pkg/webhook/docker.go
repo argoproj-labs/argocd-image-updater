@@ -14,6 +14,8 @@ type DockerHubWebhook struct {
 	secret string
 }
 
+var _ RegistryWebhook = &DockerHubWebhook{}
+
 // NewDockerHubWebhook creates a new Docker Hub webhook handler
 func NewDockerHubWebhook(secret string) *DockerHubWebhook {
 	return &DockerHubWebhook{
@@ -49,7 +51,7 @@ func (d *DockerHubWebhook) Validate(r *http.Request) error {
 }
 
 // Parse processes the Docker Hub webhook payload and returns a WebhookEvent
-func (d *DockerHubWebhook) Parse(r *http.Request) (*argocd.WebhookEvent, error) {
+func (d *DockerHubWebhook) Parse(r *http.Request) ([]*argocd.WebhookEvent, error) {
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read request body: %w", err)
@@ -88,9 +90,9 @@ func (d *DockerHubWebhook) Parse(r *http.Request) (*argocd.WebhookEvent, error) 
 		return nil, fmt.Errorf("tag not found in webhook payload")
 	}
 
-	return &argocd.WebhookEvent{
+	return []*argocd.WebhookEvent{{
 		RegistryURL: "docker.io",
 		Repository:  repository,
 		Tag:         payload.PushData.Tag,
-	}, nil
+	}}, nil
 }
