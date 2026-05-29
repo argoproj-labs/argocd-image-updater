@@ -82,7 +82,7 @@ func testEndpointConnectivity(t *testing.T, url string, expectedStatus int) {
 
 	res, err := client.Get(url)
 	if res != nil {
-		assert.Equal(t, res.StatusCode, expectedStatus, "Did not receive the expected status of %d got: %d", expectedStatus, res.StatusCode)
+		assert.Equal(t, expectedStatus, res.StatusCode, "Did not receive the expected status of %d got: %d", expectedStatus, res.StatusCode)
 		defer res.Body.Close()
 	}
 	assert.NotNil(t, res, "No body received so server is not alive")
@@ -96,8 +96,8 @@ func TestNewWebhookServer(t *testing.T) {
 	server := NewWebhookServer(8080, handler, reconciler)
 
 	assert.NotNil(t, server, "Server was nil")
-	assert.Equal(t, server.Port, 8080, "Port is not 8080 got %d", server.Port)
-	assert.Equal(t, server.Handler, handler, "Handler is not equal")
+	assert.Equal(t, 8080, server.Port, "Port is not 8080 got %d", server.Port)
+	assert.Equal(t, handler, server.Handler, "Handler is not equal")
 	assert.NotNil(t, server.Reconciler, "Reconciler was nil")
 
 }
@@ -172,8 +172,8 @@ func TestWebhookServerHandleHealth(t *testing.T) {
 	body, err := io.ReadAll(res.Body)
 	assert.NoError(t, err, "Error while parsing body")
 
-	assert.Equal(t, res.StatusCode, http.StatusOK, "Did not receive the correct status code got: %d", res.StatusCode)
-	assert.Equal(t, string(body), "OK", "Did not receive the correct health message")
+	assert.Equal(t, http.StatusOK, res.StatusCode, "Did not receive the correct status code got: %d", res.StatusCode)
+	assert.Equal(t, "OK", string(body), "Did not receive the correct health message")
 }
 
 // TestWebhookServerHealthEndpoint ensures that the health endpoint of the server is working properly
@@ -202,8 +202,8 @@ func TestWebhookServerHealthEndpoint(t *testing.T) {
 
 		body, err := io.ReadAll(res.Body)
 		assert.NoError(t, err)
-		assert.Equal(t, string(body), "OK", "Did not receive 'OK' got: %s", string(body))
-		assert.Equal(t, res.StatusCode, http.StatusOK, "Did not receive status 200 got: %d", res.StatusCode)
+		assert.Equal(t, "OK", string(body), "Did not receive 'OK' got: %s", string(body))
+		assert.Equal(t, http.StatusOK, res.StatusCode, "Did not receive status 200 got: %d", res.StatusCode)
 	}
 }
 
@@ -255,7 +255,7 @@ func TestWebhookServerHandleWebhook(t *testing.T) {
 			res := rec.Result()
 			defer res.Body.Close()
 
-			assert.Equal(t, res.StatusCode, tt.expectedStatus, "Did not receive ok status")
+			assert.Equal(t, tt.expectedStatus, res.StatusCode, "Did not receive ok status")
 		})
 	}
 
@@ -375,7 +375,7 @@ func TestWebhookServerWebhookEndpoint(t *testing.T) {
 		defer res.Body.Close()
 
 		assert.NoError(t, err)
-		assert.Equal(t, res.StatusCode, http.StatusOK, "Did not receive status 200 got: %d", res.StatusCode)
+		assert.Equal(t, http.StatusOK, res.StatusCode, "Did not receive status 200 got: %d", res.StatusCode)
 	}
 
 	body2 := `{}`
@@ -387,7 +387,7 @@ func TestWebhookServerWebhookEndpoint(t *testing.T) {
 		defer res2.Body.Close()
 
 		assert.NoError(t, err)
-		assert.Equal(t, res2.StatusCode, http.StatusBadRequest, "Did not receive status 400 got: %d", res.StatusCode)
+		assert.Equal(t, http.StatusBadRequest, res2.StatusCode, "Did not receive status 400 got: %d", res2.StatusCode)
 	}
 }
 
