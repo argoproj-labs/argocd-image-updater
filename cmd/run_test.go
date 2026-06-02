@@ -261,6 +261,62 @@ func TestCacheWarmerStart_RunOnce_NoCRs_ClosesStopChan(t *testing.T) {
 	}
 }
 
+// TestWebhookServerRunnable_EnableHTTP2_ThreadedIntoServer verifies that the
+// EnableHTTP2 value from WebhookConfig reaches the webhook server's TLS
+// configuration after WebhookServerRunnable.Start() calls SetupWebhookServer.
+// This is the integration point for the line "webhookCfg.EnableHTTP2 = enableHTTP2"
+// in cmd/run.go: the flag value must survive the entire setup path.
+func TestWebhookServerRunnable_EnableHTTP2_ThreadedIntoServer(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		enableHTTP2 bool
+	}{
+		{"disabled (default)", false},
+		{"enabled explicitly", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			scheme := runtime.NewScheme()
+			_ = api.AddToScheme(scheme)
+			c := fake.NewClientBuilder().WithScheme(scheme).Build()
+			reconciler := &controller.ImageUpdaterReconciler{
+				Client:                  c,
+				Scheme:                  scheme,
+				Config:                  &controller.ImageUpdaterConfig{},
+				MaxConcurrentReconciles: 1,
+			}
+
+			// Simulate what cmd/run.go does: assign the CLI flag value to webhookCfg.
+			webhookCfg := &WebhookConfig{
+				Port:        0, // let the OS pick a port
+				EnableHTTP2: tc.enableHTTP2,
+			}
+			ws := &WebhookServerRunnable{Reconciler: reconciler, WebhookConfig: webhookCfg}
+
+			ctx, cancel := context.WithCancel(context.Background())
+			errCh := make(chan error, 1)
+			go func() {
+				errCh <- ws.Start(ctx)
+			}()
+
+			// Give the server time to initialise before cancelling.
+			time.Sleep(100 * time.Millisecond)
+			cancel()
+
+			select {
+			case err := <-errCh:
+				assert.NoError(t, err)
+			case <-time.After(3 * time.Second):
+				t.Fatal("webhook server did not shut down within timeout after context cancellation")
+			}
+
+			require.NotNil(t, ws.webhookServer, "webhookServer must be set after Start")
+			require.NotNil(t, ws.webhookServer.TLS, "TLS config must be non-nil")
+			assert.Equal(t, tc.enableHTTP2, ws.webhookServer.TLS.EnableHTTP2,
+				"TLS.EnableHTTP2 must match the WebhookConfig.EnableHTTP2 value threaded in from the CLI flag")
+		})
+	}
+}
+
 // Assisted-by: Gemini AI
 // TestWebhookServerRunnable_Start_ContextCancelStopsServer verifies that the webhook server starts
 // and shuts down gracefully when the context is canceled.

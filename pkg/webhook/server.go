@@ -181,7 +181,8 @@ func ValidateTLSConfig(minVersion, maxVersion uint16, cipherSuites []uint16) err
 }
 
 // buildTLSConfig creates a *tls.Config from the TLSConfig settings.
-func (t *TLSConfig) buildTLSConfig() (*tls.Config, error) {
+func (t *TLSConfig) buildTLSConfig(ctx context.Context) (*tls.Config, error) {
+	log := log.LoggerFromContext(ctx)
 	tlsCfg := &tls.Config{} //nolint:gosec // min version is set below from user config
 
 	minVer, err := ParseTLSVersion(t.MinVersion)
@@ -204,7 +205,7 @@ func (t *TLSConfig) buildTLSConfig() (*tls.Config, error) {
 	// Go's tls.Config.CipherSuites only applies to TLS 1.0–1.2.
 	// TLS 1.3 cipher suites are not configurable and are always enabled.
 	if len(ciphers) > 0 && minVer >= tls.VersionTLS13 {
-		log.Log().Warnf("--tlsciphers has no effect when --tlsminversion is 1.3 or higher (TLS 1.3 cipher suites are not configurable), ignoring")
+		log.Warnf("--tlsciphers has no effect when --tlsminversion is 1.3 or higher (TLS 1.3 cipher suites are not configurable), ignoring")
 		ciphers = nil
 	}
 	tlsCfg.CipherSuites = ciphers
@@ -215,6 +216,7 @@ func (t *TLSConfig) buildTLSConfig() (*tls.Config, error) {
 	}
 
 	if !t.EnableHTTP2 {
+		log.Debugf("Disabling HTTP/2 on webhook TLS server")
 		tlsCfg.NextProtos = []string{"http/1.1"}
 	}
 
@@ -332,9 +334,17 @@ func (s *WebhookServer) Start(ctx context.Context) error {
 			}
 		}
 		// Build TLS config from settings
-		tlsCfg, err := s.TLS.buildTLSConfig()
+		tlsCfg, err := s.TLS.buildTLSConfig(ctx)
 		if err != nil {
 			return fmt.Errorf("failed to configure TLS: %w", err)
+		}
+		if !s.TLS.EnableHTTP2 {
+			// Prevent net/http from automatically enabling HTTP/2 for TLS servers.
+			// Setting only tls.Config.NextProtos prevents ALPN advertisement, but
+			// net/http still registers an h2 handler unless TLSNextProto is
+			// explicitly set to a non-nil map.
+			log.Debugf("Disabling HTTP/2: setting TLSNextProto to empty map to prevent net/http from auto-registering h2 handler")
+			s.Server.TLSNextProto = map[string]func(*http.Server, *tls.Conn, http.Handler){}
 		}
 
 		// Determine whether to load certs from files or generate self-signed
