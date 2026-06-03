@@ -112,6 +112,7 @@ jobs:
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: coverage.out
+          flags: unit-tests
 
 # Comment out test-manifests job for now since image-updater crd schema is not available to the kubeconform tool yet
 #  test-manifests:
@@ -171,6 +172,7 @@ jobs:
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: coverage.out
+          flags: unit-tests
   test-e2e:
     name: Run end-to-end tests
     # At most one E2E run per PR at a time.  When a pull_request_target run

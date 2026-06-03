@@ -3,6 +3,9 @@ ignore:
 - "**/mocks/*.go"
 - "test/**/*"
 - "vendor/**/*"
+flags:
+  unit-tests:
+    carryforward: true
 coverage:
   status:
     # we've found this not to be useful
