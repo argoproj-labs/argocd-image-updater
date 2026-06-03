@@ -46,6 +46,8 @@ func TestSetupWebhookServer(t *testing.T) {
 		require.NotNil(t, server)
 		assert.Equal(t, 8080, server.Port)
 		assert.Nil(t, server.RateLimiter)
+		require.NotNil(t, server.TLS)
+		assert.False(t, server.TLS.EnableHTTP2)
 	})
 
 	t.Run("should create a server with rate limiting", func(t *testing.T) {
@@ -58,6 +60,20 @@ func TestSetupWebhookServer(t *testing.T) {
 		require.NotNil(t, server)
 		assert.Equal(t, 8080, server.Port)
 		assert.NotNil(t, server.RateLimiter)
+		require.NotNil(t, server.TLS)
+		assert.False(t, server.TLS.EnableHTTP2)
+	})
+
+	t.Run("should thread enable-http2 into TLS config", func(t *testing.T) {
+		webhookCfg := &WebhookConfig{
+			Port:        8080,
+			EnableHTTP2: true,
+		}
+		reconciler := &controller.ImageUpdaterReconciler{}
+		server := SetupWebhookServer(webhookCfg, reconciler)
+		require.NotNil(t, server)
+		require.NotNil(t, server.TLS)
+		assert.True(t, server.TLS.EnableHTTP2)
 	})
 }
 

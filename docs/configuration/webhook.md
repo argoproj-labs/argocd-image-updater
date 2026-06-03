@@ -320,6 +320,18 @@ at `/app/config/tls/`). If the secret is not provided or its fields are empty, t
 server automatically generates a self-signed certificate in memory so that TLS is
 still active.
 
+!!!note "HTTP/2 disabled by default"
+    HTTP/2 is now **disabled by default** on the webhook TLS server.
+    If your environment requires HTTP/2, opt in explicitly:
+
+    ```bash
+    # standalone webhook command
+    argocd-image-updater webhook --enable-http2
+
+    # combined run command
+    argocd-image-updater run --enable-http2
+    ```
+
 ### Disabling TLS (plain HTTP)
 
 To revert to plain HTTP, pass `--disable-tls` or set the environment variable:
