@@ -10,9 +10,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/distribution/distribution/v3/testutil"
+
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/registry/internal/client/auth/challenge"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/registry/internal/client/transport"
-	"github.com/distribution/distribution/v3/testutil"
 )
 
 // An implementation of clock for providing fake time data.

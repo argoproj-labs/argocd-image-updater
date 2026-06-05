@@ -8,9 +8,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gorilla/mux"
+
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/registry/internal/requestutil"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/registry/internal/uuid"
-	"github.com/gorilla/mux"
 )
 
 // Common errors used with this package.

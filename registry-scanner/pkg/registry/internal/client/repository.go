@@ -15,7 +15,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/registry/internal/client/transport"
 	"github.com/distribution/distribution/v3"
 	v2 "github.com/distribution/distribution/v3/registry/api/v2"
 	"github.com/distribution/distribution/v3/registry/storage/cache"
@@ -23,6 +22,8 @@ import (
 	"github.com/distribution/reference"
 	"github.com/opencontainers/go-digest"
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
+
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/registry/internal/client/transport"
 )
 
 // Registry provides an interface for calling Repositories, which returns a catalog of repositories.

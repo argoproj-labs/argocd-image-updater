@@ -11,8 +11,9 @@ import (
 	"testing"
 	"time"
 
-	distclient "github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/registry/internal/client"
 	"github.com/distribution/distribution/v3/manifest/schema2"
+
+	distclient "github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/registry/internal/client"
 
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/image"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/kube"

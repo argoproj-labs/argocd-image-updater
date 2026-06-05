@@ -16,8 +16,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/registry/internal/dcontext"
-	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/registry/internal/uuid"
 	"github.com/distribution/distribution/v3"
 	"github.com/distribution/distribution/v3/manifest/ocischema"
 	"github.com/distribution/distribution/v3/registry/api/errcode"
@@ -26,6 +24,9 @@ import (
 	"github.com/opencontainers/go-digest"
 	"github.com/opencontainers/image-spec/specs-go"
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
+
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/registry/internal/dcontext"
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/registry/internal/uuid"
 )
 
 func testServer(rrm testutil.RequestResponseMap) (string, func()) {

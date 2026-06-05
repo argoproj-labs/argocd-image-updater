@@ -10,11 +10,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/argoproj/pkg/json"
+
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/registry/internal/client"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/registry/internal/client/auth"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/registry/internal/client/auth/challenge"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/registry/internal/client/transport"
-	"github.com/argoproj/pkg/json"
 
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/options"

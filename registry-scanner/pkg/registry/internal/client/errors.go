@@ -8,8 +8,9 @@ import (
 	"mime"
 	"net/http"
 
-	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/registry/internal/client/auth/challenge"
 	"github.com/distribution/distribution/v3/registry/api/errcode"
+
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/registry/internal/client/auth/challenge"
 )
 
 // ErrNoErrorsInBody is returned when an HTTP response body parses to an empty
