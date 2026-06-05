@@ -3,6 +3,7 @@ ignore:
 - "**/mocks/*.go"
 - "test/**/*"
 - "vendor/**/*"
+- "registry-scanner/pkg/registry/internal/**"
 flags:
   unit-tests:
     carryforward: true
