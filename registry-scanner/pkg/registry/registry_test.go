@@ -11,7 +11,8 @@ import (
 	"testing"
 	"time"
 
-	distclient "github.com/distribution/distribution/v3/registry/client"
+	distclient "github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/registry/internal/client"
+	"github.com/distribution/distribution/v3/manifest/schema2"
 
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/image"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/kube"
@@ -21,7 +22,6 @@ import (
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/test/fake"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/test/fixture"
 
-	"github.com/distribution/distribution/v3/manifest/schema1" //nolint:staticcheck
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -92,16 +92,7 @@ func Test_GetTags(t *testing.T) {
 	})
 
 	t.Run("Check for correctly returned tags with latest sort", func(t *testing.T) {
-		ts := "2006-01-02T15:04:05.999999999Z"
-		meta1 := &schema1.SignedManifest{ //nolint:staticcheck
-			Manifest: schema1.Manifest{ //nolint:staticcheck
-				History: []schema1.History{ //nolint:staticcheck
-					{
-						V1Compatibility: `{"created":"` + ts + `"}`,
-					},
-				},
-			},
-		}
+		meta1 := &schema2.DeserializedManifest{}
 		ctx := context.Background()
 		regClient := mocks.RegistryClient{}
 		regClient.On("NewRepository", mock.Anything).Return(nil)
@@ -117,10 +108,10 @@ func Test_GetTags(t *testing.T) {
 		require.NoError(t, err)
 		assert.NotEmpty(t, tl)
 
-		tag, err := ep.Cache.GetTag("foo/bar", "1.2.1")
+		cachedTag, err := ep.Cache.GetTag("foo/bar", "1.2.1")
 		require.NoError(t, err)
-		require.NotNil(t, tag)
-		require.Equal(t, "1.2.1", tag.TagName)
+		require.NotNil(t, cachedTag)
+		require.Equal(t, "1.2.1", cachedTag.TagName)
 	})
 
 	t.Run("401 with valid cached creds clears endpoint and returns ErrCredentialsInvalid", func(t *testing.T) {

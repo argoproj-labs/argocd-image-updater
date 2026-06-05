@@ -10,6 +10,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/registry/internal/client"
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/registry/internal/client/auth"
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/registry/internal/client/auth/challenge"
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/registry/internal/client/transport"
 	"github.com/argoproj/pkg/json"
 
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
@@ -19,14 +23,9 @@ import (
 	"github.com/distribution/distribution/v3"
 	"github.com/distribution/distribution/v3/manifest/manifestlist"
 	"github.com/distribution/distribution/v3/manifest/ocischema"
-	"github.com/distribution/distribution/v3/manifest/schema1" //nolint:staticcheck
 	"github.com/distribution/distribution/v3/manifest/schema2"
-	"github.com/distribution/distribution/v3/reference"
 	"github.com/distribution/distribution/v3/registry/api/errcode"
-	"github.com/distribution/distribution/v3/registry/client"
-	"github.com/distribution/distribution/v3/registry/client/auth"
-	"github.com/distribution/distribution/v3/registry/client/auth/challenge"
-	"github.com/distribution/distribution/v3/registry/client/transport"
+	"github.com/distribution/reference"
 
 	"github.com/opencontainers/go-digest"
 	ociv1 "github.com/opencontainers/image-spec/specs-go/v1"
@@ -38,16 +37,22 @@ import (
 
 // knownMediaTypes is the list of media types we can process
 var knownMediaTypes = []string{
-	ocischema.SchemaVersion.MediaType,
-	schema1.MediaTypeSignedManifest, //nolint:staticcheck
-	schema2.SchemaVersion.MediaType,
-	manifestlist.SchemaVersion.MediaType,
+	ociv1.MediaTypeImageManifest,
+	schema2.MediaTypeManifest,
+	manifestlist.MediaTypeManifestList,
 	ociv1.MediaTypeImageIndex,
 }
 
 // RegistryClient defines the methods we need for querying container registries
 //
-//go:generate mockery --name RegistryClient --output ./mocks --outpkg mocks
+//go:generate go run github.com/vektra/mockery/v2@v2.53.6 --name RegistryClient --output ./mocks --outpkg mocks
+//go:generate go run github.com/vektra/mockery/v2@v2.53.6 --name Repository --srcpkg github.com/distribution/distribution/v3 --output ./mocks --outpkg mocks
+//go:generate go run github.com/vektra/mockery/v2@v2.53.6 --name Manifest --srcpkg github.com/distribution/distribution/v3 --output ./mocks --outpkg mocks
+//go:generate go run github.com/vektra/mockery/v2@v2.53.6 --name ManifestService --srcpkg github.com/distribution/distribution/v3 --output ./mocks --outpkg mocks
+//go:generate go run github.com/vektra/mockery/v2@v2.53.6 --name TagService --srcpkg github.com/distribution/distribution/v3 --output ./mocks --outpkg mocks
+//go:generate go run github.com/vektra/mockery/v2@v2.53.6 --name Limiter --srcpkg go.uber.org/ratelimit --output ./mocks --outpkg mocks
+//go:generate go run github.com/vektra/mockery/v2@v2.53.6 --name RoundTripper --srcpkg net/http --output ./mocks --outpkg mocks
+//go:generate go run github.com/vektra/mockery/v2@v2.53.6 --name Manager --srcpkg github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/registry/internal/client/auth/challenge --output ./mocks --outpkg mocks
 type RegistryClient interface {
 	NewRepository(nameInRepository string) error
 	Tags(ctx context.Context) ([]string, error)
@@ -230,40 +235,11 @@ func (clt *registryClient) TagMetadata(ctx context.Context, manifest distributio
 
 	// We support the following types of manifests as returned by the registry:
 	//
-	// V1 (legacy, might go away), V2 and OCI
+	// V2 and OCI
 	//
 	// Also ManifestLists (e.g. on multi-arch images) are supported.
 	//
 	switch deserialized := manifest.(type) {
-
-	case *schema1.SignedManifest: //nolint:staticcheck
-		var man schema1.Manifest = deserialized.Manifest //nolint:staticcheck
-		if len(man.History) == 0 {
-			return nil, fmt.Errorf("no history information found in schema V1")
-		}
-
-		_, mBytes, err := manifest.Payload()
-		if err != nil {
-			return nil, err
-		}
-		ti.Digest = sha256.Sum256(mBytes)
-
-		logCtx.Tracef("v1 SHA digest is %s", ti.EncodedDigest())
-		if err := json.Unmarshal([]byte(man.History[0].V1Compatibility), &info); err != nil {
-			return nil, err
-		}
-		if !opts.WantsPlatform(info.OS, info.Arch, "") {
-			logCtx.Debugf("ignoring v1 manifest %v. Manifest platform: %s, requested: %s",
-				ti.EncodedDigest(), options.PlatformKey(info.OS, info.Arch, info.Variant), strings.Join(opts.Platforms(), ","))
-			return nil, nil
-		}
-		if createdAt, err := time.Parse(time.RFC3339Nano, info.Created); err != nil {
-			return nil, err
-		} else {
-			ti.CreatedAt = createdAt
-		}
-		ti.Labels = info.Config.Labels
-		return ti, nil
 
 	case *manifestlist.DeserializedManifestList:
 		var list manifestlist.DeserializedManifestList = *deserialized
