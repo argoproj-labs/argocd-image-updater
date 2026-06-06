@@ -122,6 +122,14 @@ lint: golangci-lint ## Run golangci-lint linter
 lint-fix: golangci-lint ## Run golangci-lint linter and perform fixes
 	$(GOLANGCI_LINT) run --fix
 
+# Version of github.com/distribution/distribution/v3 whose internal/ packages
+# are vendored into registry-scanner/pkg/registry/internal/.
+DISTRIBUTION_VERSION ?= v3.1.1
+
+.PHONY: get-distribution-internal
+get-distribution-internal: ## Refresh registry-scanner/pkg/registry/internal from upstream distribution/distribution at DISTRIBUTION_VERSION. Usage: make get-distribution-internal DISTRIBUTION_VERSION=v3.1.2
+	$(MAKE) -C registry-scanner get-distribution-internal DISTRIBUTION_VERSION=$(DISTRIBUTION_VERSION)
+
 .PHONY: build
 build: manifests generate fmt vet
 	CGO_ENABLED=0 GOOS=${OS} GOARCH=${ARCH} go build -ldflags '${LDFLAGS}' -o ${OUTDIR}/${BINNAME} cmd/*.go

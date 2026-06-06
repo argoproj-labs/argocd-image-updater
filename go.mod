@@ -9,6 +9,11 @@ require (
 	github.com/bmatcuk/doublestar/v4 v4.10.0
 	github.com/bombsimon/logrusr/v2 v2.0.1
 	github.com/bradleyfalzon/ghinstallation/v2 v2.18.0
+	// When upgrading, also refresh the internal copy:
+	//   make get-distribution-internal DISTRIBUTION_VERSION=v<new-version>
+	// NOTE: after refresh, revert import paths in registry-scanner/pkg/registry/internal/
+	// from "github.com/distribution/distribution/v3/internal/..."
+	// to   "github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/registry/internal/..."
 	github.com/distribution/distribution/v3 v3.1.1
 	github.com/go-git/go-git/v5 v5.14.0
 	github.com/go-logr/logr v1.4.3

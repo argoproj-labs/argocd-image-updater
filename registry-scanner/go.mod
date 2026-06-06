@@ -5,6 +5,11 @@ go 1.26.0
 require (
 	github.com/Masterminds/semver/v3 v3.4.0
 	github.com/argoproj/pkg v0.13.7-0.20230627120311-a4dd357b057e
+	// When upgrading, refresh the internal copy:
+	//   make get-distribution-internal DISTRIBUTION_VERSION=v<new-version>
+	// NOTE: after refresh, revert import paths in registry-scanner/pkg/registry/internal/
+	// from "github.com/distribution/distribution/v3/internal/..."
+	// to   "github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/registry/internal/..."
 	github.com/distribution/distribution/v3 v3.1.1
 	github.com/distribution/reference v0.6.0
 	github.com/google/uuid v1.6.1-0.20241114170450-2d3c2a9cc518

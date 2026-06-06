@@ -369,7 +369,10 @@ func (t *tags) List(ctx context.Context, limit int, last string) ([]string, erro
 		return nil, err
 	}
 
-	preAlloc := min(limit, 1000)
+	preAlloc := 1000
+	if limit < preAlloc {
+		preAlloc = limit
+	}
 	tags := make([]string, 0, preAlloc)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, listURL.String(), nil)
 	if err != nil {
