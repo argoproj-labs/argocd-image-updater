@@ -101,6 +101,9 @@ var _ = Describe("ArgoCD Image Updater Parallel E2E Tests", func() {
 			argoCD = &argov1beta1api.ArgoCD{
 				ObjectMeta: metav1.ObjectMeta{Name: "argocd", Namespace: ns.Name},
 				Spec: argov1beta1api.ArgoCDSpec{
+					CmdParams: map[string]string{
+						"hydrator.enabled": "true",
+					},
 					ImageUpdater: argov1beta1api.ArgoCDImageUpdaterSpec{
 						Env: []corev1.EnvVar{
 							{
