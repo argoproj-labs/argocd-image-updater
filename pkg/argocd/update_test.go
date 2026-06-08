@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,8 +11,6 @@ import (
 	"time"
 
 	yaml "sigs.k8s.io/yaml/goyaml.v3"
-
-	distclient "github.com/distribution/distribution/v3/registry/client"
 
 	iuapi "github.com/argoproj-labs/argocd-image-updater/api/v1alpha1"
 	"github.com/argoproj-labs/argocd-image-updater/ext/git"
@@ -30,7 +27,8 @@ import (
 
 	"github.com/argoproj/argo-cd/v3/pkg/apiclient/application"
 	"github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1"
-	"github.com/distribution/distribution/v3/manifest/schema1" //nolint:staticcheck
+	"github.com/distribution/distribution/v3/manifest/schema2"
+	"github.com/distribution/distribution/v3/registry/api/errcode"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -605,12 +603,12 @@ registries:
 		require.NoError(t, err)
 		defer registry.RestoreDefaultRegistryConfiguration()
 
+		authErr := errcode.Errors{errcode.ErrorCodeUnauthorized.WithMessage("unauthorized")}
 		callCount := 0
 		mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
 			regMock := regmock.RegistryClient{}
 			regMock.On("NewRepository", mock.Anything).Return(nil)
 			callCount++
-			authErr := &distclient.UnexpectedHTTPResponseError{StatusCode: http.StatusUnauthorized, ParseErr: errors.New("unauthorized")}
 			if callCount == 1 {
 				regMock.On("Tags", mock.Anything).Return([]string(nil), authErr)
 			} else {
@@ -679,9 +677,8 @@ registries:
 			regMock := regmock.RegistryClient{}
 			regMock.On("NewRepository", mock.Anything).Return(nil)
 			callCount++
-			// 500 is not an auth error, so no retry
-			err500 := &distclient.UnexpectedHTTPResponseError{StatusCode: http.StatusInternalServerError, ParseErr: errors.New("internal server error")}
-			regMock.On("Tags", mock.Anything).Return([]string(nil), err500)
+			// 500 is not an auth error, so no retry; use a plain error to simulate it
+			regMock.On("Tags", mock.Anything).Return([]string(nil), errors.New("internal server error"))
 			return &regMock, nil
 		}
 
@@ -756,14 +753,14 @@ registries:
 		require.NoError(t, err)
 		defer registry.RestoreDefaultRegistryConfiguration()
 
+		authErr2 := errcode.Errors{errcode.ErrorCodeUnauthorized.WithMessage("unauthorized")}
 		callCount := 0
 		mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
 			regMock := regmock.RegistryClient{}
 			regMock.On("NewRepository", mock.Anything).Return(nil)
 			callCount++
 			// Both first and second Tags call return auth error so retry also fails.
-			authErr := &distclient.UnexpectedHTTPResponseError{StatusCode: http.StatusUnauthorized, ParseErr: errors.New("unauthorized")}
-			regMock.On("Tags", mock.Anything).Return([]string(nil), authErr)
+			regMock.On("Tags", mock.Anything).Return([]string(nil), authErr2)
 			return &regMock, nil
 		}
 
@@ -1075,26 +1072,10 @@ registries:
 	})
 
 	t.Run("Test skip because of match-tag pattern doesn't match", func(t *testing.T) {
-		meta := make([]*schema1.SignedManifest, 4) //nolint:staticcheck
-		for i := 0; i < 4; i++ {
-			ts := fmt.Sprintf("2006-01-02T15:%.02d:05.999999999Z", i)
-			meta[i] = &schema1.SignedManifest{ //nolint:staticcheck
-				Manifest: schema1.Manifest{ //nolint:staticcheck
-					History: []schema1.History{ //nolint:staticcheck
-						{
-							V1Compatibility: `{"created":"` + ts + `"}`,
-						},
-					},
-				},
-			}
-		}
-		called := 0
 		mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
 			regMock := regmock.RegistryClient{}
 			regMock.On("NewRepository", mock.Anything).Return(nil)
 			regMock.On("Tags", mock.Anything).Return([]string{"one", "two", "three", "four"}, nil)
-			regMock.On("Manifest", mock.Anything).Return(meta[called], nil)
-			called += 1
 			return &regMock, nil
 		}
 
@@ -1155,26 +1136,10 @@ registries:
 	})
 
 	t.Run("Test skip because of ignored", func(t *testing.T) {
-		meta := make([]*schema1.SignedManifest, 4) //nolint:staticcheck
-		for i := 0; i < 4; i++ {
-			ts := fmt.Sprintf("2006-01-02T15:%.02d:05.999999999Z", i)
-			meta[i] = &schema1.SignedManifest{ //nolint:staticcheck
-				Manifest: schema1.Manifest{ //nolint:staticcheck
-					History: []schema1.History{ //nolint:staticcheck
-						{
-							V1Compatibility: `{"created":"` + ts + `"}`,
-						},
-					},
-				},
-			}
-		}
-		called := 0
 		mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
 			regMock := regmock.RegistryClient{}
 			regMock.On("NewRepository", mock.Anything).Return(nil)
 			regMock.On("Tags", mock.Anything).Return([]string{"one", "two", "three", "four"}, nil)
-			regMock.On("Manifest", mock.Anything).Return(meta[called], nil)
-			called += 1
 			return &regMock, nil
 		}
 
@@ -1557,9 +1522,7 @@ registries:
 			regMock.On("Tags", mock.Anything).Return([]string{"latest"}, nil)
 
 			// For digest strategy, we need to mock ManifestForTag and TagMetadata
-			meta1 := &schema1.SignedManifest{} //nolint:staticcheck
-			meta1.Name = "org/job-image"
-			meta1.Tag = "latest"
+			meta1 := &schema2.DeserializedManifest{}
 			regMock.On("ManifestForTag", mock.Anything, "latest").Return(meta1, nil)
 			// Create a digest as [32]byte array
 			var digest [32]byte
@@ -1669,9 +1632,7 @@ registries:
 			regMock.On("NewRepository", mock.Anything).Return(nil)
 			regMock.On("Tags", mock.Anything).Return([]string{"latest-bookworm"}, nil)
 			// Mock ManifestForTag to return metadata with the digest
-			meta1 := &schema1.SignedManifest{} //nolint:staticcheck
-			meta1.Name = "library/nginx"
-			meta1.Tag = "latest-bookworm"
+			meta1 := &schema2.DeserializedManifest{}
 			regMock.On("ManifestForTag", mock.Anything, "latest-bookworm").Return(meta1, nil)
 			// Mock TagMetadata to return the tag info with digest
 			regMock.On("TagMetadata", mock.Anything, mock.Anything, mock.Anything).Return(&tag.TagInfo{
@@ -1843,14 +1804,10 @@ registries:
 			regMock.On("Tags", mock.Anything).Return([]string{"latest", "latest-bookworm"}, nil)
 
 			// Both tags return manifests
-			metaLatest := &schema1.SignedManifest{} //nolint:staticcheck
-			metaLatest.Name = "library/nginx"
-			metaLatest.Tag = "latest"
+			metaLatest := &schema2.DeserializedManifest{}
 			regMock.On("ManifestForTag", mock.Anything, "latest").Return(metaLatest, nil)
 
-			metaBookworm := &schema1.SignedManifest{} //nolint:staticcheck
-			metaBookworm.Name = "library/nginx"
-			metaBookworm.Tag = "latest-bookworm"
+			metaBookworm := &schema2.DeserializedManifest{}
 			regMock.On("ManifestForTag", mock.Anything, "latest-bookworm").Return(metaBookworm, nil)
 
 			// CRITICAL: Both tags return the SAME digest

@@ -3,6 +3,8 @@ tone_instructions: ''
 early_access: false
 enable_free_tier: true
 reviews:
+  path_filters:
+    - "!registry-scanner/pkg/registry/internal/**"
   profile: chill
   request_changes_workflow: false
   high_level_summary: true
