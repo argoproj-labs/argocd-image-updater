@@ -1,6 +1,7 @@
 package webhook
 
 import (
+	"crypto/subtle"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -38,8 +39,8 @@ func (q *QuayWebhook) Validate(r *http.Request) error {
 			return fmt.Errorf("missing webhook secret")
 		}
 
-		if secret != q.secret {
-			return fmt.Errorf("incorrect webhook secret")
+		if subtle.ConstantTimeCompare([]byte(secret), []byte(q.secret)) != 1 {
+			return fmt.Errorf("invalid webhook secret")
 		}
 	}
 

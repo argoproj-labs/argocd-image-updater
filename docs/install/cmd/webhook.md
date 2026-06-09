@@ -183,4 +183,20 @@ means that the rate limiting is disabled.
 
 Can also be set with the `WEBHOOK_RATELIMIT_ALLOWED` environment variable.
 
+**--webhook-require-secrets *bool***
+
+When set to `true` (the default), only registry webhook handlers that have a
+secret configured are registered. Requests arriving for a registry with no
+secret will be rejected. Set to `false` to register all handlers regardless
+of whether a secret is present — this disables authentication on those
+endpoints and is strongly discouraged in production.
+
+Can also be set with the `WEBHOOK_REQUIRE_SECRETS` environment variable.
+
+!!!warning
+    Setting `--webhook-require-secrets=false` means the webhook endpoint will
+    accept unauthenticated requests from any source for registries that have no
+    secret configured. Only use this during local development or in a fully
+    network-isolated environment.
+
 [label selector syntax]: https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/#label-selectors

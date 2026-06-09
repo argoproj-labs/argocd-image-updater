@@ -42,7 +42,7 @@ func TestSetupWebhookServer(t *testing.T) {
 			RateLimitNumAllowedRequests: 0,
 		}
 		reconciler := &controller.ImageUpdaterReconciler{}
-		server := SetupWebhookServer(webhookCfg, reconciler)
+		server := SetupWebhookServer(context.Background(), webhookCfg, reconciler)
 		require.NotNil(t, server)
 		assert.Equal(t, 8080, server.Port)
 		assert.Nil(t, server.RateLimiter)
@@ -56,7 +56,7 @@ func TestSetupWebhookServer(t *testing.T) {
 			RateLimitNumAllowedRequests: 100,
 		}
 		reconciler := &controller.ImageUpdaterReconciler{}
-		server := SetupWebhookServer(webhookCfg, reconciler)
+		server := SetupWebhookServer(context.Background(), webhookCfg, reconciler)
 		require.NotNil(t, server)
 		assert.Equal(t, 8080, server.Port)
 		assert.NotNil(t, server.RateLimiter)
@@ -70,10 +70,95 @@ func TestSetupWebhookServer(t *testing.T) {
 			EnableHTTP2: true,
 		}
 		reconciler := &controller.ImageUpdaterReconciler{}
-		server := SetupWebhookServer(webhookCfg, reconciler)
+		server := SetupWebhookServer(context.Background(), webhookCfg, reconciler)
 		require.NotNil(t, server)
 		require.NotNil(t, server.TLS)
 		assert.True(t, server.TLS.EnableHTTP2)
+	})
+}
+
+func TestSetupWebhookServer_HandlerRegistration(t *testing.T) {
+	reconciler := &controller.ImageUpdaterReconciler{}
+
+	allRegistryTypes := []string{
+		"aliyun-acr",
+		"cloudevents",
+		"docker.io",
+		"ghcr.io",
+		"harbor",
+		"quay.io",
+	}
+
+	t.Run("require-secrets=false registers all handlers regardless of secrets", func(t *testing.T) {
+		cfg := &WebhookConfig{
+			RequireSecrets: false,
+			Port:           8080,
+			// No secrets configured at all
+		}
+		server := SetupWebhookServer(context.Background(), cfg, reconciler)
+		require.NotNil(t, server)
+		assert.ElementsMatch(t, allRegistryTypes, server.Handler.RegisteredTypes())
+	})
+
+	t.Run("require-secrets=false registers all handlers even when secrets are set", func(t *testing.T) {
+		cfg := &WebhookConfig{
+			RequireSecrets: false,
+			Port:           8080,
+			DockerSecret:   "docker-secret",
+			GHCRSecret:     "ghcr-secret",
+		}
+		server := SetupWebhookServer(context.Background(), cfg, reconciler)
+		require.NotNil(t, server)
+		assert.ElementsMatch(t, allRegistryTypes, server.Handler.RegisteredTypes())
+	})
+
+	t.Run("require-secrets=true with no secrets registers no handlers", func(t *testing.T) {
+		cfg := &WebhookConfig{
+			RequireSecrets: true,
+			Port:           8080,
+		}
+		server := SetupWebhookServer(context.Background(), cfg, reconciler)
+		require.NotNil(t, server)
+		assert.Empty(t, server.Handler.RegisteredTypes())
+	})
+
+	t.Run("require-secrets=true only registers handlers that have a secret", func(t *testing.T) {
+		cfg := &WebhookConfig{
+			RequireSecrets: true,
+			Port:           8080,
+			DockerSecret:   "docker-secret",
+			HarborSecret:   "harbor-secret",
+		}
+		server := SetupWebhookServer(context.Background(), cfg, reconciler)
+		require.NotNil(t, server)
+		assert.ElementsMatch(t, []string{"docker.io", "harbor"}, server.Handler.RegisteredTypes())
+	})
+
+	t.Run("require-secrets=true with all secrets registers all handlers", func(t *testing.T) {
+		cfg := &WebhookConfig{
+			RequireSecrets:    true,
+			Port:              8080,
+			DockerSecret:      "docker-secret",
+			GHCRSecret:        "ghcr-secret",
+			HarborSecret:      "harbor-secret",
+			QuaySecret:        "quay-secret",
+			AliyunACRSecret:   "aliyun-secret",
+			CloudEventsSecret: "cloudevents-secret",
+		}
+		server := SetupWebhookServer(context.Background(), cfg, reconciler)
+		require.NotNil(t, server)
+		assert.ElementsMatch(t, allRegistryTypes, server.Handler.RegisteredTypes())
+	})
+
+	t.Run("require-secrets=true with only GHCR secret registers only GHCR handler", func(t *testing.T) {
+		cfg := &WebhookConfig{
+			RequireSecrets: true,
+			Port:           8080,
+			GHCRSecret:     "ghcr-secret",
+		}
+		server := SetupWebhookServer(context.Background(), cfg, reconciler)
+		require.NotNil(t, server)
+		assert.ElementsMatch(t, []string{"ghcr.io"}, server.Handler.RegisteredTypes())
 	})
 }
 

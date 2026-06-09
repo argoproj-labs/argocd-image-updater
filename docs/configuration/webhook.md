@@ -272,6 +272,22 @@ Supported Registries That Use This:
 Also be aware that if the container registry has a built-in secrets method you will
 not be able to use this method.
 
+### Requiring Secrets (default behaviour)
+
+By default (`--webhook-require-secrets=true`), only registry handlers that have
+a secret configured are registered. A registry with no secret set will have its
+handler skipped entirely — the server will return an error for those webhook
+types rather than accepting unauthenticated requests.
+
+Set `--webhook-require-secrets=false` to register all handlers regardless of
+whether a secret is present. Use this only in local development or
+network-isolated environments.
+
+!!!warning
+    `--webhook-require-secrets=false` disables authentication on every handler
+    that has no secret configured. Any source can send fake webhook payloads to
+    those endpoints.
+
 ## Exposing the Server
 
 To expose the webhook server we have provided a service and ingress to get
@@ -410,6 +426,7 @@ environment variables. Below is the list of which variables correspond to which 
 |Environment Variable|Corresponding Flag|
 |--------|--------|
 |`ENABLE_WEBHOOK`|`--enable-webhook`|
+|`WEBHOOK_REQUIRE_SECRETS`|`--webhook-require-secrets`|
 |`WEBHOOK_PORT`|`--webhook-port`|
 |`DOCKER_WEBHOOK_SECRET` |`--docker-webhook-secret`|
 |`GHCR_WEBHOOK_SECRET` |`--ghcr-webhook-secret`|
@@ -461,7 +478,7 @@ else. If this continuously occurs please open an issue with the error informatio
 Make sure you included the `type` query parameter for the type of webhook
 handler and ensure that it is correct. 
 
-**Missing/incorrect webhook secret**
+**Missing/invalid webhook secret**
 
 If you are seeing this message make sure that you have secrets configured
 properly in your container registry whether it is through their service

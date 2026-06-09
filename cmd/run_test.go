@@ -65,6 +65,7 @@ func TestNewRunCommand(t *testing.T) {
 	asser.Equal(common.DefaultCommitTemplatePath, controllerCommand.Flag("git-commit-message-path").Value.String())
 	asser.Equal(env.GetStringVal("IMAGE_UPDATER_KUBE_EVENTS", "false"), controllerCommand.Flag("disable-kube-events").Value.String())
 	asser.Equal(env.GetStringVal("ENABLE_WEBHOOK", "false"), controllerCommand.Flag("enable-webhook").Value.String())
+	asser.Equal(env.GetStringVal("WEBHOOK_REQUIRE_SECRETS", "true"), controllerCommand.Flag("webhook-require-secrets").Value.String())
 	asser.Equal(strconv.Itoa(env.ParseNumFromEnv("WEBHOOK_PORT", 8082, 0, 65535)), controllerCommand.Flag("webhook-port").Value.String())
 	asser.Equal(env.GetStringVal("DOCKER_WEBHOOK_SECRET", ""), controllerCommand.Flag("docker-webhook-secret").Value.String())
 	asser.Equal(env.GetStringVal("GHCR_WEBHOOK_SECRET", ""), controllerCommand.Flag("ghcr-webhook-secret").Value.String())

@@ -37,6 +37,7 @@ func TestNewWebhookCommand(t *testing.T) {
 	asser.Equal(env.GetStringVal("GIT_COMMIT_SIGN_OFF", "false"), controllerCommand.Flag("git-commit-sign-off").Value.String())
 	asser.Equal(common.DefaultCommitTemplatePath, controllerCommand.Flag("git-commit-message-path").Value.String())
 	asser.Equal(env.GetStringVal("IMAGE_UPDATER_KUBE_EVENTS", "false"), controllerCommand.Flag("disable-kube-events").Value.String())
+	asser.Equal(env.GetStringVal("WEBHOOK_REQUIRE_SECRETS", "true"), controllerCommand.Flag("webhook-require-secrets").Value.String())
 	asser.Equal(strconv.Itoa(env.ParseNumFromEnv("WEBHOOK_PORT", 8080, 0, 65535)), controllerCommand.Flag("webhook-port").Value.String())
 	asser.Equal(env.GetStringVal("DOCKER_WEBHOOK_SECRET", ""), controllerCommand.Flag("docker-webhook-secret").Value.String())
 	asser.Equal(env.GetStringVal("GHCR_WEBHOOK_SECRET", ""), controllerCommand.Flag("ghcr-webhook-secret").Value.String())

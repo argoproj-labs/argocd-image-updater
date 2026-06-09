@@ -11,6 +11,8 @@ import (
 	"github.com/go-logr/logr"
 	"go.uber.org/ratelimit"
 
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
+
 	"github.com/argoproj-labs/argocd-image-updater/internal/controller"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/argocd"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
@@ -21,6 +23,8 @@ import (
 
 // WebhookConfig holds the options for the webhook server
 type WebhookConfig struct {
+	// RequireSecrets requires webhook secrets by default
+	RequireSecrets bool
 	// Port is the port number for the webhook server to listen on
 	Port int
 	// EnableHTTP2 allows the webhook TLS server to negotiate HTTP/2
@@ -128,17 +132,65 @@ func SetupCommon(ctx context.Context, cfg *controller.ImageUpdaterConfig, setupL
 }
 
 // SetupWebhookServer creates and configures a new webhook server.
-func SetupWebhookServer(webhookCfg *WebhookConfig, reconciler *controller.ImageUpdaterReconciler) *webhook.WebhookServer {
+func SetupWebhookServer(ctx context.Context, webhookCfg *WebhookConfig, reconciler *controller.ImageUpdaterReconciler) *webhook.WebhookServer {
+	log := log.LoggerFromContext(ctx)
+
 	// Create webhook handler
 	handler := webhook.NewWebhookHandler()
 
-	// Register supported webhook handlers with default empty secrets
-	handler.RegisterHandler(webhook.NewDockerHubWebhook(webhookCfg.DockerSecret))
-	handler.RegisterHandler(webhook.NewGHCRWebhook(webhookCfg.GHCRSecret))
-	handler.RegisterHandler(webhook.NewHarborWebhook(webhookCfg.HarborSecret))
-	handler.RegisterHandler(webhook.NewQuayWebhook(webhookCfg.QuaySecret))
-	handler.RegisterHandler(webhook.NewAliyunACRWebhook(webhookCfg.AliyunACRSecret))
-	handler.RegisterHandler(webhook.NewCloudEventsWebhook(webhookCfg.CloudEventsSecret))
+	if !webhookCfg.RequireSecrets {
+		// Insecure mode: all handlers are registered regardless of whether a secret is
+		// configured. Handlers without a secret will accept unauthenticated requests.
+		log.Warnf("Webhook secrets are not required (--webhook-require-secrets=false). " +
+			"All registry handlers will be registered without secret validation. " +
+			"This is insecure and should not be used in production.")
+		handler.RegisterHandler(webhook.NewDockerHubWebhook(webhookCfg.DockerSecret))
+		handler.RegisterHandler(webhook.NewGHCRWebhook(webhookCfg.GHCRSecret))
+		handler.RegisterHandler(webhook.NewHarborWebhook(webhookCfg.HarborSecret))
+		handler.RegisterHandler(webhook.NewQuayWebhook(webhookCfg.QuaySecret))
+		handler.RegisterHandler(webhook.NewAliyunACRWebhook(webhookCfg.AliyunACRSecret))
+		handler.RegisterHandler(webhook.NewCloudEventsWebhook(webhookCfg.CloudEventsSecret))
+	} else {
+		// Secure mode (default): only register handlers for which a secret has been
+		// configured. Handlers without a secret are skipped entirely so unauthenticated
+		// requests from that registry are rejected before reaching the server.
+		registered := 0
+		if webhookCfg.DockerSecret != "" {
+			handler.RegisterHandler(webhook.NewDockerHubWebhook(webhookCfg.DockerSecret))
+			log.Infof("Registered Docker Hub webhook handler")
+			registered++
+		}
+		if webhookCfg.GHCRSecret != "" {
+			handler.RegisterHandler(webhook.NewGHCRWebhook(webhookCfg.GHCRSecret))
+			log.Infof("Registered GHCR webhook handler")
+			registered++
+		}
+		if webhookCfg.HarborSecret != "" {
+			handler.RegisterHandler(webhook.NewHarborWebhook(webhookCfg.HarborSecret))
+			log.Infof("Registered Harbor webhook handler")
+			registered++
+		}
+		if webhookCfg.QuaySecret != "" {
+			handler.RegisterHandler(webhook.NewQuayWebhook(webhookCfg.QuaySecret))
+			log.Infof("Registered Quay webhook handler")
+			registered++
+		}
+		if webhookCfg.AliyunACRSecret != "" {
+			handler.RegisterHandler(webhook.NewAliyunACRWebhook(webhookCfg.AliyunACRSecret))
+			log.Infof("Registered Aliyun ACR webhook handler")
+			registered++
+		}
+		if webhookCfg.CloudEventsSecret != "" {
+			handler.RegisterHandler(webhook.NewCloudEventsWebhook(webhookCfg.CloudEventsSecret))
+			log.Infof("Registered CloudEvents webhook handler")
+			registered++
+		}
+		if registered == 0 {
+			log.Warnf("Webhook server is enabled with --webhook-require-secrets=true but no secrets " +
+				"are configured. No handlers will be registered and all webhook requests will be rejected. " +
+				"Configure at least one *-webhook-secret flag or set --webhook-require-secrets=false.")
+		}
+	}
 
 	// Create webhook server
 	server := webhook.NewWebhookServer(webhookCfg.Port, handler, reconciler)
