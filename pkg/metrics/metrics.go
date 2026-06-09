@@ -13,6 +13,7 @@ type Metrics struct {
 	Endpoint       *EndpointMetrics
 	ImageUpdaterCR *ImageUpdaterCRMetrics
 	Clients        *ClientMetrics
+	Webhook        *WebhookMetrics
 }
 
 var (
@@ -38,6 +39,11 @@ type ImageUpdaterCRMetrics struct {
 type ClientMetrics struct {
 	kubeAPIRequestsTotal       prometheus.Counter
 	kubeAPIRequestsErrorsTotal prometheus.Counter
+}
+
+// WebhookMetrics stores metrics for incoming webhook events
+type WebhookMetrics struct {
+	EventsTotal *prometheus.CounterVec
 }
 
 // NewEndpointMetrics returns a new endpoint metrics object
@@ -100,11 +106,24 @@ func NewClientMetrics() *ClientMetrics {
 	return metrics
 }
 
+// NewWebhookMetrics returns a new WebhookMetrics object
+func NewWebhookMetrics() *WebhookMetrics {
+	metrics := &WebhookMetrics{}
+
+	metrics.EventsTotal = promauto.With(crmetrics.Registry).NewCounterVec(prometheus.CounterOpts{
+		Name: "argocd_image_updater_webhook_events_total",
+		Help: "The total number of webhook events received, labeled by source registry type",
+	}, []string{"registry"})
+
+	return metrics
+}
+
 func NewMetrics() *Metrics {
 	return &Metrics{
 		Endpoint:       NewEndpointMetrics(),
 		ImageUpdaterCR: NewImageUpdaterCRMetrics(),
 		Clients:        NewClientMetrics(),
+		Webhook:        NewWebhookMetrics(),
 	}
 }
 
@@ -130,6 +149,14 @@ func Clients() *ClientMetrics {
 		return nil
 	}
 	return defaultMetrics.Clients
+}
+
+// WebhookM returns the global WebhookMetrics object
+func WebhookM() *WebhookMetrics {
+	if defaultMetrics == nil {
+		return nil
+	}
+	return defaultMetrics.Webhook
 }
 
 // IncreaseRequest increases the request counter of EndpointMetrics object
@@ -176,6 +203,11 @@ func (cpm *ClientMetrics) IncreaseK8sClientRequest(by int) {
 // IncreaseK8sClientError increases the number of failed K8s API requests
 func (cpm *ClientMetrics) IncreaseK8sClientError(by int) {
 	cpm.kubeAPIRequestsErrorsTotal.Add(float64(by))
+}
+
+// IncreaseWebhookEvent increments the webhook events counter for the given registry type
+func (wm *WebhookMetrics) IncreaseWebhookEvent(registryType string) {
+	wm.EventsTotal.WithLabelValues(registryType).Inc()
 }
 
 // InitMetrics initializes the global metrics objects

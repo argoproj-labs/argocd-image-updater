@@ -4,6 +4,14 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	crmetrics "sigs.k8s.io/controller-runtime/pkg/metrics"
+
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
+	"github.com/stretchr/testify/assert"
+
+	"github.com/argoproj-labs/argocd-image-updater/pkg/metrics"
 )
 
 func TestNewWebhookHandler(t *testing.T) {
@@ -246,6 +254,40 @@ func TestWebhookHandler_ProcessWebhookWithHeader(t *testing.T) {
 	} else if event.Tag != "v2.0.0" {
 		t.Errorf("expected tag to be 'v2.0.0', got %q", event.Tag)
 	}
+}
+
+func TestProcessWebhookIncrementsMetric(t *testing.T) {
+	crmetrics.Registry = prometheus.NewRegistry()
+	metrics.InitMetrics()
+
+	handler := NewWebhookHandler()
+	handler.RegisterHandler(NewDockerHubWebhook(""))
+	handler.RegisterHandler(NewQuayWebhook(""))
+
+	dockerPayload := `{"repository":{"repo_name":"myuser/myapp"},"push_data":{"tag":"v1.0.0"}}`
+	quayPayload := `{"repository":"myrepo","updated_tags":["latest"]}`
+
+	for _, tc := range []struct {
+		registryType string
+		payload      string
+	}{
+		{"docker.io", dockerPayload},
+		{"docker.io", dockerPayload},
+		{"quay.io", quayPayload},
+	} {
+		req := httptest.NewRequest("POST", "/webhook?type="+tc.registryType, strings.NewReader(tc.payload))
+		_, err := handler.ProcessWebhook(req)
+		if err != nil {
+			t.Fatalf("unexpected error for %s: %v", tc.registryType, err)
+		}
+	}
+
+	wm := metrics.WebhookM()
+	if wm == nil {
+		t.Fatal("expected WebhookMetrics to be initialized")
+	}
+	assert.Equal(t, float64(2), testutil.ToFloat64(wm.EventsTotal.WithLabelValues("docker.io")))
+	assert.Equal(t, float64(1), testutil.ToFloat64(wm.EventsTotal.WithLabelValues("quay.io")))
 }
 
 func TestWebhookHandler_detectRegistryType(t *testing.T) {

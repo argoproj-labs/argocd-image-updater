@@ -10,6 +10,28 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func TestWebhookMetrics(t *testing.T) {
+	t.Run("NewWebhookMetrics", func(t *testing.T) {
+		crmetrics.Registry = prometheus.NewRegistry()
+		wm := NewWebhookMetrics()
+		assert.NotNil(t, wm)
+		assert.NotNil(t, wm.EventsTotal)
+	})
+
+	t.Run("IncreaseWebhookEvent", func(t *testing.T) {
+		crmetrics.Registry = prometheus.NewRegistry()
+		wm := NewWebhookMetrics()
+
+		wm.IncreaseWebhookEvent("docker.io")
+		wm.IncreaseWebhookEvent("docker.io")
+		wm.IncreaseWebhookEvent("ghcr.io")
+
+		assert.Equal(t, float64(2), testutil.ToFloat64(wm.EventsTotal.WithLabelValues("docker.io")))
+		assert.Equal(t, float64(1), testutil.ToFloat64(wm.EventsTotal.WithLabelValues("ghcr.io")))
+		assert.Equal(t, float64(0), testutil.ToFloat64(wm.EventsTotal.WithLabelValues("quay.io")))
+	})
+}
+
 func TestMetricsInitialization(t *testing.T) {
 	t.Run("NewEndpointMetrics", func(t *testing.T) {
 		crmetrics.Registry = prometheus.NewRegistry()

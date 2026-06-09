@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/argoproj-labs/argocd-image-updater/pkg/argocd"
+	"github.com/argoproj-labs/argocd-image-updater/pkg/metrics"
 )
 
 // maxWebhookBodySize limits the size of webhook request bodies to prevent
@@ -64,7 +65,14 @@ func (h *WebhookHandler) ProcessWebhook(r *http.Request) (*argocd.WebhookEvent, 
 	if err := handler.Validate(r); err != nil {
 		return nil, err
 	}
-	return handler.Parse(r)
+	event, err := handler.Parse(r)
+	if err != nil {
+		return nil, err
+	}
+	if wm := metrics.WebhookM(); wm != nil {
+		wm.IncreaseWebhookEvent(registryType)
+	}
+	return event, nil
 }
 
 // getSupportedRegistryTypes returns a list of all supported registry types from registered handlers
