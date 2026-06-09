@@ -6,6 +6,14 @@
     `--disable-tls` flag or the `DISABLE_TLS` environment variable. For details, see
     [TLS Configuration](#tls-configuration) below.
 
+!!!warning "Breaking Change"
+    Starting with this release, **webhook secrets are required by default**
+    (`--webhook-require-secrets=true`). If you previously ran the webhook server
+    without any secrets configured, all incoming webhook requests will now be
+    rejected. To restore the previous behavior, set `--webhook-require-secrets=false`
+    or the `WEBHOOK_REQUIRE_SECRETS=false` environment variable. If you already
+    had secrets configured, no changes are required.
+
 Image Updater can be configured to respond to webhook notifications from 
 various container registries. 
 
