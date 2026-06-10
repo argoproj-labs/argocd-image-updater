@@ -91,8 +91,8 @@ func TestSetupWebhookServer_HandlerRegistration(t *testing.T) {
 
 	t.Run("require-secrets=false registers all handlers regardless of secrets", func(t *testing.T) {
 		cfg := &WebhookConfig{
-			RequireSecrets: false,
-			Port:           8080,
+			RequireSecret: false,
+			Port:          8080,
 			// No secrets configured at all
 		}
 		server := SetupWebhookServer(context.Background(), cfg, reconciler)
@@ -102,10 +102,10 @@ func TestSetupWebhookServer_HandlerRegistration(t *testing.T) {
 
 	t.Run("require-secrets=false registers all handlers even when secrets are set", func(t *testing.T) {
 		cfg := &WebhookConfig{
-			RequireSecrets: false,
-			Port:           8080,
-			DockerSecret:   "docker-secret",
-			GHCRSecret:     "ghcr-secret",
+			RequireSecret: false,
+			Port:          8080,
+			DockerSecret:  "docker-secret",
+			GHCRSecret:    "ghcr-secret",
 		}
 		server := SetupWebhookServer(context.Background(), cfg, reconciler)
 		require.NotNil(t, server)
@@ -114,8 +114,8 @@ func TestSetupWebhookServer_HandlerRegistration(t *testing.T) {
 
 	t.Run("require-secrets=true with no secrets registers no handlers", func(t *testing.T) {
 		cfg := &WebhookConfig{
-			RequireSecrets: true,
-			Port:           8080,
+			RequireSecret: true,
+			Port:          8080,
 		}
 		server := SetupWebhookServer(context.Background(), cfg, reconciler)
 		require.NotNil(t, server)
@@ -124,10 +124,10 @@ func TestSetupWebhookServer_HandlerRegistration(t *testing.T) {
 
 	t.Run("require-secrets=true only registers handlers that have a secret", func(t *testing.T) {
 		cfg := &WebhookConfig{
-			RequireSecrets: true,
-			Port:           8080,
-			DockerSecret:   "docker-secret",
-			HarborSecret:   "harbor-secret",
+			RequireSecret: true,
+			Port:          8080,
+			DockerSecret:  "docker-secret",
+			HarborSecret:  "harbor-secret",
 		}
 		server := SetupWebhookServer(context.Background(), cfg, reconciler)
 		require.NotNil(t, server)
@@ -136,7 +136,7 @@ func TestSetupWebhookServer_HandlerRegistration(t *testing.T) {
 
 	t.Run("require-secrets=true with all secrets registers all handlers", func(t *testing.T) {
 		cfg := &WebhookConfig{
-			RequireSecrets:    true,
+			RequireSecret:     true,
 			Port:              8080,
 			DockerSecret:      "docker-secret",
 			GHCRSecret:        "ghcr-secret",
@@ -152,9 +152,9 @@ func TestSetupWebhookServer_HandlerRegistration(t *testing.T) {
 
 	t.Run("require-secrets=true with only GHCR secret registers only GHCR handler", func(t *testing.T) {
 		cfg := &WebhookConfig{
-			RequireSecrets: true,
-			Port:           8080,
-			GHCRSecret:     "ghcr-secret",
+			RequireSecret: true,
+			Port:          8080,
+			GHCRSecret:    "ghcr-secret",
 		}
 		server := SetupWebhookServer(context.Background(), cfg, reconciler)
 		require.NotNil(t, server)

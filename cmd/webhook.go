@@ -91,7 +91,7 @@ Supported registries:
 	webhookCmd.Flags().StringVar(&commitMessagePath, "git-commit-message-path", common.DefaultCommitTemplatePath, "Path to a template to use for Git commit messages")
 	webhookCmd.Flags().BoolVar(&cfg.DisableKubeEvents, "disable-kube-events", env.GetBoolVal("IMAGE_UPDATER_KUBE_EVENTS", false), "Disable kubernetes events")
 
-	webhookCmd.Flags().BoolVar(&webhookCfg.RequireSecrets, "webhook-require-secrets", env.GetBoolVal("WEBHOOK_REQUIRE_SECRETS", true), "Require webhook secrets by default")
+	webhookCmd.Flags().BoolVar(&webhookCfg.RequireSecret, "webhook-require-secret", env.GetBoolVal("WEBHOOK_REQUIRE_SECRET", true), "Require webhook secrets by default")
 	webhookCmd.Flags().IntVar(&webhookCfg.Port, "webhook-port", env.ParseNumFromEnv("WEBHOOK_PORT", 8080, 0, 65535), "Port to listen on for webhook events")
 	webhookCmd.Flags().StringVar(&webhookCfg.DockerSecret, "docker-webhook-secret", env.GetStringVal("DOCKER_WEBHOOK_SECRET", ""), "Secret for validating Docker Hub webhooks")
 	webhookCmd.Flags().StringVar(&webhookCfg.GHCRSecret, "ghcr-webhook-secret", env.GetStringVal("GHCR_WEBHOOK_SECRET", ""), "Secret for validating GitHub Container Registry webhooks")

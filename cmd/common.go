@@ -23,8 +23,8 @@ import (
 
 // WebhookConfig holds the options for the webhook server
 type WebhookConfig struct {
-	// RequireSecrets requires webhook secrets by default
-	RequireSecrets bool
+	// RequireSecret requires webhook secrets by default
+	RequireSecret bool
 	// Port is the port number for the webhook server to listen on
 	Port int
 	// EnableHTTP2 allows the webhook TLS server to negotiate HTTP/2
@@ -138,10 +138,10 @@ func SetupWebhookServer(ctx context.Context, webhookCfg *WebhookConfig, reconcil
 	// Create webhook handler
 	handler := webhook.NewWebhookHandler()
 
-	if !webhookCfg.RequireSecrets {
+	if !webhookCfg.RequireSecret {
 		// Insecure mode: all handlers are registered regardless of whether a secret is
 		// configured. Handlers without a secret will accept unauthenticated requests.
-		log.Warnf("Webhook secrets are not required (--webhook-require-secrets=false). " +
+		log.Warnf("Webhook secrets are not required (--webhook-require-secret=false). " +
 			"All registry handlers will be registered without secret validation. " +
 			"This is insecure and should not be used in production.")
 		handler.RegisterHandler(webhook.NewDockerHubWebhook(webhookCfg.DockerSecret))
@@ -186,9 +186,9 @@ func SetupWebhookServer(ctx context.Context, webhookCfg *WebhookConfig, reconcil
 			registered++
 		}
 		if registered == 0 {
-			log.Warnf("Webhook server is enabled with --webhook-require-secrets=true but no secrets " +
+			log.Warnf("Webhook server is enabled with --webhook-require-secret=true but no secrets " +
 				"are configured. No handlers will be registered and all webhook requests will be rejected. " +
-				"Configure at least one *-webhook-secret flag or set --webhook-require-secrets=false.")
+				"Configure at least one *-webhook-secret flag or set --webhook-require-secret=false.")
 		}
 	}
 

@@ -8,10 +8,10 @@
 
 !!!warning "Breaking Change"
     Starting with this release, **webhook secrets are required by default**
-    (`--webhook-require-secrets=true`). If you previously ran the webhook server
+    (`--webhook-require-secret=true`). If you previously ran the webhook server
     without any secrets configured, all incoming webhook requests will now be
-    rejected. To restore the previous behavior, set `--webhook-require-secrets=false`
-    or the `WEBHOOK_REQUIRE_SECRETS=false` environment variable. If you already
+    rejected. To restore the previous behavior, set `--webhook-require-secret=false`
+    or the `WEBHOOK_REQUIRE_SECRET=false` environment variable. If you already
     had secrets configured, no changes are required.
 
 Image Updater can be configured to respond to webhook notifications from 
@@ -282,17 +282,17 @@ not be able to use this method.
 
 ### Requiring Secrets (default behaviour)
 
-By default (`--webhook-require-secrets=true`), only registry handlers that have
+By default (`--webhook-require-secret=true`), only registry handlers that have
 a secret configured are registered. A registry with no secret set will have its
 handler skipped entirely — the server will return an error for those webhook
 types rather than accepting unauthenticated requests.
 
-Set `--webhook-require-secrets=false` to register all handlers regardless of
+Set `--webhook-require-secret=false` to register all handlers regardless of
 whether a secret is present. Use this only in local development or
 network-isolated environments.
 
 !!!warning
-    `--webhook-require-secrets=false` disables authentication on every handler
+    `--webhook-require-secret=false` disables authentication on every handler
     that has no secret configured. Any source can send fake webhook payloads to
     those endpoints.
 
@@ -434,7 +434,7 @@ environment variables. Below is the list of which variables correspond to which 
 |Environment Variable|Corresponding Flag|
 |--------|--------|
 |`ENABLE_WEBHOOK`|`--enable-webhook`|
-|`WEBHOOK_REQUIRE_SECRETS`|`--webhook-require-secrets`|
+|`WEBHOOK_REQUIRE_SECRET`|`--webhook-require-secret`|
 |`WEBHOOK_PORT`|`--webhook-port`|
 |`DOCKER_WEBHOOK_SECRET` |`--docker-webhook-secret`|
 |`GHCR_WEBHOOK_SECRET` |`--ghcr-webhook-secret`|

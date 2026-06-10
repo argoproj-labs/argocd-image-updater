@@ -217,7 +217,7 @@ func TestWebhookHandler_ProcessWebhook(t *testing.T) {
 
 func TestWebhookHandler_ProcessWebhook_NoHandlersRegistered(t *testing.T) {
 	handler := NewWebhookHandler()
-	// No handlers registered — simulates --webhook-require-secrets=true with no secrets configured.
+	// No handlers registered — simulates --webhook-require-secret=true with no secrets configured.
 
 	req := httptest.NewRequest("POST", "/webhook?type=quay.io", strings.NewReader(`{}`))
 	_, err := handler.ProcessWebhook(req)
