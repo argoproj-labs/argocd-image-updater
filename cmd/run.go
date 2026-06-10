@@ -327,6 +327,7 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 
 	// Webhook flags
 	controllerCmd.Flags().BoolVar(&cfg.EnableWebhook, "enable-webhook", env.GetBoolVal("ENABLE_WEBHOOK", false), "Enable webhook server for receiving registry events")
+	controllerCmd.Flags().BoolVar(&webhookCfg.RequireSecret, "webhook-require-secret", env.GetBoolVal("WEBHOOK_REQUIRE_SECRET", true), "Require webhook secrets by default")
 	controllerCmd.Flags().IntVar(&webhookCfg.Port, "webhook-port", env.ParseNumFromEnv("WEBHOOK_PORT", 8082, 0, 65535), "Port to listen on for webhook events")
 	controllerCmd.Flags().StringVar(&webhookCfg.DockerSecret, "docker-webhook-secret", env.GetStringVal("DOCKER_WEBHOOK_SECRET", ""), "Secret for validating Docker Hub webhooks")
 	controllerCmd.Flags().StringVar(&webhookCfg.GHCRSecret, "ghcr-webhook-secret", env.GetStringVal("GHCR_WEBHOOK_SECRET", ""), "Secret for validating GitHub Container Registry webhooks")
@@ -450,7 +451,7 @@ func (ws *WebhookServerRunnable) Start(ctx context.Context) error {
 	})
 	ctx = log.ContextWithLogger(ctx, webhookLogger)
 
-	ws.webhookServer = SetupWebhookServer(ws.WebhookConfig, ws.Reconciler)
+	ws.webhookServer = SetupWebhookServer(ctx, ws.WebhookConfig, ws.Reconciler)
 
 	// Start webhook server in goroutine with context handling
 	return ws.webhookServer.Start(ctx)

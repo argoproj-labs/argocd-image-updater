@@ -138,6 +138,12 @@ spec:
                 name: argocd-image-updater-config
                 key: webhook.enable
                 optional: true
+          - name: WEBHOOK_REQUIRE_SECRET
+            valueFrom:
+              configMapKeyRef:
+                name: argocd-image-updater-config
+                key: webhook.require-secret
+                optional: true
           - name: WEBHOOK_PORT
             valueFrom:
               configMapKeyRef:

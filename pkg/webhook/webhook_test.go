@@ -215,6 +215,21 @@ func TestWebhookHandler_ProcessWebhook(t *testing.T) {
 	}
 }
 
+func TestWebhookHandler_ProcessWebhook_NoHandlersRegistered(t *testing.T) {
+	handler := NewWebhookHandler()
+	// No handlers registered — simulates --webhook-require-secret=true with no secrets configured.
+
+	req := httptest.NewRequest("POST", "/webhook?type=quay.io", strings.NewReader(`{}`))
+	_, err := handler.ProcessWebhook(req)
+
+	if err == nil {
+		t.Fatal("expected error but got none")
+	}
+	if !strings.Contains(err.Error(), "no webhook handlers are registered") {
+		t.Errorf("unexpected error message: %v", err)
+	}
+}
+
 func TestWebhookHandler_ProcessWebhookWithHeader(t *testing.T) {
 	handler := NewWebhookHandler()
 
