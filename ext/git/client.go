@@ -789,7 +789,7 @@ func (m *nativeGitClient) runCmdOutput(ctx context.Context, cmd *exec.Cmd, ropts
 	log := log.LoggerFromContext(ctx)
 
 	cmd.Dir = m.root
-	cmd.Env = append(os.Environ(), cmd.Env...)
+	cmd.Env = append(sanitizedGitEnv(os.Environ()), cmd.Env...)
 	// Set $HOME to nowhere, so we can be execute Git regardless of any external
 	// authentication keys (e.g. in ~/.ssh) -- this is especially important for
 	// running tests on local machines and/or CircleCI.

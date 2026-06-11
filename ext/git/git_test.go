@@ -741,6 +741,7 @@ func addGitVerifyWrapperToPath(t *testing.T) {
 func runCmdOut(workingDir, name string, args ...string) (string, error) {
 	cmd := exec.Command(name, args...)
 	cmd.Dir = workingDir
+	cmd.Env = sanitizedGitEnv(os.Environ())
 	out, err := cmd.Output()
 	return strings.TrimSpace(string(out)), err
 }
