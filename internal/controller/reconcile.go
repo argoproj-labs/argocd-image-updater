@@ -16,7 +16,12 @@ import (
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/registry"
 )
 
-// RunImageUpdater is a main loop for argocd-image-controller
+// RunImageUpdater is a main loop for argocd-image-controller.
+// When EnableBatchCommit is true, it uses a two-phase approach: first polling
+// all registries in parallel, then batching git write-back operations per
+// repository to minimize clone/fetch/push overhead.
+// When EnableBatchCommit is false (the default), it uses the original per-app
+// flow where each application polls its registry and commits individually.
 func (r *ImageUpdaterReconciler) RunImageUpdater(ctx context.Context, cr *iuapi.ImageUpdater, warmUp bool, webhookEvent *argocd.WebhookEvent) (argocd.ImageUpdaterResult, error) {
 	baseLogger := log.LoggerFromContext(ctx)
 
@@ -58,7 +63,8 @@ func (r *ImageUpdaterReconciler) RunImageUpdater(ctx context.Context, cr *iuapi.
 	sem := semaphore.NewWeighted(int64(concurrency))
 
 	var wg sync.WaitGroup
-	var mu sync.Mutex
+	var pendingMu sync.Mutex
+	var pendingWrites []*argocd.PendingWrite
 	var allChanges []argocd.ChangeEntry
 	wg.Add(len(appList))
 
@@ -69,7 +75,6 @@ func (r *ImageUpdaterReconciler) RunImageUpdater(ctx context.Context, cr *iuapi.
 		lockErr := sem.Acquire(ctx, 1)
 		if lockErr != nil {
 			appLogger.Errorf("Could not acquire semaphore: %v", lockErr)
-			// Release entry in wait group on error, too - we're never going to execute
 			wg.Done()
 			continue
 		}
@@ -96,22 +101,54 @@ func (r *ImageUpdaterReconciler) RunImageUpdater(ctx context.Context, cr *iuapi.
 				DisableKubeEvents:      r.Config.DisableKubeEvents,
 				GitCreds:               r.Config.GitCreds,
 			}
-			res := argocd.UpdateApplication(appCtx, upconf, syncState)
 
-			mu.Lock()
-			result.NumApplicationsProcessed += 1
-			result.NumErrors += res.NumErrors
-			result.NumImagesConsidered += res.NumImagesConsidered
-			result.NumImagesUpdated += res.NumImagesUpdated
-			result.NumSkipped += res.NumSkipped
-			allChanges = append(allChanges, res.Changes...)
-			mu.Unlock()
+			if r.Config.EnableBatchCommit {
+				// Two-phase approach: poll only, collect pending git writes for Phase 2.
+				// CheckApplicationImages returns pw==nil in two cases:
+				//   (a) no updates needed
+				//   (b) already committed immediately (non-git, PR mode, write-branch)
+				// In case (b) we must emit success metrics and collect changes here.
+				res, pw := argocd.CheckApplicationImages(appCtx, upconf, syncState)
 
-			if !warmUp && r.Config != nil && r.Config.EnableCRMetrics && metrics.ImageUpdaterCR() != nil {
-				if !r.Config.DryRun {
-					metrics.ImageUpdaterCR().IncreaseImageUpdate(cr.Name, cr.Namespace, res.NumImagesUpdated)
+				pendingMu.Lock()
+				result.NumApplicationsProcessed += 1
+				result.NumErrors += res.NumErrors
+				result.NumImagesConsidered += res.NumImagesConsidered
+				result.NumImagesUpdated += res.NumImagesUpdated
+				result.NumSkipped += res.NumSkipped
+				allChanges = append(allChanges, res.Changes...)
+				if pw != nil {
+					pendingWrites = append(pendingWrites, pw)
 				}
-				metrics.ImageUpdaterCR().IncreaseUpdateErrors(cr.Name, cr.Namespace, res.NumErrors)
+				pendingMu.Unlock()
+
+				if !warmUp && r.Config != nil && r.Config.EnableCRMetrics && metrics.ImageUpdaterCR() != nil {
+					metrics.ImageUpdaterCR().IncreaseUpdateErrors(cr.Name, cr.Namespace, res.NumErrors)
+					// For immediate commits (pw == nil), emit success metrics now.
+					// For batched writes (pw != nil), defer to phase 2.
+					if pw == nil && !r.Config.DryRun {
+						metrics.ImageUpdaterCR().IncreaseImageUpdate(cr.Name, cr.Namespace, res.NumImagesUpdated)
+					}
+				}
+			} else {
+				// Original path: poll + commit per app individually.
+				res := argocd.UpdateApplication(appCtx, upconf, syncState)
+
+				pendingMu.Lock()
+				result.NumApplicationsProcessed += 1
+				result.NumErrors += res.NumErrors
+				result.NumImagesConsidered += res.NumImagesConsidered
+				result.NumImagesUpdated += res.NumImagesUpdated
+				result.NumSkipped += res.NumSkipped
+				allChanges = append(allChanges, res.Changes...)
+				pendingMu.Unlock()
+
+				if !warmUp && r.Config != nil && r.Config.EnableCRMetrics && metrics.ImageUpdaterCR() != nil {
+					if !r.Config.DryRun {
+						metrics.ImageUpdaterCR().IncreaseImageUpdate(cr.Name, cr.Namespace, res.NumImagesUpdated)
+					}
+					metrics.ImageUpdaterCR().IncreaseUpdateErrors(cr.Name, cr.Namespace, res.NumErrors)
+				}
 			}
 		}(appCtx, app, curApplication)
 	}
@@ -121,12 +158,44 @@ func (r *ImageUpdaterReconciler) RunImageUpdater(ctx context.Context, cr *iuapi.
 
 	result.Changes = allChanges
 
-	// Set images-watched gauge once here with the CR-wide aggregate. We cannot set it inside the
-	// per-application goroutines: each goroutine would overwrite the same gauge with that app's
-	// count, so only the last app to finish would be reflected. Using result.NumImagesConsidered
-	// after wg.Wait() gives the total number of images considered for this CR.
+	// Set images-watched gauge once here with the CR-wide aggregate.
 	if !warmUp && r.Config != nil && r.Config.EnableCRMetrics && metrics.ImageUpdaterCR() != nil {
 		metrics.ImageUpdaterCR().SetNumberOfImagesWatched(cr.Name, cr.Namespace, result.NumImagesConsidered)
+	}
+
+	// Phase 2 (batch mode only): batch git write-back operations by repo+branch.
+	if r.Config.EnableBatchCommit && len(pendingWrites) > 0 {
+		baseLogger.Infof("Phase 2: batching %d pending git write(s)", len(pendingWrites))
+
+		// Group pending writes by repo+branch
+		batches := make(map[string][]*argocd.PendingWrite)
+		for _, pw := range pendingWrites {
+			key := pw.BatchKey()
+			batches[key] = append(batches[key], pw)
+		}
+
+		for _, batch := range batches {
+			baseLogger.Infof("Executing batch of %d app(s)", len(batch))
+			batchErrors := argocd.BatchCommitChangesGit(ctx, batch, syncState)
+
+			// Process results: emit kube events and metrics for successful writes,
+			// count errors for failed ones.
+			for _, pw := range batch {
+				if batchErr, hasBatchErr := batchErrors[pw.AppName]; hasBatchErr {
+					baseLogger.Errorf("Batch commit failed for app %s: %v", pw.AppName, batchErr)
+					result.NumErrors += 1
+					// Undo the image update count since the commit failed
+					result.NumImagesUpdated -= pw.Result.NumImagesUpdated
+				} else {
+					baseLogger.Infof("Successfully updated application %s via batch commit", pw.AppName)
+					argocd.EmitKubeEvents(ctx, pw.UpdateConf, pw.ChangeList, pw.AppName)
+					// Emit image-update success metric now that the push succeeded.
+					if !warmUp && r.Config != nil && r.Config.EnableCRMetrics && metrics.ImageUpdaterCR() != nil && !r.Config.DryRun {
+						metrics.ImageUpdaterCR().IncreaseImageUpdate(cr.Name, cr.Namespace, pw.Result.NumImagesUpdated)
+					}
+				}
+			}
+		}
 	}
 
 	baseLogger.Infof("Processing results: applications=%d images_considered=%d images_skipped=%d images_updated=%d errors=%d",

@@ -20,3 +20,5 @@ test-results
 *.crt
 # htpasswd files (should be generated at runtime, not committed)
 **/htpasswd
+cover.out
+cover2.out
