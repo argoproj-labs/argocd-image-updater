@@ -466,6 +466,115 @@ var _ = Describe("ApplicationRef UseAnnotations Validation", func() {
 	})
 })
 
+var _ = Describe("HelmTarget ChartName Validation", func() {
+	Context("when chartName is set", func() {
+		It("should accept HelmTarget with only chartName", func() {
+			cr := &ImageUpdater{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "image-updater-helm-chartname-only",
+					Namespace: "argocd",
+				},
+				Spec: ImageUpdaterSpec{
+					ApplicationRefs: []ApplicationRef{
+						{
+							NamePattern: "*",
+							Images: []ImageConfig{
+								{
+									Alias:     "test",
+									ImageName: "nginx:1.21.0",
+									ManifestTarget: &ManifestTarget{
+										Helm: &HelmTarget{
+											ChartName: strPtr("my-chart"),
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			}
+
+			err := k8sClient.Create(context.Background(), cr)
+			Expect(err).NotTo(HaveOccurred())
+
+			// Cleanup
+			err = k8sClient.Delete(context.Background(), cr)
+			Expect(err).NotTo(HaveOccurred())
+		})
+
+		It("should accept HelmTarget with chartName and name/tag", func() {
+			cr := &ImageUpdater{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "image-updater-helm-chartname-name-tag",
+					Namespace: "argocd",
+				},
+				Spec: ImageUpdaterSpec{
+					ApplicationRefs: []ApplicationRef{
+						{
+							NamePattern: "*",
+							Images: []ImageConfig{
+								{
+									Alias:     "test",
+									ImageName: "nginx:1.21.0",
+									ManifestTarget: &ManifestTarget{
+										Helm: &HelmTarget{
+											ChartName: strPtr("my-chart"),
+											Name:      strPtr("image.repository"),
+											Tag:       strPtr("image.tag"),
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			}
+
+			err := k8sClient.Create(context.Background(), cr)
+			Expect(err).NotTo(HaveOccurred())
+
+			// Cleanup
+			err = k8sClient.Delete(context.Background(), cr)
+			Expect(err).NotTo(HaveOccurred())
+		})
+
+		It("should accept HelmTarget with chartName and spec", func() {
+			cr := &ImageUpdater{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "image-updater-helm-chartname-spec",
+					Namespace: "argocd",
+				},
+				Spec: ImageUpdaterSpec{
+					ApplicationRefs: []ApplicationRef{
+						{
+							NamePattern: "*",
+							Images: []ImageConfig{
+								{
+									Alias:     "test",
+									ImageName: "nginx:1.21.0",
+									ManifestTarget: &ManifestTarget{
+										Helm: &HelmTarget{
+											ChartName: strPtr("my-chart"),
+											Spec:      strPtr("image"),
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			}
+
+			err := k8sClient.Create(context.Background(), cr)
+			Expect(err).NotTo(HaveOccurred())
+
+			// Cleanup
+			err = k8sClient.Delete(context.Background(), cr)
+			Expect(err).NotTo(HaveOccurred())
+		})
+	})
+})
+
 var _ = Describe("HelmTarget Validation", func() {
 	Context("when spec is set", func() {
 		It("should accept HelmTarget with only spec", func() {
@@ -746,6 +855,95 @@ var _ = Describe("PullRequest Validation", func() {
 	})
 })
 
+var _ = Describe("HelmTarget SourceIndex Validation", func() {
+	baseHelmImage := func(name string, helm *HelmTarget) *ImageUpdater {
+		return &ImageUpdater{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      name,
+				Namespace: "argocd",
+			},
+			Spec: ImageUpdaterSpec{
+				ApplicationRefs: []ApplicationRef{
+					{
+						NamePattern: "*",
+						Images: []ImageConfig{
+							{
+								Alias:     "test",
+								ImageName: "nginx:1.21.0",
+								ManifestTarget: &ManifestTarget{
+									Helm: helm,
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+	}
+
+	Context("when sourceIndex is valid", func() {
+		It("should accept sourceIndex of zero", func() {
+			cr := baseHelmImage("helm-source-index-zero", &HelmTarget{
+				SourceIndex: int32Ptr(0),
+			})
+			err := k8sClient.Create(context.Background(), cr)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(k8sClient.Delete(context.Background(), cr)).To(Succeed())
+		})
+
+		It("should accept a positive sourceIndex", func() {
+			cr := baseHelmImage("helm-source-index-positive", &HelmTarget{
+				SourceIndex: int32Ptr(2),
+			})
+			err := k8sClient.Create(context.Background(), cr)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(k8sClient.Delete(context.Background(), cr)).To(Succeed())
+		})
+
+		It("should accept sourceIndex combined with name and tag", func() {
+			cr := baseHelmImage("helm-source-index-name-tag", &HelmTarget{
+				SourceIndex: int32Ptr(1),
+				Name:        strPtr("image.repository"),
+				Tag:         strPtr("image.tag"),
+			})
+			err := k8sClient.Create(context.Background(), cr)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(k8sClient.Delete(context.Background(), cr)).To(Succeed())
+		})
+
+		It("should accept sourceIndex combined with spec", func() {
+			cr := baseHelmImage("helm-source-index-spec", &HelmTarget{
+				SourceIndex: int32Ptr(1),
+				Spec:        strPtr("image"),
+			})
+			err := k8sClient.Create(context.Background(), cr)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(k8sClient.Delete(context.Background(), cr)).To(Succeed())
+		})
+
+		It("should accept sourceIndex combined with chartName", func() {
+			cr := baseHelmImage("helm-source-index-chartname", &HelmTarget{
+				SourceIndex: int32Ptr(1),
+				ChartName:   strPtr("my-chart"),
+			})
+			err := k8sClient.Create(context.Background(), cr)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(k8sClient.Delete(context.Background(), cr)).To(Succeed())
+		})
+	})
+
+	Context("when sourceIndex is invalid", func() {
+		It("should reject a negative sourceIndex", func() {
+			cr := baseHelmImage("helm-source-index-negative", &HelmTarget{
+				SourceIndex: int32Ptr(-1),
+			})
+			err := k8sClient.Create(context.Background(), cr)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("sourceIndex"))
+		})
+	})
+})
+
 // Helper function to create a bool pointer
 func boolPtr(b bool) *bool {
 	return &b
@@ -754,4 +952,9 @@ func boolPtr(b bool) *bool {
 // Helper function to create a string pointer
 func strPtr(s string) *string {
 	return &s
+}
+
+// Helper function to create an int32 pointer
+func int32Ptr(i int32) *int32 {
+	return &i
 }
