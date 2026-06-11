@@ -59,6 +59,118 @@ func (g *GithubPRService) create(ctx context.Context) error {
 	return nil
 }
 
+// upsert creates or updates a GitHub pull request for the configured head → base pair.
+func (g *GithubPRService) upsert(ctx context.Context, reopenClosed bool) error {
+	logCtx := log.LoggerFromContext(ctx)
+
+	if g.pr == nil {
+		return fmt.Errorf("cannot upsert PR: pull request metadata is nil")
+	}
+
+	prs, err := g.listMatching(ctx)
+	if err != nil {
+		return err
+	}
+
+	for _, pr := range prs {
+		if pr.GetState() == "open" {
+			body := g.pr.body
+			if commitMessages, err := g.listCommitMessages(ctx, pr.GetNumber()); err != nil {
+				logCtx.Warnf("could not build PR body from commits for PR #%d: %v", pr.GetNumber(), err)
+			} else {
+				body = buildUpsertPullRequestBody(commitMessages, g.pr.head, g.pr.base)
+			}
+			updated, _, err := g.client.PullRequests.Edit(ctx, g.owner, g.repo, pr.GetNumber(), &github.PullRequest{
+				Title: github.Ptr(g.pr.title),
+				Body:  github.Ptr(body),
+			})
+			if err != nil {
+				return fmt.Errorf("could not update PR #%d %q → %q: %w", pr.GetNumber(), g.pr.head, g.pr.base, err)
+			}
+			logCtx.Infof("updated PR #%d %q → %q: %s", updated.GetNumber(), g.pr.head, g.pr.base, updated.GetHTMLURL())
+			return nil
+		}
+	}
+
+	for _, pr := range prs {
+		if pr.GetState() == "closed" && pr.MergedAt == nil {
+			if reopenClosed {
+				body := g.pr.body
+				if commitMessages, err := g.listCommitMessages(ctx, pr.GetNumber()); err != nil {
+					logCtx.Warnf("could not build PR body from commits for PR #%d: %v", pr.GetNumber(), err)
+				} else {
+					body = buildUpsertPullRequestBody(commitMessages, g.pr.head, g.pr.base)
+				}
+				updated, _, err := g.client.PullRequests.Edit(ctx, g.owner, g.repo, pr.GetNumber(), &github.PullRequest{
+					Title: github.Ptr(g.pr.title),
+					Body:  github.Ptr(body),
+					State: github.Ptr("open"),
+				})
+				if err != nil {
+					return fmt.Errorf("could not reopen PR #%d %q → %q: %w", pr.GetNumber(), g.pr.head, g.pr.base, err)
+				}
+				logCtx.Infof("reopened PR #%d %q → %q: %s", updated.GetNumber(), g.pr.head, g.pr.base, updated.GetHTMLURL())
+				return nil
+			}
+
+			err := g.create(ctx)
+			if err != nil {
+				return fmt.Errorf("closed unmerged PR #%d already exists for %q → %q and reopenClosed is false; creating a new PR failed: %w", pr.GetNumber(), g.pr.head, g.pr.base, err)
+			}
+			return nil
+		}
+	}
+
+	return g.create(ctx)
+}
+
+func (g *GithubPRService) listCommitMessages(ctx context.Context, number int) ([]string, error) {
+	var messages []string
+	opts := &github.ListOptions{PerPage: 100}
+	for {
+		commits, resp, err := g.client.PullRequests.ListCommits(ctx, g.owner, g.repo, number, opts)
+		if err != nil {
+			return nil, err
+		}
+		for _, commit := range commits {
+			if commit.Commit != nil && commit.Commit.Message != nil {
+				messages = append(messages, commit.Commit.GetMessage())
+			}
+		}
+		if resp == nil || resp.NextPage == 0 {
+			break
+		}
+		opts.Page = resp.NextPage
+	}
+	return messages, nil
+}
+
+func (g *GithubPRService) listMatching(ctx context.Context) ([]*github.PullRequest, error) {
+	opts := &github.PullRequestListOptions{
+		State: "all",
+		Head:  fmt.Sprintf("%s:%s", g.owner, g.pr.head),
+		Base:  g.pr.base,
+		ListOptions: github.ListOptions{
+			PerPage: 100,
+		},
+	}
+
+	var pulls []*github.PullRequest
+	for {
+		page, resp, err := g.client.PullRequests.List(ctx, g.owner, g.repo, opts)
+		if err != nil {
+			return nil, fmt.Errorf("could not list PRs for %q → %q: %w", g.pr.head, g.pr.base, err)
+		}
+		pulls = append(pulls, page...)
+		if resp == nil || resp.NextPage == 0 {
+			break
+		}
+		opts.Page = resp.NextPage
+	}
+
+	return pulls, nil
+}
+
 // isAlreadyExistsError reports whether err is a GitHub 422 response whose
 // error list contains an "A pull request already exists" message.
 func isAlreadyExistsError(err error) bool {
@@ -80,7 +192,18 @@ func isAlreadyExistsError(err error) bool {
 // list returns true if there is already an open PR from pushBranch into
 // checkOutBranch.
 func (g *GithubPRService) list(ctx context.Context, checkOutBranch, pushBranch string) (bool, error) {
-	// TODO: implement PR listing for idempotency check
+	if g.pr == nil {
+		g.pr = &PullRequest{base: checkOutBranch, head: pushBranch}
+	}
+	prs, err := g.listMatching(ctx)
+	if err != nil {
+		return false, err
+	}
+	for _, pr := range prs {
+		if pr.GetState() == "open" {
+			return true, nil
+		}
+	}
 	return false, nil
 }
 

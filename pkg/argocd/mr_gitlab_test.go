@@ -247,6 +247,110 @@ func Test_GitLabMRService_create(t *testing.T) {
 	}
 }
 
+func Test_GitLabMRService_upsert(t *testing.T) {
+	ctx := context.Background()
+
+	pr := &PullRequest{
+		title: "chore: update images",
+		head:  "image-updater-branch",
+		base:  "main",
+		body:  "automated update",
+	}
+
+	t.Run("creates when no matching MR exists", func(t *testing.T) {
+		var requests []string
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			requests = append(requests, r.Method)
+			switch r.Method {
+			case http.MethodGet:
+				assert.Contains(t, r.URL.Path, "/merge_requests")
+				_ = json.NewEncoder(w).Encode([]map[string]any{})
+			case http.MethodPost:
+				assert.Contains(t, r.URL.Path, "/merge_requests")
+				w.WriteHeader(http.StatusCreated)
+				_ = json.NewEncoder(w).Encode(map[string]any{"iid": 1, "web_url": "https://gitlab.com/group/repo/-/merge_requests/1"})
+			default:
+				t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+			}
+		}))
+		defer server.Close()
+
+		svc := newTestGitLabMRService(server, pr)
+		err := svc.upsert(ctx, false)
+		require.NoError(t, err)
+		assert.Equal(t, []string{http.MethodGet, http.MethodPost}, requests)
+	})
+
+	t.Run("updates existing opened MR", func(t *testing.T) {
+		var updateBody map[string]any
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.Method {
+			case http.MethodGet:
+				_ = json.NewEncoder(w).Encode([]map[string]any{{"iid": 7, "state": "opened"}})
+			case http.MethodPut:
+				assert.Contains(t, r.URL.Path, "/merge_requests/7")
+				require.NoError(t, json.NewDecoder(r.Body).Decode(&updateBody))
+				_ = json.NewEncoder(w).Encode(map[string]any{"iid": 7, "web_url": "https://gitlab.com/group/repo/-/merge_requests/7"})
+			default:
+				t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+			}
+		}))
+		defer server.Close()
+
+		svc := newTestGitLabMRService(server, pr)
+		err := svc.upsert(ctx, false)
+		require.NoError(t, err)
+		assert.Equal(t, "chore: update images", updateBody["title"])
+		assert.Equal(t, "automated update", updateBody["description"])
+		assert.NotContains(t, updateBody, "state_event")
+	})
+
+	t.Run("reopens closed unmerged MR when enabled", func(t *testing.T) {
+		var updateBody map[string]any
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.Method {
+			case http.MethodGet:
+				_ = json.NewEncoder(w).Encode([]map[string]any{{"iid": 8, "state": "closed"}})
+			case http.MethodPut:
+				assert.Contains(t, r.URL.Path, "/merge_requests/8")
+				require.NoError(t, json.NewDecoder(r.Body).Decode(&updateBody))
+				_ = json.NewEncoder(w).Encode(map[string]any{"iid": 8, "web_url": "https://gitlab.com/group/repo/-/merge_requests/8"})
+			default:
+				t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+			}
+		}))
+		defer server.Close()
+
+		svc := newTestGitLabMRService(server, pr)
+		err := svc.upsert(ctx, true)
+		require.NoError(t, err)
+		assert.Equal(t, "reopen", updateBody["state_event"])
+		assert.Equal(t, "chore: update images", updateBody["title"])
+		assert.Equal(t, "automated update", updateBody["description"])
+	})
+
+	t.Run("closed unmerged MR with reopen disabled returns clear error when create is rejected", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.Method {
+			case http.MethodGet:
+				_ = json.NewEncoder(w).Encode([]map[string]any{{"iid": 9, "state": "closed"}})
+			case http.MethodPost:
+				w.WriteHeader(http.StatusConflict)
+				_ = json.NewEncoder(w).Encode(map[string]any{"message": []string{"Another open merge request already exists for this source branch: !1"}})
+			default:
+				t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+			}
+		}))
+		defer server.Close()
+
+		svc := newTestGitLabMRService(server, pr)
+		err := svc.upsert(ctx, false)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "closed unmerged MR !9 already exists")
+		assert.Contains(t, err.Error(), "reopenClosed is false")
+	})
+}
+
 func Test_NewGitLabMRService(t *testing.T) {
 	ctx := context.Background()
 

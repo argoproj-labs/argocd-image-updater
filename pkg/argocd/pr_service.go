@@ -32,6 +32,8 @@ type PullRequestService interface {
 	// list returns true if an open PR from pushBranch → checkOutBranch already
 	// exists, preventing duplicate PR creation on repeated reconciliation cycles.
 	list(ctx context.Context, checkOutBranch, pushBranch string) (bool, error)
+	// upsert creates or updates a pull/merge request for a stable head/base pair.
+	upsert(ctx context.Context, reopenClosed bool) error
 }
 
 // PullRequest holds the metadata required to open a pull/merge request.
@@ -72,6 +74,13 @@ func buildPullRequest(ctx context.Context, wbc *WriteBackConfig, appNamespace, a
 			body = ""
 		}
 	}
+	if wbc.PRUpsertBranch != "" {
+		title = "chore: update images"
+		body = buildUpsertPullRequestBody([]string{wbc.GitCommitMessage}, pushBranch, checkOutBranch)
+	}
+	if wbc.PRTitle != "" {
+		title = wbc.PRTitle
+	}
 
 	if utf8.RuneCountInString(title) > 255 {
 		title = string([]rune(title)[:255])
@@ -88,6 +97,104 @@ func buildPullRequest(ctx context.Context, wbc *WriteBackConfig, appNamespace, a
 		base:  checkOutBranch,
 		body:  body,
 	}, nil
+}
+
+func buildUpsertPullRequestBody(commitMessages []string, head, base string) string {
+	var b strings.Builder
+	b.WriteString("This pull request was created automatically by Argo CD Image Updater.\n\n")
+	b.WriteString(fmt.Sprintf("Source branch: `%s`\n", head))
+	b.WriteString(fmt.Sprintf("Target branch: `%s`\n", base))
+
+	groups := make([]pullRequestChangeGroup, 0)
+	groupIndexes := map[string]int{}
+	changeIndexes := map[string]pullRequestChangeIndex{}
+	for _, message := range commitMessages {
+		app, changes := parsePullRequestCommitMessage(message)
+		if len(changes) == 0 {
+			continue
+		}
+		idx, ok := groupIndexes[app]
+		if !ok {
+			idx = len(groups)
+			groupIndexes[app] = idx
+			groups = append(groups, pullRequestChangeGroup{app: app})
+		}
+		for _, change := range changes {
+			key := app + "\x00" + pullRequestChangeKey(change)
+			if existing, ok := changeIndexes[key]; ok {
+				groups[existing.group].changes[existing.change] = change
+				continue
+			}
+			changeIndexes[key] = pullRequestChangeIndex{group: idx, change: len(groups[idx].changes)}
+			groups[idx].changes = append(groups[idx].changes, change)
+		}
+	}
+
+	if len(groups) > 0 {
+		b.WriteString("\n## Image Updates\n")
+	}
+	for _, group := range groups {
+		b.WriteString(fmt.Sprintf("\n### %s\n", group.app))
+		for _, change := range group.changes {
+			b.WriteString("- ")
+			b.WriteString(change)
+			b.WriteByte('\n')
+		}
+	}
+
+	return strings.TrimSpace(b.String())
+}
+
+type pullRequestChangeGroup struct {
+	app     string
+	changes []string
+}
+
+type pullRequestChangeIndex struct {
+	group  int
+	change int
+}
+
+func pullRequestChangeKey(change string) string {
+	if rest, ok := strings.CutPrefix(change, "updates image "); ok {
+		if image, _, ok := strings.Cut(rest, " tag "); ok {
+			return image
+		}
+	}
+
+	if image, _, ok := strings.Cut(change, ": "); ok && strings.Contains(change, " -> ") {
+		return image
+	}
+
+	return change
+}
+
+func parsePullRequestCommitMessage(message string) (string, []string) {
+	parts := strings.SplitN(strings.TrimSpace(message), "\n", 2)
+	if len(parts) == 0 || parts[0] == "" {
+		return "Other", nil
+	}
+
+	app := strings.TrimPrefix(parts[0], "chore: update images for ")
+	app = strings.TrimPrefix(app, "build: automatic update of ")
+	if app == parts[0] || app == "" {
+		app = parts[0]
+	}
+
+	changes := make([]string, 0)
+	if len(parts) == 1 {
+		return app, changes
+	}
+	for _, line := range strings.Split(parts[1], "\n") {
+		line = strings.TrimSpace(line)
+		line = strings.TrimPrefix(line, "- ")
+		if line == "" || strings.HasPrefix(line, "This pull request was created automatically") {
+			continue
+		}
+		changes = append(changes, line)
+	}
+
+	return app, changes
 }
 
 // commitChangesPR validates the provider and SCM credentials before pushing the
@@ -128,11 +235,17 @@ func commitChangesPR(ctx context.Context, applicationImages *ApplicationImages, 
 			return err
 		}
 
-		if err := g.create(ctx); err != nil {
-			if errors.Is(err, ErrPRAlreadyExists) {
+		var prErr error
+		if wbc.PRUpsertBranch != "" {
+			prErr = g.upsert(ctx, wbc.PRReopenClosed)
+		} else {
+			prErr = g.create(ctx)
+		}
+		if prErr != nil {
+			if wbc.PRUpsertBranch == "" && errors.Is(prErr, ErrPRAlreadyExists) {
 				return nil
 			}
-			return err
+			return prErr
 		}
 		return nil
 
@@ -142,11 +255,17 @@ func commitChangesPR(ctx context.Context, applicationImages *ApplicationImages, 
 			return err
 		}
 
-		if err := g.create(ctx); err != nil {
-			if errors.Is(err, ErrMRAlreadyExists) {
+		var prErr error
+		if wbc.PRUpsertBranch != "" {
+			prErr = g.upsert(ctx, wbc.PRReopenClosed)
+		} else {
+			prErr = g.create(ctx)
+		}
+		if prErr != nil {
+			if wbc.PRUpsertBranch == "" && errors.Is(prErr, ErrMRAlreadyExists) {
 				return nil
 			}
-			return err
+			return prErr
 		}
 		return nil
 

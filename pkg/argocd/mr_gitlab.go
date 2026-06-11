@@ -59,10 +59,100 @@ func (g *GitLabMRService) create(ctx context.Context) error {
 	return nil
 }
 
+// upsert creates or updates a GitLab merge request for the configured source → target pair.
+func (g *GitLabMRService) upsert(ctx context.Context, reopenClosed bool) error {
+	logCtx := log.LoggerFromContext(ctx)
+
+	if g.pr == nil {
+		return fmt.Errorf("cannot upsert MR: merge request metadata is nil")
+	}
+
+	mrs, err := g.listMatching(ctx)
+	if err != nil {
+		return err
+	}
+
+	for _, mr := range mrs {
+		if mr.State == "opened" {
+			updated, _, err := g.client.MergeRequests.UpdateMergeRequest(g.projectID, mr.IID, &gitlab.UpdateMergeRequestOptions{
+				Title:       gitlab.Ptr(g.pr.title),
+				Description: gitlab.Ptr(g.pr.body),
+			}, gitlab.WithContext(ctx))
+			if err != nil {
+				return fmt.Errorf("could not update MR !%d %q → %q: %w", mr.IID, g.pr.head, g.pr.base, err)
+			}
+			logCtx.Infof("updated MR !%d %q → %q: %s", updated.IID, g.pr.head, g.pr.base, updated.WebURL)
+			return nil
+		}
+	}
+
+	for _, mr := range mrs {
+		if mr.State == "closed" && mr.MergedAt == nil {
+			if reopenClosed {
+				updated, _, err := g.client.MergeRequests.UpdateMergeRequest(g.projectID, mr.IID, &gitlab.UpdateMergeRequestOptions{
+					Title:       gitlab.Ptr(g.pr.title),
+					Description: gitlab.Ptr(g.pr.body),
+					StateEvent:  gitlab.Ptr("reopen"),
+				}, gitlab.WithContext(ctx))
+				if err != nil {
+					return fmt.Errorf("could not reopen MR !%d %q → %q: %w", mr.IID, g.pr.head, g.pr.base, err)
+				}
+				logCtx.Infof("reopened MR !%d %q → %q: %s", updated.IID, g.pr.head, g.pr.base, updated.WebURL)
+				return nil
+			}
+
+			err := g.create(ctx)
+			if err != nil {
+				return fmt.Errorf("closed unmerged MR !%d already exists for %q → %q and reopenClosed is false; creating a new MR failed: %w", mr.IID, g.pr.head, g.pr.base, err)
+			}
+			return nil
+		}
+	}
+
+	return g.create(ctx)
+}
+
+func (g *GitLabMRService) listMatching(ctx context.Context) ([]*gitlab.BasicMergeRequest, error) {
+	opts := &gitlab.ListProjectMergeRequestsOptions{
+		State:        gitlab.Ptr("all"),
+		SourceBranch: gitlab.Ptr(g.pr.head),
+		TargetBranch: gitlab.Ptr(g.pr.base),
+		ListOptions: gitlab.ListOptions{
+			PerPage: 100,
+		},
+	}
+
+	var mergeRequests []*gitlab.BasicMergeRequest
+	for {
+		page, resp, err := g.client.MergeRequests.ListProjectMergeRequests(g.projectID, opts, gitlab.WithContext(ctx))
+		if err != nil {
+			return nil, fmt.Errorf("could not list MRs for %q → %q: %w", g.pr.head, g.pr.base, err)
+		}
+		mergeRequests = append(mergeRequests, page...)
+		if resp == nil || resp.NextPage == 0 {
+			break
+		}
+		opts.Page = resp.NextPage
+	}
+
+	return mergeRequests, nil
+}
+
 // list returns true if there is already an open MR from pushBranch into
 // checkOutBranch.
 func (g *GitLabMRService) list(ctx context.Context, checkOutBranch, pushBranch string) (bool, error) {
-	// TODO: implement MR listing for idempotency check
+	if g.pr == nil {
+		g.pr = &PullRequest{base: checkOutBranch, head: pushBranch}
+	}
+	mrs, err := g.listMatching(ctx)
+	if err != nil {
+		return false, err
+	}
+	for _, mr := range mrs {
+		if mr.State == "opened" {
+			return true, nil
+		}
+	}
 	return false, nil
 }
 

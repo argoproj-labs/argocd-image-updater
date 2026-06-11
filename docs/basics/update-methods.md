@@ -389,8 +389,9 @@ Note that using the helmvalues option needs the Helm values filename to be speci
 The Git Pull Request mode extends the `git` write-back method so that instead
 of pushing directly to the tracking branch, Argo CD Image Updater:
 
-1. Pushes the image update commit to an automatically generated **head branch**
-   (`image-updater-<namespace>-<appName>-<sha256>`).
+1. Pushes the image update commit to a **head branch**.
+   By default this is automatically generated as
+   `image-updater-<namespace>-<appName>-<sha256>`.
 2. Opens a **pull request** or **merge request** from that head
    branch into the configured base branch.
 
@@ -423,6 +424,35 @@ The head branch (PR source) is derived automatically by the controller using
 the template `image-updater-<appNamespace>-<appName>-<sha256>`, ensuring a
 stable, unique branch name per application and set of image changes.
 
+For a long-lived PR, configure `pullRequest.upsertBranch`. In this mode,
+`gitConfig.branch` remains the PR base/target branch and `upsertBranch` is the
+PR head/source branch. The controller pushes updates to `upsertBranch` and
+upserts the PR from that branch into the base branch:
+
+```yaml
+gitConfig:
+  branch: "main"
+  pullRequest:
+    title: chore: update platform images
+    upsertBranch: argocd-image-updater/platform-images
+    reopenClosed: true
+    github: {}
+```
+
+If no matching PR/MR exists, one is created. If an open PR/MR already exists for
+the same head/base branch pair, its title and body are updated. GitHub PR bodies
+in upsert mode summarize the image update commits already on the PR branch,
+grouped by application, keeping only the latest update per image. If a closed,
+unmerged PR/MR exists and
+`reopenClosed: true`, it is reopened and updated. If `reopenClosed` is false,
+the controller attempts to create a new PR/MR and returns a clear error if the
+provider rejects that because of the closed PR/MR.
+
+`upsertBranch` is intended for a single `ImageUpdater` resource that owns one
+long-lived branch, for example one resource containing multiple
+`applicationRefs`. It does not aggregate updates across multiple `ImageUpdater`
+resources sharing the same branch.
+
 #### Credentials
 
 PR creation requires credentials that carry a bearer token — either a **personal
@@ -437,9 +467,10 @@ credentials.
 
 #### PR title and body
 
-The pull request title is taken from the **first line** of the rendered Git
-commit message template, and the body from everything after the first newline.
-If no custom commit message template is configured the defaults are:
+The pull request title is taken from the optional `pullRequest.title` field when
+it is set. Otherwise, the title is taken from the **first line** of the rendered
+Git commit message template, and the body from everything after the first
+newline. If no custom commit message template is configured the defaults are:
 
 * **Title**: `chore: update images for <namespace>/<appName>`
 * **Body**: `This pull request was created automatically by argocd-image-updater for application <namespace>/<appName>.`
@@ -449,6 +480,11 @@ truncated automatically.
 
 To customise the title and body, configure the
 [commit message template](#method-git-commit-message).
+
+When `pullRequest.upsertBranch` is set, the default PR/MR title is
+`chore: update images` unless `pullRequest.title` overrides it. The body uses a
+stable generated summary with the source branch, target branch, and grouped
+image updates.
 
 #### GitHub
 
@@ -464,6 +500,9 @@ spec:
       repository: "https://github.com/example/example.git"
       branch: "main"        # base branch; colon format not supported here
       pullRequest:
+        title: chore: update platform images                 # optional
+        upsertBranch: argocd-image-updater/platform-images # optional stable head branch
+        reopenClosed: true                                # optional
         github: {}
 ```
 
@@ -508,6 +547,9 @@ writeBackConfig:
     branch: "main"
     writeBackTarget: "helmvalues:/helm/config/values.yaml"
     pullRequest:
+      title: chore: update platform images                 # optional
+      upsertBranch: argocd-image-updater/platform-images # optional stable source branch
+      reopenClosed: true                                # optional
       gitlab: {}
 ```
 

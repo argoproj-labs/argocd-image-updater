@@ -139,7 +139,7 @@ func TemplateBranchName(ctx context.Context, branchName, appNamespace, appName s
 	}
 }
 
-type changeWriter func(ctx context.Context, applicationImages *ApplicationImages, gitC git.Client) (err error, skip bool)
+type changeWriter func(ctx context.Context, applicationImages *ApplicationImages, gitC git.Client, changeList []ChangeEntry) (err error, skip bool)
 
 // getWriteBackBranch returns the branch to use for write-back operations.
 // It first checks for a branch specified in annotations, then uses the
@@ -229,12 +229,17 @@ func commitChangesGit(ctx context.Context, applicationImages *ApplicationImages,
 
 	// Set custom pushBranch name for PR/MR mode
 	if wbc.PRProvider > 0 {
-		// The default template produces a stable branch name per app and new image tag.
-		customTemplate := "image-updater-{{.AppNamespace}}-{{.AppName}}-{{.SHA256}}"
-		logCtx.Tracef("setting git push branch for PR/MR mode using custom template '%s'", customTemplate)
-		pushBranch = TemplateBranchName(ctx, customTemplate, app.Namespace, app.Name, changeList)
-		if pushBranch == "" {
-			return fmt.Errorf("git branch name could not be created from the template: %s", customTemplate)
+		if wbc.PRUpsertBranch != "" {
+			pushBranch = wbc.PRUpsertBranch
+			logCtx.Tracef("using configured PR/MR upsert branch '%s'", pushBranch)
+		} else {
+			// The default template preserves existing behavior: a generated branch per app and change set.
+			customTemplate := "image-updater-{{.AppNamespace}}-{{.AppName}}-{{.SHA256}}"
+			logCtx.Tracef("setting git push branch for PR/MR mode using custom template '%s'", customTemplate)
+			pushBranch = TemplateBranchName(ctx, customTemplate, app.Namespace, app.Name, changeList)
+			if pushBranch == "" {
+				return fmt.Errorf("git branch name could not be created from the template: %s", customTemplate)
+			}
 		}
 		wbc.PullRequest, err = buildPullRequest(ctx, wbc, app.Namespace, app.Name, checkOutBranch, pushBranch)
 		if err != nil {
@@ -276,7 +281,7 @@ func commitChangesGit(ctx context.Context, applicationImages *ApplicationImages,
 		return err
 	}
 
-	if err, skip := write(ctx, applicationImages, gitC); err != nil {
+	if err, skip := write(ctx, applicationImages, gitC, changeList); err != nil {
 		return err
 	} else if skip {
 		return nil
@@ -318,7 +323,11 @@ func commitChangesGit(ctx context.Context, applicationImages *ApplicationImages,
 	if err != nil {
 		return err
 	}
-	err = gitC.Push(ctx, "origin", pushBranch, pushBranch != checkOutBranch)
+	forcePush := pushBranch != checkOutBranch
+	if wbc.PRProvider > 0 && wbc.PRUpsertBranch != "" {
+		forcePush = false
+	}
+	err = gitC.Push(ctx, "origin", pushBranch, forcePush)
 	if err != nil {
 		return err
 	}
@@ -326,7 +335,7 @@ func commitChangesGit(ctx context.Context, applicationImages *ApplicationImages,
 	return nil
 }
 
-func writeOverrides(ctx context.Context, applicationImages *ApplicationImages, gitC git.Client) (err error, skip bool) {
+func writeOverrides(ctx context.Context, applicationImages *ApplicationImages, gitC git.Client, _ []ChangeEntry) (err error, skip bool) {
 	logCtx := log.LoggerFromContext(ctx)
 	wbc := applicationImages.WriteBackConfig
 	targetExists := true
@@ -385,7 +394,7 @@ func writeOverrides(ctx context.Context, applicationImages *ApplicationImages, g
 var _ changeWriter = writeOverrides
 
 // writeKustomization writes any changes required for updating one or more images to a kustomization.yml
-func writeKustomization(ctx context.Context, applicationImages *ApplicationImages, gitC git.Client) (err error, skip bool) {
+func writeKustomization(ctx context.Context, applicationImages *ApplicationImages, gitC git.Client, changeList []ChangeEntry) (err error, skip bool) {
 	app := applicationImages.Application
 	wbc := applicationImages.WriteBackConfig
 	logCtx := log.LoggerFromContext(ctx)
@@ -408,6 +417,7 @@ func writeKustomization(ctx context.Context, applicationImages *ApplicationImage
 	if kustomize != nil {
 		images = kustomize.Images
 	}
+	images = filterChangedKustomizeImages(images, changeList)
 
 	filterFunc, err := imagesFilter(images)
 	if err != nil {
@@ -415,6 +425,35 @@ func writeKustomization(ctx context.Context, applicationImages *ApplicationImage
 	}
 
 	return updateKustomizeFile(ctx, filterFunc, kustFile)
+}
+
+func filterChangedKustomizeImages(images v1alpha1.KustomizeImages, changeList []ChangeEntry) v1alpha1.KustomizeImages {
+	if len(changeList) == 0 {
+		return images
+	}
+
+	changed := map[string]struct{}{}
+	for _, change := range changeList {
+		if change.KustomizeImageName != "" {
+			changed[change.KustomizeImageName] = struct{}{}
+			continue
+		}
+		if change.Image != nil {
+			changed[change.Image.GetFullNameWithoutTag()] = struct{}{}
+		}
+	}
+	if len(changed) == 0 {
+		return images
+	}
+
+	filtered := make(v1alpha1.KustomizeImages, 0, len(images))
+	for _, img := range images {
+		parsed := parseImageOverride(img)
+		if _, ok := changed[parsed.Name]; ok {
+			filtered = append(filtered, img)
+		}
+	}
+	return filtered
 }
 
 // updateKustomizeFile reads the kustomization file at path, applies the filter to it, and writes the result back
