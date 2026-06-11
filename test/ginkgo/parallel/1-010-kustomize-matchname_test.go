@@ -1,0 +1,262 @@
+/*
+Copyright 2025.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+package parallel
+
+import (
+	"context"
+
+	"github.com/argoproj/argo-cd/gitops-engine/pkg/health"
+	appv1alpha1 "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1"
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	applicationFixture "github.com/argoproj-labs/argocd-image-updater/test/ginkgo/fixture/application"
+
+	imageUpdaterApi "github.com/argoproj-labs/argocd-image-updater/api/v1alpha1"
+
+	argov1beta1api "github.com/argoproj-labs/argocd-operator/api/v1beta1"
+
+	"github.com/argoproj-labs/argocd-image-updater/test/ginkgo/fixture"
+	argocdFixture "github.com/argoproj-labs/argocd-image-updater/test/ginkgo/fixture/argocd"
+	deplFixture "github.com/argoproj-labs/argocd-image-updater/test/ginkgo/fixture/deployment"
+	iuFixture "github.com/argoproj-labs/argocd-image-updater/test/ginkgo/fixture/imageupdater"
+	k8sFixture "github.com/argoproj-labs/argocd-image-updater/test/ginkgo/fixture/k8s"
+	ssFixture "github.com/argoproj-labs/argocd-image-updater/test/ginkgo/fixture/statefulset"
+	fixtureUtils "github.com/argoproj-labs/argocd-image-updater/test/ginkgo/fixture/utils"
+)
+
+var _ = Describe("ArgoCD Image Updater Parallel E2E Tests", func() {
+
+	Context("1-010-kustomize-matchname_test", func() {
+
+		var (
+			k8sClient    client.Client
+			ctx          context.Context
+			ns           *corev1.Namespace
+			cleanupFunc  func()
+			imageUpdater *imageUpdaterApi.ImageUpdater
+			argoCD       *argov1beta1api.ArgoCD
+		)
+
+		BeforeEach(func() {
+			fixture.EnsureParallelCleanSlate()
+
+			k8sClient, _ = fixtureUtils.GetE2ETestKubeClient()
+			ctx = context.Background()
+		})
+
+		AfterEach(func() {
+			// Delete the ImageUpdater CR first and wait for its finalizer to be
+			// processed before tearing down the ArgoCD CR (which removes the controller).
+
+			if imageUpdater != nil {
+				By("deleting ImageUpdater CR")
+				_ = k8sClient.Delete(ctx, imageUpdater)
+				Eventually(imageUpdater, "2m", "3s").Should(k8sFixture.NotExistByName())
+			}
+
+			if argoCD != nil {
+				By("deleting ArgoCD CR")
+				_ = k8sClient.Delete(ctx, argoCD)
+			}
+
+			if cleanupFunc != nil {
+				cleanupFunc()
+			}
+
+			fixture.OutputDebugOnFail(ns)
+
+		})
+
+		It("ensures that the Kustomize matchName parameter steers live-image matching when the configured image identifier differs from the deployed registry", func() {
+
+			By("creating simple namespace-scoped Argo CD instance with image updater enabled")
+			ns, cleanupFunc = fixture.CreateRandomE2ETestNamespaceWithCleanupFunc()
+
+			argoCD = &argov1beta1api.ArgoCD{
+				ObjectMeta: metav1.ObjectMeta{Name: "argocd", Namespace: ns.Name},
+				Spec: argov1beta1api.ArgoCDSpec{
+					ImageUpdater: argov1beta1api.ArgoCDImageUpdaterSpec{
+						Env: []corev1.EnvVar{
+							{
+								Name:  "IMAGE_UPDATER_LOGLEVEL",
+								Value: "trace",
+							},
+							{
+								Name:  "IMAGE_UPDATER_INTERVAL",
+								Value: "0",
+							},
+						},
+						Enabled: true},
+				},
+			}
+			Expect(k8sClient.Create(ctx, argoCD)).To(Succeed())
+
+			By("waiting for ArgoCD CR to be reconciled and the instance to be ready")
+			Eventually(argoCD, "5m", "3s").Should(argocdFixture.BeAvailable())
+
+			By("verifying all workloads are started")
+			deploymentsShouldExist := []string{"argocd-redis", "argocd-server", "argocd-repo-server", "argocd-argocd-image-updater-controller"}
+			for _, depl := range deploymentsShouldExist {
+				depl := &appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: depl, Namespace: ns.Name}}
+				Eventually(depl).Should(k8sFixture.ExistByName())
+				Eventually(depl).Should(deplFixture.HaveReplicas(1))
+				Eventually(depl, "3m", "3s").Should(deplFixture.HaveReadyReplicas(1), depl.Name+" was not ready")
+			}
+
+			statefulSet := &appsv1.StatefulSet{ObjectMeta: metav1.ObjectMeta{Name: "argocd-application-controller", Namespace: ns.Name}}
+			Eventually(statefulSet).Should(k8sFixture.ExistByName())
+			Eventually(statefulSet).Should(ssFixture.HaveReplicas(1))
+			Eventually(statefulSet, "3m", "3s").Should(ssFixture.HaveReadyReplicas(1))
+
+			By("creating Application that deploys quay.io/dkarpele/my-guestbook")
+			app := &appv1alpha1.Application{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "app-01",
+					Namespace: ns.Name,
+				},
+				Spec: appv1alpha1.ApplicationSpec{
+					Project: "default",
+					Source: &appv1alpha1.ApplicationSource{
+						RepoURL:        "https://github.com/argoproj-labs/argocd-image-updater/",
+						Path:           "test/e2e/testdata/005-public-guestbook",
+						TargetRevision: "HEAD",
+					},
+					Destination: appv1alpha1.ApplicationDestination{
+						Server:    "https://kubernetes.default.svc",
+						Namespace: ns.Name,
+					},
+					SyncPolicy: &appv1alpha1.SyncPolicy{Automated: &appv1alpha1.SyncPolicyAutomated{}},
+				},
+			}
+			Expect(k8sClient.Create(ctx, app)).To(Succeed())
+
+			By("verifying deploying the Application succeeded")
+			Eventually(app, "4m", "3s").Should(applicationFixture.HaveHealthStatusCode(health.HealthStatusHealthy))
+			Eventually(app, "4m", "3s").Should(applicationFixture.HaveSyncStatusCode(appv1alpha1.SyncStatusCodeSynced))
+
+			updateStrategy := "semver"
+			kustomizeName := "ghcr.io/example/my-guestbook"
+			matchName := "quay.io/dkarpele/my-guestbook"
+
+			// Phase 1: without matchName, the configured kustomize.name and imageName
+			// both point at ghcr.io/example/my-guestbook, which does NOT appear in
+			// app.Status.Summary.Images (only quay.io/dkarpele/my-guestbook does). The
+			// live-image lookup must miss and the updater must NOT write any
+			// kustomize override.
+			By("creating ImageUpdater CR WITHOUT matchName")
+			imageUpdater = &imageUpdaterApi.ImageUpdater{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "image-updater",
+					Namespace: ns.Name,
+				},
+				Spec: imageUpdaterApi.ImageUpdaterSpec{
+					ApplicationRefs: []imageUpdaterApi.ApplicationRef{
+						{
+							NamePattern: "app*",
+							Images: []imageUpdaterApi.ImageConfig{
+								{
+									Alias:     "guestbook",
+									ImageName: "ghcr.io/example/my-guestbook:~29437546.0",
+									CommonUpdateSettings: &imageUpdaterApi.CommonUpdateSettings{
+										UpdateStrategy: &updateStrategy,
+									},
+									ManifestTarget: &imageUpdaterApi.ManifestTarget{
+										Kustomize: &imageUpdaterApi.KustomizeTarget{
+											Name: &kustomizeName,
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, imageUpdater)).To(Succeed())
+
+			By("verifying that no Kustomize image override is written without matchName")
+			triggerRefresh := iuFixture.TriggerArgoCDRefresh(ctx, k8sClient, app)
+			Consistently(func() int {
+				if err := k8sClient.Get(ctx, client.ObjectKeyFromObject(app), app); err != nil {
+					return -1
+				}
+				triggerRefresh()
+				if app.Spec.Source.Kustomize == nil {
+					return 0
+				}
+				return len(app.Spec.Source.Kustomize.Images)
+			}, "90s", "5s").Should(Equal(0))
+
+			By("deleting the ImageUpdater CR before Phase 2")
+			Expect(k8sClient.Delete(ctx, imageUpdater)).To(Succeed())
+			Eventually(imageUpdater, "2m", "3s").Should(k8sFixture.NotExistByName())
+			imageUpdater = nil
+
+			// Phase 2: matchName points at the live image's registry, so the lookup
+			// succeeds. After matching, the registry-tag query runs against the live
+			// image (quay.io/dkarpele/my-guestbook) and resolves to 29437546.0. The
+			// write-back override uses kustomize.Name as the LHS.
+			By("creating ImageUpdater CR WITH matchName")
+			imageUpdater = &imageUpdaterApi.ImageUpdater{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "image-updater",
+					Namespace: ns.Name,
+				},
+				Spec: imageUpdaterApi.ImageUpdaterSpec{
+					ApplicationRefs: []imageUpdaterApi.ApplicationRef{
+						{
+							NamePattern: "app*",
+							Images: []imageUpdaterApi.ImageConfig{
+								{
+									Alias:     "guestbook",
+									ImageName: "ghcr.io/example/my-guestbook:~29437546.0",
+									CommonUpdateSettings: &imageUpdaterApi.CommonUpdateSettings{
+										UpdateStrategy: &updateStrategy,
+									},
+									ManifestTarget: &imageUpdaterApi.ManifestTarget{
+										Kustomize: &imageUpdaterApi.KustomizeTarget{
+											Name:      &kustomizeName,
+											MatchName: &matchName,
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, imageUpdater)).To(Succeed())
+
+			By("ensuring that the Kustomize override is written using kustomize.Name as LHS and the live image as RHS")
+			triggerRefresh = iuFixture.TriggerArgoCDRefresh(ctx, k8sClient, app)
+			Eventually(func() string {
+				if err := k8sClient.Get(ctx, client.ObjectKeyFromObject(app), app); err != nil {
+					return ""
+				}
+				triggerRefresh()
+				if app.Spec.Source.Kustomize != nil && len(app.Spec.Source.Kustomize.Images) > 0 {
+					return string(app.Spec.Source.Kustomize.Images[0])
+				}
+				return ""
+			}, "5m", "3s").Should(Equal("ghcr.io/example/my-guestbook=quay.io/dkarpele/my-guestbook:29437546.0"))
+		})
+	})
+})

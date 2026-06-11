@@ -650,9 +650,16 @@ func parseImageList(ctx context.Context, images []iuapi.ImageConfig, appSettings
 			log.Infof("Image `%s` matches webhook event=(%s/%s)", im.Alias, webhookEvent.RegistryURL, webhookEvent.Repository)
 		}
 
-		if im.ManifestTarget != nil && im.ManifestTarget.Kustomize != nil && im.ManifestTarget.Kustomize.Name != nil {
-			if kustomizeImage := im.ManifestTarget.Kustomize.Name; *kustomizeImage != "" {
-				img.ContainerImage.KustomizeImage = image.NewFromIdentifier(*kustomizeImage)
+		if im.ManifestTarget != nil && im.ManifestTarget.Kustomize != nil {
+			matchName := ""
+			if im.ManifestTarget.Kustomize.MatchName != nil && *im.ManifestTarget.Kustomize.MatchName != "" {
+				matchName = *im.ManifestTarget.Kustomize.MatchName
+				img.KustomizeMatchName = matchName
+			} else if im.ManifestTarget.Kustomize.Name != nil && *im.ManifestTarget.Kustomize.Name != "" {
+				matchName = *im.ManifestTarget.Kustomize.Name
+			}
+			if matchName != "" {
+				img.ContainerImage.KustomizeImage = image.NewFromIdentifier(matchName)
 			}
 		}
 		results = append(results, img)

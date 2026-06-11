@@ -275,6 +275,14 @@ type KustomizeTarget struct {
 	// Example: "docker.io/library/nginx".
 	// This field is required if the Kustomize target is used.
 	Name *string `json:"name"`
+
+	// MatchName overrides which image identifier is used to find the currently
+	// running image in app.Status.Summary.Images. Defaults to Name when unset.
+	// Set this when a mutating admission webhook rewrites the registry on running
+	// pods (e.g. Kyverno rewriting ghcr.io to an ECR pull-through cache) so the
+	// live-image lookup succeeds without resorting to forceUpdate.
+	// +optional
+	MatchName *string `json:"matchName,omitempty"`
 }
 
 //------------------------Status---------------------------------------------//
