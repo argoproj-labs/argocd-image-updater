@@ -27,13 +27,21 @@ import (
 
 	"github.com/argoproj/argo-cd/v3/pkg/apiclient/application"
 	"github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1"
+	"github.com/argoproj/argo-cd/v3/util/db"
+	"github.com/argoproj/argo-cd/v3/util/settings"
 	"github.com/distribution/distribution/v3/manifest/schema2"
 	"github.com/distribution/distribution/v3/registry/api/errcode"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
 )
+
+func newTestArgoDB(clientset kubernetes.Interface, namespace string) db.ArgoDB {
+	settingsMgr := settings.NewSettingsManager(context.Background(), clientset, namespace)
+	return db.NewDB(namespace, settingsMgr, clientset)
+}
 
 func Test_UpdateApplication(t *testing.T) {
 	t.Run("Test kustomize w/ multiple images w/ different registry w/ different tags", func(t *testing.T) {
@@ -4693,7 +4701,7 @@ func Test_GetWriteBackConfig(t *testing.T) {
 			},
 		}
 
-		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, settings)
+		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, nil, settings)
 		require.NoError(t, err)
 		require.NotNil(t, wbc)
 		assert.Equal(t, wbc.Method, WriteBackGit)
@@ -4731,7 +4739,7 @@ func Test_GetWriteBackConfig(t *testing.T) {
 			},
 		}
 
-		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, settings)
+		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, nil, settings)
 		require.NoError(t, err)
 		require.NotNil(t, wbc)
 		assert.Equal(t, "", wbc.GitBranch)
@@ -4768,7 +4776,7 @@ func Test_GetWriteBackConfig(t *testing.T) {
 			},
 		}
 
-		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, settings)
+		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, nil, settings)
 		require.NoError(t, err)
 		require.NotNil(t, wbc)
 		assert.Equal(t, "mybranch", wbc.GitBranch)
@@ -4805,7 +4813,7 @@ func Test_GetWriteBackConfig(t *testing.T) {
 			Method: stringPtr("argocd"),
 		}
 
-		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, settings)
+		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, nil, settings)
 		require.NoError(t, err)
 		require.NotNil(t, wbc)
 		assert.Equal(t, wbc.Method, WriteBackApplication)
@@ -4846,7 +4854,7 @@ func Test_GetWriteBackConfig(t *testing.T) {
 			},
 		}
 
-		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, settings)
+		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, nil, settings)
 		require.NoError(t, err)
 		require.NotNil(t, wbc)
 		assert.Equal(t, wbc.Method, WriteBackGit)
@@ -4888,7 +4896,7 @@ func Test_GetWriteBackConfig(t *testing.T) {
 			},
 		}
 
-		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, settings)
+		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, nil, settings)
 		require.NoError(t, err)
 		require.NotNil(t, wbc)
 		assert.Equal(t, wbc.Method, WriteBackGit)
@@ -4930,7 +4938,7 @@ func Test_GetWriteBackConfig(t *testing.T) {
 			},
 		}
 
-		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, settings)
+		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, nil, settings)
 		require.NoError(t, err)
 		require.NotNil(t, wbc)
 		assert.Equal(t, wbc.Method, WriteBackGit)
@@ -4972,7 +4980,7 @@ func Test_GetWriteBackConfig(t *testing.T) {
 			},
 		}
 
-		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, settings)
+		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, nil, settings)
 		require.NoError(t, err)
 		require.NotNil(t, wbc)
 		assert.Equal(t, wbc.Method, WriteBackGit)
@@ -5014,7 +5022,7 @@ func Test_GetWriteBackConfig(t *testing.T) {
 			},
 		}
 
-		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, settings)
+		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, nil, settings)
 		require.NoError(t, err)
 		require.NotNil(t, wbc)
 		assert.Equal(t, wbc.Method, WriteBackGit)
@@ -5055,7 +5063,7 @@ func Test_GetWriteBackConfig(t *testing.T) {
 			},
 		}
 
-		_, err := newWBCFromSettings(context.Background(), &app, &kubeClient, settings)
+		_, err := newWBCFromSettings(context.Background(), &app, &kubeClient, nil, settings)
 		assert.Error(t, err)
 	})
 
@@ -5092,7 +5100,7 @@ func Test_GetWriteBackConfig(t *testing.T) {
 			},
 		}
 
-		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, settings)
+		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, nil, settings)
 		require.NoError(t, err)
 		require.NotNil(t, wbc)
 		assert.Equal(t, wbc.Method, WriteBackApplication)
@@ -5131,7 +5139,7 @@ func Test_GetWriteBackConfig(t *testing.T) {
 			},
 		}
 
-		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, settings)
+		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, nil, settings)
 		require.Error(t, err)
 		require.Nil(t, wbc)
 	})
@@ -5173,7 +5181,7 @@ func Test_GetGitCreds(t *testing.T) {
 			},
 		}
 
-		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, settings)
+		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, nil, settings)
 		require.NoError(t, err)
 
 		creds, err := wbc.GetCreds(&app)
@@ -5219,7 +5227,7 @@ func Test_GetGitCreds(t *testing.T) {
 			},
 		}
 
-		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, settings)
+		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, nil, settings)
 		require.NoError(t, err)
 
 		creds, err := wbc.GetCreds(&app)
@@ -5259,13 +5267,13 @@ func Test_GetGitCreds(t *testing.T) {
 			}
 			// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
 			settings := &iuapi.WriteBackConfig{
-				Method: stringPtr("git"),
+				Method: stringPtr("git:secret:argocd-image-updater/git-creds"),
 				GitConfig: &iuapi.GitConfig{
 					Branch: stringPtr("mybranch:mytargetbranch"),
 				},
 			}
 
-			wbc, err = newWBCFromSettings(context.Background(), &app, &kubeClient, settings)
+			wbc, err = newWBCFromSettings(context.Background(), &app, &kubeClient, nil, settings)
 			require.NoError(t, err)
 			_, err = wbc.GetCreds(&app)
 			require.Error(t, err)
@@ -5305,7 +5313,7 @@ func Test_GetGitCreds(t *testing.T) {
 			},
 		}
 
-		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, settings)
+		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, nil, settings)
 		require.NoError(t, err)
 
 		creds, err := wbc.GetCreds(&app)
@@ -5334,12 +5342,14 @@ func Test_GetGitCreds(t *testing.T) {
 		}
 		fixture.AddPartOfArgoCDLabel(secret, repoSecret)
 
+		clientset := fake.NewFakeClientsetWithResources(secret, repoSecret)
 		kubeClient := kube.ImageUpdaterKubernetesClient{
 			KubeClient: &registryKube.KubernetesClient{
-				Clientset: fake.NewFakeClientsetWithResources(secret, repoSecret),
+				Clientset: clientset,
 				Namespace: "argocd",
 			},
 		}
+		argocdDB := newTestArgoDB(clientset, "argocd")
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
 				Name: "testapp",
@@ -5362,7 +5372,7 @@ func Test_GetGitCreds(t *testing.T) {
 			},
 		}
 
-		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, settings)
+		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, argocdDB, settings)
 		require.NoError(t, err)
 
 		creds, err := wbc.GetCreds(&app)
@@ -5379,11 +5389,13 @@ func Test_GetGitCreds(t *testing.T) {
 		secret := fixture.NewSecret("argocd-image-updater", "git-creds", map[string][]byte{
 			"sshPrivateKex": []byte("foo"),
 		})
+		clientset := fake.NewFakeClientsetWithResources(secret)
 		kubeClient := kube.ImageUpdaterKubernetesClient{
 			KubeClient: &registryKube.KubernetesClient{
-				Clientset: fake.NewFakeClientsetWithResources(secret),
+				Clientset: clientset,
 			},
 		}
+		argocdDB := newTestArgoDB(clientset, "")
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
 				Name: "testapp",
@@ -5406,7 +5418,7 @@ func Test_GetGitCreds(t *testing.T) {
 			},
 		}
 
-		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, settings)
+		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, argocdDB, settings)
 		require.NoError(t, err)
 
 		creds, err := wbc.GetCreds(&app)
@@ -5420,11 +5432,13 @@ func Test_GetGitCreds(t *testing.T) {
 		secret := fixture.NewSecret("argocd-image-updater", "git-creds", map[string][]byte{
 			"sshPrivateKey": []byte("foo"),
 		})
+		clientset := fake.NewFakeClientsetWithResources(secret)
 		kubeClient := kube.ImageUpdaterKubernetesClient{
 			KubeClient: &registryKube.KubernetesClient{
-				Clientset: fake.NewFakeClientsetWithResources(secret),
+				Clientset: clientset,
 			},
 		}
+		argocdDB := newTestArgoDB(clientset, "")
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
 				Name: "testapp",
@@ -5447,7 +5461,7 @@ func Test_GetGitCreds(t *testing.T) {
 			},
 		}
 
-		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, settings)
+		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, argocdDB, settings)
 		require.NoError(t, err)
 
 		creds, err := wbc.GetCreds(&app)
@@ -5461,11 +5475,13 @@ func Test_GetGitCreds(t *testing.T) {
 		secret := fixture.NewSecret("argocd-image-updater", "git-creds", map[string][]byte{
 			"sshPrivateKey": []byte("foo"),
 		})
+		clientset := fake.NewFakeClientsetWithResources(secret)
 		kubeClient := kube.ImageUpdaterKubernetesClient{
 			KubeClient: &registryKube.KubernetesClient{
-				Clientset: fake.NewFakeClientsetWithResources(secret),
+				Clientset: clientset,
 			},
 		}
+		argocdDB := newTestArgoDB(clientset, "")
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
 				Name: "testapp",
@@ -5488,7 +5504,7 @@ func Test_GetGitCreds(t *testing.T) {
 			},
 		}
 
-		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, settings)
+		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, argocdDB, settings)
 		require.NoError(t, err)
 
 		creds, err := wbc.GetCreds(&app)
@@ -5532,7 +5548,7 @@ func Test_GetGitCreds(t *testing.T) {
 			},
 		}
 
-		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, settings)
+		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, nil, settings)
 		require.NoError(t, err)
 		require.Equal(t, wbc.GitRepo, "git@github.com:example/example.git")
 
@@ -5551,9 +5567,11 @@ func Test_CommitUpdates(t *testing.T) {
 	secret := fixture.NewSecret("argocd-image-updater", "git-creds", map[string][]byte{
 		"sshPrivateKey": []byte("foo"),
 	})
+	clientset := fake.NewFakeClientsetWithResources(secret)
+	commitTestArgoDB := newTestArgoDB(clientset, "")
 	kubeClient := kube.ImageUpdaterKubernetesClient{
 		KubeClient: &registryKube.KubernetesClient{
-			Clientset: fake.NewFakeClientsetWithResources(secret),
+			Clientset: clientset,
 		},
 	}
 	app := v1alpha1.Application{
@@ -5583,7 +5601,7 @@ func Test_CommitUpdates(t *testing.T) {
 		ctx := context.Background()
 		// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
 		// Pass nil settings to test the default target revision fallback
-		wbc, err := newWBCFromSettings(ctx, &app, &kubeClient, nil)
+		wbc, err := newWBCFromSettings(ctx, &app, &kubeClient, nil, nil)
 		require.NoError(t, err)
 		wbc.Method = WriteBackGit
 		wbc.GetCreds = func(app *v1alpha1.Application) (git.Creds, error) {
@@ -5612,7 +5630,7 @@ func Test_CommitUpdates(t *testing.T) {
 		gitMock.On("SymRefToBranch", mock.Anything).Return("mydefaultbranch", nil)
 
 		ctx := context.Background()
-		wbc, err := newWBCFromSettings(ctx, &app, &kubeClient, nil)
+		wbc, err := newWBCFromSettings(ctx, &app, &kubeClient, nil, nil)
 		require.NoError(t, err)
 		wbc.Method = WriteBackGit
 		wbc.GetCreds = func(app *v1alpha1.Application) (git.Creds, error) {
@@ -5643,7 +5661,7 @@ func Test_CommitUpdates(t *testing.T) {
 		gitMock.On("SymRefToBranch", mock.Anything).Return("mydefaultbranch", nil)
 
 		ctx := context.Background()
-		wbc, err := newWBCFromSettings(ctx, app, &kubeClient, nil)
+		wbc, err := newWBCFromSettings(ctx, app, &kubeClient, nil, nil)
 		require.NoError(t, err)
 		wbc.Method = WriteBackGit
 		wbc.GetCreds = func(app *v1alpha1.Application) (git.Creds, error) {
@@ -5672,7 +5690,7 @@ func Test_CommitUpdates(t *testing.T) {
 		gitMock.On("Push", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 		gitMock.On("SymRefToBranch", mock.Anything).Return("mydefaultbranch", nil)
 		ctx := context.Background()
-		wbc, err := newWBCFromSettings(ctx, &app, &kubeClient, nil)
+		wbc, err := newWBCFromSettings(ctx, &app, &kubeClient, nil, nil)
 		require.NoError(t, err)
 		wbc.Method = WriteBackGit
 		wbc.GetCreds = func(app *v1alpha1.Application) (git.Creds, error) {
@@ -5728,7 +5746,7 @@ helm:
 		gitMock.On("SymRefToBranch", mock.Anything).Return("mydefaultbranch", nil)
 
 		ctx := context.Background()
-		wbc, err := newWBCFromSettings(ctx, app, &kubeClient, nil)
+		wbc, err := newWBCFromSettings(ctx, app, &kubeClient, nil, nil)
 		wbc.Method = WriteBackGit
 		wbc.GetCreds = func(app *v1alpha1.Application) (git.Creds, error) {
 			return git.NopCreds{}, nil
@@ -5791,7 +5809,7 @@ helm:
 		gitMock.On("SymRefToBranch", mock.Anything).Return("mydefaultbranch", nil)
 
 		ctx := context.Background()
-		wbc, err := newWBCFromSettings(ctx, app, &kubeClient, nil)
+		wbc, err := newWBCFromSettings(ctx, app, &kubeClient, nil, nil)
 		wbc.Method = WriteBackGit
 		wbc.GetCreds = func(app *v1alpha1.Application) (git.Creds, error) {
 			return git.NopCreds{}, nil
@@ -5854,7 +5872,7 @@ helm:
 		gitMock.On("SymRefToBranch", mock.Anything).Return("mydefaultbranch", nil)
 
 		ctx := context.Background()
-		wbc, err := newWBCFromSettings(ctx, app, &kubeClient, nil)
+		wbc, err := newWBCFromSettings(ctx, app, &kubeClient, nil, nil)
 		require.NoError(t, err)
 		wbc.Method = WriteBackGit
 		wbc.GetCreds = func(app *v1alpha1.Application) (git.Creds, error) {
@@ -5910,7 +5928,7 @@ replacements: []
 		gitMock.On("SymRefToBranch", mock.Anything).Return("mydefaultbranch", nil)
 
 		ctx := context.Background()
-		wbc, err := newWBCFromSettings(ctx, app, &kubeClient, nil)
+		wbc, err := newWBCFromSettings(ctx, app, &kubeClient, nil, nil)
 		require.NoError(t, err)
 		wbc.Method = WriteBackGit
 		wbc.GetCreds = func(app *v1alpha1.Application) (git.Creds, error) {
@@ -5984,7 +6002,7 @@ replacements: []
 		}).Return(nil)
 
 		ctx := context.Background()
-		wbc, err := newWBCFromSettings(ctx, app, &kubeClient, nil)
+		wbc, err := newWBCFromSettings(ctx, app, &kubeClient, nil, nil)
 		wbc.Method = WriteBackGit
 		wbc.GetCreds = func(app *v1alpha1.Application) (git.Creds, error) {
 			return git.NopCreds{}, nil
@@ -6030,7 +6048,7 @@ replacements: []
 		}
 
 		ctx := context.Background()
-		wbc, err := newWBCFromSettings(ctx, app, &kubeClient, settings)
+		wbc, err := newWBCFromSettings(ctx, app, &kubeClient, commitTestArgoDB, settings)
 		require.NoError(t, err)
 		wbc.GitClient = gitMock
 		app.Spec.Source.TargetRevision = "HEAD"
@@ -6062,7 +6080,7 @@ replacements: []
 			},
 		}
 		ctx := context.Background()
-		wbc, err := newWBCFromSettings(ctx, &app, &kubeClient, settings)
+		wbc, err := newWBCFromSettings(ctx, &app, &kubeClient, commitTestArgoDB, settings)
 		require.NoError(t, err)
 		wbc.GitClient = gitMock
 
@@ -6090,7 +6108,7 @@ replacements: []
 			},
 		}
 		ctx := context.Background()
-		wbc, err := newWBCFromSettings(ctx, &app, &kubeClient, settings)
+		wbc, err := newWBCFromSettings(ctx, &app, &kubeClient, commitTestArgoDB, settings)
 		require.NoError(t, err)
 		wbc.GitClient = gitMock
 
@@ -6117,7 +6135,7 @@ replacements: []
 			},
 		}
 		ctx := context.Background()
-		wbc, err := newWBCFromSettings(ctx, &app, &kubeClient, settings)
+		wbc, err := newWBCFromSettings(ctx, &app, &kubeClient, commitTestArgoDB, settings)
 		require.NoError(t, err)
 		wbc.GitClient = gitMock
 
@@ -6145,7 +6163,7 @@ replacements: []
 			},
 		}
 		ctx := context.Background()
-		wbc, err := newWBCFromSettings(ctx, &app, &kubeClient, settings)
+		wbc, err := newWBCFromSettings(ctx, &app, &kubeClient, commitTestArgoDB, settings)
 		require.NoError(t, err)
 		wbc.GitClient = gitMock
 
@@ -6173,7 +6191,7 @@ replacements: []
 			},
 		}
 		ctx := context.Background()
-		wbc, err := newWBCFromSettings(ctx, &app, &kubeClient, settings)
+		wbc, err := newWBCFromSettings(ctx, &app, &kubeClient, commitTestArgoDB, settings)
 		require.NoError(t, err)
 		wbc.GitClient = gitMock
 
@@ -6204,7 +6222,7 @@ replacements: []
 		}
 
 		ctx := context.Background()
-		wbc, err := newWBCFromSettings(ctx, app, &kubeClient, settings)
+		wbc, err := newWBCFromSettings(ctx, app, &kubeClient, commitTestArgoDB, settings)
 		require.NoError(t, err)
 		wbc.GitClient = gitMock
 		app.Spec.Source.TargetRevision = "HEAD"
