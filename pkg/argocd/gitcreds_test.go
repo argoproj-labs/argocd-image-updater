@@ -309,7 +309,9 @@ func TestGetCredsFromArgoCD(t *testing.T) {
 		creds, err := getCredsFromArgoCD(context.Background(), wbc, "")
 		require.NoError(t, err)
 		require.NotNil(t, creds)
-		_, ok := creds.(git.HTTPSCreds)
-		assert.True(t, ok)
+		assert.Equal(t,
+			git.NewHTTPSCreds("myuser", "mypass", "", "", false, "", git.NoopCredsStore{}, false),
+			creds,
+		)
 	})
 }
