@@ -11,8 +11,11 @@ import (
 	"github.com/argoproj-labs/argocd-image-updater/test/fixture"
 
 	"github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1"
+	"github.com/argoproj/argo-cd/v3/util/db"
+	"github.com/argoproj/argo-cd/v3/util/settings"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestGetCredsFromSecret(t *testing.T) {
@@ -252,4 +255,61 @@ func TestGetGitCreds(t *testing.T) {
 	expectedNopCreds := git.NopCreds{}
 	nopCreds := GetGitCreds(ctx, nil, store)
 	assert.Equal(t, expectedNopCreds, nopCreds)
+}
+
+func TestGetCredsFromArgoCD(t *testing.T) {
+	t.Run("nil ArgocdDB returns error", func(t *testing.T) {
+		wbc := &WriteBackConfig{
+			GitRepo:  "https://github.com/example/repo.git",
+			GitCreds: git.NoopCredsStore{},
+		}
+		creds, err := getCredsFromArgoCD(context.Background(), wbc, "default")
+		require.Error(t, err)
+		assert.Nil(t, creds)
+		assert.Contains(t, err.Error(), "argocd database not configured")
+	})
+
+	t.Run("repository with no credentials returns error", func(t *testing.T) {
+		clientset := fake.NewFakeClientsetWithResources()
+		settingsMgr := settings.NewSettingsManager(context.Background(), clientset, "argocd")
+		argocdDB := db.NewDB("argocd", settingsMgr, clientset)
+
+		wbc := &WriteBackConfig{
+			GitRepo:  "https://github.com/example/repo.git",
+			GitCreds: git.NoopCredsStore{},
+			ArgocdDB: argocdDB,
+		}
+		creds, err := getCredsFromArgoCD(context.Background(), wbc, "default")
+		require.Error(t, err)
+		assert.Nil(t, creds)
+		assert.Contains(t, err.Error(), "credentials for 'https://github.com/example/repo.git' are not configured")
+	})
+
+	t.Run("HTTPS credentials found", func(t *testing.T) {
+		repoSecret := fixture.NewSecret("argocd", "repo-creds", map[string][]byte{
+			"type":     []byte("git"),
+			"url":      []byte("https://github.com/example/repo.git"),
+			"username": []byte("myuser"),
+			"password": []byte("mypass"),
+		})
+		repoSecret.Labels = map[string]string{
+			"argocd.argoproj.io/secret-type": "repository",
+		}
+		fixture.AddPartOfArgoCDLabel(repoSecret)
+
+		clientset := fake.NewFakeClientsetWithResources(repoSecret)
+		settingsMgr := settings.NewSettingsManager(context.Background(), clientset, "argocd")
+		argocdDB := db.NewDB("argocd", settingsMgr, clientset)
+
+		wbc := &WriteBackConfig{
+			GitRepo:  "https://github.com/example/repo.git",
+			GitCreds: git.NoopCredsStore{},
+			ArgocdDB: argocdDB,
+		}
+		creds, err := getCredsFromArgoCD(context.Background(), wbc, "")
+		require.NoError(t, err)
+		require.NotNil(t, creds)
+		_, ok := creds.(git.HTTPSCreds)
+		assert.True(t, ok)
+	})
 }
