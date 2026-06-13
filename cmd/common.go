@@ -41,6 +41,8 @@ type WebhookConfig struct {
 	HarborSecret string
 	// AliyunACRSecret is the secret for validating Aliyun ACR webhooks
 	AliyunACRSecret string
+	// ACRSecret is the secret for validating Azure ACR webhooks
+	ACRSecret string
 	// CloudEventsSecret is the secret for validating CloudEvents webhooks
 	CloudEventsSecret string
 	// RateLimitNumAllowedRequests is the number of allowed requests per hour for rate limiting (0 disables rate limiting)
@@ -163,6 +165,7 @@ func SetupWebhookServer(ctx context.Context, webhookCfg *WebhookConfig, reconcil
 		handler.RegisterHandler(webhook.NewHarborWebhook(webhookCfg.HarborSecret))
 		handler.RegisterHandler(webhook.NewQuayWebhook(webhookCfg.QuaySecret))
 		handler.RegisterHandler(webhook.NewAliyunACRWebhook(webhookCfg.AliyunACRSecret))
+		handler.RegisterHandler(webhook.NewACRWebhook(webhookCfg.ACRSecret))
 		handler.RegisterHandler(webhook.NewCloudEventsWebhook(webhookCfg.CloudEventsSecret))
 	} else {
 		// Secure mode (default): only register handlers for which a secret has been
@@ -192,6 +195,11 @@ func SetupWebhookServer(ctx context.Context, webhookCfg *WebhookConfig, reconcil
 		if webhookCfg.AliyunACRSecret != "" {
 			handler.RegisterHandler(webhook.NewAliyunACRWebhook(webhookCfg.AliyunACRSecret))
 			log.Infof("Registered Aliyun ACR webhook handler")
+			registered++
+		}
+		if webhookCfg.ACRSecret != "" {
+			handler.RegisterHandler(webhook.NewACRWebhook(webhookCfg.ACRSecret))
+			log.Infof("Registered Azure ACR webhook handler")
 			registered++
 		}
 		if webhookCfg.CloudEventsSecret != "" {
