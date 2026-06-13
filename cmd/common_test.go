@@ -81,6 +81,7 @@ func TestSetupWebhookServer_HandlerRegistration(t *testing.T) {
 	reconciler := &controller.ImageUpdaterReconciler{}
 
 	allRegistryTypes := []string{
+		"acr",
 		"aliyun-acr",
 		"cloudevents",
 		"docker.io",
@@ -143,6 +144,7 @@ func TestSetupWebhookServer_HandlerRegistration(t *testing.T) {
 			HarborSecret:      "harbor-secret",
 			QuaySecret:        "quay-secret",
 			AliyunACRSecret:   "aliyun-secret",
+			ACRSecret:         "acr-secret",
 			CloudEventsSecret: "cloudevents-secret",
 		}
 		server := SetupWebhookServer(context.Background(), cfg, reconciler)
