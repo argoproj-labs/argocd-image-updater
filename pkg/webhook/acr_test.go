@@ -31,38 +31,51 @@ func TestACRWebhook_Validate(t *testing.T) {
 	tests := []struct {
 		name        string
 		method      string
-		secret      string
+		contentType string
+		authHeader  string
 		noSecret    bool
 		expectError bool
 	}{
 		{
 			name:        "valid POST request with correct secret",
 			method:      "POST",
-			secret:      "test-secret",
+			contentType: "application/json",
+			authHeader:  "test-secret",
 			expectError: false,
 		},
 		{
 			name:        "valid POST request without secret",
 			method:      "POST",
+			contentType: "application/json",
 			noSecret:    true,
 			expectError: false,
 		},
 		{
 			name:        "invalid HTTP method",
 			method:      "GET",
-			secret:      "test-secret",
+			contentType: "application/json",
+			authHeader:  "test-secret",
 			expectError: true,
 		},
 		{
-			name:        "missing secret when secret is configured",
+			name:        "invalid content type",
 			method:      "POST",
-			secret:      "",
+			contentType: "text/plain",
+			authHeader:  "test-secret",
 			expectError: true,
 		},
 		{
-			name:        "invalid secret",
+			name:        "missing Authorization header when secret is configured",
 			method:      "POST",
-			secret:      "not-the-secret",
+			contentType: "application/json",
+			authHeader:  "",
+			expectError: true,
+		},
+		{
+			name:        "incorrect secret",
+			method:      "POST",
+			contentType: "application/json",
+			authHeader:  "not-the-secret",
 			expectError: true,
 		},
 	}
@@ -75,10 +88,11 @@ func TestACRWebhook_Validate(t *testing.T) {
 			}
 
 			req := httptest.NewRequest(tt.method, "/webhook", nil)
-			if tt.secret != "" {
-				query := req.URL.Query()
-				query.Set("secret", tt.secret)
-				req.URL.RawQuery = query.Encode()
+			if tt.contentType != "" {
+				req.Header.Set("Content-Type", tt.contentType)
+			}
+			if tt.authHeader != "" {
+				req.Header.Set("Authorization", tt.authHeader)
 			}
 
 			err := testWebhook.Validate(req)

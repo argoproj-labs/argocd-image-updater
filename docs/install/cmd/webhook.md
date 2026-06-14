@@ -15,9 +15,18 @@ Supported Registries:
 - Quay
 - Harbor
 - Aliyun ACR (Alibaba Cloud Container Registry)
+- Azure Container Registry (ACR)
 - AWS EventBridge (CloudEvents)
 
 ### Flags
+
+**--acr-webhook-secret *secret***
+
+Secret for validating Azure ACR webhooks. ACR has no built-in signing, so the
+secret is sent as the `Authorization` header value, which you configure on the
+webhook with `az acr webhook update --headers "Authorization=<secret>"`.
+
+Can also be set with the `ACR_WEBHOOK_SECRET` environment variable.
 
 **--aliyun-acr-webhook-secret *secret***
 
