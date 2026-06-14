@@ -24,6 +24,7 @@ Currently Supported Registries:
 - Harbor
 - Quay
 - Aliyun ACR
+- Azure Container Registry (ACR)
 - AWS ECR (via EventBridge CloudEvents)
 
 Using webhooks can help reduce some of the stress that is put on the 
@@ -101,6 +102,7 @@ can be found here:
 - [Harbor](https://goharbor.io/docs/2.2.0/working-with-projects/project-configuration/configure-webhooks/)
 - [Quay](https://docs.quay.io/guides/notifications.html)
 - [Aliyun ACR](https://www.alibabacloud.com/help/en/acr/user-guide/manage-webhooks)
+- [Azure Container Registry](https://learn.microsoft.com/en-us/azure/container-registry/container-registry-webhook)
 - [AWS ECR via EventBridge](#aws-ecr-via-eventbridge-cloudevents) (see below)
 
 For the URL that you set for the webhook, your link should go as the following:
@@ -113,6 +115,7 @@ https://app1.example.com/webhook?type=<YOUR_REGISTRY_TYPE>
 # Harbor = harbor
 # Quay = quay.io
 # Aliyun ACR = aliyun-acr
+# Azure Container Registry (ACR) = acr
 # AWS ECR (via CloudEvents) = cloudevents
 ```
 
@@ -123,6 +126,35 @@ Aliyun ACR (especially Enterprise Edition) uses various registry endpoints (e.g.
 ```text
 https://app1.example.com/webhook?type=aliyun-acr&registry_url=my-instance-registry.cn-shanghai.cr.aliyuncs.com
 ```
+
+### Azure Container Registry (ACR) Specifics
+
+Azure Container Registry has **no built-in HMAC signing** for webhooks, but it lets
+you attach arbitrary [custom HTTP headers](https://learn.microsoft.com/en-us/azure/container-registry/container-registry-webhook-reference#http-headers)
+to its notifications. ACR therefore uses the same mechanism as the registries with
+[preexisting secret support](#registries-with-preexisting-support-for-secrets):
+configure an `Authorization` header on the webhook, and the handler validates it
+against the configured secret (constant-time comparison).
+
+Set the header when creating or updating the webhook with the Azure CLI
+([reference](https://learn.microsoft.com/en-us/cli/azure/acr/webhook?view=azure-cli-latest#az-acr-webhook-update-examples)):
+
+```bash
+az acr webhook update -n <webhook> -r <registry> --headers "Authorization=<YOUR_SECRET>"
+```
+
+The value you set for the `Authorization` header must match the secret configured in
+`argocd-image-updater-secret` (`webhook.acr-secret`) / the `--acr-webhook-secret`
+flag. The webhook URL itself only needs the registry type:
+
+```text
+https://app1.example.com/webhook?type=acr
+```
+
+The registry hostname, repository, tag and digest are taken directly from the
+payload (`request.host`, `target.repository`, `target.tag`, `target.digest`). Only
+events with `action: push` are processed; other actions (e.g. `delete`) are ignored.
+A push that carries an empty `target.tag` (digest-only push) is handled gracefully.
 
 ### AWS ECR via EventBridge CloudEvents
 
@@ -237,6 +269,7 @@ stringData:
   webhook.harbor-secret: <YOUR_SECRET>
   webhook.quay-secret: <YOUR_SECRET>
   webhook.aliyun-acr-secret: <YOUR_SECRET>
+  webhook.acr-secret: <YOUR_SECRET>
   webhook.cloudevents-secret: <YOUR_SECRET>
 ```
 
@@ -253,6 +286,7 @@ Supported Registries That Use This:
 
 - GitHub Container Registry
 - Harbor
+- Azure Container Registry (ACR)
 
 ### Parameter Secrets
 
@@ -441,6 +475,7 @@ environment variables. Below is the list of which variables correspond to which 
 |`HARBOR_WEBHOOK_SECRET` |`--harbor-webhook-secret`|
 |`QUAY_WEBHOOK_SECRET` |`--quay-webhook-secret`|
 |`ALIYUN_ACR_WEBHOOK_SECRET` |`--aliyun-acr-webhook-secret`|
+|`ACR_WEBHOOK_SECRET` |`--acr-webhook-secret`|
 |`CLOUDEVENTS_WEBHOOK_SECRET` |`--cloudevents-webhook-secret`|
 |`WEBHOOK_RATELIMIT_ALLOWED`|`--webhook-ratelimit-allowed`|
 |`DISABLE_TLS`|`--disable-tls`|
@@ -468,6 +503,7 @@ registries supported.
 - [Quay](https://docs.quay.io/guides/notifications.html)
 (View Repository Push Section)
 - [Aliyun ACR](https://www.alibabacloud.com/help/en/acr/user-guide/manage-webhooks)
+- [Azure Container Registry](https://learn.microsoft.com/en-us/azure/container-registry/container-registry-webhook)
 - [CloudEvents](#aws-ecr-via-eventbridge-cloudevents) (AWS ECR via EventBridge)
 
 ## Troubleshooting
