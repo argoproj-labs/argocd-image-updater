@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/argoproj-labs/argocd-image-updater/pkg/argocd"
 )
@@ -33,17 +34,28 @@ func (a *ACRWebhook) Validate(r *http.Request) error {
 		return fmt.Errorf("invalid HTTP method: %s", r.Method)
 	}
 
-	// Azure ACR has no built-in HMAC signing. If a secret is configured, validate
-	// it from the query parameter (parameter secret pattern).
-	// !! This query param method is NOT secure, use at own risk
+	// ACR sends a Content-Type of application/json unless a custom Content-Type
+	// header is configured for the webhook.
+	// See: https://learn.microsoft.com/en-us/azure/container-registry/container-registry-webhook-reference#http-headers
+	contentType := r.Header.Get("Content-Type")
+	if !strings.Contains(contentType, "application/json") {
+		return fmt.Errorf("invalid content type: %s", contentType)
+	}
+
+	// ACR has no built-in HMAC signing, but it lets you attach arbitrary custom
+	// headers to webhook notifications via the Azure CLI, e.g.:
+	//   az acr webhook update -n <webhook> -r <registry> --headers "Authorization=Basic <token>"
+	// We therefore validate the configured secret against the Authorization
+	// header value. The secret configured in argocd-image-updater must match the full Authorization header value.
+	// See: https://learn.microsoft.com/en-us/cli/azure/acr/webhook?view=azure-cli-latest#az-acr-webhook-update-examples
 	if a.secret != "" {
-		secret := r.URL.Query().Get("secret")
-		if secret == "" {
-			return fmt.Errorf("missing webhook secret")
+		authHeader := r.Header.Get("Authorization")
+		if authHeader == "" {
+			return fmt.Errorf("missing Authorization header when secret is configured")
 		}
 
-		if subtle.ConstantTimeCompare([]byte(secret), []byte(a.secret)) != 1 {
-			return fmt.Errorf("invalid webhook secret")
+		if subtle.ConstantTimeCompare([]byte(authHeader), []byte(a.secret)) != 1 {
+			return fmt.Errorf("incorrect webhook secret")
 		}
 	}
 

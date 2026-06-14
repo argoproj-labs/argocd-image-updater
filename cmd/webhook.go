@@ -44,6 +44,7 @@ Supported registries:
 - Quay
 - Harbor
 - Aliyun ACR
+- Azure Container Registry (ACR)
 - AWS ECR (via EventBridge CloudEvents)
 `,
 		RunE: func(cmd *cobra.Command, args []string) error {

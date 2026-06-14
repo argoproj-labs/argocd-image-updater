@@ -129,14 +129,26 @@ https://app1.example.com/webhook?type=aliyun-acr&registry_url=my-instance-regist
 
 ### Azure Container Registry (ACR) Specifics
 
-Azure Container Registry has **no built-in HMAC signing** for webhooks. The webhook
-creation form in the Azure portal only exposes a Service URI and free-form custom
-headers, neither of which can be used for signing. ACR therefore uses the
-[parameter secret](#parameter-secrets) pattern: include the secret as a query
-parameter in the Service URI you configure in Azure.
+Azure Container Registry has **no built-in HMAC signing** for webhooks, but it lets
+you attach arbitrary [custom HTTP headers](https://learn.microsoft.com/en-us/azure/container-registry/container-registry-webhook-reference#http-headers)
+to its notifications. ACR therefore uses the same mechanism as the registries with
+[preexisting secret support](#registries-with-preexisting-support-for-secrets):
+configure an `Authorization` header on the webhook, and the handler validates it
+against the configured secret (constant-time comparison).
+
+Set the header when creating or updating the webhook with the Azure CLI
+([reference](https://learn.microsoft.com/en-us/cli/azure/acr/webhook?view=azure-cli-latest#az-acr-webhook-update-examples)):
+
+```bash
+az acr webhook update -n <webhook> -r <registry> --headers "Authorization=<YOUR_SECRET>"
+```
+
+The value you set for the `Authorization` header must match the secret configured in
+`argocd-image-updater-secret` (`webhook.acr-secret`) / the `--acr-webhook-secret`
+flag. The webhook URL itself only needs the registry type:
 
 ```text
-https://app1.example.com/webhook?type=acr&secret=<YOUR_SECRET>
+https://app1.example.com/webhook?type=acr
 ```
 
 The registry hostname, repository, tag and digest are taken directly from the
@@ -274,6 +286,7 @@ Supported Registries That Use This:
 
 - GitHub Container Registry
 - Harbor
+- Azure Container Registry (ACR)
 
 ### Parameter Secrets
 
@@ -296,7 +309,6 @@ Supported Registries That Use This:
 - Docker Hub
 - Quay
 - Aliyun ACR
-- Azure Container Registry (ACR)
 - AWS ECR (via CloudEvents/EventBridge)
 
 Also be aware that if the container registry has a built-in secrets method you will
