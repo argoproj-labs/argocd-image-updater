@@ -92,14 +92,15 @@ func TestQuayWebhook_Parse(t *testing.T) {
 	webhook := NewQuayWebhook("")
 
 	tests := []struct {
-		name         string
-		payload      string
-		expectedRepo string
-		expectedTag  string
-		expectError  bool
+		name             string
+		payload          string
+		expectedRegistry string
+		expectedRepo     string
+		expectedTag      string
+		expectError      bool
 	}{
 		{
-			name: "valid payload",
+			name: "valid payload with quay.io docker_url",
 			payload: `{
 				"name": "repository",
 				"repository": "mynamespace/repository",
@@ -110,9 +111,75 @@ func TestQuayWebhook_Parse(t *testing.T) {
 					"latest"
 				]
 			}`,
-			expectedRepo: "mynamespace/repository",
-			expectedTag:  "latest",
-			expectError:  false,
+			expectedRegistry: "quay.io",
+			expectedRepo:     "mynamespace/repository",
+			expectedTag:      "latest",
+			expectError:      false,
+		},
+		{
+			name: "private quay registry in docker_url",
+			payload: `{
+				"name": "repository",
+				"repository": "mynamespace/repository",
+				"namespace": "mynamespace",
+				"docker_url": "quay.apps.example.com/mynamespace/repository",
+				"homepage": "https://quay.apps.example.com/repository/mynamespace/repository",
+				"updated_tags": [
+					"dev"
+				]
+			}`,
+			expectedRegistry: "quay.apps.example.com",
+			expectedRepo:     "mynamespace/repository",
+			expectedTag:      "dev",
+			expectError:      false,
+		},
+		{
+			name: "private quay registry with https scheme in docker_url",
+			payload: `{
+				"name": "repository",
+				"repository": "ariss/alrl",
+				"namespace": "ariss",
+				"docker_url": "https://quay.internal.corp/ariss/alrl",
+				"homepage": "https://quay.internal.corp/repository/ariss/alrl",
+				"updated_tags": [
+					"v1.0"
+				]
+			}`,
+			expectedRegistry: "quay.internal.corp",
+			expectedRepo:     "ariss/alrl",
+			expectedTag:      "v1.0",
+			expectError:      false,
+		},
+		{
+			name: "empty docker_url falls back to quay.io",
+			payload: `{
+				"name": "repository",
+				"repository": "mynamespace/repository",
+				"namespace": "mynamespace",
+				"docker_url": "",
+				"updated_tags": [
+					"latest"
+				]
+			}`,
+			expectedRegistry: "quay.io",
+			expectedRepo:     "mynamespace/repository",
+			expectedTag:      "latest",
+			expectError:      false,
+		},
+		{
+			name: "missing docker_url falls back to quay.io",
+			payload: `{
+				"name": "repository",
+				"repository": "mynamespace/repository",
+				"namespace": "mynamespace",
+				"updated_tags": [
+					"latest"
+				]
+			}`,
+			expectedRegistry: "quay.io",
+			expectedRepo:     "mynamespace/repository",
+			expectedTag:      "latest",
+			expectError:      false,
 		},
 		{
 			name: "valid payload with multiple tags",
@@ -127,9 +194,10 @@ func TestQuayWebhook_Parse(t *testing.T) {
 					"v1.0"
 				]
 			}`,
-			expectedRepo: "mynamespace/repository",
-			expectedTag:  "latest",
-			expectError:  false,
+			expectedRegistry: "quay.io",
+			expectedRepo:     "mynamespace/repository",
+			expectedTag:      "latest",
+			expectError:      false,
 		},
 		{
 			name: "valid payload with no tags",
@@ -186,9 +254,33 @@ func TestQuayWebhook_Parse(t *testing.T) {
 			}
 
 			assert.NotNil(t, event, "Event was nil")
-			assert.Equal(t, "quay.io", event.RegistryURL, "Expected repository url to be %s, but got %s", "quay.io", event.RegistryURL)
-			assert.Equal(t, tt.expectedRepo, event.Repository, "Expect repository to be %s, but got %s", tt.expectedRepo, event.Repository)
-			assert.Equal(t, tt.expectedTag, event.Tag, "Expected tag to be %s, but got %s", tt.expectedTag, event.Tag)
+			assert.Equal(t, tt.expectedRegistry, event.RegistryURL)
+			assert.Equal(t, tt.expectedRepo, event.Repository)
+			assert.Equal(t, tt.expectedTag, event.Tag)
+		})
+	}
+}
+
+func TestExtractRegistryFromDockerURL(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{"public quay.io", "quay.io/ns/repo", "quay.io"},
+		{"private hostname", "quay.apps.example.com/ns/repo", "quay.apps.example.com"},
+		{"with https scheme", "https://quay.internal.corp/ns/repo", "quay.internal.corp"},
+		{"with http scheme", "http://quay.internal.corp/ns/repo", "quay.internal.corp"},
+		{"hostname with port", "quay.internal.corp:8443/ns/repo", "quay.internal.corp:8443"},
+		{"bare hostname no path", "quay.apps.example.com", "quay.apps.example.com"},
+		{"manual split fallback", "quay.custom.io:bad:port/ns/repo", "quay.custom.io:bad:port"},
+		{"unparseable url falls back to quay.io", "/ns/repo", "quay.io"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := extractRegistryFromDockerURL(tt.input)
+			assert.Equal(t, tt.expected, result)
 		})
 	}
 }
