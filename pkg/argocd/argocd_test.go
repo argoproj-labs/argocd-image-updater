@@ -2067,7 +2067,7 @@ func Test_newWBCFromSettings(t *testing.T) {
 	t.Run("should return argocd method and default file path target when settings are empty", func(t *testing.T) {
 		app, kubeClient := createTestAppAndClient()
 		settings := &api.WriteBackConfig{}
-		wbc, err := newWBCFromSettings(context.Background(), app, kubeClient, settings)
+		wbc, err := newWBCFromSettings(context.Background(), app, kubeClient, nil, settings)
 		assert.NoError(t, err)
 		assert.NotNil(t, wbc)
 		assert.Equal(t, WriteBackApplication, wbc.Method)
@@ -2077,7 +2077,7 @@ func Test_newWBCFromSettings(t *testing.T) {
 	t.Run("should return argocd method and default file path target when settings are nil", func(t *testing.T) {
 		app, kubeClient := createTestAppAndClient()
 		var settings *api.WriteBackConfig = nil
-		wbc, err := newWBCFromSettings(context.Background(), app, kubeClient, settings)
+		wbc, err := newWBCFromSettings(context.Background(), app, kubeClient, nil, settings)
 		assert.NoError(t, err)
 		assert.NotNil(t, wbc)
 		assert.Equal(t, WriteBackApplication, wbc.Method)
@@ -2089,7 +2089,7 @@ func Test_newWBCFromSettings(t *testing.T) {
 		settings := &api.WriteBackConfig{
 			Method: strPtr("git"),
 		}
-		wbc, err := newWBCFromSettings(context.Background(), app, kubeClient, settings)
+		wbc, err := newWBCFromSettings(context.Background(), app, kubeClient, nil, settings)
 		assert.NoError(t, err)
 		assert.Equal(t, WriteBackGit, wbc.Method)
 		assert.Equal(t, "some/path/.argocd-source-argocd-test_my-app.yaml", wbc.Target)
@@ -2103,7 +2103,7 @@ func Test_newWBCFromSettings(t *testing.T) {
 				WriteBackTarget: strPtr("helmvalues:another/values.yaml"),
 			},
 		}
-		wbc, err := newWBCFromSettings(context.Background(), app, kubeClient, settings)
+		wbc, err := newWBCFromSettings(context.Background(), app, kubeClient, nil, settings)
 		assert.NoError(t, err)
 		assert.Equal(t, WriteBackGit, wbc.Method)
 		assert.Equal(t, "some/path/another/values.yaml", wbc.Target)
@@ -2117,7 +2117,7 @@ func Test_newWBCFromSettings(t *testing.T) {
 				WriteBackTarget: strPtr("kustomization:overlays/prod"),
 			},
 		}
-		wbc, err := newWBCFromSettings(context.Background(), app, kubeClient, settings)
+		wbc, err := newWBCFromSettings(context.Background(), app, kubeClient, nil, settings)
 		assert.NoError(t, err)
 		assert.Equal(t, WriteBackGit, wbc.Method)
 		assert.Equal(t, "some/path/overlays/prod", wbc.KustomizeBase)
@@ -2132,7 +2132,7 @@ func Test_newWBCFromSettings(t *testing.T) {
 				Branch: strPtr("main:feature-branch"),
 			},
 		}
-		wbc, err := newWBCFromSettings(context.Background(), app, kubeClient, settings)
+		wbc, err := newWBCFromSettings(context.Background(), app, kubeClient, nil, settings)
 		assert.NoError(t, err)
 		assert.Equal(t, WriteBackGit, wbc.Method)
 		assert.Equal(t, "main", wbc.GitBranch)
@@ -2144,7 +2144,7 @@ func Test_newWBCFromSettings(t *testing.T) {
 		settings := &api.WriteBackConfig{
 			Method: strPtr("unsupported"),
 		}
-		_, err := newWBCFromSettings(context.Background(), app, kubeClient, settings)
+		_, err := newWBCFromSettings(context.Background(), app, kubeClient, nil, settings)
 		assert.Error(t, err)
 	})
 
@@ -2157,7 +2157,7 @@ func Test_newWBCFromSettings(t *testing.T) {
 				PullRequest: &api.PullRequest{GitHub: &api.PullRequestGitHub{}},
 			},
 		}
-		_, err := newWBCFromSettings(context.Background(), app, kubeClient, settings)
+		_, err := newWBCFromSettings(context.Background(), app, kubeClient, nil, settings)
 		assert.ErrorContains(t, err, "pullRequest mode does not support colon branch format")
 	})
 
@@ -2170,7 +2170,7 @@ func Test_newWBCFromSettings(t *testing.T) {
 				PullRequest: &api.PullRequest{GitHub: &api.PullRequestGitHub{}},
 			},
 		}
-		wbc, err := newWBCFromSettings(context.Background(), app, kubeClient, settings)
+		wbc, err := newWBCFromSettings(context.Background(), app, kubeClient, nil, settings)
 		assert.NoError(t, err)
 		assert.Equal(t, PRProviderGitHub, wbc.PRProvider)
 	})
@@ -2183,7 +2183,7 @@ func Test_newWBCFromSettings(t *testing.T) {
 				PullRequest: &api.PullRequest{GitHub: &api.PullRequestGitHub{}},
 			},
 		}
-		wbc, err := newWBCFromSettings(context.Background(), app, kubeClient, settings)
+		wbc, err := newWBCFromSettings(context.Background(), app, kubeClient, nil, settings)
 		assert.NoError(t, err)
 		assert.Equal(t, PRProviderGitHub, wbc.PRProvider)
 	})
@@ -2196,7 +2196,7 @@ func Test_newWBCFromSettings(t *testing.T) {
 				PullRequest: &api.PullRequest{GitLab: &api.PullRequestGitLab{}},
 			},
 		}
-		wbc, err := newWBCFromSettings(context.Background(), app, kubeClient, settings)
+		wbc, err := newWBCFromSettings(context.Background(), app, kubeClient, nil, settings)
 		assert.NoError(t, err)
 		assert.Equal(t, PRProviderGitLab, wbc.PRProvider)
 	})
@@ -2209,7 +2209,7 @@ func Test_newWBCFromSettings(t *testing.T) {
 				PullRequest: &api.PullRequest{},
 			},
 		}
-		_, err := newWBCFromSettings(context.Background(), app, kubeClient, settings)
+		_, err := newWBCFromSettings(context.Background(), app, kubeClient, nil, settings)
 		assert.ErrorContains(t, err, "pullRequest must have exactly one provider configured, got 0")
 	})
 
@@ -2224,7 +2224,7 @@ func Test_newWBCFromSettings(t *testing.T) {
 				},
 			},
 		}
-		_, err := newWBCFromSettings(context.Background(), app, kubeClient, settings)
+		_, err := newWBCFromSettings(context.Background(), app, kubeClient, nil, settings)
 		assert.ErrorContains(t, err, "pullRequest must have exactly one provider configured, got 2")
 	})
 
@@ -2233,7 +2233,7 @@ func Test_newWBCFromSettings(t *testing.T) {
 		settings := &api.WriteBackConfig{
 			Method: strPtr("git"),
 		}
-		wbc, err := newWBCFromSettings(context.Background(), app, kubeClient, settings)
+		wbc, err := newWBCFromSettings(context.Background(), app, kubeClient, nil, settings)
 		assert.NoError(t, err)
 		assert.Equal(t, PRProviderUnsupported, wbc.PRProvider)
 	})
@@ -3599,7 +3599,7 @@ func Test_FilterApplicationsForUpdate(t *testing.T) {
 				},
 			}
 			// Execute
-			appsForUpdate, err := FilterApplicationsForUpdate(ctx, client, &kubeClient, tc.imageUpdaterCR, nil)
+			appsForUpdate, err := FilterApplicationsForUpdate(ctx, client, &kubeClient, nil, tc.imageUpdaterCR, nil)
 
 			// Assert
 			if tc.expectError {
