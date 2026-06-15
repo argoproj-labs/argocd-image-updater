@@ -29,12 +29,13 @@ func TestACRWebhook_Validate(t *testing.T) {
 	webhook := NewACRWebhook(secret)
 
 	tests := []struct {
-		name        string
-		method      string
-		contentType string
-		authHeader  string
-		noSecret    bool
-		expectError bool
+		name           string
+		method         string
+		contentType    string
+		authHeader     string
+		noSecret       bool
+		expectError    bool
+		expectedErrMsg string
 	}{
 		{
 			name:        "valid POST request with correct secret",
@@ -65,18 +66,20 @@ func TestACRWebhook_Validate(t *testing.T) {
 			expectError: true,
 		},
 		{
-			name:        "missing Authorization header when secret is configured",
-			method:      "POST",
-			contentType: "application/json",
-			authHeader:  "",
-			expectError: true,
+			name:           "missing Authorization header when secret is configured",
+			method:         "POST",
+			contentType:    "application/json",
+			authHeader:     "",
+			expectError:    true,
+			expectedErrMsg: "missing Authorization header when secret is configured",
 		},
 		{
-			name:        "incorrect secret",
-			method:      "POST",
-			contentType: "application/json",
-			authHeader:  "not-the-secret",
-			expectError: true,
+			name:           "incorrect secret",
+			method:         "POST",
+			contentType:    "application/json",
+			authHeader:     "not-the-secret",
+			expectError:    true,
+			expectedErrMsg: "invalid webhook secret",
 		},
 	}
 
@@ -99,8 +102,10 @@ func TestACRWebhook_Validate(t *testing.T) {
 
 			if tt.expectError {
 				assert.Error(t, err)
-			}
-			if !tt.expectError {
+				if tt.expectedErrMsg != "" {
+					assert.EqualError(t, err, tt.expectedErrMsg)
+				}
+			} else {
 				assert.NoError(t, err)
 			}
 		})

@@ -55,7 +55,7 @@ func (a *ACRWebhook) Validate(r *http.Request) error {
 		}
 
 		if subtle.ConstantTimeCompare([]byte(authHeader), []byte(a.secret)) != 1 {
-			return fmt.Errorf("incorrect webhook secret")
+			return fmt.Errorf("invalid webhook secret")
 		}
 	}
 
