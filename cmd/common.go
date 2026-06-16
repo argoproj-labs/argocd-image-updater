@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/argoproj/argo-cd/v3/util/askpass"
+	"github.com/argoproj/argo-cd/v3/util/db"
+	"github.com/argoproj/argo-cd/v3/util/settings"
 	"github.com/go-logr/logr"
 	"go.uber.org/ratelimit"
 
@@ -95,6 +97,18 @@ func SetupCommon(ctx context.Context, cfg *controller.ImageUpdaterConfig, setupL
 		setupLogger.Error(err, "could not create K8s client")
 		return err
 	}
+
+	// Create a shared Argo CD settings manager and database so that informers
+	// are started once and reused for the lifetime of the controller. Previously,
+	// every Git credential lookup created its own SettingsManager, leaking
+	// informer goroutines (GITOPS-9938).
+	settingsMgr := settings.NewSettingsManager(ctx,
+		cfg.KubeClient.KubeClient.Clientset,
+		cfg.KubeClient.KubeClient.Namespace)
+	cfg.ArgocdDB = db.NewDB(
+		cfg.KubeClient.KubeClient.Namespace,
+		settingsMgr,
+		cfg.KubeClient.KubeClient.Clientset)
 
 	// Start up the credentials store server
 	cs := askpass.NewServer(askpass.SocketPath)

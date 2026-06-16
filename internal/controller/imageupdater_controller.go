@@ -30,6 +30,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
+	"github.com/argoproj/argo-cd/v3/util/db"
+
 	api "github.com/argoproj-labs/argocd-image-updater/api/v1alpha1"
 	"github.com/argoproj-labs/argocd-image-updater/ext/git"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/argocd"
@@ -48,6 +50,7 @@ type ImageUpdaterConfig struct {
 	LogLevel               string
 	LogFormat              string
 	KubeClient             *kube.ImageUpdaterKubernetesClient
+	ArgocdDB               db.ArgoDB
 	MaxConcurrentApps      int
 	RegistriesConf         string
 	GitCommitUser          string

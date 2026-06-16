@@ -9,8 +9,6 @@ import (
 
 	"github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1"
 	"github.com/argoproj/argo-cd/v3/util/cert"
-	"github.com/argoproj/argo-cd/v3/util/db"
-	"github.com/argoproj/argo-cd/v3/util/settings"
 
 	"github.com/argoproj-labs/argocd-image-updater/ext/git"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/kube"
@@ -22,7 +20,7 @@ func getGitCredsSource(ctx context.Context, creds string, kubeClient *kube.Image
 	switch {
 	case creds == "repocreds":
 		return func(app *v1alpha1.Application) (git.Creds, error) {
-			return getCredsFromArgoCD(ctx, wbc, kubeClient, app.Spec.Project)
+			return getCredsFromArgoCD(ctx, wbc, app.Spec.Project)
 		}, nil
 	case strings.HasPrefix(creds, "secret:"):
 		return func(app *v1alpha1.Application) (git.Creds, error) {
@@ -33,13 +31,12 @@ func getGitCredsSource(ctx context.Context, creds string, kubeClient *kube.Image
 }
 
 // getCredsFromArgoCD loads repository credentials from Argo CD settings
-func getCredsFromArgoCD(ctx context.Context, wbc *WriteBackConfig, kubeClient *kube.ImageUpdaterKubernetesClient, project string) (git.Creds, error) {
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
-	settingsMgr := settings.NewSettingsManager(ctx, kubeClient.KubeClient.Clientset, kubeClient.KubeClient.Namespace)
-	argocdDB := db.NewDB(kubeClient.KubeClient.Namespace, settingsMgr, kubeClient.KubeClient.Clientset)
-	repo, err := argocdDB.GetRepository(ctx, wbc.GitRepo, project)
+// using the shared ArgocdDB instance to avoid creating per-call informer goroutines.
+func getCredsFromArgoCD(ctx context.Context, wbc *WriteBackConfig, project string) (git.Creds, error) {
+	if wbc.ArgocdDB == nil {
+		return nil, fmt.Errorf("argocd database not configured for repository credential lookup")
+	}
+	repo, err := wbc.ArgocdDB.GetRepository(ctx, wbc.GitRepo, project)
 	if err != nil {
 		return nil, err
 	}
