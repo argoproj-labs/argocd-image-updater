@@ -1,5 +1,8 @@
 name: Integration tests
 on:
+  push:
+    branches:
+    - 'master'
   pull_request:
     branches:
     - 'master'
@@ -22,8 +25,8 @@ permissions:
 jobs:
   check-go:
     name: Ensure Go modules synchronicity
-    # Skip on label events — this job is already covered by the pull_request run.
-    if: github.event_name != 'pull_request_target'
+    # Skip on label events and push-to-master (already passed pre-merge).
+    if: github.event_name != 'pull_request_target' && github.event_name != 'push'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -41,7 +44,7 @@ jobs:
           git diff --exit-code -- .
   codegen:
     name: Run codegen
-    if: github.event_name != 'pull_request_target'
+    if: github.event_name != 'pull_request_target' && github.event_name != 'push'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -69,7 +72,7 @@ jobs:
           git diff --exit-code -- . ':!go.sum' ':!go.mod' ':!assets/swagger.json' | tee codegen.patch
   lint:
     name: Ensure code is correctly linted
-    if: github.event_name != 'pull_request_target'
+    if: github.event_name != 'pull_request_target' && github.event_name != 'push'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
