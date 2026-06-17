@@ -3,9 +3,9 @@ module github.com/argoproj-labs/argocd-image-updater/test/ginkgo
 go 1.25.9
 
 require (
-	github.com/argoproj-labs/argocd-image-updater v1.1.0
+	github.com/argoproj-labs/argocd-image-updater v1.1.2
 	github.com/argoproj-labs/argocd-operator v0.17.0
-	github.com/argoproj/argo-cd/v3 v3.3.9
+	github.com/argoproj/argo-cd/v3 v3.3.11
 	github.com/argoproj/gitops-engine v0.7.1-0.20251217140045-5baed5604d2d
 	github.com/onsi/ginkgo/v2 v2.28.1
 	github.com/onsi/gomega v1.39.1
@@ -128,8 +128,8 @@ require (
 	github.com/x448/float16 v0.8.4 // indirect
 	github.com/xanzy/ssh-agent v0.3.3 // indirect
 	github.com/xlab/treeprint v1.2.0 // indirect
-	go.opentelemetry.io/otel v1.40.0 // indirect
-	go.opentelemetry.io/otel/trace v1.40.0 // indirect
+	go.opentelemetry.io/otel v1.43.0 // indirect
+	go.opentelemetry.io/otel/trace v1.43.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.2 // indirect
