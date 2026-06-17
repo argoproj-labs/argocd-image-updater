@@ -10,10 +10,10 @@ import (
 
 func TestNewQuayWebhook(t *testing.T) {
 	secret := "test"
-	webhook := NewDockerHubWebhook(secret)
+	webhook := NewQuayWebhook(secret)
 
 	assert.NotNil(t, webhook, "webhook was nil")
-	assert.Equal(t, webhook.secret, secret, "Secret is not the same expected %s but got %s", secret, webhook.secret)
+	assert.Equal(t, secret, webhook.secret, "Secret is not the same expected %s but got %s", secret, webhook.secret)
 }
 
 func TestQuayWebhook_GetRegistryType(t *testing.T) {
@@ -21,7 +21,7 @@ func TestQuayWebhook_GetRegistryType(t *testing.T) {
 	registryType := webhook.GetRegistryType()
 
 	assert.NotNil(t, webhook, "Webhook was nil")
-	assert.Equal(t, registryType, "quay.io", "Registry type is not quay.io got: %s", registryType)
+	assert.Equal(t, "quay.io", registryType, "Registry type is not quay.io got: %s", registryType)
 }
 
 func TestQuayWebhook_Validate(t *testing.T) {
@@ -186,9 +186,9 @@ func TestQuayWebhook_Parse(t *testing.T) {
 			}
 
 			assert.NotNil(t, event, "Event was nil")
-			assert.Equal(t, event.RegistryURL, "quay.io", "Expected repository url to be %s, but got %s", "quay.io", event.RegistryURL)
-			assert.Equal(t, event.Repository, tt.expectedRepo, "Expect repository to be %s, but got %s", tt.expectedRepo, event.Repository)
-			assert.Equal(t, event.Tag, tt.expectedTag, "Expected tag to be %s, but got %s", tt.expectedTag, event.Tag)
+			assert.Equal(t, "quay.io", event.RegistryURL, "Expected repository url to be %s, but got %s", "quay.io", event.RegistryURL)
+			assert.Equal(t, tt.expectedRepo, event.Repository, "Expect repository to be %s, but got %s", tt.expectedRepo, event.Repository)
+			assert.Equal(t, tt.expectedTag, event.Tag, "Expected tag to be %s, but got %s", tt.expectedTag, event.Tag)
 		})
 	}
 }
