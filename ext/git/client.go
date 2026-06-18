@@ -14,7 +14,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/bmatcuk/doublestar/v4"
@@ -718,7 +717,7 @@ func (m *nativeGitClient) VerifyCommitSignature(ctx context.Context, revision st
 
 // IsAnnotatedTag returns true if the revision points to an annotated tag
 func (m *nativeGitClient) IsAnnotatedTag(ctx context.Context, revision string) bool {
-	cmd := exec.Command("git", "describe", "--exact-match", revision)
+	cmd := exec.CommandContext(ctx, "git", "describe", "--exact-match", revision)
 	out, err := m.runCmdOutput(ctx, cmd, runOpts{SkipErrorLogging: true})
 	if out != "" && err == nil {
 		return true
@@ -752,14 +751,14 @@ func (m *nativeGitClient) ChangedFiles(ctx context.Context, revision string, tar
 
 // runWrapper runs a custom command with all the semantics of running the Git client
 func (m *nativeGitClient) runGnuPGWrapper(ctx context.Context, wrapper string, args ...string) (string, error) {
-	cmd := exec.Command(wrapper, args...)
+	cmd := exec.CommandContext(ctx, wrapper, args...)
 	cmd.Env = append(cmd.Env, fmt.Sprintf("GNUPGHOME=%s", common.GetGnuPGHomePath()), "LANG=C")
 	return m.runCmdOutput(ctx, cmd, runOpts{})
 }
 
 // runCmd is a convenience function to run a command in a given directory and return its output
 func (m *nativeGitClient) runCmd(ctx context.Context, args ...string) (string, error) {
-	cmd := exec.Command("git", args...)
+	cmd := exec.CommandContext(ctx, "git", args...)
 	return m.runCmdOutput(ctx, cmd, runOpts{})
 }
 
@@ -780,7 +779,7 @@ func (m *nativeGitClient) runCredentialedCmd(ctx context.Context, args ...string
 		}
 	}
 
-	cmd := exec.Command("git", args...)
+	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Env = append(cmd.Env, environ...)
 	_, err = m.runCmdOutput(ctx, cmd, runOpts{})
 	return err
@@ -820,13 +819,22 @@ func (m *nativeGitClient) runCmdOutput(ctx context.Context, cmd *exec.Cmd, ropts
 		}
 	}
 	cmd.Env = proxy.UpsertEnv(cmd, m.proxy, "")
+
+	// Run git in its own process group so that child processes (e.g. git-remote-https)
+	// can be cleaned up when the parent is killed on timeout or context cancellation.
+	setSysProcAttr(cmd)
+
 	opts := executil.ExecRunOpts{
-		TimeoutBehavior: executil.TimeoutBehavior{
-			Signal:     syscall.SIGTERM,
-			ShouldWait: true,
-		},
+		TimeoutBehavior:  newTimeoutBehavior(),
 		SkipErrorLogging: ropts.SkipErrorLogging,
 		CaptureStderr:    ropts.CaptureStderr,
 	}
-	return executil.RunWithExecRunOpts(cmd, opts)
+	output, err := executil.RunWithExecRunOpts(cmd, opts)
+
+	// After the git command finishes (normally or via timeout/context cancellation),
+	// kill the entire process group to clean up any orphaned child processes such as
+	// git-remote-https.
+	killProcessGroup(cmd)
+
+	return output, err
 }
