@@ -159,7 +159,7 @@ func (m *nativeGitClient) runCredentialedCmdWithOutput(ctx context.Context, args
 		}
 	}
 
-	cmd := exec.Command("git", args...)
+	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Env = append(cmd.Env, environ...)
 	return m.runCmdOutput(ctx, cmd, runOpts{})
 }
