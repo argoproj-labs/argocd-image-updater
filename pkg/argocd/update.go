@@ -19,6 +19,7 @@ import (
 
 	iuapi "github.com/argoproj-labs/argocd-image-updater/api/v1alpha1"
 	"github.com/argoproj-labs/argocd-image-updater/ext/git"
+	"github.com/argoproj-labs/argocd-image-updater/pkg/aws"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/kube"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/image"
@@ -106,59 +107,104 @@ func UpdateApplication(ctx context.Context, updateConf *UpdateConfiguration, sta
 			GetPlatformOptions(imageOpCtx, updateConf.IgnorePlatforms, applicationImage.Platforms).
 			WithMetadata(vc.Strategy.NeedsMetadata())
 
-		// If a strategy needs meta-data and tagsortmode is set for the
-		// registry, let the user know.
-		if rep.TagListSort > registry.TagListSortUnsorted && vc.Strategy.NeedsMetadata() {
-			imgCtx.Infof("taglistsort is set to '%s' but update strategy '%s' requires metadata. Results may not be what you expect.", rep.TagListSort.String(), vc.Strategy.String())
-		}
-
-		// retrieves an image's pull secret credentials
-		secretVal := applicationImage.PullSecret
-		if secretVal == "" {
-			imgCtx.Tracef("No pull secret configured for this image")
-		}
-		// The endpoint can provide default credentials for pulling images
-		creds, err := rep.SetEndpointCredentials(imageOpCtx, updateConf.KubeClient.KubeClient, secretVal)
-		if err != nil {
-			imgCtx.Errorf("Could not set registry endpoint credentials: %v", err)
-			result.NumErrors += 1
-			continue
-		}
-
-		regClient, err := updateConf.NewRegFN(rep, creds.Username, creds.Password)
-		if err != nil {
-			imgCtx.Errorf("Could not create registry client: %v", err)
-			result.NumErrors += 1
-			continue
-		}
-
-		// Get list of available image tags from the repository
-		// Load creds, create registry client, fetch tags (retry once on 401/403)
-		tags, err := rep.GetTags(imageOpCtx, applicationImage.ContainerImage, regClient, &vc, secretVal == "")
-		if err != nil {
-			// Retry once on 401/403
-			if errors.Is(err, registry.ErrCredentialsInvalid) {
-				imgCtx.Infof("credentials invalid (401/403), refetching and retrying once")
-				// The endpoint can provide default credentials for pulling images
-				creds, err = rep.SetEndpointCredentials(imageOpCtx, updateConf.KubeClient.KubeClient, secretVal)
-				if err != nil {
-					imgCtx.Errorf("Could not set registry endpoint credentials: %v", err)
-					result.NumErrors += 1
-					continue
-				}
-
-				regClient, err = updateConf.NewRegFN(rep, creds.Username, creds.Password)
-				if err != nil {
-					imgCtx.Errorf("Could not create registry client: %v", err)
-					result.NumErrors += 1
-					continue
-				}
-				tags, err = rep.GetTags(imageOpCtx, applicationImage.ContainerImage, regClient, &vc, secretVal == "")
+		var tags *tag.ImageTagList
+		if webhookMatchesConfiguredImage(updateConf.WebhookEvent, applicationImage.ContainerImage) {
+			eventTag := updateConf.WebhookEvent.Tag
+			if (vc.MatchFunc != nil && !vc.MatchFunc(eventTag, vc.MatchArgs)) || vc.IsTagIgnored(imageOpCtx, eventTag) {
+				imgCtx.Debugf("Event tag %q did not pass allow/ignore filters, skipping", eventTag)
+				result.NumSkipped += 1
+				continue
 			}
+
+			registryURL := applicationImage.ContainerImage.RegistryURL
+			if registryURL == "" {
+				registryURL = rep.RegistryAPI
+			}
+			if aws.IsECRRegistryURL(registryURL) {
+				region := updateConf.AWSRegion
+				if region == "" {
+					_, parsedRegion, ok := aws.ParseECRRegistryURL(registryURL)
+					if ok {
+						region = parsedRegion
+					}
+				}
+				imgTag, describeErr := aws.DescribeImageTag(imageOpCtx, aws.ClientConfig{
+					Region:      region,
+					EndpointURL: updateConf.AWSEndpointURL,
+				}, applicationImage.ContainerImage.ImageName, eventTag)
+				if errors.Is(describeErr, aws.ErrSkippedMediaType) {
+					imgCtx.Infof("Skipping event-driven update for unsupported manifest media type: %v", describeErr)
+					result.NumSkipped += 1
+					continue
+				}
+				if describeErr != nil {
+					imgCtx.Errorf("Could not describe ECR image: %v", describeErr)
+					result.NumErrors += 1
+					continue
+				}
+				tags = tag.NewImageTagList()
+				tags.Add(imgTag)
+				imgCtx.Debugf("Using ECR DescribeImages for event-driven tag %q, skipping repository tag listing", eventTag)
+			} else {
+				vc.ExactTag = eventTag
+			}
+		}
+
+		if tags == nil {
+			// If a strategy needs meta-data and tagsortmode is set for the
+			// registry, let the user know.
+			if rep.TagListSort > registry.TagListSortUnsorted && vc.Strategy.NeedsMetadata() {
+				imgCtx.Infof("taglistsort is set to '%s' but update strategy '%s' requires metadata. Results may not be what you expect.", rep.TagListSort.String(), vc.Strategy.String())
+			}
+
+			// retrieves an image's pull secret credentials
+			secretVal := applicationImage.PullSecret
+			if secretVal == "" {
+				imgCtx.Tracef("No pull secret configured for this image")
+			}
+			// The endpoint can provide default credentials for pulling images
+			creds, err := rep.SetEndpointCredentials(imageOpCtx, updateConf.KubeClient.KubeClient, secretVal)
 			if err != nil {
-				imgCtx.Errorf("Could not get tags from registry: %v", err)
+				imgCtx.Errorf("Could not set registry endpoint credentials: %v", err)
 				result.NumErrors += 1
 				continue
+			}
+
+			regClient, err := updateConf.NewRegFN(rep, creds.Username, creds.Password)
+			if err != nil {
+				imgCtx.Errorf("Could not create registry client: %v", err)
+				result.NumErrors += 1
+				continue
+			}
+
+			// Get list of available image tags from the repository
+			// Load creds, create registry client, fetch tags (retry once on 401/403)
+			tags, err = rep.GetTags(imageOpCtx, applicationImage.ContainerImage, regClient, &vc, secretVal == "")
+			if err != nil {
+				// Retry once on 401/403
+				if errors.Is(err, registry.ErrCredentialsInvalid) {
+					imgCtx.Infof("credentials invalid (401/403), refetching and retrying once")
+					// The endpoint can provide default credentials for pulling images
+					creds, err = rep.SetEndpointCredentials(imageOpCtx, updateConf.KubeClient.KubeClient, secretVal)
+					if err != nil {
+						imgCtx.Errorf("Could not set registry endpoint credentials: %v", err)
+						result.NumErrors += 1
+						continue
+					}
+
+					regClient, err = updateConf.NewRegFN(rep, creds.Username, creds.Password)
+					if err != nil {
+						imgCtx.Errorf("Could not create registry client: %v", err)
+						result.NumErrors += 1
+						continue
+					}
+					tags, err = rep.GetTags(imageOpCtx, applicationImage.ContainerImage, regClient, &vc, secretVal == "")
+				}
+				if err != nil {
+					imgCtx.Errorf("Could not get tags from registry: %v", err)
+					result.NumErrors += 1
+					continue
+				}
 			}
 		}
 
@@ -180,6 +226,17 @@ func UpdateApplication(ctx context.Context, updateConf *UpdateConfiguration, sta
 			imgCtx.Debugf("No suitable image tag for upgrade found in list of available tags.")
 			result.NumSkipped += 1
 			continue
+		}
+
+		if webhookMatchesConfiguredImage(updateConf.WebhookEvent, applicationImage.ContainerImage) {
+			stale, staleErr := isStaleEventDrivenCandidate(imageOpCtx, updateConf, updateConf.UpdateApp, applicationImage, rep, latest)
+			if staleErr != nil {
+				imgCtx.Warnf("Could not check event freshness, proceeding with update: %v", staleErr)
+			} else if stale {
+				imgCtx.Infof("Skipping stale event-driven update for %s: candidate is not newer than the application image", latest.String())
+				result.NumSkipped += 1
+				continue
+			}
 		}
 
 		if needsUpdate(updateableImage, applicationImage.ContainerImage, latest, vc.Strategy) {

@@ -61,6 +61,9 @@ type VersionConstraint struct {
 	IgnoreList []string
 	Strategy   UpdateStrategy
 	Options    *options.ManifestOptions
+	// ExactTag, when set, skips listing all repository tags and only considers this tag.
+	// Used for event-driven updates (e.g. ECR push via SQS/webhook).
+	ExactTag string
 }
 
 type MatchFuncFn func(tagName string, pattern interface{}) bool

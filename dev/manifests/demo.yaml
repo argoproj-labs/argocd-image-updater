@@ -1,0 +1,40 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: demo-app
+  namespace: argocd
+  labels:
+    app: demo-app
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/argoproj/argocd-example-apps.git
+    targetRevision: HEAD
+    path: guestbook
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: default
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+---
+apiVersion: argocd-image-updater.argoproj.io/v1alpha1
+kind: ImageUpdater
+metadata:
+  name: demo-app
+  namespace: argocd
+spec:
+  commonUpdateSettings:
+    updateStrategy: digest
+    allowTags: "regexp:^dev-.*"
+  writeBackConfig:
+    method: argocd
+  applicationRefs:
+    - namePattern: demo-app
+      images:
+        - alias: demo
+          imageName: 000000000000.dkr.ecr.us-east-1.amazonaws.com/demo-app:dev-latest
+          manifestTargets:
+            kustomize:
+              name: demo-app

@@ -55,21 +55,28 @@ func (ep *RegistryEndpoint) GetTags(ctx context.Context, img *image.ContainerIma
 		logCtx.Errorf("Failed to create repository for image '%s': %v", nameInRegistry, err)
 		return nil, err
 	}
-	tTags, err := regClient.Tags(ctx)
-	if err != nil {
-		// Only treat 401/403 as invalid cached creds when creds are still within their validity window:
-		// credsexpire is set, we got auth error, and cache has not yet expired (e.g. registry changed password).
-		// When creds are already expired, do not return ErrCredentialsInvalid; let the original error propagate.
-		ep.lock.Lock()
-		if usingEndpointCreds && ep.CredsExpire > 0 && !ep.credsExpiredByTime() && IsAuthError(ctx, err) {
-			logCtx.Infof("registry returned 401/403 with valid cached creds, clearing cache for refetch")
-			ep.Username = ""
-			ep.Password = ""
+
+	var tTags []string
+	if vc.ExactTag != "" {
+		logCtx.Debugf("Using exact tag %q from event-driven update, skipping repository tag listing", vc.ExactTag)
+		tTags = []string{vc.ExactTag}
+	} else {
+		tTags, err = regClient.Tags(ctx)
+		if err != nil {
+			// Only treat 401/403 as invalid cached creds when creds are still within their validity window:
+			// credsexpire is set, we got auth error, and cache has not yet expired (e.g. registry changed password).
+			// When creds are already expired, do not return ErrCredentialsInvalid; let the original error propagate.
+			ep.lock.Lock()
+			if usingEndpointCreds && ep.CredsExpire > 0 && !ep.credsExpiredByTime() && IsAuthError(ctx, err) {
+				logCtx.Infof("registry returned 401/403 with valid cached creds, clearing cache for refetch")
+				ep.Username = ""
+				ep.Password = ""
+				ep.lock.Unlock()
+				return nil, ErrCredentialsInvalid
+			}
 			ep.lock.Unlock()
-			return nil, ErrCredentialsInvalid
+			return nil, err
 		}
-		ep.lock.Unlock()
-		return nil, err
 	}
 
 	tags := []string{}

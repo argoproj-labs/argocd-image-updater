@@ -171,6 +171,27 @@ func Test_GetTags(t *testing.T) {
 		assert.Equal(t, "olduser", ep.Username)
 		assert.Equal(t, "oldpass", ep.Password)
 	})
+
+	t.Run("ExactTag skips repository tag listing", func(t *testing.T) {
+		regClient := mocks.RegistryClient{}
+		regClient.On("NewRepository", mock.Anything).Return(nil)
+
+		ep, err := GetRegistryEndpoint(context.Background(), &image.ContainerImage{RegistryURL: ""})
+		require.NoError(t, err)
+		ep.TagListSort = TagListSortLatestFirst
+
+		img := image.NewFromIdentifier("foo/bar:latest")
+		vc := &image.VersionConstraint{
+			Strategy: image.StrategyNewestBuild,
+			ExactTag: "only-tag",
+			Options:  options.NewManifestOptions(),
+		}
+
+		tl, err := ep.GetTags(context.Background(), img, &regClient, vc, true)
+		require.NoError(t, err)
+		assert.Equal(t, []string{"only-tag"}, tl.Tags())
+		regClient.AssertNotCalled(t, "Tags", mock.Anything)
+	})
 }
 
 func Test_ExpireCredentials(t *testing.T) {

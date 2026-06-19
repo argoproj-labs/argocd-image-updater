@@ -40,8 +40,11 @@ type UpdateConfiguration struct {
 	GitCommitSigningMethod string
 	GitCommitSignOff       bool
 	DisableKubeEvents      bool
-	IgnorePlatforms        bool
 	GitCreds               git.CredsStore
+	IgnorePlatforms        bool
+	WebhookEvent           *WebhookEvent
+	AWSRegion              string
+	AWSEndpointURL         string
 }
 
 type GitCredsSource func(app *argocdapi.Application) (git.Creds, error)
@@ -213,4 +216,15 @@ type WebhookEvent struct {
 	Tag string `json:"tag,omitempty"`
 	// Digest is the content digest of the image
 	Digest string `json:"digest,omitempty"`
+}
+
+// webhookMatchesConfiguredImage reports whether event targets the configured image repository.
+func webhookMatchesConfiguredImage(event *WebhookEvent, img *image.ContainerImage) bool {
+	if event == nil || img == nil {
+		return false
+	}
+	if img.RegistryURL != "" && img.RegistryURL != event.RegistryURL {
+		return false
+	}
+	return img.ImageName == event.Repository
 }
