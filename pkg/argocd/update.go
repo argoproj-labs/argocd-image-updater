@@ -19,7 +19,6 @@ import (
 
 	iuapi "github.com/argoproj-labs/argocd-image-updater/api/v1alpha1"
 	"github.com/argoproj-labs/argocd-image-updater/ext/git"
-	"github.com/argoproj-labs/argocd-image-updater/pkg/aws"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/kube"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/image"
@@ -108,47 +107,17 @@ func UpdateApplication(ctx context.Context, updateConf *UpdateConfiguration, sta
 			WithMetadata(vc.Strategy.NeedsMetadata())
 
 		var tags *tag.ImageTagList
-		if webhookMatchesConfiguredImage(updateConf.WebhookEvent, applicationImage.ContainerImage) {
-			eventTag := updateConf.WebhookEvent.Tag
-			if (vc.MatchFunc != nil && !vc.MatchFunc(eventTag, vc.MatchArgs)) || vc.IsTagIgnored(imageOpCtx, eventTag) {
-				imgCtx.Debugf("Event tag %q did not pass allow/ignore filters, skipping", eventTag)
-				result.NumSkipped += 1
-				continue
-			}
-
-			registryURL := applicationImage.ContainerImage.RegistryURL
-			if registryURL == "" {
-				registryURL = rep.RegistryAPI
-			}
-			if aws.IsECRRegistryURL(registryURL) {
-				region := updateConf.AWSRegion
-				if region == "" {
-					_, parsedRegion, ok := aws.ParseECRRegistryURL(registryURL)
-					if ok {
-						region = parsedRegion
-					}
-				}
-				imgTag, describeErr := aws.DescribeImageTag(imageOpCtx, aws.ClientConfig{
-					Region:      region,
-					EndpointURL: updateConf.AWSEndpointURL,
-				}, applicationImage.ContainerImage.ImageName, eventTag)
-				if errors.Is(describeErr, aws.ErrSkippedMediaType) {
-					imgCtx.Infof("Skipping event-driven update for unsupported manifest media type: %v", describeErr)
-					result.NumSkipped += 1
-					continue
-				}
-				if describeErr != nil {
-					imgCtx.Errorf("Could not describe ECR image: %v", describeErr)
-					result.NumErrors += 1
-					continue
-				}
-				tags = tag.NewImageTagList()
-				tags.Add(imgTag)
-				imgCtx.Debugf("Using ECR DescribeImages for event-driven tag %q, skipping repository tag listing", eventTag)
-			} else {
-				vc.ExactTag = eventTag
-			}
+		eventTags := resolveEventDrivenTags(imageOpCtx, updateConf, applicationImage, rep, &vc)
+		if eventTags.skipped {
+			result.NumSkipped += 1
+			continue
 		}
+		if eventTags.err != nil {
+			imgCtx.Errorf("Could not resolve event-driven image tag: %v", eventTags.err)
+			result.NumErrors += 1
+			continue
+		}
+		tags = eventTags.tags
 
 		if tags == nil {
 			// If a strategy needs meta-data and tagsortmode is set for the
@@ -228,15 +197,13 @@ func UpdateApplication(ctx context.Context, updateConf *UpdateConfiguration, sta
 			continue
 		}
 
-		if webhookMatchesConfiguredImage(updateConf.WebhookEvent, applicationImage.ContainerImage) {
-			stale, staleErr := isStaleEventDrivenCandidate(imageOpCtx, updateConf, updateConf.UpdateApp, applicationImage, rep, latest)
-			if staleErr != nil {
-				imgCtx.Warnf("Could not check event freshness, proceeding with update: %v", staleErr)
-			} else if stale {
-				imgCtx.Infof("Skipping stale event-driven update for %s: candidate is not newer than the application image", latest.String())
-				result.NumSkipped += 1
-				continue
-			}
+		stale, staleErr := skipIfStaleEventDrivenUpdate(imageOpCtx, updateConf, applicationImage, rep, latest)
+		if staleErr != nil {
+			imgCtx.Warnf("Could not check event freshness, proceeding with update: %v", staleErr)
+		} else if stale {
+			imgCtx.Infof("Skipping stale event-driven update for %s: candidate is not newer than the application image", latest.String())
+			result.NumSkipped += 1
+			continue
 		}
 
 		if needsUpdate(updateableImage, applicationImage.ContainerImage, latest, vc.Strategy) {
@@ -318,6 +285,7 @@ func UpdateApplication(ctx context.Context, updateConf *UpdateConfiguration, sta
 				result.NumImagesUpdated = 0
 			} else {
 				baseLogger.Infof("Successfully updated the live application spec")
+				recordEventDrivenWrite(updateConf, changeList)
 				if !updateConf.DisableKubeEvents && updateConf.KubeClient != nil {
 					annotations := map[string]string{}
 					for i, c := range changeList {

@@ -1076,6 +1076,17 @@ func getApplicationSourceType(app *argocdapi.Application, wbc *WriteBackConfig) 
 		}
 	}
 
+	// Without an Argo CD control plane, Status.SourceType is often unset even when
+	// the Application spec declares Helm or Kustomize overrides.
+	if app.Status.SourceType == "" && app.Spec.Source != nil {
+		if app.Spec.Source.Kustomize != nil {
+			return argocdapi.ApplicationSourceTypeKustomize
+		}
+		if app.Spec.Source.Helm != nil {
+			return argocdapi.ApplicationSourceTypeHelm
+		}
+	}
+
 	return app.Status.SourceType
 }
 

@@ -205,6 +205,7 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 
 			// Controller mode: Reconcile runs and finalizers clean up metrics on CR delete.
 			cfg.EnableCRMetrics = true
+			cfg.EventFreshness = argocd.NewEventFreshnessStore()
 
 			reconciler := &controller.ImageUpdaterReconciler{
 				Client:                  mgr.GetClient(),
@@ -363,6 +364,7 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 	controllerCmd.Flags().StringVar(&cfg.SQSQueueURL, "sqs-queue-url", env.GetStringVal("SQS_QUEUE_URL", ""), "SQS queue URL for ECR push events")
 	controllerCmd.Flags().StringVar(&cfg.AWSRegion, "aws-region", env.GetStringVal("AWS_REGION", ""), "AWS region for SQS and ECR API calls")
 	controllerCmd.Flags().StringVar(&cfg.AWSEndpointURL, "aws-endpoint-url", env.GetStringVal("AWS_ENDPOINT_URL", ""), "Custom AWS endpoint URL (e.g. LocalStack)")
+	controllerCmd.Flags().BoolVar(&cfg.ECRFallbackOnDescribeError, "ecr-fallback-on-describe-error", env.GetBoolVal("ECR_FALLBACK_ON_DESCRIBE_ERROR", false), "Use ECR push event digest/time when DescribeImages fails")
 	controllerCmd.Flags().Int32Var(&cfg.SQSMaxMessages, "sqs-max-messages", int32(env.ParseNumFromEnv("SQS_MAX_MESSAGES", 10, 1, 10)), "Maximum SQS messages per receive call")
 	controllerCmd.Flags().Int32Var(&cfg.SQSWaitSeconds, "sqs-wait-seconds", int32(env.ParseNumFromEnv("SQS_WAIT_SECONDS", 20, 0, 20)), "SQS long-poll wait time in seconds")
 	controllerCmd.Flags().Int32Var(&cfg.SQSVisibilityTimeout, "sqs-visibility-timeout", int32(env.ParseNumFromEnv("SQS_VISIBILITY_TIMEOUT", 60, 0, 43200)), "SQS visibility timeout in seconds")

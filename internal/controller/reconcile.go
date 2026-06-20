@@ -96,9 +96,11 @@ func (r *ImageUpdaterReconciler) RunImageUpdater(ctx context.Context, cr *iuapi.
 				GitCommitSignOff:       r.Config.GitCommitSignOff,
 				DisableKubeEvents:      r.Config.DisableKubeEvents,
 				GitCreds:               r.Config.GitCreds,
-				WebhookEvent:           webhookEvent,
-				AWSRegion:              r.Config.AWSRegion,
-				AWSEndpointURL:         r.Config.AWSEndpointURL,
+				WebhookEvent:               webhookEvent,
+				AWSRegion:                  r.Config.AWSRegion,
+				AWSEndpointURL:             r.Config.AWSEndpointURL,
+				ECRFallbackOnDescribeError: r.Config.ECRFallbackOnDescribeError,
+				EventFreshness:             r.Config.EventFreshness,
 			}
 			res := argocd.UpdateApplication(appCtx, upconf, syncState)
 

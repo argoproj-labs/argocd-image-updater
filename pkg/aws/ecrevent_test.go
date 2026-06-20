@@ -2,6 +2,7 @@ package aws_test
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -33,6 +34,7 @@ func TestParseECREventBridgeMessage_PUSH(t *testing.T) {
 	assert.Equal(t, "my-app", event.Repository)
 	assert.Equal(t, "main-42", event.Tag)
 	assert.Equal(t, "sha256:abcdef123456", event.Digest)
+	assert.Equal(t, "2024-01-15T12:00:00Z", event.PushedAt.UTC().Format(time.RFC3339))
 }
 
 func TestParseECREventBridgeMessage_nonPush(t *testing.T) {

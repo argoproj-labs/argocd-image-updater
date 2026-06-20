@@ -11,10 +11,10 @@ import (
 // SQSConfig holds configuration for the SQS event consumer.
 type SQSConfig struct {
 	ClientConfig
-	QueueURL           string
-	MaxMessages        int32
-	WaitTimeSeconds    int32
-	VisibilityTimeout  int32
+	QueueURL          string
+	MaxMessages       int32
+	WaitTimeSeconds   int32
+	VisibilityTimeout int32
 }
 
 // SQSConsumer polls an SQS queue for EventBridge ECR push events.

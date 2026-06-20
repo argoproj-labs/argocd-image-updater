@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 )
 
 const (
@@ -69,11 +70,21 @@ func ParseECREventBridgeMessage(body []byte) (*ImagePushEvent, error) {
 		return nil, fmt.Errorf("account or region missing from ECR event")
 	}
 
+	pushedAt := time.Time{}
+	if envelope.Time != "" {
+		parsed, err := time.Parse(time.RFC3339, envelope.Time)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse event time %q: %w", envelope.Time, err)
+		}
+		pushedAt = parsed.UTC()
+	}
+
 	return &ImagePushEvent{
 		RegistryURL: BuildECRRegistryURL(envelope.Account, envelope.Region),
 		Repository:  detail.RepositoryName,
 		Tag:         detail.ImageTag,
 		Digest:      detail.ImageDigest,
+		PushedAt:    pushedAt,
 	}, nil
 }
 

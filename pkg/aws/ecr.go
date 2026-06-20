@@ -13,10 +13,10 @@ import (
 )
 
 var allowedManifestMediaTypes = map[string]struct{}{
-	"application/vnd.docker.distribution.manifest.v2+json":       {},
-	"application/vnd.docker.distribution.manifest.list.v2+json":  {},
-	"application/vnd.oci.image.manifest.v1+json":                 {},
-	"application/vnd.oci.image.index.v1+json":                  {},
+	"application/vnd.docker.distribution.manifest.v2+json":      {},
+	"application/vnd.docker.distribution.manifest.list.v2+json": {},
+	"application/vnd.oci.image.manifest.v1+json":                {},
+	"application/vnd.oci.image.index.v1+json":                   {},
 }
 
 func isAllowedManifestMediaType(mediaType string) bool {
@@ -52,7 +52,7 @@ func DescribeImageTag(ctx context.Context, cfg ClientConfig, repositoryName, ima
 
 	digest := ""
 	if detail.ImageDigest != nil {
-		digest = normalizeDigest(*detail.ImageDigest)
+		digest = NormalizeDigest(*detail.ImageDigest)
 	}
 
 	pushedAt := time.Time{}
@@ -63,7 +63,8 @@ func DescribeImageTag(ctx context.Context, cfg ClientConfig, repositoryName, ima
 	return tag.NewImageTag(imageTag, pushedAt, digest), nil
 }
 
-func normalizeDigest(digest string) string {
+// NormalizeDigest ensures a sha256 digest has the standard prefix.
+func NormalizeDigest(digest string) string {
 	if strings.HasPrefix(digest, "sha256:") {
 		return digest
 	}

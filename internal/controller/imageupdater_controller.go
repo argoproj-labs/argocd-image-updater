@@ -67,8 +67,10 @@ type ImageUpdaterConfig struct {
 	WatchNamespaces        string
 	EnableSQS              bool
 	SQSQueueURL            string
-	AWSRegion              string
-	AWSEndpointURL         string
+		AWSRegion                    string
+		AWSEndpointURL               string
+		ECRFallbackOnDescribeError   bool
+		EventFreshness               *argocd.EventFreshnessStore
 	SQSMaxMessages         int32
 	SQSWaitSeconds         int32
 	SQSVisibilityTimeout   int32

@@ -84,9 +84,10 @@ func (s *SQSPollerRunnable) processEvent(ctx context.Context, received aws.Recei
 		Repository:  pushEvent.Repository,
 		Tag:         pushEvent.Tag,
 		Digest:      pushEvent.Digest,
+		PushedAt:    pushEvent.PushedAt,
 	}
 
-	processingCtx := log.ContextWithLogger(context.Background(), logCtx)
+	processingCtx := log.ContextWithLogger(ctx, logCtx)
 	imageList := &api.ImageUpdaterList{}
 	if err := s.Reconciler.List(processingCtx, imageList); err != nil {
 		return fmt.Errorf("failed to list ImageUpdater CRs: %w", err)

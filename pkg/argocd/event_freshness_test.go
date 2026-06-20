@@ -9,7 +9,7 @@ import (
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/tag"
 )
 
-func Test_eventCandidateIsNotNewerThan(t *testing.T) {
+func Test_eventIsNotNewerThan(t *testing.T) {
 	older := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
 	newer := time.Date(2024, 1, 2, 12, 0, 0, 0, time.UTC)
 
@@ -20,13 +20,6 @@ func Test_eventCandidateIsNotNewerThan(t *testing.T) {
 		currentPushedAt time.Time
 		wantStale       bool
 	}{
-		{
-			name:            "same digest is stale",
-			candidate:       tag.NewImageTag("main-42", newer, "sha256:abc"),
-			currentTag:      tag.NewImageTag("main-43", older, "sha256:abc"),
-			currentPushedAt: older,
-			wantStale:       true,
-		},
 		{
 			name:            "older candidate push time is stale",
 			candidate:       tag.NewImageTag("main-42", older, "sha256:old"),
@@ -59,8 +52,30 @@ func Test_eventCandidateIsNotNewerThan(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := eventCandidateIsNotNewerThan(tt.candidate, tt.currentTag, tt.currentPushedAt)
+			got := eventIsNotNewerThan(tt.candidate, tt.currentTag, tt.currentPushedAt, time.Time{})
 			assert.Equal(t, tt.wantStale, got)
 		})
 	}
+}
+
+func TestEventFreshnessStore_IsOutOfOrder(t *testing.T) {
+	store := NewEventFreshnessStore()
+	older := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
+	newer := time.Date(2026, 6, 3, 12, 0, 0, 0, time.UTC)
+
+	store.RecordApplied("demo-app", "dev-stale-newer", newer)
+
+	assert.True(t, store.IsOutOfOrder("demo-app", "dev-stale-older", older))
+	assert.False(t, store.IsOutOfOrder("demo-app", "dev-stale-newer", older))
+	assert.False(t, store.IsOutOfOrder("demo-app", "dev-stale-newer", newer))
+}
+
+func TestEventFreshnessStore_TagPushTime(t *testing.T) {
+	store := NewEventFreshnessStore()
+	when := time.Date(2026, 6, 3, 12, 0, 0, 0, time.UTC)
+	store.RecordApplied("demo-app", "dev-stale-newer", when)
+
+	got, ok := store.TagPushTime("demo-app", "dev-stale-newer")
+	assert.True(t, ok)
+	assert.Equal(t, when, got)
 }

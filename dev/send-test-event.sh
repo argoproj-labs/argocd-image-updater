@@ -1,16 +1,20 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-AWS_REGION="${AWS_REGION:-us-east-1}"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=dev/common.sh
+source "${ROOT_DIR}/dev/common.sh"
+
 AWS_ENDPOINT="${AWS_ENDPOINT:-http://localhost:4566}"
 QUEUE_NAME="${QUEUE_NAME:-ecr-push-events}"
-REPO_NAME="${REPO_NAME:-demo-app}"
 IMAGE_TAG="${IMAGE_TAG:-dev-$(date +%s)}"
-ACCOUNT_ID="${ACCOUNT_ID:-000000000000}"
+IMAGE_DIGEST="${IMAGE_DIGEST:-sha256:deadbeef}"
+REPOSITORY="${REPOSITORY:-${ECR_REPO}}"
+EVENT_TIME="${EVENT_TIME:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
 
 export AWS_ACCESS_KEY_ID=test
 export AWS_SECRET_ACCESS_KEY=test
-export AWS_DEFAULT_REGION="$AWS_REGION"
+export AWS_DEFAULT_REGION="$ECR_REGION"
 
 awslocal() {
   aws --endpoint-url "$AWS_ENDPOINT" "$@"
@@ -30,13 +34,13 @@ BODY="$(cat <<JSON
   "id": "smoke-test",
   "detail-type": "ECR Image Action",
   "source": "aws.ecr",
-  "account": "${ACCOUNT_ID}",
-  "time": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-  "region": "${AWS_REGION}",
+  "account": "${ECR_ACCOUNT_ID}",
+  "time": "${EVENT_TIME}",
+  "region": "${ECR_REGION}",
   "detail": {
     "result": "SUCCESS",
-    "repository-name": "${REPO_NAME}",
-    "image-digest": "sha256:deadbeef",
+    "repository-name": "${REPOSITORY}",
+    "image-digest": "${IMAGE_DIGEST}",
     "action-type": "PUSH",
     "image-tag": "${IMAGE_TAG}"
   }
@@ -45,4 +49,4 @@ JSON
 )"
 
 awslocal sqs send-message --queue-url "$QUEUE_URL" --message-body "$BODY" >/dev/null
-echo "Sent synthetic ECR push event to ${QUEUE_URL} (tag=${IMAGE_TAG})"
+echo "Sent synthetic ECR push event for $(ecr_image_ref "${IMAGE_TAG}") to ${QUEUE_URL}"

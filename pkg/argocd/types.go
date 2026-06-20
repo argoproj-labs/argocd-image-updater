@@ -3,6 +3,7 @@ package argocd
 import (
 	"sync"
 	"text/template"
+	"time"
 
 	argocdapi "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1"
 	"github.com/argoproj/argo-cd/v3/util/db"
@@ -42,9 +43,11 @@ type UpdateConfiguration struct {
 	DisableKubeEvents      bool
 	GitCreds               git.CredsStore
 	IgnorePlatforms        bool
-	WebhookEvent           *WebhookEvent
-	AWSRegion              string
-	AWSEndpointURL         string
+	WebhookEvent                 *WebhookEvent
+	AWSRegion                    string
+	AWSEndpointURL               string
+	ECRFallbackOnDescribeError   bool
+	EventFreshness               *EventFreshnessStore
 }
 
 type GitCredsSource func(app *argocdapi.Application) (git.Creds, error)
@@ -216,6 +219,8 @@ type WebhookEvent struct {
 	Tag string `json:"tag,omitempty"`
 	// Digest is the content digest of the image
 	Digest string `json:"digest,omitempty"`
+	// PushedAt is when the image was pushed (from EventBridge time for ECR events).
+	PushedAt time.Time `json:"-"`
 }
 
 // webhookMatchesConfiguredImage reports whether event targets the configured image repository.

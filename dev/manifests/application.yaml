@@ -1,0 +1,20 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: demo-app
+  namespace: argocd
+  labels:
+    app: demo-app
+spec:
+  project: default
+  source:
+    # Public kustomize example; image tag is overridden via kustomize.images below.
+    repoURL: https://github.com/argoproj-labs/argocd-image-updater
+    targetRevision: master
+    path: test/e2e/testdata/005-public-guestbook
+    kustomize:
+      images:
+        - demo-app=000000000000.dkr.ecr.us-east-1.amazonaws.com/demo-app:dev-initial
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: default
