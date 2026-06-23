@@ -953,7 +953,7 @@ spec:
               key: webhook.ratelimit-allowed
               name: argocd-image-updater-config
               optional: true
-        image: quay.io/argoprojlabs/argocd-image-updater:v1.1.2
+        image: quay.io/argoprojlabs/argocd-image-updater:v1.1.3
         livenessProbe:
           httpGet:
             path: /healthz
