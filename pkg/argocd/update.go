@@ -84,7 +84,18 @@ func UpdateApplication(ctx context.Context, updateConf *UpdateConfiguration, sta
 
 		imgCtx.Debugf("Considering this image for update")
 
-		rep, err := registry.GetRegistryEndpoint(imageOpCtx, applicationImage.ContainerImage)
+		// queryImage drives the registry endpoint, tag fetch, and write-back RHS.
+		// Defaults to the configured ImageName; when Kustomize.MatchName is set
+		// (admission webhook rewrote the registry on the live pods), redirect
+		// these to the matchName image — the configured ImageName may not be a
+		// reachable registry. The version constraint still comes from
+		// applicationImage.ImageTag so the configured tag spec is honored.
+		queryImage := applicationImage.ContainerImage
+		if applicationImage.KustomizeMatchName != "" && applicationImage.ContainerImage.KustomizeImage != nil {
+			queryImage = applicationImage.ContainerImage.KustomizeImage
+		}
+
+		rep, err := registry.GetRegistryEndpoint(imageOpCtx, queryImage)
 		if err != nil {
 			imgCtx.Errorf("Could not get registry endpoint from configuration: %v", err)
 			result.NumErrors += 1
@@ -134,7 +145,7 @@ func UpdateApplication(ctx context.Context, updateConf *UpdateConfiguration, sta
 
 		// Get list of available image tags from the repository
 		// Load creds, create registry client, fetch tags (retry once on 401/403)
-		tags, err := rep.GetTags(imageOpCtx, applicationImage.ContainerImage, regClient, &vc, secretVal == "")
+		tags, err := rep.GetTags(imageOpCtx, queryImage, regClient, &vc, secretVal == "")
 		if err != nil {
 			// Retry once on 401/403
 			if errors.Is(err, registry.ErrCredentialsInvalid) {
@@ -153,7 +164,7 @@ func UpdateApplication(ctx context.Context, updateConf *UpdateConfiguration, sta
 					result.NumErrors += 1
 					continue
 				}
-				tags, err = rep.GetTags(imageOpCtx, applicationImage.ContainerImage, regClient, &vc, secretVal == "")
+				tags, err = rep.GetTags(imageOpCtx, queryImage, regClient, &vc, secretVal == "")
 			}
 			if err != nil {
 				imgCtx.Errorf("Could not get tags from registry: %v", err)
@@ -183,7 +194,7 @@ func UpdateApplication(ctx context.Context, updateConf *UpdateConfiguration, sta
 		}
 
 		if needsUpdate(updateableImage, applicationImage.ContainerImage, latest, vc.Strategy) {
-			appImageWithTag := applicationImage.WithTag(latest)
+			appImageWithTag := queryImage.WithTag(latest)
 			appImageFullNameWithTag := appImageWithTag.GetFullNameWithTag()
 
 			// Check if new image is already set in Application Spec when write back is set to argocd
@@ -215,7 +226,7 @@ func UpdateApplication(ctx context.Context, updateConf *UpdateConfiguration, sta
 			// We need to explicitly set the up-to-date images in the spec too, so
 			// that we correctly marshal out the parameter overrides to include all
 			// images, regardless of those were updated or not.
-			err = setAppImage(imageOpCtx, &updateConf.UpdateApp.Application, applicationImage.WithTag(updateableImage.ImageTag), updateConf.UpdateApp.WriteBackConfig, applicationImage)
+			err = setAppImage(imageOpCtx, &updateConf.UpdateApp.Application, queryImage.WithTag(updateableImage.ImageTag), updateConf.UpdateApp.WriteBackConfig, applicationImage)
 			if err != nil {
 				imgCtx.Errorf("Error while trying to update image: %v", err)
 				result.NumErrors += 1

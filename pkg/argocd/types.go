@@ -180,6 +180,11 @@ type Image struct {
 	HelmImageTag       string
 	HelmImageSpec      string
 	KustomizeImageName string
+	// KustomizeMatchName carries the explicit Kustomize.MatchName from the CR
+	// when set. Empty means matching falls back to ImageName / Kustomize.Name.
+	// When non-empty, registry-tag queries and the write-back RHS use this
+	// identifier instead of the configured ImageName.
+	KustomizeMatchName string
 }
 
 // ImageList is a list of Image objects that can be updated.
