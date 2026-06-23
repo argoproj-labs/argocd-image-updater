@@ -12,6 +12,7 @@ import (
 
 	"github.com/argoproj/argo-cd/v3/pkg/apiclient/application"
 	argocdapi "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1"
+	"github.com/argoproj/argo-cd/v3/util/db"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
@@ -228,7 +229,7 @@ func sortApplicationRefs(applicationRefs []iuapi.ApplicationRef) []iuapi.Applica
 
 // FilterApplicationsForUpdate Retrieve a list of applications from ArgoCD that qualify for image updates
 // Application needs either to be of type Kustomize or Helm.
-func FilterApplicationsForUpdate(ctx context.Context, ctrlClient *ArgoCDK8sClient, kubeClient *kube.ImageUpdaterKubernetesClient, cr *iuapi.ImageUpdater, webhookEvent *WebhookEvent) (map[string]ApplicationImages, error) {
+func FilterApplicationsForUpdate(ctx context.Context, ctrlClient *ArgoCDK8sClient, kubeClient *kube.ImageUpdaterKubernetesClient, argocdDB db.ArgoDB, cr *iuapi.ImageUpdater, webhookEvent *WebhookEvent) (map[string]ApplicationImages, error) {
 	log := log.LoggerFromContext(ctx)
 
 	// Validate CR configuration
@@ -294,7 +295,7 @@ func FilterApplicationsForUpdate(ctx context.Context, ctrlClient *ArgoCDK8sClien
 					}
 
 					appRefWBC := getWriteBackConfigFromAnnotations(&app)
-					appWBCSettings, err = newWBCFromSettings(ctx, &app, kubeClient, appRefWBC)
+					appWBCSettings, err = newWBCFromSettings(ctx, &app, kubeClient, argocdDB, appRefWBC)
 					if err != nil {
 						log.Warnf("Could not create write-back config for app %s/%s, skipping: %v", app.Namespace, app.Name, err)
 						continue
@@ -316,7 +317,7 @@ func FilterApplicationsForUpdate(ctx context.Context, ctrlClient *ArgoCDK8sClien
 					log.Debugf("Read settings from Image Updater CR for app %s/%s", app.Namespace, app.Name)
 					mergedCommonUpdateSettings = mergeCommonUpdateSettings(globalUpdateSettings, applicationRef.CommonUpdateSettings)
 					mergedWBCSettings := mergeWBCSettings(cr.Spec.WriteBackConfig, applicationRef.WriteBackConfig)
-					appWBCSettings, err = newWBCFromSettings(ctx, &app, kubeClient, mergedWBCSettings)
+					appWBCSettings, err = newWBCFromSettings(ctx, &app, kubeClient, argocdDB, mergedWBCSettings)
 					if err != nil {
 						log.Warnf("Could not create write-back config for app %s/%s, skipping: %v", app.Namespace, app.Name, err)
 						continue
@@ -456,10 +457,11 @@ func mergeWBCSettings(global *iuapi.WriteBackConfig, appWBC *iuapi.WriteBackConf
 // newWBCFromSettings creates a new WriteBackConfig from a given, final set of
 // settings within the context of a specific application. It is responsible for
 // resolving all app-dependent fields, like target paths.
-func newWBCFromSettings(ctx context.Context, app *argocdapi.Application, kubeClient *kube.ImageUpdaterKubernetesClient, settings *iuapi.WriteBackConfig) (*WriteBackConfig, error) {
+func newWBCFromSettings(ctx context.Context, app *argocdapi.Application, kubeClient *kube.ImageUpdaterKubernetesClient, argocdDB db.ArgoDB, settings *iuapi.WriteBackConfig) (*WriteBackConfig, error) {
 	wbc := &WriteBackConfig{
 		Method:                 WriteBackApplication,
 		ArgoClient:             nil,
+		ArgocdDB:               argocdDB,
 		GitClient:              nil,
 		GetCreds:               nil,
 		GitBranch:              "",

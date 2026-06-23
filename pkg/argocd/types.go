@@ -5,6 +5,7 @@ import (
 	"text/template"
 
 	argocdapi "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1"
+	"github.com/argoproj/argo-cd/v3/util/db"
 
 	"github.com/argoproj-labs/argocd-image-updater/ext/git"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/kube"
@@ -27,6 +28,7 @@ type UpdateConfiguration struct {
 	NewRegFN               registry.NewRegistryClient
 	ArgoClient             ArgoCD
 	KubeClient             *kube.ImageUpdaterKubernetesClient
+	ArgocdDB               db.ArgoDB
 	UpdateApp              *ApplicationImages
 	DryRun                 bool
 	GitCommitUser          string
@@ -64,6 +66,7 @@ const (
 type WriteBackConfig struct {
 	Method     WriteBackMethod
 	ArgoClient ArgoCD
+	ArgocdDB   db.ArgoDB
 	// If GitClient is not nil, the client will be used for updates. Otherwise, a new client will be created.
 	GitClient              git.Client
 	GetCreds               GitCredsSource
