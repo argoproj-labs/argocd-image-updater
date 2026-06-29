@@ -410,6 +410,40 @@ func Test_updateKustomizeFile(t *testing.T) {
 			filter:      filter,
 			wantErr:     true,
 		},
+		{
+			name: "blank-lines-between-sections",
+			content: `images:
+- name: foo
+  digest: sha12345
+
+resources:
+- some-resource.yaml
+`,
+			wantContent: `images:
+- name: foo
+  digest: sha23456
+
+resources:
+- some-resource.yaml
+`,
+			filter: filter,
+		},
+		{
+			name: "blank-lines-before-images",
+			content: `apiVersion: kustomize.config.k8s.io/v1beta1
+
+images:
+- name: foo
+  digest: sha12345
+`,
+			wantContent: `apiVersion: kustomize.config.k8s.io/v1beta1
+
+images:
+- name: foo
+  digest: sha23456
+`,
+			filter: filter,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
