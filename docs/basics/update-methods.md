@@ -384,6 +384,58 @@ spec:
 Note that using the helmvalues option needs the Helm values filename to be specified in the
 `writeBackConfig.gitConfig.writeBackTarget`.
 
+### <a name="method-git-multi-source"></a>Multi-Source Applications (mixed Kustomize and Helm)
+
+Argo CD supports [multi-source applications](https://argo-cd.readthedocs.io/en/stable/user-guide/multiple_sources/) where an `Application` or `ApplicationSet` lists several sources. A common pattern is combining a Git/Kustomize source (your own workload) with one or more Helm chart sources (third-party dependencies such as Redis or PostgreSQL).
+
+Image Updater handles this correctly: it identifies the correct write-back source by the `writeBackTarget` you configure. You only need to target the Kustomize or Helm source that contains your images; the other sources are left untouched.
+
+#### Kustomize + Helm example
+
+```yaml
+# ApplicationSet template
+spec:
+  writeBackConfig:
+    method: "git"
+    gitConfig:
+      writeBackTarget: "kustomization"  # targets the Kustomize git source only
+```
+
+```yaml
+sources:
+  # Source 0 — your workload (Kustomize, may have no explicit kustomize: field)
+  - repoURL: 'https://github.com/your-org/gitops.git'
+    path: ./deployments/myapp/overlays/staging
+    targetRevision: main
+
+  # Source 1 — third-party Helm chart; Image Updater ignores this one
+  - repoURL: 'registry-1.docker.io/bitnamicharts'
+    chart: redis
+    targetRevision: '20.11.*'
+    helm:
+      valueFiles:
+        - $values/deployments/myapp/base/redis/values.yaml
+
+  # Source 2 — values ref; also ignored
+  - repoURL: 'https://github.com/your-org/gitops.git'
+    ref: values
+    targetRevision: main
+```
+
+Image Updater locates the Kustomize write-back source in two steps:
+
+1. It first looks for a source with an explicit `kustomize:` spec block.
+2. If none is found, it falls back to `Status.SourceTypes` index alignment — Argo CD records the detected source type for every source in that field, so an implicit Kustomize source (where Argo CD auto-detects Kustomize via a `kustomization.yaml` file in the path) is still correctly identified.
+
+This means **you do not need to add an explicit `kustomize: {}` block** to your source spec — the `write-back-target: kustomization` annotation is sufficient.
+
+!!!note "Annotation-based configuration"
+    When using the annotation API (e.g. on an `ApplicationSet` template), the equivalent configuration is:
+    ```yaml
+    argocd-image-updater.argoproj.io/write-back-method: git
+    argocd-image-updater.argoproj.io/write-back-target: kustomization
+    ```
+
 ### <a name="method-git-pull-request"></a>Git Pull Request
 
 The Git Pull Request mode extends the `git` write-back method so that instead
