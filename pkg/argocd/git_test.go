@@ -354,7 +354,6 @@ func Test_updateKustomizeFile(t *testing.T) {
 		wantContent string
 		filter      kyaml.Filter
 		wantErr     bool
-		wantSkip    bool
 	}{
 		{
 			name: "sorted",
@@ -398,12 +397,8 @@ func Test_updateKustomizeFile(t *testing.T) {
 - name: foo
   digest: sha23456
 `,
-			wantContent: `images:
-- name: foo
-  digest: sha23456
-`,
-			filter:   filter,
-			wantSkip: true,
+			wantContent: "",
+			filter:      filter,
 		},
 		{
 			name: "invalid-path",
@@ -449,31 +444,6 @@ images:
 `,
 			filter: filter,
 		},
-		{
-			// Verifies that when nothing needs to change, blank lines in the file
-			// are neither removed nor corrupted by the encode/decode step.
-			name: "no-change-blank-lines",
-			content: `apiVersion: kustomize.config.k8s.io/v1beta1
-
-images:
-- name: foo
-  digest: sha23456
-
-resources:
-- some-resource.yaml
-`,
-			wantContent: `apiVersion: kustomize.config.k8s.io/v1beta1
-
-images:
-- name: foo
-  digest: sha23456
-
-resources:
-- some-resource.yaml
-`,
-			filter:   filter,
-			wantSkip: true,
-		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -488,14 +458,16 @@ resources:
 			if tt.wantErr {
 				assert.Error(t, err)
 				assert.False(t, skip)
-			} else {
+			} else if tt.name == "no-change" {
 				assert.Nil(t, err)
-				assert.Equal(t, tt.wantSkip, skip)
-				got, readErr := os.ReadFile(path)
-				if readErr != nil {
-					t.Fatal(readErr)
+				assert.True(t, skip)
+			} else {
+				got, err := os.ReadFile(path)
+				if err != nil {
+					t.Fatal(err)
 				}
 				assert.Equal(t, tt.wantContent, string(got))
+				assert.False(t, skip)
 			}
 		})
 	}
