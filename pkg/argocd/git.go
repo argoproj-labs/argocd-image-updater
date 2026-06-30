@@ -10,6 +10,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strings"
 	"text/template"
 
 	"sigs.k8s.io/kustomize/api/konfig"
@@ -418,8 +419,8 @@ func writeKustomization(ctx context.Context, applicationImages *ApplicationImage
 }
 
 // updateKustomizeFile reads the kustomization file at path, applies the filter to it, and writes the result back
-// to the file. This is the same behavior as kyaml.UpdateFile, but it preserves the original order of YAML fields
-// and indentation of YAML sequences to minimize git diffs.
+// to the file. This is the same behavior as kyaml.UpdateFile, but it preserves the original order of YAML fields,
+// indentation of YAML sequences, and blank lines to minimize git diffs.
 func updateKustomizeFile(ctx context.Context, filter kyaml.Filter, path string) (error, bool) {
 	log := log.LoggerFromContext(ctx)
 
@@ -429,8 +430,13 @@ func updateKustomizeFile(ctx context.Context, filter kyaml.Filter, path string) 
 		return err, false
 	}
 
-	// Read the yaml document from bytes
-	originalYSlice, err := kio.FromBytes(yRaw)
+	// Encode blank lines as marker comments so they survive the kyaml round-trip.
+	// kyaml (go.yaml.in/yaml/v3) discards blank lines during parsing but preserves
+	// head comments, so we convert blank lines to comments and restore them afterward.
+	yEncoded := encodeBlankLines(yRaw)
+
+	// Read the yaml document from bytes (use encoded to keep comparison consistent)
+	originalYSlice, err := kio.FromBytes(yEncoded)
 	if err != nil {
 		return err, false
 	}
@@ -450,7 +456,7 @@ func updateKustomizeFile(ctx context.Context, filter kyaml.Filter, path string) 
 	// Create a reader, preserving indentation of sequences
 	var out bytes.Buffer
 	rw := &kio.ByteReadWriter{
-		Reader:            bytes.NewBuffer(yRaw),
+		Reader:            bytes.NewBuffer(yEncoded),
 		Writer:            &out,
 		PreserveSeqIndent: true,
 	}
@@ -495,8 +501,8 @@ func updateKustomizeFile(ctx context.Context, filter kyaml.Filter, path string) 
 		return nil, true
 	}
 
-	// Write to file the changes
-	if err := os.WriteFile(path, out.Bytes(), 0600); err != nil {
+	// Write to file the changes, restoring blank lines from the marker comments
+	if err := os.WriteFile(path, decodeBlankLines(out.Bytes()), 0600); err != nil {
 		return err, false
 	}
 
@@ -538,6 +544,29 @@ func imageFilter(imgSet types.Image) (kyaml.Filter, error) {
 	return kyaml.FilterFunc(func(object *kyaml.RNode) (*kyaml.RNode, error) {
 		return object, object.PipeE(setter)
 	}), nil
+}
+
+const blankLineMarker = "# __preserve_blank_line__"
+
+// encodeBlankLines replaces blank lines with a marker comment so they survive
+// the kyaml round-trip. kyaml discards blank lines but preserves head comments.
+func encodeBlankLines(data []byte) []byte {
+	lines := strings.Split(string(data), "\n")
+	end := len(lines)
+	if end > 0 && lines[end-1] == "" {
+		end-- // don't encode the trailing empty string from the final \n
+	}
+	for i := 0; i < end; i++ {
+		if strings.TrimSpace(lines[i]) == "" {
+			lines[i] = blankLineMarker
+		}
+	}
+	return []byte(strings.Join(lines, "\n"))
+}
+
+// decodeBlankLines converts blank line markers back to actual blank lines.
+func decodeBlankLines(data []byte) []byte {
+	return bytes.ReplaceAll(data, []byte(blankLineMarker+"\n"), []byte("\n"))
 }
 
 func findKustomization(base string) string {
