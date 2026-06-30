@@ -2243,7 +2243,7 @@ func Test_mergeImagesVerification(t *testing.T) {
 			Enable: boolPtr(false),
 		}
 		imageLevel := &api.ImagesVerification{
-			PublicKeySecret: secretRef(ImageVerificationWithPublicKey, "cosign.pub"),
+			PublicKeySecret: secretRef("image-key", "cosign.pub"),
 		}
 		merged := mergeImagesVerification(global, imageLevel)
 		assert.False(t, *merged.Enable)
