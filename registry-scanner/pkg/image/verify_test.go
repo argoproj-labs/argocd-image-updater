@@ -286,8 +286,8 @@ func Test_fetchTagSignature(t *testing.T) {
 		imgTag := &tag.ImageTag{TagName: "1.0.21"} // no ManifestDigest
 		fetcher := &mockFetcher{
 			manifests: map[string]distribution.Manifest{
-				"1.0.21":            &mockManifest{payload: imgPayload},
-				sigArtifactDigest:  bundleManifest,
+				"1.0.21":          &mockManifest{payload: imgPayload},
+				sigArtifactDigest: bundleManifest,
 			},
 			referrers: map[string][]distribution.Descriptor{
 				imgDigest: {bundleReferrer(sigArtifactDigest)},
