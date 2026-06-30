@@ -12,14 +12,32 @@ import (
 	"github.com/Masterminds/semver/v3"
 )
 
+// TagSignature holds the cosign signature data pre-fetched from the registry.
+// Both fields are required to verify the signature without additional network calls.
+type TagSignature struct {
+	// Sig is the base64-encoded ECDSA signature from the cosign .sig artifact.
+	Sig string
+	// PayloadDigest is the hex-encoded sha256 of the simple signing JSON payload —
+	// the exact bytes that were signed with the private key.
+	PayloadDigest string
+}
+
 // ImageTag is a representation of an image tag with metadata.
 // Use NewImageTag or NewImageTagWithLabels to initialize a new object.
 type ImageTag struct {
 	TagName   string
 	TagDate   *time.Time
 	TagDigest string
+	// ManifestDigest is the sha256 content digest of the image manifest
+	// (i.e. the Docker-Content-Digest header value, "sha256:<hex>").
+	// Always populated after a metadata fetch; used to derive the cosign
+	// .sig tag.
+	ManifestDigest string
 	// Labels contains the image labels extracted from the container image manifest.
 	Labels map[string]string
+	// TagSignature holds the pre-fetched cosign signature for this tag.
+	// Nil when no signature was found in the registry or verification is not configured.
+	TagSignature *TagSignature
 }
 
 // ImageTagList is a collection of ImageTag objects.

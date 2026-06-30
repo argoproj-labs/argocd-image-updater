@@ -802,3 +802,158 @@ func TestIsAuthError(t *testing.T) {
 		assert.False(t, IsAuthError(ctx, err))
 	})
 }
+
+// makeRegistryClient is a shared helper that creates a real RegistryClient backed
+// by a test HTTP server. The server must respond to GET /v2/ with 200 (for the
+// NewRepository ping) plus whatever path the individual test needs.
+func makeRegistryClient(t *testing.T, serverURL string) RegistryClient {
+	t.Helper()
+	ep := &RegistryEndpoint{RegistryAPI: serverURL, Limiter: ratelimit.New(100)}
+	client, err := NewClient(ep, "", "")
+	require.NoError(t, err)
+	err = client.NewRepository("test/test")
+	require.NoError(t, err)
+	return client
+}
+
+func Test_BlobContent(t *testing.T) {
+	t.Run("not initialized returns error", func(t *testing.T) {
+		ep, err := GetRegistryEndpoint(context.Background(), &image.ContainerImage{RegistryURL: ""})
+		require.NoError(t, err)
+		client, err := NewClient(ep, "", "")
+		require.NoError(t, err)
+		// NewRepository NOT called → clt.regClient is nil
+		_, err = client.BlobContent(context.Background(), godigest.FromBytes([]byte("x")))
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "not initialized")
+	})
+
+	t.Run("returns blob bytes on success", func(t *testing.T) {
+		blobContent := []byte("hello-blob")
+		blobDigest := godigest.FromBytes(blobContent)
+
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/v2/" {
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+			// All other /v2/... requests are blob fetches.
+			w.Header().Set("Content-Type", "application/octet-stream")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write(blobContent)
+		}))
+		defer srv.Close()
+
+		client := makeRegistryClient(t, srv.URL)
+		got, err := client.BlobContent(context.Background(), blobDigest)
+		require.NoError(t, err)
+		assert.Equal(t, blobContent, got)
+	})
+
+	t.Run("blob not found returns error", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/v2/" {
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+			w.WriteHeader(http.StatusNotFound)
+		}))
+		defer srv.Close()
+
+		client := makeRegistryClient(t, srv.URL)
+		_, err := client.BlobContent(context.Background(), godigest.FromBytes([]byte("missing")))
+		require.Error(t, err)
+	})
+}
+
+func Test_Referrers(t *testing.T) {
+	testDigest := godigest.FromBytes([]byte("image-manifest"))
+
+	t.Run("not initialized returns error", func(t *testing.T) {
+		ep, err := GetRegistryEndpoint(context.Background(), &image.ContainerImage{RegistryURL: ""})
+		require.NoError(t, err)
+		client, err := NewClient(ep, "", "")
+		require.NoError(t, err)
+		// NewRepository NOT called → clt.httpClient is nil
+		_, err = client.Referrers(context.Background(), testDigest)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "not initialized")
+	})
+
+	t.Run("http 404 returns nil nil (no signature found, not an error)", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/v2/" {
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+			w.WriteHeader(http.StatusNotFound)
+		}))
+		defer srv.Close()
+
+		client := makeRegistryClient(t, srv.URL)
+		refs, err := client.Referrers(context.Background(), testDigest)
+		require.NoError(t, err)
+		assert.Nil(t, refs)
+	})
+
+	t.Run("http ok returns manifest list", func(t *testing.T) {
+		sigDigest := godigest.FromBytes([]byte("sig-manifest"))
+		referrersJSON := fmt.Sprintf(
+			`{"manifests":[{"mediaType":"application/vnd.oci.image.manifest.v1+json","artifactType":"application/vnd.dev.sigstore.bundle.v0.3+json","digest":"%s","size":100}]}`,
+			sigDigest,
+		)
+
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/v2/" {
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+			w.Header().Set("Content-Type", "application/vnd.oci.image.index.v1+json")
+			w.WriteHeader(http.StatusOK)
+			fmt.Fprint(w, referrersJSON)
+		}))
+		defer srv.Close()
+
+		client := makeRegistryClient(t, srv.URL)
+		refs, err := client.Referrers(context.Background(), testDigest)
+		require.NoError(t, err)
+		require.Len(t, refs, 1)
+		assert.Equal(t, "application/vnd.dev.sigstore.bundle.v0.3+json", refs[0].ArtifactType)
+		assert.Equal(t, sigDigest, refs[0].Digest)
+	})
+
+	t.Run("non-200 non-404 returns error", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/v2/" {
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+			w.WriteHeader(http.StatusInternalServerError)
+		}))
+		defer srv.Close()
+
+		client := makeRegistryClient(t, srv.URL)
+		refs, err := client.Referrers(context.Background(), testDigest)
+		require.Error(t, err)
+		assert.Nil(t, refs)
+		assert.Contains(t, err.Error(), "HTTP 500")
+	})
+
+	t.Run("invalid json returns error", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/v2/" {
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+			w.WriteHeader(http.StatusOK)
+			fmt.Fprint(w, "not-valid-json{{")
+		}))
+		defer srv.Close()
+
+		client := makeRegistryClient(t, srv.URL)
+		refs, err := client.Referrers(context.Background(), testDigest)
+		require.Error(t, err)
+		assert.Nil(t, refs)
+		assert.Contains(t, err.Error(), "decoding")
+	})
+}

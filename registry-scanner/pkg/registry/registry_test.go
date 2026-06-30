@@ -115,6 +115,82 @@ func Test_GetTags(t *testing.T) {
 		require.Equal(t, "1.2.1", cachedTag.TagName)
 	})
 
+	t.Run("ManifestDigest is populated from TagInfo.EncodedDigest for StrategyNewestBuild", func(t *testing.T) {
+		// This test targets the line:
+		//   imgTag.ManifestDigest = ti.EncodedDigest()
+		// which is only reached for StrategyNewestBuild / StrategyDigest.
+		meta1 := &schema2.DeserializedManifest{}
+		ctx := context.Background()
+
+		wantDigest := [32]byte{
+			0xab, 0xcd, 0xef, 0x01, 0x23, 0x45, 0x67, 0x89,
+			0xab, 0xcd, 0xef, 0x01, 0x23, 0x45, 0x67, 0x89,
+			0xab, 0xcd, 0xef, 0x01, 0x23, 0x45, 0x67, 0x89,
+			0xab, 0xcd, 0xef, 0x01, 0x23, 0x45, 0x67, 0x89,
+		}
+		ti := &tag.TagInfo{Digest: wantDigest}
+
+		regClient := mocks.RegistryClient{}
+		regClient.On("NewRepository", mock.Anything).Return(nil)
+		regClient.On("Tags", mock.Anything).Return([]string{"1.0.0"}, nil)
+		regClient.On("ManifestForTag", mock.Anything, mock.Anything).Return(meta1, nil)
+		regClient.On("TagMetadata", mock.Anything, mock.Anything, mock.Anything).Return(ti, nil)
+
+		ep, err := GetRegistryEndpoint(ctx, &image.ContainerImage{RegistryURL: ""})
+		require.NoError(t, err)
+		ep.Cache.ClearCache()
+
+		img := image.NewFromIdentifier("foo/bar:1.0.0")
+		tl, err := ep.GetTags(ctx, img, &regClient, &image.VersionConstraint{
+			Strategy: image.StrategyNewestBuild,
+			Options:  options.NewManifestOptions(),
+		}, true)
+		require.NoError(t, err)
+		require.NotEmpty(t, tl)
+
+		cachedTag, err := ep.Cache.GetTag("foo/bar", "1.0.0")
+		require.NoError(t, err)
+		require.NotNil(t, cachedTag)
+		assert.Equal(t, ti.EncodedDigest(), cachedTag.ManifestDigest)
+	})
+
+	t.Run("ManifestDigest is populated from TagInfo.EncodedDigest for StrategyDigest", func(t *testing.T) {
+		meta1 := &schema2.DeserializedManifest{}
+		ctx := context.Background()
+
+		wantDigest := [32]byte{
+			0x29, 0xd4, 0xb6, 0x4d, 0xa0, 0x0e, 0x01, 0xca,
+			0x2c, 0xe8, 0x93, 0xa1, 0xd2, 0xbf, 0xe5, 0xca,
+			0x6e, 0x64, 0x21, 0xc1, 0x07, 0xf5, 0x2f, 0xdf,
+			0xfe, 0x65, 0x37, 0xbf, 0x76, 0x0d, 0xdc, 0x03,
+		}
+		ti := &tag.TagInfo{Digest: wantDigest}
+
+		regClient := mocks.RegistryClient{}
+		regClient.On("NewRepository", mock.Anything).Return(nil)
+		regClient.On("Tags", mock.Anything).Return([]string{"1.0.0"}, nil)
+		regClient.On("ManifestForTag", mock.Anything, mock.Anything).Return(meta1, nil)
+		regClient.On("TagMetadata", mock.Anything, mock.Anything, mock.Anything).Return(ti, nil)
+
+		ep, err := GetRegistryEndpoint(ctx, &image.ContainerImage{RegistryURL: ""})
+		require.NoError(t, err)
+		ep.Cache.ClearCache()
+
+		img := image.NewFromIdentifier("foo/bar:1.0.0")
+		tl, err := ep.GetTags(ctx, img, &regClient, &image.VersionConstraint{
+			Strategy:   image.StrategyDigest,
+			Constraint: "1.0.0",
+			Options:    options.NewManifestOptions(),
+		}, true)
+		require.NoError(t, err)
+		require.NotEmpty(t, tl)
+
+		cachedTag, err := ep.Cache.GetTag("foo/bar", "1.0.0")
+		require.NoError(t, err)
+		require.NotNil(t, cachedTag)
+		assert.Equal(t, ti.EncodedDigest(), cachedTag.ManifestDigest)
+	})
+
 	t.Run("401 with valid cached creds clears endpoint and returns ErrCredentialsInvalid", func(t *testing.T) {
 		authErr := &distclient.UnexpectedHTTPResponseError{
 			StatusCode: http.StatusUnauthorized,

@@ -68,6 +68,9 @@ type ImageUpdaterConfig struct {
 	// EnableCRMetrics enables per-ImageUpdater-CR Prometheus metrics. Set false in webhook-only
 	// mode (no controller/reconcile) so metrics are not written and never orphaned on CR delete.
 	EnableCRMetrics bool
+	// VerifyImages enable image signature verification before applying updates. When disabled,
+	// all signature checks are skipped globally.
+	VerifyImages bool
 }
 
 // ImageUpdaterReconciler reconciles a ImageUpdater object

@@ -1,0 +1,24 @@
+# Global verification policy: all images must be signed with the org key,
+# unless overridden at a lower scope.
+apiVersion: argocd-image-updater.argoproj.io/v1alpha1
+kind: ImageUpdater
+metadata:
+  name: argocd-image-updater-verification
+  namespace: argocd
+spec:
+  imagesVerification:
+    method: cosign-key
+    publicKeySecret:
+      secretName: myapp-cosign-pubkey
+      key: cosign.pub
+  applicationRefs:
+    - namePattern: "my-app"
+      images:
+        - alias: "backend"
+          imageName: "ghcr.io/org/backend:1.0.0"
+        # public image with no cosign signature — opt out of verification.
+        - alias: "no-signature"
+          imageName: "no-signature:1.25.0"
+          imagesVerification:
+            method: cosign-key
+            enable: false

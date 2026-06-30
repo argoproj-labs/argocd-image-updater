@@ -42,6 +42,7 @@ type UpdateConfiguration struct {
 	DisableKubeEvents      bool
 	IgnorePlatforms        bool
 	GitCreds               git.CredsStore
+	VerifyImages           bool
 }
 
 type GitCredsSource func(app *argocdapi.Application) (git.Creds, error)
@@ -56,6 +57,9 @@ const (
 // WriteBackMethodArgoCD is the string name of the ArgoCD write-back method as used in the CR spec.
 // It is the default when no method is specified.
 const WriteBackMethodArgoCD = "argocd"
+
+// ImageVerificationWithPublicKey is the string name of the public key verification method
+const ImageVerificationWithPublicKey = "cosign-key"
 
 const defaultIndent = 2
 
@@ -180,6 +184,10 @@ type Image struct {
 	HelmImageTag       string
 	HelmImageSpec      string
 	KustomizeImageName string
+
+	// verify image signature settings
+	EnableVerification bool
+	*image.Verify
 }
 
 // ImageList is a list of Image objects that can be updated.

@@ -106,6 +106,7 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 				"loglevel", strings.ToUpper(cfg.LogLevel),
 				"interval", argocd.GetPrintableInterval(cfg.CheckInterval),
 				"healthPort", probeAddr,
+				"verifyImages", cfg.VerifyImages,
 			}
 			if cfg.ArgocdNamespace != "" {
 				logFields = append(logFields, "argocdNamespace", cfg.ArgocdNamespace)
@@ -343,6 +344,9 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 	controllerCmd.Flags().StringVar(&webhookCfg.TLSMinVersion, "tlsminversion", env.GetStringVal("TLS_MIN_VERSION", webhook.DefaultTLSMinVersion), "Minimum TLS version (e.g. 1.2, 1.3)")
 	controllerCmd.Flags().StringVar(&webhookCfg.TLSMaxVersion, "tlsmaxversion", env.GetStringVal("TLS_MAX_VERSION", webhook.DefaultTLSMaxVersion), "Maximum TLS version (e.g. 1.2, 1.3)")
 	controllerCmd.Flags().StringVar(&webhookCfg.TLSCiphers, "tlsciphers", env.GetStringVal("TLS_CIPHERS", ""), "Colon-separated list of TLS cipher suites (e.g. TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384:TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256)")
+
+	// Image verification flags
+	controllerCmd.Flags().BoolVar(&cfg.VerifyImages, "verify-images", env.GetBoolVal("VERIFY_IMAGES", true), "Enable image signature verification before applying updates. When disabled, all signature checks are skipped globally")
 
 	return controllerCmd
 }

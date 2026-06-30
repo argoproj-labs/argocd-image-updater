@@ -189,6 +189,9 @@ func (ep *RegistryEndpoint) GetTags(ctx context.Context, img *image.ContainerIma
 			} else {
 				imgTag = tag.NewImageTagWithLabels(tagStr, ti.CreatedAt, "", ti.Labels)
 			}
+			// Always record the manifest content digest so that signature
+			// verification can derive the .sig tag without a second manifest fetch.
+			imgTag.ManifestDigest = ti.EncodedDigest()
 			tagListLock.Lock()
 			tagList.Add(imgTag)
 			tagListLock.Unlock()

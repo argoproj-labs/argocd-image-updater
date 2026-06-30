@@ -42,6 +42,13 @@ type ImageUpdaterSpec struct {
 	// +listType=map
 	// +listMapKey=namePattern
 	ApplicationRefs []ApplicationRef `json:"applicationRefs"`
+
+	// ImagesVerification defines the global default image signature verification policy.
+	// When set, every image update is subject to cryptographic verification before being
+	// committed to Git or applied to an Argo CD Application.
+	// Can be overridden at the ApplicationRef or ImageConfig level.
+	// +optional
+	*ImagesVerification `json:"imagesVerification,omitempty"`
 }
 
 // ApplicationRef contains various criteria by which to include applications for managing by image updater
@@ -64,6 +71,13 @@ type ApplicationRef struct {
 	// +optional
 	// +kubebuilder:default:=false
 	UseAnnotations *bool `json:"useAnnotations,omitempty"`
+
+	// ImagesVerification overrides the global signature verification policy for applications
+	// matched by this ApplicationRef. When set, it takes precedence over the spec-level
+	// ImagesVerification for all images in this group, but can still be overridden
+	// at the individual ImageConfig level.
+	// +optional
+	*ImagesVerification `json:"imagesVerification,omitempty"`
 
 	// --- Overrides for spec-level settings, specific to THIS ApplicationRef ---
 	// NOTE: These fields are ignored when UseAnnotations is true.
@@ -148,6 +162,12 @@ type ImageConfig struct {
 	// This whole block is optional if the image update isn't written to a manifest in a structured way.
 	// +optional
 	*ManifestTarget `json:"manifestTargets,omitempty"`
+
+	// ImagesVerification overrides the signature verification policy for this specific image.
+	// When set, it takes precedence over both the spec-level and ApplicationRef-level
+	// ImagesVerification.
+	// +optional
+	*ImagesVerification `json:"imagesVerification,omitempty"`
 }
 
 // CommonUpdateSettings groups common update strategy settings that can be applied
@@ -275,6 +295,38 @@ type KustomizeTarget struct {
 	// Example: "docker.io/library/nginx".
 	// This field is required if the Kustomize target is used.
 	Name *string `json:"name"`
+}
+
+// ImagesVerification defines the image signature verification policy for one or more images.
+type ImagesVerification struct {
+	// Method specifies the signature verification backend to use.
+	// +kubebuilder:validation:Enum=cosign-key
+	Method *string `json:"method"`
+
+	// Enable controls whether signature verification is active at this scope.
+	// Defaults to true when the ImagesVerification block is present.
+	// Set to false to explicitly opt out of verification for images.
+	// +optional
+	// +kubebuilder:default:=true
+	Enable *bool `json:"enable,omitempty"`
+
+	// PublicKeySecret references a Kubernetes Secret in the same namespace as the
+	// ImageUpdater CR that holds the PEM-encoded ECDSA public key used to verify
+	// cosign signatures.
+	// Required when method is "cosign-key" and enable is true.
+	// +optional
+	PublicKeySecret *SecretRef `json:"publicKeySecret,omitempty"`
+}
+
+// SecretRef identifies a specific key within a Kubernetes Secret.
+// The Secret must reside in the same namespace as the ImageUpdater CR.
+type SecretRef struct {
+	// SecretName is the name of the Kubernetes Secret.
+	SecretName string `json:"secretName" protobuf:"bytes,1,opt,name=secretName"`
+
+	// Key is the key within the Secret's data map whose value contains the credential material
+	// (e.g. "cosign.pub" for a PEM-encoded public key).
+	Key string `json:"key" protobuf:"bytes,2,opt,name=key"`
 }
 
 //------------------------Status---------------------------------------------//

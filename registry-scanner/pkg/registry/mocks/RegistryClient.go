@@ -158,6 +158,66 @@ func (_m *RegistryClient) Tags(ctx context.Context) ([]string, error) {
 	return r0, r1
 }
 
+// BlobContent provides a mock function with given fields: ctx, dgst
+func (_m *RegistryClient) BlobContent(ctx context.Context, dgst digest.Digest) ([]byte, error) {
+	ret := _m.Called(ctx, dgst)
+
+	if len(ret) == 0 {
+		panic("no return value specified for BlobContent")
+	}
+
+	var r0 []byte
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, digest.Digest) ([]byte, error)); ok {
+		return rf(ctx, dgst)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, digest.Digest) []byte); ok {
+		r0 = rf(ctx, dgst)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]byte)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, digest.Digest) error); ok {
+		r1 = rf(ctx, dgst)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// Referrers provides a mock function with given fields: ctx, dgst
+func (_m *RegistryClient) Referrers(ctx context.Context, dgst digest.Digest) ([]distribution.Descriptor, error) {
+	ret := _m.Called(ctx, dgst)
+
+	if len(ret) == 0 {
+		panic("no return value specified for Referrers")
+	}
+
+	var r0 []distribution.Descriptor
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, digest.Digest) ([]distribution.Descriptor, error)); ok {
+		return rf(ctx, dgst)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, digest.Digest) []distribution.Descriptor); ok {
+		r0 = rf(ctx, dgst)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]distribution.Descriptor)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, digest.Digest) error); ok {
+		r1 = rf(ctx, dgst)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
 // NewRegistryClient creates a new instance of RegistryClient. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
 // The first argument is typically a *testing.T value.
 func NewRegistryClient(t interface {

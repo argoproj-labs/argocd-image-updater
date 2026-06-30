@@ -180,6 +180,48 @@ spec:
                               Example: "docker.io/library/nginx:1.17.10", "quay.io/prometheus/node-exporter:v1.5.0".
                               This field is mandatory.
                             type: string
+                          imagesVerification:
+                            description: |-
+                              ImagesVerification overrides the signature verification policy for this specific image.
+                              When set, it takes precedence over both the spec-level and ApplicationRef-level
+                              ImagesVerification.
+                            properties:
+                              enable:
+                                default: true
+                                description: |-
+                                  Enable controls whether signature verification is active at this scope.
+                                  Defaults to true when the ImagesVerification block is present.
+                                  Set to false to explicitly opt out of verification for images.
+                                type: boolean
+                              method:
+                                description: Method specifies the signature verification
+                                  backend to use.
+                                enum:
+                                - cosign-key
+                                type: string
+                              publicKeySecret:
+                                description: |-
+                                  PublicKeySecret references a Kubernetes Secret in the same namespace as the
+                                  ImageUpdater CR that holds the PEM-encoded ECDSA public key used to verify
+                                  cosign signatures.
+                                  Required when method is "cosign-key" and enable is true.
+                                properties:
+                                  key:
+                                    description: |-
+                                      Key is the key within the Secret's data map whose value contains the credential material
+                                      (e.g. "cosign.pub" for a PEM-encoded public key).
+                                    type: string
+                                  secretName:
+                                    description: SecretName is the name of the Kubernetes
+                                      Secret.
+                                    type: string
+                                required:
+                                - key
+                                - secretName
+                                type: object
+                            required:
+                            - method
+                            type: object
                           manifestTargets:
                             description: |-
                               ManifestTarget defines how and where to update this image in Kubernetes manifests.
@@ -242,6 +284,49 @@ spec:
                       x-kubernetes-list-map-keys:
                       - alias
                       x-kubernetes-list-type: map
+                    imagesVerification:
+                      description: |-
+                        ImagesVerification overrides the global signature verification policy for applications
+                        matched by this ApplicationRef. When set, it takes precedence over the spec-level
+                        ImagesVerification for all images in this group, but can still be overridden
+                        at the individual ImageConfig level.
+                      properties:
+                        enable:
+                          default: true
+                          description: |-
+                            Enable controls whether signature verification is active at this scope.
+                            Defaults to true when the ImagesVerification block is present.
+                            Set to false to explicitly opt out of verification for images.
+                          type: boolean
+                        method:
+                          description: Method specifies the signature verification
+                            backend to use.
+                          enum:
+                          - cosign-key
+                          type: string
+                        publicKeySecret:
+                          description: |-
+                            PublicKeySecret references a Kubernetes Secret in the same namespace as the
+                            ImageUpdater CR that holds the PEM-encoded ECDSA public key used to verify
+                            cosign signatures.
+                            Required when method is "cosign-key" and enable is true.
+                          properties:
+                            key:
+                              description: |-
+                                Key is the key within the Secret's data map whose value contains the credential material
+                                (e.g. "cosign.pub" for a PEM-encoded public key).
+                              type: string
+                            secretName:
+                              description: SecretName is the name of the Kubernetes
+                                Secret.
+                              type: string
+                          required:
+                          - key
+                          - secretName
+                          type: object
+                      required:
+                      - method
+                      type: object
                     labelSelectors:
                       description: LabelSelectors indicates the label selectors to
                         apply for application selection
@@ -418,6 +503,48 @@ spec:
                       Examples: "semver", "latest", "digest", "name".
                       This acts as the default if not overridden at a more specific level.
                     type: string
+                type: object
+              imagesVerification:
+                description: |-
+                  ImagesVerification defines the global default image signature verification policy.
+                  When set, every image update is subject to cryptographic verification before being
+                  committed to Git or applied to an Argo CD Application.
+                  Can be overridden at the ApplicationRef or ImageConfig level.
+                properties:
+                  enable:
+                    default: true
+                    description: |-
+                      Enable controls whether signature verification is active at this scope.
+                      Defaults to true when the ImagesVerification block is present.
+                      Set to false to explicitly opt out of verification for images.
+                    type: boolean
+                  method:
+                    description: Method specifies the signature verification backend
+                      to use.
+                    enum:
+                    - cosign-key
+                    type: string
+                  publicKeySecret:
+                    description: |-
+                      PublicKeySecret references a Kubernetes Secret in the same namespace as the
+                      ImageUpdater CR that holds the PEM-encoded ECDSA public key used to verify
+                      cosign signatures.
+                      Required when method is "cosign-key" and enable is true.
+                    properties:
+                      key:
+                        description: |-
+                          Key is the key within the Secret's data map whose value contains the credential material
+                          (e.g. "cosign.pub" for a PEM-encoded public key).
+                        type: string
+                      secretName:
+                        description: SecretName is the name of the Kubernetes Secret.
+                        type: string
+                    required:
+                    - key
+                    - secretName
+                    type: object
+                required:
+                - method
                 type: object
               writeBackConfig:
                 description: |-

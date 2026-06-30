@@ -2,6 +2,13 @@ package argocd
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/sha256"
+	"crypto/x509"
+	"encoding/base64"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"os"
@@ -29,8 +36,11 @@ import (
 	"github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1"
 	"github.com/argoproj/argo-cd/v3/util/db"
 	"github.com/argoproj/argo-cd/v3/util/settings"
+	distribution "github.com/distribution/distribution/v3"
+	"github.com/distribution/distribution/v3/manifest/ocischema"
 	"github.com/distribution/distribution/v3/manifest/schema2"
 	"github.com/distribution/distribution/v3/registry/api/errcode"
+	godigest "github.com/opencontainers/go-digest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -1896,6 +1906,229 @@ registries:
 			"Image should remain unchanged since digest is the same")
 	})
 
+	// ---------------------------------------------------------------------------
+	// Image-signature verification branches (update.go lines 201-223)
+	// ---------------------------------------------------------------------------
+
+	// verifyAppImages is a minimal helper that wires up a single-image kustomize
+	// Application for the verification tests.  The returned ApplicationImages uses
+	// the image "gcr.io/jannfis/foobar" with a semver >=1.0.1 constraint so that
+	// the mock registry (returning "1.0.1" and "1.0.2") always picks "1.0.2" as
+	// the new tag — and the early-return path in GetTags never calls ManifestForTag.
+	verifyAppImages := func(iuImg *Image) *ApplicationImages {
+		return &ApplicationImages{
+			Application: v1alpha1.Application{
+				ObjectMeta: v1.ObjectMeta{Name: "guestbook", Namespace: "guestbook"},
+				Spec: v1alpha1.ApplicationSpec{
+					Source: &v1alpha1.ApplicationSource{
+						Kustomize: &v1alpha1.ApplicationSourceKustomize{
+							Images: v1alpha1.KustomizeImages{"jannfis/foobar:1.0.1"},
+						},
+					},
+				},
+				Status: v1alpha1.ApplicationStatus{
+					SourceType: v1alpha1.ApplicationSourceTypeKustomize,
+					Summary: v1alpha1.ApplicationSummary{
+						Images: []string{"gcr.io/jannfis/foobar:1.0.1"},
+					},
+				},
+			},
+			WriteBackConfig: &WriteBackConfig{Method: WriteBackApplication},
+			Images:          ImageList{iuImg},
+		}
+	}
+
+	verifyKubeClient := kube.ImageUpdaterKubernetesClient{
+		KubeClient: &registryKube.KubernetesClient{
+			Clientset: fake.NewFakeKubeClient(),
+		},
+	}
+
+	t.Run("image verification globally disabled proceeds to update", func(t *testing.T) {
+		mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
+			regMock := regmock.RegistryClient{}
+			regMock.On("NewRepository", mock.Anything).Return(nil)
+			regMock.On("Tags", mock.Anything).Return([]string{"1.0.1", "1.0.2"}, nil)
+			return &regMock, nil
+		}
+
+		argoClient := argomock.ArgoCD{}
+		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+
+		iuImg := NewImage(image.NewFromIdentifier("foobar=gcr.io/jannfis/foobar:>=1.0.1"))
+		iuImg.EnableVerification = true
+		iuImg.Verify = &image.Verify{Method: ImageVerificationWithPublicKey, PublicKeySecret: "unused"}
+
+		res := UpdateApplication(context.Background(), &UpdateConfiguration{
+			NewRegFN:     mockClientFn,
+			ArgoClient:   &argoClient,
+			KubeClient:   &verifyKubeClient,
+			UpdateApp:    verifyAppImages(iuImg),
+			VerifyImages: false, // globally disabled — skips all signature logic
+		}, NewSyncIterationState())
+
+		assert.Equal(t, 0, res.NumErrors)
+		assert.Equal(t, 1, res.NumImagesUpdated)
+	})
+
+	t.Run("image verification disabled per-image proceeds to update", func(t *testing.T) {
+		mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
+			regMock := regmock.RegistryClient{}
+			regMock.On("NewRepository", mock.Anything).Return(nil)
+			regMock.On("Tags", mock.Anything).Return([]string{"1.0.1", "1.0.2"}, nil)
+			return &regMock, nil
+		}
+
+		argoClient := argomock.ArgoCD{}
+		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+
+		iuImg := NewImage(image.NewFromIdentifier("foobar=gcr.io/jannfis/foobar:>=1.0.1"))
+		// EnableVerification is false by default
+
+		res := UpdateApplication(context.Background(), &UpdateConfiguration{
+			NewRegFN:     mockClientFn,
+			ArgoClient:   &argoClient,
+			KubeClient:   &verifyKubeClient,
+			UpdateApp:    verifyAppImages(iuImg),
+			VerifyImages: true, // globally on, but image-level is off
+		}, NewSyncIterationState())
+
+		assert.Equal(t, 0, res.NumErrors)
+		assert.Equal(t, 1, res.NumImagesUpdated)
+	})
+
+	t.Run("unsupported verification method counts as error", func(t *testing.T) {
+		mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
+			regMock := regmock.RegistryClient{}
+			regMock.On("NewRepository", mock.Anything).Return(nil)
+			regMock.On("Tags", mock.Anything).Return([]string{"1.0.1", "1.0.2"}, nil)
+			return &regMock, nil
+		}
+
+		iuImg := NewImage(image.NewFromIdentifier("foobar=gcr.io/jannfis/foobar:>=1.0.1"))
+		iuImg.EnableVerification = true
+		iuImg.Verify = &image.Verify{Method: "notation"} // unsupported
+
+		res := UpdateApplication(context.Background(), &UpdateConfiguration{
+			NewRegFN:     mockClientFn,
+			ArgoClient:   &argomock.ArgoCD{},
+			KubeClient:   &verifyKubeClient,
+			UpdateApp:    verifyAppImages(iuImg),
+			VerifyImages: true,
+		}, NewSyncIterationState())
+
+		assert.Equal(t, 1, res.NumErrors)
+		assert.Equal(t, 0, res.NumImagesUpdated)
+	})
+
+	t.Run("cosign-key verification fetch failure counts as error", func(t *testing.T) {
+		// ManifestForTag is called by fetchTagSignature (slow path — ManifestDigest
+		// is not cached for SemVer tags).  Returning an error forces VerifyWithPublicKey
+		// to fail, which increments NumErrors and skips the update.
+		mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
+			regMock := regmock.RegistryClient{}
+			regMock.On("NewRepository", mock.Anything).Return(nil)
+			regMock.On("Tags", mock.Anything).Return([]string{"1.0.1", "1.0.2"}, nil)
+			regMock.On("ManifestForTag", mock.Anything, mock.Anything).Return(nil, fmt.Errorf("registry unavailable"))
+			return &regMock, nil
+		}
+
+		iuImg := NewImage(image.NewFromIdentifier("foobar=gcr.io/jannfis/foobar:>=1.0.1"))
+		iuImg.EnableVerification = true
+		iuImg.Verify = &image.Verify{Method: ImageVerificationWithPublicKey, PublicKeySecret: "any-key"}
+
+		res := UpdateApplication(context.Background(), &UpdateConfiguration{
+			NewRegFN:     mockClientFn,
+			ArgoClient:   &argomock.ArgoCD{},
+			KubeClient:   &verifyKubeClient,
+			UpdateApp:    verifyAppImages(iuImg),
+			VerifyImages: true,
+		}, NewSyncIterationState())
+
+		assert.Equal(t, 1, res.NumErrors)
+		assert.Equal(t, 0, res.NumImagesUpdated)
+	})
+
+	t.Run("cosign-key verification succeeds proceeds to update", func(t *testing.T) {
+		// Generate a real ECDSA key pair for this test.
+		priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+		require.NoError(t, err)
+		pubDER, err := x509.MarshalPKIXPublicKey(&priv.PublicKey)
+		require.NoError(t, err)
+		pemPub := string(pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: pubDER}))
+
+		// Build a DSSE bundle JSON signed with priv, matching what cosign 2.x produces.
+		payloadType := "application/vnd.dev.cosign.simplesigning.v1+json"
+		payload := []byte(`{"data":"test"}`)
+		pae := append(
+			[]byte(fmt.Sprintf("DSSEv1 %d %s %d ", len(payloadType), payloadType, len(payload))),
+			payload...,
+		)
+		paeHash := sha256.Sum256(pae)
+		rawSig, err := ecdsa.SignASN1(rand.Reader, priv, paeHash[:])
+		require.NoError(t, err)
+
+		blobJSON := fmt.Sprintf(
+			`{"dsseEnvelope":{"payload":"%s","payloadType":"%s","signatures":[{"sig":"%s"}]}}`,
+			base64.StdEncoding.EncodeToString(payload),
+			payloadType,
+			base64.StdEncoding.EncodeToString(rawSig),
+		)
+		blobBytes := []byte(blobJSON)
+		blobDgst := godigest.FromBytes(blobBytes)
+
+		// OCI manifest for the sigstore bundle — one layer whose Digest is blobDgst.
+		sigManifest := &ocischema.DeserializedManifest{
+			Manifest: ocischema.Manifest{
+				Layers: []distribution.Descriptor{
+					{
+						MediaType: "application/vnd.dev.sigstore.bundle.v0.3+json",
+						Digest:    blobDgst,
+						Size:      int64(len(blobBytes)),
+					},
+				},
+			},
+		}
+		// Arbitrary but valid digest used as the sig-artifact referrer digest.
+		sigArtifactDgst := godigest.FromBytes([]byte("sig-manifest"))
+
+		mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
+			regMock := regmock.RegistryClient{}
+			regMock.On("NewRepository", mock.Anything).Return(nil)
+			regMock.On("Tags", mock.Anything).Return([]string{"1.0.1", "1.0.2"}, nil)
+			// Called by fetchTagSignature slow-path (ManifestDigest not cached for SemVer tags).
+			regMock.On("ManifestForTag", mock.Anything, mock.Anything).Return(&schema2.DeserializedManifest{}, nil)
+			// Referrers returns a single sigstore-bundle referrer.
+			regMock.On("Referrers", mock.Anything, mock.Anything).Return([]distribution.Descriptor{
+				{
+					MediaType:    "application/vnd.oci.image.manifest.v1+json",
+					ArtifactType: "application/vnd.dev.sigstore.bundle.v0.3+json",
+					Digest:       sigArtifactDgst,
+				},
+			}, nil)
+			regMock.On("ManifestForDigest", mock.Anything, mock.Anything).Return(sigManifest, nil)
+			regMock.On("BlobContent", mock.Anything, mock.Anything).Return(blobBytes, nil)
+			return &regMock, nil
+		}
+
+		argoClient := argomock.ArgoCD{}
+		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+
+		iuImg := NewImage(image.NewFromIdentifier("foobar=gcr.io/jannfis/foobar:>=1.0.1"))
+		iuImg.EnableVerification = true
+		iuImg.Verify = &image.Verify{Method: ImageVerificationWithPublicKey, PublicKeySecret: pemPub}
+
+		res := UpdateApplication(context.Background(), &UpdateConfiguration{
+			NewRegFN:     mockClientFn,
+			ArgoClient:   &argoClient,
+			KubeClient:   &verifyKubeClient,
+			UpdateApp:    verifyAppImages(iuImg),
+			VerifyImages: true,
+		}, NewSyncIterationState())
+
+		assert.Equal(t, 0, res.NumErrors)
+		assert.Equal(t, 1, res.NumImagesUpdated)
+	})
 }
 
 func Test_MarshalParamsOverride(t *testing.T) {
