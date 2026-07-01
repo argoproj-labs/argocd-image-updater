@@ -358,6 +358,32 @@ func Test_GetApplicationType(t *testing.T) {
 		assert.Equal(t, ApplicationTypeHelm, appType)
 	})
 
+	t.Run("Plugin app with kustomization write-back target returns Kustomize type", func(t *testing.T) {
+		// writeBackTarget: "kustomization" sets wbc.KustomizeBase via parseKustomizeBase().
+		// getApplicationSourceType() checks KustomizeBase first, so the Plugin source type
+		// is never reached — this is why Plugin + kustomization already works without the
+		// new Plugin branch added in this patch.
+		application := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "test-app",
+				Namespace: "argocd",
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: &v1alpha1.ApplicationSource{
+					Plugin: &v1alpha1.ApplicationSourcePlugin{},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypePlugin,
+			},
+		}
+		wbc := &WriteBackConfig{
+			Method:        WriteBackGit,
+			KustomizeBase: "k8s/apps/my-app", // set by parseKustomizeBase when writeBackTarget: "kustomization"
+		}
+		assert.Equal(t, ApplicationTypeKustomize, GetApplicationType(application, wbc))
+	})
+
 	t.Run("Plugin app with argocd write-back remains unsupported", func(t *testing.T) {
 		// Spec.Source is intentionally omitted: source type is driven by Status.SourceType, not Spec.
 		application := &v1alpha1.Application{
