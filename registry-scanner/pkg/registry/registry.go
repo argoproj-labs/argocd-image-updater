@@ -189,9 +189,16 @@ func (ep *RegistryEndpoint) GetTags(ctx context.Context, img *image.ContainerIma
 			} else {
 				imgTag = tag.NewImageTagWithLabels(tagStr, ti.CreatedAt, "", ti.Labels)
 			}
-			// Always record the manifest content digest so that signature
-			// verification can derive the .sig tag without a second manifest fetch.
-			imgTag.ManifestDigest = ti.EncodedDigest()
+			// Record the manifest content digest so that signature verification
+			// can skip a second manifest fetch (fast path). Skip the zero value:
+			// an all-zero digest means the TagMetadata implementation did not
+			// populate the field, and storing "sha256:000…000" would fool
+			// fetchTagSignatures into treating it as a valid cached digest and
+			// issuing a doomed referrers lookup instead of falling back to the
+			// slow path (ManifestForTag).
+			if ti.Digest != ([32]byte{}) {
+				imgTag.ManifestDigest = ti.EncodedDigest()
+			}
 			tagListLock.Lock()
 			tagList.Add(imgTag)
 			tagListLock.Unlock()

@@ -2022,7 +2022,7 @@ registries:
 	})
 
 	t.Run("cosign-key verification fetch failure counts as error", func(t *testing.T) {
-		// ManifestForTag is called by fetchTagSignature (slow path — ManifestDigest
+		// ManifestForTag is called by fetchTagSignatures (slow path — ManifestDigest
 		// is not cached for SemVer tags).  Returning an error forces VerifyWithPublicKey
 		// to fail, which increments NumErrors and skips the update.
 		mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
@@ -2058,8 +2058,14 @@ registries:
 		pemPub := string(pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: pubDER}))
 
 		// Build a DSSE bundle JSON signed with priv, matching what cosign 2.x produces.
+		// The mock ManifestForTag returns a zero-value schema2.DeserializedManifest
+		// whose Payload() is nil, so godigest.FromBytes(nil) is the image manifest digest.
 		payloadType := "application/vnd.dev.cosign.simplesigning.v1+json"
-		payload := []byte(`{"data":"test"}`)
+		imgManifestDigest := godigest.FromBytes(nil).String()
+		payload := []byte(fmt.Sprintf(
+			`{"critical":{"image":{"docker-manifest-digest":"%s"}}}`,
+			imgManifestDigest,
+		))
 		pae := append(
 			[]byte(fmt.Sprintf("DSSEv1 %d %s %d ", len(payloadType), payloadType, len(payload))),
 			payload...,
@@ -2096,7 +2102,7 @@ registries:
 			regMock := regmock.RegistryClient{}
 			regMock.On("NewRepository", mock.Anything).Return(nil)
 			regMock.On("Tags", mock.Anything).Return([]string{"1.0.1", "1.0.2"}, nil)
-			// Called by fetchTagSignature slow-path (ManifestDigest not cached for SemVer tags).
+			// Called by fetchTagSignatures slow-path (ManifestDigest not cached for SemVer tags).
 			regMock.On("ManifestForTag", mock.Anything, mock.Anything).Return(&schema2.DeserializedManifest{}, nil)
 			// Referrers returns a single sigstore-bundle referrer.
 			regMock.On("Referrers", mock.Anything, mock.Anything).Return([]distribution.Descriptor{

@@ -56,12 +56,15 @@ func signPAE(t *testing.T, priv *ecdsa.PrivateKey, payloadType string, payload [
 	return hex.EncodeToString(paeHash[:]), base64.StdEncoding.EncodeToString(sig)
 }
 
-// makeDSSEBundle creates a properly signed sigstore bundle, together with its
-// OCI manifest. Returns the manifest, the blob digest (for mockFetcher.blobs
-// keying), and the raw blob bytes.
-func makeDSSEBundle(t *testing.T, priv *ecdsa.PrivateKey, payload []byte) (manifest *ocischema.DeserializedManifest, blobDigest string, blobBytes []byte) {
+// makeDSSEBundle creates a properly signed sigstore bundle for imgDigest,
+// together with its OCI manifest. Returns the manifest, the blob digest (for
+// mockFetcher.blobs keying), and the raw blob bytes.
+// imgDigest must be the full "sha256:<hex>" digest of the image being signed;
+// it is embedded in the simple-signing payload so the digest-binding check passes.
+func makeDSSEBundle(t *testing.T, priv *ecdsa.PrivateKey, imgDigest string) (manifest *ocischema.DeserializedManifest, blobDigest string, blobBytes []byte) {
 	t.Helper()
 
+	payload := []byte(fmt.Sprintf(`{"critical":{"image":{"docker-manifest-digest":"%s"}}}`, imgDigest))
 	payloadType := "application/vnd.dev.cosign.simplesigning.v1+json"
 	paeHash := sha256.Sum256(computePAE(payloadType, payload))
 	sig, err := ecdsa.SignASN1(rand.Reader, priv, paeHash[:])
@@ -75,6 +78,46 @@ func makeDSSEBundle(t *testing.T, priv *ecdsa.PrivateKey, payload []byte) (manif
 		},
 	}
 	blobBytes, err = json.Marshal(bundle)
+	require.NoError(t, err)
+
+	dgst := godigest.FromBytes(blobBytes)
+	blobDigest = dgst.String()
+	manifest = &ocischema.DeserializedManifest{
+		Manifest: ocischema.Manifest{
+			Layers: []distribution.Descriptor{{
+				MediaType: sigstoreBundleType,
+				Digest:    dgst,
+				Size:      int64(len(blobBytes)),
+			}},
+		},
+	}
+	return manifest, blobDigest, blobBytes
+}
+
+// makeDSSEBundleWithSigners is like makeDSSEBundle but embeds one DSSE
+// signature per private key in the same envelope.
+func makeDSSEBundleWithSigners(t *testing.T, privKeys []*ecdsa.PrivateKey, imgDigest string) (manifest *ocischema.DeserializedManifest, blobDigest string, blobBytes []byte) {
+	t.Helper()
+
+	payload := []byte(fmt.Sprintf(`{"critical":{"image":{"docker-manifest-digest":"%s"}}}`, imgDigest))
+	payloadType := "application/vnd.dev.cosign.simplesigning.v1+json"
+	paeHash := sha256.Sum256(computePAE(payloadType, payload))
+
+	var envSigs []dsseSignature
+	for _, priv := range privKeys {
+		sig, err := ecdsa.SignASN1(rand.Reader, priv, paeHash[:])
+		require.NoError(t, err)
+		envSigs = append(envSigs, dsseSignature{Sig: base64.StdEncoding.EncodeToString(sig)})
+	}
+
+	bundle := sigstoreBundle{
+		DSSEEnvelope: &dsseEnvelope{
+			Payload:     base64.StdEncoding.EncodeToString(payload),
+			PayloadType: payloadType,
+			Signatures:  envSigs,
+		},
+	}
+	blobBytes, err := json.Marshal(bundle)
 	require.NoError(t, err)
 
 	dgst := godigest.FromBytes(blobBytes)
@@ -245,13 +288,12 @@ func Test_verifySignature(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// fetchTagSignature
+// fetchTagSignatures
 // ---------------------------------------------------------------------------
 
-func Test_fetchTagSignature(t *testing.T) {
+func Test_fetchTagSignatures(t *testing.T) {
 	ctx := context.Background()
 	kp := newTestKeyPair(t)
-	payload := []byte(`{"critical":{"image":{"docker-manifest-digest":"sha256:29d4b"}}}`)
 
 	const (
 		imgManifestDigest = "sha256:aabb1234aabb1234aabb1234aabb1234aabb1234aabb1234aabb1234aabb1234"
@@ -259,7 +301,7 @@ func Test_fetchTagSignature(t *testing.T) {
 	)
 
 	t.Run("fast path uses ManifestDigest and succeeds", func(t *testing.T) {
-		bundleManifest, blobDigest, blobBytes := makeDSSEBundle(t, kp.priv, payload)
+		bundleManifest, blobDigest, blobBytes := makeDSSEBundle(t, kp.priv, imgManifestDigest)
 		imgTag := &tag.ImageTag{TagName: "1.0.21", ManifestDigest: imgManifestDigest}
 
 		fetcher := &mockFetcher{
@@ -272,16 +314,16 @@ func Test_fetchTagSignature(t *testing.T) {
 			blobs: map[string][]byte{blobDigest: blobBytes},
 		}
 
-		got, err := fetchTagSignature(ctx, imgTag, fetcher)
+		got, err := fetchTagSignatures(ctx, imgTag, fetcher)
 		require.NoError(t, err)
-		require.NotNil(t, got)
-		assert.NoError(t, verifySignature("quay.io/org/app:1.0.21", got, kp.pemPub))
+		require.NotEmpty(t, got)
+		assert.NoError(t, verifySignature("quay.io/org/app:1.0.21", got[0], kp.pemPub))
 	})
 
 	t.Run("slow path fetches image manifest when ManifestDigest is empty", func(t *testing.T) {
 		imgPayload := []byte(`{"schemaVersion":2}`)
 		imgDigest := godigest.FromBytes(imgPayload).String()
-		bundleManifest, blobDigest, blobBytes := makeDSSEBundle(t, kp.priv, payload)
+		bundleManifest, blobDigest, blobBytes := makeDSSEBundle(t, kp.priv, imgDigest)
 
 		imgTag := &tag.ImageTag{TagName: "1.0.21"} // no ManifestDigest
 		fetcher := &mockFetcher{
@@ -295,14 +337,15 @@ func Test_fetchTagSignature(t *testing.T) {
 			blobs: map[string][]byte{blobDigest: blobBytes},
 		}
 
-		got, err := fetchTagSignature(ctx, imgTag, fetcher)
+		got, err := fetchTagSignatures(ctx, imgTag, fetcher)
 		require.NoError(t, err)
-		assert.NoError(t, verifySignature("quay.io/org/app:1.0.21", got, kp.pemPub))
+		require.NotEmpty(t, got)
+		assert.NoError(t, verifySignature("quay.io/org/app:1.0.21", got[0], kp.pemPub))
 	})
 
 	t.Run("invalid ManifestDigest format returns error", func(t *testing.T) {
 		imgTag := &tag.ImageTag{TagName: "1.0.21", ManifestDigest: "not-a-digest"}
-		_, err := fetchTagSignature(ctx, imgTag, &mockFetcher{})
+		_, err := fetchTagSignatures(ctx, imgTag, &mockFetcher{})
 		assert.ErrorContains(t, err, "invalid manifest digest")
 	})
 
@@ -313,7 +356,7 @@ func Test_fetchTagSignature(t *testing.T) {
 				imgManifestDigest: fmt.Errorf("registry unavailable"),
 			},
 		}
-		_, err := fetchTagSignature(ctx, imgTag, fetcher)
+		_, err := fetchTagSignatures(ctx, imgTag, fetcher)
 		assert.ErrorContains(t, err, "failed to fetch OCI referrers")
 	})
 
@@ -326,17 +369,17 @@ func Test_fetchTagSignature(t *testing.T) {
 				},
 			},
 		}
-		_, err := fetchTagSignature(ctx, imgTag, fetcher)
+		_, err := fetchTagSignatures(ctx, imgTag, fetcher)
 		assert.ErrorContains(t, err, "no cosign signature found in OCI referrers")
 	})
 
 	t.Run("empty referrers returns error", func(t *testing.T) {
 		imgTag := &tag.ImageTag{TagName: "1.0.21", ManifestDigest: imgManifestDigest}
-		_, err := fetchTagSignature(ctx, imgTag, &mockFetcher{})
+		_, err := fetchTagSignatures(ctx, imgTag, &mockFetcher{})
 		assert.ErrorContains(t, err, "no cosign signature found in OCI referrers")
 	})
 
-	t.Run("ManifestForDigest error propagates", func(t *testing.T) {
+	t.Run("ManifestForDigest error skips referrer and returns no-signature error", func(t *testing.T) {
 		imgTag := &tag.ImageTag{TagName: "1.0.21", ManifestDigest: imgManifestDigest}
 		fetcher := &mockFetcher{
 			referrers: map[string][]distribution.Descriptor{
@@ -346,11 +389,11 @@ func Test_fetchTagSignature(t *testing.T) {
 				sigArtifactDigest: fmt.Errorf("network timeout"),
 			},
 		}
-		_, err := fetchTagSignature(ctx, imgTag, fetcher)
-		assert.ErrorContains(t, err, "error fetching cosign signature manifest")
+		_, err := fetchTagSignatures(ctx, imgTag, fetcher)
+		assert.ErrorContains(t, err, "no cosign signature found in OCI referrers")
 	})
 
-	t.Run("sig manifest is not an OCI manifest returns error", func(t *testing.T) {
+	t.Run("sig manifest is not an OCI manifest skips referrer and returns no-signature error", func(t *testing.T) {
 		imgTag := &tag.ImageTag{TagName: "1.0.21", ManifestDigest: imgManifestDigest}
 		fetcher := &mockFetcher{
 			referrers: map[string][]distribution.Descriptor{
@@ -361,11 +404,11 @@ func Test_fetchTagSignature(t *testing.T) {
 				sigArtifactDigest: &mockManifest{},
 			},
 		}
-		_, err := fetchTagSignature(ctx, imgTag, fetcher)
-		assert.ErrorContains(t, err, "not an OCI image manifest")
+		_, err := fetchTagSignatures(ctx, imgTag, fetcher)
+		assert.ErrorContains(t, err, "no cosign signature found in OCI referrers")
 	})
 
-	t.Run("sig manifest has no layers returns error", func(t *testing.T) {
+	t.Run("sig manifest has no layers skips referrer and returns no-signature error", func(t *testing.T) {
 		imgTag := &tag.ImageTag{TagName: "1.0.21", ManifestDigest: imgManifestDigest}
 		fetcher := &mockFetcher{
 			referrers: map[string][]distribution.Descriptor{
@@ -375,11 +418,11 @@ func Test_fetchTagSignature(t *testing.T) {
 				sigArtifactDigest: &ocischema.DeserializedManifest{},
 			},
 		}
-		_, err := fetchTagSignature(ctx, imgTag, fetcher)
-		assert.ErrorContains(t, err, "no layers in signature manifest")
+		_, err := fetchTagSignatures(ctx, imgTag, fetcher)
+		assert.ErrorContains(t, err, "no cosign signature found in OCI referrers")
 	})
 
-	t.Run("layer has wrong media type returns error", func(t *testing.T) {
+	t.Run("layer has wrong media type skips referrer and returns no-signature error", func(t *testing.T) {
 		imgTag := &tag.ImageTag{TagName: "1.0.21", ManifestDigest: imgManifestDigest}
 		wrongManifest := &ocischema.DeserializedManifest{
 			Manifest: ocischema.Manifest{
@@ -397,12 +440,12 @@ func Test_fetchTagSignature(t *testing.T) {
 				sigArtifactDigest: wrongManifest,
 			},
 		}
-		_, err := fetchTagSignature(ctx, imgTag, fetcher)
-		assert.ErrorContains(t, err, "unsupported cosign layer media type")
+		_, err := fetchTagSignatures(ctx, imgTag, fetcher)
+		assert.ErrorContains(t, err, "no cosign signature found in OCI referrers")
 	})
 
-	t.Run("blob fetch error returns error", func(t *testing.T) {
-		bundleManifest, blobDigest, _ := makeDSSEBundle(t, kp.priv, payload)
+	t.Run("blob fetch error skips referrer and returns no-signature error", func(t *testing.T) {
+		bundleManifest, blobDigest, _ := makeDSSEBundle(t, kp.priv, imgManifestDigest)
 		imgTag := &tag.ImageTag{TagName: "1.0.21", ManifestDigest: imgManifestDigest}
 		fetcher := &mockFetcher{
 			referrers: map[string][]distribution.Descriptor{
@@ -415,8 +458,33 @@ func Test_fetchTagSignature(t *testing.T) {
 				blobDigest: fmt.Errorf("network error"),
 			},
 		}
-		_, err := fetchTagSignature(ctx, imgTag, fetcher)
-		assert.ErrorContains(t, err, "failed to fetch sigstore bundle blob")
+		_, err := fetchTagSignatures(ctx, imgTag, fetcher)
+		assert.ErrorContains(t, err, "no cosign signature found in OCI referrers")
+	})
+
+	t.Run("second referrer matches when first referrer manifest fails", func(t *testing.T) {
+		const sigArtifactDigest2 = "sha256:9911aa009911aa009911aa009911aa009911aa009911aa009911aa009911aa00"
+		bundleManifest, blobDigest, blobBytes := makeDSSEBundle(t, kp.priv, imgManifestDigest)
+		imgTag := &tag.ImageTag{TagName: "1.0.21", ManifestDigest: imgManifestDigest}
+		fetcher := &mockFetcher{
+			referrers: map[string][]distribution.Descriptor{
+				imgManifestDigest: {
+					bundleReferrer(sigArtifactDigest),  // first referrer — manifest will fail
+					bundleReferrer(sigArtifactDigest2), // second referrer — has valid sig
+				},
+			},
+			errors: map[string]error{
+				sigArtifactDigest: fmt.Errorf("network timeout"),
+			},
+			manifests: map[string]distribution.Manifest{
+				sigArtifactDigest2: bundleManifest,
+			},
+			blobs: map[string][]byte{blobDigest: blobBytes},
+		}
+		got, err := fetchTagSignatures(ctx, imgTag, fetcher)
+		require.NoError(t, err)
+		require.NotEmpty(t, got)
+		assert.NoError(t, verifySignature("quay.io/org/app:1.0.21", got[0], kp.pemPub))
 	})
 }
 
@@ -427,18 +495,21 @@ func Test_fetchTagSignature(t *testing.T) {
 func Test_extractSigFromManifest(t *testing.T) {
 	ctx := context.Background()
 	kp := newTestKeyPair(t)
-	payload := []byte(`{"critical":{"image":{"docker-manifest-digest":"sha256:abc"}}}`)
 
-	const manifestRef = "sha256:aaaa0000aaaa0000aaaa0000aaaa0000aaaa0000aaaa0000aaaa0000aaaa0000"
+	const (
+		manifestRef     = "sha256:aaaa0000aaaa0000aaaa0000aaaa0000aaaa0000aaaa0000aaaa0000aaaa0000"
+		testImageDigest = "sha256:bbbb1111bbbb1111bbbb1111bbbb1111bbbb1111bbbb1111bbbb1111bbbb1111"
+	)
+	expectedDigest := godigest.Digest(testImageDigest)
 
 	t.Run("not an OCI manifest returns error", func(t *testing.T) {
-		_, err := extractSigFromManifest(ctx, &mockManifest{}, manifestRef, "1.0.21", &mockFetcher{})
+		_, err := extractSigsFromManifest(ctx, &mockManifest{}, manifestRef, "1.0.21", expectedDigest, &mockFetcher{})
 		assert.ErrorContains(t, err, "not an OCI image manifest")
 	})
 
 	t.Run("no layers returns error", func(t *testing.T) {
 		m := &ocischema.DeserializedManifest{} // zero layers
-		_, err := extractSigFromManifest(ctx, m, manifestRef, "1.0.21", &mockFetcher{})
+		_, err := extractSigsFromManifest(ctx, m, manifestRef, "1.0.21", expectedDigest, &mockFetcher{})
 		assert.ErrorContains(t, err, "no layers in signature manifest")
 	})
 
@@ -451,21 +522,21 @@ func Test_extractSigFromManifest(t *testing.T) {
 				}},
 			},
 		}
-		_, err := extractSigFromManifest(ctx, m, manifestRef, "1.0.21", &mockFetcher{})
+		_, err := extractSigsFromManifest(ctx, m, manifestRef, "1.0.21", expectedDigest, &mockFetcher{})
 		assert.ErrorContains(t, err, "unsupported cosign layer media type")
 	})
 
 	t.Run("valid bundle layer delegates to extractDSSEBundle and succeeds", func(t *testing.T) {
-		bundleManifest, blobDigest, blobBytes := makeDSSEBundle(t, kp.priv, payload)
+		bundleManifest, blobDigest, blobBytes := makeDSSEBundle(t, kp.priv, testImageDigest)
 		// bundleManifest is an *ocischema.DeserializedManifest with sigstoreBundleType layer.
 		fetcher := &mockFetcher{
 			blobs: map[string][]byte{blobDigest: blobBytes},
 		}
 
-		got, err := extractSigFromManifest(ctx, bundleManifest, manifestRef, "1.0.21", fetcher)
+		got, err := extractSigsFromManifest(ctx, bundleManifest, manifestRef, "1.0.21", expectedDigest, fetcher)
 		require.NoError(t, err)
-		require.NotNil(t, got)
-		assert.NoError(t, verifySignature("quay.io/org/app:1.0.21", got, kp.pemPub))
+		require.NotEmpty(t, got)
+		assert.NoError(t, verifySignature("quay.io/org/app:1.0.21", got[0], kp.pemPub))
 	})
 }
 
@@ -476,11 +547,16 @@ func Test_extractSigFromManifest(t *testing.T) {
 func Test_extractDSSEBundle(t *testing.T) {
 	ctx := context.Background()
 	kp := newTestKeyPair(t)
-	payload := []byte(`{"critical":{"image":{"docker-manifest-digest":"sha256:29d4b"}}}`)
+	const (
+		testImageDigest = "sha256:29d4b64da00e01ca2ce893a1d2bfe5ca6e6421c107f52fdffe6537bf760ddc03"
+		otherDigest     = "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+	)
+	payload := []byte(fmt.Sprintf(`{"critical":{"image":{"docker-manifest-digest":"%s"}}}`, testImageDigest))
 	payloadType := "application/vnd.dev.cosign.simplesigning.v1+json"
+	expectedDigest := godigest.Digest(testImageDigest)
 
 	// makeLayer is a helper that builds a distribution.Descriptor pointing at
-	// specific blob bytes (or nothing if blobDigest is empty).
+	// specific blob bytes.
 	makeLayer := func(blobBytes []byte) distribution.Descriptor {
 		dgst := godigest.FromBytes(blobBytes)
 		return distribution.Descriptor{
@@ -495,7 +571,7 @@ func Test_extractDSSEBundle(t *testing.T) {
 		fetcher := &mockFetcher{
 			blobErrors: map[string]error{layer.Digest.String(): fmt.Errorf("I/O error")},
 		}
-		_, err := extractDSSEBundle(ctx, layer, "1.0.21", fetcher)
+		_, err := extractDSSEBundle(ctx, layer, "1.0.21", expectedDigest, fetcher)
 		assert.ErrorContains(t, err, "failed to fetch sigstore bundle blob")
 	})
 
@@ -505,7 +581,7 @@ func Test_extractDSSEBundle(t *testing.T) {
 		fetcher := &mockFetcher{
 			blobs: map[string][]byte{layer.Digest.String(): blobBytes},
 		}
-		_, err := extractDSSEBundle(ctx, layer, "1.0.21", fetcher)
+		_, err := extractDSSEBundle(ctx, layer, "1.0.21", expectedDigest, fetcher)
 		assert.ErrorContains(t, err, "failed to parse sigstore bundle")
 	})
 
@@ -516,7 +592,7 @@ func Test_extractDSSEBundle(t *testing.T) {
 		fetcher := &mockFetcher{
 			blobs: map[string][]byte{layer.Digest.String(): blobBytes},
 		}
-		_, err = extractDSSEBundle(ctx, layer, "1.0.21", fetcher)
+		_, err = extractDSSEBundle(ctx, layer, "1.0.21", expectedDigest, fetcher)
 		assert.ErrorContains(t, err, "no dsseEnvelope")
 	})
 
@@ -533,7 +609,7 @@ func Test_extractDSSEBundle(t *testing.T) {
 		fetcher := &mockFetcher{
 			blobs: map[string][]byte{layer.Digest.String(): blobBytes},
 		}
-		_, err = extractDSSEBundle(ctx, layer, "1.0.21", fetcher)
+		_, err = extractDSSEBundle(ctx, layer, "1.0.21", expectedDigest, fetcher)
 		assert.ErrorContains(t, err, "no signatures in dsseEnvelope")
 	})
 
@@ -550,8 +626,52 @@ func Test_extractDSSEBundle(t *testing.T) {
 		fetcher := &mockFetcher{
 			blobs: map[string][]byte{layer.Digest.String(): blobBytes},
 		}
-		_, err = extractDSSEBundle(ctx, layer, "1.0.21", fetcher)
+		_, err = extractDSSEBundle(ctx, layer, "1.0.21", expectedDigest, fetcher)
 		assert.ErrorContains(t, err, "failed to decode dsseEnvelope payload")
+	})
+
+	t.Run("payload digest mismatch returns error", func(t *testing.T) {
+		// Bundle claims a DIFFERENT image digest than expectedDigest — replay-attack scenario.
+		wrongPayload := []byte(fmt.Sprintf(`{"critical":{"image":{"docker-manifest-digest":"%s"}}}`, otherDigest))
+		blobBytes, err := json.Marshal(sigstoreBundle{
+			DSSEEnvelope: &dsseEnvelope{
+				Payload:     base64.StdEncoding.EncodeToString(wrongPayload),
+				PayloadType: payloadType,
+				Signatures:  []dsseSignature{{Sig: "fakesig"}},
+			},
+		})
+		require.NoError(t, err)
+		layer := makeLayer(blobBytes)
+		fetcher := &mockFetcher{
+			blobs: map[string][]byte{layer.Digest.String(): blobBytes},
+		}
+		_, err = extractDSSEBundle(ctx, layer, "1.0.21", expectedDigest, fetcher)
+		assert.ErrorContains(t, err, "does not match image manifest digest")
+	})
+
+	t.Run("payload without docker-manifest-digest field is allowed", func(t *testing.T) {
+		// Some bundle variants omit the field; we fall back to OCI subject binding.
+		noDigestPayload := []byte(`{"critical":{"image":{}}}`)
+		paeHash := sha256.Sum256(computePAE(payloadType, noDigestPayload))
+		sig, err := ecdsa.SignASN1(rand.Reader, kp.priv, paeHash[:])
+		require.NoError(t, err)
+
+		blobBytes, err := json.Marshal(sigstoreBundle{
+			DSSEEnvelope: &dsseEnvelope{
+				Payload:     base64.StdEncoding.EncodeToString(noDigestPayload),
+				PayloadType: payloadType,
+				Signatures:  []dsseSignature{{Sig: base64.StdEncoding.EncodeToString(sig)}},
+			},
+		})
+		require.NoError(t, err)
+		layer := makeLayer(blobBytes)
+		fetcher := &mockFetcher{
+			blobs: map[string][]byte{layer.Digest.String(): blobBytes},
+		}
+		got, err := extractDSSEBundle(ctx, layer, "1.0.21", expectedDigest, fetcher)
+		require.NoError(t, err)
+		require.Len(t, got, 1)
+		assert.NoError(t, verifySignature("quay.io/org/app:1.0.21", got[0], kp.pemPub))
 	})
 
 	t.Run("valid bundle returns correct TagSignature", func(t *testing.T) {
@@ -572,11 +692,11 @@ func Test_extractDSSEBundle(t *testing.T) {
 			blobs: map[string][]byte{layer.Digest.String(): blobBytes},
 		}
 
-		got, err := extractDSSEBundle(ctx, layer, "1.0.21", fetcher)
+		got, err := extractDSSEBundle(ctx, layer, "1.0.21", expectedDigest, fetcher)
 		require.NoError(t, err)
-		require.NotNil(t, got)
-		assert.Equal(t, hex.EncodeToString(paeHash[:]), got.PayloadDigest)
-		assert.NoError(t, verifySignature("quay.io/org/app:1.0.21", got, kp.pemPub))
+		require.Len(t, got, 1)
+		assert.Equal(t, hex.EncodeToString(paeHash[:]), got[0].PayloadDigest)
+		assert.NoError(t, verifySignature("quay.io/org/app:1.0.21", got[0], kp.pemPub))
 	})
 }
 
@@ -587,7 +707,6 @@ func Test_extractDSSEBundle(t *testing.T) {
 func Test_VerifyWithPublicKey(t *testing.T) {
 	ctx := context.Background()
 	kp := newTestKeyPair(t)
-	payload := []byte(`{"critical":{"image":{"docker-manifest-digest":"sha256:29d4b"}}}`)
 
 	const (
 		imgManifestDigest = "sha256:ccdd1234ccdd1234ccdd1234ccdd1234ccdd1234ccdd1234ccdd1234ccdd1234"
@@ -602,11 +721,14 @@ func Test_VerifyWithPublicKey(t *testing.T) {
 		assert.ErrorContains(t, err, "no tag information")
 	})
 
-	t.Run("uses cached TagSignature without any network call", func(t *testing.T) {
+	t.Run("uses cached TagSignatures without any network call", func(t *testing.T) {
 		img := newTestImageTag("1.0.21", imgManifestDigest)
 		payloadType := "application/vnd.dev.cosign.simplesigning.v1+json"
-		digestHex, sigB64 := signPAE(t, kp.priv, payloadType, payload)
-		img.ImageTag.TagSignature = &tag.TagSignature{Sig: sigB64, PayloadDigest: digestHex}
+		// Content only needs to produce a verifiable ECDSA signature; digest binding
+		// is not exercised on the cache-hit path.
+		cachedPayload := []byte(fmt.Sprintf(`{"critical":{"image":{"docker-manifest-digest":"%s"}}}`, imgManifestDigest))
+		digestHex, sigB64 := signPAE(t, kp.priv, payloadType, cachedPayload)
+		img.ImageTag.TagSignatures = []*tag.TagSignature{{Sig: sigB64, PayloadDigest: digestHex}}
 
 		err := VerifyWithPublicKey(ctx, img, verifyConfig, &mockFetcher{})
 		assert.NoError(t, err)
@@ -614,7 +736,7 @@ func Test_VerifyWithPublicKey(t *testing.T) {
 
 	t.Run("DSSE bundle verifies successfully end-to-end", func(t *testing.T) {
 		img := newTestImageTag("1.0.21", imgManifestDigest)
-		bundleManifest, blobDigest, blobBytes := makeDSSEBundle(t, kp.priv, payload)
+		bundleManifest, blobDigest, blobBytes := makeDSSEBundle(t, kp.priv, imgManifestDigest)
 
 		fetcher := &mockFetcher{
 			referrers: map[string][]distribution.Descriptor{
@@ -628,8 +750,8 @@ func Test_VerifyWithPublicKey(t *testing.T) {
 
 		err := VerifyWithPublicKey(ctx, img, verifyConfig, fetcher)
 		assert.NoError(t, err)
-		// TagSignature is cached on the tag after fetch.
-		require.NotNil(t, img.ImageTag.TagSignature)
+		// TagSignatures are cached on the tag after fetch.
+		require.NotEmpty(t, img.ImageTag.TagSignatures)
 	})
 
 	t.Run("referrers error is propagated", func(t *testing.T) {
@@ -652,7 +774,7 @@ func Test_VerifyWithPublicKey(t *testing.T) {
 	t.Run("DSSE bundle signed with wrong key fails verification", func(t *testing.T) {
 		img := newTestImageTag("1.0.21", imgManifestDigest)
 		otherKP := newTestKeyPair(t)
-		bundleManifest, blobDigest, blobBytes := makeDSSEBundle(t, otherKP.priv, payload)
+		bundleManifest, blobDigest, blobBytes := makeDSSEBundle(t, otherKP.priv, imgManifestDigest)
 
 		fetcher := &mockFetcher{
 			referrers: map[string][]distribution.Descriptor{
@@ -666,5 +788,56 @@ func Test_VerifyWithPublicKey(t *testing.T) {
 
 		err := VerifyWithPublicKey(ctx, img, verifyConfig, fetcher)
 		assert.ErrorContains(t, err, "signature verification failed")
+	})
+
+	t.Run("second referrer signed with correct key succeeds", func(t *testing.T) {
+		// Two referrer bundles: the first is signed with the wrong key, the
+		// second with the correct key.  Verification must succeed.
+		const sigArtifactDigest2 = "sha256:bbcc0000bbcc0000bbcc0000bbcc0000bbcc0000bbcc0000bbcc0000bbcc0000"
+		img := newTestImageTag("1.0.21", imgManifestDigest)
+		wrongKP := newTestKeyPair(t)
+		wrongManifest, wrongBlobDigest, wrongBlobBytes := makeDSSEBundle(t, wrongKP.priv, imgManifestDigest)
+		goodManifest, goodBlobDigest, goodBlobBytes := makeDSSEBundle(t, kp.priv, imgManifestDigest)
+
+		fetcher := &mockFetcher{
+			referrers: map[string][]distribution.Descriptor{
+				imgManifestDigest: {
+					bundleReferrer(sigArtifactDigest),  // wrong key
+					bundleReferrer(sigArtifactDigest2), // correct key
+				},
+			},
+			manifests: map[string]distribution.Manifest{
+				sigArtifactDigest:  wrongManifest,
+				sigArtifactDigest2: goodManifest,
+			},
+			blobs: map[string][]byte{
+				wrongBlobDigest: wrongBlobBytes,
+				goodBlobDigest:  goodBlobBytes,
+			},
+		}
+
+		err := VerifyWithPublicKey(ctx, img, verifyConfig, fetcher)
+		assert.NoError(t, err)
+	})
+
+	t.Run("second DSSE signature in envelope matches correct key", func(t *testing.T) {
+		// Single referrer bundle whose DSSE envelope contains two signatures:
+		// the first from a wrong key, the second from the correct key.
+		img := newTestImageTag("1.0.21", imgManifestDigest)
+		wrongKP := newTestKeyPair(t)
+		bundleManifest, blobDigest, blobBytes := makeDSSEBundleWithSigners(t, []*ecdsa.PrivateKey{wrongKP.priv, kp.priv}, imgManifestDigest)
+
+		fetcher := &mockFetcher{
+			referrers: map[string][]distribution.Descriptor{
+				imgManifestDigest: {bundleReferrer(sigArtifactDigest)},
+			},
+			manifests: map[string]distribution.Manifest{
+				sigArtifactDigest: bundleManifest,
+			},
+			blobs: map[string][]byte{blobDigest: blobBytes},
+		}
+
+		err := VerifyWithPublicKey(ctx, img, verifyConfig, fetcher)
+		assert.NoError(t, err)
 	})
 }

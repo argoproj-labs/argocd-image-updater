@@ -35,9 +35,11 @@ type ImageTag struct {
 	ManifestDigest string
 	// Labels contains the image labels extracted from the container image manifest.
 	Labels map[string]string
-	// TagSignature holds the pre-fetched cosign signature for this tag.
-	// Nil when no signature was found in the registry or verification is not configured.
-	TagSignature *TagSignature
+	// TagSignatures holds all cosign signature candidates pre-fetched from the
+	// registry — one entry per signer across all referrer bundles and all DSSE
+	// envelope signatures.  Empty when no signature was found or verification is
+	// not configured.  VerifyWithPublicKey succeeds as soon as one entry matches.
+	TagSignatures []*TagSignature
 }
 
 // ImageTagList is a collection of ImageTag objects.

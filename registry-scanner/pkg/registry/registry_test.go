@@ -191,6 +191,41 @@ func Test_GetTags(t *testing.T) {
 		assert.Equal(t, ti.EncodedDigest(), cachedTag.ManifestDigest)
 	})
 
+	t.Run("ManifestDigest is NOT set when TagInfo.Digest is zero", func(t *testing.T) {
+		// If TagMetadata returns a zero-value TagInfo, EncodedDigest() yields
+		// "sha256:000…000". Storing that would fool fetchTagSignatures into
+		// treating it as a valid cached digest and issuing a doomed referrers
+		// lookup. The guard must leave ManifestDigest empty so the slow path
+		// (ManifestForTag) is used instead.
+		meta1 := &schema2.DeserializedManifest{}
+		ctx := context.Background()
+
+		ti := &tag.TagInfo{} // Digest is [32]byte{} — all zeros
+
+		regClient := mocks.RegistryClient{}
+		regClient.On("NewRepository", mock.Anything).Return(nil)
+		regClient.On("Tags", mock.Anything).Return([]string{"1.0.0"}, nil)
+		regClient.On("ManifestForTag", mock.Anything, mock.Anything).Return(meta1, nil)
+		regClient.On("TagMetadata", mock.Anything, mock.Anything, mock.Anything).Return(ti, nil)
+
+		ep, err := GetRegistryEndpoint(ctx, &image.ContainerImage{RegistryURL: ""})
+		require.NoError(t, err)
+		ep.Cache.ClearCache()
+
+		img := image.NewFromIdentifier("foo/bar:1.0.0")
+		tl, err := ep.GetTags(ctx, img, &regClient, &image.VersionConstraint{
+			Strategy: image.StrategyNewestBuild,
+			Options:  options.NewManifestOptions(),
+		}, true)
+		require.NoError(t, err)
+		require.NotEmpty(t, tl)
+
+		cachedTag, err := ep.Cache.GetTag("foo/bar", "1.0.0")
+		require.NoError(t, err)
+		require.NotNil(t, cachedTag)
+		assert.Empty(t, cachedTag.ManifestDigest, "zero Digest must not be stored as ManifestDigest")
+	})
+
 	t.Run("401 with valid cached creds clears endpoint and returns ErrCredentialsInvalid", func(t *testing.T) {
 		authErr := &distclient.UnexpectedHTTPResponseError{
 			StatusCode: http.StatusUnauthorized,
