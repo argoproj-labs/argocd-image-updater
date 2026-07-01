@@ -196,6 +196,10 @@ var _ = Describe("ArgoCD Image Updater Parallel E2E Tests", func() {
 								Name:  "IMAGE_UPDATER_INTERVAL",
 								Value: "0",
 							},
+							{
+								Name:  "VERIFY_IMAGES",
+								Value: "false",
+							},
 						},
 						Enabled: true,
 					},
