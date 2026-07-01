@@ -354,6 +354,67 @@ images:
         name: "quay.io/argoproj/argocd"
 ```
 
+## Specifying Helm parameter names
+
+In the case of Helm applications that contain more than one image in the manifests
+or use another set of parameters than `image.name` and `image.tag` to define
+which image to render in the manifests, you need to configure the `manifestTargets.helm`
+field to specify the appropriate parameter names that should get set when an image
+gets updated.
+
+For example, if you have an image `quay.io/dexidp/dex` that is configured in
+your helm chart using the `dex.image.name` and `dex.image.tag` Helm parameters,
+you can configure the ImageUpdater resource as follows:
+
+```yaml
+images:
+  - alias: "dex"
+    imageName: "quay.io/dexidp/dex:latest"
+    manifestTargets:
+      helm:
+        name: "dex.image.name"
+        tag: "dex.image.tag"
+```
+
+The general syntax for the Helm configuration is:
+
+```yaml
+images:
+  - alias: "<image_alias>"
+    imageName: "<image_name>"
+    manifestTargets:
+      helm:
+        name: "<name of helm parameter to set for the image name>"
+        tag: "<name of helm parameter to set for the image tag>"
+```
+
+If the chart uses a parameter for the canonical name of the image (i.e. image
+name and tag combined), you can use the `spec` field instead:
+
+```yaml
+images:
+  - alias: "<image_alias>"
+    imageName: "<image_name>"
+    manifestTargets:
+      helm:
+        spec: "<name of helm parameter to set for the canonical name of image>"
+```
+
+If the `spec` field is set, the `name` and `tag` fields will be ignored.
+
+If the image is in a YAML list, then the index can be specified
+in the `name`, `tag`, or `spec` fields using square brackets:
+
+```yaml
+images:
+  - alias: "<image_alias>"
+    imageName: "<image_name>"
+    manifestTargets:
+      helm:
+        name: "images[0].name"
+        tag: "images[0].tag"
+```
+
 ## Image Signature Verification
 
 Argo CD Image Updater can verify cosign signatures before committing an image
@@ -471,67 +532,6 @@ spec:
     When `imagesVerification` is present and `enable` is `true` (the default),
     the `method` and `publicKeySecret` fields are required. An image whose
     verification settings are incomplete will be skipped with an error.
-
-## Specifying Helm parameter names
-
-In the case of Helm applications that contain more than one image in the manifests
-or use another set of parameters than `image.name` and `image.tag` to define
-which image to render in the manifests, you need to configure the `manifestTargets.helm`
-field to specify the appropriate parameter names that should get set when an image
-gets updated.
-
-For example, if you have an image `quay.io/dexidp/dex` that is configured in
-your helm chart using the `dex.image.name` and `dex.image.tag` Helm parameters,
-you can configure the ImageUpdater resource as follows:
-
-```yaml
-images:
-  - alias: "dex"
-    imageName: "quay.io/dexidp/dex:latest"
-    manifestTargets:
-      helm:
-        name: "dex.image.name"
-        tag: "dex.image.tag"
-```
-
-The general syntax for the Helm configuration is:
-
-```yaml
-images:
-  - alias: "<image_alias>"
-    imageName: "<image_name>"
-    manifestTargets:
-      helm:
-        name: "<name of helm parameter to set for the image name>"
-        tag: "<name of helm parameter to set for the image tag>"
-```
-
-If the chart uses a parameter for the canonical name of the image (i.e. image
-name and tag combined), you can use the `spec` field instead:
-
-```yaml
-images:
-  - alias: "<image_alias>"
-    imageName: "<image_name>"
-    manifestTargets:
-      helm:
-        spec: "<name of helm parameter to set for the canonical name of image>"
-```
-
-If the `spec` field is set, the `name` and `tag` fields will be ignored.
-
-If the image is in a YAML list, then the index can be specified
-in the `name`, `tag`, or `spec` fields using square brackets:
-
-```yaml
-images:
-  - alias: "<image_alias>"
-    imageName: "<image_name>"
-    manifestTargets:
-      helm:
-        name: "images[0].name"
-        tag: "images[0].tag"
-```
 
 ## Examples
 
