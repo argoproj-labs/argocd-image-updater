@@ -336,6 +336,46 @@ func Test_GetApplicationType(t *testing.T) {
 		assert.Equal(t, ApplicationTypeKustomize, appType)
 	})
 
+	t.Run("Plugin app with git write-back returns Helm type", func(t *testing.T) {
+		application := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "test-app",
+				Namespace: "argocd",
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: &v1alpha1.ApplicationSource{
+					Plugin: &v1alpha1.ApplicationSourcePlugin{},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypePlugin,
+			},
+		}
+		wbc := &WriteBackConfig{
+			Method: WriteBackGit,
+		}
+		appType := GetApplicationType(application, wbc)
+		assert.Equal(t, ApplicationTypeHelm, appType)
+	})
+
+	t.Run("Plugin app with argocd write-back remains unsupported", func(t *testing.T) {
+		application := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "test-app",
+				Namespace: "argocd",
+			},
+			Spec: v1alpha1.ApplicationSpec{},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypePlugin,
+			},
+		}
+		// nil wbc → unsupported
+		assert.Equal(t, ApplicationTypeUnsupported, GetApplicationType(application, nil))
+		// explicit argocd method → unsupported
+		wbc := &WriteBackConfig{Method: WriteBackApplication}
+		assert.Equal(t, ApplicationTypeUnsupported, GetApplicationType(application, wbc))
+	})
+
 }
 
 func Test_GetApplicationSourceType(t *testing.T) {
