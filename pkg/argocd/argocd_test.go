@@ -1960,7 +1960,7 @@ func Test_parseImageList(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := parseImageList(context.Background(), nil, "", tc.inputImages, nil, nil, false, nil)
+			got := parseImageList(context.Background(), nil, "", tc.inputImages, nil, nil, nil)
 			require.NotNil(t, got)
 			assert.ElementsMatch(t, tc.expectedImages, *got, "The parsed image list should match the expected list")
 		})
@@ -1970,7 +1970,7 @@ func Test_parseImageList(t *testing.T) {
 	t.Run("Webhook: match by repository with empty registry", func(t *testing.T) {
 		images := []api.ImageConfig{{Alias: "web", ImageName: "nginx:1.21.0"}}
 		event := &WebhookEvent{RegistryURL: "ghcr.io", Repository: "nginx"}
-		got := parseImageList(context.Background(), nil, "", images, nil, nil, false, event)
+		got := parseImageList(context.Background(), nil, "", images, nil, nil, event)
 		require.NotNil(t, got)
 		expected := ImageList{newExpectedImageForIuCR("web=nginx:1.21.0", "")}
 		assert.ElementsMatch(t, expected, *got)
@@ -1979,7 +1979,7 @@ func Test_parseImageList(t *testing.T) {
 	t.Run("Webhook: skip on repository mismatch", func(t *testing.T) {
 		images := []api.ImageConfig{{Alias: "web", ImageName: "nginx:1.21.0"}}
 		event := &WebhookEvent{RegistryURL: "ghcr.io", Repository: "redis"}
-		got := parseImageList(context.Background(), nil, "", images, nil, nil, false, event)
+		got := parseImageList(context.Background(), nil, "", images, nil, nil, event)
 		require.NotNil(t, got)
 		assert.Len(t, *got, 0)
 	})
@@ -1987,7 +1987,7 @@ func Test_parseImageList(t *testing.T) {
 	t.Run("Webhook: skip on registry mismatch", func(t *testing.T) {
 		images := []api.ImageConfig{{Alias: "idp", ImageName: "quay.io/dexidp/dex:v1.23.0"}}
 		event := &WebhookEvent{RegistryURL: "ghcr.io", Repository: "dexidp/dex"}
-		got := parseImageList(context.Background(), nil, "", images, nil, nil, false, event)
+		got := parseImageList(context.Background(), nil, "", images, nil, nil, event)
 		require.NotNil(t, got)
 		assert.Len(t, *got, 0)
 	})
@@ -1995,7 +1995,7 @@ func Test_parseImageList(t *testing.T) {
 	t.Run("Webhook: match with explicit registry and repository", func(t *testing.T) {
 		images := []api.ImageConfig{{Alias: "app", ImageName: "ghcr.io/myorg/app:1.0"}}
 		event := &WebhookEvent{RegistryURL: "ghcr.io", Repository: "myorg/app"}
-		got := parseImageList(context.Background(), nil, "", images, nil, nil, false, event)
+		got := parseImageList(context.Background(), nil, "", images, nil, nil, event)
 		require.NotNil(t, got)
 		expected := ImageList{newExpectedImageForIuCR("app=ghcr.io/myorg/app:1.0", "")}
 		assert.ElementsMatch(t, expected, *got)
@@ -2008,13 +2008,13 @@ func Test_parseImageList(t *testing.T) {
 			{Alias: "app", ImageName: "ghcr.io/myorg/app:2.0"},
 		}
 		event := &WebhookEvent{RegistryURL: "ghcr.io", Repository: "myorg/app"}
-		got := parseImageList(context.Background(), nil, "", images, nil, nil, false, event)
+		got := parseImageList(context.Background(), nil, "", images, nil, nil, event)
 		require.NotNil(t, got)
 		expected := ImageList{newExpectedImageForIuCR("app=ghcr.io/myorg/app:2.0", "")}
 		assert.ElementsMatch(t, expected, *got)
 	})
 
-	// Image signature verification behavior (verifyImage=true)
+	// Image signature verification behavior
 	makeVerifyKubeClient := func(secrets ...runtime.Object) *kube.ImageUpdaterKubernetesClient {
 		clientset := fake.NewFakeClientsetWithResources(secrets...)
 		return &kube.ImageUpdaterKubernetesClient{
@@ -2025,15 +2025,16 @@ func Test_parseImageList(t *testing.T) {
 		}
 	}
 
-	t.Run("Verification: image skipped when verifyImage=true but no verification config set", func(t *testing.T) {
-		// No appImagesVerification, no image-level ImagesVerification → empty merged settings
-		// → method must be set error → image skipped via continue
+	t.Run("Verification: image proceeds normally when no imagesVerification configured at any level", func(t *testing.T) {
+		// No appImagesVerification, no image-level ImagesVerification →
+		// mergeImagesVerification(nil, nil) returns nil → newImageFromImagesVerification
+		// exits early → EnableVerification=false → image is included normally.
 		images := []api.ImageConfig{
 			{Alias: "web", ImageName: "nginx:1.21.0"},
 		}
-		got := parseImageList(context.Background(), makeVerifyKubeClient(), "argocd", images, nil, nil, true, nil)
+		got := parseImageList(context.Background(), makeVerifyKubeClient(), "argocd", images, nil, nil, nil)
 		require.NotNil(t, got)
-		assert.Len(t, *got, 0, "image with no verification config should be skipped when verifyImage=true")
+		assert.Len(t, *got, 1, "image with no verification config should proceed without verification")
 	})
 
 	t.Run("Verification: image included when enable=false opts out", func(t *testing.T) {
@@ -2048,7 +2049,7 @@ func Test_parseImageList(t *testing.T) {
 				},
 			},
 		}
-		got := parseImageList(context.Background(), makeVerifyKubeClient(), "argocd", images, nil, nil, true, nil)
+		got := parseImageList(context.Background(), makeVerifyKubeClient(), "argocd", images, nil, nil, nil)
 		require.NotNil(t, got)
 		assert.Len(t, *got, 1)
 		assert.False(t, (*got)[0].EnableVerification)
@@ -2067,7 +2068,7 @@ func Test_parseImageList(t *testing.T) {
 			Method:          strPtr(ImageVerificationWithPublicKey),
 			PublicKeySecret: &api.SecretRef{SecretName: "org-key", Key: "cosign.pub"},
 		}
-		got := parseImageList(context.Background(), makeVerifyKubeClient(secret), "argocd", images, nil, appVerification, true, nil)
+		got := parseImageList(context.Background(), makeVerifyKubeClient(secret), "argocd", images, nil, appVerification, nil)
 		require.NotNil(t, got)
 		require.Len(t, *got, 1)
 		img := (*got)[0]
@@ -2085,12 +2086,12 @@ func Test_parseImageList(t *testing.T) {
 			Method:          strPtr(ImageVerificationWithPublicKey),
 			PublicKeySecret: &api.SecretRef{SecretName: "nonexistent-secret", Key: "cosign.pub"},
 		}
-		got := parseImageList(context.Background(), makeVerifyKubeClient(), "argocd", images, nil, appVerification, true, nil)
+		got := parseImageList(context.Background(), makeVerifyKubeClient(), "argocd", images, nil, appVerification, nil)
 		require.NotNil(t, got)
 		assert.Len(t, *got, 0, "image should be skipped when secret lookup fails")
 	})
 
-	t.Run("Verification: mixed list — signed image included, unsigned skipped", func(t *testing.T) {
+	t.Run("Verification: mixed list — verified image has Verify populated, unverified image proceeds normally", func(t *testing.T) {
 		const fakePEM = "-----BEGIN PUBLIC KEY-----\nfake\n-----END PUBLIC KEY-----"
 		secret := &v1core.Secret{
 			ObjectMeta: v1.ObjectMeta{Namespace: "argocd", Name: "org-key"},
@@ -2098,7 +2099,7 @@ func Test_parseImageList(t *testing.T) {
 		}
 		images := []api.ImageConfig{
 			{
-				// has valid verification config — included
+				// image-level imagesVerification configured — included with Verify populated
 				Alias:     "app",
 				ImageName: "ghcr.io/org/app:1.0",
 				ImagesVerification: &api.ImagesVerification{
@@ -2107,15 +2108,32 @@ func Test_parseImageList(t *testing.T) {
 				},
 			},
 			{
-				// no verification config — skipped
+				// no imagesVerification at any level — included without verification
 				Alias:     "nginx",
 				ImageName: "nginx:1.21.0",
 			},
 		}
-		got := parseImageList(context.Background(), makeVerifyKubeClient(secret), "argocd", images, nil, nil, true, nil)
+		got := parseImageList(context.Background(), makeVerifyKubeClient(secret), "argocd", images, nil, nil, nil)
 		require.NotNil(t, got)
-		require.Len(t, *got, 1)
-		assert.Equal(t, "app", (*got)[0].ImageAlias)
+		require.Len(t, *got, 2)
+
+		// find each image by alias regardless of order
+		var appImg, nginxImg *Image
+		for i := range *got {
+			switch (*got)[i].ImageAlias {
+			case "app":
+				appImg = (*got)[i]
+			case "nginx":
+				nginxImg = (*got)[i]
+			}
+		}
+		require.NotNil(t, appImg, "app image should be included")
+		assert.True(t, appImg.EnableVerification)
+		assert.NotNil(t, appImg.Verify)
+
+		require.NotNil(t, nginxImg, "nginx image should be included without verification")
+		assert.False(t, nginxImg.EnableVerification)
+		assert.Nil(t, nginxImg.Verify)
 	})
 }
 
@@ -2183,14 +2201,16 @@ func Test_mergeImagesVerification(t *testing.T) {
 		return &api.SecretRef{SecretName: name, Key: key}
 	}
 
-	t.Run("all nil inputs returns empty struct", func(t *testing.T) {
+	t.Run("all nil inputs returns nil (no imagesVerification block present at any scope)", func(t *testing.T) {
+		// nil return lets newImageFromImagesVerification exit early so the image
+		// proceeds without verification — same behaviour as before the feature.
 		merged := mergeImagesVerification(nil, nil)
-		assert.Equal(t, &api.ImagesVerification{}, merged)
+		assert.Nil(t, merged)
 	})
 
-	t.Run("single nil input returns empty struct", func(t *testing.T) {
+	t.Run("single nil input returns nil", func(t *testing.T) {
 		merged := mergeImagesVerification(nil)
-		assert.Equal(t, &api.ImagesVerification{}, merged)
+		assert.Nil(t, merged)
 	})
 
 	t.Run("global settings propagate when app level is nil", func(t *testing.T) {
@@ -3452,7 +3472,7 @@ func Test_processApplicationForUpdate(t *testing.T) {
 			ctx := context.Background()
 			appsForUpdate := tc.initialApps
 
-			processApplicationForUpdate(nil, ctx, tc.app, tc.appRef, nil, nil, false, nil, tc.appNSName, appsForUpdate, nil)
+			processApplicationForUpdate(nil, ctx, tc.app, tc.appRef, nil, nil, nil, tc.appNSName, appsForUpdate, nil)
 
 			assert.Len(t, appsForUpdate, tc.expectedAppsCount, "The final map should have the expected number of applications")
 
@@ -3480,7 +3500,7 @@ func Test_processApplicationForUpdate(t *testing.T) {
 		webhook := &WebhookEvent{RegistryURL: "ghcr.io", Repository: "redis"}
 		appNSName := "testns/kustomize-app"
 
-		processApplicationForUpdate(nil, ctx, kustomizeApp, appRefWithImages, nil, nil, false, nil, appNSName, appsForUpdate, webhook)
+		processApplicationForUpdate(nil, ctx, kustomizeApp, appRefWithImages, nil, nil, nil, appNSName, appsForUpdate, webhook)
 
 		assert.Len(t, appsForUpdate, 0)
 		assert.NotContains(t, appsForUpdate, appNSName)
@@ -3720,7 +3740,6 @@ func Test_FilterApplicationsForUpdate(t *testing.T) {
 		expectedImages  map[string]int // map[appKey]expectedImageCount, for specificity check
 		expectNilResult bool
 		expectError     bool
-		verifyImage     bool // defaults to false; set true to cover the verifyImage=true branches
 	}{
 		{
 			name:        "Fast path for exact name matches",
@@ -4275,16 +4294,11 @@ func Test_FilterApplicationsForUpdate(t *testing.T) {
 			},
 			expectedKeys: []string{"testns/wbc-annotation-app"},
 		},
-		// -----------------------------------------------------------------
-		// verifyImage=true branches in FilterApplicationsForUpdate
-		// -----------------------------------------------------------------
 		{
-			// Covers: if verifyImage { globalImagesVerification = cr.Spec.ImagesVerification }   (line ~274)
-			//     and: if verifyImage { mergedImagesVerification = mergeImagesVerification(...) } (line ~341, CR path)
-			// With no verification method configured, newImageFromImagesVerification returns an
-			// error → image is skipped → app is not added to appsForUpdate.
-			name:        "verifyImage=true, CR path: lines covered even when images are skipped (no method set)",
-			verifyImage: true,
+			// No imagesVerification configured at any level:
+			// mergeImagesVerification(nil,nil) returns nil → newImageFromImagesVerification
+			// exits early → EnableVerification=false → image proceeds normally.
+			name:        "no imagesVerification at any level: image proceeds without verification",
 			initialApps: []client.Object{appProd},
 			imageUpdaterCR: &api.ImageUpdater{
 				ObjectMeta: v1.ObjectMeta{Name: "test-updater", Namespace: "testns"},
@@ -4294,13 +4308,11 @@ func Test_FilterApplicationsForUpdate(t *testing.T) {
 					},
 				},
 			},
-			expectedKeys: []string{}, // image skipped because no verification method configured
+			expectedKeys: []string{"testns/app-prod"},
 		},
 		{
-			// Covers: if verifyImage { mergedImagesVerification = applicationRef.ImagesVerification } (line ~331, UseAnnotations path)
-			// Same outcome: image skipped, but the branch is executed.
-			name:        "verifyImage=true, UseAnnotations path: line covered even when images are skipped (no method set)",
-			verifyImage: true,
+			// Same through the UseAnnotations path: no imagesVerification anywhere → app returned.
+			name: "UseAnnotations, no imagesVerification: image proceeds without verification",
 			initialApps: []client.Object{
 				&v1alpha1.Application{
 					ObjectMeta: v1.ObjectMeta{
@@ -4326,7 +4338,7 @@ func Test_FilterApplicationsForUpdate(t *testing.T) {
 					},
 				},
 			},
-			expectedKeys: []string{}, // image skipped because no verification method configured
+			expectedKeys: []string{"testns/verify-ann-app"},
 		},
 	}
 
@@ -4342,7 +4354,7 @@ func Test_FilterApplicationsForUpdate(t *testing.T) {
 				},
 			}
 			// Execute
-			appsForUpdate, err := FilterApplicationsForUpdate(ctx, client, &kubeClient, nil, tc.imageUpdaterCR, nil, tc.verifyImage)
+			appsForUpdate, err := FilterApplicationsForUpdate(ctx, client, &kubeClient, nil, tc.imageUpdaterCR, nil)
 
 			// Assert
 			if tc.expectError {

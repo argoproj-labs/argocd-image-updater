@@ -202,10 +202,6 @@ var _ = Describe("ArgoCD Image Updater Sequential E2E Tests", func() {
 								Name:  "IMAGE_UPDATER_WATCH_NAMESPACES",
 								Value: "*",
 							},
-							{
-								Name:  "VERIFY_IMAGES",
-								Value: "false",
-							},
 						},
 						Enabled: true},
 				},

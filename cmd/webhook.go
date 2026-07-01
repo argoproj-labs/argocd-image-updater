@@ -110,9 +110,6 @@ Supported registries:
 	webhookCmd.Flags().StringVar(&webhookCfg.TLSMaxVersion, "tlsmaxversion", env.GetStringVal("TLS_MAX_VERSION", webhook.DefaultTLSMaxVersion), "Maximum TLS version (e.g. 1.2, 1.3)")
 	webhookCmd.Flags().StringVar(&webhookCfg.TLSCiphers, "tlsciphers", env.GetStringVal("TLS_CIPHERS", ""), "Colon-separated list of TLS cipher suites (e.g. TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384:TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256)")
 
-	// Image verification flags
-	webhookCmd.Flags().BoolVar(&cfg.VerifyImages, "verify-images", env.GetBoolVal("VERIFY_IMAGES", true), "Enable image signature verification before applying updates. When disabled, all signature checks are skipped globally")
-
 	return webhookCmd
 }
 

@@ -42,7 +42,6 @@ type UpdateConfiguration struct {
 	DisableKubeEvents      bool
 	IgnorePlatforms        bool
 	GitCreds               git.CredsStore
-	VerifyImages           bool
 }
 
 type GitCredsSource func(app *argocdapi.Application) (git.Creds, error)

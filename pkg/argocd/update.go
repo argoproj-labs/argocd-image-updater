@@ -198,28 +198,24 @@ func UpdateApplication(ctx context.Context, updateConf *UpdateConfiguration, sta
 			}
 
 			// check signature for appImageWithTag using applicationImage.Verify
-			if updateConf.VerifyImages {
-				if applicationImage.EnableVerification {
-					switch applicationImage.Verify.Method {
-					// Verify image with public key
-					case ImageVerificationWithPublicKey:
-						err := image.VerifyWithPublicKey(imageOpCtx, appImageWithTag, applicationImage.Verify, regClient)
-						if err != nil {
-							imgCtx.Errorf("Unable to verify image %s with public key: %v", appImageFullNameWithTag, err)
-							result.NumErrors += 1
-							continue
-						}
-					// more verification methods will be added to this switch/case construction
-					default:
-						imgCtx.Errorf("Unsupported verification method: %s", applicationImage.Verify.Method)
+			if applicationImage.EnableVerification {
+				switch applicationImage.Verify.Method {
+				// Verify image with public key
+				case ImageVerificationWithPublicKey:
+					err := image.VerifyWithPublicKey(imageOpCtx, appImageWithTag, applicationImage.Verify, regClient)
+					if err != nil {
+						imgCtx.Errorf("Unable to verify image %s with public key: %v", appImageFullNameWithTag, err)
 						result.NumErrors += 1
 						continue
 					}
-				} else {
-					imgCtx.Debugf("Image verification is disabled %s", appImageFullNameWithTag)
+				// more verification methods will be added to this switch/case construction
+				default:
+					imgCtx.Errorf("Unsupported verification method: %s", applicationImage.Verify.Method)
+					result.NumErrors += 1
+					continue
 				}
 			} else {
-				imgCtx.Debugf("Image verification is globally disabled")
+				imgCtx.Debugf("Image verification not configured for %s, skipping", appImageFullNameWithTag)
 			}
 
 			needUpdate = true

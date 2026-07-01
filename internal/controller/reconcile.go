@@ -29,7 +29,7 @@ func (r *ImageUpdaterReconciler) RunImageUpdater(ctx context.Context, cr *iuapi.
 	r.Config.ArgoClient = argoClient
 
 	// Get the list of applications that are allowed for updates.
-	appList, err := argocd.FilterApplicationsForUpdate(ctx, argoClient, r.Config.KubeClient, r.Config.ArgocdDB, cr, webhookEvent, r.Config.VerifyImages)
+	appList, err := argocd.FilterApplicationsForUpdate(ctx, argoClient, r.Config.KubeClient, r.Config.ArgocdDB, cr, webhookEvent)
 	if err != nil {
 		return result, err
 	}
@@ -96,7 +96,6 @@ func (r *ImageUpdaterReconciler) RunImageUpdater(ctx context.Context, cr *iuapi.
 				GitCommitSignOff:       r.Config.GitCommitSignOff,
 				DisableKubeEvents:      r.Config.DisableKubeEvents,
 				GitCreds:               r.Config.GitCreds,
-				VerifyImages:           r.Config.VerifyImages,
 			}
 			res := argocd.UpdateApplication(appCtx, upconf, syncState)
 

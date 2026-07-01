@@ -222,12 +222,6 @@ spec:
                 name: argocd-image-updater-config
                 key: tls.ciphers
                 optional: true
-          - name: VERIFY_IMAGES
-            valueFrom:
-              configMapKeyRef:
-                name: argocd-image-updater-config
-                key: verify.images
-                optional: true
         securityContext:
           allowPrivilegeEscalation: false
           capabilities:

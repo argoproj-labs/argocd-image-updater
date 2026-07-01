@@ -1944,33 +1944,6 @@ registries:
 		},
 	}
 
-	t.Run("image verification globally disabled proceeds to update", func(t *testing.T) {
-		mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
-			regMock := regmock.RegistryClient{}
-			regMock.On("NewRepository", mock.Anything).Return(nil)
-			regMock.On("Tags", mock.Anything).Return([]string{"1.0.1", "1.0.2"}, nil)
-			return &regMock, nil
-		}
-
-		argoClient := argomock.ArgoCD{}
-		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
-
-		iuImg := NewImage(image.NewFromIdentifier("foobar=gcr.io/jannfis/foobar:>=1.0.1"))
-		iuImg.EnableVerification = true
-		iuImg.Verify = &image.Verify{Method: ImageVerificationWithPublicKey, PublicKeySecret: "unused"}
-
-		res := UpdateApplication(context.Background(), &UpdateConfiguration{
-			NewRegFN:     mockClientFn,
-			ArgoClient:   &argoClient,
-			KubeClient:   &verifyKubeClient,
-			UpdateApp:    verifyAppImages(iuImg),
-			VerifyImages: false, // globally disabled — skips all signature logic
-		}, NewSyncIterationState())
-
-		assert.Equal(t, 0, res.NumErrors)
-		assert.Equal(t, 1, res.NumImagesUpdated)
-	})
-
 	t.Run("image verification disabled per-image proceeds to update", func(t *testing.T) {
 		mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
 			regMock := regmock.RegistryClient{}
@@ -1986,11 +1959,10 @@ registries:
 		// EnableVerification is false by default
 
 		res := UpdateApplication(context.Background(), &UpdateConfiguration{
-			NewRegFN:     mockClientFn,
-			ArgoClient:   &argoClient,
-			KubeClient:   &verifyKubeClient,
-			UpdateApp:    verifyAppImages(iuImg),
-			VerifyImages: true, // globally on, but image-level is off
+			NewRegFN:   mockClientFn,
+			ArgoClient: &argoClient,
+			KubeClient: &verifyKubeClient,
+			UpdateApp:  verifyAppImages(iuImg),
 		}, NewSyncIterationState())
 
 		assert.Equal(t, 0, res.NumErrors)
@@ -2010,11 +1982,10 @@ registries:
 		iuImg.Verify = &image.Verify{Method: "notation"} // unsupported
 
 		res := UpdateApplication(context.Background(), &UpdateConfiguration{
-			NewRegFN:     mockClientFn,
-			ArgoClient:   &argomock.ArgoCD{},
-			KubeClient:   &verifyKubeClient,
-			UpdateApp:    verifyAppImages(iuImg),
-			VerifyImages: true,
+			NewRegFN:   mockClientFn,
+			ArgoClient: &argomock.ArgoCD{},
+			KubeClient: &verifyKubeClient,
+			UpdateApp:  verifyAppImages(iuImg),
 		}, NewSyncIterationState())
 
 		assert.Equal(t, 1, res.NumErrors)
@@ -2038,11 +2009,10 @@ registries:
 		iuImg.Verify = &image.Verify{Method: ImageVerificationWithPublicKey, PublicKeySecret: "any-key"}
 
 		res := UpdateApplication(context.Background(), &UpdateConfiguration{
-			NewRegFN:     mockClientFn,
-			ArgoClient:   &argomock.ArgoCD{},
-			KubeClient:   &verifyKubeClient,
-			UpdateApp:    verifyAppImages(iuImg),
-			VerifyImages: true,
+			NewRegFN:   mockClientFn,
+			ArgoClient: &argomock.ArgoCD{},
+			KubeClient: &verifyKubeClient,
+			UpdateApp:  verifyAppImages(iuImg),
 		}, NewSyncIterationState())
 
 		assert.Equal(t, 1, res.NumErrors)
@@ -2125,11 +2095,10 @@ registries:
 		iuImg.Verify = &image.Verify{Method: ImageVerificationWithPublicKey, PublicKeySecret: pemPub}
 
 		res := UpdateApplication(context.Background(), &UpdateConfiguration{
-			NewRegFN:     mockClientFn,
-			ArgoClient:   &argoClient,
-			KubeClient:   &verifyKubeClient,
-			UpdateApp:    verifyAppImages(iuImg),
-			VerifyImages: true,
+			NewRegFN:   mockClientFn,
+			ArgoClient: &argoClient,
+			KubeClient: &verifyKubeClient,
+			UpdateApp:  verifyAppImages(iuImg),
 		}, NewSyncIterationState())
 
 		assert.Equal(t, 0, res.NumErrors)

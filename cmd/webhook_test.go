@@ -55,7 +55,5 @@ func TestNewWebhookCommand(t *testing.T) {
 	asser.Equal(env.GetStringVal("TLS_MAX_VERSION", "1.3"), controllerCommand.Flag("tlsmaxversion").Value.String())
 	asser.Equal(env.GetStringVal("TLS_CIPHERS", ""), controllerCommand.Flag("tlsciphers").Value.String())
 
-	asser.Equal(env.GetStringVal("VERIFY_IMAGES", "true"), controllerCommand.Flag("verify-images").Value.String())
-
 	asser.Nil(controllerCommand.Help())
 }
