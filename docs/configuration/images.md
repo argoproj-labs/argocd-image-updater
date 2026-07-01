@@ -354,6 +354,124 @@ images:
         name: "quay.io/argoproj/argocd"
 ```
 
+## Image Signature Verification
+
+Argo CD Image Updater can verify cosign signatures before committing an image
+update. When verification is configured, an update is only applied if the image
+carries a valid signature from the configured public key. Images that fail
+verification are skipped and an error is logged.
+
+Verification is configured via the `imagesVerification` field, which can be set
+at the top-level (global default), `applicationRef` (group default), or
+`imageConfig` (per-image) level. More specific scopes override less specific
+ones. When no `imagesVerification` block is present, images are updated without
+verification.
+
+### Signing images
+
+Sign your image with [cosign](https://github.com/sigstore/cosign) using a
+key pair:
+
+```shell
+# Generate a key pair (produces cosign.key and cosign.pub)
+cosign generate-key-pair
+
+# Obtain the manifest digest of the image you want to sign
+# Sign by digest — the signature is stored as an OCI referrer to this exact digest
+cosign sign --key cosign.key <registry>/<repo>@<digest>
+
+# Verify locally before configuring Image Updater
+cosign verify --key cosign.pub <registry>/<repo>@<digest>
+```
+
+!!!note
+    Always sign by digest, not by tag. `cosign sign` resolves a tag to its
+    manifest digest internally and stores the signature as a referrer to that
+    digest. Signing by digest directly makes this explicit and ensures the
+    signature remains valid even if the tag is later re-pointed to a different
+    image.
+
+### Creating the public key Secret
+
+Store the PEM-encoded public key in a Kubernetes Secret in the **same namespace**
+as the ImageUpdater CR:
+
+```shell
+kubectl create secret generic myapp-cosign-pubkey \
+  --from-file=cosign.pub=./cosign.pub \
+  -n argocd
+```
+
+The resulting Secret looks like:
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: myapp-cosign-pubkey
+  namespace: argocd
+data:
+  cosign.pub: <base64-encoded PEM public key>
+```
+
+### Configuring verification in the CR
+
+#### Verify all images with a single key
+
+```yaml
+apiVersion: argocd-image-updater.argoproj.io/v1alpha1
+kind: ImageUpdater
+metadata:
+  name: my-image-updater
+  namespace: argocd
+spec:
+  imagesVerification:
+    method: cosign-key
+    publicKeySecret:
+      secretName: org-cosign-pubkey
+      key: cosign.pub
+  applicationRefs:
+    - namePattern: "my-app"
+      images:
+        - alias: "myapp"
+          imageName: "myorg/myapp:~1.0"
+```
+
+#### Opt out of verification for a specific image
+
+To disable verification for a specific image while keeping it enforced for
+others, set `enable: false` at the image level:
+
+```yaml
+spec:
+  imagesVerification:
+    method: cosign-key
+    publicKeySecret:
+      secretName: org-cosign-pubkey
+      key: cosign.pub
+  applicationRefs:
+    - namePattern: "my-app"
+      images:
+        - alias: "myapp"
+          imageName: "myorg/myapp:~1.0"
+        - alias: "nginx"
+          imageName: "nginx:~1.26"
+          imagesVerification:
+            enable: false
+```
+
+!!!note
+    Only [cosign](https://github.com/sigstore/cosign) key-based verification
+    (`method: cosign-key`) is supported. The controller uses the OCI Referrers
+    API to locate the signature artifact pushed by `cosign sign`, so the registry
+    must support OCI Distribution Spec v1.1 referrers (Quay, GHCR, Docker Hub,
+    and most modern registries do).
+
+!!!note
+    When `imagesVerification` is present and `enable` is `true` (the default),
+    the `method` and `publicKeySecret` fields are required. An image whose
+    verification settings are incomplete will be skipped with an error.
+
 ## Specifying Helm parameter names
 
 In the case of Helm applications that contain more than one image in the manifests
@@ -550,6 +668,7 @@ update strategies and set options for images.
 | `applicationRefs`      | []ApplicationRef     | Yes      | List of application references to manage                                                                                                                                                                            |
 | `commonUpdateSettings` | CommonUpdateSettings | No       | Global default settings for all applications                                                                                                                                                                        |
 | `writeBackConfig`      | WriteBackConfig      | No       | Global write-back configuration                                                                                                                                                                                     |
+| `imagesVerification`   | ImagesVerification   | No       | Global default signature verification policy for all images                                                                                                                                                         |
 
 #### ApplicationRef fields
 
@@ -561,6 +680,7 @@ update strategies and set options for images.
 | `labelSelectors`       | LabelSelector        | No       | Label selectors for application selection                                                                      |
 | `commonUpdateSettings` | CommonUpdateSettings | No       | Override global settings for this application group (ignored when `useAnnotations` is true)                    |
 | `writeBackConfig`      | WriteBackConfig      | No       | Override global write-back config for this application group (ignored when `useAnnotations` is true)           |
+| `imagesVerification`   | ImagesVerification   | No       | Override global verification policy for all images in this application group                                   |
 
 #### ImageConfig fields
 
@@ -570,6 +690,7 @@ update strategies and set options for images.
 | `imageName`            | string               | Yes      | Full image identifier including registry, repository, and initial tag |
 | `commonUpdateSettings` | CommonUpdateSettings | No       | Override settings for this specific image                             |
 | `manifestTargets`      | ManifestTarget       | No       | Configuration for updating image references in manifests              |
+| `imagesVerification`   | ImagesVerification   | No       | Override verification policy for this specific image                  |
 
 #### CommonUpdateSettings fields
 
@@ -581,6 +702,28 @@ update strategies and set options for images.
 | `ignoreTags`     | []string | *none*     | List of glob patterns for tags to ignore                                        |
 | `pullSecret`     | string   | *none*     | Reference to secret for registry credentials                                    |
 | `platforms`      | []string | *none*     | List of target platforms (e.g., `linux/amd64`, `linux/arm64`)                   |
+
+#### ImagesVerification fields
+
+`imagesVerification` can be set at the top-level, `applicationRef`, or `imageConfig` level.
+More specific scopes override less specific ones; absent fields are inherited from the parent scope.
+
+| Field             | Type      | Default | Description                                                                                                         |
+|-------------------|-----------|---------|---------------------------------------------------------------------------------------------------------------------|
+| `enable`          | bool      | `true`  | Whether signature verification is active at this scope. Set to `false` to opt out for images that cannot be signed. |
+| `method`          | string    | *none*  | Verification backend. Required when `enable` is `true`. Supported values: `cosign-key`.                             |
+| `publicKeySecret` | SecretRef | *none*  | Reference to a Kubernetes Secret holding the PEM-encoded ECDSA public key. Required when `method` is `cosign-key`.  |
+
+!!!note
+    When no `imagesVerification` block is present at any scope, images are updated without
+    verification. Set `enable: false` to explicitly opt out of verification for a specific image.
+
+#### SecretRef fields
+
+| Field        | Type   | Required | Description                                                                          |
+|--------------|--------|----------|--------------------------------------------------------------------------------------|
+| `secretName` | string | Yes      | Name of the Kubernetes Secret in the same namespace as the ImageUpdater CR           |
+| `key`        | string | Yes      | Key within the Secret's `data` map whose value is the credential (e.g. `cosign.pub`) |
 
 #### WriteBackConfig fields
 
