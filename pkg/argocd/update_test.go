@@ -4228,6 +4228,7 @@ helm:
 		assert.Contains(t, outputStr, "image.tag")
 		assert.Contains(t, outputStr, "v1.0.0")
 		assert.NotContains(t, outputStr, "kustomize:")
+		assert.Contains(t, outputStr, "helm:")
 	})
 }
 

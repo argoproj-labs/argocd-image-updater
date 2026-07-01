@@ -359,6 +359,7 @@ func Test_GetApplicationType(t *testing.T) {
 	})
 
 	t.Run("Plugin app with argocd write-back remains unsupported", func(t *testing.T) {
+		// Spec.Source is intentionally omitted: source type is driven by Status.SourceType, not Spec.
 		application := &v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
 				Name:      "test-app",
