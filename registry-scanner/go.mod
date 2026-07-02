@@ -14,7 +14,7 @@ require (
 	github.com/distribution/reference v0.6.0
 	github.com/google/uuid v1.6.1-0.20241114170450-2d3c2a9cc518
 	github.com/gorilla/mux v1.8.1
-	github.com/klauspost/compress v1.18.6
+	github.com/klauspost/compress v1.19.0
 	github.com/opencontainers/go-digest v1.0.0
 	github.com/opencontainers/image-spec v1.1.1
 	github.com/patrickmn/go-cache v2.1.1-0.20191004192108-46f407853014+incompatible
