@@ -25,11 +25,8 @@ const sigstoreBundleType = "application/vnd.dev.sigstore.bundle.v0.3+json"
 
 // Verify carries the signature verification policy for a single image.
 type Verify struct {
-	// Method is the verification backend.
-	Method string
-
-	// PublicKeySecret is the PEM-encoded ECDSA public key.
-	PublicKeySecret string
+	// CosignKey is the PEM-encoded ECDSA public key.
+	CosignKey string
 }
 
 // RegistryFetcher is the subset of registry.RegistryClient required for
@@ -120,7 +117,7 @@ func VerifyWithPublicKey(ctx context.Context, img *ContainerImage, verifyConfig 
 
 	logCtx.Debugf("Verifying cosign signature for %s (%d candidate(s))", imageRef, len(img.ImageTag.TagSignatures))
 	for _, sig := range img.ImageTag.TagSignatures {
-		if err := verifySignature(imageRef, sig, verifyConfig.PublicKeySecret); err == nil {
+		if err := verifySignature(imageRef, sig, verifyConfig.CosignKey); err == nil {
 			logCtx.Infof("Cosign signature verified successfully for %s", imageRef)
 			return nil
 		}

@@ -402,14 +402,11 @@ func mergeImagesVerification(settings ...*iuapi.ImagesVerification) *iuapi.Image
 			continue
 		}
 		anyNonNil = true
-		if s.Method != nil {
-			merged.Method = s.Method
-		}
 		if s.Enabled != nil {
 			merged.Enabled = s.Enabled
 		}
-		if s.PublicKeySecret != nil {
-			merged.PublicKeySecret = s.PublicKeySecret
+		if s.CosignKey != nil {
+			merged.CosignKey = s.CosignKey
 		}
 	}
 	if !anyNonNil {
@@ -664,30 +661,21 @@ func newImageFromImagesVerification(kubeClient *kube.ImageUpdaterKubernetesClien
 	}
 
 	if !img.EnableVerification {
-		return img, nil // opted out — no method or key needed
-	}
-
-	if settings.Method == nil {
-		return nil, fmt.Errorf("image verification method must be set")
+		return img, nil // opted out
 	}
 
 	if img.Verify == nil {
 		img.Verify = &image.Verify{}
 	}
 
-	img.Verify.Method = *settings.Method
-	if *settings.Method == ImageVerificationWithPublicKey {
-		if settings.PublicKeySecret != nil {
-			var err error
-			img.Verify.PublicKeySecret, err = kubeClient.KubeClient.GetSecretField(appNamespace, settings.PublicKeySecret.SecretName, settings.PublicKeySecret.Key)
-			if err != nil {
-				return nil, fmt.Errorf("failed to fetch public key secret field: %v", err)
-			}
-		} else {
-			return nil, fmt.Errorf("missing public key secret")
+	if settings.CosignKey != nil {
+		var err error
+		img.Verify.CosignKey, err = kubeClient.KubeClient.GetSecretField(appNamespace, settings.CosignKey.SecretName, settings.CosignKey.Key)
+		if err != nil {
+			return nil, fmt.Errorf("failed to fetch public key secret field: %v", err)
 		}
 	} else {
-		return nil, fmt.Errorf("method must be one of: '%s', not %s", ImageVerificationWithPublicKey, *settings.Method)
+		return nil, fmt.Errorf("cosignKey is required when verification is enabled")
 	}
 
 	return img, nil

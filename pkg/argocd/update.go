@@ -199,18 +199,17 @@ func UpdateApplication(ctx context.Context, updateConf *UpdateConfiguration, sta
 
 			// check signature for appImageWithTag using applicationImage.Verify
 			if applicationImage.EnableVerification {
-				switch applicationImage.Verify.Method {
-				// Verify image with public key
-				case ImageVerificationWithPublicKey:
+				switch {
+				case applicationImage.Verify != nil && applicationImage.Verify.CosignKey != "":
 					err := image.VerifyWithPublicKey(imageOpCtx, appImageWithTag, applicationImage.Verify, regClient)
 					if err != nil {
 						imgCtx.Errorf("Unable to verify image %s with public key: %v", appImageFullNameWithTag, err)
 						result.NumErrors += 1
 						continue
 					}
-				// more verification methods will be added to this switch/case construction
+				// additional verification methods will be added here
 				default:
-					imgCtx.Errorf("Unsupported verification method: %s", applicationImage.Verify.Method)
+					imgCtx.Errorf("Image verification enabled but no verification method configured for %s", appImageFullNameWithTag)
 					result.NumErrors += 1
 					continue
 				}

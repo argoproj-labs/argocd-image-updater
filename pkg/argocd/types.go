@@ -57,9 +57,6 @@ const (
 // It is the default when no method is specified.
 const WriteBackMethodArgoCD = "argocd"
 
-// ImageVerificationWithPublicKey is the string name of the public key verification method
-const ImageVerificationWithPublicKey = "cosign-key"
-
 const defaultIndent = 2
 
 // ApplicationType Type of the application

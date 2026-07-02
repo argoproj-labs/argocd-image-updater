@@ -1969,7 +1969,7 @@ registries:
 		assert.Equal(t, 1, res.NumImagesUpdated)
 	})
 
-	t.Run("unsupported verification method counts as error", func(t *testing.T) {
+	t.Run("verification enabled but no method configured counts as error", func(t *testing.T) {
 		mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
 			regMock := regmock.RegistryClient{}
 			regMock.On("NewRepository", mock.Anything).Return(nil)
@@ -1979,7 +1979,8 @@ registries:
 
 		iuImg := NewImage(image.NewFromIdentifier("foobar=gcr.io/jannfis/foobar:>=1.0.1"))
 		iuImg.EnableVerification = true
-		iuImg.Verify = &image.Verify{Method: "notation"} // unsupported
+		// Verify intentionally left nil — simulates a bug where EnableVerification=true
+		// but no verification method was configured; should count as an error.
 
 		res := UpdateApplication(context.Background(), &UpdateConfiguration{
 			NewRegFN:   mockClientFn,
@@ -2006,7 +2007,6 @@ registries:
 
 		iuImg := NewImage(image.NewFromIdentifier("foobar=gcr.io/jannfis/foobar:>=1.0.1"))
 		iuImg.EnableVerification = true
-		iuImg.Verify = &image.Verify{Method: ImageVerificationWithPublicKey, PublicKeySecret: "any-key"}
 
 		res := UpdateApplication(context.Background(), &UpdateConfiguration{
 			NewRegFN:   mockClientFn,
@@ -2092,7 +2092,7 @@ registries:
 
 		iuImg := NewImage(image.NewFromIdentifier("foobar=gcr.io/jannfis/foobar:>=1.0.1"))
 		iuImg.EnableVerification = true
-		iuImg.Verify = &image.Verify{Method: ImageVerificationWithPublicKey, PublicKeySecret: pemPub}
+		iuImg.Verify = &image.Verify{CosignKey: pemPub}
 
 		res := UpdateApplication(context.Background(), &UpdateConfiguration{
 			NewRegFN:   mockClientFn,

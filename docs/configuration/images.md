@@ -487,8 +487,7 @@ metadata:
   namespace: argocd
 spec:
   imagesVerification:
-    method: cosign-key
-    publicKeySecret:
+    cosignKey:
       secretName: org-cosign-pubkey
       key: cosign.pub
   applicationRefs:
@@ -506,8 +505,7 @@ others, set `enabled: false` at the image level:
 ```yaml
 spec:
   imagesVerification:
-    method: cosign-key
-    publicKeySecret:
+    cosignKey:
       secretName: org-cosign-pubkey
       key: cosign.pub
   applicationRefs:
@@ -530,7 +528,7 @@ spec:
 
 !!!note
     When `imagesVerification` is present and `enabled` is `true` (the default),
-    the `method` and `publicKeySecret` fields are required. An image whose
+    the `cosignKey` field is required. An image whose
     verification settings are incomplete will be skipped with an error.
 
 ## Examples
@@ -708,11 +706,10 @@ update strategies and set options for images.
 `imagesVerification` can be set at the top-level, `applicationRef`, or `imageConfig` level.
 More specific scopes override less specific ones; absent fields are inherited from the parent scope.
 
-| Field             | Type      | Default | Description                                                                                                         |
-|-------------------|-----------|---------|---------------------------------------------------------------------------------------------------------------------|
-| `enabled`         | bool      | `true`  | Whether signature verification is active at this scope. Set to `false` to opt out for images that cannot be signed. |
-| `method`          | string    | *none*  | Verification backend. Required when `enabled` is `true`. Supported values: `cosign-key`.                            |
-| `publicKeySecret` | SecretRef | *none*  | Reference to a Kubernetes Secret holding the PEM-encoded ECDSA public key. Required when `method` is `cosign-key`.  |
+| Field       | Type      | Default | Description                                                                                                         |
+|-------------|-----------|---------|---------------------------------------------------------------------------------------------------------------------|
+| `enabled`   | bool      | `true`  | Whether signature verification is active at this scope. Set to `false` to opt out for images that cannot be signed. |
+| `cosignKey` | SecretRef | *none*  | Reference to a Kubernetes Secret holding the PEM-encoded ECDSA public key.                                          |
 
 !!!note
     When no `imagesVerification` block is present at any scope, images are updated without

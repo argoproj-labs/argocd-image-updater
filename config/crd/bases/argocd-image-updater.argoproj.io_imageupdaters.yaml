@@ -186,26 +186,11 @@ spec:
                               When set, it takes precedence over both the spec-level and ApplicationRef-level
                               ImagesVerification.
                             properties:
-                              enabled:
-                                default: true
+                              cosignKey:
                                 description: |-
-                                  Enabled controls whether signature verification is active at this scope.
-                                  Defaults to true when the ImagesVerification block is present.
-                                  Set to false to explicitly opt out of verification for this image or group.
-                                type: boolean
-                              method:
-                                description: |-
-                                  Method specifies the signature verification backend to use.
-                                  Required when enabled is true (the default).
-                                enum:
-                                - cosign-key
-                                type: string
-                              publicKeySecret:
-                                description: |-
-                                  PublicKeySecret references a Kubernetes Secret in the same namespace as the
+                                  CosignKey references a Kubernetes Secret in the same namespace as the
                                   ImageUpdater CR that holds the PEM-encoded ECDSA public key used to verify
-                                  cosign signatures.
-                                  Required at runtime when method is "cosign-key" and enabled is true.
+                                  cosign signatures. Providing this field selects cosign key-based verification.
                                 properties:
                                   key:
                                     description: |-
@@ -220,10 +205,18 @@ spec:
                                 - key
                                 - secretName
                                 type: object
+                              enabled:
+                                default: true
+                                description: |-
+                                  Enabled controls whether signature verification is active at this scope.
+                                  Defaults to true when the ImagesVerification block is present.
+                                  Set to false to explicitly opt out of verification for this image or group.
+                                type: boolean
                             type: object
                             x-kubernetes-validations:
-                            - message: method is required when verification is enabled
-                              rule: self.enabled == false || has(self.method)
+                            - message: at least one verification method (cosignKey)
+                                is required when verification is enabled
+                              rule: self.enabled == false || has(self.cosignKey)
                           manifestTargets:
                             description: |-
                               ManifestTarget defines how and where to update this image in Kubernetes manifests.
@@ -293,26 +286,11 @@ spec:
                         ImagesVerification for all images in this group, but can still be overridden
                         at the individual ImageConfig level.
                       properties:
-                        enabled:
-                          default: true
+                        cosignKey:
                           description: |-
-                            Enabled controls whether signature verification is active at this scope.
-                            Defaults to true when the ImagesVerification block is present.
-                            Set to false to explicitly opt out of verification for this image or group.
-                          type: boolean
-                        method:
-                          description: |-
-                            Method specifies the signature verification backend to use.
-                            Required when enabled is true (the default).
-                          enum:
-                          - cosign-key
-                          type: string
-                        publicKeySecret:
-                          description: |-
-                            PublicKeySecret references a Kubernetes Secret in the same namespace as the
+                            CosignKey references a Kubernetes Secret in the same namespace as the
                             ImageUpdater CR that holds the PEM-encoded ECDSA public key used to verify
-                            cosign signatures.
-                            Required at runtime when method is "cosign-key" and enabled is true.
+                            cosign signatures. Providing this field selects cosign key-based verification.
                           properties:
                             key:
                               description: |-
@@ -327,10 +305,18 @@ spec:
                           - key
                           - secretName
                           type: object
+                        enabled:
+                          default: true
+                          description: |-
+                            Enabled controls whether signature verification is active at this scope.
+                            Defaults to true when the ImagesVerification block is present.
+                            Set to false to explicitly opt out of verification for this image or group.
+                          type: boolean
                       type: object
                       x-kubernetes-validations:
-                      - message: method is required when verification is enabled
-                        rule: self.enabled == false || has(self.method)
+                      - message: at least one verification method (cosignKey) is required
+                          when verification is enabled
+                        rule: self.enabled == false || has(self.cosignKey)
                     labelSelectors:
                       description: LabelSelectors indicates the label selectors to
                         apply for application selection
@@ -515,26 +501,11 @@ spec:
                   committed to Git or applied to an Argo CD Application.
                   Can be overridden at the ApplicationRef or ImageConfig level.
                 properties:
-                  enabled:
-                    default: true
+                  cosignKey:
                     description: |-
-                      Enabled controls whether signature verification is active at this scope.
-                      Defaults to true when the ImagesVerification block is present.
-                      Set to false to explicitly opt out of verification for this image or group.
-                    type: boolean
-                  method:
-                    description: |-
-                      Method specifies the signature verification backend to use.
-                      Required when enabled is true (the default).
-                    enum:
-                    - cosign-key
-                    type: string
-                  publicKeySecret:
-                    description: |-
-                      PublicKeySecret references a Kubernetes Secret in the same namespace as the
+                      CosignKey references a Kubernetes Secret in the same namespace as the
                       ImageUpdater CR that holds the PEM-encoded ECDSA public key used to verify
-                      cosign signatures.
-                      Required at runtime when method is "cosign-key" and enabled is true.
+                      cosign signatures. Providing this field selects cosign key-based verification.
                     properties:
                       key:
                         description: |-
@@ -548,10 +519,18 @@ spec:
                     - key
                     - secretName
                     type: object
+                  enabled:
+                    default: true
+                    description: |-
+                      Enabled controls whether signature verification is active at this scope.
+                      Defaults to true when the ImagesVerification block is present.
+                      Set to false to explicitly opt out of verification for this image or group.
+                    type: boolean
                 type: object
                 x-kubernetes-validations:
-                - message: method is required when verification is enabled
-                  rule: self.enabled == false || has(self.method)
+                - message: at least one verification method (cosignKey) is required
+                    when verification is enabled
+                  rule: self.enabled == false || has(self.cosignKey)
               writeBackConfig:
                 description: |-
                   WriteBackConfig provides global default settings for how and where to write back image updates.

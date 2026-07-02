@@ -7,8 +7,7 @@ metadata:
   namespace: argocd
 spec:
   imagesVerification:
-    method: cosign-key
-    publicKeySecret:
+    cosignKey:
       secretName: myapp-cosign-pubkey
       key: cosign.pub
   applicationRefs:
@@ -20,5 +19,4 @@ spec:
         - alias: "no-signature"
           imageName: "no-signature:1.25.0"
           imagesVerification:
-            method: cosign-key
             enabled: false

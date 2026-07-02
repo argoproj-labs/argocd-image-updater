@@ -2065,8 +2065,8 @@ func Test_parseImageList(t *testing.T) {
 			{Alias: "app", ImageName: "ghcr.io/org/app:1.0"},
 		}
 		appVerification := &api.ImagesVerification{
-			Method:          strPtr(ImageVerificationWithPublicKey),
-			PublicKeySecret: &api.SecretRef{SecretName: "org-key", Key: "cosign.pub"},
+
+			CosignKey: &api.SecretRef{SecretName: "org-key", Key: "cosign.pub"},
 		}
 		got := parseImageList(context.Background(), makeVerifyKubeClient(secret), "argocd", images, nil, appVerification, nil)
 		require.NotNil(t, got)
@@ -2074,8 +2074,7 @@ func Test_parseImageList(t *testing.T) {
 		img := (*got)[0]
 		assert.True(t, img.EnableVerification)
 		require.NotNil(t, img.Verify)
-		assert.Equal(t, ImageVerificationWithPublicKey, img.Verify.Method)
-		assert.Equal(t, fakePEM, img.Verify.PublicKeySecret)
+		assert.Equal(t, fakePEM, img.Verify.CosignKey)
 	})
 
 	t.Run("Verification: image skipped when secret does not exist in kube", func(t *testing.T) {
@@ -2083,8 +2082,8 @@ func Test_parseImageList(t *testing.T) {
 			{Alias: "app", ImageName: "ghcr.io/org/app:1.0"},
 		}
 		appVerification := &api.ImagesVerification{
-			Method:          strPtr(ImageVerificationWithPublicKey),
-			PublicKeySecret: &api.SecretRef{SecretName: "nonexistent-secret", Key: "cosign.pub"},
+
+			CosignKey: &api.SecretRef{SecretName: "nonexistent-secret", Key: "cosign.pub"},
 		}
 		got := parseImageList(context.Background(), makeVerifyKubeClient(), "argocd", images, nil, appVerification, nil)
 		require.NotNil(t, got)
@@ -2103,8 +2102,7 @@ func Test_parseImageList(t *testing.T) {
 				Alias:     "app",
 				ImageName: "ghcr.io/org/app:1.0",
 				ImagesVerification: &api.ImagesVerification{
-					Method:          strPtr(ImageVerificationWithPublicKey),
-					PublicKeySecret: &api.SecretRef{SecretName: "org-key", Key: "cosign.pub"},
+					CosignKey: &api.SecretRef{SecretName: "org-key", Key: "cosign.pub"},
 				},
 			},
 			{
@@ -2215,90 +2213,87 @@ func Test_mergeImagesVerification(t *testing.T) {
 
 	t.Run("global settings propagate when app level is nil", func(t *testing.T) {
 		global := &api.ImagesVerification{
-			Method:          strPtr(ImageVerificationWithPublicKey),
-			Enabled:         boolPtr(true),
-			PublicKeySecret: secretRef("org-key", "cosign.pub"),
+
+			Enabled:   boolPtr(true),
+			CosignKey: secretRef("org-key", "cosign.pub"),
 		}
 		merged := mergeImagesVerification(global, nil)
-		assert.Equal(t, ImageVerificationWithPublicKey, *merged.Method)
 		assert.True(t, *merged.Enabled)
-		assert.Equal(t, "org-key", merged.PublicKeySecret.SecretName)
+		assert.Equal(t, "org-key", merged.CosignKey.SecretName)
 	})
 
-	t.Run("image level overrides global method and key", func(t *testing.T) {
+	t.Run("image level overrides global cosignKey", func(t *testing.T) {
 		global := &api.ImagesVerification{
-			Method:          strPtr(ImageVerificationWithPublicKey),
-			Enabled:         boolPtr(true),
-			PublicKeySecret: secretRef("org-key", "cosign.pub"),
+
+			Enabled:   boolPtr(true),
+			CosignKey: secretRef("org-key", "cosign.pub"),
 		}
 		imageLevel := &api.ImagesVerification{
-			Method:          strPtr(ImageVerificationWithPublicKey),
-			PublicKeySecret: secretRef("image-key", "cosign.pub"),
+
+			CosignKey: secretRef("image-key", "cosign.pub"),
 		}
 		merged := mergeImagesVerification(global, imageLevel)
-		assert.Equal(t, ImageVerificationWithPublicKey, *merged.Method)
+
 		assert.True(t, *merged.Enabled)
-		assert.Equal(t, "image-key", merged.PublicKeySecret.SecretName)
+		assert.Equal(t, "image-key", merged.CosignKey.SecretName)
 	})
 
 	t.Run("image level enabled=false opts out while inheriting global key", func(t *testing.T) {
 		global := &api.ImagesVerification{
-			Method:          strPtr(ImageVerificationWithPublicKey),
-			Enabled:         boolPtr(true),
-			PublicKeySecret: secretRef("org-key", "cosign.pub"),
+
+			Enabled:   boolPtr(true),
+			CosignKey: secretRef("org-key", "cosign.pub"),
 		}
 		imageLevel := &api.ImagesVerification{
 			Enabled: boolPtr(false),
 		}
 		merged := mergeImagesVerification(global, imageLevel)
 		assert.False(t, *merged.Enabled)
-		// method and key are inherited from global
-		assert.Equal(t, ImageVerificationWithPublicKey, *merged.Method)
-		assert.Equal(t, "org-key", merged.PublicKeySecret.SecretName)
+		// cosignKey is inherited from global
+		assert.Equal(t, "org-key", merged.CosignKey.SecretName)
 	})
 
 	t.Run("image level nil Enable does not override global Enable=false", func(t *testing.T) {
 		global := &api.ImagesVerification{
-			Method:  strPtr(ImageVerificationWithPublicKey),
 			Enabled: boolPtr(false),
 		}
 		imageLevel := &api.ImagesVerification{
-			PublicKeySecret: secretRef("image-key", "cosign.pub"),
+			CosignKey: secretRef("image-key", "cosign.pub"),
 		}
 		merged := mergeImagesVerification(global, imageLevel)
 		assert.False(t, *merged.Enabled)
-		assert.Equal(t, "image-key", merged.PublicKeySecret.SecretName)
+		assert.Equal(t, "image-key", merged.CosignKey.SecretName)
 	})
 
 	t.Run("three-level merge: image level wins over app over global", func(t *testing.T) {
 		global := &api.ImagesVerification{
-			Method:          strPtr(ImageVerificationWithPublicKey),
-			Enabled:         boolPtr(true),
-			PublicKeySecret: secretRef("global-key", "cosign.pub"),
+
+			Enabled:   boolPtr(true),
+			CosignKey: secretRef("global-key", "cosign.pub"),
 		}
 		appLevel := &api.ImagesVerification{
-			PublicKeySecret: secretRef("app-key", "cosign.pub"),
+			CosignKey: secretRef("app-key", "cosign.pub"),
 		}
 		imageLevel := &api.ImagesVerification{
-			PublicKeySecret: secretRef("image-key", "cosign.pub"),
+			CosignKey: secretRef("image-key", "cosign.pub"),
 		}
 		merged := mergeImagesVerification(global, appLevel, imageLevel)
-		assert.Equal(t, ImageVerificationWithPublicKey, *merged.Method)
+
 		assert.True(t, *merged.Enabled)
-		assert.Equal(t, "image-key", merged.PublicKeySecret.SecretName)
+		assert.Equal(t, "image-key", merged.CosignKey.SecretName)
 	})
 
 	t.Run("empty non-nil struct does not overwrite previously merged values", func(t *testing.T) {
 		global := &api.ImagesVerification{
-			Method:          strPtr(ImageVerificationWithPublicKey),
-			Enabled:         boolPtr(true),
-			PublicKeySecret: secretRef("org-key", "cosign.pub"),
+
+			Enabled:   boolPtr(true),
+			CosignKey: secretRef("org-key", "cosign.pub"),
 		}
 		empty := &api.ImagesVerification{}
 		merged := mergeImagesVerification(global, empty)
-		assert.Equal(t, ImageVerificationWithPublicKey, *merged.Method)
+
 		assert.True(t, *merged.Enabled)
-		assert.Equal(t, "org-key", merged.PublicKeySecret.SecretName)
+		assert.Equal(t, "org-key", merged.CosignKey.SecretName)
 	})
 }
 
@@ -2349,39 +2344,21 @@ func Test_newImageFromImagesVerification(t *testing.T) {
 		assert.Nil(t, result.Verify)
 	})
 
-	t.Run("enabled=nil defaults to true and proceeds to method validation", func(t *testing.T) {
-		img := baseImg()
-		settings := &api.ImagesVerification{} // Enable is nil
-		_, err := newImageFromImagesVerification(makeKubeClient(), testNamespace, settings, img)
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "method must be set")
-		assert.True(t, img.EnableVerification)
-	})
-
-	t.Run("method=nil with enabled=true returns error", func(t *testing.T) {
-		img := baseImg()
-		settings := &api.ImagesVerification{Enabled: boolPtr(true)}
-		_, err := newImageFromImagesVerification(makeKubeClient(), testNamespace, settings, img)
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "method must be set")
-	})
-
-	t.Run("cosign-key with missing publicKeySecret returns error", func(t *testing.T) {
+	t.Run("enabled=true without cosignKey returns error", func(t *testing.T) {
 		img := baseImg()
 		settings := &api.ImagesVerification{
-			Method:  strPtr(ImageVerificationWithPublicKey),
 			Enabled: boolPtr(true),
 		}
 		_, err := newImageFromImagesVerification(makeKubeClient(), testNamespace, settings, img)
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "missing public key secret")
+		assert.Contains(t, err.Error(), "cosignKey is required when verification is enabled")
 	})
 
 	t.Run("cosign-key with secret not found in kube returns error", func(t *testing.T) {
 		img := baseImg()
 		settings := &api.ImagesVerification{
-			Method:          strPtr(ImageVerificationWithPublicKey),
-			PublicKeySecret: &api.SecretRef{SecretName: "nonexistent", Key: secretKey},
+
+			CosignKey: &api.SecretRef{SecretName: "nonexistent", Key: secretKey},
 		}
 		_, err := newImageFromImagesVerification(makeKubeClient(), testNamespace, settings, img)
 		require.Error(t, err)
@@ -2392,15 +2369,14 @@ func Test_newImageFromImagesVerification(t *testing.T) {
 		secret := makeSecret(testNamespace, secretName, secretKey, fakePEM)
 		img := baseImg()
 		settings := &api.ImagesVerification{
-			Method:          strPtr(ImageVerificationWithPublicKey),
-			PublicKeySecret: &api.SecretRef{SecretName: secretName, Key: secretKey},
+
+			CosignKey: &api.SecretRef{SecretName: secretName, Key: secretKey},
 		}
 		result, err := newImageFromImagesVerification(makeKubeClient(secret), testNamespace, settings, img)
 		require.NoError(t, err)
 		assert.True(t, result.EnableVerification)
 		require.NotNil(t, result.Verify)
-		assert.Equal(t, ImageVerificationWithPublicKey, result.Verify.Method)
-		assert.Equal(t, fakePEM, result.Verify.PublicKeySecret)
+		assert.Equal(t, fakePEM, result.Verify.CosignKey)
 	})
 
 	t.Run("nil img.Verify is initialised before use — no panic", func(t *testing.T) {
@@ -2408,24 +2384,14 @@ func Test_newImageFromImagesVerification(t *testing.T) {
 		img := baseImg()
 		assert.Nil(t, img.Verify)
 		settings := &api.ImagesVerification{
-			Method:          strPtr(ImageVerificationWithPublicKey),
-			PublicKeySecret: &api.SecretRef{SecretName: secretName, Key: secretKey},
+
+			CosignKey: &api.SecretRef{SecretName: secretName, Key: secretKey},
 		}
 		result, err := newImageFromImagesVerification(makeKubeClient(secret), testNamespace, settings, img)
 		require.NoError(t, err)
 		require.NotNil(t, result.Verify)
 	})
 
-	t.Run("unknown method returns error", func(t *testing.T) {
-		img := baseImg()
-		settings := &api.ImagesVerification{
-			Method:          strPtr("notation"),
-			PublicKeySecret: &api.SecretRef{SecretName: secretName, Key: secretKey},
-		}
-		_, err := newImageFromImagesVerification(makeKubeClient(), testNamespace, settings, img)
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "notation")
-	})
 }
 
 func Test_newImageFromSettings(t *testing.T) {

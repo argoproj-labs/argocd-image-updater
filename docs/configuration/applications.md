@@ -204,8 +204,7 @@ spec:
         matchLabels:
           image-updater: my-image-updater
       imagesVerification:
-        method: cosign-key
-        publicKeySecret:
+        cosignKey:
           secretName: org-cosign-pubkey
           key: cosign.pub
       useAnnotations: true

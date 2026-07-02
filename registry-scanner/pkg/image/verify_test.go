@@ -713,7 +713,7 @@ func Test_VerifyWithPublicKey(t *testing.T) {
 		sigArtifactDigest = "sha256:eeff5678eeff5678eeff5678eeff5678eeff5678eeff5678eeff5678eeff5678"
 	)
 
-	verifyConfig := &Verify{Method: "cosign-key", PublicKeySecret: kp.pemPub}
+	verifyConfig := &Verify{CosignKey: kp.pemPub}
 
 	t.Run("nil ImageTag returns error", func(t *testing.T) {
 		img := &ContainerImage{RegistryURL: "quay.io", ImageName: "org/app"}
