@@ -258,6 +258,8 @@ jobs:
         run: |
           curl -fsSL https://raw.githubusercontent.com/rancher/k3d/main/install.sh | bash
           sudo mkdir -p "$HOME/.kube" && sudo chown -R runner "$HOME/.kube"
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3
       - name: Deploy operator and run e2e tests
         env:
           ARGOCD_CLUSTER_CONFIG_NAMESPACES: argocd-e2e-cluster-config, argocd-operator-system
