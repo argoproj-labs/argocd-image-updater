@@ -191,6 +191,13 @@ spec:
                                   Helm specifies update parameters if the target manifest is managed by Helm
                                   and updates are to be made to Helm values files.
                                 properties:
+                                  chartName:
+                                    description: |-
+                                      ChartName is the name of the Helm chart within a multi-source Argo CD Application.
+                                      When an Application uses multiple sources, this field identifies which source's
+                                      Helm values should be updated. If not specified, the first Helm source is used.
+                                      If multiple sources use the same chart, use SourceIndex instead.
+                                    type: string
                                   name:
                                     description: |-
                                       Name is the dot-separated path to the Helm key for the image repository/name part.
@@ -198,6 +205,15 @@ spec:
                                       If neither spec nor name/tag are set, defaults to "image.name".
                                       If spec is set, this field is ignored.
                                     type: string
+                                  sourceIndex:
+                                    description: |-
+                                      SourceIndex is the zero-based index of the source within a multi-source Argo CD
+                                      Application's spec.sources list. When set, it takes precedence over ChartName for
+                                      identifying which source's Helm values should be updated. Use this to disambiguate
+                                      when multiple sources reference the same Helm chart.
+                                    format: int32
+                                    minimum: 0
+                                    type: integer
                                   spec:
                                     description: |-
                                       Spec is the dot-separated path to a Helm key where the full image string

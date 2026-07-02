@@ -176,6 +176,9 @@ type Image struct {
 	Platforms      []string
 
 	// ManifestTarget settings
+	// HelmSourceIndex is the zero-based index into app.Spec.Sources; -1 means unset.
+	HelmSourceIndex    int
+	HelmChartName      string
 	HelmImageName      string
 	HelmImageTag       string
 	HelmImageSpec      string
@@ -188,7 +191,8 @@ type ImageList []*Image
 // NewImage creates a new Image object from a neutral ContainerImage
 func NewImage(ci *image.ContainerImage) *Image {
 	return &Image{
-		ContainerImage: ci,
+		ContainerImage:  ci,
+		HelmSourceIndex: -1,
 	}
 }
 
