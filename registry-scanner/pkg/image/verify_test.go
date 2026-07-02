@@ -134,6 +134,35 @@ func makeDSSEBundleWithSigners(t *testing.T, privKeys []*ecdsa.PrivateKey, imgDi
 	return manifest, blobDigest, blobBytes
 }
 
+// makeSimpleSigning creates a legacy cosign "Simple Signing" manifest (a
+// single layer with mediaType simpleSigningMediaType, whose signature is a
+// layer annotation rather than a DSSE envelope). Returns the manifest, the
+// payload blob digest (for mockFetcher.blobs keying), and the raw blob bytes.
+func makeSimpleSigning(t *testing.T, priv *ecdsa.PrivateKey, imgDigest string) (manifest *ocischema.DeserializedManifest, blobDigest string, blobBytes []byte) {
+	t.Helper()
+
+	payload := []byte(fmt.Sprintf(`{"critical":{"image":{"docker-manifest-digest":"%s"},"type":"cosign container image signature"}}`, imgDigest))
+	payloadHash := sha256.Sum256(payload)
+	sig, err := ecdsa.SignASN1(rand.Reader, priv, payloadHash[:])
+	require.NoError(t, err)
+
+	dgst := godigest.FromBytes(payload)
+	blobDigest = dgst.String()
+	manifest = &ocischema.DeserializedManifest{
+		Manifest: ocischema.Manifest{
+			Layers: []distribution.Descriptor{{
+				MediaType: simpleSigningMediaType,
+				Digest:    dgst,
+				Size:      int64(len(payload)),
+				Annotations: map[string]string{
+					simpleSigningSigAnnotation: base64.StdEncoding.EncodeToString(sig),
+				},
+			}},
+		},
+	}
+	return manifest, blobDigest, payload
+}
+
 // bundleReferrer builds a referrer descriptor for a sigstore bundle artifact.
 func bundleReferrer(sigArtifactDigest string) distribution.Descriptor {
 	return distribution.Descriptor{
@@ -184,6 +213,17 @@ func (m *mockManifest) Payload() (string, []byte, error) {
 	return "application/vnd.oci.image.manifest.v1+json", m.payload, nil
 }
 func (m *mockManifest) References() []distribution.Descriptor { return nil }
+
+// mockIndex simulates an OCI Image Index returned by a registry for the
+// tag-based cosign 2.x fallback ("sha256-<hex>" tag → image index → bundle).
+type mockIndex struct {
+	refs []distribution.Descriptor
+}
+
+func (m *mockIndex) Payload() (string, []byte, error) {
+	return "application/vnd.oci.image.index.v1+json", []byte(`{}`), nil
+}
+func (m *mockIndex) References() []distribution.Descriptor { return m.refs }
 
 func (m *mockFetcher) ManifestForTag(_ context.Context, tagStr string) (distribution.Manifest, error) {
 	if err, ok := m.errors[tagStr]; ok {
@@ -349,12 +389,13 @@ func Test_fetchTagSignatures(t *testing.T) {
 		assert.ErrorContains(t, err, "invalid manifest digest")
 	})
 
-	t.Run("Referrers error returns error", func(t *testing.T) {
+	t.Run("Referrers error with no tag-based fallback returns OCI referrers error", func(t *testing.T) {
 		imgTag := &tag.ImageTag{TagName: "1.0.21", ManifestDigest: imgManifestDigest}
 		fetcher := &mockFetcher{
 			referrerErrors: map[string]error{
 				imgManifestDigest: fmt.Errorf("registry unavailable"),
 			},
+			// No fallback tag manifest — both paths fail.
 		}
 		_, err := fetchTagSignatures(ctx, imgTag, fetcher)
 		assert.ErrorContains(t, err, "failed to fetch OCI referrers")
@@ -370,13 +411,13 @@ func Test_fetchTagSignatures(t *testing.T) {
 			},
 		}
 		_, err := fetchTagSignatures(ctx, imgTag, fetcher)
-		assert.ErrorContains(t, err, "no cosign signature found in OCI referrers")
+		assert.ErrorContains(t, err, "no cosign signature found in OCI referrers or tag-based fallback")
 	})
 
 	t.Run("empty referrers returns error", func(t *testing.T) {
 		imgTag := &tag.ImageTag{TagName: "1.0.21", ManifestDigest: imgManifestDigest}
 		_, err := fetchTagSignatures(ctx, imgTag, &mockFetcher{})
-		assert.ErrorContains(t, err, "no cosign signature found in OCI referrers")
+		assert.ErrorContains(t, err, "no cosign signature found in OCI referrers or tag-based fallback")
 	})
 
 	t.Run("ManifestForDigest error skips referrer and returns no-signature error", func(t *testing.T) {
@@ -390,7 +431,7 @@ func Test_fetchTagSignatures(t *testing.T) {
 			},
 		}
 		_, err := fetchTagSignatures(ctx, imgTag, fetcher)
-		assert.ErrorContains(t, err, "no cosign signature found in OCI referrers")
+		assert.ErrorContains(t, err, "no cosign signature found in OCI referrers or tag-based fallback")
 	})
 
 	t.Run("sig manifest is not an OCI manifest skips referrer and returns no-signature error", func(t *testing.T) {
@@ -405,7 +446,7 @@ func Test_fetchTagSignatures(t *testing.T) {
 			},
 		}
 		_, err := fetchTagSignatures(ctx, imgTag, fetcher)
-		assert.ErrorContains(t, err, "no cosign signature found in OCI referrers")
+		assert.ErrorContains(t, err, "no cosign signature found in OCI referrers or tag-based fallback")
 	})
 
 	t.Run("sig manifest has no layers skips referrer and returns no-signature error", func(t *testing.T) {
@@ -419,7 +460,7 @@ func Test_fetchTagSignatures(t *testing.T) {
 			},
 		}
 		_, err := fetchTagSignatures(ctx, imgTag, fetcher)
-		assert.ErrorContains(t, err, "no cosign signature found in OCI referrers")
+		assert.ErrorContains(t, err, "no cosign signature found in OCI referrers or tag-based fallback")
 	})
 
 	t.Run("layer has wrong media type skips referrer and returns no-signature error", func(t *testing.T) {
@@ -441,7 +482,7 @@ func Test_fetchTagSignatures(t *testing.T) {
 			},
 		}
 		_, err := fetchTagSignatures(ctx, imgTag, fetcher)
-		assert.ErrorContains(t, err, "no cosign signature found in OCI referrers")
+		assert.ErrorContains(t, err, "no cosign signature found in OCI referrers or tag-based fallback")
 	})
 
 	t.Run("blob fetch error skips referrer and returns no-signature error", func(t *testing.T) {
@@ -459,7 +500,7 @@ func Test_fetchTagSignatures(t *testing.T) {
 			},
 		}
 		_, err := fetchTagSignatures(ctx, imgTag, fetcher)
-		assert.ErrorContains(t, err, "no cosign signature found in OCI referrers")
+		assert.ErrorContains(t, err, "no cosign signature found in OCI referrers or tag-based fallback")
 	})
 
 	t.Run("second referrer matches when first referrer manifest fails", func(t *testing.T) {
@@ -485,6 +526,169 @@ func Test_fetchTagSignatures(t *testing.T) {
 		require.NoError(t, err)
 		require.NotEmpty(t, got)
 		assert.NoError(t, verifySignature("quay.io/org/app:1.0.21", got[0], kp.pemPub))
+	})
+
+	// -----------------------------------------------------------------------
+	// tag-based fallback (sha256-<hex> tag)
+	// -----------------------------------------------------------------------
+
+	// fallbackTag is the legacy cosign ≤2.5.x tag for imgManifestDigest
+	// ("sha256:<hex>" → "sha256-<hex>.sig").
+	const fallbackTag = "sha256-aabb1234aabb1234aabb1234aabb1234aabb1234aabb1234aabb1234aabb1234.sig"
+	// noSuffixFallbackTag is the cosign ≥3.x OCI Referrers Tag Schema fallback
+	// tag for imgManifestDigest ("sha256:<hex>" → "sha256-<hex>", no suffix).
+	const noSuffixFallbackTag = "sha256-aabb1234aabb1234aabb1234aabb1234aabb1234aabb1234aabb1234aabb1234"
+
+	t.Run("tag-based fallback succeeds via no-suffix tag (cosign 3.x)", func(t *testing.T) {
+		// cosign >= 3.x stores the fallback artifact under the digest tag
+		// without a ".sig" suffix (OCI Referrers Tag Schema).
+		bundleManifest, blobDigest, blobBytes := makeDSSEBundle(t, kp.priv, imgManifestDigest)
+		imgTag := &tag.ImageTag{TagName: "1.0.21", ManifestDigest: imgManifestDigest}
+
+		fetcher := &mockFetcher{
+			manifests: map[string]distribution.Manifest{
+				noSuffixFallbackTag: bundleManifest,
+			},
+			blobs: map[string][]byte{blobDigest: blobBytes},
+		}
+
+		got, err := fetchTagSignatures(ctx, imgTag, fetcher)
+		require.NoError(t, err)
+		require.NotEmpty(t, got)
+		assert.NoError(t, verifySignature("quay.io/org/app:1.0.21", got[0], kp.pemPub))
+	})
+
+	t.Run("tag-based fallback succeeds via legacy Simple Signing format", func(t *testing.T) {
+		// cosign key-based signing (no Fulcio/OIDC) to a registry without OCI
+		// Referrers falls back to the legacy Simple Signing manifest format
+		// (annotation-based signature, no DSSE envelope).
+		simpleManifest, blobDigest, blobBytes := makeSimpleSigning(t, kp.priv, imgManifestDigest)
+		imgTag := &tag.ImageTag{TagName: "1.0.21", ManifestDigest: imgManifestDigest}
+
+		fetcher := &mockFetcher{
+			manifests: map[string]distribution.Manifest{
+				fallbackTag: simpleManifest,
+			},
+			blobs: map[string][]byte{blobDigest: blobBytes},
+		}
+
+		got, err := fetchTagSignatures(ctx, imgTag, fetcher)
+		require.NoError(t, err)
+		require.NotEmpty(t, got)
+		assert.NoError(t, verifySignature("quay.io/org/app:1.0.21", got[0], kp.pemPub))
+	})
+
+	t.Run("tag-based fallback succeeds when OCI referrers is empty", func(t *testing.T) {
+		// Registry returns no referrers (e.g. Docker Distribution v2 without OCI v1.1).
+		// cosign stored the signature as a tag instead.
+		bundleManifest, blobDigest, blobBytes := makeDSSEBundle(t, kp.priv, imgManifestDigest)
+		imgTag := &tag.ImageTag{TagName: "1.0.21", ManifestDigest: imgManifestDigest}
+
+		fetcher := &mockFetcher{
+			// Referrers returns empty (nil, nil) — default for mockFetcher.
+			manifests: map[string]distribution.Manifest{
+				fallbackTag: bundleManifest,
+			},
+			blobs: map[string][]byte{blobDigest: blobBytes},
+		}
+
+		got, err := fetchTagSignatures(ctx, imgTag, fetcher)
+		require.NoError(t, err)
+		require.NotEmpty(t, got)
+		assert.NoError(t, verifySignature("quay.io/org/app:1.0.21", got[0], kp.pemPub))
+	})
+
+	t.Run("tag-based fallback succeeds when OCI referrers API returns error", func(t *testing.T) {
+		// Registry returns a 404 / unsupported error for the Referrers endpoint.
+		// The error is non-fatal; verification succeeds via the fallback tag.
+		bundleManifest, blobDigest, blobBytes := makeDSSEBundle(t, kp.priv, imgManifestDigest)
+		imgTag := &tag.ImageTag{TagName: "1.0.21", ManifestDigest: imgManifestDigest}
+
+		fetcher := &mockFetcher{
+			referrerErrors: map[string]error{
+				imgManifestDigest: fmt.Errorf("404 page not found"),
+			},
+			manifests: map[string]distribution.Manifest{
+				fallbackTag: bundleManifest,
+			},
+			blobs: map[string][]byte{blobDigest: blobBytes},
+		}
+
+		got, err := fetchTagSignatures(ctx, imgTag, fetcher)
+		require.NoError(t, err)
+		require.NotEmpty(t, got)
+		assert.NoError(t, verifySignature("quay.io/org/app:1.0.21", got[0], kp.pemPub))
+	})
+
+	t.Run("tag-based fallback with OCI Image Index (cosign 2.x) succeeds", func(t *testing.T) {
+		// cosign 2.x stores the fallback tag as an OCI Image Index whose single
+		// entry is the actual signature bundle manifest.
+		bundleManifest, blobDigest, blobBytes := makeDSSEBundle(t, kp.priv, imgManifestDigest)
+		imgTag := &tag.ImageTag{TagName: "1.0.21", ManifestDigest: imgManifestDigest}
+
+		fetcher := &mockFetcher{
+			manifests: map[string]distribution.Manifest{
+				fallbackTag: &mockIndex{
+					refs: []distribution.Descriptor{
+						{Digest: godigest.Digest(sigArtifactDigest)},
+					},
+				},
+				sigArtifactDigest: bundleManifest,
+			},
+			blobs: map[string][]byte{blobDigest: blobBytes},
+		}
+
+		got, err := fetchTagSignatures(ctx, imgTag, fetcher)
+		require.NoError(t, err)
+		require.NotEmpty(t, got)
+		assert.NoError(t, verifySignature("quay.io/org/app:1.0.21", got[0], kp.pemPub))
+	})
+
+	t.Run("tag-based fallback OCI Image Index entry fetch error is skipped", func(t *testing.T) {
+		// The index exists but fetching its only sub-manifest fails.
+		imgTag := &tag.ImageTag{TagName: "1.0.21", ManifestDigest: imgManifestDigest}
+
+		fetcher := &mockFetcher{
+			manifests: map[string]distribution.Manifest{
+				fallbackTag: &mockIndex{
+					refs: []distribution.Descriptor{
+						{Digest: godigest.Digest(sigArtifactDigest)},
+					},
+				},
+			},
+			errors: map[string]error{
+				sigArtifactDigest: fmt.Errorf("network timeout"),
+			},
+		}
+		_, err := fetchTagSignatures(ctx, imgTag, fetcher)
+		assert.ErrorContains(t, err, "no cosign signature found in OCI referrers or tag-based fallback")
+	})
+
+	t.Run("OCI referrers empty and fallback tag not found returns no-signature error", func(t *testing.T) {
+		imgTag := &tag.ImageTag{TagName: "1.0.21", ManifestDigest: imgManifestDigest}
+		// Empty mock: no referrers, no fallback tag.
+		_, err := fetchTagSignatures(ctx, imgTag, &mockFetcher{})
+		assert.ErrorContains(t, err, "no cosign signature found in OCI referrers or tag-based fallback")
+	})
+
+	t.Run("fallback tag manifest extraction error returns no-signature error", func(t *testing.T) {
+		// The fallback manifest exists but has an unsupported layer media type.
+		imgTag := &tag.ImageTag{TagName: "1.0.21", ManifestDigest: imgManifestDigest}
+		badManifest := &ocischema.DeserializedManifest{
+			Manifest: ocischema.Manifest{
+				Layers: []distribution.Descriptor{{
+					MediaType: "application/vnd.oci.image.layer.v1.tar+gzip",
+					Digest:    godigest.Digest(sigArtifactDigest),
+				}},
+			},
+		}
+		fetcher := &mockFetcher{
+			manifests: map[string]distribution.Manifest{
+				fallbackTag: badManifest,
+			},
+		}
+		_, err := fetchTagSignatures(ctx, imgTag, fetcher)
+		assert.ErrorContains(t, err, "no cosign signature found in OCI referrers or tag-based fallback")
 	})
 }
 
@@ -536,6 +740,77 @@ func Test_extractSigFromManifest(t *testing.T) {
 		got, err := extractSigsFromManifest(ctx, bundleManifest, manifestRef, "1.0.21", expectedDigest, fetcher)
 		require.NoError(t, err)
 		require.NotEmpty(t, got)
+		assert.NoError(t, verifySignature("quay.io/org/app:1.0.21", got[0], kp.pemPub))
+	})
+
+	t.Run("valid simple-signing layer delegates to extractSimpleSigning and succeeds", func(t *testing.T) {
+		simpleManifest, blobDigest, blobBytes := makeSimpleSigning(t, kp.priv, testImageDigest)
+		fetcher := &mockFetcher{
+			blobs: map[string][]byte{blobDigest: blobBytes},
+		}
+
+		got, err := extractSigsFromManifest(ctx, simpleManifest, manifestRef, "1.0.21", expectedDigest, fetcher)
+		require.NoError(t, err)
+		require.NotEmpty(t, got)
+		assert.NoError(t, verifySignature("quay.io/org/app:1.0.21", got[0], kp.pemPub))
+	})
+}
+
+// ---------------------------------------------------------------------------
+// extractSimpleSigning
+// ---------------------------------------------------------------------------
+
+func Test_extractSimpleSigning(t *testing.T) {
+	ctx := context.Background()
+	kp := newTestKeyPair(t)
+	const testImageDigest = "sha256:29d4b64da00e01ca2ce893a1d2bfe5ca6e6421c107f52fdffe6537bf760ddc03"
+	expectedDigest := godigest.Digest(testImageDigest)
+
+	t.Run("missing signature annotation returns error", func(t *testing.T) {
+		layer := distribution.Descriptor{
+			MediaType:   simpleSigningMediaType,
+			Digest:      godigest.FromBytes([]byte(`{}`)),
+			Annotations: nil,
+		}
+		_, err := extractSimpleSigning(ctx, layer, "1.0.21", expectedDigest, &mockFetcher{})
+		assert.ErrorContains(t, err, "no")
+		assert.ErrorContains(t, err, simpleSigningSigAnnotation)
+	})
+
+	t.Run("blob fetch error returns error", func(t *testing.T) {
+		dgst := godigest.FromBytes([]byte(`{}`))
+		layer := distribution.Descriptor{
+			MediaType:   simpleSigningMediaType,
+			Digest:      dgst,
+			Annotations: map[string]string{simpleSigningSigAnnotation: "fakesig"},
+		}
+		fetcher := &mockFetcher{
+			blobErrors: map[string]error{dgst.String(): fmt.Errorf("I/O error")},
+		}
+		_, err := extractSimpleSigning(ctx, layer, "1.0.21", expectedDigest, fetcher)
+		assert.ErrorContains(t, err, "failed to fetch simple-signing payload blob")
+	})
+
+	t.Run("payload digest mismatch returns error", func(t *testing.T) {
+		simpleManifest, blobDigest, blobBytes := makeSimpleSigning(t, kp.priv, "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")
+		layer := simpleManifest.Layers[0]
+		fetcher := &mockFetcher{
+			blobs: map[string][]byte{blobDigest: blobBytes},
+		}
+		_, err := extractSimpleSigning(ctx, layer, "1.0.21", expectedDigest, fetcher)
+		assert.ErrorContains(t, err, "does not match image manifest digest")
+	})
+
+	t.Run("valid simple-signing payload returns correct TagSignature", func(t *testing.T) {
+		simpleManifest, blobDigest, blobBytes := makeSimpleSigning(t, kp.priv, testImageDigest)
+		layer := simpleManifest.Layers[0]
+		fetcher := &mockFetcher{
+			blobs: map[string][]byte{blobDigest: blobBytes},
+		}
+
+		got, err := extractSimpleSigning(ctx, layer, "1.0.21", expectedDigest, fetcher)
+		require.NoError(t, err)
+		require.Len(t, got, 1)
 		assert.NoError(t, verifySignature("quay.io/org/app:1.0.21", got[0], kp.pemPub))
 	})
 }
@@ -649,8 +924,11 @@ func Test_extractDSSEBundle(t *testing.T) {
 		assert.ErrorContains(t, err, "does not match image manifest digest")
 	})
 
-	t.Run("payload without docker-manifest-digest field is allowed", func(t *testing.T) {
-		// Some bundle variants omit the field; we fall back to OCI subject binding.
+	t.Run("payload without docker-manifest-digest field fails closed", func(t *testing.T) {
+		// The tag-based fallback path has no registry-enforced subject binding,
+		// so a missing digest field must be rejected rather than silently
+		// allowed — otherwise a signature for image A could be replayed under
+		// image B's fallback tag.
 		noDigestPayload := []byte(`{"critical":{"image":{}}}`)
 		paeHash := sha256.Sum256(computePAE(payloadType, noDigestPayload))
 		sig, err := ecdsa.SignASN1(rand.Reader, kp.priv, paeHash[:])
@@ -668,10 +946,68 @@ func Test_extractDSSEBundle(t *testing.T) {
 		fetcher := &mockFetcher{
 			blobs: map[string][]byte{layer.Digest.String(): blobBytes},
 		}
-		got, err := extractDSSEBundle(ctx, layer, "1.0.21", expectedDigest, fetcher)
+		_, err = extractDSSEBundle(ctx, layer, "1.0.21", expectedDigest, fetcher)
+		assert.ErrorContains(t, err, "has no embedded manifest digest")
+	})
+
+	t.Run("in-toto statement payload with matching subject digest succeeds", func(t *testing.T) {
+		// Real cosign >= 2.x, when doing plain `cosign sign` (no --attest)
+		// against a registry without OCI Referrers support, wraps an in-toto
+		// v1 Statement in the DSSE envelope instead of the legacy
+		// simple-signing JSON. Verified empirically against cosign v3.1.1.
+		inTotoPayloadType := "application/vnd.in-toto+json"
+		inTotoPayload := []byte(fmt.Sprintf(
+			`{"_type":"https://in-toto.io/Statement/v1","subject":[{"digest":{"sha256":"%s"},"annotations":{}}],"predicateType":"https://sigstore.dev/cosign/sign/v1","predicate":{}}`,
+			expectedDigest.Encoded(),
+		))
+		paeHash := sha256.Sum256(computePAE(inTotoPayloadType, inTotoPayload))
+		sig, err := ecdsa.SignASN1(rand.Reader, kp.priv, paeHash[:])
 		require.NoError(t, err)
-		require.Len(t, got, 1)
-		assert.NoError(t, verifySignature("quay.io/org/app:1.0.21", got[0], kp.pemPub))
+
+		blobBytes, err := json.Marshal(sigstoreBundle{
+			DSSEEnvelope: &dsseEnvelope{
+				Payload:     base64.StdEncoding.EncodeToString(inTotoPayload),
+				PayloadType: inTotoPayloadType,
+				Signatures:  []dsseSignature{{Sig: base64.StdEncoding.EncodeToString(sig)}},
+			},
+		})
+		require.NoError(t, err)
+		layer := makeLayer(blobBytes)
+		fetcher := &mockFetcher{
+			blobs: map[string][]byte{layer.Digest.String(): blobBytes},
+		}
+		sigs, err := extractDSSEBundle(ctx, layer, "1.0.21", expectedDigest, fetcher)
+		require.NoError(t, err)
+		require.Len(t, sigs, 1)
+		wantDigestHex := hex.EncodeToString(paeHash[:])
+		assert.Equal(t, wantDigestHex, sigs[0].PayloadDigest)
+		assert.NoError(t, verifySignature("test-image", sigs[0], kp.pemPub))
+	})
+
+	t.Run("in-toto statement payload with mismatched subject digest fails", func(t *testing.T) {
+		inTotoPayloadType := "application/vnd.in-toto+json"
+		inTotoPayload := []byte(fmt.Sprintf(
+			`{"_type":"https://in-toto.io/Statement/v1","subject":[{"digest":{"sha256":"%s"},"annotations":{}}],"predicateType":"https://sigstore.dev/cosign/sign/v1","predicate":{}}`,
+			godigest.Digest(otherDigest).Encoded(),
+		))
+		paeHash := sha256.Sum256(computePAE(inTotoPayloadType, inTotoPayload))
+		sig, err := ecdsa.SignASN1(rand.Reader, kp.priv, paeHash[:])
+		require.NoError(t, err)
+
+		blobBytes, err := json.Marshal(sigstoreBundle{
+			DSSEEnvelope: &dsseEnvelope{
+				Payload:     base64.StdEncoding.EncodeToString(inTotoPayload),
+				PayloadType: inTotoPayloadType,
+				Signatures:  []dsseSignature{{Sig: base64.StdEncoding.EncodeToString(sig)}},
+			},
+		})
+		require.NoError(t, err)
+		layer := makeLayer(blobBytes)
+		fetcher := &mockFetcher{
+			blobs: map[string][]byte{layer.Digest.String(): blobBytes},
+		}
+		_, err = extractDSSEBundle(ctx, layer, "1.0.21", expectedDigest, fetcher)
+		assert.ErrorContains(t, err, "does not match image manifest digest")
 	})
 
 	t.Run("valid bundle returns correct TagSignature", func(t *testing.T) {
@@ -839,5 +1175,54 @@ func Test_VerifyWithPublicKey(t *testing.T) {
 
 		err := VerifyWithPublicKey(ctx, img, verifyConfig, fetcher)
 		assert.NoError(t, err)
+	})
+
+	t.Run("tag-based fallback verified end-to-end when OCI referrers API is unavailable", func(t *testing.T) {
+		// Models a real-world local registry (e.g. Docker Distribution v2) that
+		// returns 404 for the Referrers endpoint; cosign stored the signature as
+		// the tag "sha256-<hex>.sig".
+		const fallbackTag = "sha256-ccdd1234ccdd1234ccdd1234ccdd1234ccdd1234ccdd1234ccdd1234ccdd1234.sig"
+		img := newTestImageTag("1.0.21", imgManifestDigest)
+		bundleManifest, blobDigest, blobBytes := makeDSSEBundle(t, kp.priv, imgManifestDigest)
+
+		fetcher := &mockFetcher{
+			referrerErrors: map[string]error{
+				imgManifestDigest: fmt.Errorf("404 page not found"),
+			},
+			manifests: map[string]distribution.Manifest{
+				fallbackTag: bundleManifest,
+			},
+			blobs: map[string][]byte{blobDigest: blobBytes},
+		}
+
+		err := VerifyWithPublicKey(ctx, img, verifyConfig, fetcher)
+		assert.NoError(t, err)
+		require.NotEmpty(t, img.ImageTag.TagSignatures)
+	})
+
+	t.Run("tag-based OCI Image Index fallback verified end-to-end (cosign 2.x registry)", func(t *testing.T) {
+		// cosign 2.x stores signatures as an OCI Image Index at "sha256-<hex>.sig".
+		const fallbackTag = "sha256-ccdd1234ccdd1234ccdd1234ccdd1234ccdd1234ccdd1234ccdd1234ccdd1234.sig"
+		img := newTestImageTag("1.0.21", imgManifestDigest)
+		bundleManifest, blobDigest, blobBytes := makeDSSEBundle(t, kp.priv, imgManifestDigest)
+
+		fetcher := &mockFetcher{
+			referrerErrors: map[string]error{
+				imgManifestDigest: fmt.Errorf("404 page not found"),
+			},
+			manifests: map[string]distribution.Manifest{
+				fallbackTag: &mockIndex{
+					refs: []distribution.Descriptor{
+						{Digest: godigest.Digest(sigArtifactDigest)},
+					},
+				},
+				sigArtifactDigest: bundleManifest,
+			},
+			blobs: map[string][]byte{blobDigest: blobBytes},
+		}
+
+		err := VerifyWithPublicKey(ctx, img, verifyConfig, fetcher)
+		assert.NoError(t, err)
+		require.NotEmpty(t, img.ImageTag.TagSignatures)
 	})
 }
