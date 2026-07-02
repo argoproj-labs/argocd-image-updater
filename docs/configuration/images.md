@@ -501,7 +501,7 @@ spec:
 #### Opt out of verification for a specific image
 
 To disable verification for a specific image while keeping it enforced for
-others, set `enable: false` at the image level:
+others, set `enabled: false` at the image level:
 
 ```yaml
 spec:
@@ -518,7 +518,7 @@ spec:
         - alias: "nginx"
           imageName: "nginx:~1.26"
           imagesVerification:
-            enable: false
+            enabled: false
 ```
 
 !!!note
@@ -529,7 +529,7 @@ spec:
     and most modern registries do).
 
 !!!note
-    When `imagesVerification` is present and `enable` is `true` (the default),
+    When `imagesVerification` is present and `enabled` is `true` (the default),
     the `method` and `publicKeySecret` fields are required. An image whose
     verification settings are incomplete will be skipped with an error.
 
@@ -710,13 +710,13 @@ More specific scopes override less specific ones; absent fields are inherited fr
 
 | Field             | Type      | Default | Description                                                                                                         |
 |-------------------|-----------|---------|---------------------------------------------------------------------------------------------------------------------|
-| `enable`          | bool      | `true`  | Whether signature verification is active at this scope. Set to `false` to opt out for images that cannot be signed. |
-| `method`          | string    | *none*  | Verification backend. Required when `enable` is `true`. Supported values: `cosign-key`.                             |
+| `enabled`         | bool      | `true`  | Whether signature verification is active at this scope. Set to `false` to opt out for images that cannot be signed. |
+| `method`          | string    | *none*  | Verification backend. Required when `enabled` is `true`. Supported values: `cosign-key`.                            |
 | `publicKeySecret` | SecretRef | *none*  | Reference to a Kubernetes Secret holding the PEM-encoded ECDSA public key. Required when `method` is `cosign-key`.  |
 
 !!!note
     When no `imagesVerification` block is present at any scope, images are updated without
-    verification. Set `enable: false` to explicitly opt out of verification for a specific image.
+    verification. Set `enabled: false` to explicitly opt out of verification for a specific image.
 
 #### SecretRef fields
 

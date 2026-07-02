@@ -236,11 +236,6 @@ jobs:
           # github.event.pull_request.head.sha is set for both pull_request and
           # pull_request_target; it falls back to github.sha for workflow_dispatch.
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          # actions/checkout v7 requires explicit opt-in to check out fork PR
-          # code inside a pull_request_target workflow. The security risk is
-          # already mitigated by the maintainer-applied "ok-to-test" label gate
-          # (only Triage+ can apply it) and persist-credentials: false above.
-          allow-unsafe-pr-checkout: true
       - name: Setup Golang
         uses: actions/setup-go@v6
         with:

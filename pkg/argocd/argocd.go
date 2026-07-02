@@ -141,7 +141,7 @@ func nameMatchesLabels(ctx context.Context, appLabels map[string]string, selecto
 
 // processApplicationForUpdate checks if an application is of a supported type,
 // and if so, creates an ApplicationImages struct and adds it to the update map.
-func processApplicationForUpdate(kubeClient *kube.ImageUpdaterKubernetesClient, ctx context.Context, app *argocdapi.Application, appRef iuapi.ApplicationRef, appCommonUpdateSettings *iuapi.CommonUpdateSettings, appImagesVerification *iuapi.ImagesVerification, appWBCSettings *WriteBackConfig, appNSName string, appsForUpdate map[string]ApplicationImages, webhookEvent *WebhookEvent) {
+func processApplicationForUpdate(ctx context.Context, kubeClient *kube.ImageUpdaterKubernetesClient, app *argocdapi.Application, appRef iuapi.ApplicationRef, appCommonUpdateSettings *iuapi.CommonUpdateSettings, appImagesVerification *iuapi.ImagesVerification, appWBCSettings *WriteBackConfig, appNSName string, appsForUpdate map[string]ApplicationImages, webhookEvent *WebhookEvent) {
 	log := log.LoggerFromContext(ctx)
 	sourceType := getApplicationSourceType(app, appWBCSettings)
 
@@ -354,7 +354,7 @@ func FilterApplicationsForUpdate(ctx context.Context, ctrlClient *ArgoCDK8sClien
 						appLogger.Tracef("Resulted Image Updater object: %s", string(appRefJSON))
 					}
 				}
-				processApplicationForUpdate(kubeClient, appCtx, &app, localAppRef, mergedCommonUpdateSettings, mergedImagesVerification, appWBCSettings, appNSName, appsForUpdate, webhookEvent)
+				processApplicationForUpdate(appCtx, kubeClient, &app, localAppRef, mergedCommonUpdateSettings, mergedImagesVerification, appWBCSettings, appNSName, appsForUpdate, webhookEvent)
 				break // Found the best match, move to the next app
 			}
 		}
@@ -405,8 +405,8 @@ func mergeImagesVerification(settings ...*iuapi.ImagesVerification) *iuapi.Image
 		if s.Method != nil {
 			merged.Method = s.Method
 		}
-		if s.Enable != nil {
-			merged.Enable = s.Enable
+		if s.Enabled != nil {
+			merged.Enabled = s.Enabled
 		}
 		if s.PublicKeySecret != nil {
 			merged.PublicKeySecret = s.PublicKeySecret
@@ -659,8 +659,8 @@ func newImageFromImagesVerification(kubeClient *kube.ImageUpdaterKubernetesClien
 
 	// if empty fall back to default Enable == true
 	img.EnableVerification = true // default when block is present
-	if settings.Enable != nil {
-		img.EnableVerification = *settings.Enable
+	if settings.Enabled != nil {
+		img.EnableVerification = *settings.Enabled
 	}
 
 	if !img.EnableVerification {

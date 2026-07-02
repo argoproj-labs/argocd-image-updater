@@ -21,4 +21,4 @@ spec:
           imageName: "no-signature:1.25.0"
           imagesVerification:
             method: cosign-key
-            enable: false
+            enabled: false

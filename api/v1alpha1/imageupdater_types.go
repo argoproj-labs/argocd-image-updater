@@ -299,25 +299,25 @@ type KustomizeTarget struct {
 
 // ImagesVerification defines the image signature verification policy for one or more images.
 //
-// +kubebuilder:validation:XValidation:rule="self.enable == false || has(self.method)",message="method is required when verification is enabled"
+// +kubebuilder:validation:XValidation:rule="self.enabled == false || has(self.method)",message="method is required when verification is enabled"
 type ImagesVerification struct {
 	// Method specifies the signature verification backend to use.
-	// Required when enable is true (the default).
+	// Required when enabled is true (the default).
 	// +kubebuilder:validation:Enum=cosign-key
 	// +optional
 	Method *string `json:"method,omitempty"`
 
-	// Enable controls whether signature verification is active at this scope.
+	// Enabled controls whether signature verification is active at this scope.
 	// Defaults to true when the ImagesVerification block is present.
 	// Set to false to explicitly opt out of verification for this image or group.
 	// +optional
 	// +kubebuilder:default:=true
-	Enable *bool `json:"enable,omitempty"`
+	Enabled *bool `json:"enabled,omitempty"`
 
 	// PublicKeySecret references a Kubernetes Secret in the same namespace as the
 	// ImageUpdater CR that holds the PEM-encoded ECDSA public key used to verify
 	// cosign signatures.
-	// Required at runtime when method is "cosign-key" and enable is true.
+	// Required at runtime when method is "cosign-key" and enabled is true.
 	// +optional
 	PublicKeySecret *SecretRef `json:"publicKeySecret,omitempty"`
 }

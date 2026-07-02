@@ -353,8 +353,8 @@ func (in *ImagesVerification) DeepCopyInto(out *ImagesVerification) {
 		*out = new(string)
 		**out = **in
 	}
-	if in.Enable != nil {
-		in, out := &in.Enable, &out.Enable
+	if in.Enabled != nil {
+		in, out := &in.Enabled, &out.Enabled
 		*out = new(bool)
 		**out = **in
 	}
