@@ -525,7 +525,7 @@ spec:
     Only [cosign](https://github.com/sigstore/cosign) key-based verification
     (`method: cosign-key`) is supported. The controller uses the OCI Referrers
     API to locate the signature artifact pushed by `cosign sign`, so the registry
-    must support OCI Distribution Spec v1.1 referrers (Quay, GHCR, Docker Hub,
+    must support OCI Distribution Spec v1.1 referrers (Quay, GHCR,
     and most modern registries do).
 
 !!!note
