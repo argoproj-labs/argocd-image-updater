@@ -203,6 +203,10 @@ spec:
       labelSelectors:
         matchLabels:
           image-updater: my-image-updater
+      imagesVerification:
+        cosignKey:
+          secretName: org-cosign-pubkey
+          key: cosign.pub
       useAnnotations: true
 ```
 
@@ -210,7 +214,8 @@ When `useAnnotations` is set to `true`, **all CR-based configuration
 is ignored** (`images` including `manifestTargets` within each image, `commonUpdateSettings`,
 `writeBackConfig`). Instead, the controller reads everything from the Application's
 legacy `argocd-image-updater.argoproj.io/*` annotations. Only `namePattern` and
-`labelSelectors` are used from the CR for application selection.
+`labelSelectors` are used for application selection; `imagesVerification` is still
+read from the CR and applied after a match is found.
 
 #### Required annotations
 

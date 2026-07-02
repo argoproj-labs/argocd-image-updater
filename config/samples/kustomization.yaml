@@ -2,4 +2,6 @@
 resources:
 - argocd-image-updater_v1alpha1_imageupdater.yaml
 - argocd-image-updater_v1alpha1_imageupdater-short.yaml
+- argocd-image-updater_v1alpha1_imageupdater-pull-request.yaml
+- argocd-image-updater_v1alpha1_imageupdater-verification.yaml
 # +kubebuilder:scaffold:manifestskustomizesamples

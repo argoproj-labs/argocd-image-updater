@@ -180,6 +180,10 @@ type Image struct {
 	HelmImageTag       string
 	HelmImageSpec      string
 	KustomizeImageName string
+
+	// verify image signature settings
+	EnableVerification bool
+	*image.Verify
 }
 
 // ImageList is a list of Image objects that can be updated.

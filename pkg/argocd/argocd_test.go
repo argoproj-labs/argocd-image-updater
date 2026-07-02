@@ -9,6 +9,7 @@ import (
 	"github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	v1core "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -1862,7 +1863,6 @@ func (e *errorSimulatingClient) UpdateSpec(ctx context.Context, spec *applicatio
 	return &app.Spec, nil
 }
 
-// Assisted-by: Gemini AI
 func Test_parseImageList(t *testing.T) {
 	// newExpectedImageForIuCR is a helper to construct an expected image object.
 	newExpectedImageForIuCR := func(identifier string, kustomizeName string) *Image {
@@ -1960,7 +1960,7 @@ func Test_parseImageList(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := parseImageList(context.Background(), tc.inputImages, nil, nil)
+			got := parseImageList(context.Background(), nil, "", tc.inputImages, nil, nil, nil)
 			require.NotNil(t, got)
 			assert.ElementsMatch(t, tc.expectedImages, *got, "The parsed image list should match the expected list")
 		})
@@ -1970,7 +1970,7 @@ func Test_parseImageList(t *testing.T) {
 	t.Run("Webhook: match by repository with empty registry", func(t *testing.T) {
 		images := []api.ImageConfig{{Alias: "web", ImageName: "nginx:1.21.0"}}
 		event := &WebhookEvent{RegistryURL: "ghcr.io", Repository: "nginx"}
-		got := parseImageList(context.Background(), images, nil, event)
+		got := parseImageList(context.Background(), nil, "", images, nil, nil, event)
 		require.NotNil(t, got)
 		expected := ImageList{newExpectedImageForIuCR("web=nginx:1.21.0", "")}
 		assert.ElementsMatch(t, expected, *got)
@@ -1979,7 +1979,7 @@ func Test_parseImageList(t *testing.T) {
 	t.Run("Webhook: skip on repository mismatch", func(t *testing.T) {
 		images := []api.ImageConfig{{Alias: "web", ImageName: "nginx:1.21.0"}}
 		event := &WebhookEvent{RegistryURL: "ghcr.io", Repository: "redis"}
-		got := parseImageList(context.Background(), images, nil, event)
+		got := parseImageList(context.Background(), nil, "", images, nil, nil, event)
 		require.NotNil(t, got)
 		assert.Len(t, *got, 0)
 	})
@@ -1987,7 +1987,7 @@ func Test_parseImageList(t *testing.T) {
 	t.Run("Webhook: skip on registry mismatch", func(t *testing.T) {
 		images := []api.ImageConfig{{Alias: "idp", ImageName: "quay.io/dexidp/dex:v1.23.0"}}
 		event := &WebhookEvent{RegistryURL: "ghcr.io", Repository: "dexidp/dex"}
-		got := parseImageList(context.Background(), images, nil, event)
+		got := parseImageList(context.Background(), nil, "", images, nil, nil, event)
 		require.NotNil(t, got)
 		assert.Len(t, *got, 0)
 	})
@@ -1995,7 +1995,7 @@ func Test_parseImageList(t *testing.T) {
 	t.Run("Webhook: match with explicit registry and repository", func(t *testing.T) {
 		images := []api.ImageConfig{{Alias: "app", ImageName: "ghcr.io/myorg/app:1.0"}}
 		event := &WebhookEvent{RegistryURL: "ghcr.io", Repository: "myorg/app"}
-		got := parseImageList(context.Background(), images, nil, event)
+		got := parseImageList(context.Background(), nil, "", images, nil, nil, event)
 		require.NotNil(t, got)
 		expected := ImageList{newExpectedImageForIuCR("app=ghcr.io/myorg/app:1.0", "")}
 		assert.ElementsMatch(t, expected, *got)
@@ -2008,10 +2008,130 @@ func Test_parseImageList(t *testing.T) {
 			{Alias: "app", ImageName: "ghcr.io/myorg/app:2.0"},
 		}
 		event := &WebhookEvent{RegistryURL: "ghcr.io", Repository: "myorg/app"}
-		got := parseImageList(context.Background(), images, nil, event)
+		got := parseImageList(context.Background(), nil, "", images, nil, nil, event)
 		require.NotNil(t, got)
 		expected := ImageList{newExpectedImageForIuCR("app=ghcr.io/myorg/app:2.0", "")}
 		assert.ElementsMatch(t, expected, *got)
+	})
+
+	// Image signature verification behavior
+	makeVerifyKubeClient := func(secrets ...runtime.Object) *kube.ImageUpdaterKubernetesClient {
+		clientset := fake.NewFakeClientsetWithResources(secrets...)
+		return &kube.ImageUpdaterKubernetesClient{
+			KubeClient: &registryKube.KubernetesClient{
+				Clientset: clientset,
+				Context:   context.Background(),
+			},
+		}
+	}
+
+	t.Run("Verification: image proceeds normally when no imagesVerification configured at any level", func(t *testing.T) {
+		// No appImagesVerification, no image-level ImagesVerification →
+		// mergeImagesVerification(nil, nil) returns nil → newImageFromImagesVerification
+		// exits early → EnableVerification=false → image is included normally.
+		images := []api.ImageConfig{
+			{Alias: "web", ImageName: "nginx:1.21.0"},
+		}
+		got := parseImageList(context.Background(), makeVerifyKubeClient(), "argocd", images, nil, nil, nil)
+		require.NotNil(t, got)
+		assert.Len(t, *got, 1, "image with no verification config should proceed without verification")
+	})
+
+	t.Run("Verification: image included when enabled=false opts out", func(t *testing.T) {
+		// Image-level enabled=false → early return from newImageFromCommonImagesVerification,
+		// no error → image is kept in the list
+		images := []api.ImageConfig{
+			{
+				Alias:     "nginx",
+				ImageName: "nginx:1.21.0",
+				ImagesVerification: &api.ImagesVerification{
+					Enabled: boolPtr(false),
+				},
+			},
+		}
+		got := parseImageList(context.Background(), makeVerifyKubeClient(), "argocd", images, nil, nil, nil)
+		require.NotNil(t, got)
+		assert.Len(t, *got, 1)
+		assert.False(t, (*got)[0].EnableVerification)
+	})
+
+	t.Run("Verification: image included with Verify populated when valid cosign-key config", func(t *testing.T) {
+		const fakePEM = "-----BEGIN PUBLIC KEY-----\nfake\n-----END PUBLIC KEY-----"
+		secret := &v1core.Secret{
+			ObjectMeta: v1.ObjectMeta{Namespace: "argocd", Name: "org-key"},
+			Data:       map[string][]byte{"cosign.pub": []byte(fakePEM)},
+		}
+		images := []api.ImageConfig{
+			{Alias: "app", ImageName: "ghcr.io/org/app:1.0"},
+		}
+		appVerification := &api.ImagesVerification{
+
+			CosignKey: &api.SecretRef{SecretName: "org-key", Key: "cosign.pub"},
+		}
+		got := parseImageList(context.Background(), makeVerifyKubeClient(secret), "argocd", images, nil, appVerification, nil)
+		require.NotNil(t, got)
+		require.Len(t, *got, 1)
+		img := (*got)[0]
+		assert.True(t, img.EnableVerification)
+		require.NotNil(t, img.Verify)
+		assert.Equal(t, fakePEM, img.Verify.CosignKey)
+	})
+
+	t.Run("Verification: image skipped when secret does not exist in kube", func(t *testing.T) {
+		images := []api.ImageConfig{
+			{Alias: "app", ImageName: "ghcr.io/org/app:1.0"},
+		}
+		appVerification := &api.ImagesVerification{
+
+			CosignKey: &api.SecretRef{SecretName: "nonexistent-secret", Key: "cosign.pub"},
+		}
+		got := parseImageList(context.Background(), makeVerifyKubeClient(), "argocd", images, nil, appVerification, nil)
+		require.NotNil(t, got)
+		assert.Len(t, *got, 0, "image should be skipped when secret lookup fails")
+	})
+
+	t.Run("Verification: mixed list — verified image has Verify populated, unverified image proceeds normally", func(t *testing.T) {
+		const fakePEM = "-----BEGIN PUBLIC KEY-----\nfake\n-----END PUBLIC KEY-----"
+		secret := &v1core.Secret{
+			ObjectMeta: v1.ObjectMeta{Namespace: "argocd", Name: "org-key"},
+			Data:       map[string][]byte{"cosign.pub": []byte(fakePEM)},
+		}
+		images := []api.ImageConfig{
+			{
+				// image-level imagesVerification configured — included with Verify populated
+				Alias:     "app",
+				ImageName: "ghcr.io/org/app:1.0",
+				ImagesVerification: &api.ImagesVerification{
+					CosignKey: &api.SecretRef{SecretName: "org-key", Key: "cosign.pub"},
+				},
+			},
+			{
+				// no imagesVerification at any level — included without verification
+				Alias:     "nginx",
+				ImageName: "nginx:1.21.0",
+			},
+		}
+		got := parseImageList(context.Background(), makeVerifyKubeClient(secret), "argocd", images, nil, nil, nil)
+		require.NotNil(t, got)
+		require.Len(t, *got, 2)
+
+		// find each image by alias regardless of order
+		var appImg, nginxImg *Image
+		for i := range *got {
+			switch (*got)[i].ImageAlias {
+			case "app":
+				appImg = (*got)[i]
+			case "nginx":
+				nginxImg = (*got)[i]
+			}
+		}
+		require.NotNil(t, appImg, "app image should be included")
+		assert.True(t, appImg.EnableVerification)
+		assert.NotNil(t, appImg.Verify)
+
+		require.NotNil(t, nginxImg, "nginx image should be included without verification")
+		assert.False(t, nginxImg.EnableVerification)
+		assert.Nil(t, nginxImg.Verify)
 	})
 }
 
@@ -2074,7 +2194,206 @@ func Test_mergeCommonUpdateSettings(t *testing.T) {
 	})
 }
 
-// Assisted-by: Gemini AI
+func Test_mergeImagesVerification(t *testing.T) {
+	secretRef := func(name, key string) *api.SecretRef {
+		return &api.SecretRef{SecretName: name, Key: key}
+	}
+
+	t.Run("all nil inputs returns nil (no imagesVerification block present at any scope)", func(t *testing.T) {
+		// nil return lets newImageFromImagesVerification exit early so the image
+		// proceeds without verification — same behaviour as before the feature.
+		merged := mergeImagesVerification(nil, nil)
+		assert.Nil(t, merged)
+	})
+
+	t.Run("single nil input returns nil", func(t *testing.T) {
+		merged := mergeImagesVerification(nil)
+		assert.Nil(t, merged)
+	})
+
+	t.Run("global settings propagate when app level is nil", func(t *testing.T) {
+		global := &api.ImagesVerification{
+
+			Enabled:   boolPtr(true),
+			CosignKey: secretRef("org-key", "cosign.pub"),
+		}
+		merged := mergeImagesVerification(global, nil)
+		assert.True(t, *merged.Enabled)
+		assert.Equal(t, "org-key", merged.CosignKey.SecretName)
+	})
+
+	t.Run("image level overrides global cosignKey", func(t *testing.T) {
+		global := &api.ImagesVerification{
+
+			Enabled:   boolPtr(true),
+			CosignKey: secretRef("org-key", "cosign.pub"),
+		}
+		imageLevel := &api.ImagesVerification{
+
+			CosignKey: secretRef("image-key", "cosign.pub"),
+		}
+		merged := mergeImagesVerification(global, imageLevel)
+
+		assert.True(t, *merged.Enabled)
+		assert.Equal(t, "image-key", merged.CosignKey.SecretName)
+	})
+
+	t.Run("image level enabled=false opts out while inheriting global key", func(t *testing.T) {
+		global := &api.ImagesVerification{
+
+			Enabled:   boolPtr(true),
+			CosignKey: secretRef("org-key", "cosign.pub"),
+		}
+		imageLevel := &api.ImagesVerification{
+			Enabled: boolPtr(false),
+		}
+		merged := mergeImagesVerification(global, imageLevel)
+		assert.False(t, *merged.Enabled)
+		// cosignKey is inherited from global
+		assert.Equal(t, "org-key", merged.CosignKey.SecretName)
+	})
+
+	t.Run("image level nil Enable does not override global Enable=false", func(t *testing.T) {
+		global := &api.ImagesVerification{
+			Enabled: boolPtr(false),
+		}
+		imageLevel := &api.ImagesVerification{
+			CosignKey: secretRef("image-key", "cosign.pub"),
+		}
+		merged := mergeImagesVerification(global, imageLevel)
+		assert.False(t, *merged.Enabled)
+		assert.Equal(t, "image-key", merged.CosignKey.SecretName)
+	})
+
+	t.Run("three-level merge: image level wins over app over global", func(t *testing.T) {
+		global := &api.ImagesVerification{
+
+			Enabled:   boolPtr(true),
+			CosignKey: secretRef("global-key", "cosign.pub"),
+		}
+		appLevel := &api.ImagesVerification{
+			CosignKey: secretRef("app-key", "cosign.pub"),
+		}
+		imageLevel := &api.ImagesVerification{
+			CosignKey: secretRef("image-key", "cosign.pub"),
+		}
+		merged := mergeImagesVerification(global, appLevel, imageLevel)
+
+		assert.True(t, *merged.Enabled)
+		assert.Equal(t, "image-key", merged.CosignKey.SecretName)
+	})
+
+	t.Run("empty non-nil struct does not overwrite previously merged values", func(t *testing.T) {
+		global := &api.ImagesVerification{
+
+			Enabled:   boolPtr(true),
+			CosignKey: secretRef("org-key", "cosign.pub"),
+		}
+		empty := &api.ImagesVerification{}
+		merged := mergeImagesVerification(global, empty)
+
+		assert.True(t, *merged.Enabled)
+		assert.Equal(t, "org-key", merged.CosignKey.SecretName)
+	})
+}
+
+func Test_newImageFromImagesVerification(t *testing.T) {
+	const (
+		testNamespace = "argocd"
+		secretName    = "org-cosign-key"
+		secretKey     = "cosign.pub"
+		fakePEM       = "-----BEGIN PUBLIC KEY-----\nfakepemcontent\n-----END PUBLIC KEY-----"
+	)
+
+	makeKubeClient := func(secrets ...runtime.Object) *kube.ImageUpdaterKubernetesClient {
+		clientset := fake.NewFakeClientsetWithResources(secrets...)
+		return &kube.ImageUpdaterKubernetesClient{
+			KubeClient: &registryKube.KubernetesClient{
+				Clientset: clientset,
+				Context:   context.Background(),
+			},
+		}
+	}
+
+	makeSecret := func(ns, name, key, value string) runtime.Object {
+		return &v1core.Secret{
+			ObjectMeta: v1.ObjectMeta{Namespace: ns, Name: name},
+			Data:       map[string][]byte{key: []byte(value)},
+		}
+	}
+
+	baseImg := func() *Image {
+		return &Image{ContainerImage: &image.ContainerImage{}}
+	}
+
+	t.Run("nil settings returns img unchanged", func(t *testing.T) {
+		img := baseImg()
+		result, err := newImageFromImagesVerification(makeKubeClient(), testNamespace, nil, img)
+		require.NoError(t, err)
+		assert.Same(t, img, result)
+		assert.False(t, result.EnableVerification)
+		assert.Nil(t, result.Verify)
+	})
+
+	t.Run("enabled=false opts out without requiring method or secret", func(t *testing.T) {
+		img := baseImg()
+		settings := &api.ImagesVerification{Enabled: boolPtr(false)}
+		result, err := newImageFromImagesVerification(makeKubeClient(), testNamespace, settings, img)
+		require.NoError(t, err)
+		assert.False(t, result.EnableVerification)
+		assert.Nil(t, result.Verify)
+	})
+
+	t.Run("enabled=true without cosignKey returns error", func(t *testing.T) {
+		img := baseImg()
+		settings := &api.ImagesVerification{
+			Enabled: boolPtr(true),
+		}
+		_, err := newImageFromImagesVerification(makeKubeClient(), testNamespace, settings, img)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "cosignKey is required when verification is enabled")
+	})
+
+	t.Run("cosign-key with secret not found in kube returns error", func(t *testing.T) {
+		img := baseImg()
+		settings := &api.ImagesVerification{
+
+			CosignKey: &api.SecretRef{SecretName: "nonexistent", Key: secretKey},
+		}
+		_, err := newImageFromImagesVerification(makeKubeClient(), testNamespace, settings, img)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "failed to fetch public key secret field")
+	})
+
+	t.Run("cosign-key with valid secret populates Verify correctly", func(t *testing.T) {
+		secret := makeSecret(testNamespace, secretName, secretKey, fakePEM)
+		img := baseImg()
+		settings := &api.ImagesVerification{
+
+			CosignKey: &api.SecretRef{SecretName: secretName, Key: secretKey},
+		}
+		result, err := newImageFromImagesVerification(makeKubeClient(secret), testNamespace, settings, img)
+		require.NoError(t, err)
+		assert.True(t, result.EnableVerification)
+		require.NotNil(t, result.Verify)
+		assert.Equal(t, fakePEM, result.Verify.CosignKey)
+	})
+
+	t.Run("nil img.Verify is initialised before use — no panic", func(t *testing.T) {
+		secret := makeSecret(testNamespace, secretName, secretKey, fakePEM)
+		img := baseImg()
+		assert.Nil(t, img.Verify)
+		settings := &api.ImagesVerification{
+
+			CosignKey: &api.SecretRef{SecretName: secretName, Key: secretKey},
+		}
+		result, err := newImageFromImagesVerification(makeKubeClient(secret), testNamespace, settings, img)
+		require.NoError(t, err)
+		require.NotNil(t, result.Verify)
+	})
+
+}
+
 func Test_newImageFromSettings(t *testing.T) {
 	t.Run("should return default settings when settings are nil", func(t *testing.T) {
 		// Expected: A new image with the hardcoded default values.
@@ -3119,7 +3438,7 @@ func Test_processApplicationForUpdate(t *testing.T) {
 			ctx := context.Background()
 			appsForUpdate := tc.initialApps
 
-			processApplicationForUpdate(ctx, tc.app, tc.appRef, nil, nil, tc.appNSName, appsForUpdate, nil)
+			processApplicationForUpdate(ctx, nil, tc.app, tc.appRef, nil, nil, nil, tc.appNSName, appsForUpdate, nil)
 
 			assert.Len(t, appsForUpdate, tc.expectedAppsCount, "The final map should have the expected number of applications")
 
@@ -3147,7 +3466,7 @@ func Test_processApplicationForUpdate(t *testing.T) {
 		webhook := &WebhookEvent{RegistryURL: "ghcr.io", Repository: "redis"}
 		appNSName := "testns/kustomize-app"
 
-		processApplicationForUpdate(ctx, kustomizeApp, appRefWithImages, nil, nil, appNSName, appsForUpdate, webhook)
+		processApplicationForUpdate(ctx, nil, kustomizeApp, appRefWithImages, nil, nil, nil, appNSName, appsForUpdate, webhook)
 
 		assert.Len(t, appsForUpdate, 0)
 		assert.NotContains(t, appsForUpdate, appNSName)
@@ -3940,6 +4259,52 @@ func Test_FilterApplicationsForUpdate(t *testing.T) {
 				},
 			},
 			expectedKeys: []string{"testns/wbc-annotation-app"},
+		},
+		{
+			// No imagesVerification configured at any level:
+			// mergeImagesVerification(nil,nil) returns nil → newImageFromImagesVerification
+			// exits early → EnableVerification=false → image proceeds normally.
+			name:        "no imagesVerification at any level: image proceeds without verification",
+			initialApps: []client.Object{appProd},
+			imageUpdaterCR: &api.ImageUpdater{
+				ObjectMeta: v1.ObjectMeta{Name: "test-updater", Namespace: "testns"},
+				Spec: api.ImageUpdaterSpec{
+					ApplicationRefs: []api.ApplicationRef{
+						{NamePattern: "app-prod", Images: []api.ImageConfig{{Alias: "nginx", ImageName: "nginx:1.0"}}},
+					},
+				},
+			},
+			expectedKeys: []string{"testns/app-prod"},
+		},
+		{
+			// Same through the UseAnnotations path: no imagesVerification anywhere → app returned.
+			name: "UseAnnotations, no imagesVerification: image proceeds without verification",
+			initialApps: []client.Object{
+				&v1alpha1.Application{
+					ObjectMeta: v1.ObjectMeta{
+						Name:      "verify-ann-app",
+						Namespace: "testns",
+						Annotations: map[string]string{
+							ImageUpdaterAnnotation: "nginx=nginx:1.21",
+						},
+					},
+					Spec: v1alpha1.ApplicationSpec{
+						Source: &v1alpha1.ApplicationSource{
+							Kustomize: &v1alpha1.ApplicationSourceKustomize{},
+						},
+					},
+					Status: v1alpha1.ApplicationStatus{SourceType: v1alpha1.ApplicationSourceTypeKustomize},
+				},
+			},
+			imageUpdaterCR: &api.ImageUpdater{
+				ObjectMeta: v1.ObjectMeta{Name: "test-updater", Namespace: "testns"},
+				Spec: api.ImageUpdaterSpec{
+					ApplicationRefs: []api.ApplicationRef{
+						{NamePattern: "verify-ann-app", UseAnnotations: boolPtr(true)},
+					},
+				},
+			},
+			expectedKeys: []string{"testns/verify-ann-app"},
 		},
 	}
 

@@ -3,6 +3,7 @@ package registry
 import (
 	"context"
 	"crypto/sha256"
+	stdjson "encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -60,15 +61,26 @@ type RegistryClient interface {
 	ManifestForTag(ctx context.Context, tagStr string) (distribution.Manifest, error)
 	ManifestForDigest(ctx context.Context, dgst digest.Digest) (distribution.Manifest, error)
 	TagMetadata(ctx context.Context, manifest distribution.Manifest, opts *options.ManifestOptions) (*tag.TagInfo, error)
+	// Referrers returns the list of OCI referrer descriptors for the given
+	// manifest digest using the OCI Distribution Spec v1.1 referrers API.
+	// NewRepository must be called first.
+	Referrers(ctx context.Context, dgst digest.Digest) ([]distribution.Descriptor, error)
+
+	// BlobContent downloads the blob identified by dgst and returns its raw
+	// bytes. Used to fetch sigstore bundle blobs from signature artifacts.
+	// NewRepository must be called first.
+	BlobContent(ctx context.Context, dgst digest.Digest) ([]byte, error)
 }
 
 type NewRegistryClient func(*RegistryEndpoint, string, string) (RegistryClient, error)
 
 // Helper type for registry clients
 type registryClient struct {
-	regClient distribution.Repository
-	endpoint  *RegistryEndpoint
-	creds     credentials
+	regClient        distribution.Repository
+	endpoint         *RegistryEndpoint
+	creds            credentials
+	httpClient       *http.Client // authenticated + rate-limited, set by NewRepository
+	nameInRepository string       // set by NewRepository
 }
 
 // credentials is an implementation of distribution/V3/session struct
@@ -157,6 +169,11 @@ func (clt *registryClient) NewRepository(nameInRepository string) error {
 	if err != nil {
 		return err
 	}
+	// Store the authenticated HTTP client for use by Referrers and any other
+	// raw-HTTP calls that the distribution ManifestService doesn't cover.
+	clt.httpClient = &http.Client{Transport: rlt}
+	// Keep the plain repository path so Referrers can build the correct URL.
+	clt.nameInRepository = nameInRepository
 	return nil
 }
 
@@ -466,6 +483,62 @@ func IsAuthError(ctx context.Context, err error) bool {
 		}
 	}
 	return false
+}
+
+// BlobContent implements RegistryClient.BlobContent.
+// It uses the authenticated repository's BlobStore to download the raw bytes
+// of the blob identified by dgst.
+func (clt *registryClient) BlobContent(ctx context.Context, dgst digest.Digest) ([]byte, error) {
+	if clt.regClient == nil {
+		return nil, fmt.Errorf("registry client not initialized: call NewRepository first")
+	}
+	return clt.regClient.Blobs(ctx).Get(ctx, dgst)
+}
+
+// Referrers implements RegistryClient.Referrers.
+// It calls GET /v2/<repo>/referrers/<dgst> (OCI Distribution Spec v1.1) and
+// returns all referrer descriptors.  Filter by ArtifactType on the caller's
+// side to find a specific artifact kind.
+func (clt *registryClient) Referrers(ctx context.Context, dgst digest.Digest) ([]distribution.Descriptor, error) {
+	if clt.httpClient == nil || clt.nameInRepository == "" {
+		return nil, fmt.Errorf("registry client not initialized: call NewRepository first")
+	}
+
+	rawURL := fmt.Sprintf("%s/v2/%s/referrers/%s",
+		strings.TrimSuffix(clt.endpoint.RegistryAPI, "/"),
+		clt.nameInRepository,
+		dgst.String())
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("error creating referrers request: %w", err)
+	}
+	req.Header.Set("Accept", "application/vnd.oci.image.index.v1+json")
+
+	resp, err := clt.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("error fetching referrers: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		// The registry either does not support the OCI referrers API or has no
+		// referrers for this digest.  Return an empty list so the caller treats
+		// this as "no signature found" rather than a network error.
+		return nil, nil
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("referrers API returned HTTP %d for digest %s", resp.StatusCode, dgst)
+	}
+
+	var result struct {
+		Manifests []distribution.Descriptor `json:"manifests"`
+	}
+	if err := stdjson.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("error decoding referrers response: %w", err)
+	}
+
+	return result.Manifests, nil
 }
 
 // Implementation of ping method to initialize the challenge list

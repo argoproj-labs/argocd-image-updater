@@ -141,7 +141,7 @@ func nameMatchesLabels(ctx context.Context, appLabels map[string]string, selecto
 
 // processApplicationForUpdate checks if an application is of a supported type,
 // and if so, creates an ApplicationImages struct and adds it to the update map.
-func processApplicationForUpdate(ctx context.Context, app *argocdapi.Application, appRef iuapi.ApplicationRef, appCommonUpdateSettings *iuapi.CommonUpdateSettings, appWBCSettings *WriteBackConfig, appNSName string, appsForUpdate map[string]ApplicationImages, webhookEvent *WebhookEvent) {
+func processApplicationForUpdate(ctx context.Context, kubeClient *kube.ImageUpdaterKubernetesClient, app *argocdapi.Application, appRef iuapi.ApplicationRef, appCommonUpdateSettings *iuapi.CommonUpdateSettings, appImagesVerification *iuapi.ImagesVerification, appWBCSettings *WriteBackConfig, appNSName string, appsForUpdate map[string]ApplicationImages, webhookEvent *WebhookEvent) {
 	log := log.LoggerFromContext(ctx)
 	sourceType := getApplicationSourceType(app, appWBCSettings)
 
@@ -152,7 +152,7 @@ func processApplicationForUpdate(ctx context.Context, app *argocdapi.Application
 	}
 	log.Tracef("processing app '%s' of type '%v'", appNSName, sourceType)
 
-	imageList := parseImageList(ctx, appRef.Images, appCommonUpdateSettings, webhookEvent)
+	imageList := parseImageList(ctx, kubeClient, app.GetNamespace(), appRef.Images, appCommonUpdateSettings, appImagesVerification, webhookEvent)
 
 	if imageList == nil || len(*imageList) == 0 {
 		return
@@ -269,6 +269,7 @@ func FilterApplicationsForUpdate(ctx context.Context, ctrlClient *ArgoCDK8sClien
 
 	// Establish the base global settings
 	globalUpdateSettings := cr.Spec.CommonUpdateSettings
+	globalImagesVerification := cr.Spec.ImagesVerification
 
 	// For each app in the list, find its best matching rule from the CR.
 	for _, app := range allAppsInNamespace.Items {
@@ -284,12 +285,14 @@ func FilterApplicationsForUpdate(ctx context.Context, ctrlClient *ArgoCDK8sClien
 			if matches && nameMatchesLabels(appCtx, app.Labels, applicationRef.LabelSelectors) {
 				localAppRef := applicationRef
 				var mergedCommonUpdateSettings *iuapi.CommonUpdateSettings
+				var mergedImagesVerification *iuapi.ImagesVerification
 				var mergedWBCSettings *iuapi.WriteBackConfig
 				var appWBCSettings *WriteBackConfig
 				var err error
 				// When UseAnnotations is true, we ignore all CR-based configuration
 				// (Images, CommonUpdateSettings, WriteBackConfig) and instead read everything from
 				// the Application's legacy argocd-image-updater.argoproj.io/* annotations.
+				// Only NamePattern, LabelSelectors and ImagesVerification are considered at app level.
 				if applicationRef.UseAnnotations != nil && *applicationRef.UseAnnotations {
 					appLogger.Debugf("Read settings from application Annotations")
 
@@ -318,10 +321,14 @@ func FilterApplicationsForUpdate(ctx context.Context, ctrlClient *ArgoCDK8sClien
 					localAppRef.Images = appRefImages
 					localAppRef.WriteBackConfig = appRefWBC
 					mergedWBCSettings = appRefWBC
+					mergedImagesVerification = applicationRef.ImagesVerification
+
 				} else {
 					// Calculate the effective settings for this ApplicationRef by layering on top of global.
 					appLogger.Debugf("Read settings from Image Updater CR")
 					mergedCommonUpdateSettings = mergeCommonUpdateSettings(globalUpdateSettings, applicationRef.CommonUpdateSettings)
+					mergedImagesVerification = mergeImagesVerification(globalImagesVerification, applicationRef.ImagesVerification)
+
 					mergedWBCSettings = mergeWBCSettings(cr.Spec.WriteBackConfig, applicationRef.WriteBackConfig)
 					appWBCSettings, err = newWBCFromSettings(appCtx, &app, kubeClient, argocdDB, mergedWBCSettings)
 					if err != nil {
@@ -337,6 +344,7 @@ func FilterApplicationsForUpdate(ctx context.Context, ctrlClient *ArgoCDK8sClien
 						LabelSelectors:       localAppRef.LabelSelectors,
 						UseAnnotations:       localAppRef.UseAnnotations,
 						CommonUpdateSettings: mergedCommonUpdateSettings,
+						ImagesVerification:   mergedImagesVerification,
 						WriteBackConfig:      mergedWBCSettings,
 						Images:               localAppRef.Images,
 					}, "", "  ")
@@ -346,7 +354,7 @@ func FilterApplicationsForUpdate(ctx context.Context, ctrlClient *ArgoCDK8sClien
 						appLogger.Tracef("Resulted Image Updater object: %s", string(appRefJSON))
 					}
 				}
-				processApplicationForUpdate(appCtx, &app, localAppRef, mergedCommonUpdateSettings, appWBCSettings, appNSName, appsForUpdate, webhookEvent)
+				processApplicationForUpdate(appCtx, kubeClient, &app, localAppRef, mergedCommonUpdateSettings, mergedImagesVerification, appWBCSettings, appNSName, appsForUpdate, webhookEvent)
 				break // Found the best match, move to the next app
 			}
 		}
@@ -380,6 +388,33 @@ func mergeCommonUpdateSettings(settings ...*iuapi.CommonUpdateSettings) *iuapi.C
 		if s.Platforms != nil {
 			merged.Platforms = s.Platforms
 		}
+	}
+	return merged
+}
+
+// mergeImagesVerification merges a list of ImagesVerification.
+// The later settings in the list take precedence.
+func mergeImagesVerification(settings ...*iuapi.ImagesVerification) *iuapi.ImagesVerification {
+	merged := &iuapi.ImagesVerification{}
+	anyNonNil := false
+	for _, s := range settings {
+		if s == nil {
+			continue
+		}
+		anyNonNil = true
+		if s.Enabled != nil {
+			merged.Enabled = s.Enabled
+		}
+		if s.CosignKey != nil {
+			merged.CosignKey = s.CosignKey
+		}
+	}
+	if !anyNonNil {
+		// No imagesVerification block was present at any scope.
+		// Return nil so newImageFromImagesVerification exits early and the
+		// image proceeds without verification (same behaviour as before the
+		// feature was added).
+		return nil
 	}
 	return merged
 }
@@ -612,9 +647,43 @@ func newImageFromManifestTargetSettings(settings *iuapi.ManifestTarget, img *Ima
 	return img, nil
 }
 
+// newImageFromImagesVerification creates a new Image and populates it
+// by layering the given ImagesVerification settings.
+func newImageFromImagesVerification(kubeClient *kube.ImageUpdaterKubernetesClient, appNamespace string, settings *iuapi.ImagesVerification, img *Image) (*Image, error) {
+	if settings == nil {
+		return img, nil
+	}
+
+	// if empty fall back to default Enable == true
+	img.EnableVerification = true // default when block is present
+	if settings.Enabled != nil {
+		img.EnableVerification = *settings.Enabled
+	}
+
+	if !img.EnableVerification {
+		return img, nil // opted out
+	}
+
+	if img.Verify == nil {
+		img.Verify = &image.Verify{}
+	}
+
+	if settings.CosignKey != nil {
+		var err error
+		img.Verify.CosignKey, err = kubeClient.KubeClient.GetSecretField(appNamespace, settings.CosignKey.SecretName, settings.CosignKey.Key)
+		if err != nil {
+			return nil, fmt.Errorf("failed to fetch public key secret field: %v", err)
+		}
+	} else {
+		return nil, fmt.Errorf("cosignKey is required when verification is enabled")
+	}
+
+	return img, nil
+}
+
 // parseImageList parses a list of ImageConfig objects from the ImageUpdater CR
 // into a ImageList, which is used internally for image management.
-func parseImageList(ctx context.Context, images []iuapi.ImageConfig, appSettings *iuapi.CommonUpdateSettings, webhookEvent *WebhookEvent) *ImageList {
+func parseImageList(ctx context.Context, kubeClient *kube.ImageUpdaterKubernetesClient, appNamespace string, images []iuapi.ImageConfig, appSettings *iuapi.CommonUpdateSettings, appImagesVerification *iuapi.ImagesVerification, webhookEvent *WebhookEvent) *ImageList {
 	log := log.LoggerFromContext(ctx)
 	results := make(ImageList, 0)
 	for _, im := range images {
@@ -626,6 +695,13 @@ func parseImageList(ctx context.Context, images []iuapi.ImageConfig, appSettings
 		img, err := newImageFromManifestTargetSettings(im.ManifestTarget, img)
 		if err != nil {
 			log.Warnf("Could not set manifest target config for image %s, skipping: %v", im.ImageName, err)
+			continue
+		}
+
+		finalCommonImageVerification := mergeImagesVerification(appImagesVerification, im.ImagesVerification)
+		img, err = newImageFromImagesVerification(kubeClient, appNamespace, finalCommonImageVerification, img)
+		if err != nil {
+			log.Warnf("Could not set images verification settings for image %s, skipping: %v", im.ImageName, err)
 			continue
 		}
 
