@@ -189,7 +189,7 @@ spec:
                                 description: |-
                                   CosignKey references a Kubernetes Secret in the same namespace as the
                                   ImageUpdater CR that holds the PEM-encoded ECDSA public key used to verify
-                                  cosign signatures.
+                                  cosign signatures. Providing this field selects cosign key-based verification.
                                 properties:
                                   key:
                                     description: |-
@@ -213,8 +213,9 @@ spec:
                                 type: boolean
                             type: object
                             x-kubernetes-validations:
-                            - message: method is required when verification is enabled
-                              rule: self.enabled == false || has(self.method)
+                            - message: at least one verification method (cosignKey)
+                                is required when verification is enabled
+                              rule: self.enabled == false || has(self.cosignKey)
                           manifestTargets:
                             description: |-
                               ManifestTarget defines how and where to update this image in Kubernetes manifests.
@@ -288,7 +289,7 @@ spec:
                           description: |-
                             CosignKey references a Kubernetes Secret in the same namespace as the
                             ImageUpdater CR that holds the PEM-encoded ECDSA public key used to verify
-                            cosign signatures.
+                            cosign signatures. Providing this field selects cosign key-based verification.
                           properties:
                             key:
                               description: |-
@@ -312,8 +313,9 @@ spec:
                           type: boolean
                       type: object
                       x-kubernetes-validations:
-                      - message: method is required when verification is enabled
-                        rule: self.enabled == false || has(self.method)
+                      - message: at least one verification method (cosignKey) is required
+                          when verification is enabled
+                        rule: self.enabled == false || has(self.cosignKey)
                     labelSelectors:
                       description: LabelSelectors indicates the label selectors to
                         apply for application selection
@@ -502,7 +504,7 @@ spec:
                     description: |-
                       CosignKey references a Kubernetes Secret in the same namespace as the
                       ImageUpdater CR that holds the PEM-encoded ECDSA public key used to verify
-                      cosign signatures.
+                      cosign signatures. Providing this field selects cosign key-based verification.
                     properties:
                       key:
                         description: |-
@@ -525,8 +527,9 @@ spec:
                     type: boolean
                 type: object
                 x-kubernetes-validations:
-                - message: method is required when verification is enabled
-                  rule: self.enabled == false || has(self.method)
+                - message: at least one verification method (cosignKey) is required
+                    when verification is enabled
+                  rule: self.enabled == false || has(self.cosignKey)
               writeBackConfig:
                 description: |-
                   WriteBackConfig provides global default settings for how and where to write back image updates.
