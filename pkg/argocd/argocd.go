@@ -1098,6 +1098,19 @@ func getApplicationSource(ctx context.Context, app *argocdapi.Application, wbc *
 			}
 		}
 
+		// Second pass: use Status.SourceTypes index alignment to handle implicit source types.
+		// ArgoCD sets Status.SourceTypes[i] for Spec.Sources[i], so a kustomize app that has no
+		// explicit kustomize: spec field (ArgoCD auto-detects it via kustomization.yaml) will be
+		// found here even though s.Kustomize == nil in the first pass above.
+		if sourceType != argocdapi.ApplicationSourceTypeDirectory &&
+			len(app.Status.SourceTypes) == len(app.Spec.Sources) {
+			for i, st := range app.Status.SourceTypes {
+				if st == sourceType {
+					return &app.Spec.Sources[i]
+				}
+			}
+		}
+
 		// Fallback: look for any Helm or Kustomize source
 		for i := range app.Spec.Sources {
 			s := &app.Spec.Sources[i]

@@ -567,6 +567,65 @@ func Test_GetApplicationSource(t *testing.T) {
 		assert.Equal(t, appSource.Path, "sources/source1")
 	})
 
+	// Reproduces the bug from GitHub issue #1096: a multi-source app where the kustomize source
+	// has no explicit kustomize: spec field (ArgoCD auto-detects it via kustomization.yaml).
+	// Without the Status.SourceTypes alignment second pass, getApplicationSource falls through to
+	// the Helm fallback and returns the Redis chart source, causing git credential lookup to fail
+	// against a Helm OCI registry URL.
+	t.Run("Return kustomize Source from multisource application when kustomize source has no explicit kustomize field", func(t *testing.T) {
+		application := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "test-app",
+				Namespace: "testns",
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Sources: v1alpha1.ApplicationSources{
+					// Source 0: implicit kustomize (no kustomize: spec field)
+					v1alpha1.ApplicationSource{
+						RepoURL:        "git@github.com:organisation/gitops.git",
+						Path:           "./deployments/myapp/overlays/staging",
+						TargetRevision: "main",
+					},
+					// Source 1: Helm chart
+					v1alpha1.ApplicationSource{
+						RepoURL:        "registry-1.docker.io/bitnamicharts",
+						Chart:          "redis",
+						TargetRevision: "20.11.*",
+						Helm: &v1alpha1.ApplicationSourceHelm{
+							ValueFiles: []string{"$values/deployments/myapp/base/redis/values.yaml"},
+						},
+					},
+					// Source 2: git values ref (no path, no helm)
+					v1alpha1.ApplicationSource{
+						RepoURL:        "https://github.com/organisation/gitops.git",
+						Ref:            "values",
+						TargetRevision: "main",
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				// ArgoCD reports Kustomize for the path-based source even without an explicit kustomize: field
+				SourceTypes: []v1alpha1.ApplicationSourceType{
+					v1alpha1.ApplicationSourceTypeKustomize,
+					v1alpha1.ApplicationSourceTypeHelm,
+					v1alpha1.ApplicationSourceTypeDirectory,
+				},
+			},
+		}
+
+		wbc := &WriteBackConfig{
+			Method:        WriteBackGit,
+			KustomizeBase: "./deployments/myapp/overlays/staging",
+		}
+
+		appSource := GetApplicationSource(context.Background(), application, wbc)
+		require.NotNil(t, appSource)
+		assert.Equal(t, "git@github.com:organisation/gitops.git", appSource.RepoURL,
+			"Expected the git kustomize source, not the Helm chart source")
+		assert.Equal(t, "./deployments/myapp/overlays/staging", appSource.Path)
+		assert.Nil(t, appSource.Helm, "Should not have returned the Helm source")
+	})
+
 }
 
 func Test_GetApplicationSource_SourceHydrator(t *testing.T) {
