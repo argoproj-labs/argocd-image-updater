@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
+	"strings"
 
 	"github.com/distribution/distribution/v3"
 	"github.com/distribution/distribution/v3/manifest/ocischema"
@@ -22,6 +23,24 @@ import (
 // sigstoreBundleType is the OCI artifactType used by cosign ≥ 2.x when
 // storing signatures via the OCI Referrers API (sigstore bundle / DSSE format).
 const sigstoreBundleType = "application/vnd.dev.sigstore.bundle.v0.3+json"
+
+// ociImageIndexMediaType is the media type of an OCI Image Index (manifest list).
+// cosign 2.x uses an Image Index as the container for tag-based fallback
+// signature storage: the index itself is stored at "sha256-<hex>.sig" and
+// each of its manifest entries is a sigstore bundle manifest.
+const ociImageIndexMediaType = "application/vnd.oci.image.index.v1+json"
+
+// simpleSigningMediaType is the layer media type of cosign's legacy
+// "Simple Signing" format (SIGNATURE_SPEC.md), used for local key-based
+// signing (cosign sign --key, no Fulcio/OIDC) when pushing to a registry
+// that does not support the OCI Referrers API. Unlike the sigstore bundle
+// format, the signature is a plain base64 annotation on the layer
+// descriptor and the payload is signed directly (no DSSE envelope/PAE).
+const simpleSigningMediaType = "application/vnd.dev.cosign.simplesigning.v1+json"
+
+// simpleSigningSigAnnotation is the annotation key holding the base64-encoded
+// ECDSA signature over sha256(payload) for the Simple Signing format.
+const simpleSigningSigAnnotation = "dev.cosignproject.cosign/signature"
 
 // Verify carries the signature verification policy for a single image.
 type Verify struct {
@@ -84,6 +103,19 @@ type simpleSigningPayload struct {
 	} `json:"critical"`
 }
 
+// inTotoStatement is the minimal representation of an in-toto v1 Statement
+// (https://in-toto.io/Statement/v1). Plain `cosign sign` (no --attest) using
+// the modern sigstore bundle format wraps this in the DSSE envelope instead
+// of the legacy simple-signing JSON — its predicateType is
+// "https://sigstore.dev/cosign/sign/v1" and the subject digest is what binds
+// the signature to a specific image manifest.
+type inTotoStatement struct {
+	Type    string `json:"_type"`
+	Subject []struct {
+		Digest map[string]string `json:"digest"`
+	} `json:"subject"`
+}
+
 // ---------------------------------------------------------------------------
 // VerifyWithPublicKey
 // ---------------------------------------------------------------------------
@@ -131,15 +163,27 @@ func VerifyWithPublicKey(ctx context.Context, img *ContainerImage, verifyConfig 
 // ---------------------------------------------------------------------------
 
 // fetchTagSignature resolves the image manifest digest, queries the OCI
-// Referrers API for all sigstore bundle artifacts, fetches every bundle
-// manifest, and collects all DSSE-wrapped ECDSA signatures across all bundles.
+// Referrers API for all sigstore bundle artifacts, and collects all
+// DSSE-wrapped ECDSA signatures.
+//
+// When the OCI Referrers API is unavailable or returns no results (e.g. the
+// registry does not implement OCI Distribution Spec v1.1), the function
+// automatically falls back to the tag-based storage cosign uses on such
+// registries. Which tag naming convention and payload format cosign chooses
+// depends on how the image was signed (keyless/bundle-based vs. local
+// key-based) rather than on cosign's version alone, so both are tried:
+//   - "sha256-<hex>" (no suffix): the OCI "Referrers Tag Schema" fallback for
+//     bundle-based signing, used by cosign ≥ 3.x by default and optionally by
+//     cosign 2.x.
+//   - "sha256-<hex>.sig": the legacy cosign Signature Spec tag. This is what
+//     `cosign sign --key` (no Fulcio/OIDC) still produces against a registry
+//     without OCI Referrers support, on any cosign version, and it may hold
+//     either a sigstore bundle/OCI Image Index or the pre-bundle legacy
+//     "Simple Signing" payload — see extractSigsFromManifest.
 //
 // The returned slice contains one entry per signer.  Errors on individual
 // referrers are logged as warnings and skipped so that a single bad artifact
 // cannot block a valid signature from being found.
-//
-// Only the sigstore bundle format (cosign ≥ 2.x) is supported. Legacy cosign
-// simple-signing (.sig tag) is not.
 func fetchTagSignatures(ctx context.Context, imgTag *tag.ImageTag, regClient RegistryFetcher) ([]*tag.TagSignature, error) {
 	logCtx := log.LoggerFromContext(ctx)
 
@@ -168,14 +212,16 @@ func fetchTagSignatures(ctx context.Context, imgTag *tag.ImageTag, regClient Reg
 		logCtx.Debugf("Computed manifest digest %s for tag %q", imgDigest, imgTag.TagName)
 	}
 
-	// --- Step 2: fetch OCI referrers ---
+	// --- Step 2: try OCI Referrers API (OCI Distribution Spec v1.1) ---
+	// A non-nil error here is non-fatal: the tag-based fallback is tried below.
 	logCtx.Debugf("Fetching OCI referrers for digest %s (tag %q)", imgDigest, imgTag.TagName)
-	referrers, err := regClient.Referrers(ctx, imgDigest)
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch OCI referrers for digest %s: %w", imgDigest, err)
+	referrers, referrersErr := regClient.Referrers(ctx, imgDigest)
+	if referrersErr != nil {
+		logCtx.Debugf("OCI Referrers API unavailable for tag %q (digest %s): %v — will try tag-based fallback",
+			imgTag.TagName, imgDigest, referrersErr)
 	}
 
-	// --- Step 3 & 4: collect signatures from ALL sigstore bundle referrers ---
+	// --- Step 3: collect signatures from ALL sigstore bundle referrers ---
 	var allSigs []*tag.TagSignature
 	for _, ref := range referrers {
 		if ref.ArtifactType != sigstoreBundleType {
@@ -195,20 +241,96 @@ func fetchTagSignatures(ctx context.Context, imgTag *tag.ImageTag, regClient Reg
 		allSigs = append(allSigs, sigs...)
 	}
 
+	// --- Step 4: tag-based fallback for registries without OCI v1.1 Referrers ---
+	// The image digest is encoded into a tag by replacing ":" with "-", either
+	// with no suffix (OCI Referrers Tag Schema) or with the legacy ".sig"
+	// suffix (cosign Signature Spec). Both are tried so verification works
+	// regardless of how the signature was produced — see fetchTagSignatures'
+	// doc comment above for details.
 	if len(allSigs) == 0 {
-		return nil, fmt.Errorf("no cosign signature found in OCI referrers for image tag %q (digest %s)", imgTag.TagName, imgDigest)
+		digestTag := strings.ReplaceAll(imgDigest.String(), ":", "-")
+		for _, fallbackTag := range []string{digestTag, digestTag + ".sig"} {
+			logCtx.Debugf("No OCI referrers found for tag %q; trying tag-based fallback %q", imgTag.TagName, fallbackTag)
+			sigs, err := fetchSigsFromFallbackTag(ctx, fallbackTag, imgTag.TagName, imgDigest, regClient)
+			if err != nil {
+				logCtx.Debugf("Tag-based fallback %q not found for tag %q: %v", fallbackTag, imgTag.TagName, err)
+				continue
+			}
+			if len(sigs) > 0 {
+				logCtx.Debugf("Found %d cosign signature(s) via tag-based fallback %q for tag %q", len(sigs), fallbackTag, imgTag.TagName)
+				allSigs = append(allSigs, sigs...)
+				break
+			}
+		}
+	}
+
+	if len(allSigs) == 0 {
+		if referrersErr != nil {
+			// Surface the original Referrers error when both paths found nothing.
+			return nil, fmt.Errorf("failed to fetch OCI referrers for digest %s: %w", imgDigest, referrersErr)
+		}
+		return nil, fmt.Errorf("no cosign signature found in OCI referrers or tag-based fallback for image tag %q (digest %s)", imgTag.TagName, imgDigest)
 	}
 	return allSigs, nil
 }
 
-// ---------------------------------------------------------------------------
-// extractSigsFromManifest / extractDSSEBundle
-// ---------------------------------------------------------------------------
+// fetchSigsFromFallbackTag fetches the manifest at fallbackTag, if it exists,
+// and extracts sigstore bundle signatures from it. It transparently handles
+// both container formats cosign may use for the fallback artifact:
+//   - an OCI Image Index whose References() entries are the actual signature
+//     bundle manifests (cosign 2.x/3.x), or
+//   - a plain OCI Image Manifest holding the signature bundle directly
+//     (older cosign).
+//
+// A non-nil error means the tag does not exist or could not be read, which
+// the caller treats as "try the next fallback tag convention".
+func fetchSigsFromFallbackTag(ctx context.Context, fallbackTag, imgTagName string, imgDigest godigest.Digest, regClient RegistryFetcher) ([]*tag.TagSignature, error) {
+	logCtx := log.LoggerFromContext(ctx)
+
+	fallbackManifest, err := regClient.ManifestForTag(ctx, fallbackTag)
+	if err != nil {
+		return nil, err
+	}
+
+	fallbackMediaType, _, err := fallbackManifest.Payload()
+	if err != nil {
+		return nil, fmt.Errorf("error reading fallback manifest payload: %w", err)
+	}
+
+	if fallbackMediaType != ociImageIndexMediaType {
+		// Plain OCI Image Manifest at the fallback tag (older cosign).
+		return extractSigsFromManifest(ctx, fallbackManifest, fallbackTag, imgTagName, imgDigest, regClient)
+	}
+
+	// The fallback tag points to an OCI Image Index; each References() entry
+	// is a signature bundle manifest.
+	refs := fallbackManifest.References()
+	logCtx.Debugf("Tag-based fallback %q is an OCI Image Index with %d entr(ies) for tag %q",
+		fallbackTag, len(refs), imgTagName)
+
+	var sigs []*tag.TagSignature
+	for _, desc := range refs {
+		subManifest, err := regClient.ManifestForDigest(ctx, desc.Digest)
+		if err != nil {
+			logCtx.Warnf("Error fetching fallback index entry %s for tag %q: %v — skipping",
+				desc.Digest, imgTagName, err)
+			continue
+		}
+		s, err := extractSigsFromManifest(ctx, subManifest, desc.Digest.String(), imgTagName, imgDigest, regClient)
+		if err != nil {
+			logCtx.Warnf("Error extracting signatures from fallback index entry %s for tag %q: %v — skipping",
+				desc.Digest, imgTagName, err)
+			continue
+		}
+		sigs = append(sigs, s...)
+	}
+	return sigs, nil
+}
 
 // extractSigsFromManifest validates the OCI manifest and delegates to the
-// DSSE bundle extractor. Returns one TagSignature per signer in the envelope.
-// expectedDigest is the image manifest digest and is forwarded to extractDSSEBundle
-// for replay-attack prevention.
+// appropriate extractor based on the layer's media type. Returns one
+// TagSignature per signer found. expectedDigest is the image manifest digest,
+// forwarded for replay-attack prevention.
 func extractSigsFromManifest(ctx context.Context, m distribution.Manifest, manifestRef, imgTagName string, expectedDigest godigest.Digest, regClient RegistryFetcher) ([]*tag.TagSignature, error) {
 	ociSig, ok := m.(*ocischema.DeserializedManifest)
 	if !ok {
@@ -219,18 +341,22 @@ func extractSigsFromManifest(ctx context.Context, m distribution.Manifest, manif
 	}
 
 	layer := ociSig.Layers[0]
-	if layer.MediaType != sigstoreBundleType {
+	switch layer.MediaType {
+	case sigstoreBundleType:
+		return extractDSSEBundle(ctx, layer, imgTagName, expectedDigest, regClient)
+	case simpleSigningMediaType:
+		return extractSimpleSigning(ctx, layer, imgTagName, expectedDigest, regClient)
+	default:
 		return nil, fmt.Errorf("unsupported cosign layer media type %q in manifest %q (image tag %q)",
 			layer.MediaType, manifestRef, imgTagName)
 	}
-
-	return extractDSSEBundle(ctx, layer, imgTagName, expectedDigest, regClient)
 }
 
 // extractDSSEBundle fetches the sigstore bundle blob, parses the DSSE envelope,
-// validates that the embedded image digest matches expectedDigest, and returns
-// one TagSignature per signer. PayloadDigest is hex(sha256(PAE)) — the exact
-// bytes each private key signed.
+// validates that the embedded image digest matches expectedDigest (see
+// extractEmbeddedDigest for the two payload formats this supports), and
+// returns one TagSignature per signer. PayloadDigest is hex(sha256(PAE)) —
+// the exact bytes each private key signed.
 //
 // The digest binding check prevents a valid bundle signed for image A from being
 // replayed as a referrer of image B and still passing ECDSA verification.
@@ -263,29 +389,8 @@ func extractDSSEBundle(ctx context.Context, layer distribution.Descriptor, imgTa
 		return nil, fmt.Errorf("failed to decode dsseEnvelope payload for image tag %q: %w", imgTagName, err)
 	}
 
-	// Bind the signature to the exact image manifest digest embedded in the
-	// simple-signing payload when the field is present.  Without this check a
-	// valid bundle signed for image A could be replayed as a referrer of image B
-	// and still pass ECDSA verification.
-	//
-	// Some cosign / sigstore-go versions or non-standard bundle formats omit the
-	// field.  In that case we skip the check and rely on the OCI Referrers API's
-	// own subject-digest binding (a referrer's OCI manifest must declare the
-	// subject it attests to, enforced by the registry at write time).
-	var ssPayload simpleSigningPayload
-	if err := json.Unmarshal(decodedPayload, &ssPayload); err != nil {
-		return nil, fmt.Errorf("failed to parse simple-signing payload for image tag %q: %w", imgTagName, err)
-	}
-	if embeddedDigest := ssPayload.Critical.Image.DockerManifestDigest; embeddedDigest != "" {
-		if embeddedDigest != expectedDigest.String() {
-			return nil, fmt.Errorf("payload manifest digest %q does not match image manifest digest %q for image tag %q",
-				embeddedDigest, expectedDigest, imgTagName)
-		}
-	} else {
-		log.LoggerFromContext(ctx).Debugf(
-			"bundle payload for image tag %q does not contain docker-manifest-digest; relying on OCI subject binding",
-			imgTagName,
-		)
+	if err := checkDigestBinding(ctx, decodedPayload, imgTagName, expectedDigest, "bundle"); err != nil {
+		return nil, err
 	}
 
 	// PAE digest is the same for all signers in this envelope.
@@ -301,6 +406,90 @@ func extractDSSEBundle(ctx context.Context, layer distribution.Descriptor, imgTa
 		})
 	}
 	return sigs, nil
+}
+
+// checkDigestBinding binds a signature to the exact image manifest digest
+// embedded in its payload. Without this check a valid signature made for
+// image A could be replayed against image B and still pass ECDSA
+// verification.
+//
+// An embedded digest is required, not optional: this helper is also used for
+// the tag-based fallback path, which has no registry-enforced subject
+// binding (the fallback tag name is just a string; nothing stops a signature
+// blob signed for one digest from being pushed under another digest's tag).
+// A payload with no embedded digest in either supported format is therefore
+// treated as a verification failure rather than silently allowed.
+func checkDigestBinding(_ context.Context, payload []byte, imgTagName string, expectedDigest godigest.Digest, payloadKind string) error {
+	embeddedDigest, err := extractEmbeddedDigest(payload, expectedDigest)
+	if err != nil {
+		return fmt.Errorf("failed to parse %s payload for image tag %q: %w", payloadKind, imgTagName, err)
+	}
+	if embeddedDigest == "" {
+		return fmt.Errorf("%s payload for image tag %q has no embedded manifest digest (docker-manifest-digest or in-toto subject digest)",
+			payloadKind, imgTagName)
+	}
+	if embeddedDigest != expectedDigest.String() {
+		return fmt.Errorf("payload manifest digest %q does not match image manifest digest %q for image tag %q",
+			embeddedDigest, expectedDigest, imgTagName)
+	}
+	return nil
+}
+
+// extractEmbeddedDigest returns the "<algo>:<hex>" image manifest digest
+// embedded in a cosign signature payload, in whichever of the two formats
+// cosign uses:
+//   - legacy Simple Signing: critical.image.docker-manifest-digest
+//   - in-toto Statement (used inside DSSE bundles for plain `cosign sign`):
+//     subject[].digest[<algo>]
+//
+// Returns "" with a nil error if neither field is present, so the caller can
+// decide how to treat a genuinely unbound payload.
+func extractEmbeddedDigest(payload []byte, expectedDigest godigest.Digest) (string, error) {
+	var stmt inTotoStatement
+	if err := json.Unmarshal(payload, &stmt); err != nil {
+		return "", err
+	}
+	if strings.HasPrefix(stmt.Type, "https://in-toto.io/Statement") {
+		algo := expectedDigest.Algorithm().String()
+		for _, subj := range stmt.Subject {
+			if hex, ok := subj.Digest[algo]; ok && hex != "" {
+				return algo + ":" + hex, nil
+			}
+		}
+		return "", nil
+	}
+
+	var ssPayload simpleSigningPayload
+	if err := json.Unmarshal(payload, &ssPayload); err != nil {
+		return "", err
+	}
+	return ssPayload.Critical.Image.DockerManifestDigest, nil
+}
+
+// extractSimpleSigning extracts a signature stored using cosign's legacy
+// "Simple Signing" format: the base64 ECDSA signature is a layer annotation,
+// and it signs sha256(payload) directly — no DSSE envelope or PAE encoding
+// is involved, unlike the sigstore bundle format.
+func extractSimpleSigning(ctx context.Context, layer distribution.Descriptor, imgTagName string, expectedDigest godigest.Digest, regClient RegistryFetcher) ([]*tag.TagSignature, error) {
+	sig, ok := layer.Annotations[simpleSigningSigAnnotation]
+	if !ok || sig == "" {
+		return nil, fmt.Errorf("simple-signing layer for image tag %q has no %q annotation", imgTagName, simpleSigningSigAnnotation)
+	}
+
+	payloadBytes, err := regClient.BlobContent(ctx, layer.Digest)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch simple-signing payload blob for image tag %q: %w", imgTagName, err)
+	}
+
+	if err := checkDigestBinding(ctx, payloadBytes, imgTagName, expectedDigest, "simple-signing"); err != nil {
+		return nil, err
+	}
+
+	payloadHash := sha256.Sum256(payloadBytes)
+	return []*tag.TagSignature{{
+		Sig:           sig,
+		PayloadDigest: hex.EncodeToString(payloadHash[:]),
+	}}, nil
 }
 
 // computePAE returns the DSSE Pre-Authentication Encoding bytes:

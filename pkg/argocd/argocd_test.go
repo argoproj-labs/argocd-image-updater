@@ -3652,6 +3652,7 @@ func Test_sortApplicationRefs(t *testing.T) {
 
 // Assisted-by: Gemini AI
 func Test_FilterApplicationsForUpdate(t *testing.T) {
+	const fakeCosignPEM = "-----BEGIN PUBLIC KEY-----\nfake\n-----END PUBLIC KEY-----"
 	// Define common applications to be used across test cases
 	appProd := &v1alpha1.Application{
 		ObjectMeta: v1.ObjectMeta{Name: "app-prod", Namespace: "testns", Labels: map[string]string{"env": "prod"}},
@@ -3702,6 +3703,7 @@ func Test_FilterApplicationsForUpdate(t *testing.T) {
 		name            string
 		initialApps     []client.Object
 		imageUpdaterCR  *api.ImageUpdater
+		secrets         []runtime.Object // K8s secrets available to the kube client, e.g. for cosign key lookups
 		expectedKeys    []string
 		expectedImages  map[string]int // map[appKey]expectedImageCount, for specificity check
 		expectNilResult bool
@@ -4306,6 +4308,101 @@ func Test_FilterApplicationsForUpdate(t *testing.T) {
 			},
 			expectedKeys: []string{"testns/verify-ann-app"},
 		},
+		{
+			// applicationRef.ImagesVerification (app level) must be honored when
+			// UseAnnotations is true: mergedImagesVerification = applicationRef.ImagesVerification
+			// directly, so a valid app-level cosign key should result in a verified image.
+			// See custom verification below for the actual EnableVerification/CosignKey assertions.
+			name: "UseAnnotations: app-level ImagesVerification is applied successfully",
+			initialApps: []client.Object{
+				&v1alpha1.Application{
+					ObjectMeta: v1.ObjectMeta{
+						Name:      "verify-app-level-app",
+						Namespace: "testns",
+						Annotations: map[string]string{
+							ImageUpdaterAnnotation: "web=ghcr.io/org/app:1.0",
+						},
+					},
+					Spec: v1alpha1.ApplicationSpec{
+						Source: &v1alpha1.ApplicationSource{
+							Kustomize: &v1alpha1.ApplicationSourceKustomize{},
+						},
+					},
+					Status: v1alpha1.ApplicationStatus{SourceType: v1alpha1.ApplicationSourceTypeKustomize},
+				},
+			},
+			imageUpdaterCR: &api.ImageUpdater{
+				ObjectMeta: v1.ObjectMeta{Name: "test-updater", Namespace: "testns"},
+				Spec: api.ImageUpdaterSpec{
+					ApplicationRefs: []api.ApplicationRef{
+						{
+							NamePattern:    "verify-app-level-app",
+							UseAnnotations: boolPtr(true),
+							ImagesVerification: &api.ImagesVerification{
+								CosignKey: &api.SecretRef{SecretName: "app-cosign-secret", Key: "cosign.pub"},
+							},
+						},
+					},
+				},
+			},
+			secrets: []runtime.Object{
+				&v1core.Secret{
+					ObjectMeta: v1.ObjectMeta{Namespace: "testns", Name: "app-cosign-secret"},
+					Data:       map[string][]byte{"cosign.pub": []byte(fakeCosignPEM)},
+				},
+			},
+			expectedKeys:   []string{"testns/verify-app-level-app"},
+			expectedImages: map[string]int{"testns/verify-app-level-app": 1},
+		},
+		{
+			// A global (CR-level) ImagesVerification block must be completely ignored
+			// when UseAnnotations is true and the applicationRef itself sets no
+			// ImagesVerification: mergedImagesVerification = applicationRef.ImagesVerification
+			// (nil here), it is never merged with cr.Spec.ImagesVerification. Even though
+			// the global cosign key is valid, the image must proceed unverified.
+			// See custom verification below for the actual EnableVerification/Verify assertions.
+			name: "UseAnnotations: global ImagesVerification is ignored at app level",
+			initialApps: []client.Object{
+				&v1alpha1.Application{
+					ObjectMeta: v1.ObjectMeta{
+						Name:      "verify-ignore-global-app",
+						Namespace: "testns",
+						Annotations: map[string]string{
+							ImageUpdaterAnnotation: "web=ghcr.io/org/app:1.0",
+						},
+					},
+					Spec: v1alpha1.ApplicationSpec{
+						Source: &v1alpha1.ApplicationSource{
+							Kustomize: &v1alpha1.ApplicationSourceKustomize{},
+						},
+					},
+					Status: v1alpha1.ApplicationStatus{SourceType: v1alpha1.ApplicationSourceTypeKustomize},
+				},
+			},
+			imageUpdaterCR: &api.ImageUpdater{
+				ObjectMeta: v1.ObjectMeta{Name: "test-updater", Namespace: "testns"},
+				Spec: api.ImageUpdaterSpec{
+					ImagesVerification: &api.ImagesVerification{
+						CosignKey: &api.SecretRef{SecretName: "global-cosign-secret", Key: "cosign.pub"},
+					},
+					ApplicationRefs: []api.ApplicationRef{
+						{
+							NamePattern:    "verify-ignore-global-app",
+							UseAnnotations: boolPtr(true),
+							// ImagesVerification intentionally unset at app level
+						},
+					},
+				},
+			},
+			secrets: []runtime.Object{
+				&v1core.Secret{
+					ObjectMeta: v1.ObjectMeta{Namespace: "testns", Name: "global-cosign-secret"},
+					Data:       map[string][]byte{"cosign.pub": []byte(fakeCosignPEM)},
+				},
+			},
+			expectedKeys:   []string{"testns/verify-ignore-global-app"},
+			expectedImages: map[string]int{"testns/verify-ignore-global-app": 1},
+		},
 	}
 
 	for _, tc := range testCases {
@@ -4316,7 +4413,8 @@ func Test_FilterApplicationsForUpdate(t *testing.T) {
 			require.NoError(t, err)
 			kubeClient := kube.ImageUpdaterKubernetesClient{
 				KubeClient: &registryKube.KubernetesClient{
-					Clientset: fake.NewFakeKubeClient(),
+					Clientset: fake.NewFakeClientsetWithResources(tc.secrets...),
+					Context:   ctx,
 				},
 			}
 			// Execute
@@ -4393,6 +4491,30 @@ func Test_FilterApplicationsForUpdate(t *testing.T) {
 				}
 				require.NotNil(t, webImage, "web image should be found")
 				assert.Equal(t, image.StrategySemVer, webImage.UpdateStrategy, "web image should have semver strategy from per-image annotation, overriding application-wide latest")
+			}
+
+			// Custom verification that app-level ImagesVerification (set on the
+			// applicationRef) is actually applied when UseAnnotations is true.
+			if tc.name == "UseAnnotations: app-level ImagesVerification is applied successfully" {
+				appKey := "testns/verify-app-level-app"
+				require.Contains(t, appsForUpdate, appKey)
+				images := appsForUpdate[appKey].Images
+				require.Len(t, images, 1)
+				assert.True(t, images[0].EnableVerification, "app-level ImagesVerification should enable verification")
+				require.NotNil(t, images[0].Verify, "Verify should be populated from app-level cosign key")
+				assert.Equal(t, fakeCosignPEM, images[0].Verify.CosignKey, "cosign key should be fetched from the app-level secret")
+			}
+
+			// Custom verification that a global (CR-level) ImagesVerification block is
+			// ignored at the app level when UseAnnotations is true and the applicationRef
+			// itself does not set ImagesVerification.
+			if tc.name == "UseAnnotations: global ImagesVerification is ignored at app level" {
+				appKey := "testns/verify-ignore-global-app"
+				require.Contains(t, appsForUpdate, appKey)
+				images := appsForUpdate[appKey].Images
+				require.Len(t, images, 1)
+				assert.False(t, images[0].EnableVerification, "global ImagesVerification must not leak into an app-level rule that sets none")
+				assert.Nil(t, images[0].Verify, "Verify should remain unset since global config is ignored under UseAnnotations")
 			}
 		})
 	}

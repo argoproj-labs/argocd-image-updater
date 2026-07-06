@@ -521,10 +521,11 @@ spec:
 
 !!!note
     Only [cosign](https://github.com/sigstore/cosign) key-based verification
-    (`method: cosign-key`) is supported. The controller uses the OCI Referrers
-    API to locate the signature artifact pushed by `cosign sign`, so the registry
-    must support OCI Distribution Spec v1.1 referrers (Quay, GHCR,
-    and most modern registries do).
+    is supported. The controller first tries the OCI Referrers API (OCI Distribution
+    Spec v1.1) to locate signatures, and automatically falls back to the tag-based
+    storage used by cosign on older registries (the `sha256-<digest>` tag). Most
+    modern registries (Quay, GHCR) support the Referrers API; older or
+    self-hosted registries that do not will use the fallback automatically.
 
 !!!note
     When `imagesVerification` is present and `enabled` is `true` (the default),

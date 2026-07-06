@@ -18,6 +18,7 @@ This workflow is designed for developers to test their local changes in a realis
 You must have the following tools installed locally:
 - [Docker](https://docs.docker.com/get-docker/)
 - [k3d](https://k3d.io/#installation)
+- [cosign](https://docs.sigstore.dev/cosign/system_config/installation/) — required by the image signature verification test, which generates a key pair, signs a test image, and verifies the signature end-to-end.
 
 **Note on Docker Configuration on Mac**: The E2E tests use a local container registry at `127.0.0.1:30000` which requires Docker to be configured to allow insecure registries. The `test-e2e` target automatically configures Docker daemon.json for you, but if you run tests manually on Mac, you may need to run `make -C test/ginkgo configure-docker-daemon` first.
 

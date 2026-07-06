@@ -1,0 +1,17 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: 1-010-verify-image-test
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: 1-010-verify-image-test
+  template:
+    metadata:
+      labels:
+        app: 1-010-verify-image-test
+    spec:
+      containers:
+      - name: test
+        image: 127.0.0.1:30000/test-image:1.0.0
