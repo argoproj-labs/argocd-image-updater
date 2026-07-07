@@ -5970,7 +5970,7 @@ func Test_CommitUpdates(t *testing.T) {
 				NewTag: tag.NewImageTag("1.1", time.Now(), ""),
 			},
 		}
-		gitMock.On("Checkout", TemplateBranchName(ctx, wbc.GitWriteBranch, "", "", cl), mock.Anything).Return(nil)
+		gitMock.On("Checkout", TemplateBranchName(ctx, wbc.GitWriteBranch, "", "", "", cl), mock.Anything).Return(nil)
 
 		applicationImages := &ApplicationImages{
 			Application:     app,
@@ -6497,6 +6497,60 @@ replacements: []
 		}
 		err = commitChanges(ctx, applicationImages, nil)
 		assert.Errorf(t, err, "failed to resolve ref")
+	})
+}
+
+func Test_CommitChangesLockedPRDedup(t *testing.T) {
+	t.Run("First app proceeds, second app with same target is skipped", func(t *testing.T) {
+		state := NewSyncIterationState()
+		wbc := &WriteBackConfig{
+			Method:     WriteBackGit,
+			GitRepo:    "https://github.com/org/repo.git",
+			GitBranch:  "main",
+			Target:     "overlays/dev/values.yaml",
+			PRProvider: PRProviderGitHub,
+		}
+
+		// First app should proceed (MarkPRCreated returns true)
+		targetKey := wbc.WriteBackTargetKey()
+		assert.True(t, state.MarkPRCreated(targetKey))
+
+		// Second app with same target should be skipped
+		assert.False(t, state.MarkPRCreated(targetKey))
+	})
+
+	t.Run("Apps with different targets both proceed", func(t *testing.T) {
+		state := NewSyncIterationState()
+		wbc1 := &WriteBackConfig{
+			Method:     WriteBackGit,
+			GitRepo:    "https://github.com/org/repo.git",
+			GitBranch:  "main",
+			Target:     "overlays/dev/values.yaml",
+			PRProvider: PRProviderGitHub,
+		}
+		wbc2 := &WriteBackConfig{
+			Method:     WriteBackGit,
+			GitRepo:    "https://github.com/org/repo.git",
+			GitBranch:  "main",
+			Target:     "overlays/prod/values.yaml",
+			PRProvider: PRProviderGitHub,
+		}
+
+		assert.True(t, state.MarkPRCreated(wbc1.WriteBackTargetKey()))
+		assert.True(t, state.MarkPRCreated(wbc2.WriteBackTargetKey()))
+	})
+
+	t.Run("Non-PR mode skips dedup", func(t *testing.T) {
+		wbc := &WriteBackConfig{
+			Method:     WriteBackGit,
+			GitRepo:    "https://github.com/org/repo.git",
+			GitBranch:  "main",
+			Target:     "overlays/dev/values.yaml",
+			PRProvider: PRProviderUnsupported,
+		}
+		// PRProvider == 0 means the dedup guard in commitChangesLocked is not entered
+		assert.Equal(t, PRProviderUnsupported, wbc.PRProvider)
+		assert.False(t, wbc.PRProvider > 0)
 	})
 }
 

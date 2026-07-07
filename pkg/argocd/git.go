@@ -74,7 +74,7 @@ func TemplateCommitMessage(ctx context.Context, tpl *template.Template, appName 
 // TemplateBranchName parses a string to a template, and returns a
 // branch name from that new template. If a branch name can not be
 // rendered, it returns an empty value.
-func TemplateBranchName(ctx context.Context, branchName, appNamespace, appName string, changeList []ChangeEntry) string {
+func TemplateBranchName(ctx context.Context, branchName, appNamespace, appName, targetKey string, changeList []ChangeEntry) string {
 	log := log.LoggerFromContext(ctx)
 	var cmBuf bytes.Buffer
 
@@ -95,6 +95,7 @@ func TemplateBranchName(ctx context.Context, branchName, appNamespace, appName s
 	type branchNameTemplate struct {
 		AppNamespace string
 		AppName      string
+		TargetKey    string
 		Images       []imageChange
 		SHA256       string
 	}
@@ -119,6 +120,7 @@ func TemplateBranchName(ctx context.Context, branchName, appNamespace, appName s
 	tplData := branchNameTemplate{
 		AppNamespace: appNamespace,
 		AppName:      appName,
+		TargetKey:    targetKey,
 		Images:       changes,
 		SHA256:       hex.EncodeToString(hasher.Sum(nil)),
 	}
@@ -230,10 +232,9 @@ func commitChangesGit(ctx context.Context, applicationImages *ApplicationImages,
 
 	// Set custom pushBranch name for PR/MR mode
 	if wbc.PRProvider > 0 {
-		// The default template produces a stable branch name per app and new image tag.
-		customTemplate := "image-updater-{{.AppNamespace}}-{{.AppName}}-{{.SHA256}}"
+		customTemplate := "image-updater-{{.TargetKey}}-{{.SHA256}}"
 		logCtx.Tracef("setting git push branch for PR/MR mode using custom template '%s'", customTemplate)
-		pushBranch = TemplateBranchName(ctx, customTemplate, app.Namespace, app.Name, changeList)
+		pushBranch = TemplateBranchName(ctx, customTemplate, app.Namespace, app.Name, wbc.WriteBackTargetKey(), changeList)
 		if pushBranch == "" {
 			return fmt.Errorf("git branch name could not be created from the template: %s", customTemplate)
 		}
@@ -244,7 +245,7 @@ func commitChangesGit(ctx context.Context, applicationImages *ApplicationImages,
 	} else if wbc.GitWriteBranch != "" {
 		// use GitWriteBranch for git mode without PR
 		logCtx.Debugf("Using branch template: %s", wbc.GitWriteBranch)
-		pushBranch = TemplateBranchName(ctx, wbc.GitWriteBranch, "", "", changeList)
+		pushBranch = TemplateBranchName(ctx, wbc.GitWriteBranch, "", "", "", changeList)
 		if pushBranch == "" {
 			return fmt.Errorf("git branch name could not be created from the template: %s", wbc.GitWriteBranch)
 		}
