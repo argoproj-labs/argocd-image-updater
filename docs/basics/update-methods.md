@@ -478,7 +478,8 @@ The head branch (PR source) is derived automatically by the controller using
 the template `image-updater-<targetKey>-<sha256>`, where `<targetKey>` is
 an 8-character hash of the write-back target (git repo, branch, and target
 path). This ensures that multiple applications sharing the same write-back
-target produce the same PR branch, avoiding duplicate pull requests.
+target and the same update set produce the same PR branch, avoiding duplicate
+pull requests.
 
 !!!warning "Breaking change in pull request branch naming (v1.3.0)"
     Prior to v1.3.0 the default PR head branch was

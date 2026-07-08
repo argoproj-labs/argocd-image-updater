@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
@@ -326,7 +327,7 @@ var _ = Describe("ArgoCD Image Updater Parallel E2E Tests", func() {
 			// ---------------------------------------------------------------
 			By("waiting for the GitHub PR to be created")
 			expectedTitle := "build: automatic update of app-01"
-			expectedHeadPrefix := "image-updater-"
+			expectedHeadPattern := regexp.MustCompile(`^image-updater-[a-f0-9]{8}-[a-f0-9]{64}$`)
 			expectedBody := "updates image dkarpele/my-guestbook tag '1.0.0' to '29437546.0'"
 
 			triggerRefresh := iuFixture.TriggerArgoCDRefresh(ctx, k8sClient, app)
@@ -349,7 +350,7 @@ var _ = Describe("ArgoCD Image Updater Parallel E2E Tests", func() {
 
 				for _, pr := range prs {
 					if pr.GetTitle() == expectedTitle &&
-						strings.HasPrefix(pr.GetHead().GetRef(), expectedHeadPrefix) {
+						expectedHeadPattern.MatchString(pr.GetHead().GetRef()) {
 						foundPR = pr
 						prNumber = pr.GetNumber()
 						prHeadBranch = pr.GetHead().GetRef()
