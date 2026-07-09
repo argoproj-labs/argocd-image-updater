@@ -4176,6 +4176,60 @@ helm:
 		assert.NotEmpty(t, yamlOutput)
 		assert.Equal(t, strings.TrimSpace(strings.ReplaceAll(expected, "\t", "  ")), strings.TrimSpace(string(yamlOutput)))
 	})
+
+	t.Run("Plugin app with git write-back produces Helm values output", func(t *testing.T) {
+		// A Plugin (e.g. helmfile) app should be treated as Helm when wbc.Method == WriteBackGit,
+		// so marshalParamsOverride should produce Helm parameter override YAML.
+		app := v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "helmfile-app",
+				Namespace: "argocd",
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: &v1alpha1.ApplicationSource{
+					RepoURL: "https://github.com/example/helmfile-repo",
+					Path:    "k8s/apps/my-app",
+					Plugin:  &v1alpha1.ApplicationSourcePlugin{},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypePlugin,
+				Summary: v1alpha1.ApplicationSummary{
+					Images: []string{"myregistry/myapp:v0.9.0"},
+				},
+			},
+		}
+
+		im := NewImage(image.NewFromIdentifier("myapp=myregistry/myapp"))
+		im.HelmImageName = "image.name"
+		im.HelmImageTag = "image.tag"
+
+		applicationImages := &ApplicationImages{
+			Application: app,
+			Images:      ImageList{im},
+			WriteBackConfig: &WriteBackConfig{
+				Method: WriteBackGit,
+				Target: "k8s/apps/my-app/.argocd-source-helmfile-app.yaml",
+			},
+		}
+
+		// SetHelmImage must be called before marshalParamsOverride so the in-memory
+		// app.Spec.Source.Helm is populated — this mirrors UpdateApplication's flow.
+		newImg := image.NewFromIdentifier("myregistry/myapp:v1.0.0")
+		err := SetHelmImage(context.Background(), &applicationImages.Application, newImg, applicationImages.WriteBackConfig, im)
+		require.NoError(t, err)
+
+		yamlOutput, err := marshalParamsOverride(context.Background(), applicationImages, nil)
+		require.NoError(t, err)
+		assert.NotEmpty(t, yamlOutput)
+
+		// Verify it's Helm format (has "helm:" key, not "kustomize:")
+		outputStr := string(yamlOutput)
+		assert.Contains(t, outputStr, "image.tag")
+		assert.Contains(t, outputStr, "v1.0.0")
+		assert.NotContains(t, outputStr, "kustomize:")
+		assert.Contains(t, outputStr, "helm:")
+	})
 }
 
 func Test_GetHelmValue(t *testing.T) {

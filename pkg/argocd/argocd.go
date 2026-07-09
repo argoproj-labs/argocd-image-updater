@@ -1103,6 +1103,11 @@ func getApplicationType(app *argocdapi.Application, wbc *WriteBackConfig) Applic
 		return ApplicationTypeKustomize
 	} else if sourceType == argocdapi.ApplicationSourceTypeHelm {
 		return ApplicationTypeHelm
+	} else if sourceType == argocdapi.ApplicationSourceTypePlugin &&
+		wbc != nil && wbc.Method == WriteBackGit {
+		// Plugin apps: the write-back target format determines serialization, not the source type.
+		// KustomizeBase being non-empty is already caught above via getApplicationSourceType.
+		return ApplicationTypeHelm
 	} else {
 		return ApplicationTypeUnsupported
 	}
