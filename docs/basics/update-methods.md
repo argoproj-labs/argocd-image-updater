@@ -715,3 +715,15 @@ data:
 ```
 
 #### Commit Sign Off can be enabled by setting `git.commit-sign-off: "true"`
+
+### <a name="method-git-commit-method"></a>Signed commits via the GitHub API
+
+When your write-back repository uses GitHub App credentials, you can have Argo CD Image Updater create its commits through the GitHub API instead of the local git command line by setting `GIT_COMMIT_METHOD=api` (or `--git-commit-method api`). Commits created this way are authored by the GitHub App's bot user and signed by GitHub itself, so they show as **Verified** — without provisioning or rotating any GPG/SSH signing keys.
+
+This applies to both the direct push and the pull request write-back flows.
+
+Notes:
+
+* GitHub App credentials are required. Repositories using SSH or personal access token credentials fall back to the normal git command line with a warning in the log.
+* `git-commit-user`, `git-commit-email` and the `git-commit-signing-*` settings are ignored in API mode, since GitHub determines the commit author and performs the signing.
+* Works with GitHub Enterprise; the API endpoints are derived from the configured GitHub App enterprise base URL.

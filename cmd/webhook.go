@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"os"
 	"os/signal"
@@ -16,6 +17,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/argoproj-labs/argocd-image-updater/internal/controller"
+	"github.com/argoproj-labs/argocd-image-updater/pkg/argocd"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/version"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/webhook"
@@ -48,6 +50,10 @@ Supported registries:
 - AWS ECR (via EventBridge CloudEvents)
 `,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if !argocd.IsValidGitCommitMethod(cfg.GitCommitMethod) {
+				return fmt.Errorf("invalid value %q for --git-commit-method: must be 'git' or 'api'", cfg.GitCommitMethod)
+			}
+
 			if err := log.SetLogLevel(cfg.LogLevel); err != nil {
 				return err
 			}
@@ -89,6 +95,7 @@ Supported registries:
 	webhookCmd.Flags().StringVar(&cfg.GitCommitSigningKey, "git-commit-signing-key", env.GetStringVal("GIT_COMMIT_SIGNING_KEY", ""), "GnuPG key ID or path to Private SSH Key used to sign the commits")
 	webhookCmd.Flags().StringVar(&cfg.GitCommitSigningMethod, "git-commit-signing-method", env.GetStringVal("GIT_COMMIT_SIGNING_METHOD", "openpgp"), "Method used to sign Git commits ('openpgp' or 'ssh')")
 	webhookCmd.Flags().BoolVar(&cfg.GitCommitSignOff, "git-commit-sign-off", env.GetBoolVal("GIT_COMMIT_SIGN_OFF", false), "Whether to sign-off git commits")
+	webhookCmd.Flags().StringVar(&cfg.GitCommitMethod, "git-commit-method", env.GetStringVal("GIT_COMMIT_METHOD", "git"), "Method used to create write-back commits ('git' or 'api'; 'api' commits via the GitHub API and requires GitHub App credentials)")
 	webhookCmd.Flags().StringVar(&commitMessagePath, "git-commit-message-path", common.DefaultCommitTemplatePath, "Path to a template to use for Git commit messages")
 	webhookCmd.Flags().BoolVar(&cfg.DisableKubeEvents, "disable-kube-events", env.GetBoolVal("IMAGE_UPDATER_KUBE_EVENTS", false), "Disable kubernetes events")
 

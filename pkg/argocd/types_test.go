@@ -80,3 +80,10 @@ func Test_MarkPRCreated(t *testing.T) {
 		assert.Equal(t, 1, trueCount, "exactly one goroutine should get true")
 	})
 }
+func Test_IsValidGitCommitMethod(t *testing.T) {
+	assert.True(t, IsValidGitCommitMethod(""))
+	assert.True(t, IsValidGitCommitMethod("git"))
+	assert.True(t, IsValidGitCommitMethod("api"))
+	assert.False(t, IsValidGitCommitMethod("API"))
+	assert.False(t, IsValidGitCommitMethod("graphql"))
+}

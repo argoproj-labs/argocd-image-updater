@@ -79,6 +79,12 @@ E-Mail address to use for Git commits (default "noreply@argoproj.io")
 
 Can also be set using the *GIT_COMMIT_EMAIL* environment variable.
 
+**--git-commit-method *method***
+
+Method used to create write-back commits ('git' or 'api'). 'api' creates the commit via the GitHub API so it is signed by GitHub ("Verified"); requires GitHub App credentials (default "git")
+
+Can also be set using the *GIT_COMMIT_METHOD* environment variable.
+
 **--git-commit-message-path *path*** 
 
 Path to a template to use for Git commit messages (default "/app/config/commit.template")
