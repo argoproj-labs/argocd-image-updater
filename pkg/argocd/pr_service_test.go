@@ -24,8 +24,9 @@ import (
 // mockGitClient stubs all git.Client methods. Set initErr to simulate a
 // failure at the earliest point inside commitChangesGit.
 type mockGitClient struct {
-	root    string
-	initErr error
+	root             string
+	initErr          error
+	checkoutBranches []string
 }
 
 func (m *mockGitClient) Root() string                                          { return m.root }
@@ -33,9 +34,12 @@ func (m *mockGitClient) Init(_ context.Context) error                          {
 func (m *mockGitClient) Fetch(_ context.Context, _ string) error               { return nil }
 func (m *mockGitClient) ShallowFetch(_ context.Context, _ string, _ int) error { return nil }
 func (m *mockGitClient) Submodule(_ context.Context) error                     { return nil }
-func (m *mockGitClient) Checkout(_ context.Context, _ string, _ bool) error    { return nil }
-func (m *mockGitClient) LsRefs(_ context.Context) (*git.Refs, error)           { return &git.Refs{}, nil }
-func (m *mockGitClient) LsRemote(_ context.Context, _ string) (string, error)  { return "", nil }
+func (m *mockGitClient) Checkout(_ context.Context, branch string, _ bool) error {
+	m.checkoutBranches = append(m.checkoutBranches, branch)
+	return nil
+}
+func (m *mockGitClient) LsRefs(_ context.Context) (*git.Refs, error)          { return &git.Refs{}, nil }
+func (m *mockGitClient) LsRemote(_ context.Context, _ string) (string, error) { return "", nil }
 func (m *mockGitClient) LsFiles(_ context.Context, _ string, _ bool) ([]string, error) {
 	return nil, nil
 }
@@ -77,7 +81,7 @@ func (m *mockGitAndSCMCreds) SCMToken(_ context.Context) (string, error) {
 // noopWriter is a changeWriter that skips the commit/push step.
 // commitChangesGit returns nil immediately after calling write when skip=true,
 // but only after buildPullRequest has already populated wbc.PullRequest.
-func noopWriter(_ context.Context, _ *ApplicationImages, _ git.Client) (error, bool) {
+func noopWriter(_ context.Context, _ *ApplicationImages, _ git.Client, _ []ChangeEntry) (error, bool) {
 	return nil, true
 }
 
@@ -171,6 +175,82 @@ func Test_buildPullRequest(t *testing.T) {
 			assert.Equal(t, tt.wantBase, pr.base)
 		})
 	}
+
+	t.Run("upsert branch uses stable title and body", func(t *testing.T) {
+		wbc := &WriteBackConfig{
+			GitCommitMessage: "chore: update images for auth\n\nupdates image ghcr.io/example/auth tag 'old' to 'new'",
+			PRUpsertBranch:   headBranch,
+		}
+		pr, err := buildPullRequest(ctx, wbc, ns, name, baseBranch, headBranch)
+		require.NoError(t, err)
+		assert.Equal(t, "chore: update images", pr.title)
+		assert.Equal(t, "This pull request was created automatically by Argo CD Image Updater.\n\nSource branch: `image-updater-my-namespace-my-app`\nTarget branch: `main`\n\n## Image Updates\n\n### auth\n- updates image ghcr.io/example/auth tag 'old' to 'new'", pr.body)
+	})
+
+	t.Run("configured PR title overrides upsert title", func(t *testing.T) {
+		wbc := &WriteBackConfig{
+			GitCommitMessage: "chore: update images for auth\n\nupdates image ghcr.io/example/auth tag 'old' to 'new'",
+			PRTitle:          "chore: update platform images",
+			PRUpsertBranch:   headBranch,
+		}
+		pr, err := buildPullRequest(ctx, wbc, ns, name, baseBranch, headBranch)
+		require.NoError(t, err)
+		assert.Equal(t, "chore: update platform images", pr.title)
+	})
+
+	t.Run("upsert body groups and keeps latest change per image", func(t *testing.T) {
+		body := buildUpsertPullRequestBody([]string{
+			"chore: update images for auth\n\nupdates image ghcr.io/example/auth tag 'old' to 'new'\nupdates image ghcr.io/example/ext-authz tag 'old' to 'new'",
+			"chore: update images for auth\n\nupdates image ghcr.io/example/auth tag 'old' to 'newer'",
+			"build: automatic update of product\n\nghcr.io/example/product: old -> new\nghcr.io/example/product: new -> newer",
+		}, headBranch, baseBranch)
+
+		assert.Equal(t, "This pull request was created automatically by Argo CD Image Updater.\n\nSource branch: `image-updater-my-namespace-my-app`\nTarget branch: `main`\n\n## Image Updates\n\n### auth\n- updates image ghcr.io/example/auth tag 'old' to 'newer'\n- updates image ghcr.io/example/ext-authz tag 'old' to 'new'\n\n### product\n- ghcr.io/example/product: new -> newer", body)
+	})
+}
+
+func Test_commitChangesGit_PRBranchSelection(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("upsert branch is used as PR head", func(t *testing.T) {
+		gitClient := &mockGitClient{}
+		wbc := &WriteBackConfig{
+			GitRepo:        "https://github.com/org/repo.git",
+			GitBranch:      "main",
+			PRProvider:     PRProviderGitHub,
+			PRUpsertBranch: "argocd-image-updater/platform-images",
+			GitClient:      gitClient,
+			GetCreds: func(_ *argocdapi.Application) (git.Creds, error) {
+				return git.NopCreds{}, nil
+			},
+		}
+
+		err := commitChangesGit(ctx, makeTestAppImages(wbc), nil, noopWriter)
+		require.NoError(t, err)
+		require.NotNil(t, wbc.PullRequest)
+		assert.Equal(t, "argocd-image-updater/platform-images", wbc.PullRequest.head)
+		assert.Equal(t, []string{"argocd-image-updater/platform-images"}, gitClient.checkoutBranches)
+	})
+
+	t.Run("unset upsert branch keeps generated PR head", func(t *testing.T) {
+		gitClient := &mockGitClient{}
+		wbc := &WriteBackConfig{
+			GitRepo:    "https://github.com/org/repo.git",
+			GitBranch:  "main",
+			PRProvider: PRProviderGitHub,
+			GitClient:  gitClient,
+			GetCreds: func(_ *argocdapi.Application) (git.Creds, error) {
+				return git.NopCreds{}, nil
+			},
+		}
+
+		err := commitChangesGit(ctx, makeTestAppImages(wbc), nil, noopWriter)
+		require.NoError(t, err)
+		require.NotNil(t, wbc.PullRequest)
+		assert.True(t, strings.HasPrefix(wbc.PullRequest.head, "image-updater-test-ns-test-app-"))
+		assert.NotEqual(t, "argocd-image-updater/platform-images", wbc.PullRequest.head)
+		assert.Equal(t, []string{wbc.PullRequest.head}, gitClient.checkoutBranches)
+	})
 }
 
 // --- Test_commitChangesPR ---

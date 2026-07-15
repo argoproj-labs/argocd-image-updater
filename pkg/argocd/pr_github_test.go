@@ -273,6 +273,145 @@ func Test_GithubPRService_create(t *testing.T) {
 	}
 }
 
+func Test_GithubPRService_upsert(t *testing.T) {
+	ctx := context.Background()
+
+	pr := &PullRequest{
+		title: "chore: update images",
+		head:  "image-updater-branch",
+		base:  "main",
+		body:  "automated update",
+	}
+
+	t.Run("creates when no matching PR exists", func(t *testing.T) {
+		var requests []string
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			requests = append(requests, r.Method+" "+r.URL.Path)
+			switch r.Method {
+			case http.MethodGet:
+				assert.Equal(t, "/api/v3/repos/org/repo/pulls", r.URL.Path)
+				assert.Equal(t, "all", r.URL.Query().Get("state"))
+				assert.Equal(t, "org:image-updater-branch", r.URL.Query().Get("head"))
+				assert.Equal(t, "main", r.URL.Query().Get("base"))
+				_ = json.NewEncoder(w).Encode([]github.PullRequest{})
+			case http.MethodPost:
+				assert.Equal(t, "/api/v3/repos/org/repo/pulls", r.URL.Path)
+				w.WriteHeader(http.StatusCreated)
+				_ = json.NewEncoder(w).Encode(github.PullRequest{Number: github.Ptr(1), HTMLURL: github.Ptr("https://github.com/org/repo/pull/1")})
+			default:
+				t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+			}
+		}))
+		defer server.Close()
+
+		svc := newTestGithubPRService(server, pr)
+		err := svc.upsert(ctx, false)
+		require.NoError(t, err)
+		assert.Equal(t, []string{"GET /api/v3/repos/org/repo/pulls", "POST /api/v3/repos/org/repo/pulls"}, requests)
+	})
+
+	t.Run("updates existing open PR", func(t *testing.T) {
+		var patchBody map[string]any
+		commitMessage := "chore: update images for auth\n\nupdates image ghcr.io/example/auth tag 'old' to 'new'"
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.Method {
+			case http.MethodGet:
+				switch r.URL.Path {
+				case "/api/v3/repos/org/repo/pulls":
+					_ = json.NewEncoder(w).Encode([]github.PullRequest{{
+						Number: github.Ptr(7),
+						State:  github.Ptr("open"),
+					}})
+				case "/api/v3/repos/org/repo/pulls/7/commits":
+					_ = json.NewEncoder(w).Encode([]github.RepositoryCommit{{
+						Commit: &github.Commit{Message: github.Ptr(commitMessage)},
+					}})
+				default:
+					t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+				}
+			case http.MethodPatch:
+				assert.Equal(t, "/api/v3/repos/org/repo/pulls/7", r.URL.Path)
+				require.NoError(t, json.NewDecoder(r.Body).Decode(&patchBody))
+				_ = json.NewEncoder(w).Encode(github.PullRequest{Number: github.Ptr(7), HTMLURL: github.Ptr("https://github.com/org/repo/pull/7")})
+			default:
+				t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+			}
+		}))
+		defer server.Close()
+
+		svc := newTestGithubPRService(server, pr)
+		err := svc.upsert(ctx, false)
+		require.NoError(t, err)
+		assert.Equal(t, "chore: update images", patchBody["title"])
+		assert.Equal(t, buildUpsertPullRequestBody([]string{commitMessage}, "image-updater-branch", "main"), patchBody["body"])
+		assert.NotContains(t, patchBody, "state")
+	})
+
+	t.Run("reopens closed unmerged PR when enabled", func(t *testing.T) {
+		var patchBody map[string]any
+		commitMessage := "chore: update images for product\n\nupdates image ghcr.io/example/product tag 'old' to 'new'"
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.Method {
+			case http.MethodGet:
+				switch r.URL.Path {
+				case "/api/v3/repos/org/repo/pulls":
+					_ = json.NewEncoder(w).Encode([]github.PullRequest{{
+						Number: github.Ptr(8),
+						State:  github.Ptr("closed"),
+					}})
+				case "/api/v3/repos/org/repo/pulls/8/commits":
+					_ = json.NewEncoder(w).Encode([]github.RepositoryCommit{{
+						Commit: &github.Commit{Message: github.Ptr(commitMessage)},
+					}})
+				default:
+					t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+				}
+			case http.MethodPatch:
+				assert.Equal(t, "/api/v3/repos/org/repo/pulls/8", r.URL.Path)
+				require.NoError(t, json.NewDecoder(r.Body).Decode(&patchBody))
+				_ = json.NewEncoder(w).Encode(github.PullRequest{Number: github.Ptr(8), HTMLURL: github.Ptr("https://github.com/org/repo/pull/8")})
+			default:
+				t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+			}
+		}))
+		defer server.Close()
+
+		svc := newTestGithubPRService(server, pr)
+		err := svc.upsert(ctx, true)
+		require.NoError(t, err)
+		assert.Equal(t, "open", patchBody["state"])
+		assert.Equal(t, "chore: update images", patchBody["title"])
+		assert.Equal(t, buildUpsertPullRequestBody([]string{commitMessage}, "image-updater-branch", "main"), patchBody["body"])
+	})
+
+	t.Run("closed unmerged PR with reopen disabled returns clear error when create is rejected", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.Method {
+			case http.MethodGet:
+				_ = json.NewEncoder(w).Encode([]github.PullRequest{{
+					Number: github.Ptr(9),
+					State:  github.Ptr("closed"),
+				}})
+			case http.MethodPost:
+				w.WriteHeader(http.StatusUnprocessableEntity)
+				_ = json.NewEncoder(w).Encode(map[string]any{
+					"message": "Validation Failed",
+					"errors":  []map[string]string{{"message": "A pull request already exists for org:image-updater-branch."}},
+				})
+			default:
+				t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+			}
+		}))
+		defer server.Close()
+
+		svc := newTestGithubPRService(server, pr)
+		err := svc.upsert(ctx, false)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "closed unmerged PR #9 already exists")
+		assert.Contains(t, err.Error(), "reopenClosed is false")
+	})
+}
+
 func Test_NewGithubPRService(t *testing.T) {
 	ctx := context.Background()
 

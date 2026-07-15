@@ -89,6 +89,9 @@ type WriteBackConfig struct {
 	GitRepo                string
 	GitCreds               git.CredsStore
 	PRProvider             PRProvider
+	PRTitle                string
+	PRUpsertBranch         string
+	PRReopenClosed         bool
 	PullRequest            *PullRequest
 }
 
@@ -121,9 +124,10 @@ type helmOverride struct {
 
 // ChangeEntry represents an image that has been changed by Image Updater
 type ChangeEntry struct {
-	Image  *image.ContainerImage
-	OldTag *tag.ImageTag
-	NewTag *tag.ImageTag
+	Image              *image.ContainerImage
+	OldTag             *tag.ImageTag
+	NewTag             *tag.ImageTag
+	KustomizeImageName string
 }
 
 // SyncIterationState holds shared state of a running update operation

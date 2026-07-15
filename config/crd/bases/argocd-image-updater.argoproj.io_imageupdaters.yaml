@@ -408,6 +408,22 @@ spec:
                                   description: GitLab configures MR creation via the
                                     GitLab API.
                                   type: object
+                                reopenClosed:
+                                  description: |-
+                                    ReopenClosed controls whether an existing closed, unmerged PR/MR for the
+                                    same upsert head/base branch should be reopened and updated.
+                                  type: boolean
+                                title:
+                                  description: |-
+                                    Title overrides the pull/merge request title. If unset, the controller
+                                    derives a title from the commit message or uses a default title.
+                                  type: string
+                                upsertBranch:
+                                  description: |-
+                                    UpsertBranch, when set, is the stable PR head/source branch to push and
+                                    upsert instead of creating generated per-application/per-change branches.
+                                    gitConfig.branch remains the PR base/target branch.
+                                  type: string
                               type: object
                               x-kubernetes-validations:
                               - message: Exactly one of github or gitlab must be set
@@ -560,6 +576,22 @@ spec:
                             description: GitLab configures MR creation via the GitLab
                               API.
                             type: object
+                          reopenClosed:
+                            description: |-
+                              ReopenClosed controls whether an existing closed, unmerged PR/MR for the
+                              same upsert head/base branch should be reopened and updated.
+                            type: boolean
+                          title:
+                            description: |-
+                              Title overrides the pull/merge request title. If unset, the controller
+                              derives a title from the commit message or uses a default title.
+                            type: string
+                          upsertBranch:
+                            description: |-
+                              UpsertBranch, when set, is the stable PR head/source branch to push and
+                              upsert instead of creating generated per-application/per-change branches.
+                              gitConfig.branch remains the PR base/target branch.
+                            type: string
                         type: object
                         x-kubernetes-validations:
                         - message: Exactly one of github or gitlab must be set

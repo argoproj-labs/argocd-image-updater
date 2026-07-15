@@ -741,10 +741,13 @@ More specific scopes override less specific ones; absent fields are inherited fr
 
 #### PullRequest fields
 
-| Field    | Type              | Required | Description                                        |
-|----------|-------------------|----------|----------------------------------------------------|
-| `github` | PullRequestGitHub | No       | GitHub configures PR creation via the GitHub API.  |
-| `gitlab` | PullRequestGitLab | No       | GitLab configures MR creation via the GitLab API.  |
+| Field          | Type              | Required | Description                                                                                                  |
+|----------------|-------------------|----------|--------------------------------------------------------------------------------------------------------------|
+| `title`        | string            | No       | Override for the PR/MR title.                                                                                |
+| `upsertBranch` | string            | No       | Stable PR/MR head/source branch to push and upsert instead of using the generated per-change branch.          |
+| `reopenClosed` | bool              | No       | Reopen and update a closed, unmerged PR/MR for the same head/base pair when using `upsertBranch`.             |
+| `github`       | PullRequestGitHub | No       | GitHub configures PR creation via the GitHub API.                                                            |
+| `gitlab`       | PullRequestGitLab | No       | GitLab configures MR creation via the GitLab API.                                                            |
 
 Exactly one provider must be configured in `pullRequest`.
 

@@ -229,6 +229,22 @@ type WriteBackConfig struct {
 // based on https://github.com/argoproj/argo-cd/blob/master/pkg/apis/application/v1alpha1/applicationset_types.go
 // +kubebuilder:validation:XValidation:rule="(has(self.github) ? 1 : 0) + (has(self.gitlab) ? 1 : 0) == 1",message="Exactly one of github or gitlab must be set"
 type PullRequest struct {
+	// Title overrides the pull/merge request title. If unset, the controller
+	// derives a title from the commit message or uses a default title.
+	// +optional
+	Title *string `json:"title,omitempty"`
+
+	// UpsertBranch, when set, is the stable PR head/source branch to push and
+	// upsert instead of creating generated per-application/per-change branches.
+	// gitConfig.branch remains the PR base/target branch.
+	// +optional
+	UpsertBranch *string `json:"upsertBranch,omitempty"`
+
+	// ReopenClosed controls whether an existing closed, unmerged PR/MR for the
+	// same upsert head/base branch should be reopened and updated.
+	// +optional
+	ReopenClosed *bool `json:"reopenClosed,omitempty"`
+
 	// GitHub configures PR creation via the GitHub API.
 	// +optional
 	GitHub *PullRequestGitHub `json:"github,omitempty"`

@@ -228,13 +228,26 @@ func UpdateApplication(ctx context.Context, updateConf *UpdateConfiguration, sta
 				continue
 			} else {
 				imgCtx.Infof("Successfully updated image '%s' to '%s', but pending spec update (dry run=%v)", updateableImage.GetFullNameWithTag(), appImageFullNameWithTag, updateConf.DryRun)
-				changeList = append(changeList, ChangeEntry{appImageWithTag, updateableImage.ImageTag, appImageWithTag.ImageTag})
+				changeList = append(changeList, ChangeEntry{
+					Image:              appImageWithTag,
+					OldTag:             updateableImage.ImageTag,
+					NewTag:             appImageWithTag.ImageTag,
+					KustomizeImageName: applicationImage.KustomizeImageName,
+				})
 				result.NumImagesUpdated += 1
 			}
 		} else {
 			// We need to explicitly set the up-to-date images in the spec too, so
-			// that we correctly marshal out the parameter overrides to include all
-			// images, regardless of those were updated or not.
+			// that we correctly marshal out parameter overrides. Kustomization
+			// write-back is different: the target file already contains the desired
+			// unchanged entries, and rewriting them from live status can roll images
+			// back when Argo CD status lags behind Git.
+			if updateConf.UpdateApp.WriteBackConfig != nil &&
+				updateConf.UpdateApp.WriteBackConfig.Method == WriteBackGit &&
+				updateConf.UpdateApp.WriteBackConfig.KustomizeBase != "" {
+				imgCtx.Debugf("Image '%s' already on latest allowed version", updateableImage.GetFullNameWithTag())
+				continue
+			}
 			err = setAppImage(imageOpCtx, &updateConf.UpdateApp.Application, applicationImage.WithTag(updateableImage.ImageTag), updateConf.UpdateApp.WriteBackConfig, applicationImage)
 			if err != nil {
 				imgCtx.Errorf("Error while trying to update image: %v", err)

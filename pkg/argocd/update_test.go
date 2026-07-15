@@ -6248,6 +6248,80 @@ replacements: []
 `, string(kust))
 	})
 
+	t.Run("Kustomization write-back preserves unchanged image entries", func(t *testing.T) {
+		app := app.DeepCopy()
+		primary := "registry.example.test/acme/clock"
+		secondary := "registry.example.test/acme/calendar"
+		app.Spec.Source.Kustomize = &v1alpha1.ApplicationSourceKustomize{Images: v1alpha1.KustomizeImages{
+			v1alpha1.KustomizeImage(primary + "=" + primary + ":main@sha256:f77194e1d5dcf2125c657160de76d1e0383ed0f75873b415325ba355e51bdc06"),
+			v1alpha1.KustomizeImage(secondary + "=" + secondary + ":main@sha256:8e5405d6fa5c877bd4bec4b58de01d75ea6f2e54fb50e59c9142a82edee04e6b"),
+		}}
+
+		gitMock, dir, cleanup := mockGit(t)
+		defer cleanup()
+		kf := filepath.Join(dir, "kustomization.yml")
+		assert.NoError(t, os.WriteFile(kf, []byte(`
+kind: Kustomization
+apiVersion: kustomize.config.k8s.io/v1beta1
+images:
+  - name: registry.example.test/acme/clock
+    newName: registry.example.test/acme/clock
+    newTag: main
+    digest: sha256:aec50b74624963dfac2347974e8fa75e32f9b104187a970346c29196c79c0fbf
+  - name: registry.example.test/acme/calendar
+    newName: registry.example.test/acme/calendar
+    newTag: main
+    digest: sha256:b3fd5f51b5c360e10e936af725d9885ce51be32ec02c398e09bddf3b9fa9cdc1
+`), os.ModePerm))
+
+		gitMock.On("Checkout", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
+			args.Assert(t, "mydefaultbranch", false)
+		}).Return(nil)
+		gitMock.On("Add", mock.Anything).Return(nil)
+		gitMock.On("Commit", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
+		gitMock.On("Push", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+		gitMock.On("SymRefToBranch", mock.Anything).Return("mydefaultbranch", nil)
+
+		ctx := context.Background()
+		wbc, err := newWBCFromSettings(ctx, app, &kubeClient, nil)
+		require.NoError(t, err)
+		wbc.Method = WriteBackGit
+		wbc.GetCreds = func(app *v1alpha1.Application) (git.Creds, error) {
+			return git.NopCreds{}, nil
+		}
+		wbc.GitClient = gitMock
+		app.Spec.Source.TargetRevision = "HEAD"
+		wbc.GitBranch = ""
+		wbc.KustomizeBase = "."
+
+		applicationImages := &ApplicationImages{
+			Application:     *app,
+			Images:          ImageList{},
+			WriteBackConfig: wbc,
+		}
+		err = commitChanges(ctx, applicationImages, []ChangeEntry{{
+			Image:              image.NewFromIdentifier(primary + ":main@sha256:f77194e1d5dcf2125c657160de76d1e0383ed0f75873b415325ba355e51bdc06"),
+			KustomizeImageName: primary,
+		}})
+		assert.NoError(t, err)
+
+		kust, err := os.ReadFile(kf)
+		assert.NoError(t, err)
+		assert.YAMLEq(t, `
+kind: Kustomization
+apiVersion: kustomize.config.k8s.io/v1beta1
+images:
+  - name: registry.example.test/acme/clock
+    newName: registry.example.test/acme/clock
+    newTag: main
+    digest: sha256:f77194e1d5dcf2125c657160de76d1e0383ed0f75873b415325ba355e51bdc06
+  - name: registry.example.test/acme/calendar
+    newName: registry.example.test/acme/calendar
+    newTag: main
+    digest: sha256:b3fd5f51b5c360e10e936af725d9885ce51be32ec02c398e09bddf3b9fa9cdc1
+`, string(kust))
+	})
+
 	t.Run("Good commit with author information", func(t *testing.T) {
 		app := app.DeepCopy()
 		gitMock, _, cleanup := mockGit(t)
