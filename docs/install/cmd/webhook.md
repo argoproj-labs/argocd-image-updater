@@ -81,7 +81,7 @@ Can also be set using the *GIT_COMMIT_EMAIL* environment variable.
 
 **--git-commit-method *method***
 
-Method used to create write-back commits ('git' or 'api'). 'api' creates the commit via the GitHub API so it is signed by GitHub ("Verified"); requires GitHub App credentials (default "git")
+Method used to create write-back commits ('git' or 'api'). The 'api' method creates the commit through the GitHub API using the repository's GitHub App credentials, so the commit is signed by GitHub and shows as "Verified". If the repository does not use GitHub App credentials, a warning is logged and the 'git' method is used instead. In 'api' mode the Git identity and signing options (--git-commit-user, --git-commit-email, --git-commit-signing-key, --git-commit-signing-method and --git-commit-sign-off) are ignored, because GitHub controls authorship and signing. (default "git")
 
 Can also be set using the *GIT_COMMIT_METHOD* environment variable.
 
