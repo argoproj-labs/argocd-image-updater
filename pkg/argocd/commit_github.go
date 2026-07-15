@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/google/go-github/v69/github"
 
@@ -84,6 +85,10 @@ type graphQLFileDeletion struct {
 // GitHub-signed commit on a branch.
 const createCommitOnBranchMutation = `mutation($input: CreateCommitOnBranchInput!) { createCommitOnBranch(input: $input) { commit { oid } } }`
 
+// githubGraphQLHTTPClient bounds the GraphQL request even when the caller's
+// context carries no deadline; context cancellation still applies first.
+var githubGraphQLHTTPClient = &http.Client{Timeout: 30 * time.Second}
+
 // createCommitOnBranchResponse is the GraphQL response envelope for the
 // createCommitOnBranch mutation.
 type createCommitOnBranchResponse struct {
@@ -117,7 +122,7 @@ func createCommitOnBranch(ctx context.Context, endpoint, token string, input *co
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := githubGraphQLHTTPClient.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("createCommitOnBranch request failed: %w", err)
 	}
