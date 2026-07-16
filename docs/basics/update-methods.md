@@ -303,7 +303,10 @@ The following variables are provided for this template:
   * `.Alias` holds the alias of the image that was updated
   * `.OldTag` holds the tag name or SHA digest previous to the update
   * `.NewTag` holds the tag name or SHA digest that was updated to
-* `.SHA256` is a unique SHA256 has representing these changes
+* `.SHA256` is a unique SHA256 hash representing these changes
+* `.TargetKey` is a short hash (8 hex characters) identifying the write-back target (derived from git repo, branch, and target path)
+* `.AppNamespace` is the namespace of the application being updated
+* `.AppName` is the name of the application being updated
 
 Please note that if the output of the template exceeds 255 characters (git branch name limit) it will be truncated.
 
@@ -442,7 +445,7 @@ The Git Pull Request mode extends the `git` write-back method so that instead
 of pushing directly to the tracking branch, Argo CD Image Updater:
 
 1. Pushes the image update commit to an automatically generated **head branch**
-   (`image-updater-<namespace>-<appName>-<sha256>`).
+   (`image-updater-<targetKey>-<sha256>`).
 2. Opens a **pull request** or **merge request** from that head
    branch into the configured base branch.
 
@@ -472,8 +475,20 @@ before it is merged and applied by Argo CD.
     from being reconciled.
 
 The head branch (PR source) is derived automatically by the controller using
-the template `image-updater-<appNamespace>-<appName>-<sha256>`, ensuring a
-stable, unique branch name per application and set of image changes.
+the template `image-updater-<targetKey>-<sha256>`, where `<targetKey>` is
+an 8-character hash of the write-back target (git repo, branch, and target
+path). This ensures that multiple applications sharing the same write-back
+target and the same update set produce the same PR branch, avoiding duplicate
+pull requests.
+
+!!!warning "Breaking change in pull request branch naming"
+    The default PR head branch was previously
+    `image-updater-<appNamespace>-<appName>-<sha256>`. It is now
+    `image-updater-<targetKey>-<sha256>`. After upgrading, the first
+    reconciliation will create a new branch with the new naming scheme.
+    Any open PRs that used the old branch name will **not** be closed
+    automatically — you must close them and delete their head branches
+    manually.
 
 #### Credentials
 

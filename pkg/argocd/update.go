@@ -899,11 +899,20 @@ func parseGitConfig(ctx context.Context, app *v1alpha1.Application, kubeClient *
 }
 
 func commitChangesLocked(ctx context.Context, applicationImages *ApplicationImages, state *SyncIterationState, changeList []ChangeEntry) error {
+	logCtx := log.LoggerFromContext(ctx)
 	wbc := applicationImages.WriteBackConfig
 	if wbc.RequiresLocking() {
 		lock := state.GetRepositoryLock(wbc.GitRepo)
 		lock.Lock()
 		defer lock.Unlock()
+	}
+
+	if wbc.PRProvider > 0 {
+		targetKey := wbc.WriteBackTargetKey()
+		if !state.MarkPRCreated(targetKey) {
+			logCtx.Infof("Skipping PR creation: another application already created a PR for the same write-back target in this cycle")
+			return nil
+		}
 	}
 
 	return commitChanges(ctx, applicationImages, changeList)

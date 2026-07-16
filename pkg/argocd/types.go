@@ -1,6 +1,8 @@
 package argocd
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"sync"
 	"text/template"
 
@@ -92,6 +94,18 @@ type WriteBackConfig struct {
 	PullRequest            *PullRequest
 }
 
+// WriteBackTargetKey returns a short hash that uniquely identifies the
+// write-back target for PR deduplication. Two applications sharing the same
+// git repo, base branch, and target path produce the same key.
+func (wbc *WriteBackConfig) WriteBackTargetKey() string {
+	target := wbc.Target
+	if target == "" {
+		target = wbc.KustomizeBase
+	}
+	h := sha256.Sum256([]byte(wbc.GitRepo + "|" + wbc.GitBranch + "|" + target))
+	return hex.EncodeToString(h[:])[:8]
+}
+
 // RequiresLocking returns true if write-back method requires repository locking
 func (wbc *WriteBackConfig) RequiresLocking() bool {
 	switch wbc.Method {
@@ -130,13 +144,28 @@ type ChangeEntry struct {
 type SyncIterationState struct {
 	lock            sync.Mutex
 	repositoryLocks map[string]*sync.Mutex
+	prCreated       map[string]bool
 }
 
 // NewSyncIterationState returns a new instance of SyncIterationState
 func NewSyncIterationState() *SyncIterationState {
 	return &SyncIterationState{
 		repositoryLocks: make(map[string]*sync.Mutex),
+		prCreated:       make(map[string]bool),
 	}
+}
+
+// MarkPRCreated records that a PR has been created for the given write-back
+// target key. Returns true on the first call for a key (caller should proceed
+// with PR creation) and false on subsequent calls (caller should skip).
+func (state *SyncIterationState) MarkPRCreated(targetKey string) bool {
+	state.lock.Lock()
+	defer state.lock.Unlock()
+	if state.prCreated[targetKey] {
+		return false
+	}
+	state.prCreated[targetKey] = true
+	return true
 }
 
 // GetRepositoryLock returns the lock for a specified repository

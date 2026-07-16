@@ -187,9 +187,11 @@ spec:
 ```
 
 The controller automatically pushes the update to a branch named
-`image-updater-<namespace>-<appName>-<sha256>` and opens a pull request from
-that branch into `main`. If an open PR for the same pair already exists it is
-left untouched.
+`image-updater-<targetKey>-<sha256>` (where `<targetKey>` is a short hash
+of the write-back target) and opens a pull request from that branch into
+`main`. If an open PR for the same pair already exists it is left untouched.
+Multiple applications sharing the same write-back target will reuse the same
+PR branch, avoiding duplicate pull requests.
 
 ## Using `semver` update strategy with version constraints
 

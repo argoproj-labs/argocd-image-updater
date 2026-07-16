@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
@@ -326,7 +327,7 @@ var _ = Describe("ArgoCD Image Updater Parallel E2E Tests", func() {
 			// ---------------------------------------------------------------
 			By("waiting for the GitHub PR to be created")
 			expectedTitle := "build: automatic update of app-01"
-			expectedHeadPrefix := fmt.Sprintf("image-updater-%s-app-01-", ns.Name)
+			expectedHeadPattern := regexp.MustCompile(`^image-updater-[a-f0-9]{8}-[a-f0-9]{64}$`)
 			expectedBody := "updates image dkarpele/my-guestbook tag '1.0.0' to '29437546.0'"
 
 			triggerRefresh := iuFixture.TriggerArgoCDRefresh(ctx, k8sClient, app)
@@ -349,7 +350,7 @@ var _ = Describe("ArgoCD Image Updater Parallel E2E Tests", func() {
 
 				for _, pr := range prs {
 					if pr.GetTitle() == expectedTitle &&
-						strings.HasPrefix(pr.GetHead().GetRef(), expectedHeadPrefix) {
+						expectedHeadPattern.MatchString(pr.GetHead().GetRef()) {
 						foundPR = pr
 						prNumber = pr.GetNumber()
 						prHeadBranch = pr.GetHead().GetRef()
@@ -374,8 +375,8 @@ var _ = Describe("ArgoCD Image Updater Parallel E2E Tests", func() {
 				"PR should target the configured base branch")
 
 			By("verifying PR head branch naming convention")
-			Expect(strings.HasPrefix(foundPR.GetHead().GetRef(), expectedHeadPrefix)).To(BeTrue(),
-				"head branch %q should start with %q", foundPR.GetHead().GetRef(), expectedHeadPrefix)
+			Expect(foundPR.GetHead().GetRef()).To(MatchRegexp(`^image-updater-[a-f0-9]{8}-[a-f0-9]{64}$`),
+				"head branch %q should follow the image-updater-<targetKey>-<sha256> pattern", foundPR.GetHead().GetRef())
 
 			By("verifying PR head branch belongs to the configured repository owner")
 			Expect(foundPR.GetHead().GetRepo().GetFullName()).To(Equal(ghOwner + "/" + ghRepo))
