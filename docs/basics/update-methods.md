@@ -481,8 +481,8 @@ path). This ensures that multiple applications sharing the same write-back
 target and the same update set produce the same PR branch, avoiding duplicate
 pull requests.
 
-!!!warning "Breaking change in pull request branch naming (v1.3.0)"
-    Prior to v1.3.0 the default PR head branch was
+!!!warning "Breaking change in pull request branch naming"
+    The default PR head branch was previously
     `image-updater-<appNamespace>-<appName>-<sha256>`. It is now
     `image-updater-<targetKey>-<sha256>`. After upgrading, the first
     reconciliation will create a new branch with the new naming scheme.
