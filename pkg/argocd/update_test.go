@@ -178,7 +178,7 @@ func Test_UpdateApplication(t *testing.T) {
 				Method:  WriteBackGit,
 				GitRepo: "https://example.com/example",
 				GetCreds: func(app *v1alpha1.Application) (git.Creds, error) {
-					return getCredsFromSecret(&WriteBackConfig{}, "argocd-image-updater/git-creds", &kubeClient, "")
+					return getCredsFromSecret(&WriteBackConfig{}, "argocd-image-updater/git-creds", &kubeClient, "argocd-image-updater")
 				},
 			},
 		}
