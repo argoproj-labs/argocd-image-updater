@@ -174,7 +174,7 @@ var _ = Describe("ArgoCD Image Updater Parallel E2E Tests", func() {
 			By("creating ImageUpdater CR with git write-back targeting the Helm values file")
 			updateStrategy := "semver"
 			forceUpdate := false
-			method := fmt.Sprintf("git:secret:%s/%s", ns.Name, iuFixture.Name)
+			method := fmt.Sprintf("git:secret:%s", iuFixture.Name)
 			branch := "master"
 			repository := gitRepoURL
 			// Target the helm values.yaml file directly

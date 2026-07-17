@@ -192,7 +192,7 @@ var _ = Describe("ArgoCD Image Updater Parallel E2E Tests", func() {
 			By("creating ImageUpdater CR with three image aliases sharing one helmvalues write-back target")
 			updateStrategy := "semver"
 			forceUpdate := false
-			method := fmt.Sprintf("git:secret:%s/%s", ns.Name, iuFixture.Name)
+			method := fmt.Sprintf("git:secret:%s", iuFixture.Name)
 			branch := "master"
 			repository := gitRepoURL
 			// All three images share the same helmvalues target.
