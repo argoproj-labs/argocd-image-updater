@@ -185,7 +185,7 @@ func TestGetGitCredsSource(t *testing.T) {
 	// Test case 3: Unexpected credentials format
 	_, err = getGitCredsSource(ctx, "invalid", kubeClient, wbc, "")
 	assert.Error(t, err)
-	assert.EqualError(t, err, "unexpected credentials format. Expected 'repocreds' or 'secret:<namespace>/<secret>' but got 'invalid'")
+	assert.EqualError(t, err, "unexpected credentials format. Expected 'repocreds', 'secret:<secret>' or 'secret:<namespace>/<secret>' but got 'invalid'")
 }
 
 func TestGetCAPath(t *testing.T) {
