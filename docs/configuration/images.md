@@ -281,6 +281,13 @@ Valid values for `secret_ref` are:
   secret, that is, it must have a valid Docker config in JSON format in the
   field `.dockerconfigjson`.
 
+!!!warning "Cross-namespace secret references are rejected"
+    For `secret:` and `pullsecret:` references, the `namespace` in the
+    reference **must** match the namespace of the `ImageUpdater` CR. Referencing
+    a secret from a different namespace (e.g. specifying `other-team/my-secret`
+    while the CR runs in `my-team`) is rejected with an error and the image is
+    skipped. This prevents tenants from reading secrets they do not own.
+
 * `env:<variable_name>` - Use credentials supplied by the environment variable
   named `variable_name`. This can be a variable that is i.e. bound from a
   secret within your pod spec.

@@ -43,6 +43,8 @@ func UpdateApplication(ctx context.Context, updateConf *UpdateConfiguration, sta
 	var needUpdate bool = false
 	result := ImageUpdaterResult{}
 	app := updateConf.UpdateApp.Application.GetName()
+	appNs := updateConf.UpdateApp.Application.GetNamespace()
+
 	changeList := make([]ChangeEntry, 0)
 
 	// Get all images that are deployed with the current application
@@ -117,6 +119,21 @@ func UpdateApplication(ctx context.Context, updateConf *UpdateConfiguration, sta
 		if secretVal == "" {
 			imgCtx.Tracef("No pull secret configured for this image")
 		}
+
+		// reject cross-namespace secret references in commonUpdateSettings.pullSecret
+		if strings.HasPrefix(secretVal, "pullsecret:") || strings.HasPrefix(secretVal, "secret:") {
+			// Strip "pullsecret:" or "secret:" prefix before splitting on "/" to isolate the namespace.
+			_, ref, _ := strings.Cut(secretVal, ":")
+			s := strings.SplitN(ref, "/", 2)
+			if len(s) == 2 {
+				if s[0] != appNs {
+					imgCtx.Errorf("commonUpdateSettings.pullSecret namespace '%s' differs from app namespace '%s'", s[0], appNs)
+					result.NumErrors += 1
+					continue
+				}
+			}
+		}
+
 		// The endpoint can provide default credentials for pulling images
 		creds, err := rep.SetEndpointCredentials(imageOpCtx, updateConf.KubeClient.KubeClient, secretVal)
 		if err != nil {
