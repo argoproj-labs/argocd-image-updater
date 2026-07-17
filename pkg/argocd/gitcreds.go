@@ -27,7 +27,7 @@ func getGitCredsSource(ctx context.Context, creds string, kubeClient *kube.Image
 			return getCredsFromSecret(wbc, creds[len("secret:"):], kubeClient, namespace)
 		}, nil
 	}
-	return nil, fmt.Errorf("unexpected credentials format. Expected 'repocreds' or 'secret:<namespace>/<secret>' but got '%s'", creds)
+	return nil, fmt.Errorf("unexpected credentials format. Expected 'repocreds', 'secret:<secret>' or 'secret:<namespace>/<secret>' but got '%s'", creds)
 }
 
 // getCredsFromArgoCD loads repository credentials from Argo CD settings
