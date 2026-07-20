@@ -890,7 +890,7 @@ func parseGitConfig(ctx context.Context, app *v1alpha1.Application, kubeClient *
 		repo := *settings.GitConfig.Repository
 		wbc.GitRepo = repo
 	}
-	credsSource, err := getGitCredsSource(ctx, creds, kubeClient, wbc)
+	credsSource, err := getGitCredsSource(ctx, creds, kubeClient, wbc, app.GetNamespace())
 	if err != nil {
 		return fmt.Errorf("invalid git credentials source: %v", err)
 	}

@@ -285,7 +285,7 @@ var _ = Describe("ArgoCD Image Updater Parallel E2E Tests", func() {
 			By("creating ImageUpdater CR with GitHub pull-request write-back mode")
 			updateStrategy := "semver"
 			forceUpdate := false
-			method := fmt.Sprintf("git:secret:%s/%s", ns.Name, githubCredsSecretName)
+			method := fmt.Sprintf("git:secret:%s", githubCredsSecretName)
 
 			imageUpdater = &imageUpdaterApi.ImageUpdater{
 				ObjectMeta: metav1.ObjectMeta{

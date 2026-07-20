@@ -138,7 +138,7 @@ var _ = Describe("ArgoCD Image Updater Parallel E2E Tests", func() {
 			Eventually(statefulSet, "3m", "3s").Should(ssFixture.HaveReadyReplicas(1))
 
 			By("creating Application")
-			method := fmt.Sprintf("git:secret:%s/%s", ns.Name, iuFixture.Name)
+			method := fmt.Sprintf("git:secret:%s", iuFixture.Name)
 			branch := "master"
 			repository := fmt.Sprintf("https://%s.%s.svc.cluster.local:8081/testdata.git", iuFixture.Name, ns.Name)
 

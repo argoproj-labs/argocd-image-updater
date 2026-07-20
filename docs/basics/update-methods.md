@@ -128,15 +128,34 @@ the `writeBackConfig.method` field using `git:<credref>` format. Where `<credref
 take one of following values:
 
 * `repocreds` (default) - Git repository credentials configured in Argo CD settings
-* `secret:<namespace>/<secret>` - namespace and secret name.
+* `secret:<secret>` - secret name only; the secret must exist in the same namespace as the `ImageUpdater` CR.
+* `secret:<namespace>/<secret>` - fully-qualified secret reference; the namespace **must** match the namespace of the `ImageUpdater` CR.
 
 Example:
 
 ```yaml
 spec:
   writeBackConfig:
-    method: "git:secret:argocd-image-updater/git-creds"
+    method: "git:secret:git-creds"
 ```
+
+Or with an explicit namespace (must equal the CR's namespace):
+
+```yaml
+spec:
+  writeBackConfig:
+    method: "git:secret:argocd/git-creds"
+```
+
+!!!warning "Cross-namespace secret references are rejected"
+    The `namespace/secret` format is preserved for backwards compatibility.
+    However, the namespace in the reference
+    **must** equal the namespace of the `ImageUpdater` CR. Referencing a secret
+    from a different namespace (e.g. specifying `team-b/git-creds` while the CR
+    runs in `team-a`) is rejected with an error. This prevents tenants from
+    reading secrets they do not own.
+    If no namespace is specified (plain `secret:<secret>` form), the CR's own
+    namespace is used automatically.
 
 If the repository is accessed using HTTPS, the secret must contain either user credentials or GitHub app credentials.
 
@@ -497,7 +516,7 @@ access token (PAT)** or a **GitHub App**. SSH keys cannot be used because they
 do not provide the HTTP token needed to call the SCM API.
 
 Configure credentials via the `writeBackConfig.method` field using the
-`git:secret:<namespace>/<secret>` format (see
+`git:secret:<secret>` format (see
 [Specifying Git credentials](#method-git-credentials) for how to create the
 secret). The author identity of the commits and the PR is derived from those
 credentials.
@@ -526,7 +545,7 @@ repository URL.
 ```yaml
 spec:
   writeBackConfig:
-    method: "git:secret:argocd-image-updater/git-creds"
+    method: "git:secret:git-creds"
     gitConfig:
       repository: "https://github.com/example/example.git"
       branch: "main"        # base branch; colon format not supported here
@@ -544,7 +563,7 @@ metadata:
   namespace: argocd
 spec:
   writeBackConfig:
-    method: "git:secret:argocd/git-creds"
+    method: "git:secret:git-creds"
     gitConfig:
       repository: "https://github.com/example/example.git"
       branch: "main"
@@ -556,7 +575,7 @@ spec:
         - alias: "nginx"
           imageName: "nginx:1.17.10"
       writeBackConfig:
-        method: "git:secret:argocd/git-creds"
+        method: "git:secret:git-creds"
         gitConfig:
           branch: "main"
           writeBackTarget: "helmvalues:/helm/config/values.yaml"
@@ -569,7 +588,7 @@ add `pullRequest.gitlab` to your `gitConfig`:
 
 ```yaml
 writeBackConfig:
-  method: "git:secret:argocd/gitlab-creds"
+  method: "git:secret:gitlab-creds"
   gitConfig:
     repository: "https://gitlab.com/org/repo.git"
     branch: "main"

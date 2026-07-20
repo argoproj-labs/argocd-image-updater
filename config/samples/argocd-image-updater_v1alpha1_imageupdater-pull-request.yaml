@@ -8,7 +8,7 @@ metadata:
   namespace: argocd
 spec:
   writeBackConfig:
-    method: "git:secret:argocd/git-creds"
+    method: "git:secret:git-creds"
     gitConfig:
       pullRequest:
         github: {}
@@ -19,7 +19,7 @@ spec:
         - alias: "nginx"
           imageName: "nginx:1.17.10"
       writeBackConfig:
-        method: "git:secret:argocd/git-creds"
+        method: "git:secret:git-creds"
         gitConfig:
           branch: "main"
           writeBackTarget: "helmvalues:/helm/config/test-values.yaml"
