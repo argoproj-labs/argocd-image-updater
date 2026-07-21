@@ -10,15 +10,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/distribution/distribution/v3/manifest"
 	"github.com/distribution/distribution/v3/manifest/manifestlist"
 	"github.com/distribution/distribution/v3/manifest/ocischema"
 	"github.com/distribution/distribution/v3/manifest/schema2"
+	godigest "github.com/opencontainers/go-digest"
+	"github.com/opencontainers/image-spec/specs-go"
+
+	distclient "github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/registry/internal/client"
 
 	"github.com/distribution/distribution/v3"
-	"github.com/distribution/distribution/v3/manifest/schema1" //nolint:staticcheck
 	"github.com/distribution/distribution/v3/registry/api/errcode"
-	distclient "github.com/distribution/distribution/v3/registry/client"
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -487,110 +488,115 @@ func TestTagInfoFromReferences(t *testing.T) {
 }
 
 func Test_TagMetadata(t *testing.T) {
-	t.Run("Check for correct error handling when manifest contains no history", func(t *testing.T) {
-		meta1 := &schema1.SignedManifest{ //nolint:staticcheck
-			Manifest: schema1.Manifest{ //nolint:staticcheck
-				History: []schema1.History{}, //nolint:staticcheck
-			},
+	// makeConfigServer creates a local test registry that serves configJSON as
+	// the config blob at /v2/test/test/blobs/*. Pass an empty string to
+	// simulate a missing blob (404).
+	makeConfigServer := func(t *testing.T, configJSON string) (*httptest.Server, godigest.Digest) {
+		t.Helper()
+		var configDigest godigest.Digest
+		if configJSON == "" {
+			configDigest = godigest.FromBytes([]byte("placeholder"))
+		} else {
+			configDigest = godigest.FromBytes([]byte(configJSON))
 		}
-		ctx := context.Background()
-		ep, err := GetRegistryEndpoint(ctx, &image.ContainerImage{RegistryURL: ""})
-		require.NoError(t, err)
+		mux := http.NewServeMux()
+		mux.HandleFunc("/v2/", func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		})
+		mux.HandleFunc("/v2/test/test/blobs/", func(w http.ResponseWriter, r *http.Request) {
+			if configJSON == "" {
+				w.WriteHeader(http.StatusNotFound)
+				return
+			}
+			w.Header().Set("Content-Type", "application/octet-stream")
+			w.WriteHeader(http.StatusOK)
+			fmt.Fprint(w, configJSON)
+		})
+		return httptest.NewServer(mux), configDigest
+	}
+
+	makeClient := func(t *testing.T, serverURL string) RegistryClient {
+		t.Helper()
+		ep := &RegistryEndpoint{RegistryAPI: serverURL, Limiter: ratelimit.New(100)}
 		client, err := NewClient(ep, "", "")
 		require.NoError(t, err)
-		_, err = client.TagMetadata(ctx, meta1, &options.ManifestOptions{})
-		require.Error(t, err)
-	})
+		err = client.NewRepository("test/test")
+		require.NoError(t, err)
+		return client
+	}
 
-	t.Run("Check for correct error handling when manifest contains invalid history", func(t *testing.T) {
-		meta1 := &schema1.SignedManifest{ //nolint:staticcheck
-			Manifest: schema1.Manifest{ //nolint:staticcheck
-				History: []schema1.History{ //nolint:staticcheck
-					{
-						V1Compatibility: `{"created": {"something": "notastring"}}`,
-					},
+	makeManifest := func(configDigest godigest.Digest) *schema2.DeserializedManifest {
+		return &schema2.DeserializedManifest{
+			Manifest: schema2.Manifest{
+				Versioned: specs.Versioned{SchemaVersion: 2},
+				Config: distribution.Descriptor{
+					Digest: configDigest,
 				},
 			},
 		}
+	}
+
+	t.Run("Check for correct error handling when config blob is missing", func(t *testing.T) {
+		server, configDigest := makeConfigServer(t, "")
+		defer server.Close()
 		ctx := context.Background()
-		ep, err := GetRegistryEndpoint(ctx, &image.ContainerImage{RegistryURL: ""})
-		require.NoError(t, err)
-		client, err := NewClient(ep, "", "")
-		require.NoError(t, err)
-		_, err = client.TagMetadata(ctx, meta1, &options.ManifestOptions{})
+		client := makeClient(t, server.URL)
+		_, err := client.TagMetadata(ctx, makeManifest(configDigest), &options.ManifestOptions{})
 		require.Error(t, err)
 	})
 
-	t.Run("Check for correct error handling when manifest contains invalid history", func(t *testing.T) {
-		meta1 := &schema1.SignedManifest{ //nolint:staticcheck
-			Manifest: schema1.Manifest{ //nolint:staticcheck
-				History: []schema1.History{ //nolint:staticcheck
-					{
-						V1Compatibility: `{"something": "something"}`,
-					},
-				},
-			},
-		}
+	t.Run("Check for correct error handling when config blob contains invalid JSON", func(t *testing.T) {
+		server, configDigest := makeConfigServer(t, `{not valid json}`)
+		defer server.Close()
 		ctx := context.Background()
-		ep, err := GetRegistryEndpoint(ctx, &image.ContainerImage{RegistryURL: ""})
-		require.NoError(t, err)
-		client, err := NewClient(ep, "", "")
-		require.NoError(t, err)
-		_, err = client.TagMetadata(ctx, meta1, &options.ManifestOptions{})
+		client := makeClient(t, server.URL)
+		_, err := client.TagMetadata(ctx, makeManifest(configDigest), &options.ManifestOptions{})
 		require.Error(t, err)
+	})
 
+	t.Run("Check for correct error handling when config blob contains no created field", func(t *testing.T) {
+		server, configDigest := makeConfigServer(t, `{"something": "something"}`)
+		defer server.Close()
+		ctx := context.Background()
+		client := makeClient(t, server.URL)
+		_, err := client.TagMetadata(ctx, makeManifest(configDigest), &options.ManifestOptions{})
+		require.Error(t, err)
 	})
 
 	t.Run("Check for invalid/valid timestamp and non-match platforms", func(t *testing.T) {
-		ts := "invalid"
-		meta1 := &schema1.SignedManifest{ //nolint:staticcheck
-			Manifest: schema1.Manifest{ //nolint:staticcheck
-				History: []schema1.History{ //nolint:staticcheck
-					{
-						V1Compatibility: `{"created":"` + ts + `"}`,
-					},
-				},
-			},
-		}
 		ctx := context.Background()
-		ep, err := GetRegistryEndpoint(ctx, &image.ContainerImage{RegistryURL: ""})
-		require.NoError(t, err)
-		client, err := NewClient(ep, "", "")
-		require.NoError(t, err)
-		_, err = client.TagMetadata(ctx, meta1, &options.ManifestOptions{})
+
+		// Invalid timestamp → error
+		server, configDigest := makeConfigServer(t, `{"created":"invalid"}`)
+		defer server.Close()
+		client := makeClient(t, server.URL)
+		_, err := client.TagMetadata(ctx, makeManifest(configDigest), &options.ManifestOptions{})
 		require.Error(t, err)
 
-		ts = time.Now().Format(time.RFC3339Nano)
+		// Valid timestamp → success
+		ts := time.Now().Format(time.RFC3339Nano)
+		server2, configDigest2 := makeConfigServer(t, `{"created":"`+ts+`"}`)
+		defer server2.Close()
+		client2 := makeClient(t, server2.URL)
 		opts := &options.ManifestOptions{}
-		meta1.Manifest.History[0].V1Compatibility = `{"created":"` + ts + `"}`
-		tagInfo, _ := client.TagMetadata(ctx, meta1, opts)
+		tagInfo, _ := client2.TagMetadata(ctx, makeManifest(configDigest2), opts)
 		assert.Equal(t, ts, tagInfo.CreatedAt.Format(time.RFC3339Nano))
 
+		// Platform mismatch (config has no os/arch, opts requires testOS/testArch) → nil, nil
 		opts.WithPlatform("testOS", "testArch", "testVariant")
-		tagInfo, err = client.TagMetadata(ctx, meta1, opts)
+		tagInfo, err = client2.TagMetadata(ctx, makeManifest(configDigest2), opts)
 		assert.Nil(t, tagInfo)
 		assert.Nil(t, err)
 	})
 
 	t.Run("Check manifest labels are extracted", func(t *testing.T) {
 		ts := time.Now().Format(time.RFC3339Nano)
-		v1Compat := `{"created":"` + ts + `","config":{"Labels":{"org.opencontainers.image.source":"https://github.com/org/repo","org.opencontainers.image.revision":"abc123"}}}`
-		meta1 := &schema1.SignedManifest{ //nolint:staticcheck
-			Manifest: schema1.Manifest{ //nolint:staticcheck
-				History: []schema1.History{ //nolint:staticcheck
-					{
-						V1Compatibility: v1Compat,
-					},
-				},
-			},
-		}
+		configJSON := `{"created":"` + ts + `","config":{"Labels":{"org.opencontainers.image.source":"https://github.com/org/repo","org.opencontainers.image.revision":"abc123"}}}`
+		server, configDigest := makeConfigServer(t, configJSON)
+		defer server.Close()
 		ctx := context.Background()
-		ep, err := GetRegistryEndpoint(ctx, &image.ContainerImage{RegistryURL: ""})
-		require.NoError(t, err)
-		client, err := NewClient(ep, "", "")
-		require.NoError(t, err)
-		opts := &options.ManifestOptions{}
-		tagInfo, err := client.TagMetadata(ctx, meta1, opts)
+		client := makeClient(t, server.URL)
+		tagInfo, err := client.TagMetadata(ctx, makeManifest(configDigest), &options.ManifestOptions{})
 		require.NoError(t, err)
 		require.NotNil(t, tagInfo)
 		assert.Equal(t, "https://github.com/org/repo", tagInfo.Labels["org.opencontainers.image.source"])
@@ -599,21 +605,11 @@ func Test_TagMetadata(t *testing.T) {
 
 	t.Run("Check manifest without labels", func(t *testing.T) {
 		ts := time.Now().Format(time.RFC3339Nano)
-		meta1 := &schema1.SignedManifest{ //nolint:staticcheck
-			Manifest: schema1.Manifest{ //nolint:staticcheck
-				History: []schema1.History{ //nolint:staticcheck
-					{
-						V1Compatibility: `{"created":"` + ts + `"}`,
-					},
-				},
-			},
-		}
+		server, configDigest := makeConfigServer(t, `{"created":"`+ts+`"}`)
+		defer server.Close()
 		ctx := context.Background()
-		ep, err := GetRegistryEndpoint(ctx, &image.ContainerImage{RegistryURL: ""})
-		require.NoError(t, err)
-		client, err := NewClient(ep, "", "")
-		require.NoError(t, err)
-		tagInfo, err := client.TagMetadata(ctx, meta1, &options.ManifestOptions{})
+		client := makeClient(t, server.URL)
+		tagInfo, err := client.TagMetadata(ctx, makeManifest(configDigest), &options.ManifestOptions{})
 		require.NoError(t, err)
 		require.NotNil(t, tagInfo)
 		assert.Nil(t, tagInfo.Labels)
@@ -624,10 +620,10 @@ func Test_TagMetadata_2(t *testing.T) {
 	t.Run("ocischema DeserializedManifest invalid digest format", func(t *testing.T) {
 		meta1 := &ocischema.DeserializedManifest{
 			Manifest: ocischema.Manifest{
-				Versioned: manifest.Versioned{
+				Versioned: specs.Versioned{
 					SchemaVersion: 1,
-					MediaType:     "",
 				},
+				MediaType: "",
 			},
 		}
 		ctx := context.Background()
@@ -644,10 +640,10 @@ func Test_TagMetadata_2(t *testing.T) {
 	t.Run("schema2 DeserializedManifest invalid digest format", func(t *testing.T) {
 		meta1 := &schema2.DeserializedManifest{
 			Manifest: schema2.Manifest{
-				Versioned: manifest.Versioned{
+				Versioned: specs.Versioned{
 					SchemaVersion: 1,
-					MediaType:     "",
 				},
+				MediaType: "",
 				Config: distribution.Descriptor{
 					MediaType: "",
 					Digest:    "sha256:abc",
@@ -668,10 +664,10 @@ func Test_TagMetadata_2(t *testing.T) {
 	t.Run("ocischema DeserializedImageIndex empty index not supported", func(t *testing.T) {
 		meta1 := &ocischema.DeserializedImageIndex{
 			ImageIndex: ocischema.ImageIndex{
-				Versioned: manifest.Versioned{
+				Versioned: specs.Versioned{
 					SchemaVersion: 1,
-					MediaType:     "",
 				},
+				MediaType:   "",
 				Manifests:   nil,
 				Annotations: nil,
 			},
@@ -690,10 +686,10 @@ func Test_TagMetadata_2(t *testing.T) {
 	t.Run("ocischema DeserializedImageIndex empty manifestlist not supported", func(t *testing.T) {
 		meta1 := &manifestlist.DeserializedManifestList{
 			ManifestList: manifestlist.ManifestList{
-				Versioned: manifest.Versioned{
+				Versioned: specs.Versioned{
 					SchemaVersion: 1,
-					MediaType:     "",
 				},
+				MediaType: "",
 				Manifests: nil,
 			},
 		}
@@ -804,5 +800,160 @@ func TestIsAuthError(t *testing.T) {
 	t.Run("errcode.Errors with other code returns false", func(t *testing.T) {
 		err := errcode.Errors{errcode.ErrorCodeUnknown.WithMessage("something else")}
 		assert.False(t, IsAuthError(ctx, err))
+	})
+}
+
+// makeRegistryClient is a shared helper that creates a real RegistryClient backed
+// by a test HTTP server. The server must respond to GET /v2/ with 200 (for the
+// NewRepository ping) plus whatever path the individual test needs.
+func makeRegistryClient(t *testing.T, serverURL string) RegistryClient {
+	t.Helper()
+	ep := &RegistryEndpoint{RegistryAPI: serverURL, Limiter: ratelimit.New(100)}
+	client, err := NewClient(ep, "", "")
+	require.NoError(t, err)
+	err = client.NewRepository("test/test")
+	require.NoError(t, err)
+	return client
+}
+
+func Test_BlobContent(t *testing.T) {
+	t.Run("not initialized returns error", func(t *testing.T) {
+		ep, err := GetRegistryEndpoint(context.Background(), &image.ContainerImage{RegistryURL: ""})
+		require.NoError(t, err)
+		client, err := NewClient(ep, "", "")
+		require.NoError(t, err)
+		// NewRepository NOT called → clt.regClient is nil
+		_, err = client.BlobContent(context.Background(), godigest.FromBytes([]byte("x")))
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "not initialized")
+	})
+
+	t.Run("returns blob bytes on success", func(t *testing.T) {
+		blobContent := []byte("hello-blob")
+		blobDigest := godigest.FromBytes(blobContent)
+
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/v2/" {
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+			// All other /v2/... requests are blob fetches.
+			w.Header().Set("Content-Type", "application/octet-stream")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write(blobContent)
+		}))
+		defer srv.Close()
+
+		client := makeRegistryClient(t, srv.URL)
+		got, err := client.BlobContent(context.Background(), blobDigest)
+		require.NoError(t, err)
+		assert.Equal(t, blobContent, got)
+	})
+
+	t.Run("blob not found returns error", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/v2/" {
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+			w.WriteHeader(http.StatusNotFound)
+		}))
+		defer srv.Close()
+
+		client := makeRegistryClient(t, srv.URL)
+		_, err := client.BlobContent(context.Background(), godigest.FromBytes([]byte("missing")))
+		require.Error(t, err)
+	})
+}
+
+func Test_Referrers(t *testing.T) {
+	testDigest := godigest.FromBytes([]byte("image-manifest"))
+
+	t.Run("not initialized returns error", func(t *testing.T) {
+		ep, err := GetRegistryEndpoint(context.Background(), &image.ContainerImage{RegistryURL: ""})
+		require.NoError(t, err)
+		client, err := NewClient(ep, "", "")
+		require.NoError(t, err)
+		// NewRepository NOT called → clt.httpClient is nil
+		_, err = client.Referrers(context.Background(), testDigest)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "not initialized")
+	})
+
+	t.Run("http 404 returns nil nil (no signature found, not an error)", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/v2/" {
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+			w.WriteHeader(http.StatusNotFound)
+		}))
+		defer srv.Close()
+
+		client := makeRegistryClient(t, srv.URL)
+		refs, err := client.Referrers(context.Background(), testDigest)
+		require.NoError(t, err)
+		assert.Nil(t, refs)
+	})
+
+	t.Run("http ok returns manifest list", func(t *testing.T) {
+		sigDigest := godigest.FromBytes([]byte("sig-manifest"))
+		referrersJSON := fmt.Sprintf(
+			`{"manifests":[{"mediaType":"application/vnd.oci.image.manifest.v1+json","artifactType":"application/vnd.dev.sigstore.bundle.v0.3+json","digest":"%s","size":100}]}`,
+			sigDigest,
+		)
+
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/v2/" {
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+			w.Header().Set("Content-Type", "application/vnd.oci.image.index.v1+json")
+			w.WriteHeader(http.StatusOK)
+			fmt.Fprint(w, referrersJSON)
+		}))
+		defer srv.Close()
+
+		client := makeRegistryClient(t, srv.URL)
+		refs, err := client.Referrers(context.Background(), testDigest)
+		require.NoError(t, err)
+		require.Len(t, refs, 1)
+		assert.Equal(t, "application/vnd.dev.sigstore.bundle.v0.3+json", refs[0].ArtifactType)
+		assert.Equal(t, sigDigest, refs[0].Digest)
+	})
+
+	t.Run("non-200 non-404 returns error", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/v2/" {
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+			w.WriteHeader(http.StatusInternalServerError)
+		}))
+		defer srv.Close()
+
+		client := makeRegistryClient(t, srv.URL)
+		refs, err := client.Referrers(context.Background(), testDigest)
+		require.Error(t, err)
+		assert.Nil(t, refs)
+		assert.Contains(t, err.Error(), "HTTP 500")
+	})
+
+	t.Run("invalid json returns error", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/v2/" {
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+			w.WriteHeader(http.StatusOK)
+			fmt.Fprint(w, "not-valid-json{{")
+		}))
+		defer srv.Close()
+
+		client := makeRegistryClient(t, srv.URL)
+		refs, err := client.Referrers(context.Background(), testDigest)
+		require.Error(t, err)
+		assert.Nil(t, refs)
+		assert.Contains(t, err.Error(), "decoding")
 	})
 }

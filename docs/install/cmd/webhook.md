@@ -15,9 +15,18 @@ Supported Registries:
 - Quay
 - Harbor
 - Aliyun ACR (Alibaba Cloud Container Registry)
+- Azure Container Registry (ACR)
 - AWS EventBridge (CloudEvents)
 
 ### Flags
+
+**--acr-webhook-secret *secret***
+
+Secret for validating Azure ACR webhooks. ACR has no built-in signing, so the
+secret is sent as the `Authorization` header value, which you configure on the
+webhook with `az acr webhook update --headers "Authorization=<secret>"`.
+
+Can also be set with the `ACR_WEBHOOK_SECRET` environment variable.
 
 **--aliyun-acr-webhook-secret *secret***
 
@@ -54,6 +63,10 @@ Secret for validating Docker Hub webhooks.
 
 Can also be set with the `DOCKER_WEBHOOK_SECRET` environment variable.
 
+**--enable-http2**
+
+Enable HTTP/2 for the standalone webhook server. Disabled by default.
+
 **--ghcr-webhook-secret *secret***
 
 Secret for validating GitHub container registry secrets.
@@ -78,9 +91,9 @@ Whether to sign-off git commits
 
 GnuPG key ID or path to Private SSH Key used to sign the commits
 
-Can also be set using the *GIT_COMMIT_SIGNING_KEY* environment variable. 
+Can also be set using the *GIT_COMMIT_SIGNING_KEY* environment variable.
 
-**--git-commit-signing-method *method*** 
+**--git-commit-signing-method *method***
 
 Method used to sign Git commits ('openpgp' or 'ssh') (default "openpgp")
 
@@ -178,5 +191,21 @@ The number of allowed requests in an hour for webhook rate limiting, setting to 
 means that the rate limiting is disabled.
 
 Can also be set with the `WEBHOOK_RATELIMIT_ALLOWED` environment variable.
+
+**--webhook-require-secret *bool***
+
+When set to `true` (the default), only registry webhook handlers that have a
+secret configured are registered. Requests arriving for a registry with no
+secret will be rejected. Set to `false` to register all handlers regardless
+of whether a secret is present — this disables authentication on those
+endpoints and is strongly discouraged in production.
+
+Can also be set with the `WEBHOOK_REQUIRE_SECRET` environment variable.
+
+!!!warning
+    Setting `--webhook-require-secret=false` means the webhook endpoint will
+    accept unauthenticated requests from any source for registries that have no
+    secret configured. Only use this during local development or in a fully
+    network-isolated environment.
 
 [label selector syntax]: https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/#label-selectors

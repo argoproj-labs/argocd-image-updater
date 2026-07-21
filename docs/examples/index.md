@@ -165,7 +165,7 @@ metadata:
 spec:
   writeBackConfig:
     # HTTPS PAT or GitHub App credentials are required; SSH is not supported for PR mode.
-    method: "git:secret:argocd/git-creds"
+    method: "git:secret:git-creds"
     gitConfig:
       repository: "https://github.com/myorg/myrepo.git"
       # Specify only the base branch. The colon "base:target" format is not
@@ -181,15 +181,17 @@ spec:
           commonUpdateSettings:
             updateStrategy: "semver"
       writeBackConfig:
-        method: "git:secret:argocd/git-creds"
+        method: "git:secret:git-creds"
         gitConfig:
           writeBackTarget: "helmvalues:/helm/values.yaml"
 ```
 
 The controller automatically pushes the update to a branch named
-`image-updater-<namespace>-<appName>-<sha256>` and opens a pull request from
-that branch into `main`. If an open PR for the same pair already exists it is
-left untouched.
+`image-updater-<targetKey>-<sha256>` (where `<targetKey>` is a short hash
+of the write-back target) and opens a pull request from that branch into
+`main`. If an open PR for the same pair already exists it is left untouched.
+Multiple applications sharing the same write-back target will reuse the same
+PR branch, avoiding duplicate pull requests.
 
 ## Using `semver` update strategy with version constraints
 

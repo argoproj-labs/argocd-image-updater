@@ -203,6 +203,10 @@ spec:
       labelSelectors:
         matchLabels:
           image-updater: my-image-updater
+      imagesVerification:
+        cosignKey:
+          secretName: org-cosign-pubkey
+          key: cosign.pub
       useAnnotations: true
 ```
 
@@ -210,7 +214,8 @@ When `useAnnotations` is set to `true`, **all CR-based configuration
 is ignored** (`images` including `manifestTargets` within each image, `commonUpdateSettings`,
 `writeBackConfig`). Instead, the controller reads everything from the Application's
 legacy `argocd-image-updater.argoproj.io/*` annotations. Only `namePattern` and
-`labelSelectors` are used from the CR for application selection.
+`labelSelectors` are used for application selection; `imagesVerification` is still
+read from the CR and applied after a match is found.
 
 #### Required annotations
 
@@ -345,6 +350,46 @@ spec:
 Where `<method>` must be one of `argocd` (imperative) or `git` (declarative).
 
 The default used by Argo CD Image Updater is `argocd`.
+
+### Plugin source type
+
+Applications using a custom plugin source type are supported with the **git**
+write-back method, provided the plugin consumes Helm-style or Kustomize-style
+values files from git (e.g. helmfile). The `argocd` write-back method is
+**not** supported for Plugin apps because ArgoCD has no mechanism to override
+plugin environment variables from the Application spec.
+
+Configure the write-back target explicitly to control the file format:
+
+| Target | Format written to Git |
+|--------|-----------------------|
+| `kustomization` or `kustomization:<path>` | `kustomization.yaml` (Kustomize image override) |
+| `helmvalues:<path>` | Helm values YAML |
+| *(none / default)* | `.argocd-source-<app>.yaml` (ArgoCD Helm parameter overrides — Plugin apps are classified as Helm) |
+
+**Helmfile example** using `kustomization` write-back:
+
+```yaml
+spec:
+  writeBackConfig:
+    method: "git"
+    gitConfig:
+      repository: "https://github.com/myorg/infra.git"
+      branch: "main"
+  applicationRefs:
+    - namePattern: "my-helmfile-app.*"
+      writeBackConfig:
+        gitConfig:
+          writeBackTarget: "kustomization"
+      images:
+        - alias: img
+          imageName: "myregistry/myapp"
+          commonUpdateSettings:
+            updateStrategy: semver
+```
+
+The helmfile then reads the image tag from the generated `kustomization.yaml`
+via `readFile "kustomization.yaml" | fromYaml`.
 
 ## <a name="complete-example"></a>Complete example
 

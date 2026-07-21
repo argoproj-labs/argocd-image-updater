@@ -1,0 +1,17 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: 1-009-git-pull-request
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: 1-009-git-pull-request
+  template:
+    metadata:
+      labels:
+        app: 1-009-git-pull-request
+    spec:
+      containers:
+      - name: test
+        image: quay.io/dkarpele/my-guestbook:1.0.0

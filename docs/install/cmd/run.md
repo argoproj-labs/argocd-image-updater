@@ -10,6 +10,14 @@ Runs the Argo CD Image Updater in a reconciliation loop with a set of options.
 
 ### Flags
 
+**--acr-webhook-secret *secret***
+
+Secret for validating Azure ACR webhooks. ACR has no built-in signing, so the
+secret is sent as the `Authorization` header value, which you configure on the
+webhook with `az acr webhook update --headers "Authorization=<secret>"`.
+
+Can also be set with the `ACR_WEBHOOK_SECRET` environment variable.
+
 **--aliyun-acr-webhook-secret *secret***
 
 Secret for validating Aliyun ACR webhooks.
@@ -269,5 +277,21 @@ The number of allowed requests in an hour for webhook rate limiting, setting to 
 means that the rate limiting is disabled.
 
 Can also be set with the `WEBHOOK_RATELIMIT_ALLOWED` environment variable.
+
+**--webhook-require-secret *bool***
+
+When set to `true` (the default), only registry webhook handlers that have a
+secret configured are registered. Requests arriving for a registry with no
+secret will be rejected. Set to `false` to register all handlers regardless
+of whether a secret is present — this disables authentication on those
+endpoints and is strongly discouraged in production.
+
+Can also be set with the `WEBHOOK_REQUIRE_SECRET` environment variable.
+
+!!!warning
+    Setting `--webhook-require-secret=false` means the webhook endpoint will
+    accept unauthenticated requests from any source for registries that have no
+    secret configured. Only use this during local development or in a fully
+    network-isolated environment.
 
 [label selector syntax]: https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/#label-selectors

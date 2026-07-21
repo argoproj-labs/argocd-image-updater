@@ -2,9 +2,15 @@ package argocd
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/sha256"
+	"crypto/x509"
+	"encoding/base64"
+	"encoding/pem"
 	"errors"
 	"fmt"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,8 +18,6 @@ import (
 	"time"
 
 	yaml "github.com/goccy/go-yaml"
-
-	distclient "github.com/distribution/distribution/v3/registry/client"
 
 	iuapi "github.com/argoproj-labs/argocd-image-updater/api/v1alpha1"
 	"github.com/argoproj-labs/argocd-image-updater/ext/git"
@@ -30,12 +34,24 @@ import (
 
 	"github.com/argoproj/argo-cd/v3/pkg/apiclient/application"
 	"github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1"
-	"github.com/distribution/distribution/v3/manifest/schema1" //nolint:staticcheck
+	"github.com/argoproj/argo-cd/v3/util/db"
+	"github.com/argoproj/argo-cd/v3/util/settings"
+	distribution "github.com/distribution/distribution/v3"
+	"github.com/distribution/distribution/v3/manifest/ocischema"
+	"github.com/distribution/distribution/v3/manifest/schema2"
+	"github.com/distribution/distribution/v3/registry/api/errcode"
+	godigest "github.com/opencontainers/go-digest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
 )
+
+func newTestArgoDB(clientset kubernetes.Interface, namespace string) db.ArgoDB {
+	settingsMgr := settings.NewSettingsManager(context.Background(), clientset, namespace)
+	return db.NewDB(namespace, settingsMgr, clientset)
+}
 
 func Test_UpdateApplication(t *testing.T) {
 	t.Run("Test kustomize w/ multiple images w/ different registry w/ different tags", func(t *testing.T) {
@@ -162,7 +178,7 @@ func Test_UpdateApplication(t *testing.T) {
 				Method:  WriteBackGit,
 				GitRepo: "https://example.com/example",
 				GetCreds: func(app *v1alpha1.Application) (git.Creds, error) {
-					return getCredsFromSecret(&WriteBackConfig{}, "argocd-image-updater/git-creds", &kubeClient)
+					return getCredsFromSecret(&WriteBackConfig{}, "argocd-image-updater/git-creds", &kubeClient, "argocd-image-updater")
 				},
 			},
 		}
@@ -534,12 +550,12 @@ func Test_UpdateApplication(t *testing.T) {
 
 		kubeClient := kube.ImageUpdaterKubernetesClient{
 			KubeClient: &registryKube.KubernetesClient{
-				Clientset: fake.NewFakeClientsetWithResources(fixture.NewSecret("foo", "bar", map[string][]byte{"creds": []byte("myuser:mypass")})),
+				Clientset: fake.NewFakeClientsetWithResources(fixture.NewSecret("guestbook", "bar", map[string][]byte{"creds": []byte("myuser:mypass")})),
 			},
 		}
 
 		img := NewImage(image.NewFromIdentifier("dummy=jannfis/foobar:1.0.1"))
-		img.PullSecret = "secret:foo/bar#creds"
+		img.PullSecret = "secret:guestbook/bar#creds"
 
 		appImages := &ApplicationImages{
 			Application: v1alpha1.Application{
@@ -584,6 +600,132 @@ func Test_UpdateApplication(t *testing.T) {
 		assert.Equal(t, 1, res.NumImagesUpdated)
 	})
 
+	t.Run("Test cross-namespace secret reference is rejected", func(t *testing.T) {
+		mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
+			regMock := regmock.RegistryClient{}
+			regMock.On("NewRepository", mock.Anything).Return(nil)
+			regMock.On("Tags", mock.Anything).Return([]string{"1.0.1"}, nil)
+			return &regMock, nil
+		}
+
+		argoClient := argomock.ArgoCD{}
+		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+
+		kubeClient := kube.ImageUpdaterKubernetesClient{
+			KubeClient: &registryKube.KubernetesClient{
+				Clientset: fake.NewFakeClientsetWithResources(fixture.NewSecret("other-ns", "bar", map[string][]byte{"creds": []byte("myuser:mypass")})),
+			},
+		}
+
+		img := NewImage(image.NewFromIdentifier("dummy=jannfis/foobar:1.0.1"))
+		img.PullSecret = "secret:other-ns/bar#creds"
+
+		appImages := &ApplicationImages{
+			Application: v1alpha1.Application{
+				ObjectMeta: v1.ObjectMeta{
+					Name:      "guestbook",
+					Namespace: "guestbook",
+				},
+				Spec: v1alpha1.ApplicationSpec{
+					Source: &v1alpha1.ApplicationSource{
+						Kustomize: &v1alpha1.ApplicationSourceKustomize{
+							Images: v1alpha1.KustomizeImages{
+								"jannfis/foobar:1.0.0",
+							},
+						},
+					},
+				},
+				Status: v1alpha1.ApplicationStatus{
+					SourceType: v1alpha1.ApplicationSourceTypeKustomize,
+					Summary: v1alpha1.ApplicationSummary{
+						Images: []string{
+							"jannfis/foobar:1.0.0",
+						},
+					},
+				},
+			},
+			Images: ImageList{img},
+			WriteBackConfig: &WriteBackConfig{
+				Method: WriteBackApplication,
+			},
+		}
+		res := UpdateApplication(context.Background(), &UpdateConfiguration{
+			NewRegFN:   mockClientFn,
+			ArgoClient: &argoClient,
+			KubeClient: &kubeClient,
+			UpdateApp:  appImages,
+			DryRun:     false,
+		}, NewSyncIterationState())
+		assert.Equal(t, 1, res.NumErrors)
+		assert.Equal(t, 0, res.NumSkipped)
+		assert.Equal(t, 1, res.NumApplicationsProcessed)
+		assert.Equal(t, 1, res.NumImagesConsidered)
+		assert.Equal(t, 0, res.NumImagesUpdated)
+	})
+
+	t.Run("Test cross-namespace pullsecret reference is rejected", func(t *testing.T) {
+		mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
+			regMock := regmock.RegistryClient{}
+			regMock.On("NewRepository", mock.Anything).Return(nil)
+			regMock.On("Tags", mock.Anything).Return([]string{"1.0.1"}, nil)
+			return &regMock, nil
+		}
+
+		argoClient := argomock.ArgoCD{}
+		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+
+		kubeClient := kube.ImageUpdaterKubernetesClient{
+			KubeClient: &registryKube.KubernetesClient{
+				Clientset: fake.NewFakeClientsetWithResources(),
+			},
+		}
+
+		img := NewImage(image.NewFromIdentifier("dummy=jannfis/foobar:1.0.1"))
+		img.PullSecret = "pullsecret:other-ns/docker-pull-secret"
+
+		appImages := &ApplicationImages{
+			Application: v1alpha1.Application{
+				ObjectMeta: v1.ObjectMeta{
+					Name:      "guestbook",
+					Namespace: "guestbook",
+				},
+				Spec: v1alpha1.ApplicationSpec{
+					Source: &v1alpha1.ApplicationSource{
+						Kustomize: &v1alpha1.ApplicationSourceKustomize{
+							Images: v1alpha1.KustomizeImages{
+								"jannfis/foobar:1.0.0",
+							},
+						},
+					},
+				},
+				Status: v1alpha1.ApplicationStatus{
+					SourceType: v1alpha1.ApplicationSourceTypeKustomize,
+					Summary: v1alpha1.ApplicationSummary{
+						Images: []string{
+							"jannfis/foobar:1.0.0",
+						},
+					},
+				},
+			},
+			Images: ImageList{img},
+			WriteBackConfig: &WriteBackConfig{
+				Method: WriteBackApplication,
+			},
+		}
+		res := UpdateApplication(context.Background(), &UpdateConfiguration{
+			NewRegFN:   mockClientFn,
+			ArgoClient: &argoClient,
+			KubeClient: &kubeClient,
+			UpdateApp:  appImages,
+			DryRun:     false,
+		}, NewSyncIterationState())
+		assert.Equal(t, 1, res.NumErrors)
+		assert.Equal(t, 0, res.NumSkipped)
+		assert.Equal(t, 1, res.NumApplicationsProcessed)
+		assert.Equal(t, 1, res.NumImagesConsidered)
+		assert.Equal(t, 0, res.NumImagesUpdated)
+	})
+
 	// ErrCredentialsInvalid retry: first GetTags returns 401, refetch creds and retry, second GetTags succeeds.
 	t.Run("ErrCredentialsInvalid retry succeeds", func(t *testing.T) {
 		// Endpoint-level credentials + credsexpire so GetTags(..., usingEndpointCreds=true) can return
@@ -605,12 +747,12 @@ registries:
 		require.NoError(t, err)
 		defer registry.RestoreDefaultRegistryConfiguration()
 
+		authErr := errcode.Errors{errcode.ErrorCodeUnauthorized.WithMessage("unauthorized")}
 		callCount := 0
 		mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
 			regMock := regmock.RegistryClient{}
 			regMock.On("NewRepository", mock.Anything).Return(nil)
 			callCount++
-			authErr := &distclient.UnexpectedHTTPResponseError{StatusCode: http.StatusUnauthorized, ParseErr: errors.New("unauthorized")}
 			if callCount == 1 {
 				regMock.On("Tags", mock.Anything).Return([]string(nil), authErr)
 			} else {
@@ -679,9 +821,8 @@ registries:
 			regMock := regmock.RegistryClient{}
 			regMock.On("NewRepository", mock.Anything).Return(nil)
 			callCount++
-			// 500 is not an auth error, so no retry
-			err500 := &distclient.UnexpectedHTTPResponseError{StatusCode: http.StatusInternalServerError, ParseErr: errors.New("internal server error")}
-			regMock.On("Tags", mock.Anything).Return([]string(nil), err500)
+			// 500 is not an auth error, so no retry; use a plain error to simulate it
+			regMock.On("Tags", mock.Anything).Return([]string(nil), errors.New("internal server error"))
 			return &regMock, nil
 		}
 
@@ -756,14 +897,14 @@ registries:
 		require.NoError(t, err)
 		defer registry.RestoreDefaultRegistryConfiguration()
 
+		authErr2 := errcode.Errors{errcode.ErrorCodeUnauthorized.WithMessage("unauthorized")}
 		callCount := 0
 		mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
 			regMock := regmock.RegistryClient{}
 			regMock.On("NewRepository", mock.Anything).Return(nil)
 			callCount++
 			// Both first and second Tags call return auth error so retry also fails.
-			authErr := &distclient.UnexpectedHTTPResponseError{StatusCode: http.StatusUnauthorized, ParseErr: errors.New("unauthorized")}
-			regMock.On("Tags", mock.Anything).Return([]string(nil), authErr)
+			regMock.On("Tags", mock.Anything).Return([]string(nil), authErr2)
 			return &regMock, nil
 		}
 
@@ -1075,26 +1216,10 @@ registries:
 	})
 
 	t.Run("Test skip because of match-tag pattern doesn't match", func(t *testing.T) {
-		meta := make([]*schema1.SignedManifest, 4) //nolint:staticcheck
-		for i := 0; i < 4; i++ {
-			ts := fmt.Sprintf("2006-01-02T15:%.02d:05.999999999Z", i)
-			meta[i] = &schema1.SignedManifest{ //nolint:staticcheck
-				Manifest: schema1.Manifest{ //nolint:staticcheck
-					History: []schema1.History{ //nolint:staticcheck
-						{
-							V1Compatibility: `{"created":"` + ts + `"}`,
-						},
-					},
-				},
-			}
-		}
-		called := 0
 		mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
 			regMock := regmock.RegistryClient{}
 			regMock.On("NewRepository", mock.Anything).Return(nil)
 			regMock.On("Tags", mock.Anything).Return([]string{"one", "two", "three", "four"}, nil)
-			regMock.On("Manifest", mock.Anything).Return(meta[called], nil)
-			called += 1
 			return &regMock, nil
 		}
 
@@ -1155,26 +1280,10 @@ registries:
 	})
 
 	t.Run("Test skip because of ignored", func(t *testing.T) {
-		meta := make([]*schema1.SignedManifest, 4) //nolint:staticcheck
-		for i := 0; i < 4; i++ {
-			ts := fmt.Sprintf("2006-01-02T15:%.02d:05.999999999Z", i)
-			meta[i] = &schema1.SignedManifest{ //nolint:staticcheck
-				Manifest: schema1.Manifest{ //nolint:staticcheck
-					History: []schema1.History{ //nolint:staticcheck
-						{
-							V1Compatibility: `{"created":"` + ts + `"}`,
-						},
-					},
-				},
-			}
-		}
-		called := 0
 		mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
 			regMock := regmock.RegistryClient{}
 			regMock.On("NewRepository", mock.Anything).Return(nil)
 			regMock.On("Tags", mock.Anything).Return([]string{"one", "two", "three", "four"}, nil)
-			regMock.On("Manifest", mock.Anything).Return(meta[called], nil)
-			called += 1
 			return &regMock, nil
 		}
 
@@ -1557,9 +1666,7 @@ registries:
 			regMock.On("Tags", mock.Anything).Return([]string{"latest"}, nil)
 
 			// For digest strategy, we need to mock ManifestForTag and TagMetadata
-			meta1 := &schema1.SignedManifest{} //nolint:staticcheck
-			meta1.Name = "org/job-image"
-			meta1.Tag = "latest"
+			meta1 := &schema2.DeserializedManifest{}
 			regMock.On("ManifestForTag", mock.Anything, "latest").Return(meta1, nil)
 			// Create a digest as [32]byte array
 			var digest [32]byte
@@ -1669,9 +1776,7 @@ registries:
 			regMock.On("NewRepository", mock.Anything).Return(nil)
 			regMock.On("Tags", mock.Anything).Return([]string{"latest-bookworm"}, nil)
 			// Mock ManifestForTag to return metadata with the digest
-			meta1 := &schema1.SignedManifest{} //nolint:staticcheck
-			meta1.Name = "library/nginx"
-			meta1.Tag = "latest-bookworm"
+			meta1 := &schema2.DeserializedManifest{}
 			regMock.On("ManifestForTag", mock.Anything, "latest-bookworm").Return(meta1, nil)
 			// Mock TagMetadata to return the tag info with digest
 			regMock.On("TagMetadata", mock.Anything, mock.Anything, mock.Anything).Return(&tag.TagInfo{
@@ -1843,14 +1948,10 @@ registries:
 			regMock.On("Tags", mock.Anything).Return([]string{"latest", "latest-bookworm"}, nil)
 
 			// Both tags return manifests
-			metaLatest := &schema1.SignedManifest{} //nolint:staticcheck
-			metaLatest.Name = "library/nginx"
-			metaLatest.Tag = "latest"
+			metaLatest := &schema2.DeserializedManifest{}
 			regMock.On("ManifestForTag", mock.Anything, "latest").Return(metaLatest, nil)
 
-			metaBookworm := &schema1.SignedManifest{} //nolint:staticcheck
-			metaBookworm.Name = "library/nginx"
-			metaBookworm.Tag = "latest-bookworm"
+			metaBookworm := &schema2.DeserializedManifest{}
 			regMock.On("ManifestForTag", mock.Anything, "latest-bookworm").Return(metaBookworm, nil)
 
 			// CRITICAL: Both tags return the SAME digest
@@ -1931,6 +2032,204 @@ registries:
 			"Image should remain unchanged since digest is the same")
 	})
 
+	// ---------------------------------------------------------------------------
+	// Image-signature verification branches (update.go lines 201-223)
+	// ---------------------------------------------------------------------------
+
+	// verifyAppImages is a minimal helper that wires up a single-image kustomize
+	// Application for the verification tests.  The returned ApplicationImages uses
+	// the image "gcr.io/jannfis/foobar" with a semver >=1.0.1 constraint so that
+	// the mock registry (returning "1.0.1" and "1.0.2") always picks "1.0.2" as
+	// the new tag — and the early-return path in GetTags never calls ManifestForTag.
+	verifyAppImages := func(iuImg *Image) *ApplicationImages {
+		return &ApplicationImages{
+			Application: v1alpha1.Application{
+				ObjectMeta: v1.ObjectMeta{Name: "guestbook", Namespace: "guestbook"},
+				Spec: v1alpha1.ApplicationSpec{
+					Source: &v1alpha1.ApplicationSource{
+						Kustomize: &v1alpha1.ApplicationSourceKustomize{
+							Images: v1alpha1.KustomizeImages{"jannfis/foobar:1.0.1"},
+						},
+					},
+				},
+				Status: v1alpha1.ApplicationStatus{
+					SourceType: v1alpha1.ApplicationSourceTypeKustomize,
+					Summary: v1alpha1.ApplicationSummary{
+						Images: []string{"gcr.io/jannfis/foobar:1.0.1"},
+					},
+				},
+			},
+			WriteBackConfig: &WriteBackConfig{Method: WriteBackApplication},
+			Images:          ImageList{iuImg},
+		}
+	}
+
+	verifyKubeClient := kube.ImageUpdaterKubernetesClient{
+		KubeClient: &registryKube.KubernetesClient{
+			Clientset: fake.NewFakeKubeClient(),
+		},
+	}
+
+	t.Run("image verification disabled per-image proceeds to update", func(t *testing.T) {
+		mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
+			regMock := regmock.RegistryClient{}
+			regMock.On("NewRepository", mock.Anything).Return(nil)
+			regMock.On("Tags", mock.Anything).Return([]string{"1.0.1", "1.0.2"}, nil)
+			return &regMock, nil
+		}
+
+		argoClient := argomock.ArgoCD{}
+		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+
+		iuImg := NewImage(image.NewFromIdentifier("foobar=gcr.io/jannfis/foobar:>=1.0.1"))
+		// EnableVerification is false by default
+
+		res := UpdateApplication(context.Background(), &UpdateConfiguration{
+			NewRegFN:   mockClientFn,
+			ArgoClient: &argoClient,
+			KubeClient: &verifyKubeClient,
+			UpdateApp:  verifyAppImages(iuImg),
+		}, NewSyncIterationState())
+
+		assert.Equal(t, 0, res.NumErrors)
+		assert.Equal(t, 1, res.NumImagesUpdated)
+	})
+
+	t.Run("verification enabled but no method configured counts as error", func(t *testing.T) {
+		mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
+			regMock := regmock.RegistryClient{}
+			regMock.On("NewRepository", mock.Anything).Return(nil)
+			regMock.On("Tags", mock.Anything).Return([]string{"1.0.1", "1.0.2"}, nil)
+			return &regMock, nil
+		}
+
+		iuImg := NewImage(image.NewFromIdentifier("foobar=gcr.io/jannfis/foobar:>=1.0.1"))
+		iuImg.EnableVerification = true
+		// Verify intentionally left nil — simulates a bug where EnableVerification=true
+		// but no verification method was configured; should count as an error.
+
+		res := UpdateApplication(context.Background(), &UpdateConfiguration{
+			NewRegFN:   mockClientFn,
+			ArgoClient: &argomock.ArgoCD{},
+			KubeClient: &verifyKubeClient,
+			UpdateApp:  verifyAppImages(iuImg),
+		}, NewSyncIterationState())
+
+		assert.Equal(t, 1, res.NumErrors)
+		assert.Equal(t, 0, res.NumImagesUpdated)
+	})
+
+	t.Run("cosign-key verification fetch failure counts as error", func(t *testing.T) {
+		// ManifestForTag is called by fetchTagSignatures (slow path — ManifestDigest
+		// is not cached for SemVer tags).  Returning an error forces VerifyWithPublicKey
+		// to fail, which increments NumErrors and skips the update.
+		mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
+			regMock := regmock.RegistryClient{}
+			regMock.On("NewRepository", mock.Anything).Return(nil)
+			regMock.On("Tags", mock.Anything).Return([]string{"1.0.1", "1.0.2"}, nil)
+			regMock.On("ManifestForTag", mock.Anything, mock.Anything).Return(nil, fmt.Errorf("registry unavailable"))
+			return &regMock, nil
+		}
+
+		iuImg := NewImage(image.NewFromIdentifier("foobar=gcr.io/jannfis/foobar:>=1.0.1"))
+		iuImg.EnableVerification = true
+
+		res := UpdateApplication(context.Background(), &UpdateConfiguration{
+			NewRegFN:   mockClientFn,
+			ArgoClient: &argomock.ArgoCD{},
+			KubeClient: &verifyKubeClient,
+			UpdateApp:  verifyAppImages(iuImg),
+		}, NewSyncIterationState())
+
+		assert.Equal(t, 1, res.NumErrors)
+		assert.Equal(t, 0, res.NumImagesUpdated)
+	})
+
+	t.Run("cosign-key verification succeeds proceeds to update", func(t *testing.T) {
+		// Generate a real ECDSA key pair for this test.
+		priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+		require.NoError(t, err)
+		pubDER, err := x509.MarshalPKIXPublicKey(&priv.PublicKey)
+		require.NoError(t, err)
+		pemPub := string(pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: pubDER}))
+
+		// Build a DSSE bundle JSON signed with priv, matching what cosign 2.x produces.
+		// The mock ManifestForTag returns a zero-value schema2.DeserializedManifest
+		// whose Payload() is nil, so godigest.FromBytes(nil) is the image manifest digest.
+		payloadType := "application/vnd.dev.cosign.simplesigning.v1+json"
+		imgManifestDigest := godigest.FromBytes(nil).String()
+		payload := []byte(fmt.Sprintf(
+			`{"critical":{"image":{"docker-manifest-digest":"%s"}}}`,
+			imgManifestDigest,
+		))
+		pae := append(
+			[]byte(fmt.Sprintf("DSSEv1 %d %s %d ", len(payloadType), payloadType, len(payload))),
+			payload...,
+		)
+		paeHash := sha256.Sum256(pae)
+		rawSig, err := ecdsa.SignASN1(rand.Reader, priv, paeHash[:])
+		require.NoError(t, err)
+
+		blobJSON := fmt.Sprintf(
+			`{"dsseEnvelope":{"payload":"%s","payloadType":"%s","signatures":[{"sig":"%s"}]}}`,
+			base64.StdEncoding.EncodeToString(payload),
+			payloadType,
+			base64.StdEncoding.EncodeToString(rawSig),
+		)
+		blobBytes := []byte(blobJSON)
+		blobDgst := godigest.FromBytes(blobBytes)
+
+		// OCI manifest for the sigstore bundle — one layer whose Digest is blobDgst.
+		sigManifest := &ocischema.DeserializedManifest{
+			Manifest: ocischema.Manifest{
+				Layers: []distribution.Descriptor{
+					{
+						MediaType: "application/vnd.dev.sigstore.bundle.v0.3+json",
+						Digest:    blobDgst,
+						Size:      int64(len(blobBytes)),
+					},
+				},
+			},
+		}
+		// Arbitrary but valid digest used as the sig-artifact referrer digest.
+		sigArtifactDgst := godigest.FromBytes([]byte("sig-manifest"))
+
+		mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
+			regMock := regmock.RegistryClient{}
+			regMock.On("NewRepository", mock.Anything).Return(nil)
+			regMock.On("Tags", mock.Anything).Return([]string{"1.0.1", "1.0.2"}, nil)
+			// Called by fetchTagSignatures slow-path (ManifestDigest not cached for SemVer tags).
+			regMock.On("ManifestForTag", mock.Anything, mock.Anything).Return(&schema2.DeserializedManifest{}, nil)
+			// Referrers returns a single sigstore-bundle referrer.
+			regMock.On("Referrers", mock.Anything, mock.Anything).Return([]distribution.Descriptor{
+				{
+					MediaType:    "application/vnd.oci.image.manifest.v1+json",
+					ArtifactType: "application/vnd.dev.sigstore.bundle.v0.3+json",
+					Digest:       sigArtifactDgst,
+				},
+			}, nil)
+			regMock.On("ManifestForDigest", mock.Anything, mock.Anything).Return(sigManifest, nil)
+			regMock.On("BlobContent", mock.Anything, mock.Anything).Return(blobBytes, nil)
+			return &regMock, nil
+		}
+
+		argoClient := argomock.ArgoCD{}
+		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+
+		iuImg := NewImage(image.NewFromIdentifier("foobar=gcr.io/jannfis/foobar:>=1.0.1"))
+		iuImg.EnableVerification = true
+		iuImg.Verify = &image.Verify{CosignKey: pemPub}
+
+		res := UpdateApplication(context.Background(), &UpdateConfiguration{
+			NewRegFN:   mockClientFn,
+			ArgoClient: &argoClient,
+			KubeClient: &verifyKubeClient,
+			UpdateApp:  verifyAppImages(iuImg),
+		}, NewSyncIterationState())
+
+		assert.Equal(t, 0, res.NumErrors)
+		assert.Equal(t, 1, res.NumImagesUpdated)
+	})
 }
 
 func Test_MarshalParamsOverride(t *testing.T) {
@@ -3920,6 +4219,143 @@ replicas: 1
 		_, ok := out["image.tag"]
 		require.False(t, ok, "expected key %s to be absent", "image.tag")
 	})
+
+	t.Run("SourceHydrator app with nil Helm writes custom values file via fallback", func(t *testing.T) {
+		expected := `
+# auto generated by argocd image updater
+
+image:
+  tag: v0.0.0
+  name: nginx
+`
+		app := v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{Name: "hydrator-app"},
+			Spec: v1alpha1.ApplicationSpec{
+				SourceHydrator: &v1alpha1.SourceHydrator{
+					DrySource: v1alpha1.DrySource{},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypeDirectory,
+				Summary:    v1alpha1.ApplicationSummary{Images: []string{"nginx:v0.0.0"}},
+			},
+		}
+		im := NewImage(image.NewFromIdentifier("nginx"))
+		im.HelmImageName = "image.name"
+		im.HelmImageTag = "image.tag"
+		applicationImages := &ApplicationImages{
+			Application: app,
+			Images:      ImageList{im},
+			WriteBackConfig: &WriteBackConfig{
+				Method: WriteBackGit,
+				Target: "./values.yaml",
+			},
+		}
+
+		yamlOutput, err := marshalParamsOverride(context.Background(), applicationImages, nil)
+		require.NoError(t, err)
+		assert.NotEmpty(t, yamlOutput)
+		assert.Equal(t, strings.TrimSpace(strings.ReplaceAll(expected, "\t", "  ")), strings.TrimSpace(string(yamlOutput)))
+	})
+
+	t.Run("SourceHydrator app with Helm in DrySource writes default override file", func(t *testing.T) {
+		expected := `
+helm:
+  parameters:
+  - name: image.name
+    value: nginx
+    forcestring: true
+  - name: image.tag
+    value: v1.0.0
+    forcestring: true
+`
+		app := v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{Name: "hydrator-app"},
+			Spec: v1alpha1.ApplicationSpec{
+				SourceHydrator: &v1alpha1.SourceHydrator{
+					DrySource: v1alpha1.DrySource{
+						Helm: &v1alpha1.ApplicationSourceHelm{
+							Parameters: []v1alpha1.HelmParameter{
+								{Name: "image.name", Value: "nginx", ForceString: true},
+								{Name: "image.tag", Value: "v1.0.0", ForceString: true},
+							},
+						},
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{SourceType: v1alpha1.ApplicationSourceTypeDirectory},
+		}
+		im := NewImage(image.NewFromIdentifier("nginx"))
+		im.HelmImageName = "image.name"
+		im.HelmImageTag = "image.tag"
+		applicationImages := &ApplicationImages{
+			Application: app,
+			Images:      ImageList{im},
+			WriteBackConfig: &WriteBackConfig{
+				Method: WriteBackGit,
+				Target: ".argocd-source-hydrator-app.yaml",
+			},
+		}
+
+		yamlOutput, err := marshalParamsOverride(context.Background(), applicationImages, nil)
+		require.NoError(t, err)
+		assert.NotEmpty(t, yamlOutput)
+		assert.Equal(t, strings.TrimSpace(strings.ReplaceAll(expected, "\t", "  ")), strings.TrimSpace(string(yamlOutput)))
+	})
+
+	t.Run("Plugin app with git write-back produces Helm values output", func(t *testing.T) {
+		// A Plugin (e.g. helmfile) app should be treated as Helm when wbc.Method == WriteBackGit,
+		// so marshalParamsOverride should produce Helm parameter override YAML.
+		app := v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "helmfile-app",
+				Namespace: "argocd",
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: &v1alpha1.ApplicationSource{
+					RepoURL: "https://github.com/example/helmfile-repo",
+					Path:    "k8s/apps/my-app",
+					Plugin:  &v1alpha1.ApplicationSourcePlugin{},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypePlugin,
+				Summary: v1alpha1.ApplicationSummary{
+					Images: []string{"myregistry/myapp:v0.9.0"},
+				},
+			},
+		}
+
+		im := NewImage(image.NewFromIdentifier("myapp=myregistry/myapp"))
+		im.HelmImageName = "image.name"
+		im.HelmImageTag = "image.tag"
+
+		applicationImages := &ApplicationImages{
+			Application: app,
+			Images:      ImageList{im},
+			WriteBackConfig: &WriteBackConfig{
+				Method: WriteBackGit,
+				Target: "k8s/apps/my-app/.argocd-source-helmfile-app.yaml",
+			},
+		}
+
+		// SetHelmImage must be called before marshalParamsOverride so the in-memory
+		// app.Spec.Source.Helm is populated — this mirrors UpdateApplication's flow.
+		newImg := image.NewFromIdentifier("myregistry/myapp:v1.0.0")
+		err := SetHelmImage(context.Background(), &applicationImages.Application, newImg, applicationImages.WriteBackConfig, im)
+		require.NoError(t, err)
+
+		yamlOutput, err := marshalParamsOverride(context.Background(), applicationImages, nil)
+		require.NoError(t, err)
+		assert.NotEmpty(t, yamlOutput)
+
+		// Verify it's Helm format (has "helm:" key, not "kustomize:")
+		outputStr := string(yamlOutput)
+		assert.Contains(t, outputStr, "image.tag")
+		assert.Contains(t, outputStr, "v1.0.0")
+		assert.NotContains(t, outputStr, "kustomize:")
+		assert.Contains(t, outputStr, "helm:")
+	})
 }
 
 func Test_GetWriteBackConfig(t *testing.T) {
@@ -3956,7 +4392,7 @@ func Test_GetWriteBackConfig(t *testing.T) {
 			},
 		}
 
-		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, settings)
+		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, nil, settings)
 		require.NoError(t, err)
 		require.NotNil(t, wbc)
 		assert.Equal(t, wbc.Method, WriteBackGit)
@@ -3994,7 +4430,7 @@ func Test_GetWriteBackConfig(t *testing.T) {
 			},
 		}
 
-		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, settings)
+		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, nil, settings)
 		require.NoError(t, err)
 		require.NotNil(t, wbc)
 		assert.Equal(t, "", wbc.GitBranch)
@@ -4031,7 +4467,7 @@ func Test_GetWriteBackConfig(t *testing.T) {
 			},
 		}
 
-		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, settings)
+		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, nil, settings)
 		require.NoError(t, err)
 		require.NotNil(t, wbc)
 		assert.Equal(t, "mybranch", wbc.GitBranch)
@@ -4068,7 +4504,7 @@ func Test_GetWriteBackConfig(t *testing.T) {
 			Method: stringPtr("argocd"),
 		}
 
-		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, settings)
+		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, nil, settings)
 		require.NoError(t, err)
 		require.NotNil(t, wbc)
 		assert.Equal(t, wbc.Method, WriteBackApplication)
@@ -4109,7 +4545,7 @@ func Test_GetWriteBackConfig(t *testing.T) {
 			},
 		}
 
-		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, settings)
+		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, nil, settings)
 		require.NoError(t, err)
 		require.NotNil(t, wbc)
 		assert.Equal(t, wbc.Method, WriteBackGit)
@@ -4151,7 +4587,7 @@ func Test_GetWriteBackConfig(t *testing.T) {
 			},
 		}
 
-		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, settings)
+		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, nil, settings)
 		require.NoError(t, err)
 		require.NotNil(t, wbc)
 		assert.Equal(t, wbc.Method, WriteBackGit)
@@ -4193,7 +4629,7 @@ func Test_GetWriteBackConfig(t *testing.T) {
 			},
 		}
 
-		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, settings)
+		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, nil, settings)
 		require.NoError(t, err)
 		require.NotNil(t, wbc)
 		assert.Equal(t, wbc.Method, WriteBackGit)
@@ -4235,7 +4671,7 @@ func Test_GetWriteBackConfig(t *testing.T) {
 			},
 		}
 
-		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, settings)
+		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, nil, settings)
 		require.NoError(t, err)
 		require.NotNil(t, wbc)
 		assert.Equal(t, wbc.Method, WriteBackGit)
@@ -4277,7 +4713,7 @@ func Test_GetWriteBackConfig(t *testing.T) {
 			},
 		}
 
-		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, settings)
+		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, nil, settings)
 		require.NoError(t, err)
 		require.NotNil(t, wbc)
 		assert.Equal(t, wbc.Method, WriteBackGit)
@@ -4318,7 +4754,7 @@ func Test_GetWriteBackConfig(t *testing.T) {
 			},
 		}
 
-		_, err := newWBCFromSettings(context.Background(), &app, &kubeClient, settings)
+		_, err := newWBCFromSettings(context.Background(), &app, &kubeClient, nil, settings)
 		assert.Error(t, err)
 	})
 
@@ -4355,7 +4791,7 @@ func Test_GetWriteBackConfig(t *testing.T) {
 			},
 		}
 
-		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, settings)
+		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, nil, settings)
 		require.NoError(t, err)
 		require.NotNil(t, wbc)
 		assert.Equal(t, wbc.Method, WriteBackApplication)
@@ -4394,7 +4830,7 @@ func Test_GetWriteBackConfig(t *testing.T) {
 			},
 		}
 
-		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, settings)
+		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, nil, settings)
 		require.Error(t, err)
 		require.Nil(t, wbc)
 	})
@@ -4416,7 +4852,8 @@ func Test_GetGitCreds(t *testing.T) {
 		}
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
-				Name: "testapp",
+				Name:      "testapp",
+				Namespace: "argocd-image-updater",
 			},
 			Spec: v1alpha1.ApplicationSpec{
 				Source: &v1alpha1.ApplicationSource{
@@ -4436,7 +4873,7 @@ func Test_GetGitCreds(t *testing.T) {
 			},
 		}
 
-		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, settings)
+		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, nil, settings)
 		require.NoError(t, err)
 
 		creds, err := wbc.GetCreds(&app)
@@ -4462,7 +4899,8 @@ func Test_GetGitCreds(t *testing.T) {
 		}
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
-				Name: "testapp",
+				Name:      "testapp",
+				Namespace: "argocd-image-updater",
 			},
 			Spec: v1alpha1.ApplicationSpec{
 				Source: &v1alpha1.ApplicationSource{
@@ -4482,7 +4920,7 @@ func Test_GetGitCreds(t *testing.T) {
 			},
 		}
 
-		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, settings)
+		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, nil, settings)
 		require.NoError(t, err)
 
 		creds, err := wbc.GetCreds(&app)
@@ -4522,13 +4960,13 @@ func Test_GetGitCreds(t *testing.T) {
 			}
 			// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
 			settings := &iuapi.WriteBackConfig{
-				Method: stringPtr("git"),
+				Method: stringPtr("git:secret:argocd-image-updater/git-creds"),
 				GitConfig: &iuapi.GitConfig{
 					Branch: stringPtr("mybranch:mytargetbranch"),
 				},
 			}
 
-			wbc, err = newWBCFromSettings(context.Background(), &app, &kubeClient, settings)
+			wbc, err = newWBCFromSettings(context.Background(), &app, &kubeClient, nil, settings)
 			require.NoError(t, err)
 			_, err = wbc.GetCreds(&app)
 			require.Error(t, err)
@@ -4548,7 +4986,8 @@ func Test_GetGitCreds(t *testing.T) {
 		}
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
-				Name: "testapp",
+				Name:      "testapp",
+				Namespace: "argocd-image-updater",
 			},
 			Spec: v1alpha1.ApplicationSpec{
 				Source: &v1alpha1.ApplicationSource{
@@ -4568,7 +5007,7 @@ func Test_GetGitCreds(t *testing.T) {
 			},
 		}
 
-		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, settings)
+		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, nil, settings)
 		require.NoError(t, err)
 
 		creds, err := wbc.GetCreds(&app)
@@ -4597,12 +5036,14 @@ func Test_GetGitCreds(t *testing.T) {
 		}
 		fixture.AddPartOfArgoCDLabel(secret, repoSecret)
 
+		clientset := fake.NewFakeClientsetWithResources(secret, repoSecret)
 		kubeClient := kube.ImageUpdaterKubernetesClient{
 			KubeClient: &registryKube.KubernetesClient{
-				Clientset: fake.NewFakeClientsetWithResources(secret, repoSecret),
+				Clientset: clientset,
 				Namespace: "argocd",
 			},
 		}
+		argocdDB := newTestArgoDB(clientset, "argocd")
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
 				Name: "testapp",
@@ -4625,7 +5066,7 @@ func Test_GetGitCreds(t *testing.T) {
 			},
 		}
 
-		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, settings)
+		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, argocdDB, settings)
 		require.NoError(t, err)
 
 		creds, err := wbc.GetCreds(&app)
@@ -4642,11 +5083,13 @@ func Test_GetGitCreds(t *testing.T) {
 		secret := fixture.NewSecret("argocd-image-updater", "git-creds", map[string][]byte{
 			"sshPrivateKex": []byte("foo"),
 		})
+		clientset := fake.NewFakeClientsetWithResources(secret)
 		kubeClient := kube.ImageUpdaterKubernetesClient{
 			KubeClient: &registryKube.KubernetesClient{
-				Clientset: fake.NewFakeClientsetWithResources(secret),
+				Clientset: clientset,
 			},
 		}
+		argocdDB := newTestArgoDB(clientset, "")
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
 				Name: "testapp",
@@ -4669,7 +5112,7 @@ func Test_GetGitCreds(t *testing.T) {
 			},
 		}
 
-		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, settings)
+		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, argocdDB, settings)
 		require.NoError(t, err)
 
 		creds, err := wbc.GetCreds(&app)
@@ -4683,11 +5126,13 @@ func Test_GetGitCreds(t *testing.T) {
 		secret := fixture.NewSecret("argocd-image-updater", "git-creds", map[string][]byte{
 			"sshPrivateKey": []byte("foo"),
 		})
+		clientset := fake.NewFakeClientsetWithResources(secret)
 		kubeClient := kube.ImageUpdaterKubernetesClient{
 			KubeClient: &registryKube.KubernetesClient{
-				Clientset: fake.NewFakeClientsetWithResources(secret),
+				Clientset: clientset,
 			},
 		}
+		argocdDB := newTestArgoDB(clientset, "")
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
 				Name: "testapp",
@@ -4710,7 +5155,7 @@ func Test_GetGitCreds(t *testing.T) {
 			},
 		}
 
-		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, settings)
+		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, argocdDB, settings)
 		require.NoError(t, err)
 
 		creds, err := wbc.GetCreds(&app)
@@ -4724,11 +5169,13 @@ func Test_GetGitCreds(t *testing.T) {
 		secret := fixture.NewSecret("argocd-image-updater", "git-creds", map[string][]byte{
 			"sshPrivateKey": []byte("foo"),
 		})
+		clientset := fake.NewFakeClientsetWithResources(secret)
 		kubeClient := kube.ImageUpdaterKubernetesClient{
 			KubeClient: &registryKube.KubernetesClient{
-				Clientset: fake.NewFakeClientsetWithResources(secret),
+				Clientset: clientset,
 			},
 		}
+		argocdDB := newTestArgoDB(clientset, "")
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
 				Name: "testapp",
@@ -4751,7 +5198,7 @@ func Test_GetGitCreds(t *testing.T) {
 			},
 		}
 
-		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, settings)
+		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, argocdDB, settings)
 		require.NoError(t, err)
 
 		creds, err := wbc.GetCreds(&app)
@@ -4773,7 +5220,8 @@ func Test_GetGitCreds(t *testing.T) {
 
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
-				Name: "testapp",
+				Name:      "testapp",
+				Namespace: "argocd-image-updater",
 			},
 			Spec: v1alpha1.ApplicationSpec{
 				Source: &v1alpha1.ApplicationSource{
@@ -4795,7 +5243,7 @@ func Test_GetGitCreds(t *testing.T) {
 			},
 		}
 
-		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, settings)
+		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, nil, settings)
 		require.NoError(t, err)
 		require.Equal(t, wbc.GitRepo, "git@github.com:example/example.git")
 
@@ -4814,9 +5262,11 @@ func Test_CommitUpdates(t *testing.T) {
 	secret := fixture.NewSecret("argocd-image-updater", "git-creds", map[string][]byte{
 		"sshPrivateKey": []byte("foo"),
 	})
+	clientset := fake.NewFakeClientsetWithResources(secret)
+	commitTestArgoDB := newTestArgoDB(clientset, "")
 	kubeClient := kube.ImageUpdaterKubernetesClient{
 		KubeClient: &registryKube.KubernetesClient{
-			Clientset: fake.NewFakeClientsetWithResources(secret),
+			Clientset: clientset,
 		},
 	}
 	app := v1alpha1.Application{
@@ -4846,7 +5296,7 @@ func Test_CommitUpdates(t *testing.T) {
 		ctx := context.Background()
 		// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
 		// Pass nil settings to test the default target revision fallback
-		wbc, err := newWBCFromSettings(ctx, &app, &kubeClient, nil)
+		wbc, err := newWBCFromSettings(ctx, &app, &kubeClient, nil, nil)
 		require.NoError(t, err)
 		wbc.Method = WriteBackGit
 		wbc.GetCreds = func(app *v1alpha1.Application) (git.Creds, error) {
@@ -4875,7 +5325,7 @@ func Test_CommitUpdates(t *testing.T) {
 		gitMock.On("SymRefToBranch", mock.Anything).Return("mydefaultbranch", nil)
 
 		ctx := context.Background()
-		wbc, err := newWBCFromSettings(ctx, &app, &kubeClient, nil)
+		wbc, err := newWBCFromSettings(ctx, &app, &kubeClient, nil, nil)
 		require.NoError(t, err)
 		wbc.Method = WriteBackGit
 		wbc.GetCreds = func(app *v1alpha1.Application) (git.Creds, error) {
@@ -4906,7 +5356,7 @@ func Test_CommitUpdates(t *testing.T) {
 		gitMock.On("SymRefToBranch", mock.Anything).Return("mydefaultbranch", nil)
 
 		ctx := context.Background()
-		wbc, err := newWBCFromSettings(ctx, app, &kubeClient, nil)
+		wbc, err := newWBCFromSettings(ctx, app, &kubeClient, nil, nil)
 		require.NoError(t, err)
 		wbc.Method = WriteBackGit
 		wbc.GetCreds = func(app *v1alpha1.Application) (git.Creds, error) {
@@ -4935,7 +5385,7 @@ func Test_CommitUpdates(t *testing.T) {
 		gitMock.On("Push", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 		gitMock.On("SymRefToBranch", mock.Anything).Return("mydefaultbranch", nil)
 		ctx := context.Background()
-		wbc, err := newWBCFromSettings(ctx, &app, &kubeClient, nil)
+		wbc, err := newWBCFromSettings(ctx, &app, &kubeClient, nil, nil)
 		require.NoError(t, err)
 		wbc.Method = WriteBackGit
 		wbc.GetCreds = func(app *v1alpha1.Application) (git.Creds, error) {
@@ -4953,7 +5403,7 @@ func Test_CommitUpdates(t *testing.T) {
 				NewTag: tag.NewImageTag("1.1", time.Now(), ""),
 			},
 		}
-		gitMock.On("Checkout", TemplateBranchName(ctx, wbc.GitWriteBranch, "", "", cl), mock.Anything).Return(nil)
+		gitMock.On("Checkout", TemplateBranchName(ctx, wbc.GitWriteBranch, "", "", "", cl), mock.Anything).Return(nil)
 
 		applicationImages := &ApplicationImages{
 			Application:     app,
@@ -4991,7 +5441,7 @@ helm:
 		gitMock.On("SymRefToBranch", mock.Anything).Return("mydefaultbranch", nil)
 
 		ctx := context.Background()
-		wbc, err := newWBCFromSettings(ctx, app, &kubeClient, nil)
+		wbc, err := newWBCFromSettings(ctx, app, &kubeClient, nil, nil)
 		wbc.Method = WriteBackGit
 		wbc.GetCreds = func(app *v1alpha1.Application) (git.Creds, error) {
 			return git.NopCreds{}, nil
@@ -5054,7 +5504,7 @@ helm:
 		gitMock.On("SymRefToBranch", mock.Anything).Return("mydefaultbranch", nil)
 
 		ctx := context.Background()
-		wbc, err := newWBCFromSettings(ctx, app, &kubeClient, nil)
+		wbc, err := newWBCFromSettings(ctx, app, &kubeClient, nil, nil)
 		wbc.Method = WriteBackGit
 		wbc.GetCreds = func(app *v1alpha1.Application) (git.Creds, error) {
 			return git.NopCreds{}, nil
@@ -5117,7 +5567,7 @@ helm:
 		gitMock.On("SymRefToBranch", mock.Anything).Return("mydefaultbranch", nil)
 
 		ctx := context.Background()
-		wbc, err := newWBCFromSettings(ctx, app, &kubeClient, nil)
+		wbc, err := newWBCFromSettings(ctx, app, &kubeClient, nil, nil)
 		require.NoError(t, err)
 		wbc.Method = WriteBackGit
 		wbc.GetCreds = func(app *v1alpha1.Application) (git.Creds, error) {
@@ -5173,7 +5623,7 @@ replacements: []
 		gitMock.On("SymRefToBranch", mock.Anything).Return("mydefaultbranch", nil)
 
 		ctx := context.Background()
-		wbc, err := newWBCFromSettings(ctx, app, &kubeClient, nil)
+		wbc, err := newWBCFromSettings(ctx, app, &kubeClient, nil, nil)
 		require.NoError(t, err)
 		wbc.Method = WriteBackGit
 		wbc.GetCreds = func(app *v1alpha1.Application) (git.Creds, error) {
@@ -5247,7 +5697,7 @@ replacements: []
 		}).Return(nil)
 
 		ctx := context.Background()
-		wbc, err := newWBCFromSettings(ctx, app, &kubeClient, nil)
+		wbc, err := newWBCFromSettings(ctx, app, &kubeClient, nil, nil)
 		wbc.Method = WriteBackGit
 		wbc.GetCreds = func(app *v1alpha1.Application) (git.Creds, error) {
 			return git.NopCreds{}, nil
@@ -5293,7 +5743,7 @@ replacements: []
 		}
 
 		ctx := context.Background()
-		wbc, err := newWBCFromSettings(ctx, app, &kubeClient, settings)
+		wbc, err := newWBCFromSettings(ctx, app, &kubeClient, commitTestArgoDB, settings)
 		require.NoError(t, err)
 		wbc.GitClient = gitMock
 		app.Spec.Source.TargetRevision = "HEAD"
@@ -5325,7 +5775,7 @@ replacements: []
 			},
 		}
 		ctx := context.Background()
-		wbc, err := newWBCFromSettings(ctx, &app, &kubeClient, settings)
+		wbc, err := newWBCFromSettings(ctx, &app, &kubeClient, commitTestArgoDB, settings)
 		require.NoError(t, err)
 		wbc.GitClient = gitMock
 
@@ -5353,7 +5803,7 @@ replacements: []
 			},
 		}
 		ctx := context.Background()
-		wbc, err := newWBCFromSettings(ctx, &app, &kubeClient, settings)
+		wbc, err := newWBCFromSettings(ctx, &app, &kubeClient, commitTestArgoDB, settings)
 		require.NoError(t, err)
 		wbc.GitClient = gitMock
 
@@ -5380,7 +5830,7 @@ replacements: []
 			},
 		}
 		ctx := context.Background()
-		wbc, err := newWBCFromSettings(ctx, &app, &kubeClient, settings)
+		wbc, err := newWBCFromSettings(ctx, &app, &kubeClient, commitTestArgoDB, settings)
 		require.NoError(t, err)
 		wbc.GitClient = gitMock
 
@@ -5408,7 +5858,7 @@ replacements: []
 			},
 		}
 		ctx := context.Background()
-		wbc, err := newWBCFromSettings(ctx, &app, &kubeClient, settings)
+		wbc, err := newWBCFromSettings(ctx, &app, &kubeClient, commitTestArgoDB, settings)
 		require.NoError(t, err)
 		wbc.GitClient = gitMock
 
@@ -5436,7 +5886,7 @@ replacements: []
 			},
 		}
 		ctx := context.Background()
-		wbc, err := newWBCFromSettings(ctx, &app, &kubeClient, settings)
+		wbc, err := newWBCFromSettings(ctx, &app, &kubeClient, commitTestArgoDB, settings)
 		require.NoError(t, err)
 		wbc.GitClient = gitMock
 
@@ -5467,7 +5917,7 @@ replacements: []
 		}
 
 		ctx := context.Background()
-		wbc, err := newWBCFromSettings(ctx, app, &kubeClient, settings)
+		wbc, err := newWBCFromSettings(ctx, app, &kubeClient, commitTestArgoDB, settings)
 		require.NoError(t, err)
 		wbc.GitClient = gitMock
 		app.Spec.Source.TargetRevision = "HEAD"

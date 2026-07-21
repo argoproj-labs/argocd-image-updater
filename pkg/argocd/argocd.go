@@ -12,6 +12,7 @@ import (
 
 	"github.com/argoproj/argo-cd/v3/pkg/apiclient/application"
 	argocdapi "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1"
+	"github.com/argoproj/argo-cd/v3/util/db"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
@@ -140,7 +141,7 @@ func nameMatchesLabels(ctx context.Context, appLabels map[string]string, selecto
 
 // processApplicationForUpdate checks if an application is of a supported type,
 // and if so, creates an ApplicationImages struct and adds it to the update map.
-func processApplicationForUpdate(ctx context.Context, app *argocdapi.Application, appRef iuapi.ApplicationRef, appCommonUpdateSettings *iuapi.CommonUpdateSettings, appWBCSettings *WriteBackConfig, appNSName string, appsForUpdate map[string]ApplicationImages, webhookEvent *WebhookEvent) {
+func processApplicationForUpdate(ctx context.Context, kubeClient *kube.ImageUpdaterKubernetesClient, app *argocdapi.Application, appRef iuapi.ApplicationRef, appCommonUpdateSettings *iuapi.CommonUpdateSettings, appImagesVerification *iuapi.ImagesVerification, appWBCSettings *WriteBackConfig, appNSName string, appsForUpdate map[string]ApplicationImages, webhookEvent *WebhookEvent) {
 	log := log.LoggerFromContext(ctx)
 	sourceType := getApplicationSourceType(app, appWBCSettings)
 
@@ -151,7 +152,7 @@ func processApplicationForUpdate(ctx context.Context, app *argocdapi.Application
 	}
 	log.Tracef("processing app '%s' of type '%v'", appNSName, sourceType)
 
-	imageList := parseImageList(ctx, appRef.Images, appCommonUpdateSettings, webhookEvent)
+	imageList := parseImageList(ctx, kubeClient, app.GetNamespace(), appRef.Images, appCommonUpdateSettings, appImagesVerification, webhookEvent)
 
 	if imageList == nil || len(*imageList) == 0 {
 		return
@@ -228,7 +229,7 @@ func sortApplicationRefs(applicationRefs []iuapi.ApplicationRef) []iuapi.Applica
 
 // FilterApplicationsForUpdate Retrieve a list of applications from ArgoCD that qualify for image updates
 // Application needs either to be of type Kustomize or Helm.
-func FilterApplicationsForUpdate(ctx context.Context, ctrlClient *ArgoCDK8sClient, kubeClient *kube.ImageUpdaterKubernetesClient, cr *iuapi.ImageUpdater, webhookEvent *WebhookEvent) (map[string]ApplicationImages, error) {
+func FilterApplicationsForUpdate(ctx context.Context, ctrlClient *ArgoCDK8sClient, kubeClient *kube.ImageUpdaterKubernetesClient, argocdDB db.ArgoDB, cr *iuapi.ImageUpdater, webhookEvent *WebhookEvent) (map[string]ApplicationImages, error) {
 	baseLogger := log.LoggerFromContext(ctx)
 
 	// Validate CR configuration
@@ -268,6 +269,7 @@ func FilterApplicationsForUpdate(ctx context.Context, ctrlClient *ArgoCDK8sClien
 
 	// Establish the base global settings
 	globalUpdateSettings := cr.Spec.CommonUpdateSettings
+	globalImagesVerification := cr.Spec.ImagesVerification
 
 	// For each app in the list, find its best matching rule from the CR.
 	for _, app := range allAppsInNamespace.Items {
@@ -283,12 +285,14 @@ func FilterApplicationsForUpdate(ctx context.Context, ctrlClient *ArgoCDK8sClien
 			if matches && nameMatchesLabels(appCtx, app.Labels, applicationRef.LabelSelectors) {
 				localAppRef := applicationRef
 				var mergedCommonUpdateSettings *iuapi.CommonUpdateSettings
+				var mergedImagesVerification *iuapi.ImagesVerification
 				var mergedWBCSettings *iuapi.WriteBackConfig
 				var appWBCSettings *WriteBackConfig
 				var err error
 				// When UseAnnotations is true, we ignore all CR-based configuration
 				// (Images, CommonUpdateSettings, WriteBackConfig) and instead read everything from
 				// the Application's legacy argocd-image-updater.argoproj.io/* annotations.
+				// Only NamePattern, LabelSelectors and ImagesVerification are considered at app level.
 				if applicationRef.UseAnnotations != nil && *applicationRef.UseAnnotations {
 					appLogger.Debugf("Read settings from application Annotations")
 
@@ -299,7 +303,7 @@ func FilterApplicationsForUpdate(ctx context.Context, ctrlClient *ArgoCDK8sClien
 					}
 
 					appRefWBC := getWriteBackConfigFromAnnotations(&app)
-					appWBCSettings, err = newWBCFromSettings(appCtx, &app, kubeClient, appRefWBC)
+					appWBCSettings, err = newWBCFromSettings(appCtx, &app, kubeClient, argocdDB, appRefWBC)
 					if err != nil {
 						appLogger.Warnf("Could not create write-back config, skipping: %v", err)
 						continue
@@ -317,12 +321,16 @@ func FilterApplicationsForUpdate(ctx context.Context, ctrlClient *ArgoCDK8sClien
 					localAppRef.Images = appRefImages
 					localAppRef.WriteBackConfig = appRefWBC
 					mergedWBCSettings = appRefWBC
+					mergedImagesVerification = applicationRef.ImagesVerification
+
 				} else {
 					// Calculate the effective settings for this ApplicationRef by layering on top of global.
 					appLogger.Debugf("Read settings from Image Updater CR")
 					mergedCommonUpdateSettings = mergeCommonUpdateSettings(globalUpdateSettings, applicationRef.CommonUpdateSettings)
+					mergedImagesVerification = mergeImagesVerification(globalImagesVerification, applicationRef.ImagesVerification)
+
 					mergedWBCSettings = mergeWBCSettings(cr.Spec.WriteBackConfig, applicationRef.WriteBackConfig)
-					appWBCSettings, err = newWBCFromSettings(appCtx, &app, kubeClient, mergedWBCSettings)
+					appWBCSettings, err = newWBCFromSettings(appCtx, &app, kubeClient, argocdDB, mergedWBCSettings)
 					if err != nil {
 						appLogger.Warnf("Could not create write-back config, skipping: %v", err)
 						continue
@@ -336,6 +344,7 @@ func FilterApplicationsForUpdate(ctx context.Context, ctrlClient *ArgoCDK8sClien
 						LabelSelectors:       localAppRef.LabelSelectors,
 						UseAnnotations:       localAppRef.UseAnnotations,
 						CommonUpdateSettings: mergedCommonUpdateSettings,
+						ImagesVerification:   mergedImagesVerification,
 						WriteBackConfig:      mergedWBCSettings,
 						Images:               localAppRef.Images,
 					}, "", "  ")
@@ -345,7 +354,7 @@ func FilterApplicationsForUpdate(ctx context.Context, ctrlClient *ArgoCDK8sClien
 						appLogger.Tracef("Resulted Image Updater object: %s", string(appRefJSON))
 					}
 				}
-				processApplicationForUpdate(appCtx, &app, localAppRef, mergedCommonUpdateSettings, appWBCSettings, appNSName, appsForUpdate, webhookEvent)
+				processApplicationForUpdate(appCtx, kubeClient, &app, localAppRef, mergedCommonUpdateSettings, mergedImagesVerification, appWBCSettings, appNSName, appsForUpdate, webhookEvent)
 				break // Found the best match, move to the next app
 			}
 		}
@@ -379,6 +388,33 @@ func mergeCommonUpdateSettings(settings ...*iuapi.CommonUpdateSettings) *iuapi.C
 		if s.Platforms != nil {
 			merged.Platforms = s.Platforms
 		}
+	}
+	return merged
+}
+
+// mergeImagesVerification merges a list of ImagesVerification.
+// The later settings in the list take precedence.
+func mergeImagesVerification(settings ...*iuapi.ImagesVerification) *iuapi.ImagesVerification {
+	merged := &iuapi.ImagesVerification{}
+	anyNonNil := false
+	for _, s := range settings {
+		if s == nil {
+			continue
+		}
+		anyNonNil = true
+		if s.Enabled != nil {
+			merged.Enabled = s.Enabled
+		}
+		if s.CosignKey != nil {
+			merged.CosignKey = s.CosignKey
+		}
+	}
+	if !anyNonNil {
+		// No imagesVerification block was present at any scope.
+		// Return nil so newImageFromImagesVerification exits early and the
+		// image proceeds without verification (same behaviour as before the
+		// feature was added).
+		return nil
 	}
 	return merged
 }
@@ -443,6 +479,8 @@ func countPullRequestProviders(pr *iuapi.PullRequest) int {
 
 // mergeWBCSettings merges global and app-specific WriteBackConfig settings.
 // App-specific settings take precedence over global settings.
+// A nil Method on the app level means "inherit from global" (not "default to argocd").
+// Defaulting a nil Method to WriteBackMethodArgoCD is the sole responsibility of newWBCFromSettings.
 func mergeWBCSettings(global *iuapi.WriteBackConfig, appWBC *iuapi.WriteBackConfig) *iuapi.WriteBackConfig {
 	if global == nil && appWBC == nil {
 		return &iuapi.WriteBackConfig{}
@@ -489,10 +527,11 @@ func mergeWBCSettings(global *iuapi.WriteBackConfig, appWBC *iuapi.WriteBackConf
 // newWBCFromSettings creates a new WriteBackConfig from a given, final set of
 // settings within the context of a specific application. It is responsible for
 // resolving all app-dependent fields, like target paths.
-func newWBCFromSettings(ctx context.Context, app *argocdapi.Application, kubeClient *kube.ImageUpdaterKubernetesClient, settings *iuapi.WriteBackConfig) (*WriteBackConfig, error) {
+func newWBCFromSettings(ctx context.Context, app *argocdapi.Application, kubeClient *kube.ImageUpdaterKubernetesClient, argocdDB db.ArgoDB, settings *iuapi.WriteBackConfig) (*WriteBackConfig, error) {
 	wbc := &WriteBackConfig{
 		Method:                 WriteBackApplication,
 		ArgoClient:             nil,
+		ArgocdDB:               argocdDB,
 		GitClient:              nil,
 		GetCreds:               nil,
 		GitBranch:              "",
@@ -522,8 +561,8 @@ func newWBCFromSettings(ctx context.Context, app *argocdapi.Application, kubeCli
 		return wbc, nil
 	}
 
-	// If no method is specified, or it's explicitly 'argocd', we are done.
-	if settings.Method == nil || strings.TrimSpace(*settings.Method) == "argocd" {
+	// If no method is specified, or it's explicitly the argocd method, we are done.
+	if settings.Method == nil || strings.TrimSpace(*settings.Method) == WriteBackMethodArgoCD {
 		return wbc, nil
 	}
 
@@ -608,9 +647,43 @@ func newImageFromManifestTargetSettings(settings *iuapi.ManifestTarget, img *Ima
 	return img, nil
 }
 
+// newImageFromImagesVerification creates a new Image and populates it
+// by layering the given ImagesVerification settings.
+func newImageFromImagesVerification(kubeClient *kube.ImageUpdaterKubernetesClient, appNamespace string, settings *iuapi.ImagesVerification, img *Image) (*Image, error) {
+	if settings == nil {
+		return img, nil
+	}
+
+	// if empty fall back to default Enable == true
+	img.EnableVerification = true // default when block is present
+	if settings.Enabled != nil {
+		img.EnableVerification = *settings.Enabled
+	}
+
+	if !img.EnableVerification {
+		return img, nil // opted out
+	}
+
+	if img.Verify == nil {
+		img.Verify = &image.Verify{}
+	}
+
+	if settings.CosignKey != nil {
+		var err error
+		img.Verify.CosignKey, err = kubeClient.KubeClient.GetSecretField(appNamespace, settings.CosignKey.SecretName, settings.CosignKey.Key)
+		if err != nil {
+			return nil, fmt.Errorf("failed to fetch public key secret field: %v", err)
+		}
+	} else {
+		return nil, fmt.Errorf("cosignKey is required when verification is enabled")
+	}
+
+	return img, nil
+}
+
 // parseImageList parses a list of ImageConfig objects from the ImageUpdater CR
 // into a ImageList, which is used internally for image management.
-func parseImageList(ctx context.Context, images []iuapi.ImageConfig, appSettings *iuapi.CommonUpdateSettings, webhookEvent *WebhookEvent) *ImageList {
+func parseImageList(ctx context.Context, kubeClient *kube.ImageUpdaterKubernetesClient, appNamespace string, images []iuapi.ImageConfig, appSettings *iuapi.CommonUpdateSettings, appImagesVerification *iuapi.ImagesVerification, webhookEvent *WebhookEvent) *ImageList {
 	log := log.LoggerFromContext(ctx)
 	results := make(ImageList, 0)
 	for _, im := range images {
@@ -622,6 +695,13 @@ func parseImageList(ctx context.Context, images []iuapi.ImageConfig, appSettings
 		img, err := newImageFromManifestTargetSettings(im.ManifestTarget, img)
 		if err != nil {
 			log.Warnf("Could not set manifest target config for image %s, skipping: %v", im.ImageName, err)
+			continue
+		}
+
+		finalCommonImageVerification := mergeImagesVerification(appImagesVerification, im.ImagesVerification)
+		img, err = newImageFromImagesVerification(kubeClient, appNamespace, finalCommonImageVerification, img)
+		if err != nil {
+			log.Warnf("Could not set images verification settings for image %s, skipping: %v", im.ImageName, err)
 			continue
 		}
 
@@ -1023,6 +1103,11 @@ func getApplicationType(app *argocdapi.Application, wbc *WriteBackConfig) Applic
 		return ApplicationTypeKustomize
 	} else if sourceType == argocdapi.ApplicationSourceTypeHelm {
 		return ApplicationTypeHelm
+	} else if sourceType == argocdapi.ApplicationSourceTypePlugin &&
+		wbc != nil && wbc.Method == WriteBackGit {
+		// Plugin apps: the write-back target format determines serialization, not the source type.
+		// KustomizeBase being non-empty is already caught above via getApplicationSourceType.
+		return ApplicationTypeHelm
 	} else {
 		return ApplicationTypeUnsupported
 	}
@@ -1056,6 +1141,22 @@ func getApplicationSourceType(app *argocdapi.Application, wbc *WriteBackConfig) 
 		return argocdapi.ApplicationSourceTypeDirectory
 	}
 
+	// For SourceHydrator apps, Status.SourceType reflects the sync source (typically
+	// "Directory" since it syncs rendered manifests), not the dry source. If the DrySource
+	// has explicit Helm/Kustomize/Plugin config, use that to determine the actual type.
+	if app.Spec.SourceHydrator != nil {
+		ds := app.Spec.SourceHydrator.DrySource
+		if ds.Helm != nil {
+			return argocdapi.ApplicationSourceTypeHelm
+		}
+		if ds.Kustomize != nil {
+			return argocdapi.ApplicationSourceTypeKustomize
+		}
+		if ds.Plugin != nil {
+			return argocdapi.ApplicationSourceTypePlugin
+		}
+	}
+
 	return app.Status.SourceType
 }
 
@@ -1078,6 +1179,19 @@ func getApplicationSource(ctx context.Context, app *argocdapi.Application, wbc *
 			}
 		}
 
+		// Second pass: use Status.SourceTypes index alignment to handle implicit source types.
+		// ArgoCD sets Status.SourceTypes[i] for Spec.Sources[i], so a kustomize app that has no
+		// explicit kustomize: spec field (ArgoCD auto-detects it via kustomization.yaml) will be
+		// found here even though s.Kustomize == nil in the first pass above.
+		if sourceType != argocdapi.ApplicationSourceTypeDirectory &&
+			len(app.Status.SourceTypes) == len(app.Spec.Sources) {
+			for i, st := range app.Status.SourceTypes {
+				if st == sourceType {
+					return &app.Spec.Sources[i]
+				}
+			}
+		}
+
 		// Fallback: look for any Helm or Kustomize source
 		for i := range app.Spec.Sources {
 			s := &app.Spec.Sources[i]
@@ -1088,6 +1202,24 @@ func getApplicationSource(ctx context.Context, app *argocdapi.Application, wbc *
 
 		log.Tracef("Could not get Source of type Helm or Kustomize from multisource configuration. Returning first source from the list")
 		return &app.Spec.Sources[0]
+	}
+
+	// If the application uses a SourceHydrator, derive the source from its DrySource.
+	// The dry source is the write-back target: it holds the original (unhydrated) manifests.
+	// We construct the ApplicationSource manually (rather than using GetDrySource()) to
+	// include the Helm/Kustomize/Directory/Plugin fields, which downstream code relies on.
+	if app.Spec.SourceHydrator != nil {
+		ds := app.Spec.SourceHydrator.DrySource
+		source := argocdapi.ApplicationSource{
+			RepoURL:        ds.RepoURL,
+			Path:           ds.Path,
+			TargetRevision: ds.TargetRevision,
+			Helm:           ds.Helm,
+			Kustomize:      ds.Kustomize,
+			Directory:      ds.Directory,
+			Plugin:         ds.Plugin,
+		}
+		return &source
 	}
 
 	return app.Spec.Source

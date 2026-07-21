@@ -1,10 +1,13 @@
 package webhook
 
 import (
+	"crypto/subtle"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+	"strings"
 
 	"github.com/argoproj-labs/argocd-image-updater/pkg/argocd"
 )
@@ -38,8 +41,8 @@ func (q *QuayWebhook) Validate(r *http.Request) error {
 			return fmt.Errorf("missing webhook secret")
 		}
 
-		if secret != q.secret {
-			return fmt.Errorf("incorrect webhook secret")
+		if subtle.ConstantTimeCompare([]byte(secret), []byte(q.secret)) != 1 {
+			return fmt.Errorf("invalid webhook secret")
 		}
 	}
 
@@ -75,9 +78,32 @@ func (q *QuayWebhook) Parse(r *http.Request) (*argocd.WebhookEvent, error) {
 	}
 	tag = payload.UpdatedTags[0]
 
+	registryURL := "quay.io"
+	if payload.DockerUrl != "" {
+		registryURL = extractRegistryFromDockerURL(payload.DockerUrl)
+	}
+
 	return &argocd.WebhookEvent{
-		RegistryURL: "quay.io",
+		RegistryURL: registryURL,
 		Repository:  payload.Repository,
 		Tag:         tag,
 	}, nil
+}
+
+// extractRegistryFromDockerURL extracts the registry hostname from a docker_url
+// field such as "quay.apps.example.com/namespace/repo"
+func extractRegistryFromDockerURL(dockerURL string) string {
+	raw := dockerURL
+	if !strings.HasPrefix(dockerURL, "http://") && !strings.HasPrefix(dockerURL, "https://") {
+		dockerURL = "https://" + dockerURL
+	}
+	if parsed, err := url.Parse(dockerURL); err == nil && parsed.Host != "" {
+		return parsed.Host
+	}
+	// Fallback: try to extract host manually by splitting on the first '/'
+	parts := strings.Split(raw, "/")
+	if len(parts) > 0 && strings.Contains(parts[0], ".") {
+		return parts[0]
+	}
+	return "quay.io"
 }

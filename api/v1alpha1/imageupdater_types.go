@@ -42,6 +42,13 @@ type ImageUpdaterSpec struct {
 	// +listType=map
 	// +listMapKey=namePattern
 	ApplicationRefs []ApplicationRef `json:"applicationRefs"`
+
+	// ImagesVerification defines the global default image signature verification policy.
+	// When set, every image update is subject to cryptographic verification before being
+	// committed to Git or applied to an Argo CD Application.
+	// Can be overridden at the ApplicationRef or ImageConfig level.
+	// +optional
+	*ImagesVerification `json:"imagesVerification,omitempty"`
 }
 
 // ApplicationRef contains various criteria by which to include applications for managing by image updater
@@ -64,6 +71,13 @@ type ApplicationRef struct {
 	// +optional
 	// +kubebuilder:default:=false
 	UseAnnotations *bool `json:"useAnnotations,omitempty"`
+
+	// ImagesVerification overrides the global signature verification policy for applications
+	// matched by this ApplicationRef. When set, it takes precedence over the spec-level
+	// ImagesVerification for all images in this group, but can still be overridden
+	// at the individual ImageConfig level.
+	// +optional
+	*ImagesVerification `json:"imagesVerification,omitempty"`
 
 	// --- Overrides for spec-level settings, specific to THIS ApplicationRef ---
 	// NOTE: These fields are ignored when UseAnnotations is true.
@@ -148,6 +162,12 @@ type ImageConfig struct {
 	// This whole block is optional if the image update isn't written to a manifest in a structured way.
 	// +optional
 	*ManifestTarget `json:"manifestTargets,omitempty"`
+
+	// ImagesVerification overrides the signature verification policy for this specific image.
+	// When set, it takes precedence over both the spec-level and ApplicationRef-level
+	// ImagesVerification.
+	// +optional
+	*ImagesVerification `json:"imagesVerification,omitempty"`
 }
 
 // CommonUpdateSettings groups common update strategy settings that can be applied
@@ -195,8 +215,6 @@ type CommonUpdateSettings struct {
 type WriteBackConfig struct {
 	// Method defines the method for writing back updated image versions.
 	// This acts as the default if not overridden. If not specified, defaults to "argocd".
-	// +kubebuilder:validation:Required
-	// +kubebuilder:default:="argocd"
 	// +kubebuilder:validation:Pattern=`^(argocd|git|git:[a-zA-Z0-9][a-zA-Z0-9-._/:]*)$`
 	Method *string `json:"method,omitempty"`
 
@@ -277,6 +295,38 @@ type KustomizeTarget struct {
 	// Example: "docker.io/library/nginx".
 	// This field is required if the Kustomize target is used.
 	Name *string `json:"name"`
+}
+
+// ImagesVerification defines the image signature verification policy for one or more images.
+//
+// At least one verification method must be provided when enabled is true.
+// Currently, the only supported method is cosign key-based verification via cosignKey.
+//
+// +kubebuilder:validation:XValidation:rule="self.enabled == false || has(self.cosignKey)",message="at least one verification method (cosignKey) is required when verification is enabled"
+type ImagesVerification struct {
+	// Enabled controls whether signature verification is active at this scope.
+	// Defaults to true when the ImagesVerification block is present.
+	// Set to false to explicitly opt out of verification for this image or group.
+	// +optional
+	// +kubebuilder:default:=true
+	Enabled *bool `json:"enabled,omitempty"`
+
+	// CosignKey references a Kubernetes Secret in the same namespace as the
+	// ImageUpdater CR that holds the PEM-encoded ECDSA public key used to verify
+	// cosign signatures. Providing this field selects cosign key-based verification.
+	// +optional
+	CosignKey *SecretRef `json:"cosignKey,omitempty"`
+}
+
+// SecretRef identifies a specific key within a Kubernetes Secret.
+// The Secret must reside in the same namespace as the ImageUpdater CR.
+type SecretRef struct {
+	// SecretName is the name of the Kubernetes Secret.
+	SecretName string `json:"secretName" protobuf:"bytes,1,opt,name=secretName"`
+
+	// Key is the key within the Secret's data map whose value contains the credential material
+	// (e.g. "cosign.pub" for a PEM-encoded public key).
+	Key string `json:"key" protobuf:"bytes,2,opt,name=key"`
 }
 
 //------------------------Status---------------------------------------------//

@@ -51,7 +51,7 @@ func (h *HarborWebhook) Validate(r *http.Request) error {
 
 		// Harbor sends plain secret value directly in Authorization header for external webhooks
 		if subtle.ConstantTimeCompare([]byte(authHeader), []byte(h.secret)) != 1 {
-			return fmt.Errorf("incorrect webhook secret")
+			return fmt.Errorf("invalid webhook secret")
 		}
 	}
 

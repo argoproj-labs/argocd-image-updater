@@ -9,6 +9,7 @@ import (
 	"github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	v1core "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -335,6 +336,73 @@ func Test_GetApplicationType(t *testing.T) {
 		assert.Equal(t, ApplicationTypeKustomize, appType)
 	})
 
+	t.Run("Plugin app with git write-back returns Helm type", func(t *testing.T) {
+		application := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "test-app",
+				Namespace: "argocd",
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: &v1alpha1.ApplicationSource{
+					Plugin: &v1alpha1.ApplicationSourcePlugin{},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypePlugin,
+			},
+		}
+		wbc := &WriteBackConfig{
+			Method: WriteBackGit,
+		}
+		appType := GetApplicationType(application, wbc)
+		assert.Equal(t, ApplicationTypeHelm, appType)
+	})
+
+	t.Run("Plugin app with kustomization write-back target returns Kustomize type", func(t *testing.T) {
+		// writeBackTarget: "kustomization" sets wbc.KustomizeBase via parseKustomizeBase().
+		// getApplicationSourceType() checks KustomizeBase first, so the Plugin source type
+		// is never reached — this is why Plugin + kustomization already works without the
+		// new Plugin branch added in this patch.
+		application := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "test-app",
+				Namespace: "argocd",
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: &v1alpha1.ApplicationSource{
+					Plugin: &v1alpha1.ApplicationSourcePlugin{},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypePlugin,
+			},
+		}
+		wbc := &WriteBackConfig{
+			Method:        WriteBackGit,
+			KustomizeBase: "k8s/apps/my-app", // set by parseKustomizeBase when writeBackTarget: "kustomization"
+		}
+		assert.Equal(t, ApplicationTypeKustomize, GetApplicationType(application, wbc))
+	})
+
+	t.Run("Plugin app with argocd write-back remains unsupported", func(t *testing.T) {
+		// Spec.Source is intentionally omitted: source type is driven by Status.SourceType, not Spec.
+		application := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "test-app",
+				Namespace: "argocd",
+			},
+			Spec: v1alpha1.ApplicationSpec{},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypePlugin,
+			},
+		}
+		// nil wbc → unsupported
+		assert.Equal(t, ApplicationTypeUnsupported, GetApplicationType(application, nil))
+		// explicit argocd method → unsupported
+		wbc := &WriteBackConfig{Method: WriteBackApplication}
+		assert.Equal(t, ApplicationTypeUnsupported, GetApplicationType(application, wbc))
+	})
+
 }
 
 func Test_GetApplicationSourceType(t *testing.T) {
@@ -567,6 +635,223 @@ func Test_GetApplicationSource(t *testing.T) {
 		assert.Equal(t, appSource.Path, "sources/source1")
 	})
 
+	// Reproduces the bug from GitHub issue #1096: a multi-source app where the kustomize source
+	// has no explicit kustomize: spec field (ArgoCD auto-detects it via kustomization.yaml).
+	// Without the Status.SourceTypes alignment second pass, getApplicationSource falls through to
+	// the Helm fallback and returns the Redis chart source, causing git credential lookup to fail
+	// against a Helm OCI registry URL.
+	t.Run("Return kustomize Source from multisource application when kustomize source has no explicit kustomize field", func(t *testing.T) {
+		application := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "test-app",
+				Namespace: "testns",
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Sources: v1alpha1.ApplicationSources{
+					// Source 0: implicit kustomize (no kustomize: spec field)
+					v1alpha1.ApplicationSource{
+						RepoURL:        "git@github.com:organisation/gitops.git",
+						Path:           "./deployments/myapp/overlays/staging",
+						TargetRevision: "main",
+					},
+					// Source 1: Helm chart
+					v1alpha1.ApplicationSource{
+						RepoURL:        "registry-1.docker.io/bitnamicharts",
+						Chart:          "redis",
+						TargetRevision: "20.11.*",
+						Helm: &v1alpha1.ApplicationSourceHelm{
+							ValueFiles: []string{"$values/deployments/myapp/base/redis/values.yaml"},
+						},
+					},
+					// Source 2: git values ref (no path, no helm)
+					v1alpha1.ApplicationSource{
+						RepoURL:        "https://github.com/organisation/gitops.git",
+						Ref:            "values",
+						TargetRevision: "main",
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				// ArgoCD reports Kustomize for the path-based source even without an explicit kustomize: field
+				SourceTypes: []v1alpha1.ApplicationSourceType{
+					v1alpha1.ApplicationSourceTypeKustomize,
+					v1alpha1.ApplicationSourceTypeHelm,
+					v1alpha1.ApplicationSourceTypeDirectory,
+				},
+			},
+		}
+
+		wbc := &WriteBackConfig{
+			Method:        WriteBackGit,
+			KustomizeBase: "./deployments/myapp/overlays/staging",
+		}
+
+		appSource := GetApplicationSource(context.Background(), application, wbc)
+		require.NotNil(t, appSource)
+		assert.Equal(t, "git@github.com:organisation/gitops.git", appSource.RepoURL,
+			"Expected the git kustomize source, not the Helm chart source")
+		assert.Equal(t, "./deployments/myapp/overlays/staging", appSource.Path)
+		assert.Nil(t, appSource.Helm, "Should not have returned the Helm source")
+	})
+
+}
+
+func Test_GetApplicationSource_SourceHydrator(t *testing.T) {
+	t.Run("Get source with Helm config from DrySource", func(t *testing.T) {
+		application := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{Name: "test-app", Namespace: "testns"},
+			Spec: v1alpha1.ApplicationSpec{
+				SourceHydrator: &v1alpha1.SourceHydrator{
+					DrySource: v1alpha1.DrySource{
+						RepoURL:        "https://example.com/repo.git",
+						Path:           "charts/myapp",
+						TargetRevision: "main",
+						Helm: &v1alpha1.ApplicationSourceHelm{
+							Parameters: []v1alpha1.HelmParameter{{Name: "image.tag", Value: "1.0.0"}},
+						},
+					},
+				},
+			},
+		}
+
+		appSource := GetApplicationSource(context.Background(), application, nil)
+		require.NotNil(t, appSource)
+		assert.Equal(t, "https://example.com/repo.git", appSource.RepoURL)
+		assert.Equal(t, "charts/myapp", appSource.Path)
+		assert.Equal(t, "main", appSource.TargetRevision)
+		require.NotNil(t, appSource.Helm)
+		assert.Equal(t, "1.0.0", appSource.Helm.Parameters[0].Value)
+	})
+
+	t.Run("Get source with Kustomize config from DrySource", func(t *testing.T) {
+		application := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{Name: "test-app", Namespace: "testns"},
+			Spec: v1alpha1.ApplicationSpec{
+				SourceHydrator: &v1alpha1.SourceHydrator{
+					DrySource: v1alpha1.DrySource{
+						RepoURL:   "https://example.com/repo.git",
+						Path:      "overlays/hub",
+						Kustomize: &v1alpha1.ApplicationSourceKustomize{},
+					},
+				},
+			},
+		}
+
+		appSource := GetApplicationSource(context.Background(), application, nil)
+		require.NotNil(t, appSource)
+		assert.NotNil(t, appSource.Kustomize)
+	})
+
+	t.Run("Get source from DrySource without explicit type config", func(t *testing.T) {
+		application := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{Name: "test-app", Namespace: "testns"},
+			Spec: v1alpha1.ApplicationSpec{
+				SourceHydrator: &v1alpha1.SourceHydrator{
+					DrySource: v1alpha1.DrySource{
+						RepoURL:        "https://example.com/repo.git",
+						Path:           "overlays/hub",
+						TargetRevision: "main",
+					},
+				},
+			},
+		}
+
+		appSource := GetApplicationSource(context.Background(), application, nil)
+		require.NotNil(t, appSource)
+		assert.Equal(t, "main", appSource.TargetRevision)
+		assert.Nil(t, appSource.Helm)
+		assert.Nil(t, appSource.Kustomize)
+	})
+
+	t.Run("SourceHydrator takes precedence over nil Source", func(t *testing.T) {
+		application := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{Name: "test-app", Namespace: "testns"},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: nil,
+				SourceHydrator: &v1alpha1.SourceHydrator{
+					DrySource: v1alpha1.DrySource{
+						RepoURL:        "https://example.com/repo.git",
+						TargetRevision: "develop",
+					},
+				},
+			},
+		}
+
+		appSource := GetApplicationSource(context.Background(), application, nil)
+		require.NotNil(t, appSource)
+		assert.Equal(t, "develop", appSource.TargetRevision)
+	})
+}
+
+func Test_GetApplicationSourceType_SourceHydrator(t *testing.T) {
+	t.Run("Detect Helm from DrySource", func(t *testing.T) {
+		application := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{Name: "test-app", Namespace: "testns"},
+			Spec: v1alpha1.ApplicationSpec{
+				SourceHydrator: &v1alpha1.SourceHydrator{
+					DrySource: v1alpha1.DrySource{Helm: &v1alpha1.ApplicationSourceHelm{}},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{SourceType: v1alpha1.ApplicationSourceTypeDirectory},
+		}
+		assert.Equal(t, v1alpha1.ApplicationSourceTypeHelm, GetApplicationSourceType(application, nil))
+	})
+
+	t.Run("Detect Kustomize from DrySource", func(t *testing.T) {
+		application := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{Name: "test-app", Namespace: "testns"},
+			Spec: v1alpha1.ApplicationSpec{
+				SourceHydrator: &v1alpha1.SourceHydrator{
+					DrySource: v1alpha1.DrySource{Kustomize: &v1alpha1.ApplicationSourceKustomize{}},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{SourceType: v1alpha1.ApplicationSourceTypeDirectory},
+		}
+		assert.Equal(t, v1alpha1.ApplicationSourceTypeKustomize, GetApplicationSourceType(application, nil))
+	})
+
+	t.Run("Detect Plugin from DrySource", func(t *testing.T) {
+		application := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{Name: "test-app", Namespace: "testns"},
+			Spec: v1alpha1.ApplicationSpec{
+				SourceHydrator: &v1alpha1.SourceHydrator{
+					DrySource: v1alpha1.DrySource{Plugin: &v1alpha1.ApplicationSourcePlugin{}},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{SourceType: v1alpha1.ApplicationSourceTypeDirectory},
+		}
+		assert.Equal(t, v1alpha1.ApplicationSourceTypePlugin, GetApplicationSourceType(application, nil))
+	})
+
+	t.Run("Fall back to Status.SourceType when DrySource has no explicit type", func(t *testing.T) {
+		application := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{Name: "test-app", Namespace: "testns"},
+			Spec: v1alpha1.ApplicationSpec{
+				SourceHydrator: &v1alpha1.SourceHydrator{
+					DrySource: v1alpha1.DrySource{},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{SourceType: v1alpha1.ApplicationSourceTypeDirectory},
+		}
+		assert.Equal(t, v1alpha1.ApplicationSourceTypeDirectory, GetApplicationSourceType(application, nil))
+	})
+
+	t.Run("DrySource Helm overrides misleading Status.SourceType Directory", func(t *testing.T) {
+		application := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{Name: "test-app", Namespace: "testns"},
+			Spec: v1alpha1.ApplicationSpec{
+				SourceHydrator: &v1alpha1.SourceHydrator{
+					DrySource: v1alpha1.DrySource{
+						Helm: &v1alpha1.ApplicationSourceHelm{
+							Parameters: []v1alpha1.HelmParameter{{Name: "image.tag", Value: "1.0.0"}},
+						},
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{SourceType: v1alpha1.ApplicationSourceTypeDirectory},
+		}
+		assert.Equal(t, v1alpha1.ApplicationSourceTypeHelm, GetApplicationSourceType(application, nil))
+	})
 }
 
 // Test_MultiSourceHelmAndKustomize_SourceTypeDetection demonstrates the bug fixed by the
@@ -1645,7 +1930,6 @@ func (e *errorSimulatingClient) UpdateSpec(ctx context.Context, spec *applicatio
 	return &app.Spec, nil
 }
 
-// Assisted-by: Gemini AI
 func Test_parseImageList(t *testing.T) {
 	// newExpectedImageForIuCR is a helper to construct an expected image object.
 	newExpectedImageForIuCR := func(identifier string, kustomizeName string) *Image {
@@ -1743,7 +2027,7 @@ func Test_parseImageList(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := parseImageList(context.Background(), tc.inputImages, nil, nil)
+			got := parseImageList(context.Background(), nil, "", tc.inputImages, nil, nil, nil)
 			require.NotNil(t, got)
 			assert.ElementsMatch(t, tc.expectedImages, *got, "The parsed image list should match the expected list")
 		})
@@ -1753,7 +2037,7 @@ func Test_parseImageList(t *testing.T) {
 	t.Run("Webhook: match by repository with empty registry", func(t *testing.T) {
 		images := []api.ImageConfig{{Alias: "web", ImageName: "nginx:1.21.0"}}
 		event := &WebhookEvent{RegistryURL: "ghcr.io", Repository: "nginx"}
-		got := parseImageList(context.Background(), images, nil, event)
+		got := parseImageList(context.Background(), nil, "", images, nil, nil, event)
 		require.NotNil(t, got)
 		expected := ImageList{newExpectedImageForIuCR("web=nginx:1.21.0", "")}
 		assert.ElementsMatch(t, expected, *got)
@@ -1762,7 +2046,7 @@ func Test_parseImageList(t *testing.T) {
 	t.Run("Webhook: skip on repository mismatch", func(t *testing.T) {
 		images := []api.ImageConfig{{Alias: "web", ImageName: "nginx:1.21.0"}}
 		event := &WebhookEvent{RegistryURL: "ghcr.io", Repository: "redis"}
-		got := parseImageList(context.Background(), images, nil, event)
+		got := parseImageList(context.Background(), nil, "", images, nil, nil, event)
 		require.NotNil(t, got)
 		assert.Len(t, *got, 0)
 	})
@@ -1770,7 +2054,7 @@ func Test_parseImageList(t *testing.T) {
 	t.Run("Webhook: skip on registry mismatch", func(t *testing.T) {
 		images := []api.ImageConfig{{Alias: "idp", ImageName: "quay.io/dexidp/dex:v1.23.0"}}
 		event := &WebhookEvent{RegistryURL: "ghcr.io", Repository: "dexidp/dex"}
-		got := parseImageList(context.Background(), images, nil, event)
+		got := parseImageList(context.Background(), nil, "", images, nil, nil, event)
 		require.NotNil(t, got)
 		assert.Len(t, *got, 0)
 	})
@@ -1778,7 +2062,7 @@ func Test_parseImageList(t *testing.T) {
 	t.Run("Webhook: match with explicit registry and repository", func(t *testing.T) {
 		images := []api.ImageConfig{{Alias: "app", ImageName: "ghcr.io/myorg/app:1.0"}}
 		event := &WebhookEvent{RegistryURL: "ghcr.io", Repository: "myorg/app"}
-		got := parseImageList(context.Background(), images, nil, event)
+		got := parseImageList(context.Background(), nil, "", images, nil, nil, event)
 		require.NotNil(t, got)
 		expected := ImageList{newExpectedImageForIuCR("app=ghcr.io/myorg/app:1.0", "")}
 		assert.ElementsMatch(t, expected, *got)
@@ -1791,10 +2075,130 @@ func Test_parseImageList(t *testing.T) {
 			{Alias: "app", ImageName: "ghcr.io/myorg/app:2.0"},
 		}
 		event := &WebhookEvent{RegistryURL: "ghcr.io", Repository: "myorg/app"}
-		got := parseImageList(context.Background(), images, nil, event)
+		got := parseImageList(context.Background(), nil, "", images, nil, nil, event)
 		require.NotNil(t, got)
 		expected := ImageList{newExpectedImageForIuCR("app=ghcr.io/myorg/app:2.0", "")}
 		assert.ElementsMatch(t, expected, *got)
+	})
+
+	// Image signature verification behavior
+	makeVerifyKubeClient := func(secrets ...runtime.Object) *kube.ImageUpdaterKubernetesClient {
+		clientset := fake.NewFakeClientsetWithResources(secrets...)
+		return &kube.ImageUpdaterKubernetesClient{
+			KubeClient: &registryKube.KubernetesClient{
+				Clientset: clientset,
+				Context:   context.Background(),
+			},
+		}
+	}
+
+	t.Run("Verification: image proceeds normally when no imagesVerification configured at any level", func(t *testing.T) {
+		// No appImagesVerification, no image-level ImagesVerification →
+		// mergeImagesVerification(nil, nil) returns nil → newImageFromImagesVerification
+		// exits early → EnableVerification=false → image is included normally.
+		images := []api.ImageConfig{
+			{Alias: "web", ImageName: "nginx:1.21.0"},
+		}
+		got := parseImageList(context.Background(), makeVerifyKubeClient(), "argocd", images, nil, nil, nil)
+		require.NotNil(t, got)
+		assert.Len(t, *got, 1, "image with no verification config should proceed without verification")
+	})
+
+	t.Run("Verification: image included when enabled=false opts out", func(t *testing.T) {
+		// Image-level enabled=false → early return from newImageFromCommonImagesVerification,
+		// no error → image is kept in the list
+		images := []api.ImageConfig{
+			{
+				Alias:     "nginx",
+				ImageName: "nginx:1.21.0",
+				ImagesVerification: &api.ImagesVerification{
+					Enabled: boolPtr(false),
+				},
+			},
+		}
+		got := parseImageList(context.Background(), makeVerifyKubeClient(), "argocd", images, nil, nil, nil)
+		require.NotNil(t, got)
+		assert.Len(t, *got, 1)
+		assert.False(t, (*got)[0].EnableVerification)
+	})
+
+	t.Run("Verification: image included with Verify populated when valid cosign-key config", func(t *testing.T) {
+		const fakePEM = "-----BEGIN PUBLIC KEY-----\nfake\n-----END PUBLIC KEY-----"
+		secret := &v1core.Secret{
+			ObjectMeta: v1.ObjectMeta{Namespace: "argocd", Name: "org-key"},
+			Data:       map[string][]byte{"cosign.pub": []byte(fakePEM)},
+		}
+		images := []api.ImageConfig{
+			{Alias: "app", ImageName: "ghcr.io/org/app:1.0"},
+		}
+		appVerification := &api.ImagesVerification{
+
+			CosignKey: &api.SecretRef{SecretName: "org-key", Key: "cosign.pub"},
+		}
+		got := parseImageList(context.Background(), makeVerifyKubeClient(secret), "argocd", images, nil, appVerification, nil)
+		require.NotNil(t, got)
+		require.Len(t, *got, 1)
+		img := (*got)[0]
+		assert.True(t, img.EnableVerification)
+		require.NotNil(t, img.Verify)
+		assert.Equal(t, fakePEM, img.Verify.CosignKey)
+	})
+
+	t.Run("Verification: image skipped when secret does not exist in kube", func(t *testing.T) {
+		images := []api.ImageConfig{
+			{Alias: "app", ImageName: "ghcr.io/org/app:1.0"},
+		}
+		appVerification := &api.ImagesVerification{
+
+			CosignKey: &api.SecretRef{SecretName: "nonexistent-secret", Key: "cosign.pub"},
+		}
+		got := parseImageList(context.Background(), makeVerifyKubeClient(), "argocd", images, nil, appVerification, nil)
+		require.NotNil(t, got)
+		assert.Len(t, *got, 0, "image should be skipped when secret lookup fails")
+	})
+
+	t.Run("Verification: mixed list — verified image has Verify populated, unverified image proceeds normally", func(t *testing.T) {
+		const fakePEM = "-----BEGIN PUBLIC KEY-----\nfake\n-----END PUBLIC KEY-----"
+		secret := &v1core.Secret{
+			ObjectMeta: v1.ObjectMeta{Namespace: "argocd", Name: "org-key"},
+			Data:       map[string][]byte{"cosign.pub": []byte(fakePEM)},
+		}
+		images := []api.ImageConfig{
+			{
+				// image-level imagesVerification configured — included with Verify populated
+				Alias:     "app",
+				ImageName: "ghcr.io/org/app:1.0",
+				ImagesVerification: &api.ImagesVerification{
+					CosignKey: &api.SecretRef{SecretName: "org-key", Key: "cosign.pub"},
+				},
+			},
+			{
+				// no imagesVerification at any level — included without verification
+				Alias:     "nginx",
+				ImageName: "nginx:1.21.0",
+			},
+		}
+		got := parseImageList(context.Background(), makeVerifyKubeClient(secret), "argocd", images, nil, nil, nil)
+		require.NotNil(t, got)
+		require.Len(t, *got, 2)
+
+		// find each image by alias regardless of order
+		var appImg, nginxImg *Image
+		for i := range *got {
+			switch (*got)[i].ImageAlias {
+			case "app":
+				appImg = (*got)[i]
+			case "nginx":
+				nginxImg = (*got)[i]
+			}
+		}
+		require.NotNil(t, appImg, "app image should be included")
+		assert.True(t, appImg.EnableVerification)
+		assert.NotNil(t, appImg.Verify)
+
+		require.NotNil(t, nginxImg, "nginx image should be included without verification")
+		assert.False(t, nginxImg.EnableVerification)
+		assert.Nil(t, nginxImg.Verify)
 	})
 }
 
@@ -1857,7 +2261,206 @@ func Test_mergeCommonUpdateSettings(t *testing.T) {
 	})
 }
 
-// Assisted-by: Gemini AI
+func Test_mergeImagesVerification(t *testing.T) {
+	secretRef := func(name, key string) *api.SecretRef {
+		return &api.SecretRef{SecretName: name, Key: key}
+	}
+
+	t.Run("all nil inputs returns nil (no imagesVerification block present at any scope)", func(t *testing.T) {
+		// nil return lets newImageFromImagesVerification exit early so the image
+		// proceeds without verification — same behaviour as before the feature.
+		merged := mergeImagesVerification(nil, nil)
+		assert.Nil(t, merged)
+	})
+
+	t.Run("single nil input returns nil", func(t *testing.T) {
+		merged := mergeImagesVerification(nil)
+		assert.Nil(t, merged)
+	})
+
+	t.Run("global settings propagate when app level is nil", func(t *testing.T) {
+		global := &api.ImagesVerification{
+
+			Enabled:   boolPtr(true),
+			CosignKey: secretRef("org-key", "cosign.pub"),
+		}
+		merged := mergeImagesVerification(global, nil)
+		assert.True(t, *merged.Enabled)
+		assert.Equal(t, "org-key", merged.CosignKey.SecretName)
+	})
+
+	t.Run("image level overrides global cosignKey", func(t *testing.T) {
+		global := &api.ImagesVerification{
+
+			Enabled:   boolPtr(true),
+			CosignKey: secretRef("org-key", "cosign.pub"),
+		}
+		imageLevel := &api.ImagesVerification{
+
+			CosignKey: secretRef("image-key", "cosign.pub"),
+		}
+		merged := mergeImagesVerification(global, imageLevel)
+
+		assert.True(t, *merged.Enabled)
+		assert.Equal(t, "image-key", merged.CosignKey.SecretName)
+	})
+
+	t.Run("image level enabled=false opts out while inheriting global key", func(t *testing.T) {
+		global := &api.ImagesVerification{
+
+			Enabled:   boolPtr(true),
+			CosignKey: secretRef("org-key", "cosign.pub"),
+		}
+		imageLevel := &api.ImagesVerification{
+			Enabled: boolPtr(false),
+		}
+		merged := mergeImagesVerification(global, imageLevel)
+		assert.False(t, *merged.Enabled)
+		// cosignKey is inherited from global
+		assert.Equal(t, "org-key", merged.CosignKey.SecretName)
+	})
+
+	t.Run("image level nil Enable does not override global Enable=false", func(t *testing.T) {
+		global := &api.ImagesVerification{
+			Enabled: boolPtr(false),
+		}
+		imageLevel := &api.ImagesVerification{
+			CosignKey: secretRef("image-key", "cosign.pub"),
+		}
+		merged := mergeImagesVerification(global, imageLevel)
+		assert.False(t, *merged.Enabled)
+		assert.Equal(t, "image-key", merged.CosignKey.SecretName)
+	})
+
+	t.Run("three-level merge: image level wins over app over global", func(t *testing.T) {
+		global := &api.ImagesVerification{
+
+			Enabled:   boolPtr(true),
+			CosignKey: secretRef("global-key", "cosign.pub"),
+		}
+		appLevel := &api.ImagesVerification{
+			CosignKey: secretRef("app-key", "cosign.pub"),
+		}
+		imageLevel := &api.ImagesVerification{
+			CosignKey: secretRef("image-key", "cosign.pub"),
+		}
+		merged := mergeImagesVerification(global, appLevel, imageLevel)
+
+		assert.True(t, *merged.Enabled)
+		assert.Equal(t, "image-key", merged.CosignKey.SecretName)
+	})
+
+	t.Run("empty non-nil struct does not overwrite previously merged values", func(t *testing.T) {
+		global := &api.ImagesVerification{
+
+			Enabled:   boolPtr(true),
+			CosignKey: secretRef("org-key", "cosign.pub"),
+		}
+		empty := &api.ImagesVerification{}
+		merged := mergeImagesVerification(global, empty)
+
+		assert.True(t, *merged.Enabled)
+		assert.Equal(t, "org-key", merged.CosignKey.SecretName)
+	})
+}
+
+func Test_newImageFromImagesVerification(t *testing.T) {
+	const (
+		testNamespace = "argocd"
+		secretName    = "org-cosign-key"
+		secretKey     = "cosign.pub"
+		fakePEM       = "-----BEGIN PUBLIC KEY-----\nfakepemcontent\n-----END PUBLIC KEY-----"
+	)
+
+	makeKubeClient := func(secrets ...runtime.Object) *kube.ImageUpdaterKubernetesClient {
+		clientset := fake.NewFakeClientsetWithResources(secrets...)
+		return &kube.ImageUpdaterKubernetesClient{
+			KubeClient: &registryKube.KubernetesClient{
+				Clientset: clientset,
+				Context:   context.Background(),
+			},
+		}
+	}
+
+	makeSecret := func(ns, name, key, value string) runtime.Object {
+		return &v1core.Secret{
+			ObjectMeta: v1.ObjectMeta{Namespace: ns, Name: name},
+			Data:       map[string][]byte{key: []byte(value)},
+		}
+	}
+
+	baseImg := func() *Image {
+		return &Image{ContainerImage: &image.ContainerImage{}}
+	}
+
+	t.Run("nil settings returns img unchanged", func(t *testing.T) {
+		img := baseImg()
+		result, err := newImageFromImagesVerification(makeKubeClient(), testNamespace, nil, img)
+		require.NoError(t, err)
+		assert.Same(t, img, result)
+		assert.False(t, result.EnableVerification)
+		assert.Nil(t, result.Verify)
+	})
+
+	t.Run("enabled=false opts out without requiring method or secret", func(t *testing.T) {
+		img := baseImg()
+		settings := &api.ImagesVerification{Enabled: boolPtr(false)}
+		result, err := newImageFromImagesVerification(makeKubeClient(), testNamespace, settings, img)
+		require.NoError(t, err)
+		assert.False(t, result.EnableVerification)
+		assert.Nil(t, result.Verify)
+	})
+
+	t.Run("enabled=true without cosignKey returns error", func(t *testing.T) {
+		img := baseImg()
+		settings := &api.ImagesVerification{
+			Enabled: boolPtr(true),
+		}
+		_, err := newImageFromImagesVerification(makeKubeClient(), testNamespace, settings, img)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "cosignKey is required when verification is enabled")
+	})
+
+	t.Run("cosign-key with secret not found in kube returns error", func(t *testing.T) {
+		img := baseImg()
+		settings := &api.ImagesVerification{
+
+			CosignKey: &api.SecretRef{SecretName: "nonexistent", Key: secretKey},
+		}
+		_, err := newImageFromImagesVerification(makeKubeClient(), testNamespace, settings, img)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "failed to fetch public key secret field")
+	})
+
+	t.Run("cosign-key with valid secret populates Verify correctly", func(t *testing.T) {
+		secret := makeSecret(testNamespace, secretName, secretKey, fakePEM)
+		img := baseImg()
+		settings := &api.ImagesVerification{
+
+			CosignKey: &api.SecretRef{SecretName: secretName, Key: secretKey},
+		}
+		result, err := newImageFromImagesVerification(makeKubeClient(secret), testNamespace, settings, img)
+		require.NoError(t, err)
+		assert.True(t, result.EnableVerification)
+		require.NotNil(t, result.Verify)
+		assert.Equal(t, fakePEM, result.Verify.CosignKey)
+	})
+
+	t.Run("nil img.Verify is initialised before use — no panic", func(t *testing.T) {
+		secret := makeSecret(testNamespace, secretName, secretKey, fakePEM)
+		img := baseImg()
+		assert.Nil(t, img.Verify)
+		settings := &api.ImagesVerification{
+
+			CosignKey: &api.SecretRef{SecretName: secretName, Key: secretKey},
+		}
+		result, err := newImageFromImagesVerification(makeKubeClient(secret), testNamespace, settings, img)
+		require.NoError(t, err)
+		require.NotNil(t, result.Verify)
+	})
+
+}
+
 func Test_newImageFromSettings(t *testing.T) {
 	t.Run("should return default settings when settings are nil", func(t *testing.T) {
 		// Expected: A new image with the hardcoded default values.
@@ -1903,34 +2506,99 @@ func Test_newImageFromSettings(t *testing.T) {
 	})
 }
 
-// Assisted-by: Gemini AI
 func Test_mergeWBCSettings(t *testing.T) {
+	// --- Nil / empty inputs ---
+
 	t.Run("should return empty config when both are nil", func(t *testing.T) {
 		merged := mergeWBCSettings(nil, nil)
 		assert.Equal(t, &api.WriteBackConfig{}, merged)
 	})
 
-	t.Run("should return global when app is nil", func(t *testing.T) {
+	t.Run("global nil method stays nil when app is nil", func(t *testing.T) {
+		// Defaulting nil→argocd is newWBCFromSettings' job, not the merge function's.
+		global := &api.WriteBackConfig{}
+		merged := mergeWBCSettings(global, nil)
+		assert.Nil(t, merged.Method)
+		assert.NotSame(t, global, merged) // must be a copy
+	})
+
+	t.Run("global set method is returned as-is when app is nil", func(t *testing.T) {
 		global := &api.WriteBackConfig{Method: strPtr("git")}
 		merged := mergeWBCSettings(global, nil)
 		assert.Equal(t, "git", *merged.Method)
-		assert.NotSame(t, global, merged) // Ensure it's a copy
+		assert.NotSame(t, global, merged)
 	})
 
-	t.Run("should return app when global is nil", func(t *testing.T) {
-		app := &api.WriteBackConfig{Method: strPtr("argocd")}
-		merged := mergeWBCSettings(nil, app)
-		assert.Equal(t, "argocd", *merged.Method)
-	})
-
-	t.Run("app method should override global method", func(t *testing.T) {
-		global := &api.WriteBackConfig{Method: strPtr("git")}
-		app := &api.WriteBackConfig{Method: strPtr("argocd")}
+	t.Run("global nil method stays nil when app is non-nil with nil method", func(t *testing.T) {
+		global := &api.WriteBackConfig{}
+		app := &api.WriteBackConfig{}
 		merged := mergeWBCSettings(global, app)
-		assert.Equal(t, "argocd", *merged.Method)
+		assert.Nil(t, merged.Method)
 	})
 
-	t.Run("should merge GitConfig with app-level overrides", func(t *testing.T) {
+	// --- global is nil ---
+
+	t.Run("app explicit method is used when global is nil", func(t *testing.T) {
+		app := &api.WriteBackConfig{Method: strPtr("git")}
+		merged := mergeWBCSettings(nil, app)
+		assert.Equal(t, "git", *merged.Method)
+	})
+
+	t.Run("app nil method stays nil when global is nil", func(t *testing.T) {
+		// The caller (newWBCFromSettings) will treat nil as argocd.
+		app := &api.WriteBackConfig{}
+		merged := mergeWBCSettings(nil, app)
+		assert.Nil(t, merged.Method)
+	})
+
+	// --- Method inheritance ---
+
+	t.Run("app inherits global method when app method is nil", func(t *testing.T) {
+		global := &api.WriteBackConfig{Method: strPtr("git")}
+		app := &api.WriteBackConfig{} // Method is nil — should inherit
+		merged := mergeWBCSettings(global, app)
+		assert.Equal(t, "git", *merged.Method)
+	})
+
+	t.Run("app method overrides global method when explicitly set", func(t *testing.T) {
+		global := &api.WriteBackConfig{Method: strPtr("git")}
+		app := &api.WriteBackConfig{Method: strPtr(WriteBackMethodArgoCD)}
+		merged := mergeWBCSettings(global, app)
+		assert.Equal(t, WriteBackMethodArgoCD, *merged.Method)
+	})
+
+	// --- GitConfig: nil/empty appWBC edge cases ---
+
+	t.Run("global GitConfig is preserved when appWBC is nil", func(t *testing.T) {
+		global := &api.WriteBackConfig{
+			Method: strPtr("git"),
+			GitConfig: &api.GitConfig{
+				Repository: strPtr("global-repo"),
+				Branch:     strPtr("global-branch"),
+			},
+		}
+		merged := mergeWBCSettings(global, nil)
+		require.NotNil(t, merged.GitConfig)
+		assert.Equal(t, "global-repo", *merged.GitConfig.Repository)
+		assert.Equal(t, "global-branch", *merged.GitConfig.Branch)
+	})
+
+	t.Run("app GitConfig is used when global is nil", func(t *testing.T) {
+		app := &api.WriteBackConfig{
+			GitConfig: &api.GitConfig{
+				Repository: strPtr("app-repo"),
+				Branch:     strPtr("app-branch"),
+			},
+		}
+		merged := mergeWBCSettings(nil, app)
+		require.NotNil(t, merged.GitConfig)
+		assert.Equal(t, "app-repo", *merged.GitConfig.Repository)
+		assert.Equal(t, "app-branch", *merged.GitConfig.Branch)
+	})
+
+	// --- GitConfig field-level merge ---
+
+	t.Run("app GitConfig fields override global GitConfig fields", func(t *testing.T) {
 		global := &api.WriteBackConfig{
 			Method: strPtr("git"),
 			GitConfig: &api.GitConfig{
@@ -1946,11 +2614,26 @@ func Test_mergeWBCSettings(t *testing.T) {
 		merged := mergeWBCSettings(global, app)
 		require.NotNil(t, merged.GitConfig)
 		assert.Equal(t, "git", *merged.Method)
-		assert.Equal(t, "global-repo", *merged.GitConfig.Repository)
-		assert.Equal(t, "app-branch", *merged.GitConfig.Branch)
+		assert.Equal(t, "global-repo", *merged.GitConfig.Repository) // inherited
+		assert.Equal(t, "app-branch", *merged.GitConfig.Branch)      // overridden
 	})
 
-	t.Run("should create GitConfig if it only exists on app level", func(t *testing.T) {
+	t.Run("global GitConfig is fully inherited when app has no GitConfig", func(t *testing.T) {
+		global := &api.WriteBackConfig{
+			Method: strPtr("git"),
+			GitConfig: &api.GitConfig{
+				Repository: strPtr("global-repo"),
+				Branch:     strPtr("global-branch"),
+			},
+		}
+		app := &api.WriteBackConfig{} // no GitConfig at all
+		merged := mergeWBCSettings(global, app)
+		require.NotNil(t, merged.GitConfig)
+		assert.Equal(t, "global-repo", *merged.GitConfig.Repository)
+		assert.Equal(t, "global-branch", *merged.GitConfig.Branch)
+	})
+
+	t.Run("app GitConfig is created when only app has GitConfig", func(t *testing.T) {
 		global := &api.WriteBackConfig{Method: strPtr("git")}
 		app := &api.WriteBackConfig{
 			GitConfig: &api.GitConfig{
@@ -1961,6 +2644,42 @@ func Test_mergeWBCSettings(t *testing.T) {
 		require.NotNil(t, merged.GitConfig)
 		assert.Equal(t, "app-repo", *merged.GitConfig.Repository)
 	})
+
+	t.Run("WriteBackTarget is overridden by app when set", func(t *testing.T) {
+		global := &api.WriteBackConfig{
+			Method: strPtr("git"),
+			GitConfig: &api.GitConfig{
+				WriteBackTarget: strPtr("helmvalues:global/values.yaml"),
+			},
+		}
+		app := &api.WriteBackConfig{
+			GitConfig: &api.GitConfig{
+				WriteBackTarget: strPtr("helmvalues:app/values.yaml"),
+			},
+		}
+		merged := mergeWBCSettings(global, app)
+		require.NotNil(t, merged.GitConfig)
+		assert.Equal(t, "helmvalues:app/values.yaml", *merged.GitConfig.WriteBackTarget)
+	})
+
+	t.Run("WriteBackTarget is inherited from global when app does not set it", func(t *testing.T) {
+		global := &api.WriteBackConfig{
+			Method: strPtr("git"),
+			GitConfig: &api.GitConfig{
+				WriteBackTarget: strPtr("helmvalues:global/values.yaml"),
+			},
+		}
+		app := &api.WriteBackConfig{
+			GitConfig: &api.GitConfig{
+				Branch: strPtr("app-branch"),
+			},
+		}
+		merged := mergeWBCSettings(global, app)
+		require.NotNil(t, merged.GitConfig)
+		assert.Equal(t, "helmvalues:global/values.yaml", *merged.GitConfig.WriteBackTarget)
+	})
+
+	// --- PullRequest merge ---
 
 	t.Run("app PullRequest GitHub should be set when global has none", func(t *testing.T) {
 		global := &api.WriteBackConfig{Method: strPtr("git")}
@@ -2026,10 +2745,9 @@ func Test_mergeWBCSettings(t *testing.T) {
 	})
 
 	t.Run("global PullRequest should be preserved when app PullRequest is nil", func(t *testing.T) {
-		globalGH := &api.PullRequestGitHub{}
 		global := &api.WriteBackConfig{
 			GitConfig: &api.GitConfig{
-				PullRequest: &api.PullRequest{GitHub: globalGH},
+				PullRequest: &api.PullRequest{GitHub: &api.PullRequestGitHub{}},
 			},
 		}
 		app := &api.WriteBackConfig{
@@ -2037,8 +2755,32 @@ func Test_mergeWBCSettings(t *testing.T) {
 		}
 		merged := mergeWBCSettings(global, app)
 		require.NotNil(t, merged.GitConfig.PullRequest)
-		assert.Same(t, globalGH, merged.GitConfig.PullRequest.GitHub)
+		assert.NotNil(t, merged.GitConfig.PullRequest.GitHub)
 		assert.Nil(t, merged.GitConfig.PullRequest.GitLab)
+	})
+
+	// --- Deep copy immutability ---
+
+	t.Run("mutating merged Method does not affect global", func(t *testing.T) {
+		global := &api.WriteBackConfig{Method: strPtr("git")}
+		merged := mergeWBCSettings(global, nil)
+		newMethod := WriteBackMethodArgoCD
+		merged.Method = &newMethod
+		assert.Equal(t, "git", *global.Method)
+	})
+
+	t.Run("mutating merged GitConfig does not affect global GitConfig", func(t *testing.T) {
+		global := &api.WriteBackConfig{
+			GitConfig: &api.GitConfig{
+				Repository: strPtr("global-repo"),
+				Branch:     strPtr("global-branch"),
+			},
+		}
+		merged := mergeWBCSettings(global, nil)
+		require.NotNil(t, merged.GitConfig)
+		newBranch := "mutated-branch"
+		merged.GitConfig.Branch = &newBranch
+		assert.Equal(t, "global-branch", *global.GitConfig.Branch)
 	})
 }
 
@@ -2067,7 +2809,7 @@ func Test_newWBCFromSettings(t *testing.T) {
 	t.Run("should return argocd method and default file path target when settings are empty", func(t *testing.T) {
 		app, kubeClient := createTestAppAndClient()
 		settings := &api.WriteBackConfig{}
-		wbc, err := newWBCFromSettings(context.Background(), app, kubeClient, settings)
+		wbc, err := newWBCFromSettings(context.Background(), app, kubeClient, nil, settings)
 		assert.NoError(t, err)
 		assert.NotNil(t, wbc)
 		assert.Equal(t, WriteBackApplication, wbc.Method)
@@ -2077,7 +2819,7 @@ func Test_newWBCFromSettings(t *testing.T) {
 	t.Run("should return argocd method and default file path target when settings are nil", func(t *testing.T) {
 		app, kubeClient := createTestAppAndClient()
 		var settings *api.WriteBackConfig = nil
-		wbc, err := newWBCFromSettings(context.Background(), app, kubeClient, settings)
+		wbc, err := newWBCFromSettings(context.Background(), app, kubeClient, nil, settings)
 		assert.NoError(t, err)
 		assert.NotNil(t, wbc)
 		assert.Equal(t, WriteBackApplication, wbc.Method)
@@ -2089,7 +2831,7 @@ func Test_newWBCFromSettings(t *testing.T) {
 		settings := &api.WriteBackConfig{
 			Method: strPtr("git"),
 		}
-		wbc, err := newWBCFromSettings(context.Background(), app, kubeClient, settings)
+		wbc, err := newWBCFromSettings(context.Background(), app, kubeClient, nil, settings)
 		assert.NoError(t, err)
 		assert.Equal(t, WriteBackGit, wbc.Method)
 		assert.Equal(t, "some/path/.argocd-source-argocd-test_my-app.yaml", wbc.Target)
@@ -2103,7 +2845,7 @@ func Test_newWBCFromSettings(t *testing.T) {
 				WriteBackTarget: strPtr("helmvalues:another/values.yaml"),
 			},
 		}
-		wbc, err := newWBCFromSettings(context.Background(), app, kubeClient, settings)
+		wbc, err := newWBCFromSettings(context.Background(), app, kubeClient, nil, settings)
 		assert.NoError(t, err)
 		assert.Equal(t, WriteBackGit, wbc.Method)
 		assert.Equal(t, "some/path/another/values.yaml", wbc.Target)
@@ -2117,7 +2859,7 @@ func Test_newWBCFromSettings(t *testing.T) {
 				WriteBackTarget: strPtr("kustomization:overlays/prod"),
 			},
 		}
-		wbc, err := newWBCFromSettings(context.Background(), app, kubeClient, settings)
+		wbc, err := newWBCFromSettings(context.Background(), app, kubeClient, nil, settings)
 		assert.NoError(t, err)
 		assert.Equal(t, WriteBackGit, wbc.Method)
 		assert.Equal(t, "some/path/overlays/prod", wbc.KustomizeBase)
@@ -2132,7 +2874,7 @@ func Test_newWBCFromSettings(t *testing.T) {
 				Branch: strPtr("main:feature-branch"),
 			},
 		}
-		wbc, err := newWBCFromSettings(context.Background(), app, kubeClient, settings)
+		wbc, err := newWBCFromSettings(context.Background(), app, kubeClient, nil, settings)
 		assert.NoError(t, err)
 		assert.Equal(t, WriteBackGit, wbc.Method)
 		assert.Equal(t, "main", wbc.GitBranch)
@@ -2144,7 +2886,7 @@ func Test_newWBCFromSettings(t *testing.T) {
 		settings := &api.WriteBackConfig{
 			Method: strPtr("unsupported"),
 		}
-		_, err := newWBCFromSettings(context.Background(), app, kubeClient, settings)
+		_, err := newWBCFromSettings(context.Background(), app, kubeClient, nil, settings)
 		assert.Error(t, err)
 	})
 
@@ -2157,7 +2899,7 @@ func Test_newWBCFromSettings(t *testing.T) {
 				PullRequest: &api.PullRequest{GitHub: &api.PullRequestGitHub{}},
 			},
 		}
-		_, err := newWBCFromSettings(context.Background(), app, kubeClient, settings)
+		_, err := newWBCFromSettings(context.Background(), app, kubeClient, nil, settings)
 		assert.ErrorContains(t, err, "pullRequest mode does not support colon branch format")
 	})
 
@@ -2170,7 +2912,7 @@ func Test_newWBCFromSettings(t *testing.T) {
 				PullRequest: &api.PullRequest{GitHub: &api.PullRequestGitHub{}},
 			},
 		}
-		wbc, err := newWBCFromSettings(context.Background(), app, kubeClient, settings)
+		wbc, err := newWBCFromSettings(context.Background(), app, kubeClient, nil, settings)
 		assert.NoError(t, err)
 		assert.Equal(t, PRProviderGitHub, wbc.PRProvider)
 	})
@@ -2183,7 +2925,7 @@ func Test_newWBCFromSettings(t *testing.T) {
 				PullRequest: &api.PullRequest{GitHub: &api.PullRequestGitHub{}},
 			},
 		}
-		wbc, err := newWBCFromSettings(context.Background(), app, kubeClient, settings)
+		wbc, err := newWBCFromSettings(context.Background(), app, kubeClient, nil, settings)
 		assert.NoError(t, err)
 		assert.Equal(t, PRProviderGitHub, wbc.PRProvider)
 	})
@@ -2196,7 +2938,7 @@ func Test_newWBCFromSettings(t *testing.T) {
 				PullRequest: &api.PullRequest{GitLab: &api.PullRequestGitLab{}},
 			},
 		}
-		wbc, err := newWBCFromSettings(context.Background(), app, kubeClient, settings)
+		wbc, err := newWBCFromSettings(context.Background(), app, kubeClient, nil, settings)
 		assert.NoError(t, err)
 		assert.Equal(t, PRProviderGitLab, wbc.PRProvider)
 	})
@@ -2209,7 +2951,7 @@ func Test_newWBCFromSettings(t *testing.T) {
 				PullRequest: &api.PullRequest{},
 			},
 		}
-		_, err := newWBCFromSettings(context.Background(), app, kubeClient, settings)
+		_, err := newWBCFromSettings(context.Background(), app, kubeClient, nil, settings)
 		assert.ErrorContains(t, err, "pullRequest must have exactly one provider configured, got 0")
 	})
 
@@ -2224,7 +2966,7 @@ func Test_newWBCFromSettings(t *testing.T) {
 				},
 			},
 		}
-		_, err := newWBCFromSettings(context.Background(), app, kubeClient, settings)
+		_, err := newWBCFromSettings(context.Background(), app, kubeClient, nil, settings)
 		assert.ErrorContains(t, err, "pullRequest must have exactly one provider configured, got 2")
 	})
 
@@ -2233,7 +2975,7 @@ func Test_newWBCFromSettings(t *testing.T) {
 		settings := &api.WriteBackConfig{
 			Method: strPtr("git"),
 		}
-		wbc, err := newWBCFromSettings(context.Background(), app, kubeClient, settings)
+		wbc, err := newWBCFromSettings(context.Background(), app, kubeClient, nil, settings)
 		assert.NoError(t, err)
 		assert.Equal(t, PRProviderUnsupported, wbc.PRProvider)
 	})
@@ -2763,7 +3505,7 @@ func Test_processApplicationForUpdate(t *testing.T) {
 			ctx := context.Background()
 			appsForUpdate := tc.initialApps
 
-			processApplicationForUpdate(ctx, tc.app, tc.appRef, nil, nil, tc.appNSName, appsForUpdate, nil)
+			processApplicationForUpdate(ctx, nil, tc.app, tc.appRef, nil, nil, nil, tc.appNSName, appsForUpdate, nil)
 
 			assert.Len(t, appsForUpdate, tc.expectedAppsCount, "The final map should have the expected number of applications")
 
@@ -2791,7 +3533,7 @@ func Test_processApplicationForUpdate(t *testing.T) {
 		webhook := &WebhookEvent{RegistryURL: "ghcr.io", Repository: "redis"}
 		appNSName := "testns/kustomize-app"
 
-		processApplicationForUpdate(ctx, kustomizeApp, appRefWithImages, nil, nil, appNSName, appsForUpdate, webhook)
+		processApplicationForUpdate(ctx, nil, kustomizeApp, appRefWithImages, nil, nil, nil, appNSName, appsForUpdate, webhook)
 
 		assert.Len(t, appsForUpdate, 0)
 		assert.NotContains(t, appsForUpdate, appNSName)
@@ -2977,6 +3719,7 @@ func Test_sortApplicationRefs(t *testing.T) {
 
 // Assisted-by: Gemini AI
 func Test_FilterApplicationsForUpdate(t *testing.T) {
+	const fakeCosignPEM = "-----BEGIN PUBLIC KEY-----\nfake\n-----END PUBLIC KEY-----"
 	// Define common applications to be used across test cases
 	appProd := &v1alpha1.Application{
 		ObjectMeta: v1.ObjectMeta{Name: "app-prod", Namespace: "testns", Labels: map[string]string{"env": "prod"}},
@@ -3027,6 +3770,7 @@ func Test_FilterApplicationsForUpdate(t *testing.T) {
 		name            string
 		initialApps     []client.Object
 		imageUpdaterCR  *api.ImageUpdater
+		secrets         []runtime.Object // K8s secrets available to the kube client, e.g. for cosign key lookups
 		expectedKeys    []string
 		expectedImages  map[string]int // map[appKey]expectedImageCount, for specificity check
 		expectNilResult bool
@@ -3585,6 +4329,147 @@ func Test_FilterApplicationsForUpdate(t *testing.T) {
 			},
 			expectedKeys: []string{"testns/wbc-annotation-app"},
 		},
+		{
+			// No imagesVerification configured at any level:
+			// mergeImagesVerification(nil,nil) returns nil → newImageFromImagesVerification
+			// exits early → EnableVerification=false → image proceeds normally.
+			name:        "no imagesVerification at any level: image proceeds without verification",
+			initialApps: []client.Object{appProd},
+			imageUpdaterCR: &api.ImageUpdater{
+				ObjectMeta: v1.ObjectMeta{Name: "test-updater", Namespace: "testns"},
+				Spec: api.ImageUpdaterSpec{
+					ApplicationRefs: []api.ApplicationRef{
+						{NamePattern: "app-prod", Images: []api.ImageConfig{{Alias: "nginx", ImageName: "nginx:1.0"}}},
+					},
+				},
+			},
+			expectedKeys: []string{"testns/app-prod"},
+		},
+		{
+			// Same through the UseAnnotations path: no imagesVerification anywhere → app returned.
+			name: "UseAnnotations, no imagesVerification: image proceeds without verification",
+			initialApps: []client.Object{
+				&v1alpha1.Application{
+					ObjectMeta: v1.ObjectMeta{
+						Name:      "verify-ann-app",
+						Namespace: "testns",
+						Annotations: map[string]string{
+							ImageUpdaterAnnotation: "nginx=nginx:1.21",
+						},
+					},
+					Spec: v1alpha1.ApplicationSpec{
+						Source: &v1alpha1.ApplicationSource{
+							Kustomize: &v1alpha1.ApplicationSourceKustomize{},
+						},
+					},
+					Status: v1alpha1.ApplicationStatus{SourceType: v1alpha1.ApplicationSourceTypeKustomize},
+				},
+			},
+			imageUpdaterCR: &api.ImageUpdater{
+				ObjectMeta: v1.ObjectMeta{Name: "test-updater", Namespace: "testns"},
+				Spec: api.ImageUpdaterSpec{
+					ApplicationRefs: []api.ApplicationRef{
+						{NamePattern: "verify-ann-app", UseAnnotations: boolPtr(true)},
+					},
+				},
+			},
+			expectedKeys: []string{"testns/verify-ann-app"},
+		},
+		{
+			// applicationRef.ImagesVerification (app level) must be honored when
+			// UseAnnotations is true: mergedImagesVerification = applicationRef.ImagesVerification
+			// directly, so a valid app-level cosign key should result in a verified image.
+			// See custom verification below for the actual EnableVerification/CosignKey assertions.
+			name: "UseAnnotations: app-level ImagesVerification is applied successfully",
+			initialApps: []client.Object{
+				&v1alpha1.Application{
+					ObjectMeta: v1.ObjectMeta{
+						Name:      "verify-app-level-app",
+						Namespace: "testns",
+						Annotations: map[string]string{
+							ImageUpdaterAnnotation: "web=ghcr.io/org/app:1.0",
+						},
+					},
+					Spec: v1alpha1.ApplicationSpec{
+						Source: &v1alpha1.ApplicationSource{
+							Kustomize: &v1alpha1.ApplicationSourceKustomize{},
+						},
+					},
+					Status: v1alpha1.ApplicationStatus{SourceType: v1alpha1.ApplicationSourceTypeKustomize},
+				},
+			},
+			imageUpdaterCR: &api.ImageUpdater{
+				ObjectMeta: v1.ObjectMeta{Name: "test-updater", Namespace: "testns"},
+				Spec: api.ImageUpdaterSpec{
+					ApplicationRefs: []api.ApplicationRef{
+						{
+							NamePattern:    "verify-app-level-app",
+							UseAnnotations: boolPtr(true),
+							ImagesVerification: &api.ImagesVerification{
+								CosignKey: &api.SecretRef{SecretName: "app-cosign-secret", Key: "cosign.pub"},
+							},
+						},
+					},
+				},
+			},
+			secrets: []runtime.Object{
+				&v1core.Secret{
+					ObjectMeta: v1.ObjectMeta{Namespace: "testns", Name: "app-cosign-secret"},
+					Data:       map[string][]byte{"cosign.pub": []byte(fakeCosignPEM)},
+				},
+			},
+			expectedKeys:   []string{"testns/verify-app-level-app"},
+			expectedImages: map[string]int{"testns/verify-app-level-app": 1},
+		},
+		{
+			// A global (CR-level) ImagesVerification block must be completely ignored
+			// when UseAnnotations is true and the applicationRef itself sets no
+			// ImagesVerification: mergedImagesVerification = applicationRef.ImagesVerification
+			// (nil here), it is never merged with cr.Spec.ImagesVerification. Even though
+			// the global cosign key is valid, the image must proceed unverified.
+			// See custom verification below for the actual EnableVerification/Verify assertions.
+			name: "UseAnnotations: global ImagesVerification is ignored at app level",
+			initialApps: []client.Object{
+				&v1alpha1.Application{
+					ObjectMeta: v1.ObjectMeta{
+						Name:      "verify-ignore-global-app",
+						Namespace: "testns",
+						Annotations: map[string]string{
+							ImageUpdaterAnnotation: "web=ghcr.io/org/app:1.0",
+						},
+					},
+					Spec: v1alpha1.ApplicationSpec{
+						Source: &v1alpha1.ApplicationSource{
+							Kustomize: &v1alpha1.ApplicationSourceKustomize{},
+						},
+					},
+					Status: v1alpha1.ApplicationStatus{SourceType: v1alpha1.ApplicationSourceTypeKustomize},
+				},
+			},
+			imageUpdaterCR: &api.ImageUpdater{
+				ObjectMeta: v1.ObjectMeta{Name: "test-updater", Namespace: "testns"},
+				Spec: api.ImageUpdaterSpec{
+					ImagesVerification: &api.ImagesVerification{
+						CosignKey: &api.SecretRef{SecretName: "global-cosign-secret", Key: "cosign.pub"},
+					},
+					ApplicationRefs: []api.ApplicationRef{
+						{
+							NamePattern:    "verify-ignore-global-app",
+							UseAnnotations: boolPtr(true),
+							// ImagesVerification intentionally unset at app level
+						},
+					},
+				},
+			},
+			secrets: []runtime.Object{
+				&v1core.Secret{
+					ObjectMeta: v1.ObjectMeta{Namespace: "testns", Name: "global-cosign-secret"},
+					Data:       map[string][]byte{"cosign.pub": []byte(fakeCosignPEM)},
+				},
+			},
+			expectedKeys:   []string{"testns/verify-ignore-global-app"},
+			expectedImages: map[string]int{"testns/verify-ignore-global-app": 1},
+		},
 	}
 
 	for _, tc := range testCases {
@@ -3595,11 +4480,12 @@ func Test_FilterApplicationsForUpdate(t *testing.T) {
 			require.NoError(t, err)
 			kubeClient := kube.ImageUpdaterKubernetesClient{
 				KubeClient: &registryKube.KubernetesClient{
-					Clientset: fake.NewFakeKubeClient(),
+					Clientset: fake.NewFakeClientsetWithResources(tc.secrets...),
+					Context:   ctx,
 				},
 			}
 			// Execute
-			appsForUpdate, err := FilterApplicationsForUpdate(ctx, client, &kubeClient, tc.imageUpdaterCR, nil)
+			appsForUpdate, err := FilterApplicationsForUpdate(ctx, client, &kubeClient, nil, tc.imageUpdaterCR, nil)
 
 			// Assert
 			if tc.expectError {
@@ -3672,6 +4558,30 @@ func Test_FilterApplicationsForUpdate(t *testing.T) {
 				}
 				require.NotNil(t, webImage, "web image should be found")
 				assert.Equal(t, image.StrategySemVer, webImage.UpdateStrategy, "web image should have semver strategy from per-image annotation, overriding application-wide latest")
+			}
+
+			// Custom verification that app-level ImagesVerification (set on the
+			// applicationRef) is actually applied when UseAnnotations is true.
+			if tc.name == "UseAnnotations: app-level ImagesVerification is applied successfully" {
+				appKey := "testns/verify-app-level-app"
+				require.Contains(t, appsForUpdate, appKey)
+				images := appsForUpdate[appKey].Images
+				require.Len(t, images, 1)
+				assert.True(t, images[0].EnableVerification, "app-level ImagesVerification should enable verification")
+				require.NotNil(t, images[0].Verify, "Verify should be populated from app-level cosign key")
+				assert.Equal(t, fakeCosignPEM, images[0].Verify.CosignKey, "cosign key should be fetched from the app-level secret")
+			}
+
+			// Custom verification that a global (CR-level) ImagesVerification block is
+			// ignored at the app level when UseAnnotations is true and the applicationRef
+			// itself does not set ImagesVerification.
+			if tc.name == "UseAnnotations: global ImagesVerification is ignored at app level" {
+				appKey := "testns/verify-ignore-global-app"
+				require.Contains(t, appsForUpdate, appKey)
+				images := appsForUpdate[appKey].Images
+				require.Len(t, images, 1)
+				assert.False(t, images[0].EnableVerification, "global ImagesVerification must not leak into an app-level rule that sets none")
+				assert.Nil(t, images[0].Verify, "Verify should remain unset since global config is ignored under UseAnnotations")
 			}
 		})
 	}

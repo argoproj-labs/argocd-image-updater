@@ -122,6 +122,14 @@ lint: golangci-lint ## Run golangci-lint linter
 lint-fix: golangci-lint ## Run golangci-lint linter and perform fixes
 	$(GOLANGCI_LINT) run --fix
 
+# Version of github.com/distribution/distribution/v3 whose internal/ packages
+# are vendored into registry-scanner/pkg/registry/internal/.
+DISTRIBUTION_VERSION ?= v3.1.1
+
+.PHONY: get-distribution-internal
+get-distribution-internal: ## Refresh registry-scanner/pkg/registry/internal from upstream distribution/distribution at DISTRIBUTION_VERSION. Usage: make get-distribution-internal DISTRIBUTION_VERSION=v3.1.2
+	$(MAKE) -C registry-scanner get-distribution-internal DISTRIBUTION_VERSION=$(DISTRIBUTION_VERSION)
+
 .PHONY: build
 build: manifests generate fmt vet
 	CGO_ENABLED=0 GOOS=${OS} GOARCH=${ARCH} go build -ldflags '${LDFLAGS}' -o ${OUTDIR}/${BINNAME} cmd/*.go
@@ -221,7 +229,7 @@ GOLANGCI_LINT = $(LOCALBIN)/golangci-lint
 KUSTOMIZE_VERSION ?= v5.4.3
 CONTROLLER_TOOLS_VERSION ?= v0.19.0
 ENVTEST_VERSION ?= release-0.22
-GOLANGCI_LINT_VERSION ?= v2.5.0
+GOLANGCI_LINT_VERSION ?= v2.12.2
 
 .PHONY: kustomize
 kustomize: $(KUSTOMIZE) ## Download kustomize locally if necessary.
@@ -257,7 +265,7 @@ e2e-tests-parallel-ginkgo: ginkgo
 GINKGO_CLI = $(shell pwd)/bin/ginkgo
 .PHONY: ginkgo
 ginkgo: ## Download ginkgo locally if necessary.
-	$(call go-install-tool,$(GINKGO_CLI),github.com/onsi/ginkgo/v2/ginkgo,v2.27.3)
+	$(call go-install-tool,$(GINKGO_CLI),github.com/onsi/ginkgo/v2/ginkgo,v2.29.0)
 
 # go-install-tool will 'go install' any package with custom target and name of binary, if it doesn't exist
 # $1 - target path with name of binary

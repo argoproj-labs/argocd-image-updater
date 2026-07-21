@@ -35,6 +35,8 @@ func UpdateApplication(ctx context.Context, updateConf *UpdateConfiguration, sta
 	var needUpdate bool = false
 	result := ImageUpdaterResult{}
 	app := updateConf.UpdateApp.Application.GetName()
+	appNs := updateConf.UpdateApp.Application.GetNamespace()
+
 	changeList := make([]ChangeEntry, 0)
 
 	// Get all images that are deployed with the current application
@@ -109,6 +111,21 @@ func UpdateApplication(ctx context.Context, updateConf *UpdateConfiguration, sta
 		if secretVal == "" {
 			imgCtx.Tracef("No pull secret configured for this image")
 		}
+
+		// reject cross-namespace secret references in commonUpdateSettings.pullSecret
+		if strings.HasPrefix(secretVal, "pullsecret:") || strings.HasPrefix(secretVal, "secret:") {
+			// Strip "pullsecret:" or "secret:" prefix before splitting on "/" to isolate the namespace.
+			_, ref, _ := strings.Cut(secretVal, ":")
+			s := strings.SplitN(ref, "/", 2)
+			if len(s) == 2 {
+				if s[0] != appNs {
+					imgCtx.Errorf("commonUpdateSettings.pullSecret namespace '%s' differs from app namespace '%s'", s[0], appNs)
+					result.NumErrors += 1
+					continue
+				}
+			}
+		}
+
 		// The endpoint can provide default credentials for pulling images
 		creds, err := rep.SetEndpointCredentials(imageOpCtx, updateConf.KubeClient.KubeClient, secretVal)
 		if err != nil {
@@ -187,6 +204,26 @@ func UpdateApplication(ctx context.Context, updateConf *UpdateConfiguration, sta
 			if appImageSpec == appImageFullNameWithTag {
 				imgCtx.Infof("New image %s already set in spec", appImageFullNameWithTag)
 				continue
+			}
+
+			// check signature for appImageWithTag using applicationImage.Verify
+			if applicationImage.EnableVerification {
+				switch {
+				case applicationImage.Verify != nil && applicationImage.Verify.CosignKey != "":
+					err := image.VerifyWithPublicKey(imageOpCtx, appImageWithTag, applicationImage.Verify, regClient)
+					if err != nil {
+						imgCtx.Errorf("Unable to verify image %s with public key: %v", appImageFullNameWithTag, err)
+						result.NumErrors += 1
+						continue
+					}
+				// additional verification methods will be added here
+				default:
+					imgCtx.Errorf("Image verification enabled but no verification method configured for %s", appImageFullNameWithTag)
+					result.NumErrors += 1
+					continue
+				}
+			} else {
+				imgCtx.Debugf("Image verification not configured for %s, skipping", appImageFullNameWithTag)
 			}
 
 			needUpdate = true
@@ -374,8 +411,11 @@ func marshalParamsOverride(ctx context.Context, applicationImages *ApplicationIm
 		mergeKustomizeOverride(&params, &newParams)
 		override, err = marshalWithIndent(params, defaultIndent)
 	case ApplicationTypeHelm:
-		if appSource.Helm == nil {
-			return []byte{}, nil
+		// Extract Helm parameters safely; Helm may be nil for SourceHydrator apps
+		// where the source type is auto-detected from files rather than set in the spec.
+		var helmParams []v1alpha1.HelmParameter
+		if appSource.Helm != nil {
+			helmParams = appSource.Helm.Parameters
 		}
 
 		if wbc != nil && !strings.HasPrefix(filepath.Base(wbc.Target), common.DefaultTargetFilePrefix) {
@@ -412,7 +452,7 @@ func marshalParamsOverride(ctx context.Context, applicationImages *ApplicationIm
 					}
 				} else {
 					// image-tag is present, so continue to process image-tag
-					helmParamVer := getHelmParam(appSource.Helm.Parameters, helmParamVersion)
+					helmParamVer := getHelmParam(helmParams, helmParamVersion)
 					var tagValue string
 					if helmParamVer == nil {
 						// Parameter not pre-defined in the Application - use the image's tag data as fallback
@@ -430,7 +470,7 @@ func marshalParamsOverride(ctx context.Context, applicationImages *ApplicationIm
 					}
 				}
 
-				helmParamN := getHelmParam(appSource.Helm.Parameters, helmParamName)
+				helmParamN := getHelmParam(helmParams, helmParamName)
 				// Determine which value to use for the image name parameter
 				var valueToSet string
 				if helmParamN == nil {
@@ -465,6 +505,9 @@ func marshalParamsOverride(ctx context.Context, applicationImages *ApplicationIm
 
 			override = helmNewValues.Bytes()
 		} else {
+			if appSource.Helm == nil {
+				return []byte{}, nil
+			}
 			var params helmOverride
 			newParams := helmOverride{
 				Helm: helmParametersYAML{
@@ -615,7 +658,7 @@ func parseGitConfig(ctx context.Context, app *v1alpha1.Application, kubeClient *
 		repo := *settings.GitConfig.Repository
 		wbc.GitRepo = repo
 	}
-	credsSource, err := getGitCredsSource(ctx, creds, kubeClient, wbc)
+	credsSource, err := getGitCredsSource(ctx, creds, kubeClient, wbc, app.GetNamespace())
 	if err != nil {
 		return fmt.Errorf("invalid git credentials source: %v", err)
 	}
@@ -624,11 +667,20 @@ func parseGitConfig(ctx context.Context, app *v1alpha1.Application, kubeClient *
 }
 
 func commitChangesLocked(ctx context.Context, applicationImages *ApplicationImages, state *SyncIterationState, changeList []ChangeEntry) error {
+	logCtx := log.LoggerFromContext(ctx)
 	wbc := applicationImages.WriteBackConfig
 	if wbc.RequiresLocking() {
 		lock := state.GetRepositoryLock(wbc.GitRepo)
 		lock.Lock()
 		defer lock.Unlock()
+	}
+
+	if wbc.PRProvider > 0 {
+		targetKey := wbc.WriteBackTargetKey()
+		if !state.MarkPRCreated(targetKey) {
+			logCtx.Infof("Skipping PR creation: another application already created a PR for the same write-back target in this cycle")
+			return nil
+		}
 	}
 
 	return commitChanges(ctx, applicationImages, changeList)

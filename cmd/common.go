@@ -8,8 +8,12 @@ import (
 	"time"
 
 	"github.com/argoproj/argo-cd/v3/util/askpass"
+	"github.com/argoproj/argo-cd/v3/util/db"
+	"github.com/argoproj/argo-cd/v3/util/settings"
 	"github.com/go-logr/logr"
 	"go.uber.org/ratelimit"
+
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
 
 	"github.com/argoproj-labs/argocd-image-updater/internal/controller"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/argocd"
@@ -21,8 +25,12 @@ import (
 
 // WebhookConfig holds the options for the webhook server
 type WebhookConfig struct {
+	// RequireSecret requires webhook secrets by default
+	RequireSecret bool
 	// Port is the port number for the webhook server to listen on
 	Port int
+	// EnableHTTP2 allows the webhook TLS server to negotiate HTTP/2
+	EnableHTTP2 bool
 	// DockerSecret is the secret for validating Docker Hub webhooks
 	DockerSecret string
 	// GHCRSecret is the secret for validating GitHub Container Registry webhooks
@@ -33,6 +41,8 @@ type WebhookConfig struct {
 	HarborSecret string
 	// AliyunACRSecret is the secret for validating Aliyun ACR webhooks
 	AliyunACRSecret string
+	// ACRSecret is the secret for validating Azure ACR webhooks
+	ACRSecret string
 	// CloudEventsSecret is the secret for validating CloudEvents webhooks
 	CloudEventsSecret string
 	// RateLimitNumAllowedRequests is the number of allowed requests per hour for rate limiting (0 disables rate limiting)
@@ -106,6 +116,18 @@ func SetupCommon(ctx context.Context, cfg *controller.ImageUpdaterConfig, setupL
 		return err
 	}
 
+	// Create a shared Argo CD settings manager and database so that informers
+	// are started once and reused for the lifetime of the controller. Previously,
+	// every Git credential lookup created its own SettingsManager, leaking
+	// informer goroutines (GITOPS-9938).
+	settingsMgr := settings.NewSettingsManager(ctx,
+		cfg.KubeClient.KubeClient.Clientset,
+		cfg.KubeClient.KubeClient.Namespace)
+	cfg.ArgocdDB = db.NewDB(
+		cfg.KubeClient.KubeClient.Namespace,
+		settingsMgr,
+		cfg.KubeClient.KubeClient.Clientset)
+
 	// Start up the credentials store server
 	cs := askpass.NewServer(askpass.SocketPath)
 	csErrCh := make(chan error)
@@ -126,17 +148,71 @@ func SetupCommon(ctx context.Context, cfg *controller.ImageUpdaterConfig, setupL
 }
 
 // SetupWebhookServer creates and configures a new webhook server.
-func SetupWebhookServer(webhookCfg *WebhookConfig, reconciler *controller.ImageUpdaterReconciler) *webhook.WebhookServer {
+func SetupWebhookServer(ctx context.Context, webhookCfg *WebhookConfig, reconciler *controller.ImageUpdaterReconciler) *webhook.WebhookServer {
+	log := log.LoggerFromContext(ctx)
+
 	// Create webhook handler
 	handler := webhook.NewWebhookHandler()
 
-	// Register supported webhook handlers with default empty secrets
-	handler.RegisterHandler(webhook.NewDockerHubWebhook(webhookCfg.DockerSecret))
-	handler.RegisterHandler(webhook.NewGHCRWebhook(webhookCfg.GHCRSecret))
-	handler.RegisterHandler(webhook.NewHarborWebhook(webhookCfg.HarborSecret))
-	handler.RegisterHandler(webhook.NewQuayWebhook(webhookCfg.QuaySecret))
-	handler.RegisterHandler(webhook.NewAliyunACRWebhook(webhookCfg.AliyunACRSecret))
-	handler.RegisterHandler(webhook.NewCloudEventsWebhook(webhookCfg.CloudEventsSecret))
+	if !webhookCfg.RequireSecret {
+		// Insecure mode: all handlers are registered regardless of whether a secret is
+		// configured. Handlers without a secret will accept unauthenticated requests.
+		log.Warnf("Webhook secrets are not required (--webhook-require-secret=false). " +
+			"All registry handlers will be registered without secret validation. " +
+			"This is insecure and should not be used in production.")
+		handler.RegisterHandler(webhook.NewDockerHubWebhook(webhookCfg.DockerSecret))
+		handler.RegisterHandler(webhook.NewGHCRWebhook(webhookCfg.GHCRSecret))
+		handler.RegisterHandler(webhook.NewHarborWebhook(webhookCfg.HarborSecret))
+		handler.RegisterHandler(webhook.NewQuayWebhook(webhookCfg.QuaySecret))
+		handler.RegisterHandler(webhook.NewAliyunACRWebhook(webhookCfg.AliyunACRSecret))
+		handler.RegisterHandler(webhook.NewACRWebhook(webhookCfg.ACRSecret))
+		handler.RegisterHandler(webhook.NewCloudEventsWebhook(webhookCfg.CloudEventsSecret))
+	} else {
+		// Secure mode (default): only register handlers for which a secret has been
+		// configured. Handlers without a secret are skipped entirely so unauthenticated
+		// requests from that registry are rejected before reaching the server.
+		registered := 0
+		if webhookCfg.DockerSecret != "" {
+			handler.RegisterHandler(webhook.NewDockerHubWebhook(webhookCfg.DockerSecret))
+			log.Infof("Registered Docker Hub webhook handler")
+			registered++
+		}
+		if webhookCfg.GHCRSecret != "" {
+			handler.RegisterHandler(webhook.NewGHCRWebhook(webhookCfg.GHCRSecret))
+			log.Infof("Registered GHCR webhook handler")
+			registered++
+		}
+		if webhookCfg.HarborSecret != "" {
+			handler.RegisterHandler(webhook.NewHarborWebhook(webhookCfg.HarborSecret))
+			log.Infof("Registered Harbor webhook handler")
+			registered++
+		}
+		if webhookCfg.QuaySecret != "" {
+			handler.RegisterHandler(webhook.NewQuayWebhook(webhookCfg.QuaySecret))
+			log.Infof("Registered Quay webhook handler")
+			registered++
+		}
+		if webhookCfg.AliyunACRSecret != "" {
+			handler.RegisterHandler(webhook.NewAliyunACRWebhook(webhookCfg.AliyunACRSecret))
+			log.Infof("Registered Aliyun ACR webhook handler")
+			registered++
+		}
+		if webhookCfg.ACRSecret != "" {
+			handler.RegisterHandler(webhook.NewACRWebhook(webhookCfg.ACRSecret))
+			log.Infof("Registered Azure ACR webhook handler")
+			registered++
+		}
+		if webhookCfg.CloudEventsSecret != "" {
+			handler.RegisterHandler(webhook.NewCloudEventsWebhook(webhookCfg.CloudEventsSecret))
+			log.Infof("Registered CloudEvents webhook handler")
+			registered++
+		}
+		if registered == 0 {
+			log.Warnf("Webhook server is enabled with --webhook-require-secret=true but no secrets " +
+				"are configured. No handlers will be registered and all webhook requests will be rejected. " +
+				"Configure at least one *-webhook-secret flag or set --webhook-require-secret=false.")
+		}
+	}
 
 	// Create webhook server
 	server := webhook.NewWebhookServer(webhookCfg.Port, handler, reconciler)
@@ -144,11 +220,12 @@ func SetupWebhookServer(webhookCfg *WebhookConfig, reconciler *controller.ImageU
 	// Configure TLS
 	server.DisableTLS = webhookCfg.DisableTLS
 	server.TLS = &webhook.TLSConfig{
-		CertFile:   webhook.DefaultTLSCertPath,
-		KeyFile:    webhook.DefaultTLSKeyPath,
-		MinVersion: webhookCfg.TLSMinVersion,
-		MaxVersion: webhookCfg.TLSMaxVersion,
-		Ciphers:    webhookCfg.TLSCiphers,
+		CertFile:    webhook.DefaultTLSCertPath,
+		KeyFile:     webhook.DefaultTLSKeyPath,
+		MinVersion:  webhookCfg.TLSMinVersion,
+		MaxVersion:  webhookCfg.TLSMaxVersion,
+		Ciphers:     webhookCfg.TLSCiphers,
+		EnableHTTP2: webhookCfg.EnableHTTP2,
 	}
 
 	if webhookCfg.RateLimitNumAllowedRequests > 0 {

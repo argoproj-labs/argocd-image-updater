@@ -37,6 +37,7 @@ func TestNewWebhookCommand(t *testing.T) {
 	asser.Equal(env.GetStringVal("GIT_COMMIT_SIGN_OFF", "false"), controllerCommand.Flag("git-commit-sign-off").Value.String())
 	asser.Equal(common.DefaultCommitTemplatePath, controllerCommand.Flag("git-commit-message-path").Value.String())
 	asser.Equal(env.GetStringVal("IMAGE_UPDATER_KUBE_EVENTS", "false"), controllerCommand.Flag("disable-kube-events").Value.String())
+	asser.Equal(env.GetStringVal("WEBHOOK_REQUIRE_SECRET", "true"), controllerCommand.Flag("webhook-require-secret").Value.String())
 	asser.Equal(strconv.Itoa(env.ParseNumFromEnv("WEBHOOK_PORT", 8080, 0, 65535)), controllerCommand.Flag("webhook-port").Value.String())
 	asser.Equal(env.GetStringVal("DOCKER_WEBHOOK_SECRET", ""), controllerCommand.Flag("docker-webhook-secret").Value.String())
 	asser.Equal(env.GetStringVal("GHCR_WEBHOOK_SECRET", ""), controllerCommand.Flag("ghcr-webhook-secret").Value.String())
@@ -44,9 +45,11 @@ func TestNewWebhookCommand(t *testing.T) {
 	asser.Equal(env.GetStringVal("HARBOR_WEBHOOK_SECRET", ""), controllerCommand.Flag("harbor-webhook-secret").Value.String())
 	asser.Equal(env.GetStringVal("CLOUDEVENTS_WEBHOOK_SECRET", ""), controllerCommand.Flag("cloudevents-webhook-secret").Value.String())
 	asser.Equal(env.GetStringVal("ALIYUN_ACR_WEBHOOK_SECRET", ""), controllerCommand.Flag("aliyun-acr-webhook-secret").Value.String())
+	asser.Equal(env.GetStringVal("ACR_WEBHOOK_SECRET", ""), controllerCommand.Flag("acr-webhook-secret").Value.String())
 	asser.Equal(strconv.Itoa(env.ParseNumFromEnv("WEBHOOK_RATELIMIT_ALLOWED", 0, 0, math.MaxInt)), controllerCommand.Flag("webhook-ratelimit-allowed").Value.String())
 
 	// TLS flags
+	asser.Equal("false", controllerCommand.Flag("enable-http2").Value.String())
 	asser.Equal("false", controllerCommand.Flag("disable-tls").Value.String())
 	asser.Equal(env.GetStringVal("TLS_MIN_VERSION", "1.3"), controllerCommand.Flag("tlsminversion").Value.String())
 	asser.Equal(env.GetStringVal("TLS_MAX_VERSION", "1.3"), controllerCommand.Flag("tlsmaxversion").Value.String())

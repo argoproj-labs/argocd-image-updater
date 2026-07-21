@@ -128,15 +128,34 @@ the `writeBackConfig.method` field using `git:<credref>` format. Where `<credref
 take one of following values:
 
 * `repocreds` (default) - Git repository credentials configured in Argo CD settings
-* `secret:<namespace>/<secret>` - namespace and secret name.
+* `secret:<secret>` - secret name only; the secret must exist in the same namespace as the `ImageUpdater` CR.
+* `secret:<namespace>/<secret>` - fully-qualified secret reference; the namespace **must** match the namespace of the `ImageUpdater` CR.
 
 Example:
 
 ```yaml
 spec:
   writeBackConfig:
-    method: "git:secret:argocd-image-updater/git-creds"
+    method: "git:secret:git-creds"
 ```
+
+Or with an explicit namespace (must equal the CR's namespace):
+
+```yaml
+spec:
+  writeBackConfig:
+    method: "git:secret:argocd/git-creds"
+```
+
+!!!warning "Cross-namespace secret references are rejected"
+    The `namespace/secret` format is preserved for backwards compatibility.
+    However, the namespace in the reference
+    **must** equal the namespace of the `ImageUpdater` CR. Referencing a secret
+    from a different namespace (e.g. specifying `team-b/git-creds` while the CR
+    runs in `team-a`) is rejected with an error. This prevents tenants from
+    reading secrets they do not own.
+    If no namespace is specified (plain `secret:<secret>` form), the CR's own
+    namespace is used automatically.
 
 If the repository is accessed using HTTPS, the secret must contain either user credentials or GitHub app credentials.
 
@@ -303,7 +322,10 @@ The following variables are provided for this template:
   * `.Alias` holds the alias of the image that was updated
   * `.OldTag` holds the tag name or SHA digest previous to the update
   * `.NewTag` holds the tag name or SHA digest that was updated to
-* `.SHA256` is a unique SHA256 has representing these changes
+* `.SHA256` is a unique SHA256 hash representing these changes
+* `.TargetKey` is a short hash (8 hex characters) identifying the write-back target (derived from git repo, branch, and target path)
+* `.AppNamespace` is the namespace of the application being updated
+* `.AppName` is the name of the application being updated
 
 Please note that if the output of the template exceeds 255 characters (git branch name limit) it will be truncated.
 
@@ -384,13 +406,65 @@ spec:
 Note that using the helmvalues option needs the Helm values filename to be specified in the
 `writeBackConfig.gitConfig.writeBackTarget`.
 
+### <a name="method-git-multi-source"></a>Multi-Source Applications (mixed Kustomize and Helm)
+
+Argo CD supports [multi-source applications](https://argo-cd.readthedocs.io/en/stable/user-guide/multiple_sources/) where an `Application` or `ApplicationSet` lists several sources. A common pattern is combining a Git/Kustomize source (your own workload) with one or more Helm chart sources (third-party dependencies such as Redis or PostgreSQL).
+
+Image Updater handles this correctly: it identifies the correct write-back source by the `writeBackTarget` you configure. You only need to target the Kustomize or Helm source that contains your images; the other sources are left untouched.
+
+#### Kustomize + Helm example
+
+```yaml
+# ApplicationSet template
+spec:
+  writeBackConfig:
+    method: "git"
+    gitConfig:
+      writeBackTarget: "kustomization"  # targets the Kustomize git source only
+```
+
+```yaml
+sources:
+  # Source 0 — your workload (Kustomize, may have no explicit kustomize: field)
+  - repoURL: 'https://github.com/your-org/gitops.git'
+    path: ./deployments/myapp/overlays/staging
+    targetRevision: main
+
+  # Source 1 — third-party Helm chart; Image Updater ignores this one
+  - repoURL: 'registry-1.docker.io/bitnamicharts'
+    chart: redis
+    targetRevision: '20.11.*'
+    helm:
+      valueFiles:
+        - $values/deployments/myapp/base/redis/values.yaml
+
+  # Source 2 — values ref; also ignored
+  - repoURL: 'https://github.com/your-org/gitops.git'
+    ref: values
+    targetRevision: main
+```
+
+Image Updater locates the Kustomize write-back source in two steps:
+
+1. It first looks for a source with an explicit `kustomize:` spec block.
+2. If none is found, it falls back to `Status.SourceTypes` index alignment — Argo CD records the detected source type for every source in that field, so an implicit Kustomize source (where Argo CD auto-detects Kustomize via a `kustomization.yaml` file in the path) is still correctly identified.
+
+This means **you do not need to add an explicit `kustomize: {}` block** to your source spec — the `write-back-target: kustomization` annotation is sufficient.
+
+!!!note "Annotation-based configuration"
+    When using the annotation API (e.g. on an `ApplicationSet` template), the equivalent configuration is:
+    ```yaml
+    argocd-image-updater.argoproj.io/write-back-method: git
+    argocd-image-updater.argoproj.io/write-back-target: kustomization
+    ```
+
 ### <a name="method-git-pull-request"></a>Git Pull Request
 
 The Git Pull Request mode extends the `git` write-back method so that instead
 of pushing directly to the tracking branch, Argo CD Image Updater:
 
 1. Pushes the image update commit to an automatically generated **head branch**
-   (`image-updater-<namespace>-<appName>-<sha256>`).
+   (`image-updater-<targetKey>-<sha256>`).
 2. Opens a **pull request** or **merge request** from that head
    branch into the configured base branch.
 
@@ -420,8 +494,20 @@ before it is merged and applied by Argo CD.
     from being reconciled.
 
 The head branch (PR source) is derived automatically by the controller using
-the template `image-updater-<appNamespace>-<appName>-<sha256>`, ensuring a
-stable, unique branch name per application and set of image changes.
+the template `image-updater-<targetKey>-<sha256>`, where `<targetKey>` is
+an 8-character hash of the write-back target (git repo, branch, and target
+path). This ensures that multiple applications sharing the same write-back
+target and the same update set produce the same PR branch, avoiding duplicate
+pull requests.
+
+!!!warning "Breaking change in pull request branch naming"
+    The default PR head branch was previously
+    `image-updater-<appNamespace>-<appName>-<sha256>`. It is now
+    `image-updater-<targetKey>-<sha256>`. After upgrading, the first
+    reconciliation will create a new branch with the new naming scheme.
+    Any open PRs that used the old branch name will **not** be closed
+    automatically — you must close them and delete their head branches
+    manually.
 
 #### Credentials
 
@@ -430,7 +516,7 @@ access token (PAT)** or a **GitHub App**. SSH keys cannot be used because they
 do not provide the HTTP token needed to call the SCM API.
 
 Configure credentials via the `writeBackConfig.method` field using the
-`git:secret:<namespace>/<secret>` format (see
+`git:secret:<secret>` format (see
 [Specifying Git credentials](#method-git-credentials) for how to create the
 secret). The author identity of the commits and the PR is derived from those
 credentials.
@@ -459,7 +545,7 @@ repository URL.
 ```yaml
 spec:
   writeBackConfig:
-    method: "git:secret:argocd-image-updater/git-creds"
+    method: "git:secret:git-creds"
     gitConfig:
       repository: "https://github.com/example/example.git"
       branch: "main"        # base branch; colon format not supported here
@@ -477,7 +563,7 @@ metadata:
   namespace: argocd
 spec:
   writeBackConfig:
-    method: "git:secret:argocd/git-creds"
+    method: "git:secret:git-creds"
     gitConfig:
       repository: "https://github.com/example/example.git"
       branch: "main"
@@ -489,7 +575,7 @@ spec:
         - alias: "nginx"
           imageName: "nginx:1.17.10"
       writeBackConfig:
-        method: "git:secret:argocd/git-creds"
+        method: "git:secret:git-creds"
         gitConfig:
           branch: "main"
           writeBackTarget: "helmvalues:/helm/config/values.yaml"
@@ -502,7 +588,7 @@ add `pullRequest.gitlab` to your `gitConfig`:
 
 ```yaml
 writeBackConfig:
-  method: "git:secret:argocd/gitlab-creds"
+  method: "git:secret:gitlab-creds"
   gitConfig:
     repository: "https://gitlab.com/org/repo.git"
     branch: "main"

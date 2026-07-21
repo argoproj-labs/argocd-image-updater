@@ -1,6 +1,7 @@
 package webhook
 
 import (
+	"crypto/subtle"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -40,7 +41,7 @@ func (d *DockerHubWebhook) Validate(r *http.Request) error {
 			return fmt.Errorf("missing webhook secret")
 		}
 
-		if secret != d.secret {
+		if subtle.ConstantTimeCompare([]byte(secret), []byte(d.secret)) != 1 {
 			return fmt.Errorf("invalid webhook secret")
 		}
 	}

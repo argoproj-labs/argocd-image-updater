@@ -65,6 +65,7 @@ func TestNewRunCommand(t *testing.T) {
 	asser.Equal(common.DefaultCommitTemplatePath, controllerCommand.Flag("git-commit-message-path").Value.String())
 	asser.Equal(env.GetStringVal("IMAGE_UPDATER_KUBE_EVENTS", "false"), controllerCommand.Flag("disable-kube-events").Value.String())
 	asser.Equal(env.GetStringVal("ENABLE_WEBHOOK", "false"), controllerCommand.Flag("enable-webhook").Value.String())
+	asser.Equal(env.GetStringVal("WEBHOOK_REQUIRE_SECRET", "true"), controllerCommand.Flag("webhook-require-secret").Value.String())
 	asser.Equal(strconv.Itoa(env.ParseNumFromEnv("WEBHOOK_PORT", 8082, 0, 65535)), controllerCommand.Flag("webhook-port").Value.String())
 	asser.Equal(env.GetStringVal("DOCKER_WEBHOOK_SECRET", ""), controllerCommand.Flag("docker-webhook-secret").Value.String())
 	asser.Equal(env.GetStringVal("GHCR_WEBHOOK_SECRET", ""), controllerCommand.Flag("ghcr-webhook-secret").Value.String())
@@ -72,6 +73,7 @@ func TestNewRunCommand(t *testing.T) {
 	asser.Equal(env.GetStringVal("HARBOR_WEBHOOK_SECRET", ""), controllerCommand.Flag("harbor-webhook-secret").Value.String())
 	asser.Equal(env.GetStringVal("CLOUDEVENTS_WEBHOOK_SECRET", ""), controllerCommand.Flag("cloudevents-webhook-secret").Value.String())
 	asser.Equal(env.GetStringVal("ALIYUN_ACR_WEBHOOK_SECRET", ""), controllerCommand.Flag("aliyun-acr-webhook-secret").Value.String())
+	asser.Equal(env.GetStringVal("ACR_WEBHOOK_SECRET", ""), controllerCommand.Flag("acr-webhook-secret").Value.String())
 	asser.Equal(strconv.Itoa(env.ParseNumFromEnv("WEBHOOK_RATELIMIT_ALLOWED", 0, 0, math.MaxInt)), controllerCommand.Flag("webhook-ratelimit-allowed").Value.String())
 
 	// TLS flags
@@ -258,6 +260,62 @@ func TestCacheWarmerStart_RunOnce_NoCRs_ClosesStopChan(t *testing.T) {
 		// ok
 	default:
 		t.Fatalf("expected Done channel to be closed")
+	}
+}
+
+// TestWebhookServerRunnable_EnableHTTP2_ThreadedIntoServer verifies that the
+// EnableHTTP2 value from WebhookConfig reaches the webhook server's TLS
+// configuration after WebhookServerRunnable.Start() calls SetupWebhookServer.
+// This is the integration point for the line "webhookCfg.EnableHTTP2 = enableHTTP2"
+// in cmd/run.go: the flag value must survive the entire setup path.
+func TestWebhookServerRunnable_EnableHTTP2_ThreadedIntoServer(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		enableHTTP2 bool
+	}{
+		{"disabled (default)", false},
+		{"enabled explicitly", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			scheme := runtime.NewScheme()
+			_ = api.AddToScheme(scheme)
+			c := fake.NewClientBuilder().WithScheme(scheme).Build()
+			reconciler := &controller.ImageUpdaterReconciler{
+				Client:                  c,
+				Scheme:                  scheme,
+				Config:                  &controller.ImageUpdaterConfig{},
+				MaxConcurrentReconciles: 1,
+			}
+
+			// Simulate what cmd/run.go does: assign the CLI flag value to webhookCfg.
+			webhookCfg := &WebhookConfig{
+				Port:        0, // let the OS pick a port
+				EnableHTTP2: tc.enableHTTP2,
+			}
+			ws := &WebhookServerRunnable{Reconciler: reconciler, WebhookConfig: webhookCfg}
+
+			ctx, cancel := context.WithCancel(context.Background())
+			errCh := make(chan error, 1)
+			go func() {
+				errCh <- ws.Start(ctx)
+			}()
+
+			// Give the server time to initialise before cancelling.
+			time.Sleep(100 * time.Millisecond)
+			cancel()
+
+			select {
+			case err := <-errCh:
+				assert.NoError(t, err)
+			case <-time.After(3 * time.Second):
+				t.Fatal("webhook server did not shut down within timeout after context cancellation")
+			}
+
+			require.NotNil(t, ws.webhookServer, "webhookServer must be set after Start")
+			require.NotNil(t, ws.webhookServer.TLS, "TLS config must be non-nil")
+			assert.Equal(t, tc.enableHTTP2, ws.webhookServer.TLS.EnableHTTP2,
+				"TLS.EnableHTTP2 must match the WebhookConfig.EnableHTTP2 value threaded in from the CLI flag")
+		})
 	}
 }
 

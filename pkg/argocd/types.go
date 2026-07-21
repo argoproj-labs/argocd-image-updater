@@ -1,10 +1,13 @@
 package argocd
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"sync"
 	"text/template"
 
 	argocdapi "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1"
+	"github.com/argoproj/argo-cd/v3/util/db"
 
 	"github.com/argoproj-labs/argocd-image-updater/ext/git"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/kube"
@@ -29,6 +32,7 @@ type UpdateConfiguration struct {
 	NewRegFN               registry.NewRegistryClient
 	ArgoClient             ArgoCD
 	KubeClient             *kube.ImageUpdaterKubernetesClient
+	ArgocdDB               db.ArgoDB
 	UpdateApp              *ApplicationImages
 	DryRun                 bool
 	GitCommitUser          string
@@ -51,6 +55,10 @@ const (
 	WriteBackGit         WriteBackMethod = 1
 )
 
+// WriteBackMethodArgoCD is the string name of the ArgoCD write-back method as used in the CR spec.
+// It is the default when no method is specified.
+const WriteBackMethodArgoCD = "argocd"
+
 const defaultIndent = 2
 
 // ApplicationType Type of the application
@@ -66,6 +74,7 @@ const (
 type WriteBackConfig struct {
 	Method     WriteBackMethod
 	ArgoClient ArgoCD
+	ArgocdDB   db.ArgoDB
 	// If GitClient is not nil, the client will be used for updates. Otherwise, a new client will be created.
 	GitClient              git.Client
 	GetCreds               GitCredsSource
@@ -83,6 +92,18 @@ type WriteBackConfig struct {
 	GitCreds               git.CredsStore
 	PRProvider             PRProvider
 	PullRequest            *PullRequest
+}
+
+// WriteBackTargetKey returns a short hash that uniquely identifies the
+// write-back target for PR deduplication. Two applications sharing the same
+// git repo, base branch, and target path produce the same key.
+func (wbc *WriteBackConfig) WriteBackTargetKey() string {
+	target := wbc.Target
+	if target == "" {
+		target = wbc.KustomizeBase
+	}
+	h := sha256.Sum256([]byte(wbc.GitRepo + "|" + wbc.GitBranch + "|" + target))
+	return hex.EncodeToString(h[:])[:8]
 }
 
 // RequiresLocking returns true if write-back method requires repository locking
@@ -151,13 +172,28 @@ type ChangeEntry struct {
 type SyncIterationState struct {
 	lock            sync.Mutex
 	repositoryLocks map[string]*sync.Mutex
+	prCreated       map[string]bool
 }
 
 // NewSyncIterationState returns a new instance of SyncIterationState
 func NewSyncIterationState() *SyncIterationState {
 	return &SyncIterationState{
 		repositoryLocks: make(map[string]*sync.Mutex),
+		prCreated:       make(map[string]bool),
 	}
+}
+
+// MarkPRCreated records that a PR has been created for the given write-back
+// target key. Returns true on the first call for a key (caller should proceed
+// with PR creation) and false on subsequent calls (caller should skip).
+func (state *SyncIterationState) MarkPRCreated(targetKey string) bool {
+	state.lock.Lock()
+	defer state.lock.Unlock()
+	if state.prCreated[targetKey] {
+		return false
+	}
+	state.prCreated[targetKey] = true
+	return true
 }
 
 // GetRepositoryLock returns the lock for a specified repository
@@ -201,6 +237,10 @@ type Image struct {
 	HelmImageTag       string
 	HelmImageSpec      string
 	KustomizeImageName string
+
+	// verify image signature settings
+	EnableVerification bool
+	*image.Verify
 }
 
 // ImageList is a list of Image objects that can be updated.

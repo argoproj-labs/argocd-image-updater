@@ -135,8 +135,10 @@ func (g *GHCRWebhook) Parse(r *http.Request) (*argocd.WebhookEvent, error) {
 		return nil, fmt.Errorf("tag not found in webhook payload")
 	}
 
-	// Construct repository name: owner/package
-	repository := fmt.Sprintf("%s/%s", payload.Package.Owner.Login, payload.Package.Name)
+	// GHCR webhook payloads can preserve the GitHub owner casing, while OCI
+	// image references are normalized to lowercase. Normalize here so webhook
+	// matching works against image names from manifests.
+	repository := strings.ToLower(fmt.Sprintf("%s/%s", payload.Package.Owner.Login, payload.Package.Name))
 
 	return &argocd.WebhookEvent{
 		RegistryURL: "ghcr.io",

@@ -6,6 +6,14 @@
     `--disable-tls` flag or the `DISABLE_TLS` environment variable. For details, see
     [TLS Configuration](#tls-configuration) below.
 
+!!!warning "Breaking Change"
+    Starting with this release, **webhook secrets are required by default**
+    (`--webhook-require-secret=true`). If you previously ran the webhook server
+    without any secrets configured, all incoming webhook requests will now be
+    rejected. To restore the previous behavior, set `--webhook-require-secret=false`
+    or the `WEBHOOK_REQUIRE_SECRET=false` environment variable. If you already
+    had secrets configured, no changes are required.
+
 Image Updater can be configured to respond to webhook notifications from 
 various container registries. 
 
@@ -16,6 +24,7 @@ Currently Supported Registries:
 - Harbor
 - Quay
 - Aliyun ACR
+- Azure Container Registry (ACR)
 - AWS ECR (via EventBridge CloudEvents)
 
 Using webhooks can help reduce some of the stress that is put on the 
@@ -93,6 +102,7 @@ can be found here:
 - [Harbor](https://goharbor.io/docs/2.2.0/working-with-projects/project-configuration/configure-webhooks/)
 - [Quay](https://docs.quay.io/guides/notifications.html)
 - [Aliyun ACR](https://www.alibabacloud.com/help/en/acr/user-guide/manage-webhooks)
+- [Azure Container Registry](https://learn.microsoft.com/en-us/azure/container-registry/container-registry-webhook)
 - [AWS ECR via EventBridge](#aws-ecr-via-eventbridge-cloudevents) (see below)
 
 For the URL that you set for the webhook, your link should go as the following:
@@ -105,6 +115,7 @@ https://app1.example.com/webhook?type=<YOUR_REGISTRY_TYPE>
 # Harbor = harbor
 # Quay = quay.io
 # Aliyun ACR = aliyun-acr
+# Azure Container Registry (ACR) = acr
 # AWS ECR (via CloudEvents) = cloudevents
 ```
 
@@ -115,6 +126,35 @@ Aliyun ACR (especially Enterprise Edition) uses various registry endpoints (e.g.
 ```text
 https://app1.example.com/webhook?type=aliyun-acr&registry_url=my-instance-registry.cn-shanghai.cr.aliyuncs.com
 ```
+
+### Azure Container Registry (ACR) Specifics
+
+Azure Container Registry has **no built-in HMAC signing** for webhooks, but it lets
+you attach arbitrary [custom HTTP headers](https://learn.microsoft.com/en-us/azure/container-registry/container-registry-webhook-reference#http-headers)
+to its notifications. ACR therefore uses the same mechanism as the registries with
+[preexisting secret support](#registries-with-preexisting-support-for-secrets):
+configure an `Authorization` header on the webhook, and the handler validates it
+against the configured secret (constant-time comparison).
+
+Set the header when creating or updating the webhook with the Azure CLI
+([reference](https://learn.microsoft.com/en-us/cli/azure/acr/webhook?view=azure-cli-latest#az-acr-webhook-update-examples)):
+
+```bash
+az acr webhook update -n <webhook> -r <registry> --headers "Authorization=<YOUR_SECRET>"
+```
+
+The value you set for the `Authorization` header must match the secret configured in
+`argocd-image-updater-secret` (`webhook.acr-secret`) / the `--acr-webhook-secret`
+flag. The webhook URL itself only needs the registry type:
+
+```text
+https://app1.example.com/webhook?type=acr
+```
+
+The registry hostname, repository, tag and digest are taken directly from the
+payload (`request.host`, `target.repository`, `target.tag`, `target.digest`). Only
+events with `action: push` are processed; other actions (e.g. `delete`) are ignored.
+A push that carries an empty `target.tag` (digest-only push) is handled gracefully.
 
 ### AWS ECR via EventBridge CloudEvents
 
@@ -229,6 +269,7 @@ stringData:
   webhook.harbor-secret: <YOUR_SECRET>
   webhook.quay-secret: <YOUR_SECRET>
   webhook.aliyun-acr-secret: <YOUR_SECRET>
+  webhook.acr-secret: <YOUR_SECRET>
   webhook.cloudevents-secret: <YOUR_SECRET>
 ```
 
@@ -245,6 +286,7 @@ Supported Registries That Use This:
 
 - GitHub Container Registry
 - Harbor
+- Azure Container Registry (ACR)
 
 ### Parameter Secrets
 
@@ -272,13 +314,46 @@ Supported Registries That Use This:
 Also be aware that if the container registry has a built-in secrets method you will
 not be able to use this method.
 
+### Requiring Secrets (default behaviour)
+
+By default (`--webhook-require-secret=true`), only registry handlers that have
+a secret configured are registered. A registry with no secret set will have its
+handler skipped entirely — the server will return an error for those webhook
+types rather than accepting unauthenticated requests.
+
+Set `--webhook-require-secret=false` to register all handlers regardless of
+whether a secret is present. Use this only in local development or
+network-isolated environments.
+
+!!!warning
+    `--webhook-require-secret=false` disables authentication on every handler
+    that has no secret configured. Any source can send fake webhook payloads to
+    those endpoints.
+
 ## Exposing the Server
 
-To expose the webhook server we have provided a service and ingress to get 
-started. These manifests are not applied with `install.yaml` so you will need 
-to apply them yourself. 
+To expose the webhook server we have provided a service and ingress to get
+started. These manifests are not applied with `install.yaml` so you will need
+to apply them yourself.
 
-They are located in the `manifets/base/networking` directory.
+They are located in the `config/networking` directory.
+
+### NetworkPolicy Considerations
+
+The default installation includes a NetworkPolicy for the Image Updater controller.
+If you expose the webhook server through the provided Service and Ingress manifests,
+make sure the source namespace is allowed by the webhook NetworkPolicy.
+
+By default, the webhook Service exposes port 8080 and forwards traffic to the
+controller webhook port 8082. If you use the default NetworkPolicy, label the
+namespace of your ingress controller or webhook client with:
+
+```bash
+kubectl label namespace <namespace> webhooks=enabled
+```
+
+If you customize webhook.port or the Service targetPort, update the NetworkPolicy
+port accordingly.
 
 ## Rate Limiting
 
@@ -302,6 +377,18 @@ certificate and key from the `argocd-image-updater-tls` Kubernetes Secret (mount
 at `/app/config/tls/`). If the secret is not provided or its fields are empty, the
 server automatically generates a self-signed certificate in memory so that TLS is
 still active.
+
+!!!note "HTTP/2 disabled by default"
+    HTTP/2 is now **disabled by default** on the webhook TLS server.
+    If your environment requires HTTP/2, opt in explicitly:
+
+    ```bash
+    # standalone webhook command
+    argocd-image-updater webhook --enable-http2
+
+    # combined run command
+    argocd-image-updater run --enable-http2
+    ```
 
 ### Disabling TLS (plain HTTP)
 
@@ -381,12 +468,14 @@ environment variables. Below is the list of which variables correspond to which 
 |Environment Variable|Corresponding Flag|
 |--------|--------|
 |`ENABLE_WEBHOOK`|`--enable-webhook`|
+|`WEBHOOK_REQUIRE_SECRET`|`--webhook-require-secret`|
 |`WEBHOOK_PORT`|`--webhook-port`|
 |`DOCKER_WEBHOOK_SECRET` |`--docker-webhook-secret`|
 |`GHCR_WEBHOOK_SECRET` |`--ghcr-webhook-secret`|
 |`HARBOR_WEBHOOK_SECRET` |`--harbor-webhook-secret`|
 |`QUAY_WEBHOOK_SECRET` |`--quay-webhook-secret`|
 |`ALIYUN_ACR_WEBHOOK_SECRET` |`--aliyun-acr-webhook-secret`|
+|`ACR_WEBHOOK_SECRET` |`--acr-webhook-secret`|
 |`CLOUDEVENTS_WEBHOOK_SECRET` |`--cloudevents-webhook-secret`|
 |`WEBHOOK_RATELIMIT_ALLOWED`|`--webhook-ratelimit-allowed`|
 |`DISABLE_TLS`|`--disable-tls`|
@@ -414,6 +503,7 @@ registries supported.
 - [Quay](https://docs.quay.io/guides/notifications.html)
 (View Repository Push Section)
 - [Aliyun ACR](https://www.alibabacloud.com/help/en/acr/user-guide/manage-webhooks)
+- [Azure Container Registry](https://learn.microsoft.com/en-us/azure/container-registry/container-registry-webhook)
 - [CloudEvents](#aws-ecr-via-eventbridge-cloudevents) (AWS ECR via EventBridge)
 
 ## Troubleshooting
@@ -432,7 +522,7 @@ else. If this continuously occurs please open an issue with the error informatio
 Make sure you included the `type` query parameter for the type of webhook
 handler and ensure that it is correct. 
 
-**Missing/incorrect webhook secret**
+**Missing/invalid webhook secret**
 
 If you are seeing this message make sure that you have secrets configured
 properly in your container registry whether it is through their service

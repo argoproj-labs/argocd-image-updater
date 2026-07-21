@@ -43,7 +43,7 @@ spec:
         - registry
         - serve
         - /tmp/config/registry.conf
-        image: registry
+        image: registry:3
         ports:
           - containerPort: 5000
         volumeMounts:
@@ -123,7 +123,7 @@ spec:
         - registry
         - serve
         - /tmp/config/registry.conf
-        image: registry
+        image: registry:3
         ports:
           - containerPort: 5000
         volumeMounts:

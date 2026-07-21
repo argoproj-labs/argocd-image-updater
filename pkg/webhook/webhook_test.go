@@ -105,6 +105,34 @@ func TestWebhookHandler_ProcessWebhook(t *testing.T) {
 			expectError:  false,
 		},
 		{
+			name:         "valid GHCR webhook with mixed-case owner and package",
+			registryType: "ghcr.io",
+			payload: `{
+				"action": "published",
+				"package": {
+					"name": "MyApp",
+					"package_type": "container",
+					"owner": {
+						"login": "MyUser"
+					},
+					"package_version": {
+						"name": "v1.0.0",
+						"container_metadata": {
+							"tag": {
+								"name": "v1.0.0"
+							}
+						}
+					}
+				}
+			}`,
+			headers: map[string]string{
+				"X-GitHub-Event": "package",
+			},
+			expectedRepo: "myuser/myapp",
+			expectedTag:  "v1.0.0",
+			expectError:  false,
+		},
+		{
 			name:         "missing registry type parameter",
 			registryType: "",
 			payload: `{
@@ -184,6 +212,21 @@ func TestWebhookHandler_ProcessWebhook(t *testing.T) {
 				t.Errorf("expected tag to be %q, got %q", tt.expectedTag, event.Tag)
 			}
 		})
+	}
+}
+
+func TestWebhookHandler_ProcessWebhook_NoHandlersRegistered(t *testing.T) {
+	handler := NewWebhookHandler()
+	// No handlers registered — simulates --webhook-require-secret=true with no secrets configured.
+
+	req := httptest.NewRequest("POST", "/webhook?type=quay.io", strings.NewReader(`{}`))
+	_, err := handler.ProcessWebhook(req)
+
+	if err == nil {
+		t.Fatal("expected error but got none")
+	}
+	if !strings.Contains(err.Error(), "no webhook handlers are registered") {
+		t.Errorf("unexpected error message: %v", err)
 	}
 }
 

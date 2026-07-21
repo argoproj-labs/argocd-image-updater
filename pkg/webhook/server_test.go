@@ -82,7 +82,7 @@ func testEndpointConnectivity(t *testing.T, url string, expectedStatus int) {
 
 	res, err := client.Get(url)
 	if res != nil {
-		assert.Equal(t, res.StatusCode, expectedStatus, "Did not receive the expected status of %d got: %d", expectedStatus, res.StatusCode)
+		assert.Equal(t, expectedStatus, res.StatusCode, "Did not receive the expected status of %d got: %d", expectedStatus, res.StatusCode)
 		defer res.Body.Close()
 	}
 	assert.NotNil(t, res, "No body received so server is not alive")
@@ -96,8 +96,8 @@ func TestNewWebhookServer(t *testing.T) {
 	server := NewWebhookServer(8080, handler, reconciler)
 
 	assert.NotNil(t, server, "Server was nil")
-	assert.Equal(t, server.Port, 8080, "Port is not 8080 got %d", server.Port)
-	assert.Equal(t, server.Handler, handler, "Handler is not equal")
+	assert.Equal(t, 8080, server.Port, "Port is not 8080 got %d", server.Port)
+	assert.Equal(t, handler, server.Handler, "Handler is not equal")
 	assert.NotNil(t, server.Reconciler, "Reconciler was nil")
 
 }
@@ -172,8 +172,8 @@ func TestWebhookServerHandleHealth(t *testing.T) {
 	body, err := io.ReadAll(res.Body)
 	assert.NoError(t, err, "Error while parsing body")
 
-	assert.Equal(t, res.StatusCode, http.StatusOK, "Did not receive the correct status code got: %d", res.StatusCode)
-	assert.Equal(t, string(body), "OK", "Did not receive the correct health message")
+	assert.Equal(t, http.StatusOK, res.StatusCode, "Did not receive the correct status code got: %d", res.StatusCode)
+	assert.Equal(t, "OK", string(body), "Did not receive the correct health message")
 }
 
 // TestWebhookServerHealthEndpoint ensures that the health endpoint of the server is working properly
@@ -202,8 +202,8 @@ func TestWebhookServerHealthEndpoint(t *testing.T) {
 
 		body, err := io.ReadAll(res.Body)
 		assert.NoError(t, err)
-		assert.Equal(t, string(body), "OK", "Did not receive 'OK' got: %s", string(body))
-		assert.Equal(t, res.StatusCode, http.StatusOK, "Did not receive status 200 got: %d", res.StatusCode)
+		assert.Equal(t, "OK", string(body), "Did not receive 'OK' got: %s", string(body))
+		assert.Equal(t, http.StatusOK, res.StatusCode, "Did not receive status 200 got: %d", res.StatusCode)
 	}
 }
 
@@ -255,7 +255,7 @@ func TestWebhookServerHandleWebhook(t *testing.T) {
 			res := rec.Result()
 			defer res.Body.Close()
 
-			assert.Equal(t, res.StatusCode, tt.expectedStatus, "Did not receive ok status")
+			assert.Equal(t, tt.expectedStatus, res.StatusCode, "Did not receive ok status")
 		})
 	}
 
@@ -375,7 +375,7 @@ func TestWebhookServerWebhookEndpoint(t *testing.T) {
 		defer res.Body.Close()
 
 		assert.NoError(t, err)
-		assert.Equal(t, res.StatusCode, http.StatusOK, "Did not receive status 200 got: %d", res.StatusCode)
+		assert.Equal(t, http.StatusOK, res.StatusCode, "Did not receive status 200 got: %d", res.StatusCode)
 	}
 
 	body2 := `{}`
@@ -387,7 +387,7 @@ func TestWebhookServerWebhookEndpoint(t *testing.T) {
 		defer res2.Body.Close()
 
 		assert.NoError(t, err)
-		assert.Equal(t, res2.StatusCode, http.StatusBadRequest, "Did not receive status 400 got: %d", res.StatusCode)
+		assert.Equal(t, http.StatusBadRequest, res2.StatusCode, "Did not receive status 400 got: %d", res2.StatusCode)
 	}
 }
 
@@ -493,11 +493,12 @@ func TestParseTLSCiphers(t *testing.T) {
 func TestBuildTLSConfig(t *testing.T) {
 	t.Run("default config", func(t *testing.T) {
 		cfg := &TLSConfig{}
-		tlsCfg, err := cfg.buildTLSConfig()
+		tlsCfg, err := cfg.buildTLSConfig(context.Background())
 		require.NoError(t, err)
 		assert.Equal(t, uint16(0), tlsCfg.MinVersion)
 		assert.Equal(t, uint16(0), tlsCfg.MaxVersion)
 		assert.Nil(t, tlsCfg.CipherSuites)
+		assert.Equal(t, []string{"http/1.1"}, tlsCfg.NextProtos)
 	})
 
 	t.Run("with min and max version", func(t *testing.T) {
@@ -505,7 +506,7 @@ func TestBuildTLSConfig(t *testing.T) {
 			MinVersion: "1.2",
 			MaxVersion: "1.3",
 		}
-		tlsCfg, err := cfg.buildTLSConfig()
+		tlsCfg, err := cfg.buildTLSConfig(context.Background())
 		require.NoError(t, err)
 		assert.Equal(t, uint16(tls.VersionTLS12), tlsCfg.MinVersion)
 		assert.Equal(t, uint16(tls.VersionTLS13), tlsCfg.MaxVersion)
@@ -516,7 +517,7 @@ func TestBuildTLSConfig(t *testing.T) {
 			MinVersion: "1.3",
 			MaxVersion: "1.3",
 		}
-		tlsCfg, err := cfg.buildTLSConfig()
+		tlsCfg, err := cfg.buildTLSConfig(context.Background())
 		require.NoError(t, err)
 		assert.Equal(t, uint16(tls.VersionTLS13), tlsCfg.MinVersion)
 		assert.Equal(t, uint16(tls.VersionTLS13), tlsCfg.MaxVersion)
@@ -527,7 +528,7 @@ func TestBuildTLSConfig(t *testing.T) {
 			MinVersion: "1.3",
 			MaxVersion: "1.2",
 		}
-		_, err := cfg.buildTLSConfig()
+		_, err := cfg.buildTLSConfig(context.Background())
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "cannot be higher than")
 	})
@@ -536,7 +537,7 @@ func TestBuildTLSConfig(t *testing.T) {
 		cfg := &TLSConfig{
 			MinVersion: "invalid",
 		}
-		_, err := cfg.buildTLSConfig()
+		_, err := cfg.buildTLSConfig(context.Background())
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "--tlsminversion")
 	})
@@ -545,7 +546,7 @@ func TestBuildTLSConfig(t *testing.T) {
 		cfg := &TLSConfig{
 			MaxVersion: "invalid",
 		}
-		_, err := cfg.buildTLSConfig()
+		_, err := cfg.buildTLSConfig(context.Background())
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "--tlsmaxversion")
 	})
@@ -554,7 +555,7 @@ func TestBuildTLSConfig(t *testing.T) {
 		cfg := &TLSConfig{
 			Ciphers: "NOT_REAL",
 		}
-		_, err := cfg.buildTLSConfig()
+		_, err := cfg.buildTLSConfig(context.Background())
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "--tlsciphers")
 	})
@@ -563,9 +564,42 @@ func TestBuildTLSConfig(t *testing.T) {
 		cfg := &TLSConfig{
 			Ciphers: "TLS_AES_128_GCM_SHA256:TLS_AES_256_GCM_SHA384",
 		}
-		tlsCfg, err := cfg.buildTLSConfig()
+		tlsCfg, err := cfg.buildTLSConfig(context.Background())
 		require.NoError(t, err)
 		assert.Len(t, tlsCfg.CipherSuites, 2)
+	})
+
+	t.Run("http2 can be enabled explicitly", func(t *testing.T) {
+		cfg := &TLSConfig{
+			EnableHTTP2: true,
+		}
+		tlsCfg, err := cfg.buildTLSConfig(context.Background())
+		require.NoError(t, err)
+		assert.Empty(t, tlsCfg.NextProtos)
+	})
+
+	t.Run("http2 disabled explicitly sets NextProtos to http/1.1 only", func(t *testing.T) {
+		cfg := &TLSConfig{EnableHTTP2: false}
+		tlsCfg, err := cfg.buildTLSConfig(context.Background())
+		require.NoError(t, err)
+		assert.Equal(t, []string{"http/1.1"}, tlsCfg.NextProtos,
+			"NextProtos must be exactly [http/1.1] so the server never advertises h2")
+	})
+
+	t.Run("http2 disabled does not advertise h2 via ALPN", func(t *testing.T) {
+		cfg := &TLSConfig{EnableHTTP2: false}
+		tlsCfg, err := cfg.buildTLSConfig(context.Background())
+		require.NoError(t, err)
+		assert.NotContains(t, tlsCfg.NextProtos, "h2",
+			"h2 must not appear in NextProtos when HTTP/2 is disabled")
+	})
+
+	t.Run("http2 enabled leaves NextProtos nil", func(t *testing.T) {
+		cfg := &TLSConfig{EnableHTTP2: true}
+		tlsCfg, err := cfg.buildTLSConfig(context.Background())
+		require.NoError(t, err)
+		assert.Nil(t, tlsCfg.NextProtos,
+			"NextProtos must be nil when EnableHTTP2 is true so net/http can manage ALPN freely")
 	})
 }
 
@@ -677,7 +711,7 @@ func TestBuildTLSConfigCipherVersionIncompatibility(t *testing.T) {
 		Ciphers:    tls12OnlyCipher,
 	}
 	// With min=1.2, the cipher is accepted (it supports 1.2) — no error
-	tlsCfg, err := cfg.buildTLSConfig()
+	tlsCfg, err := cfg.buildTLSConfig(context.Background())
 	require.NoError(t, err)
 	assert.Len(t, tlsCfg.CipherSuites, 1)
 }
@@ -688,7 +722,7 @@ func TestBuildTLSConfigCiphersIgnoredForTLS13Only(t *testing.T) {
 		MaxVersion: "1.3",
 		Ciphers:    "TLS_AES_128_GCM_SHA256",
 	}
-	tlsCfg, err := cfg.buildTLSConfig()
+	tlsCfg, err := cfg.buildTLSConfig(context.Background())
 	require.NoError(t, err)
 	// Ciphers should be silently dropped (warning logged) since TLS 1.3
 	// cipher suites are not configurable in Go.
@@ -771,6 +805,66 @@ func TestWebhookServerStartWithTLS(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 	}
 	assert.NoError(t, lastErr, "Server with self-signed TLS did not start in time")
+
+	cancel()
+	<-errCh
+}
+
+// TestWebhookServerTLSNextProtoDisablesHTTP2 is an end-to-end regression test
+// that verifies HTTP/2 is fully disabled when EnableHTTP2 is false. It starts
+// a TLS server, attempts ALPN negotiation offering both h2 and http/1.1, and
+// asserts that the server selects http/1.1 — confirming that neither ALPN
+// advertisement nor net/http's automatic h2 handler registration is active.
+func TestWebhookServerTLSNextProtoDisablesHTTP2(t *testing.T) {
+	server := createMockServer(t, 8085)
+	server.TLS = &TLSConfig{
+		CertFile:    "/nonexistent/cert.pem",
+		KeyFile:     "/nonexistent/key.pem",
+		MinVersion:  DefaultTLSMinVersion,
+		MaxVersion:  DefaultTLSMaxVersion,
+		EnableHTTP2: false,
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- server.Start(ctx)
+	}()
+
+	// Wait for server to be ready before connecting
+	tlsClient := &http.Client{
+		Timeout: 1 * time.Second,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // test only
+		},
+	}
+	address := fmt.Sprintf("https://localhost:%d/healthz", server.Port)
+	var lastErr error
+	for i := 0; i < 50; i++ {
+		resp, err := tlsClient.Get(address)
+		if err == nil {
+			resp.Body.Close()
+			lastErr = nil
+			break
+		}
+		lastErr = err
+		time.Sleep(100 * time.Millisecond)
+	}
+	require.NoError(t, lastErr, "TLS server did not start in time")
+
+	// Attempt ALPN negotiation offering h2 first — the server must reject it
+	// and fall back to http/1.1 because EnableHTTP2 is false.
+	conn, err := tls.Dial("tcp", fmt.Sprintf("localhost:%d", server.Port), &tls.Config{
+		InsecureSkipVerify: true,                       //nolint:gosec // test only
+		NextProtos:         []string{"h2", "http/1.1"}, // offer h2 first
+	})
+	require.NoError(t, err, "failed to connect to TLS server")
+	defer conn.Close()
+
+	negotiated := conn.ConnectionState().NegotiatedProtocol
+	assert.Equal(t, "http/1.1", negotiated,
+		"expected http/1.1 to be negotiated when EnableHTTP2 is false, got %q", negotiated)
 
 	cancel()
 	<-errCh

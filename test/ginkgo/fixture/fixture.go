@@ -567,6 +567,9 @@ func OutputDebugOnFail(namespaceParams ...any) {
 			namespaces = append(namespaces, str)
 
 		} else if nsPtr, isNsPtr := (param).(*corev1.Namespace); isNsPtr {
+			if nsPtr == nil {
+				continue
+			}
 			namespaces = append(namespaces, nsPtr.Name)
 
 		} else if ns, isNs := (param).(corev1.Namespace); isNs {

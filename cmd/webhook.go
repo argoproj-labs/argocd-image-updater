@@ -44,6 +44,7 @@ Supported registries:
 - Quay
 - Harbor
 - Aliyun ACR
+- Azure Container Registry (ACR)
 - AWS ECR (via EventBridge CloudEvents)
 `,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -91,16 +92,19 @@ Supported registries:
 	webhookCmd.Flags().StringVar(&commitMessagePath, "git-commit-message-path", common.DefaultCommitTemplatePath, "Path to a template to use for Git commit messages")
 	webhookCmd.Flags().BoolVar(&cfg.DisableKubeEvents, "disable-kube-events", env.GetBoolVal("IMAGE_UPDATER_KUBE_EVENTS", false), "Disable kubernetes events")
 
+	webhookCmd.Flags().BoolVar(&webhookCfg.RequireSecret, "webhook-require-secret", env.GetBoolVal("WEBHOOK_REQUIRE_SECRET", true), "Require webhook secrets by default")
 	webhookCmd.Flags().IntVar(&webhookCfg.Port, "webhook-port", env.ParseNumFromEnv("WEBHOOK_PORT", 8080, 0, 65535), "Port to listen on for webhook events")
 	webhookCmd.Flags().StringVar(&webhookCfg.DockerSecret, "docker-webhook-secret", env.GetStringVal("DOCKER_WEBHOOK_SECRET", ""), "Secret for validating Docker Hub webhooks")
 	webhookCmd.Flags().StringVar(&webhookCfg.GHCRSecret, "ghcr-webhook-secret", env.GetStringVal("GHCR_WEBHOOK_SECRET", ""), "Secret for validating GitHub Container Registry webhooks")
 	webhookCmd.Flags().StringVar(&webhookCfg.QuaySecret, "quay-webhook-secret", env.GetStringVal("QUAY_WEBHOOK_SECRET", ""), "Secret for validating Quay webhooks")
 	webhookCmd.Flags().StringVar(&webhookCfg.HarborSecret, "harbor-webhook-secret", env.GetStringVal("HARBOR_WEBHOOK_SECRET", ""), "Secret for validating Harbor webhooks")
 	webhookCmd.Flags().StringVar(&webhookCfg.AliyunACRSecret, "aliyun-acr-webhook-secret", env.GetStringVal("ALIYUN_ACR_WEBHOOK_SECRET", ""), "Secret for validating Aliyun ACR webhooks")
+	webhookCmd.Flags().StringVar(&webhookCfg.ACRSecret, "acr-webhook-secret", env.GetStringVal("ACR_WEBHOOK_SECRET", ""), "Secret for validating Azure ACR webhooks")
 	webhookCmd.Flags().StringVar(&webhookCfg.CloudEventsSecret, "cloudevents-webhook-secret", env.GetStringVal("CLOUDEVENTS_WEBHOOK_SECRET", ""), "Secret for validating CloudEvents webhooks")
 	webhookCmd.Flags().IntVar(&webhookCfg.RateLimitNumAllowedRequests, "webhook-ratelimit-allowed", env.ParseNumFromEnv("WEBHOOK_RATELIMIT_ALLOWED", 0, 0, math.MaxInt), "The number of allowed requests in an hour for webhook rate limiting, setting to 0 disables ratelimiting")
 
 	// TLS flags
+	webhookCmd.Flags().BoolVar(&webhookCfg.EnableHTTP2, "enable-http2", false, "If set, HTTP/2 will be enabled for the standalone webhook server")
 	webhookCmd.Flags().BoolVar(&webhookCfg.DisableTLS, "disable-tls", env.GetBoolVal("DISABLE_TLS", false), "Disable TLS and run the server with plain HTTP")
 	webhookCmd.Flags().StringVar(&webhookCfg.TLSMinVersion, "tlsminversion", env.GetStringVal("TLS_MIN_VERSION", webhook.DefaultTLSMinVersion), "Minimum TLS version (e.g. 1.2, 1.3)")
 	webhookCmd.Flags().StringVar(&webhookCfg.TLSMaxVersion, "tlsmaxversion", env.GetStringVal("TLS_MAX_VERSION", webhook.DefaultTLSMaxVersion), "Maximum TLS version (e.g. 1.2, 1.3)")
@@ -135,7 +139,7 @@ func runWebhook(ctx context.Context, cfg *controller.ImageUpdaterConfig, webhook
 		MaxConcurrentReconciles: maxConcurrentUpdaters,
 	}
 
-	server := SetupWebhookServer(webhookCfg, reconciler)
+	server := SetupWebhookServer(ctx, webhookCfg, reconciler)
 
 	// Create a context that is cancelled on an interrupt signal
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)

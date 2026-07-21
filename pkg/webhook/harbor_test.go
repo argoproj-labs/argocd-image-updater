@@ -91,7 +91,7 @@ func TestHarborWebhook_Validate(t *testing.T) {
 			body:           `{"test": "data"}`,
 			authHeader:     "wrong-secret",
 			expectError:    true,
-			expectedErrMsg: "incorrect webhook secret",
+			expectedErrMsg: "invalid webhook secret",
 		},
 	}
 

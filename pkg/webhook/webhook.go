@@ -49,6 +49,11 @@ func (h *WebhookHandler) ProcessWebhook(r *http.Request) (*argocd.WebhookEvent, 
 	// Get list of supported registry types from registered handlers
 	registryTypes := h.getSupportedRegistryTypes()
 
+	// No handlers at all — most likely --webhook-require-secret=true with no secrets configured.
+	if len(registryTypes) == 0 {
+		return nil, fmt.Errorf("no webhook handlers are registered; configure at least one *-webhook-secret or set --webhook-require-secret=false")
+	}
+
 	// Registry type is required
 	if registryType == "" {
 		return nil, fmt.Errorf("missing registry type parameter. Supported types: %s", strings.Join(registryTypes, ", "))
@@ -65,6 +70,12 @@ func (h *WebhookHandler) ProcessWebhook(r *http.Request) (*argocd.WebhookEvent, 
 		return nil, err
 	}
 	return handler.Parse(r)
+}
+
+// RegisteredTypes returns a sorted list of registry types that have a handler registered.
+// Primarily used in tests to assert which handlers were wired up.
+func (h *WebhookHandler) RegisteredTypes() []string {
+	return h.getSupportedRegistryTypes()
 }
 
 // getSupportedRegistryTypes returns a list of all supported registry types from registered handlers

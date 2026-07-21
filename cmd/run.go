@@ -138,6 +138,7 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 			if !enableHTTP2 {
 				tlsOpts = append(tlsOpts, disableHTTP2)
 			}
+			webhookCfg.EnableHTTP2 = enableHTTP2
 
 			// Metrics endpoint is enabled in 'config/default/kustomization.yaml'. The Metrics options configure the server.
 			// More info:
@@ -326,12 +327,14 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 
 	// Webhook flags
 	controllerCmd.Flags().BoolVar(&cfg.EnableWebhook, "enable-webhook", env.GetBoolVal("ENABLE_WEBHOOK", false), "Enable webhook server for receiving registry events")
+	controllerCmd.Flags().BoolVar(&webhookCfg.RequireSecret, "webhook-require-secret", env.GetBoolVal("WEBHOOK_REQUIRE_SECRET", true), "Require webhook secrets by default")
 	controllerCmd.Flags().IntVar(&webhookCfg.Port, "webhook-port", env.ParseNumFromEnv("WEBHOOK_PORT", 8082, 0, 65535), "Port to listen on for webhook events")
 	controllerCmd.Flags().StringVar(&webhookCfg.DockerSecret, "docker-webhook-secret", env.GetStringVal("DOCKER_WEBHOOK_SECRET", ""), "Secret for validating Docker Hub webhooks")
 	controllerCmd.Flags().StringVar(&webhookCfg.GHCRSecret, "ghcr-webhook-secret", env.GetStringVal("GHCR_WEBHOOK_SECRET", ""), "Secret for validating GitHub Container Registry webhooks")
 	controllerCmd.Flags().StringVar(&webhookCfg.QuaySecret, "quay-webhook-secret", env.GetStringVal("QUAY_WEBHOOK_SECRET", ""), "Secret for validating Quay webhooks")
 	controllerCmd.Flags().StringVar(&webhookCfg.HarborSecret, "harbor-webhook-secret", env.GetStringVal("HARBOR_WEBHOOK_SECRET", ""), "Secret for validating Harbor webhooks")
 	controllerCmd.Flags().StringVar(&webhookCfg.AliyunACRSecret, "aliyun-acr-webhook-secret", env.GetStringVal("ALIYUN_ACR_WEBHOOK_SECRET", ""), "Secret for validating Aliyun ACR webhooks")
+	controllerCmd.Flags().StringVar(&webhookCfg.ACRSecret, "acr-webhook-secret", env.GetStringVal("ACR_WEBHOOK_SECRET", ""), "Secret for validating Azure ACR webhooks")
 	controllerCmd.Flags().StringVar(&webhookCfg.CloudEventsSecret, "cloudevents-webhook-secret", env.GetStringVal("CLOUDEVENTS_WEBHOOK_SECRET", ""), "Secret for validating CloudEvents webhooks")
 	controllerCmd.Flags().IntVar(&webhookCfg.RateLimitNumAllowedRequests, "webhook-ratelimit-allowed", env.ParseNumFromEnv("WEBHOOK_RATELIMIT_ALLOWED", 0, 0, math.MaxInt), "The number of allowed requests in an hour for webhook rate limiting, setting to 0 disables ratelimiting")
 
@@ -449,7 +452,7 @@ func (ws *WebhookServerRunnable) Start(ctx context.Context) error {
 	})
 	ctx = log.ContextWithLogger(ctx, webhookLogger)
 
-	ws.webhookServer = SetupWebhookServer(ws.WebhookConfig, ws.Reconciler)
+	ws.webhookServer = SetupWebhookServer(ctx, ws.WebhookConfig, ws.Reconciler)
 
 	// Start webhook server in goroutine with context handling
 	return ws.webhookServer.Start(ctx)

@@ -15,7 +15,7 @@ spec:
     pullSecret: "secret:<namespace>/<secret_name>#<field>"
     platforms: [ "linux/arm64", "linux/amd64" ]
   writeBackConfig:
-    method: "git:secret:argocd-image-updater/git-creds"
+    method: "git:secret:git-creds"
     gitConfig: # Group git-related settings. Should be ignored when writeBackMethod: "argocd"
       repository: "git@github.com:example/example.git"
       branch: "main"
@@ -39,7 +39,7 @@ spec:
         pullSecret: "secret:<namespace>/<secret_name>#<field>"
         platforms: [ "linux/arm64", "linux/amd64" ]
       writeBackConfig:
-        method: "git:secret:argocd-image-updater/git-creds"
+        method: "git:secret:git-creds"
         gitConfig: # Group git-related settings. Should be ignored when writeBackMethod: "argocd"
           repository: "git@github.com:example/example.git"
           branch: "main"
@@ -90,7 +90,7 @@ spec:
         ignoreTags: [ "latest", "master" ]
         pullSecret: "secret:<namespace>/<secret_name>#<field>"
       writeBackConfig:
-        method: "git:secret:argocd-image-updater/git-creds"
+        method: "git:secret:git-creds"
         gitConfig: # Group git-related settings. Should be ignored when writeBackMethod: "argocd"
           repository: "git@github.com:example/example.git"
           branch: "main"

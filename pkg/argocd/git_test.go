@@ -118,7 +118,7 @@ func Test_TemplateBranchName(t *testing.T) {
 				NewTag: tag.NewImageTag("2.1", time.Now(), ""),
 			},
 		}
-		r := TemplateBranchName(context.Background(), tpl, "", "", cl)
+		r := TemplateBranchName(context.Background(), tpl, "", "", "", cl)
 		assert.NotEmpty(t, r)
 		assert.Equal(t, exp, r)
 	})
@@ -132,7 +132,7 @@ func Test_TemplateBranchName(t *testing.T) {
 				NewTag: tag.NewImageTag("1.1", time.Now(), ""),
 			},
 		}
-		r := TemplateBranchName(context.Background(), tpl, "", "", cl)
+		r := TemplateBranchName(context.Background(), tpl, "", "", "", cl)
 		assert.NotEmpty(t, r)
 		assert.Equal(t, exp, r)
 	})
@@ -147,7 +147,7 @@ func Test_TemplateBranchName(t *testing.T) {
 				NewTag: tag.NewImageTag("1.1", time.Now(), ""),
 			},
 		}
-		r := TemplateBranchName(context.Background(), tpl, "", "", cl)
+		r := TemplateBranchName(context.Background(), tpl, "", "", "", cl)
 		assert.NotEmpty(t, r)
 		assert.Equal(t, exp, r)
 	})
@@ -159,7 +159,7 @@ func Test_TemplateBranchName(t *testing.T) {
 			"in-blandit-vel-pharetra-vel-urna-aliquam-euismod-elit-vel-mi"
 		exp := tpl[:255]
 		cl := []ChangeEntry{}
-		r := TemplateBranchName(context.Background(), tpl, "", "", cl)
+		r := TemplateBranchName(context.Background(), tpl, "", "", "", cl)
 		assert.NotEmpty(t, r)
 		assert.Equal(t, exp, r)
 		assert.Len(t, r, 255)
@@ -173,7 +173,7 @@ func Test_TemplateBranchName(t *testing.T) {
 				NewTag: tag.NewImageTag("1.1", time.Now(), ""),
 			},
 		}
-		r := TemplateBranchName(context.Background(), tpl, "my-namespace", "my-app", cl)
+		r := TemplateBranchName(context.Background(), tpl, "my-namespace", "my-app", "", cl)
 		assert.Equal(t, "image-updater-my-namespace-my-app", r)
 	})
 	t.Run("AppNamespace and AppName are stable regardless of image changes", func(t *testing.T) {
@@ -192,14 +192,14 @@ func Test_TemplateBranchName(t *testing.T) {
 				NewTag: tag.NewImageTag("1.2", time.Now(), ""),
 			},
 		}
-		r1 := TemplateBranchName(context.Background(), tpl, "my-namespace", "my-app", clV1)
-		r2 := TemplateBranchName(context.Background(), tpl, "my-namespace", "my-app", clV2)
+		r1 := TemplateBranchName(context.Background(), tpl, "my-namespace", "my-app", "", clV1)
+		r2 := TemplateBranchName(context.Background(), tpl, "my-namespace", "my-app", "", clV2)
 		assert.Equal(t, "image-updater-my-namespace-my-app", r1)
 		assert.Equal(t, r1, r2, "branch name should be stable across different image updates")
 	})
 	t.Run("AppNamespace and AppName empty when not provided", func(t *testing.T) {
 		tpl := "image-updater-{{.AppNamespace}}-{{.AppName}}"
-		r := TemplateBranchName(context.Background(), tpl, "", "", []ChangeEntry{})
+		r := TemplateBranchName(context.Background(), tpl, "", "", "", []ChangeEntry{})
 		assert.Equal(t, "image-updater--", r)
 	})
 	t.Run("AppName usable alongside image variables", func(t *testing.T) {
@@ -211,8 +211,34 @@ func Test_TemplateBranchName(t *testing.T) {
 				NewTag: tag.NewImageTag("1.5", time.Now(), ""),
 			},
 		}
-		r := TemplateBranchName(context.Background(), tpl, "prod", "my-app", cl)
+		r := TemplateBranchName(context.Background(), tpl, "prod", "my-app", "", cl)
 		assert.Equal(t, "my-app-nginx-1.5", r)
+	})
+	t.Run("TargetKey in template for PR dedup", func(t *testing.T) {
+		tpl := "image-updater-{{.TargetKey}}-{{.SHA256}}"
+		cl := []ChangeEntry{
+			{
+				Image:  image.NewFromIdentifier("nginx"),
+				OldTag: tag.NewImageTag("1.0", time.Now(), ""),
+				NewTag: tag.NewImageTag("1.1", time.Now(), ""),
+			},
+		}
+		r := TemplateBranchName(context.Background(), tpl, "ns", "app-a", "abc12345", cl)
+		assert.Contains(t, r, "abc12345", "branch should contain the target key hash")
+		assert.NotContains(t, r, "app-a", "branch should not contain app name")
+	})
+	t.Run("Same target key and changes produce same branch for different apps", func(t *testing.T) {
+		tpl := "image-updater-{{.TargetKey}}-{{.SHA256}}"
+		cl := []ChangeEntry{
+			{
+				Image:  image.NewFromIdentifier("nginx"),
+				OldTag: tag.NewImageTag("1.0", time.Now(), ""),
+				NewTag: tag.NewImageTag("1.1", time.Now(), ""),
+			},
+		}
+		r1 := TemplateBranchName(context.Background(), tpl, "ns", "app-a", "abc12345", cl)
+		r2 := TemplateBranchName(context.Background(), tpl, "ns", "app-b", "abc12345", cl)
+		assert.Equal(t, r1, r2, "different apps with same target key and changes should produce the same branch")
 	})
 }
 
@@ -409,6 +435,40 @@ func Test_updateKustomizeFile(t *testing.T) {
 			wantContent: "",
 			filter:      filter,
 			wantErr:     true,
+		},
+		{
+			name: "blank-lines-between-sections",
+			content: `images:
+- name: foo
+  digest: sha12345
+
+resources:
+- some-resource.yaml
+`,
+			wantContent: `images:
+- name: foo
+  digest: sha23456
+
+resources:
+- some-resource.yaml
+`,
+			filter: filter,
+		},
+		{
+			name: "blank-lines-before-images",
+			content: `apiVersion: kustomize.config.k8s.io/v1beta1
+
+images:
+- name: foo
+  digest: sha12345
+`,
+			wantContent: `apiVersion: kustomize.config.k8s.io/v1beta1
+
+images:
+- name: foo
+  digest: sha23456
+`,
+			filter: filter,
 		},
 	}
 	for _, tt := range tests {

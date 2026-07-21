@@ -3,6 +3,7 @@ package registry
 import (
 	"context"
 	"crypto/sha256"
+	stdjson "encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -12,6 +13,11 @@ import (
 
 	"github.com/argoproj/pkg/json"
 
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/registry/internal/client"
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/registry/internal/client/auth"
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/registry/internal/client/auth/challenge"
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/registry/internal/client/transport"
+
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/options"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/tag"
@@ -19,14 +25,9 @@ import (
 	"github.com/distribution/distribution/v3"
 	"github.com/distribution/distribution/v3/manifest/manifestlist"
 	"github.com/distribution/distribution/v3/manifest/ocischema"
-	"github.com/distribution/distribution/v3/manifest/schema1" //nolint:staticcheck
 	"github.com/distribution/distribution/v3/manifest/schema2"
-	"github.com/distribution/distribution/v3/reference"
 	"github.com/distribution/distribution/v3/registry/api/errcode"
-	"github.com/distribution/distribution/v3/registry/client"
-	"github.com/distribution/distribution/v3/registry/client/auth"
-	"github.com/distribution/distribution/v3/registry/client/auth/challenge"
-	"github.com/distribution/distribution/v3/registry/client/transport"
+	"github.com/distribution/reference"
 
 	"github.com/opencontainers/go-digest"
 	ociv1 "github.com/opencontainers/image-spec/specs-go/v1"
@@ -38,31 +39,48 @@ import (
 
 // knownMediaTypes is the list of media types we can process
 var knownMediaTypes = []string{
-	ocischema.SchemaVersion.MediaType,
-	schema1.MediaTypeSignedManifest, //nolint:staticcheck
-	schema2.SchemaVersion.MediaType,
-	manifestlist.SchemaVersion.MediaType,
+	ociv1.MediaTypeImageManifest,
+	schema2.MediaTypeManifest,
+	manifestlist.MediaTypeManifestList,
 	ociv1.MediaTypeImageIndex,
 }
 
 // RegistryClient defines the methods we need for querying container registries
 //
-//go:generate mockery --name RegistryClient --output ./mocks --outpkg mocks
+//go:generate go run github.com/vektra/mockery/v2@v2.53.6 --name RegistryClient --output ./mocks --outpkg mocks
+//go:generate go run github.com/vektra/mockery/v2@v2.53.6 --name Repository --srcpkg github.com/distribution/distribution/v3 --output ./mocks --outpkg mocks
+//go:generate go run github.com/vektra/mockery/v2@v2.53.6 --name Manifest --srcpkg github.com/distribution/distribution/v3 --output ./mocks --outpkg mocks
+//go:generate go run github.com/vektra/mockery/v2@v2.53.6 --name ManifestService --srcpkg github.com/distribution/distribution/v3 --output ./mocks --outpkg mocks
+//go:generate go run github.com/vektra/mockery/v2@v2.53.6 --name TagService --srcpkg github.com/distribution/distribution/v3 --output ./mocks --outpkg mocks
+//go:generate go run github.com/vektra/mockery/v2@v2.53.6 --name Limiter --srcpkg go.uber.org/ratelimit --output ./mocks --outpkg mocks
+//go:generate go run github.com/vektra/mockery/v2@v2.53.6 --name RoundTripper --srcpkg net/http --output ./mocks --outpkg mocks
+//go:generate go run github.com/vektra/mockery/v2@v2.53.6 --name Manager --srcpkg github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/registry/internal/client/auth/challenge --output ./mocks --outpkg mocks
 type RegistryClient interface {
 	NewRepository(nameInRepository string) error
 	Tags(ctx context.Context) ([]string, error)
 	ManifestForTag(ctx context.Context, tagStr string) (distribution.Manifest, error)
 	ManifestForDigest(ctx context.Context, dgst digest.Digest) (distribution.Manifest, error)
 	TagMetadata(ctx context.Context, manifest distribution.Manifest, opts *options.ManifestOptions) (*tag.TagInfo, error)
+	// Referrers returns the list of OCI referrer descriptors for the given
+	// manifest digest using the OCI Distribution Spec v1.1 referrers API.
+	// NewRepository must be called first.
+	Referrers(ctx context.Context, dgst digest.Digest) ([]distribution.Descriptor, error)
+
+	// BlobContent downloads the blob identified by dgst and returns its raw
+	// bytes. Used to fetch sigstore bundle blobs from signature artifacts.
+	// NewRepository must be called first.
+	BlobContent(ctx context.Context, dgst digest.Digest) ([]byte, error)
 }
 
 type NewRegistryClient func(*RegistryEndpoint, string, string) (RegistryClient, error)
 
 // Helper type for registry clients
 type registryClient struct {
-	regClient distribution.Repository
-	endpoint  *RegistryEndpoint
-	creds     credentials
+	regClient        distribution.Repository
+	endpoint         *RegistryEndpoint
+	creds            credentials
+	httpClient       *http.Client // authenticated + rate-limited, set by NewRepository
+	nameInRepository string       // set by NewRepository
 }
 
 // credentials is an implementation of distribution/V3/session struct
@@ -151,6 +169,11 @@ func (clt *registryClient) NewRepository(nameInRepository string) error {
 	if err != nil {
 		return err
 	}
+	// Store the authenticated HTTP client for use by Referrers and any other
+	// raw-HTTP calls that the distribution ManifestService doesn't cover.
+	clt.httpClient = &http.Client{Transport: rlt}
+	// Keep the plain repository path so Referrers can build the correct URL.
+	clt.nameInRepository = nameInRepository
 	return nil
 }
 
@@ -230,40 +253,11 @@ func (clt *registryClient) TagMetadata(ctx context.Context, manifest distributio
 
 	// We support the following types of manifests as returned by the registry:
 	//
-	// V1 (legacy, might go away), V2 and OCI
+	// V2 and OCI
 	//
 	// Also ManifestLists (e.g. on multi-arch images) are supported.
 	//
 	switch deserialized := manifest.(type) {
-
-	case *schema1.SignedManifest: //nolint:staticcheck
-		var man schema1.Manifest = deserialized.Manifest //nolint:staticcheck
-		if len(man.History) == 0 {
-			return nil, fmt.Errorf("no history information found in schema V1")
-		}
-
-		_, mBytes, err := manifest.Payload()
-		if err != nil {
-			return nil, err
-		}
-		ti.Digest = sha256.Sum256(mBytes)
-
-		logCtx.Tracef("v1 SHA digest is %s", ti.EncodedDigest())
-		if err := json.Unmarshal([]byte(man.History[0].V1Compatibility), &info); err != nil {
-			return nil, err
-		}
-		if !opts.WantsPlatform(info.OS, info.Arch, "") {
-			logCtx.Debugf("ignoring v1 manifest %v. Manifest platform: %s, requested: %s",
-				ti.EncodedDigest(), options.PlatformKey(info.OS, info.Arch, info.Variant), strings.Join(opts.Platforms(), ","))
-			return nil, nil
-		}
-		if createdAt, err := time.Parse(time.RFC3339Nano, info.Created); err != nil {
-			return nil, err
-		} else {
-			ti.CreatedAt = createdAt
-		}
-		ti.Labels = info.Config.Labels
-		return ti, nil
 
 	case *manifestlist.DeserializedManifestList:
 		var list manifestlist.DeserializedManifestList = *deserialized
@@ -489,6 +483,62 @@ func IsAuthError(ctx context.Context, err error) bool {
 		}
 	}
 	return false
+}
+
+// BlobContent implements RegistryClient.BlobContent.
+// It uses the authenticated repository's BlobStore to download the raw bytes
+// of the blob identified by dgst.
+func (clt *registryClient) BlobContent(ctx context.Context, dgst digest.Digest) ([]byte, error) {
+	if clt.regClient == nil {
+		return nil, fmt.Errorf("registry client not initialized: call NewRepository first")
+	}
+	return clt.regClient.Blobs(ctx).Get(ctx, dgst)
+}
+
+// Referrers implements RegistryClient.Referrers.
+// It calls GET /v2/<repo>/referrers/<dgst> (OCI Distribution Spec v1.1) and
+// returns all referrer descriptors.  Filter by ArtifactType on the caller's
+// side to find a specific artifact kind.
+func (clt *registryClient) Referrers(ctx context.Context, dgst digest.Digest) ([]distribution.Descriptor, error) {
+	if clt.httpClient == nil || clt.nameInRepository == "" {
+		return nil, fmt.Errorf("registry client not initialized: call NewRepository first")
+	}
+
+	rawURL := fmt.Sprintf("%s/v2/%s/referrers/%s",
+		strings.TrimSuffix(clt.endpoint.RegistryAPI, "/"),
+		clt.nameInRepository,
+		dgst.String())
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("error creating referrers request: %w", err)
+	}
+	req.Header.Set("Accept", "application/vnd.oci.image.index.v1+json")
+
+	resp, err := clt.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("error fetching referrers: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		// The registry either does not support the OCI referrers API or has no
+		// referrers for this digest.  Return an empty list so the caller treats
+		// this as "no signature found" rather than a network error.
+		return nil, nil
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("referrers API returned HTTP %d for digest %s", resp.StatusCode, dgst)
+	}
+
+	var result struct {
+		Manifests []distribution.Descriptor `json:"manifests"`
+	}
+	if err := stdjson.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("error decoding referrers response: %w", err)
+	}
+
+	return result.Manifests, nil
 }
 
 // Implementation of ping method to initialize the challenge list
