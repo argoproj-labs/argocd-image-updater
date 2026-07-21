@@ -465,6 +465,7 @@ func marshalParamsOverride(ctx context.Context, applicationImages *ApplicationIm
 				}
 			}
 
+			var writes []helmValueWrite
 			for _, c := range images {
 				if c == nil || c.ImageAlias == "" {
 					continue
@@ -495,10 +496,7 @@ func marshalParamsOverride(ctx context.Context, applicationImages *ApplicationIm
 					}
 					//Write tag in helm value file only if tag is not empty
 					if tagValue != "" {
-						err = setHelmValue(&helmNewValues, helmParamVersion, tagValue)
-						if err != nil {
-							return nil, fmt.Errorf("failed to set image parameter version value: %v", err)
-						}
+						writes = append(writes, helmValueWrite{kind: "version", path: helmParamVersion, value: tagValue})
 					}
 				}
 
@@ -529,13 +527,10 @@ func marshalParamsOverride(ctx context.Context, applicationImages *ApplicationIm
 					// If helmParamN.Value is already in short form or originalData is empty, use it as-is
 				}
 
-				err = setHelmValue(&helmNewValues, helmParamName, valueToSet)
-				if err != nil {
-					return nil, fmt.Errorf("failed to set image parameter name value: %v", err)
-				}
+				writes = append(writes, helmValueWrite{kind: "name", path: helmParamName, value: valueToSet})
 			}
 
-			override, err = marshalWithIndent(&helmNewValues, defaultIndent)
+			override, err = applyHelmValueWrites(&helmNewValues, originalData, writes)
 		} else {
 			if appSource.Helm == nil {
 				return []byte{}, nil
@@ -764,95 +759,195 @@ func setHelmValue(currentValues *yaml.Node, key string, value interface{}) error
 }
 
 // getHelmValue retrieves a value from a yaml.Node using a key path.
-// The key can be in the form of "a.b.c" which can be:
+// See resolveHelmScalarNode for how the key is interpreted.
+func getHelmValue(values *yaml.Node, key string) (string, error) {
+	node, err := resolveHelmScalarNode(values, key)
+	if err != nil {
+		return "", err
+	}
+	return node.Value, nil
+}
+
+// resolveHelmScalarNode resolves a key path to its scalar yaml.Node. The key
+// can be in the form of "a.b.c" which can be:
 // 1. A nested hierarchy where "a" has "b" which has "c"
 // 2. A literal key "a.b.c" if the nested structure doesn't exist
-// Returns the value as a string and an error if the key is not found.
-func getHelmValue(values *yaml.Node, key string) (string, error) {
+// Returning the node (rather than just its value) lets callers read its source
+// Line/Column for in-place patching. Returns an error if the key is not found.
+func resolveHelmScalarNode(values *yaml.Node, key string) (*yaml.Node, error) {
 	current := values
 
 	// an unmarshalled document has a DocumentNode at the root, but
 	// we navigate from a MappingNode.
 	if current.Kind == yaml.DocumentNode {
 		if len(current.Content) == 0 {
-			return "", fmt.Errorf("empty document node")
+			return nil, fmt.Errorf("empty document node")
 		}
 		current = current.Content[0]
 	}
 
 	if current.Kind != yaml.MappingNode {
-		return "", fmt.Errorf("unexpected type %s for root", nodeKindString(current.Kind))
+		return nil, fmt.Errorf("unexpected type %s for root", nodeKindString(current.Kind))
 	}
 
 	// First, try to navigate as nested path (a.b.c)
 	keys := strings.Split(key, ".")
-	currentForNested := current
+	node := current
 
 	for i, k := range keys {
 		var idPtr *int
 		// Handle array indexing pattern like "key[0]"
 		keyPart := k
-		matches := re.FindStringSubmatch(k)
-		if matches != nil {
-			idStr := matches[2]
-			id, err := strconv.Atoi(idStr)
+		if matches := re.FindStringSubmatch(k); matches != nil {
+			id, err := strconv.Atoi(matches[2])
 			if err != nil {
-				return "", fmt.Errorf("id \"%s\" in yaml array must match pattern ^(.*)\\[(.*)\\]$", idStr)
+				return nil, fmt.Errorf("id \"%s\" in yaml array must match pattern ^(.*)\\[(.*)\\]$", matches[2])
 			}
 			idPtr = &id
 			keyPart = matches[1]
 		}
 
-		if idx, found := findHelmValuesKey(currentForNested, keyPart); found {
-			// Navigate deeper into the map
-			currentForNested = currentForNested.Content[idx]
-			// unpack one level of alias; an alias of an alias is not supported
-			if currentForNested.Kind == yaml.AliasNode {
-				currentForNested = currentForNested.Alias
-			}
-
-			if currentForNested.Kind == yaml.SequenceNode {
-				if idPtr == nil {
-					// Can't navigate into sequence without index
-					break
-				}
-				if *idPtr < 0 || *idPtr >= len(currentForNested.Content) {
-					break
-				}
-				currentForNested = currentForNested.Content[*idPtr]
-			}
-
-			if i == len(keys)-1 {
-				// If we're at the final key, return the value
-				if currentForNested.Kind == yaml.ScalarNode {
-					return currentForNested.Value, nil
-				}
-				// If it's not a scalar, the nested path doesn't match, fall through to literal check
-				break
-			} else if currentForNested.Kind != yaml.MappingNode {
-				// Can't navigate further, nested path doesn't exist
+		idx, found := findHelmValuesKey(node, keyPart)
+		if !found {
+			break // fall through to literal check
+		}
+		node = node.Content[idx]
+		// unpack one level of alias; an alias of an alias is not supported
+		if node.Kind == yaml.AliasNode {
+			node = node.Alias
+		}
+		if node.Kind == yaml.SequenceNode {
+			if idPtr == nil || *idPtr < 0 || *idPtr >= len(node.Content) {
 				break
 			}
-		} else {
-			// Key not found in nested path, fall through to literal check
-			break
+			node = node.Content[*idPtr]
+		}
+
+		if i == len(keys)-1 {
+			if node.Kind == yaml.ScalarNode {
+				return node, nil
+			}
+			break // not a scalar, fall through to literal check
+		} else if node.Kind != yaml.MappingNode {
+			break // can't navigate further
 		}
 	}
 
 	// If nested path didn't work, try as a literal key "a.b.c"
 	if idx, found := findHelmValuesKey(current, key); found {
 		valueNode := current.Content[idx]
-		// unpack one level of alias
 		if valueNode.Kind == yaml.AliasNode {
 			valueNode = valueNode.Alias
 		}
 		if valueNode.Kind == yaml.ScalarNode {
-			return valueNode.Value, nil
+			return valueNode, nil
 		}
-		return "", fmt.Errorf("literal key \"%s\" found but is not a scalar value", key)
+		return nil, fmt.Errorf("literal key \"%s\" found but is not a scalar value", key)
 	}
 
-	return "", fmt.Errorf("key \"%s\" not found as nested path or literal key", key)
+	return nil, fmt.Errorf("key \"%s\" not found as nested path or literal key", key)
+}
+
+// helmValueWrite is a single parameter value to write into a Helm values
+// document. kind ("name" or "version") is used only for error context.
+type helmValueWrite struct {
+	kind  string
+	path  string
+	value string
+}
+
+// applyHelmValueWrites writes the given parameter values into a Helm values
+// document. When every write updates a value that already exists in the
+// original file as a plain scalar, it patches those values in place, preserving
+// the file's exact formatting (comments, blank lines, indentation, anchors,
+// inline-comment alignment). If any key must be created or cannot be safely
+// rewritten, it falls back to mutating the YAML node tree and re-marshalling,
+// which preserves comments and key order but not blank lines.
+func applyHelmValueWrites(root *yaml.Node, originalData []byte, writes []helmValueWrite) ([]byte, error) {
+	if patched, ok := patchHelmValuesInPlace(root, originalData, writes); ok {
+		return patched, nil
+	}
+	for _, w := range writes {
+		if err := setHelmValue(root, w.path, w.value); err != nil {
+			return nil, fmt.Errorf("failed to set image parameter %s value: %v", w.kind, err)
+		}
+	}
+	return marshalWithIndent(root, defaultIndent)
+}
+
+// patchHelmValuesInPlace edits value text directly in originalData. It succeeds
+// only when every write targets an existing plain scalar that can be safely
+// rewritten; otherwise it returns (nil, false) so the caller falls back to
+// re-marshalling. Because it never re-serialises untouched lines, all original
+// formatting outside the changed values is preserved byte-for-byte.
+func patchHelmValuesInPlace(root *yaml.Node, originalData []byte, writes []helmValueWrite) ([]byte, bool) {
+	if isOnlyWhitespace(originalData) {
+		return nil, false
+	}
+	type patch struct {
+		node  *yaml.Node
+		value string
+	}
+	patches := make([]patch, 0, len(writes))
+	for _, w := range writes {
+		node, err := resolveHelmScalarNode(root, w.path)
+		if err != nil {
+			return nil, false // key must be created -> fall back
+		}
+		patches = append(patches, patch{node: node, value: w.value})
+	}
+	lines := strings.Split(string(originalData), "\n")
+	for _, p := range patches {
+		if !patchScalarValue(lines, p.node, p.value) {
+			return nil, false // value not safely rewritable -> fall back
+		}
+	}
+	return []byte(strings.Join(lines, "\n")), true
+}
+
+// patchScalarValue replaces the value text of a scalar node at its recorded
+// Line/Column in lines, leaving the remainder of the line (trailing comments
+// and their alignment) untouched. It returns false when the raw text at that
+// position does not match the node's decoded value (e.g. quoted or block
+// scalars) or when the replacement would not be a safe plain scalar.
+func patchScalarValue(lines []string, node *yaml.Node, newValue string) bool {
+	if node == nil || node.Line < 1 || node.Line > len(lines) {
+		return false
+	}
+	line := lines[node.Line-1]
+	col := node.Column - 1
+	if col < 0 || col > len(line) {
+		return false
+	}
+	old := node.Value
+	if old == "" || !strings.HasPrefix(line[col:], old) {
+		return false
+	}
+	if !isSafePlainScalar(newValue) {
+		return false
+	}
+	lines[node.Line-1] = line[:col] + newValue + line[col+len(old):]
+	return true
+}
+
+// isSafePlainScalar reports whether s can be written as an unquoted YAML plain
+// scalar without changing tokenisation. Conservative: anything that could need
+// quoting returns false, causing a fall back to re-marshalling.
+func isSafePlainScalar(s string) bool {
+	if s == "" || strings.ContainsAny(s, "\n\t") {
+		return false
+	}
+	if strings.Contains(s, ": ") || strings.Contains(s, " #") {
+		return false
+	}
+	if strings.HasPrefix(s, " ") || strings.HasSuffix(s, " ") || strings.HasSuffix(s, ":") {
+		return false
+	}
+	switch s[0] {
+	case '!', '&', '*', '?', '|', '>', '%', '@', '`', '"', '\'', '#', ',', '[', ']', '{', '}', '-':
+		return false
+	}
+	return true
 }
 
 func parseDefaultTarget(appNamespace string, appName string, path string, kubeClient *kube.ImageUpdaterKubernetesClient) string {
