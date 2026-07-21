@@ -7043,3 +7043,46 @@ func TestMarshalParamsOverride_PreservesBlockScalars(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, expected, string(out), "block scalar and its internal blank line must be preserved")
 }
+
+// TestIsSafePlainScalar covers the values that may be patched in place as
+// unquoted plain scalars versus those that must fall back to re-marshalling
+// (so they get quoted). In particular, strings a YAML parser would resolve as
+// a number, bool or null must be rejected.
+func TestIsSafePlainScalar(t *testing.T) {
+	safe := []string{"v1.0.0", "myapp", "1.2.3", "sha256-abc", "release-2024"}
+	for _, s := range safe {
+		assert.True(t, isSafePlainScalar(s), "%q should be safe to write unquoted", s)
+	}
+
+	unsafe := []string{
+		"",                   // empty
+		"1.20", "16", "0755", // numbers (would round-trip as int/float)
+		"true", "false", // 1.2 booleans
+		"yes", "no", "on", "off", "y", "n", // 1.1 booleans
+		"null", "~", // null
+		"a: b",                                  // mapping-like
+		"tag #1",                                // trailing-comment-like
+		"-latest", "*anchor", "&anchor", "@ref", // reserved leading chars
+	}
+	for _, s := range unsafe {
+		assert.False(t, isSafePlainScalar(s), "%q should fall back to re-marshalling", s)
+	}
+}
+
+// TestResolveHelmScalarNode_ArrayIndexMismatch verifies that requesting an
+// array index against a node that is not a sequence fails to resolve (rather
+// than silently ignoring the index and patching an unrelated node), matching
+// setHelmValue's stricter behavior.
+func TestResolveHelmScalarNode_ArrayIndexMismatch(t *testing.T) {
+	var root yaml.Node
+	require.NoError(t, yaml.Unmarshal([]byte("foo:\n  tag: v1.0.0\n"), &root))
+
+	// foo is a mapping, not a sequence, so "foo[2].tag" must not resolve.
+	_, err := resolveHelmScalarNode(&root, "foo[2].tag")
+	assert.Error(t, err, "index against a non-sequence node should not resolve")
+
+	// sanity check: the plain nested path still resolves.
+	node, err := resolveHelmScalarNode(&root, "foo.tag")
+	require.NoError(t, err)
+	assert.Equal(t, "v1.0.0", node.Value)
+}

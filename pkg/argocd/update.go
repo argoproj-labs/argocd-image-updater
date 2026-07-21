@@ -816,11 +816,15 @@ func resolveHelmScalarNode(values *yaml.Node, key string) (*yaml.Node, error) {
 		if node.Kind == yaml.AliasNode {
 			node = node.Alias
 		}
-		if node.Kind == yaml.SequenceNode {
-			if idPtr == nil || *idPtr < 0 || *idPtr >= len(node.Content) {
+		if idPtr != nil {
+			// an index was requested, so the node must be a sequence; otherwise
+			// bail so the caller falls back rather than silently ignoring it
+			if node.Kind != yaml.SequenceNode || *idPtr < 0 || *idPtr >= len(node.Content) {
 				break
 			}
 			node = node.Content[*idPtr]
+		} else if node.Kind == yaml.SequenceNode {
+			break // can't navigate into a sequence without an index
 		}
 
 		if i == len(keys)-1 {
@@ -931,8 +935,9 @@ func patchScalarValue(lines []string, node *yaml.Node, newValue string) bool {
 }
 
 // isSafePlainScalar reports whether s can be written as an unquoted YAML plain
-// scalar without changing tokenisation. Conservative: anything that could need
-// quoting returns false, causing a fall back to re-marshalling.
+// scalar without changing tokenisation or its resolved type. Conservative:
+// anything that could need quoting returns false, causing a fall back to
+// re-marshalling.
 func isSafePlainScalar(s string) bool {
 	if s == "" || strings.ContainsAny(s, "\n\t") {
 		return false
@@ -945,6 +950,22 @@ func isSafePlainScalar(s string) bool {
 	}
 	switch s[0] {
 	case '!', '&', '*', '?', '|', '>', '%', '@', '`', '"', '\'', '#', ',', '[', ']', '{', '}', '-':
+		return false
+	}
+	// Reject values a YAML parser resolves as a non-string (int, float, bool,
+	// null): written unquoted, an image tag like "1.20" or "true" would
+	// round-trip as a float/bool instead of a string.
+	var v interface{}
+	if err := yaml.Unmarshal([]byte(s), &v); err != nil {
+		return false
+	}
+	if _, ok := v.(string); !ok {
+		return false
+	}
+	// goyaml.v3 follows the YAML 1.2 core schema, so it decodes these as
+	// strings, but 1.1 consumers (e.g. Helm) treat them as booleans/null.
+	switch strings.ToLower(s) {
+	case "yes", "no", "on", "off", "y", "n", "null", "~":
 		return false
 	}
 	return true
