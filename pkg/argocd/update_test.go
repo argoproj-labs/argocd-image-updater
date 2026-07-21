@@ -7086,3 +7086,87 @@ func TestResolveHelmScalarNode_ArrayIndexMismatch(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "v1.0.0", node.Value)
 }
+
+// TestMarshalParamsOverride_FallsBackForQuotedTarget verifies that when the
+// value being updated is itself a quoted scalar (which the in-place patcher
+// cannot rewrite safely), marshalParamsOverride falls back to re-marshalling
+// and still updates the value to the new tag.
+func TestMarshalParamsOverride_FallsBackForQuotedTarget(t *testing.T) {
+	originalData := []byte(`config:
+  image:
+    repository: myapp
+    tag: "v1.0.0"
+`)
+
+	app := v1alpha1.Application{
+		ObjectMeta: v1.ObjectMeta{Name: "testapp"},
+		Spec: v1alpha1.ApplicationSpec{
+			Sources: []v1alpha1.ApplicationSource{
+				{
+					Chart: "my-app",
+					Helm: &v1alpha1.ApplicationSourceHelm{
+						ReleaseName: "my-app",
+						ValueFiles:  []string{"$values/some/dir/values.yaml"},
+						Parameters: []v1alpha1.HelmParameter{
+							{Name: "config.image.repository", Value: "myapp", ForceString: true},
+							{Name: "config.image.tag", Value: "v2.0.0", ForceString: true},
+						},
+					},
+					RepoURL:        "https://example.com/example",
+					TargetRevision: "main",
+				},
+				{Ref: "values", RepoURL: "https://example.com/example2", TargetRevision: "main"},
+			},
+		},
+		Status: v1alpha1.ApplicationStatus{
+			SourceTypes: []v1alpha1.ApplicationSourceType{v1alpha1.ApplicationSourceTypeHelm, ""},
+			Summary:     v1alpha1.ApplicationSummary{Images: []string{"myapp:v1.0.0"}},
+		},
+	}
+
+	im := NewImage(image.NewFromIdentifier("app=myapp"))
+	im.HelmImageName = "config.image.repository"
+	im.HelmImageTag = "config.image.tag"
+
+	applicationImages := &ApplicationImages{
+		Application:     app,
+		Images:          ImageList{im},
+		WriteBackConfig: &WriteBackConfig{Target: "./test-values.yaml"},
+	}
+
+	out, err := marshalParamsOverride(context.Background(), applicationImages, originalData)
+	require.NoError(t, err)
+
+	// The fallback re-marshals the document, so assert on the parsed value
+	// rather than on exact bytes.
+	var got yaml.Node
+	require.NoError(t, yaml.Unmarshal(out, &got))
+	tag, err := getHelmValue(&got, "config.image.tag")
+	require.NoError(t, err)
+	assert.Equal(t, "v2.0.0", tag)
+}
+
+// TestApplyHelmValueWrites_ArrayIndexMismatchDoesNotPatch exercises the write
+// path (not just the resolver): an indexed path against a non-sequence node
+// must neither be patched in place nor set via the fallback, so the write
+// errors instead of silently rewriting an unrelated scalar.
+func TestApplyHelmValueWrites_ArrayIndexMismatchDoesNotPatch(t *testing.T) {
+	originalData := []byte("foo:\n  tag: v1.0.0\n")
+	var root yaml.Node
+	require.NoError(t, yaml.Unmarshal(originalData, &root))
+
+	writes := []helmValueWrite{{kind: "version", path: "foo[2].tag", value: "v2.0.0"}}
+
+	// the in-place patch path must decline (not patch the unrelated foo.tag)...
+	_, ok := patchHelmValuesInPlace(&root, originalData, writes)
+	assert.False(t, ok, "indexed path against a non-sequence must not patch in place")
+
+	// ...and the full write path must surface an error rather than mis-write.
+	_, err := applyHelmValueWrites(&root, originalData, writes)
+	assert.Error(t, err, "indexed path against a non-sequence must error")
+
+	// the unrelated value must be untouched.
+	tag, err := getHelmValue(&root, "foo.tag")
+	require.NoError(t, err)
+	assert.Equal(t, "v1.0.0", tag)
+}
