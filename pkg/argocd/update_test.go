@@ -6856,3 +6856,190 @@ func Test_sortHelmParameters(t *testing.T) {
 func stringPtr(s string) *string {
 	return &s
 }
+
+// TestMarshalParamsOverride_PreservesFormatting verifies that when every write
+// updates an existing key, the values file is patched in place with byte-exact
+// preservation of comments, blank lines, indentation, anchors and inline
+// comment alignment.
+func TestMarshalParamsOverride_PreservesFormatting(t *testing.T) {
+	originalData := []byte(`# This is a header comment describing the values file
+# It spans multiple lines
+
+# Global settings section
+global:
+  # Environment configuration
+  environment: production
+  debug: false
+
+# Image configuration with anchors
+images:
+  # Primary application image
+  app: &app-image
+    repository: myapp
+    tag: v1.0.0  # Current version
+    pullPolicy: IfNotPresent
+
+  # Sidecar image using alias
+  sidecar:
+    <<: *app-image
+    tag: v1.0.0
+
+# Database settings
+database:
+  host: localhost
+  port: 5432
+
+  # Connection pool settings
+  pool:
+    minSize: 5
+    maxSize: 20
+`)
+
+	// Only tag updates; the repository keys already exist and are unchanged.
+	// Every write targets an existing scalar => in-place patch path.
+	expected := `# This is a header comment describing the values file
+# It spans multiple lines
+
+# Global settings section
+global:
+  # Environment configuration
+  environment: production
+  debug: false
+
+# Image configuration with anchors
+images:
+  # Primary application image
+  app: &app-image
+    repository: myapp
+    tag: v2.0.0  # Current version
+    pullPolicy: IfNotPresent
+
+  # Sidecar image using alias
+  sidecar:
+    <<: *app-image
+    tag: v2.0.0
+
+# Database settings
+database:
+  host: localhost
+  port: 5432
+
+  # Connection pool settings
+  pool:
+    minSize: 5
+    maxSize: 20
+`
+
+	app := v1alpha1.Application{
+		ObjectMeta: v1.ObjectMeta{Name: "testapp"},
+		Spec: v1alpha1.ApplicationSpec{
+			Sources: []v1alpha1.ApplicationSource{
+				{
+					Chart: "my-app",
+					Helm: &v1alpha1.ApplicationSourceHelm{
+						ReleaseName: "my-app",
+						ValueFiles:  []string{"$values/some/dir/values.yaml"},
+						Parameters: []v1alpha1.HelmParameter{
+							{Name: "images.app.repository", Value: "myapp", ForceString: true},
+							{Name: "images.app.tag", Value: "v2.0.0", ForceString: true},
+							{Name: "images.sidecar.tag", Value: "v2.0.0", ForceString: true},
+						},
+					},
+					RepoURL:        "https://example.com/example",
+					TargetRevision: "main",
+				},
+				{Ref: "values", RepoURL: "https://example.com/example2", TargetRevision: "main"},
+			},
+		},
+		Status: v1alpha1.ApplicationStatus{
+			SourceTypes: []v1alpha1.ApplicationSourceType{v1alpha1.ApplicationSourceTypeHelm, ""},
+			Summary:     v1alpha1.ApplicationSummary{Images: []string{"myapp:v1.0.0"}},
+		},
+	}
+
+	imApp := NewImage(image.NewFromIdentifier("app=myapp"))
+	imApp.HelmImageName = "images.app.repository"
+	imApp.HelmImageTag = "images.app.tag"
+	// sidecar: track only the tag, whose key exists; reuse an existing name key
+	// so no key needs creating.
+	imSidecar := NewImage(image.NewFromIdentifier("sidecar=myapp"))
+	imSidecar.HelmImageName = "images.app.repository"
+	imSidecar.HelmImageTag = "images.sidecar.tag"
+
+	applicationImages := &ApplicationImages{
+		Application:     app,
+		Images:          ImageList{imApp, imSidecar},
+		WriteBackConfig: &WriteBackConfig{Target: "./test-values.yaml"},
+	}
+
+	out, err := marshalParamsOverride(context.Background(), applicationImages, originalData)
+	require.NoError(t, err)
+	assert.Equal(t, expected, string(out), "in-place patch should preserve formatting byte-for-byte")
+}
+
+// TestMarshalParamsOverride_PreservesBlockScalars verifies that updating a tag
+// does not corrupt an unrelated multiline block scalar (with its own blank
+// lines) elsewhere in the file.
+func TestMarshalParamsOverride_PreservesBlockScalars(t *testing.T) {
+	originalData := []byte(`config:
+  # a multiline message with an internal blank line
+  motd: |
+    Welcome to the app.
+
+    Please log in.
+  image:
+    repository: myapp
+    tag: v1.0.0
+`)
+
+	expected := `config:
+  # a multiline message with an internal blank line
+  motd: |
+    Welcome to the app.
+
+    Please log in.
+  image:
+    repository: myapp
+    tag: v2.0.0
+`
+
+	app := v1alpha1.Application{
+		ObjectMeta: v1.ObjectMeta{Name: "testapp"},
+		Spec: v1alpha1.ApplicationSpec{
+			Sources: []v1alpha1.ApplicationSource{
+				{
+					Chart: "my-app",
+					Helm: &v1alpha1.ApplicationSourceHelm{
+						ReleaseName: "my-app",
+						ValueFiles:  []string{"$values/some/dir/values.yaml"},
+						Parameters: []v1alpha1.HelmParameter{
+							{Name: "config.image.repository", Value: "myapp", ForceString: true},
+							{Name: "config.image.tag", Value: "v2.0.0", ForceString: true},
+						},
+					},
+					RepoURL:        "https://example.com/example",
+					TargetRevision: "main",
+				},
+				{Ref: "values", RepoURL: "https://example.com/example2", TargetRevision: "main"},
+			},
+		},
+		Status: v1alpha1.ApplicationStatus{
+			SourceTypes: []v1alpha1.ApplicationSourceType{v1alpha1.ApplicationSourceTypeHelm, ""},
+			Summary:     v1alpha1.ApplicationSummary{Images: []string{"myapp:v1.0.0"}},
+		},
+	}
+
+	im := NewImage(image.NewFromIdentifier("app=myapp"))
+	im.HelmImageName = "config.image.repository"
+	im.HelmImageTag = "config.image.tag"
+
+	applicationImages := &ApplicationImages{
+		Application:     app,
+		Images:          ImageList{im},
+		WriteBackConfig: &WriteBackConfig{Target: "./test-values.yaml"},
+	}
+
+	out, err := marshalParamsOverride(context.Background(), applicationImages, originalData)
+	require.NoError(t, err)
+	assert.Equal(t, expected, string(out), "block scalar and its internal blank line must be preserved")
+}
