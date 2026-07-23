@@ -72,6 +72,10 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 				warmUpCache = true
 			}
 
+			if !argocd.IsValidGitCommitMethod(cfg.GitCommitMethod) {
+				return fmt.Errorf("invalid value %q for --git-commit-method: must be 'git' or 'api'", cfg.GitCommitMethod)
+			}
+
 			// Configure the global logger for vendored argo-cd utilities
 			logLvl, err := logrus.ParseLevel(cfg.LogLevel)
 			if err != nil {
@@ -324,6 +328,7 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 	controllerCmd.Flags().StringVar(&cfg.GitCommitSigningMethod, "git-commit-signing-method", env.GetStringVal("GIT_COMMIT_SIGNING_METHOD", "openpgp"), "Method used to sign Git commits ('openpgp' or 'ssh')")
 	controllerCmd.Flags().BoolVar(&cfg.GitCommitSignOff, "git-commit-sign-off", env.GetBoolVal("GIT_COMMIT_SIGN_OFF", false), "Whether to sign-off git commits")
 	controllerCmd.Flags().StringVar(&commitMessagePath, "git-commit-message-path", common.DefaultCommitTemplatePath, "Path to a template to use for Git commit messages")
+	controllerCmd.Flags().StringVar(&cfg.GitCommitMethod, "git-commit-method", env.GetStringVal("GIT_COMMIT_METHOD", "git"), "Method used to create write-back commits ('git' or 'api'; 'api' commits via the GitHub API and requires GitHub App credentials)")
 
 	// Webhook flags
 	controllerCmd.Flags().BoolVar(&cfg.EnableWebhook, "enable-webhook", env.GetBoolVal("ENABLE_WEBHOOK", false), "Enable webhook server for receiving registry events")
