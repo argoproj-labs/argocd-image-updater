@@ -6856,3 +6856,317 @@ func Test_sortHelmParameters(t *testing.T) {
 func stringPtr(s string) *string {
 	return &s
 }
+
+// TestMarshalParamsOverride_PreservesFormatting verifies that when every write
+// updates an existing key, the values file is patched in place with byte-exact
+// preservation of comments, blank lines, indentation, anchors and inline
+// comment alignment.
+func TestMarshalParamsOverride_PreservesFormatting(t *testing.T) {
+	originalData := []byte(`# This is a header comment describing the values file
+# It spans multiple lines
+
+# Global settings section
+global:
+  # Environment configuration
+  environment: production
+  debug: false
+
+# Image configuration with anchors
+images:
+  # Primary application image
+  app: &app-image
+    repository: myapp
+    tag: v1.0.0  # Current version
+    pullPolicy: IfNotPresent
+
+  # Sidecar image using alias
+  sidecar:
+    <<: *app-image
+    tag: v1.0.0
+
+# Database settings
+database:
+  host: localhost
+  port: 5432
+
+  # Connection pool settings
+  pool:
+    minSize: 5
+    maxSize: 20
+`)
+
+	// Only tag updates; the repository keys already exist and are unchanged.
+	// Every write targets an existing scalar => in-place patch path.
+	expected := `# This is a header comment describing the values file
+# It spans multiple lines
+
+# Global settings section
+global:
+  # Environment configuration
+  environment: production
+  debug: false
+
+# Image configuration with anchors
+images:
+  # Primary application image
+  app: &app-image
+    repository: myapp
+    tag: v2.0.0  # Current version
+    pullPolicy: IfNotPresent
+
+  # Sidecar image using alias
+  sidecar:
+    <<: *app-image
+    tag: v2.0.0
+
+# Database settings
+database:
+  host: localhost
+  port: 5432
+
+  # Connection pool settings
+  pool:
+    minSize: 5
+    maxSize: 20
+`
+
+	app := v1alpha1.Application{
+		ObjectMeta: v1.ObjectMeta{Name: "testapp"},
+		Spec: v1alpha1.ApplicationSpec{
+			Sources: []v1alpha1.ApplicationSource{
+				{
+					Chart: "my-app",
+					Helm: &v1alpha1.ApplicationSourceHelm{
+						ReleaseName: "my-app",
+						ValueFiles:  []string{"$values/some/dir/values.yaml"},
+						Parameters: []v1alpha1.HelmParameter{
+							{Name: "images.app.repository", Value: "myapp", ForceString: true},
+							{Name: "images.app.tag", Value: "v2.0.0", ForceString: true},
+							{Name: "images.sidecar.tag", Value: "v2.0.0", ForceString: true},
+						},
+					},
+					RepoURL:        "https://example.com/example",
+					TargetRevision: "main",
+				},
+				{Ref: "values", RepoURL: "https://example.com/example2", TargetRevision: "main"},
+			},
+		},
+		Status: v1alpha1.ApplicationStatus{
+			SourceTypes: []v1alpha1.ApplicationSourceType{v1alpha1.ApplicationSourceTypeHelm, ""},
+			Summary:     v1alpha1.ApplicationSummary{Images: []string{"myapp:v1.0.0"}},
+		},
+	}
+
+	imApp := NewImage(image.NewFromIdentifier("app=myapp"))
+	imApp.HelmImageName = "images.app.repository"
+	imApp.HelmImageTag = "images.app.tag"
+	// sidecar: track only the tag, whose key exists; reuse an existing name key
+	// so no key needs creating.
+	imSidecar := NewImage(image.NewFromIdentifier("sidecar=myapp"))
+	imSidecar.HelmImageName = "images.app.repository"
+	imSidecar.HelmImageTag = "images.sidecar.tag"
+
+	applicationImages := &ApplicationImages{
+		Application:     app,
+		Images:          ImageList{imApp, imSidecar},
+		WriteBackConfig: &WriteBackConfig{Target: "./test-values.yaml"},
+	}
+
+	out, err := marshalParamsOverride(context.Background(), applicationImages, originalData)
+	require.NoError(t, err)
+	assert.Equal(t, expected, string(out), "in-place patch should preserve formatting byte-for-byte")
+}
+
+// TestMarshalParamsOverride_PreservesBlockScalars verifies that updating a tag
+// does not corrupt an unrelated multiline block scalar (with its own blank
+// lines) elsewhere in the file.
+func TestMarshalParamsOverride_PreservesBlockScalars(t *testing.T) {
+	originalData := []byte(`config:
+  # a multiline message with an internal blank line
+  motd: |
+    Welcome to the app.
+
+    Please log in.
+  image:
+    repository: myapp
+    tag: v1.0.0
+`)
+
+	expected := `config:
+  # a multiline message with an internal blank line
+  motd: |
+    Welcome to the app.
+
+    Please log in.
+  image:
+    repository: myapp
+    tag: v2.0.0
+`
+
+	app := v1alpha1.Application{
+		ObjectMeta: v1.ObjectMeta{Name: "testapp"},
+		Spec: v1alpha1.ApplicationSpec{
+			Sources: []v1alpha1.ApplicationSource{
+				{
+					Chart: "my-app",
+					Helm: &v1alpha1.ApplicationSourceHelm{
+						ReleaseName: "my-app",
+						ValueFiles:  []string{"$values/some/dir/values.yaml"},
+						Parameters: []v1alpha1.HelmParameter{
+							{Name: "config.image.repository", Value: "myapp", ForceString: true},
+							{Name: "config.image.tag", Value: "v2.0.0", ForceString: true},
+						},
+					},
+					RepoURL:        "https://example.com/example",
+					TargetRevision: "main",
+				},
+				{Ref: "values", RepoURL: "https://example.com/example2", TargetRevision: "main"},
+			},
+		},
+		Status: v1alpha1.ApplicationStatus{
+			SourceTypes: []v1alpha1.ApplicationSourceType{v1alpha1.ApplicationSourceTypeHelm, ""},
+			Summary:     v1alpha1.ApplicationSummary{Images: []string{"myapp:v1.0.0"}},
+		},
+	}
+
+	im := NewImage(image.NewFromIdentifier("app=myapp"))
+	im.HelmImageName = "config.image.repository"
+	im.HelmImageTag = "config.image.tag"
+
+	applicationImages := &ApplicationImages{
+		Application:     app,
+		Images:          ImageList{im},
+		WriteBackConfig: &WriteBackConfig{Target: "./test-values.yaml"},
+	}
+
+	out, err := marshalParamsOverride(context.Background(), applicationImages, originalData)
+	require.NoError(t, err)
+	assert.Equal(t, expected, string(out), "block scalar and its internal blank line must be preserved")
+}
+
+// TestIsSafePlainScalar covers the values that may be patched in place as
+// unquoted plain scalars versus those that must fall back to re-marshalling
+// (so they get quoted). In particular, strings a YAML parser would resolve as
+// a number, bool or null must be rejected.
+func TestIsSafePlainScalar(t *testing.T) {
+	safe := []string{"v1.0.0", "myapp", "1.2.3", "sha256-abc", "release-2024"}
+	for _, s := range safe {
+		assert.True(t, isSafePlainScalar(s), "%q should be safe to write unquoted", s)
+	}
+
+	unsafe := []string{
+		"",                   // empty
+		"1.20", "16", "0755", // numbers (would round-trip as int/float)
+		"true", "false", // 1.2 booleans
+		"yes", "no", "on", "off", "y", "n", // 1.1 booleans
+		"null", "~", // null
+		"a: b",                                  // mapping-like
+		"tag #1",                                // trailing-comment-like
+		"-latest", "*anchor", "&anchor", "@ref", // reserved leading chars
+	}
+	for _, s := range unsafe {
+		assert.False(t, isSafePlainScalar(s), "%q should fall back to re-marshalling", s)
+	}
+}
+
+// TestResolveHelmScalarNode_ArrayIndexMismatch verifies that requesting an
+// array index against a node that is not a sequence fails to resolve (rather
+// than silently ignoring the index and patching an unrelated node), matching
+// setHelmValue's stricter behavior.
+func TestResolveHelmScalarNode_ArrayIndexMismatch(t *testing.T) {
+	var root yaml.Node
+	require.NoError(t, yaml.Unmarshal([]byte("foo:\n  tag: v1.0.0\n"), &root))
+
+	// foo is a mapping, not a sequence, so "foo[2].tag" must not resolve.
+	_, err := resolveHelmScalarNode(&root, "foo[2].tag")
+	assert.Error(t, err, "index against a non-sequence node should not resolve")
+
+	// sanity check: the plain nested path still resolves.
+	node, err := resolveHelmScalarNode(&root, "foo.tag")
+	require.NoError(t, err)
+	assert.Equal(t, "v1.0.0", node.Value)
+}
+
+// TestMarshalParamsOverride_FallsBackForQuotedTarget verifies that when the
+// value being updated is itself a quoted scalar (which the in-place patcher
+// cannot rewrite safely), marshalParamsOverride falls back to re-marshalling
+// and still updates the value to the new tag.
+func TestMarshalParamsOverride_FallsBackForQuotedTarget(t *testing.T) {
+	originalData := []byte(`config:
+  image:
+    repository: myapp
+    tag: "v1.0.0"
+`)
+
+	app := v1alpha1.Application{
+		ObjectMeta: v1.ObjectMeta{Name: "testapp"},
+		Spec: v1alpha1.ApplicationSpec{
+			Sources: []v1alpha1.ApplicationSource{
+				{
+					Chart: "my-app",
+					Helm: &v1alpha1.ApplicationSourceHelm{
+						ReleaseName: "my-app",
+						ValueFiles:  []string{"$values/some/dir/values.yaml"},
+						Parameters: []v1alpha1.HelmParameter{
+							{Name: "config.image.repository", Value: "myapp", ForceString: true},
+							{Name: "config.image.tag", Value: "v2.0.0", ForceString: true},
+						},
+					},
+					RepoURL:        "https://example.com/example",
+					TargetRevision: "main",
+				},
+				{Ref: "values", RepoURL: "https://example.com/example2", TargetRevision: "main"},
+			},
+		},
+		Status: v1alpha1.ApplicationStatus{
+			SourceTypes: []v1alpha1.ApplicationSourceType{v1alpha1.ApplicationSourceTypeHelm, ""},
+			Summary:     v1alpha1.ApplicationSummary{Images: []string{"myapp:v1.0.0"}},
+		},
+	}
+
+	im := NewImage(image.NewFromIdentifier("app=myapp"))
+	im.HelmImageName = "config.image.repository"
+	im.HelmImageTag = "config.image.tag"
+
+	applicationImages := &ApplicationImages{
+		Application:     app,
+		Images:          ImageList{im},
+		WriteBackConfig: &WriteBackConfig{Target: "./test-values.yaml"},
+	}
+
+	out, err := marshalParamsOverride(context.Background(), applicationImages, originalData)
+	require.NoError(t, err)
+
+	// The fallback re-marshals the document, so assert on the parsed value
+	// rather than on exact bytes.
+	var got yaml.Node
+	require.NoError(t, yaml.Unmarshal(out, &got))
+	tag, err := getHelmValue(&got, "config.image.tag")
+	require.NoError(t, err)
+	assert.Equal(t, "v2.0.0", tag)
+}
+
+// TestApplyHelmValueWrites_ArrayIndexMismatchDoesNotPatch exercises the write
+// path (not just the resolver): an indexed path against a non-sequence node
+// must neither be patched in place nor set via the fallback, so the write
+// errors instead of silently rewriting an unrelated scalar.
+func TestApplyHelmValueWrites_ArrayIndexMismatchDoesNotPatch(t *testing.T) {
+	originalData := []byte("foo:\n  tag: v1.0.0\n")
+	var root yaml.Node
+	require.NoError(t, yaml.Unmarshal(originalData, &root))
+
+	writes := []helmValueWrite{{kind: "version", path: "foo[2].tag", value: "v2.0.0"}}
+
+	// the in-place patch path must decline (not patch the unrelated foo.tag)...
+	_, ok := patchHelmValuesInPlace(&root, originalData, writes)
+	assert.False(t, ok, "indexed path against a non-sequence must not patch in place")
+
+	// ...and the full write path must surface an error rather than mis-write.
+	_, err := applyHelmValueWrites(&root, originalData, writes)
+	assert.Error(t, err, "indexed path against a non-sequence must error")
+
+	// the unrelated value must be untouched.
+	tag, err := getHelmValue(&root, "foo.tag")
+	require.NoError(t, err)
+	assert.Equal(t, "v1.0.0", tag)
+}
