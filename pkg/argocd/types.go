@@ -41,6 +41,7 @@ type UpdateConfiguration struct {
 	GitCommitSigningKey    string
 	GitCommitSigningMethod string
 	GitCommitSignOff       bool
+	GitCommitMethod        string
 	DisableKubeEvents      bool
 	IgnorePlatforms        bool
 	GitCreds               git.CredsStore
@@ -58,6 +59,21 @@ const (
 // WriteBackMethodArgoCD is the string name of the ArgoCD write-back method as used in the CR spec.
 // It is the default when no method is specified.
 const WriteBackMethodArgoCD = "argocd"
+
+// Supported values for the git commit method (--git-commit-method).
+const (
+	// GitCommitMethodGit commits and pushes using the local git command line (default).
+	GitCommitMethodGit = "git"
+	// GitCommitMethodAPI creates commits through the GitHub API. Commits made
+	// with GitHub App credentials are then signed by GitHub ("Verified").
+	GitCommitMethodAPI = "api"
+)
+
+// IsValidGitCommitMethod validates a --git-commit-method flag value. The
+// empty string is valid and treated as GitCommitMethodGit.
+func IsValidGitCommitMethod(m string) bool {
+	return m == "" || m == GitCommitMethodGit || m == GitCommitMethodAPI
+}
 
 const defaultIndent = 2
 
@@ -86,6 +102,7 @@ type WriteBackConfig struct {
 	GitCommitSigningKey    string
 	GitCommitSigningMethod string
 	GitCommitSignOff       bool
+	GitCommitMethod        string
 	KustomizeBase          string
 	Target                 string
 	GitRepo                string

@@ -253,6 +253,7 @@ func commitChangesGit(ctx context.Context, applicationImages *ApplicationImages,
 
 	// If the pushBranch already exists in the remote origin, directly use it.
 	// Otherwise, create the new pushBranch from checkoutBranch
+	pushBranchCreated := false
 	if checkOutBranch != pushBranch {
 		fetchErr := gitC.ShallowFetch(ctx, pushBranch, 1)
 		if fetchErr != nil {
@@ -265,6 +266,7 @@ func commitChangesGit(ctx context.Context, applicationImages *ApplicationImages,
 			if err != nil {
 				return err
 			}
+			pushBranchCreated = true
 		}
 	} else {
 		err = gitC.ShallowFetch(ctx, checkOutBranch, 1)
@@ -282,6 +284,17 @@ func commitChangesGit(ctx context.Context, applicationImages *ApplicationImages,
 		return err
 	} else if skip {
 		return nil
+	}
+
+	// In API commit mode, hand the prepared working tree over to the GitHub
+	// API instead of committing and pushing locally. Only GitHub App
+	// credentials produce GitHub-signed commits; any other credential type
+	// falls back to the normal git command-line path.
+	if wbc.GitCommitMethod == GitCommitMethodAPI {
+		if tokenProvider, ok := githubAppCredsProvider(creds); ok {
+			return commitChangesGithubAPI(ctx, wbc, gitC, tokenProvider, pushBranch, pushBranchCreated)
+		}
+		logCtx.Warnf("git-commit-method 'api' requires GitHub App credentials for repo '%s', falling back to git command-line commit", wbc.GitRepo)
 	}
 
 	commitOpts := &git.CommitOptions{}

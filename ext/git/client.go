@@ -60,6 +60,15 @@ type gitRefCache interface {
 	UnlockGitReferences(repo string, lockId string) error
 }
 
+// WorkingTreeChange describes one changed path in the working tree relative
+// to HEAD, as reported by `git status`.
+type WorkingTreeChange struct {
+	// Path is the file path relative to the repository root.
+	Path string
+	// Deleted is true when the file was removed from the working tree.
+	Deleted bool
+}
+
 // Client is a generic git client interface
 type Client interface {
 	Root() string
@@ -77,6 +86,7 @@ type Client interface {
 	VerifyCommitSignature(ctx context.Context, revision string) (string, error)
 	IsAnnotatedTag(ctx context.Context, revision string) bool
 	ChangedFiles(ctx context.Context, revision string, targetRevision string) ([]string, error)
+	WorkingTreeChanges(ctx context.Context) ([]WorkingTreeChange, error)
 	Commit(ctx context.Context, pathSpec string, opts *CommitOptions) error
 	Branch(ctx context.Context, sourceBranch string, targetBranch string) error
 	Push(ctx context.Context, remote string, branch string, force bool) error
@@ -747,6 +757,40 @@ func (m *nativeGitClient) ChangedFiles(ctx context.Context, revision string, tar
 
 	files := strings.Split(out, "\n")
 	return files, nil
+}
+
+// WorkingTreeChanges returns the files that differ between HEAD and the
+// working tree (including untracked files), using `git status --porcelain`.
+func (m *nativeGitClient) WorkingTreeChanges(ctx context.Context) ([]WorkingTreeChange, error) {
+	out, err := m.runCmd(ctx, "status", "--porcelain", "--untracked-files=all", "-z")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get working tree status: %w", err)
+	}
+	var changes []WorkingTreeChange
+	entries := strings.Split(out, "\x00")
+	for i := 0; i < len(entries); i++ {
+		e := entries[i]
+		if len(e) < 4 {
+			continue
+		}
+		x, y := e[0], e[1]
+		p := e[3:]
+		if x == 'R' || x == 'C' {
+			// Rename/copy entries carry the origin path as the next
+			// NUL-separated field: record the origin as deleted (for renames)
+			// and the new path as changed.
+			if i+1 < len(entries) && entries[i+1] != "" {
+				if x == 'R' {
+					changes = append(changes, WorkingTreeChange{Path: entries[i+1], Deleted: true})
+				}
+				i++
+			}
+			changes = append(changes, WorkingTreeChange{Path: p})
+			continue
+		}
+		changes = append(changes, WorkingTreeChange{Path: p, Deleted: x == 'D' || y == 'D'})
+	}
+	return changes, nil
 }
 
 // runWrapper runs a custom command with all the semantics of running the Git client

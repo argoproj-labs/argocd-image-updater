@@ -59,14 +59,24 @@ func (g *GithubPRService) create(ctx context.Context) error {
 	return nil
 }
 
+// unprocessableEntity returns the GitHub error response if err is an HTTP
+// 422 (Unprocessable Entity) from the API, or nil otherwise.
+func unprocessableEntity(err error) *github.ErrorResponse {
+	var ghErr *github.ErrorResponse
+	if !errors.As(err, &ghErr) {
+		return nil
+	}
+	if ghErr.Response == nil || ghErr.Response.StatusCode != http.StatusUnprocessableEntity {
+		return nil
+	}
+	return ghErr
+}
+
 // isAlreadyExistsError reports whether err is a GitHub 422 response whose
 // error list contains an "A pull request already exists" message.
 func isAlreadyExistsError(err error) bool {
-	var ghErr *github.ErrorResponse
-	if !errors.As(err, &ghErr) {
-		return false
-	}
-	if ghErr.Response == nil || ghErr.Response.StatusCode != http.StatusUnprocessableEntity {
+	ghErr := unprocessableEntity(err)
+	if ghErr == nil {
 		return false
 	}
 	for _, e := range ghErr.Errors {
@@ -115,23 +125,9 @@ func NewGithubPRService(ctx context.Context, wbc *WriteBackConfig, tokenProvider
 		}
 	}
 
-	var client *github.Client
-	if apiBaseURL == "" {
-		// github.com: no enterprise URLs needed, nil uses http.DefaultClient
-		client = github.NewClient(nil).WithAuthToken(token)
-	} else {
-		// uploadURL must be scheme+host only so WithEnterpriseURLs appends
-		// /api/uploads/ correctly — passing apiBaseURL for both would produce
-		// /api/v3/api/uploads/ when apiBaseURL already contains /api/v3.
-		u, parseErr := url.Parse(apiBaseURL)
-		if parseErr != nil || u == nil || u.Scheme == "" || u.Host == "" {
-			return nil, fmt.Errorf("invalid GitHub API base URL %q: %w", apiBaseURL, parseErr)
-		}
-		uploadURL := u.Scheme + "://" + u.Host
-		client, err = github.NewClient(nil).WithAuthToken(token).WithEnterpriseURLs(apiBaseURL, uploadURL)
-		if err != nil {
-			return nil, fmt.Errorf("could not create GitHub enterprise client for %q: %w", apiBaseURL, err)
-		}
+	client, err := newGithubRESTClient(token, apiBaseURL)
+	if err != nil {
+		return nil, err
 	}
 
 	owner, repoName, err := parseGitHubOwnerRepo(wbc.GitRepo)
@@ -146,6 +142,29 @@ func NewGithubPRService(ctx context.Context, wbc *WriteBackConfig, tokenProvider
 		repo:   repoName,
 		pr:     wbc.PullRequest,
 	}, nil
+}
+
+// newGithubRESTClient builds an authenticated go-github client for github.com
+// (empty apiBaseURL) or a GitHub Enterprise instance (apiBaseURL like
+// https://HOST/api/v3).
+func newGithubRESTClient(token, apiBaseURL string) (*github.Client, error) {
+	if apiBaseURL == "" {
+		// github.com: no enterprise URLs needed, nil uses http.DefaultClient
+		return github.NewClient(nil).WithAuthToken(token), nil
+	}
+	// uploadURL must be scheme+host only so WithEnterpriseURLs appends
+	// /api/uploads/ correctly — passing apiBaseURL for both would produce
+	// /api/v3/api/uploads/ when apiBaseURL already contains /api/v3.
+	u, parseErr := url.Parse(apiBaseURL)
+	if parseErr != nil || u == nil || u.Scheme == "" || u.Host == "" {
+		return nil, fmt.Errorf("invalid GitHub API base URL %q: %w", apiBaseURL, parseErr)
+	}
+	uploadURL := u.Scheme + "://" + u.Host
+	client, err := github.NewClient(nil).WithAuthToken(token).WithEnterpriseURLs(apiBaseURL, uploadURL)
+	if err != nil {
+		return nil, fmt.Errorf("could not create GitHub enterprise client for %q: %w", apiBaseURL, err)
+	}
+	return client, nil
 }
 
 // parseGitHubOwnerRepo extracts the owner and repository name from a Git URL.

@@ -542,6 +542,7 @@ func newWBCFromSettings(ctx context.Context, app *argocdapi.Application, kubeCli
 		GitCommitSigningKey:    "",
 		GitCommitSigningMethod: "",
 		GitCommitSignOff:       false,
+		GitCommitMethod:        "",
 		KustomizeBase:          "",
 		Target:                 "", // Will be set by parseDefaultTarget
 		GitRepo:                "",

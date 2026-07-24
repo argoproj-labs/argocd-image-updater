@@ -7,6 +7,8 @@ import (
 	"text/template"
 	"time"
 
+	"github.com/argoproj-labs/argocd-image-updater/ext/git"
+	gitmock "github.com/argoproj-labs/argocd-image-updater/ext/git/mocks"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/image"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/tag"
@@ -18,6 +20,8 @@ import (
 
 	"github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
 
 func Test_TemplateCommitMessage(t *testing.T) {
@@ -621,4 +625,45 @@ func Test_getWriteBackBranch(t *testing.T) {
 		branch := getWriteBackBranch(context.Background(), app, wbc)
 		assert.Equal(t, "18.2.3", branch)
 	})
+}
+
+// Test_commitChangesGit_APIMethodFallsBackWithoutAppCreds verifies that
+// git-commit-method=api with non-GitHub-App credentials logs a warning and
+// falls back to the git CLI commit+push path.
+func Test_commitChangesGit_APIMethodFallsBackWithoutAppCreds(t *testing.T) {
+	// Note: this repo's generated ext/git/mocks.Client forwards only the
+	// non-context arguments to mock.Called (see e.g. ShallowFetch/Checkout/
+	// Commit/Push in ext/git/mocks/Client.go), so expectations below omit a
+	// leading mock.Anything for ctx to match the actual Called(...) arity.
+	gitMock := &gitmock.Client{}
+	gitMock.On("Init").Return(nil)
+	gitMock.On("ShallowFetch", "main").Return(nil)
+	gitMock.On("Checkout", "main", false).Return(nil)
+	gitMock.On("Commit", "", mock.Anything).Return(nil)
+	gitMock.On("Push", "origin", "main", false).Return(nil)
+
+	wbc := &WriteBackConfig{
+		Method:          WriteBackGit,
+		GitClient:       gitMock,
+		GitBranch:       "main",
+		GitCommitMethod: GitCommitMethodAPI,
+		GitRepo:         "https://github.com/example/repo.git",
+		GetCreds: func(app *v1alpha1.Application) (git.Creds, error) {
+			return git.NopCreds{}, nil
+		},
+	}
+	appImages := &ApplicationImages{
+		Application:     v1alpha1.Application{ObjectMeta: v1.ObjectMeta{Name: "testapp"}},
+		WriteBackConfig: wbc,
+	}
+	noopWriter := func(ctx context.Context, ai *ApplicationImages, gitC git.Client) (error, bool) {
+		return nil, false
+	}
+
+	err := commitChangesGit(context.Background(), appImages, nil, noopWriter)
+	require.NoError(t, err)
+	gitMock.AssertCalled(t, "Commit", "", mock.Anything)
+	gitMock.AssertCalled(t, "Push", "origin", "main", false)
+	// The API commit path must not have been taken.
+	gitMock.AssertNotCalled(t, "WorkingTreeChanges")
 }

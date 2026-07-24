@@ -715,3 +715,16 @@ data:
 ```
 
 #### Commit Sign Off can be enabled by setting `git.commit-sign-off: "true"`
+
+### <a name="method-git-commit-method"></a>Signed commits via the GitHub API
+
+When your write-back repository uses GitHub App credentials, you can have Argo CD Image Updater create its commits through the GitHub API instead of the local git command line by setting `GIT_COMMIT_METHOD=api` (or `--git-commit-method api`). Commits created this way are authored by the GitHub App's bot user and signed by GitHub itself, so they show as **Verified** — without provisioning or rotating any GPG/SSH signing keys.
+
+This applies to both the direct push and the pull request write-back flows.
+
+Notes:
+
+* GitHub App credentials are required. Repositories using SSH or personal access token credentials fall back to the normal git command line with a warning in the log.
+* `git-commit-user`, `git-commit-email` and the `git-commit-signing-*` settings are ignored in API mode, since GitHub determines the commit author and performs the signing.
+* Works with GitHub Enterprise; the API endpoints are derived from the configured GitHub App enterprise base URL.
+* Commits are created via the GraphQL API and count against the GitHub App installation's [GraphQL rate limit](https://docs.github.com/en/graphql/overview/rate-limits-and-node-limits-for-the-graphql-api). In environments with many applications and frequent image updates, this limit can be exhausted; affected write-backs fail and are retried on the next reconciliation, and keep failing until the rate limit window resets. If you hit this, increase the update check interval (`--interval`) or spread applications across multiple GitHub App installations.

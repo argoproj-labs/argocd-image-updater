@@ -51,6 +51,9 @@ func (m *mockGitClient) IsAnnotatedTag(_ context.Context, _ string) bool { retur
 func (m *mockGitClient) ChangedFiles(_ context.Context, _, _ string) ([]string, error) {
 	return nil, nil
 }
+func (m *mockGitClient) WorkingTreeChanges(_ context.Context) ([]git.WorkingTreeChange, error) {
+	return nil, nil
+}
 func (m *mockGitClient) Commit(_ context.Context, _ string, _ *git.CommitOptions) error { return nil }
 func (m *mockGitClient) Branch(_ context.Context, _, _ string) error                    { return nil }
 func (m *mockGitClient) Push(_ context.Context, _, _ string, _ bool) error              { return nil }
