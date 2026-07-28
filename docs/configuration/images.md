@@ -422,6 +422,87 @@ images:
         tag: "images[0].tag"
 ```
 
+## <a name="specifying-plugin-env-var-names"></a>Specifying plugin environment variable names
+
+For applications using a Config Management Plugin, you can configure `manifestTargets.plugin`
+to specify which environment variables should be set with the image reference.
+The plugin reads these env vars from the Application's `spec.source.plugin.env` list.
+
+There are two modes, analogous to Helm's `name`/`tag` and `spec` fields:
+
+### Separate name and tag env vars
+
+If your plugin reads the image repository and tag from separate env vars:
+
+```yaml
+images:
+  - alias: "redis"
+    imageName: "myregistry/redis:6.0"
+    manifestTargets:
+      plugin:
+        name: "REDIS_IMAGE_NAME"
+        tag: "REDIS_IMAGE_TAG"
+```
+
+This will set (or update) the following env vars in `spec.source.plugin.env`:
+
+```yaml
+plugin:
+  env:
+  - name: REDIS_IMAGE_NAME
+    value: myregistry/redis
+  - name: REDIS_IMAGE_TAG
+    value: 7.0.0
+```
+
+### Single spec env var
+
+If your plugin expects the full `image:tag` reference in a single env var:
+
+```yaml
+images:
+  - alias: "redis"
+    imageName: "myregistry/redis:6.0"
+    manifestTargets:
+      plugin:
+        spec: "REDIS_IMAGE"
+```
+
+This will set:
+
+```yaml
+plugin:
+  env:
+  - name: REDIS_IMAGE
+    value: myregistry/redis:7.0.0
+```
+
+If `spec` is set, `name` and `tag` are ignored.
+
+### Multiple images
+
+Each image can specify its own set of env var names:
+
+```yaml
+images:
+  - alias: "redis"
+    imageName: "myregistry/redis:6.0"
+    manifestTargets:
+      plugin:
+        name: "REDIS_IMAGE_NAME"
+        tag: "REDIS_IMAGE_TAG"
+  - alias: "nginx"
+    imageName: "nginx:1.20"
+    manifestTargets:
+      plugin:
+        spec: "NGINX_IMAGE"
+```
+
+!!!note "Mutual exclusivity"
+    `manifestTargets.plugin` is mutually exclusive with `manifestTargets.helm`
+    and `manifestTargets.kustomize`. Exactly one must be specified per image
+    when `manifestTargets` is present.
+
 ## Image Signature Verification
 
 Argo CD Image Updater can verify cosign signatures before committing an image
@@ -769,10 +850,11 @@ Exactly one provider must be configured in `pullRequest`.
 
 #### ManifestTarget fields
 
-| Field       | Type            | Required | Description                                                     |
-|-------------|-----------------|----------|-----------------------------------------------------------------|
-| `helm`      | HelmTarget      | No       | Helm-specific configuration (mutually exclusive with kustomize) |
-| `kustomize` | KustomizeTarget | No       | Kustomize-specific configuration (mutually exclusive with helm) |
+| Field       | Type            | Required | Description                                                                        |
+|-------------|-----------------|----------|------------------------------------------------------------------------------------|
+| `helm`      | HelmTarget      | No       | Helm-specific configuration (mutually exclusive with kustomize and plugin)          |
+| `kustomize` | KustomizeTarget | No       | Kustomize-specific configuration (mutually exclusive with helm and plugin)          |
+| `plugin`    | PluginTarget    | No       | Plugin-specific configuration (mutually exclusive with helm and kustomize)          |
 
 #### HelmTarget fields
 
@@ -787,6 +869,14 @@ Exactly one provider must be configured in `pullRequest`.
 | Field  | Type   | Required | Description                                    |
 |--------|--------|----------|------------------------------------------------|
 | `name` | string | Yes      | Image name as it appears in kustomization.yaml |
+
+#### PluginTarget fields
+
+| Field  | Type   | Required | Description                                                                                                                              |
+|--------|--------|----------|------------------------------------------------------------------------------------------------------------------------------------------|
+| `name` | string | No       | Environment variable name for the image repository/name part (e.g. `IMAGE_NAME`)                                                        |
+| `tag`  | string | No       | Environment variable name for the image tag part (e.g. `IMAGE_TAG`)                                                                     |
+| `spec` | string | No       | Environment variable name for the full image specification (e.g. `IMAGE`). If set, `name` and `tag` are ignored. |
 
 ### <a name="appendix-hierarchy"></a>Configuration hierarchy
 

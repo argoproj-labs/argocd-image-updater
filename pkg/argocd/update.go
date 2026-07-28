@@ -353,14 +353,17 @@ func needsUpdate(updateableImage *image.ContainerImage, applicationImage *image.
 // It determines the application type (Kustomize or Helm) and calls the appropriate
 // function to extract the image information.
 func getAppImage(ctx context.Context, app *v1alpha1.Application, wbc *WriteBackConfig, applicationImage *Image) (string, error) {
-	var err error
+	if applicationImage.PluginEnvName != "" || applicationImage.PluginEnvSpec != "" {
+		return GetPluginImage(ctx, app, wbc, applicationImage)
+	}
 	if appType := GetApplicationType(app, wbc); appType == ApplicationTypeKustomize {
 		return GetKustomizeImage(ctx, app, wbc, applicationImage)
 	} else if appType == ApplicationTypeHelm {
 		return GetHelmImage(ctx, app, wbc, applicationImage)
+	} else if appType == ApplicationTypePlugin {
+		return GetPluginImage(ctx, app, wbc, applicationImage)
 	} else {
-		err = fmt.Errorf("could not update application %s - neither Helm nor Kustomize application", app)
-		return "", err
+		return "", fmt.Errorf("could not update application %s - unsupported application type", app)
 	}
 }
 
@@ -368,15 +371,18 @@ func getAppImage(ctx context.Context, app *v1alpha1.Application, wbc *WriteBackC
 // It calls the appropriate function (SetKustomizeImage or SetHelmImage) to perform the update.
 // Returns an error if the application type is neither Helm nor Kustomize, or if the update fails.
 func setAppImage(ctx context.Context, app *v1alpha1.Application, img *image.ContainerImage, wbc *WriteBackConfig, applicationImage *Image) error {
-	var err error
-	if appType := GetApplicationType(app, wbc); appType == ApplicationTypeKustomize {
-		err = SetKustomizeImage(ctx, app, img, wbc, applicationImage)
-	} else if appType == ApplicationTypeHelm {
-		err = SetHelmImage(ctx, app, img, wbc, applicationImage)
-	} else {
-		err = fmt.Errorf("could not update application %s - neither Helm nor Kustomize application", app)
+	if applicationImage.PluginEnvName != "" || applicationImage.PluginEnvSpec != "" {
+		return SetPluginImage(ctx, app, img, wbc, applicationImage)
 	}
-	return err
+	if appType := GetApplicationType(app, wbc); appType == ApplicationTypeKustomize {
+		return SetKustomizeImage(ctx, app, img, wbc, applicationImage)
+	} else if appType == ApplicationTypeHelm {
+		return SetHelmImage(ctx, app, img, wbc, applicationImage)
+	} else if appType == ApplicationTypePlugin {
+		return SetPluginImage(ctx, app, img, wbc, applicationImage)
+	} else {
+		return fmt.Errorf("could not update application %s - unsupported application type", app)
+	}
 }
 
 func marshalWithIndent(in interface{}, indent int) (out []byte, err error) {
@@ -404,8 +410,56 @@ func marshalParamsOverride(ctx context.Context, applicationImages *ApplicationIm
 	app := &applicationImages.Application
 	wbc := applicationImages.WriteBackConfig
 
-	appType := GetApplicationType(app, wbc)
 	appSource := GetApplicationSource(ctx, app, wbc)
+
+	if hasPluginTargets(applicationImages.Images) {
+		if appSource.Plugin == nil {
+			return []byte{}, nil
+		}
+
+		targetEnvNames := make(map[string]bool)
+		for _, img := range applicationImages.Images {
+			if img.PluginEnvSpec != "" {
+				targetEnvNames[img.PluginEnvSpec] = true
+			} else {
+				if img.PluginEnvName != "" {
+					targetEnvNames[img.PluginEnvName] = true
+				}
+				if img.PluginEnvTag != "" {
+					targetEnvNames[img.PluginEnvTag] = true
+				}
+			}
+		}
+
+		var filteredEnv []v1alpha1.EnvEntry
+		for _, e := range appSource.Plugin.Env {
+			if e != nil && targetEnvNames[e.Name] {
+				filteredEnv = append(filteredEnv, v1alpha1.EnvEntry{Name: e.Name, Value: e.Value})
+			}
+		}
+
+		newParams := pluginOverride{
+			Plugin: pluginEnvEntries{Env: filteredEnv},
+		}
+
+		if len(originalData) == 0 {
+			override, err = marshalWithIndent(newParams, defaultIndent)
+		} else {
+			var params pluginOverride
+			if unmarshalErr := yaml.Unmarshal(originalData, &params); unmarshalErr != nil {
+				override, err = marshalWithIndent(newParams, defaultIndent)
+			} else {
+				mergePluginOverride(&params, &newParams)
+				override, err = marshalWithIndent(params, defaultIndent)
+			}
+		}
+		if err != nil {
+			return nil, err
+		}
+		return override, nil
+	}
+
+	appType := GetApplicationType(app, wbc)
 
 	switch appType {
 	case ApplicationTypeKustomize:
@@ -585,6 +639,22 @@ func mergeHelmOverride(t *helmOverride, o *helmOverride) {
 			continue
 		}
 		t.Helm.Parameters = append(t.Helm.Parameters, param)
+	}
+}
+
+func mergePluginOverride(target *pluginOverride, source *pluginOverride) {
+	for _, newEntry := range source.Plugin.Env {
+		found := false
+		for i, existing := range target.Plugin.Env {
+			if existing.Name == newEntry.Name {
+				target.Plugin.Env[i] = newEntry
+				found = true
+				break
+			}
+		}
+		if !found {
+			target.Plugin.Env = append(target.Plugin.Env, newEntry)
+		}
 	}
 }
 

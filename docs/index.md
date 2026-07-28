@@ -59,8 +59,8 @@ RBAC authorization on Application resources etc. are fully supported.
     The `latest` strategy has been renamed to `newest-build`, and `name` strategy has been renamed to `alphabetical`. 
     Please switch to the new convention as support for the old naming convention will be removed in future releases.
 
-* Updates images of apps that are managed by Argo CD and are either generated
-  from *Helm* or *Kustomize* tooling
+* Updates images of apps that are managed by Argo CD and are generated
+  from *Helm*, *Kustomize*, or *Plugin* (Config Management Plugin) tooling
 * Update app images according to different
   [update strategies](./basics/update-strategies.md)
     * `semver`: update to highest allowed version according to given image
@@ -101,9 +101,10 @@ requests or bug reports related to the following:
   using Argo CD. There is no support for workloads not managed using Argo CD.
 
 * Argo CD Image Updater can only update container images for applications whose
-  manifests are rendered using either *Kustomize* or *Helm* and - especially
-  in the case of Helm - the templates need to support specifying the image's
-  tag (and possibly name) using a parameter (i.e. `image.tag`).
+  manifests are rendered using *Kustomize*, *Helm*, or a *Config Management Plugin*.
+  For Helm, the templates need to support specifying the image's tag (and possibly
+  name) using a parameter (i.e. `image.tag`). For Plugin apps, the plugin must
+  read image configuration from environment variables in the Application source.
 
 Otherwise, current known limitations are:
 

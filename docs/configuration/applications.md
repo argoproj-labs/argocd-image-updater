@@ -322,7 +322,7 @@ spec:
 For Argo CD Image Updater to manage an application, the following criteria
 must be met:
 
-* The application must be of type `Helm` or `Kustomize`
+* The application must be of type `Helm`, `Kustomize`, or `Plugin`
 * The application must be located in the `metadata.namespace` of the ImageUpdater CR
 * The application must match at least one `applicationRef` criteria
 
@@ -353,11 +353,53 @@ The default used by Argo CD Image Updater is `argocd`.
 
 ### Plugin source type
 
-Applications using a custom plugin source type are supported with the **git**
-write-back method, provided the plugin consumes Helm-style or Kustomize-style
-values files from git (e.g. helmfile). The `argocd` write-back method is
-**not** supported for Plugin apps because ArgoCD has no mechanism to override
-plugin environment variables from the Application spec.
+Applications using an Argo CD [Config Management Plugin](https://argo-cd.readthedocs.io/en/stable/operator-manual/config-management-plugins/) (CMP) as their source type are fully supported. There are two approaches depending on how your plugin consumes image configuration.
+
+#### Approach 1: First-class plugin support via `manifestTargets.plugin`
+
+If your plugin reads image configuration from **environment variables** in the
+Application source (`spec.source.plugin.env`), use `manifestTargets.plugin` to
+specify which env vars to set. This works with both `argocd` and `git` write-back
+methods.
+
+With the **argocd** write-back method, updates are written directly to the
+Application's `spec.source.plugin.env` list. With the **git** write-back method,
+updates are written to the `.argocd-source-<appName>.yaml` file in the git
+repository, which Argo CD merges into the Application source at sync time.
+
+```yaml
+spec:
+  writeBackConfig:
+    method: "argocd"   # or "git"
+  applicationRefs:
+    - namePattern: "my-plugin-app"
+      images:
+        - alias: "redis"
+          imageName: "myregistry/redis:6.0"
+          manifestTargets:
+            plugin:
+              name: "REDIS_IMAGE_NAME"
+              tag: "REDIS_IMAGE_TAG"
+```
+
+Or, if your plugin expects the full image reference in a single env var:
+
+```yaml
+          manifestTargets:
+            plugin:
+              spec: "REDIS_IMAGE"
+```
+
+For details on configuring `manifestTargets.plugin`, see
+[Specifying plugin environment variable names](images.md#specifying-plugin-env-var-names).
+
+#### Approach 2: Plugin apps consuming Helm/Kustomize values files
+
+If your plugin consumes **Helm-style or Kustomize-style values files** from git
+(e.g. helmfile), you can use `manifestTargets.helm` or `manifestTargets.kustomize`
+with the **git** write-back method. In this case, Image Updater treats the plugin
+app as if it were a Helm or Kustomize app for write-back purposes — the plugin
+itself is responsible for reading the generated values file.
 
 Configure the write-back target explicitly to control the file format:
 
@@ -365,7 +407,12 @@ Configure the write-back target explicitly to control the file format:
 |--------|-----------------------|
 | `kustomization` or `kustomization:<path>` | `kustomization.yaml` (Kustomize image override) |
 | `helmvalues:<path>` | Helm values YAML |
-| *(none / default)* | `.argocd-source-<app>.yaml` (ArgoCD Helm parameter overrides — Plugin apps are classified as Helm) |
+| *(none / default)* | `.argocd-source-<app>.yaml` (Helm parameter overrides) |
+
+!!!note
+    When using this approach, the `argocd` write-back method is not available
+    because Argo CD cannot override Helm or Kustomize parameters on a plugin
+    source. Only the `git` write-back method is supported.
 
 **Helmfile example** using `kustomization` write-back:
 
@@ -390,6 +437,23 @@ spec:
 
 The helmfile then reads the image tag from the generated `kustomization.yaml`
 via `readFile "kustomization.yaml" | fromYaml`.
+
+**Helm values example** with the default write-back target:
+
+```yaml
+spec:
+  writeBackConfig:
+    method: "git"
+  applicationRefs:
+    - namePattern: "my-plugin-app"
+      images:
+        - alias: "myapp"
+          imageName: "myregistry/myapp:1.0"
+          manifestTargets:
+            helm:
+              name: "image.repository"
+              tag: "image.tag"
+```
 
 ## <a name="complete-example"></a>Complete example
 

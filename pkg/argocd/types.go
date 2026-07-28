@@ -84,6 +84,7 @@ const (
 	ApplicationTypeUnsupported ApplicationType = 0
 	ApplicationTypeHelm        ApplicationType = 1
 	ApplicationTypeKustomize   ApplicationType = 2
+	ApplicationTypePlugin      ApplicationType = 3
 )
 
 // WriteBackConfig holds information on how to write back the changes to an Application
@@ -148,6 +149,23 @@ type helmParameters struct {
 
 type helmOverride struct {
 	Helm helmParameters `json:"helm"`
+}
+
+type pluginEnvEntries struct {
+	Env []argocdapi.EnvEntry `json:"env"`
+}
+
+type pluginOverride struct {
+	Plugin pluginEnvEntries `json:"plugin"`
+}
+
+func hasPluginTargets(images ImageList) bool {
+	for _, img := range images {
+		if img.PluginEnvName != "" || img.PluginEnvSpec != "" {
+			return true
+		}
+	}
+	return false
 }
 
 // ChangeEntry represents an image that has been changed by Image Updater
@@ -226,6 +244,9 @@ type Image struct {
 	HelmImageTag       string
 	HelmImageSpec      string
 	KustomizeImageName string
+	PluginEnvName      string
+	PluginEnvTag       string
+	PluginEnvSpec      string
 
 	// verify image signature settings
 	EnableVerification bool
