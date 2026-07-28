@@ -470,6 +470,10 @@ of pushing directly to the tracking branch, Argo CD Image Updater:
 
 If a pull request for the same head → base pair already exists, the controller
 treats the situation as a successful no-op and does not open a duplicate.
+When reconciling, the controller first queries the SCM provider for an existing
+open PR before cloning the repository. If one is found, the entire git clone,
+commit, push, and PR creation cycle is skipped, reducing unnecessary work while
+a PR is pending review.
 
 #### When to use Pull Request mode
 
