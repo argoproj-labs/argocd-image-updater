@@ -247,7 +247,7 @@ func Test_GitLabMRService_create(t *testing.T) {
 	}
 }
 
-func Test_GitLabMRService_list(t *testing.T) {
+func Test_GitLabMRService_exists(t *testing.T) {
 	ctx := context.Background()
 
 	tests := []struct {
@@ -305,7 +305,7 @@ func Test_GitLabMRService_list(t *testing.T) {
 			defer server.Close()
 
 			svc := newTestGitLabMRService(server, nil)
-			exists, err := svc.list(ctx, "main", "image-updater-branch")
+			exists, err := svc.exists(ctx, "main", "image-updater-branch")
 
 			if tt.wantErrMsg != "" {
 				require.Error(t, err)

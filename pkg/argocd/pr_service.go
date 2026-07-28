@@ -34,9 +34,9 @@ type PullRequestService interface {
 	// create opens a new pull/merge request using the metadata stored in the
 	// service at construction time (title, head, base, body).
 	create(ctx context.Context) error
-	// list returns true if an open PR from pushBranch → checkOutBranch already
+	// exists returns true if an open PR from pushBranch → checkOutBranch already
 	// exists, preventing duplicate PR creation on repeated reconciliation cycles.
-	list(ctx context.Context, checkOutBranch, pushBranch string) (bool, error)
+	exists(ctx context.Context, checkOutBranch, pushBranch string) (bool, error)
 }
 
 // PullRequest holds the metadata required to open a pull/merge request.
@@ -209,7 +209,7 @@ func skipIfPRExists(ctx context.Context, wbc *WriteBackConfig, tokenProvider git
 		return false, svcErr
 	}
 
-	exists, err := svc.list(ctx, checkOutBranch, pushBranch)
+	exists, err := svc.exists(ctx, checkOutBranch, pushBranch)
 	if err != nil {
 		return false, err
 	}

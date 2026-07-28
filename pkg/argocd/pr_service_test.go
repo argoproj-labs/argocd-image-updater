@@ -249,7 +249,7 @@ func Test_commitChangesPR(t *testing.T) {
 	t.Run("GitHub: PR created successfully", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.Method == http.MethodGet {
-				// list: no existing PRs
+				// exists: no existing PRs
 				w.WriteHeader(http.StatusOK)
 				_ = json.NewEncoder(w).Encode([]*gogithub.PullRequest{})
 				return
@@ -279,13 +279,13 @@ func Test_commitChangesPR(t *testing.T) {
 	t.Run("GitHub: PR already exists — treated as no-op, no error", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.Method == http.MethodGet {
-				// list: an existing open PR
+				// exists: an existing open PR
 				w.WriteHeader(http.StatusOK)
 				_ = json.NewEncoder(w).Encode([]*gogithub.PullRequest{{Number: gogithub.Ptr(42)}})
 				return
 			}
-			// create should not be reached because list found an existing PR
-			t.Error("create should not be called when list finds an existing PR")
+			// create should not be reached because exists found an existing PR
+			t.Error("create should not be called when exists finds an existing PR")
 		}))
 		defer server.Close()
 
@@ -305,7 +305,7 @@ func Test_commitChangesPR(t *testing.T) {
 	t.Run("GitHub: create fails with 422", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.Method == http.MethodGet {
-				// list: no existing PRs
+				// exists: no existing PRs
 				w.WriteHeader(http.StatusOK)
 				_ = json.NewEncoder(w).Encode([]*gogithub.PullRequest{})
 				return
@@ -337,7 +337,7 @@ func Test_commitChangesPR(t *testing.T) {
 	t.Run("GitLab: MR created successfully", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.Method == http.MethodGet {
-				// list: no existing MRs
+				// exists: no existing MRs
 				w.WriteHeader(http.StatusOK)
 				_ = json.NewEncoder(w).Encode([]map[string]any{})
 				return
@@ -367,13 +367,13 @@ func Test_commitChangesPR(t *testing.T) {
 	t.Run("GitLab: MR already exists — treated as no-op, no error", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.Method == http.MethodGet {
-				// list: an existing open MR
+				// exists: an existing open MR
 				w.WriteHeader(http.StatusOK)
 				_ = json.NewEncoder(w).Encode([]map[string]any{{"iid": 1}})
 				return
 			}
-			// create should not be reached because list found an existing MR
-			t.Error("create should not be called when list finds an existing MR")
+			// create should not be reached because exists found an existing MR
+			t.Error("create should not be called when exists finds an existing MR")
 		}))
 		defer server.Close()
 
@@ -393,7 +393,7 @@ func Test_commitChangesPR(t *testing.T) {
 	t.Run("GitLab: create fails with 422", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.Method == http.MethodGet {
-				// list: no existing MRs
+				// exists: no existing MRs
 				w.WriteHeader(http.StatusOK)
 				_ = json.NewEncoder(w).Encode([]map[string]any{})
 				return

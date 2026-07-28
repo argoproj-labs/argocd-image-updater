@@ -87,9 +87,9 @@ func isAlreadyExistsError(err error) bool {
 	return false
 }
 
-// list returns true if there is already an open PR from pushBranch into
+// exists returns true if there is already an open PR from pushBranch into
 // checkOutBranch.
-func (g *GithubPRService) list(ctx context.Context, checkOutBranch, pushBranch string) (bool, error) {
+func (g *GithubPRService) exists(ctx context.Context, checkOutBranch, pushBranch string) (bool, error) {
 	prs, _, err := g.client.PullRequests.List(ctx, g.owner, g.repo, &github.PullRequestListOptions{
 		Head:  g.owner + ":" + pushBranch,
 		Base:  checkOutBranch,
