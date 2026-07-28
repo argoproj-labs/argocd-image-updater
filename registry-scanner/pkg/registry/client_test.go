@@ -121,7 +121,7 @@ func TestNewRepository_ACR_Actions(t *testing.T) {
 		}
 		client, err := NewClient(ep, "testuser", "testpass")
 		require.NoError(t, err)
-		err = client.NewRepository("test/myimage")
+		err = client.NewRepository(context.Background(), "test/myimage")
 		require.NoError(t, err)
 
 		_, _ = client.Tags(context.Background())
@@ -142,7 +142,7 @@ func TestNewRepository(t *testing.T) {
 		require.NoError(t, err)
 		client, err := NewClient(ep, "", "")
 		require.NoError(t, err)
-		err = client.NewRepository("test@test")
+		err = client.NewRepository(context.Background(), "test@test")
 		require.Error(t, err)
 		assert.Contains(t, "invalid reference format", err.Error())
 
@@ -152,7 +152,7 @@ func TestNewRepository(t *testing.T) {
 		require.NoError(t, err)
 		client, err := NewClient(ep, "", "")
 		require.NoError(t, err)
-		err = client.NewRepository("test/test")
+		err = client.NewRepository(context.Background(), "test/test")
 		require.NoError(t, err)
 	})
 
@@ -163,7 +163,7 @@ func TestNewRepository(t *testing.T) {
 		ep := &RegistryEndpoint{RegistryAPI: testServer.URL}
 		client, err := NewClient(ep, "", "")
 		require.NoError(t, err)
-		err = client.NewRepository("")
+		err = client.NewRepository(context.Background(), "")
 		require.Error(t, err)
 	})
 
@@ -520,7 +520,7 @@ func Test_TagMetadata(t *testing.T) {
 		ep := &RegistryEndpoint{RegistryAPI: serverURL, Limiter: ratelimit.New(100)}
 		client, err := NewClient(ep, "", "")
 		require.NoError(t, err)
-		err = client.NewRepository("test/test")
+		err = client.NewRepository(context.Background(), "test/test")
 		require.NoError(t, err)
 		return client
 	}
@@ -632,7 +632,7 @@ func Test_TagMetadata_2(t *testing.T) {
 		client, err := NewClient(ep, "", "")
 
 		require.NoError(t, err)
-		err = client.NewRepository("test/test")
+		err = client.NewRepository(context.Background(), "test/test")
 		require.NoError(t, err)
 		_, err = client.TagMetadata(ctx, meta1, &options.ManifestOptions{})
 		require.Error(t, err) // invalid digest format
@@ -656,7 +656,7 @@ func Test_TagMetadata_2(t *testing.T) {
 		client, err := NewClient(ep, "", "")
 
 		require.NoError(t, err)
-		err = client.NewRepository("test/test")
+		err = client.NewRepository(context.Background(), "test/test")
 		require.NoError(t, err)
 		_, err = client.TagMetadata(ctx, meta1, &options.ManifestOptions{})
 		require.Error(t, err) // invalid digest format
@@ -678,7 +678,7 @@ func Test_TagMetadata_2(t *testing.T) {
 		client, err := NewClient(ep, "", "")
 
 		require.NoError(t, err)
-		err = client.NewRepository("test/test")
+		err = client.NewRepository(context.Background(), "test/test")
 		require.NoError(t, err)
 		_, err = client.TagMetadata(ctx, meta1, &options.ManifestOptions{})
 		require.Error(t, err) // empty index not supported
@@ -699,7 +699,7 @@ func Test_TagMetadata_2(t *testing.T) {
 		client, err := NewClient(ep, "", "")
 
 		require.NoError(t, err)
-		err = client.NewRepository("test/test")
+		err = client.NewRepository(context.Background(), "test/test")
 		require.NoError(t, err)
 		_, err = client.TagMetadata(ctx, meta1, &options.ManifestOptions{})
 		require.Error(t, err) // empty manifestlist not supported
@@ -712,7 +712,7 @@ func TestPing(t *testing.T) {
 		ep, err := GetRegistryEndpoint(context.Background(), &image.ContainerImage{RegistryURL: ""})
 		require.NoError(t, err)
 		mockManager.On("AddResponse", mock.Anything).Return(fmt.Errorf("fail ping"))
-		_, err = ping(mockManager, ep, "")
+		_, err = ping(context.Background(), mockManager, ep, "")
 		require.Error(t, err)
 	})
 
@@ -721,7 +721,7 @@ func TestPing(t *testing.T) {
 		ep, err := GetRegistryEndpoint(context.Background(), &image.ContainerImage{RegistryURL: ""})
 		require.NoError(t, err)
 		mockManager.On("AddResponse", mock.Anything).Return(nil)
-		_, err = ping(mockManager, ep, "")
+		_, err = ping(context.Background(), mockManager, ep, "")
 		require.NoError(t, err)
 	})
 
@@ -732,7 +732,7 @@ func TestPing(t *testing.T) {
 		mockManager := new(mocks.Manager)
 		ep := &RegistryEndpoint{RegistryAPI: testServer.URL}
 		mockManager.On("AddResponse", mock.Anything).Return(nil)
-		_, err := ping(mockManager, ep, "")
+		_, err := ping(context.Background(), mockManager, ep, "")
 		require.Error(t, err)
 		assert.ErrorContains(t, err, "does not seem to be a valid v2 Docker Registry API")
 	})
@@ -741,7 +741,7 @@ func TestPing(t *testing.T) {
 		mockManager := new(mocks.Manager)
 		ep := &RegistryEndpoint{RegistryAPI: ""}
 		mockManager.On("AddResponse", mock.Anything).Return(nil)
-		_, err := ping(mockManager, ep, "")
+		_, err := ping(context.Background(), mockManager, ep, "")
 		require.Error(t, err)
 		assert.ErrorContains(t, err, "unsupported protocol scheme")
 	})
@@ -811,7 +811,7 @@ func makeRegistryClient(t *testing.T, serverURL string) RegistryClient {
 	ep := &RegistryEndpoint{RegistryAPI: serverURL, Limiter: ratelimit.New(100)}
 	client, err := NewClient(ep, "", "")
 	require.NoError(t, err)
-	err = client.NewRepository("test/test")
+	err = client.NewRepository(context.Background(), "test/test")
 	require.NoError(t, err)
 	return client
 }

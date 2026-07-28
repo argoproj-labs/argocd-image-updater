@@ -50,7 +50,7 @@ func (ep *RegistryEndpoint) GetTags(ctx context.Context, img *image.ContainerIma
 	} else {
 		nameInRegistry = img.ImageName
 	}
-	err = regClient.NewRepository(nameInRegistry)
+	err = regClient.NewRepository(ctx, nameInRegistry)
 	if err != nil {
 		logCtx.Errorf("Failed to create repository for image '%s': %v", nameInRegistry, err)
 		return nil, err
@@ -132,7 +132,7 @@ func (ep *RegistryEndpoint) GetTags(ctx context.Context, img *image.ContainerIma
 		if vc.Strategy.IsCacheable() {
 			imgTag, err := ep.Cache.GetTag(nameInRegistry, tagStr)
 			if err != nil {
-				log.Warnf("invalid entry for %s:%s in cache, invalidating.", nameInRegistry, imgTag.TagName)
+				logCtx.Warnf("invalid entry for %s:%s in cache, invalidating.", nameInRegistry, imgTag.TagName)
 			} else if imgTag != nil {
 				logCtx.Debugf("Cache hit for %s:%s", nameInRegistry, imgTag.TagName)
 				tagListLock.Lock()

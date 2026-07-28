@@ -77,7 +77,7 @@ registries:
 }
 
 func Test_LoadRegistryConfiguration(t *testing.T) {
-	RestoreDefaultRegistryConfiguration()
+	RestoreDefaultRegistryConfiguration(context.Background())
 
 	t.Run("Load from valid location", func(t *testing.T) {
 		err := LoadRegistryConfiguration(context.Background(), "../../config/example-config.yaml", true)
@@ -90,7 +90,7 @@ func Test_LoadRegistryConfiguration(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, "ext:/some/script", reg.Credentials)
 		assert.Equal(t, 5*time.Hour, reg.CredsExpire)
-		RestoreDefaultRegistryConfiguration()
+		RestoreDefaultRegistryConfiguration(context.Background())
 		reg, err = GetRegistryEndpoint(context.Background(), &image.ContainerImage{RegistryURL: "gcr.io"})
 		require.NoError(t, err)
 		assert.Equal(t, "", reg.Credentials)
@@ -108,5 +108,5 @@ func Test_LoadRegistryConfiguration(t *testing.T) {
 		require.Contains(t, err.Error(), "cannot set registry")
 	})
 
-	RestoreDefaultRegistryConfiguration()
+	RestoreDefaultRegistryConfiguration(context.Background())
 }

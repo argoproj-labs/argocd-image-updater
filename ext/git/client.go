@@ -873,7 +873,7 @@ func (m *nativeGitClient) runCmdOutput(ctx context.Context, cmd *exec.Cmd, ropts
 		SkipErrorLogging: ropts.SkipErrorLogging,
 		CaptureStderr:    ropts.CaptureStderr,
 	}
-	output, err := executil.RunWithExecRunOpts(cmd, opts)
+	output, err := RunWithExecRunOpts(ctx, cmd, opts)
 
 	// After the git command finishes (normally or via timeout/context cancellation),
 	// kill the entire process group to clean up any orphaned child processes such as

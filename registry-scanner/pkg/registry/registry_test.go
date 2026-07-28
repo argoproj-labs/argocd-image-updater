@@ -33,7 +33,7 @@ func Test_GetTags(t *testing.T) {
 
 	t.Run("Check for correctly returned tags with semver sort", func(t *testing.T) {
 		regClient := mocks.RegistryClient{}
-		regClient.On("NewRepository", mock.Anything).Return(nil)
+		regClient.On("NewRepository", mock.Anything, mock.Anything).Return(nil)
 		regClient.On("Tags", mock.Anything).Return([]string{"1.2.0", "1.2.1", "1.2.2"}, nil)
 
 		ep, err := GetRegistryEndpoint(context.Background(), &image.ContainerImage{RegistryURL: ""})
@@ -52,7 +52,7 @@ func Test_GetTags(t *testing.T) {
 
 	t.Run("Check for correctly returned tags with filter function applied", func(t *testing.T) {
 		regClient := mocks.RegistryClient{}
-		regClient.On("NewRepository", mock.Anything).Return(nil)
+		regClient.On("NewRepository", mock.Anything, mock.Anything).Return(nil)
 		regClient.On("Tags", mock.Anything).Return([]string{"1.2.0", "1.2.1", "1.2.2"}, nil)
 		ctx := context.Background()
 		ep, err := GetRegistryEndpoint(ctx, &image.ContainerImage{RegistryURL: ""})
@@ -75,7 +75,7 @@ func Test_GetTags(t *testing.T) {
 	t.Run("Check for correctly returned tags with name sort", func(t *testing.T) {
 
 		regClient := mocks.RegistryClient{}
-		regClient.On("NewRepository", mock.Anything).Return(nil)
+		regClient.On("NewRepository", mock.Anything, mock.Anything).Return(nil)
 		regClient.On("Tags", mock.Anything).Return([]string{"1.2.0", "1.2.1", "1.2.2"}, nil)
 
 		ep, err := GetRegistryEndpoint(context.Background(), &image.ContainerImage{RegistryURL: ""})
@@ -96,7 +96,7 @@ func Test_GetTags(t *testing.T) {
 		meta1 := &schema2.DeserializedManifest{}
 		ctx := context.Background()
 		regClient := mocks.RegistryClient{}
-		regClient.On("NewRepository", mock.Anything).Return(nil)
+		regClient.On("NewRepository", mock.Anything, mock.Anything).Return(nil)
 		regClient.On("Tags", mock.Anything).Return([]string{"1.2.0", "1.2.1", "1.2.2"}, nil)
 		regClient.On("ManifestForTag", mock.Anything, mock.Anything).Return(meta1, nil)
 		regClient.On("TagMetadata", mock.Anything, mock.Anything, mock.Anything).Return(&tag.TagInfo{}, nil)
@@ -131,7 +131,7 @@ func Test_GetTags(t *testing.T) {
 		ti := &tag.TagInfo{Digest: wantDigest}
 
 		regClient := mocks.RegistryClient{}
-		regClient.On("NewRepository", mock.Anything).Return(nil)
+		regClient.On("NewRepository", mock.Anything, mock.Anything).Return(nil)
 		regClient.On("Tags", mock.Anything).Return([]string{"1.0.0"}, nil)
 		regClient.On("ManifestForTag", mock.Anything, mock.Anything).Return(meta1, nil)
 		regClient.On("TagMetadata", mock.Anything, mock.Anything, mock.Anything).Return(ti, nil)
@@ -167,7 +167,7 @@ func Test_GetTags(t *testing.T) {
 		ti := &tag.TagInfo{Digest: wantDigest}
 
 		regClient := mocks.RegistryClient{}
-		regClient.On("NewRepository", mock.Anything).Return(nil)
+		regClient.On("NewRepository", mock.Anything, mock.Anything).Return(nil)
 		regClient.On("Tags", mock.Anything).Return([]string{"1.0.0"}, nil)
 		regClient.On("ManifestForTag", mock.Anything, mock.Anything).Return(meta1, nil)
 		regClient.On("TagMetadata", mock.Anything, mock.Anything, mock.Anything).Return(ti, nil)
@@ -203,7 +203,7 @@ func Test_GetTags(t *testing.T) {
 		ti := &tag.TagInfo{} // Digest is [32]byte{} — all zeros
 
 		regClient := mocks.RegistryClient{}
-		regClient.On("NewRepository", mock.Anything).Return(nil)
+		regClient.On("NewRepository", mock.Anything, mock.Anything).Return(nil)
 		regClient.On("Tags", mock.Anything).Return([]string{"1.0.0"}, nil)
 		regClient.On("ManifestForTag", mock.Anything, mock.Anything).Return(meta1, nil)
 		regClient.On("TagMetadata", mock.Anything, mock.Anything, mock.Anything).Return(ti, nil)
@@ -232,7 +232,7 @@ func Test_GetTags(t *testing.T) {
 			ParseErr:   errors.New("unauthorized"),
 		}
 		regClient := mocks.RegistryClient{}
-		regClient.On("NewRepository", mock.Anything).Return(nil)
+		regClient.On("NewRepository", mock.Anything, mock.Anything).Return(nil)
 		regClient.On("Tags", mock.Anything).Return([]string(nil), authErr)
 
 		ep := &RegistryEndpoint{
@@ -260,7 +260,7 @@ func Test_GetTags(t *testing.T) {
 			ParseErr:   errors.New("unauthorized"),
 		}
 		regClient := mocks.RegistryClient{}
-		regClient.On("NewRepository", mock.Anything).Return(nil)
+		regClient.On("NewRepository", mock.Anything, mock.Anything).Return(nil)
 		regClient.On("Tags", mock.Anything).Return([]string(nil), authErr)
 
 		ep := &RegistryEndpoint{
@@ -574,7 +574,7 @@ registries:
 		require.Len(t, epl.Items, 1)
 		err = AddRegistryEndpointFromConfig(ctx, epl.Items[0])
 		require.NoError(t, err)
-		defer RestoreDefaultRegistryConfiguration()
+		defer RestoreDefaultRegistryConfiguration(context.Background())
 
 		ep, err := GetRegistryEndpoint(ctx, &image.ContainerImage{RegistryURL: "expire.example.com"})
 		require.NoError(t, err)

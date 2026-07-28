@@ -117,7 +117,7 @@ func TestTagListSort_String(t *testing.T) {
 }
 
 func Test_GetEndpoints(t *testing.T) {
-	RestoreDefaultRegistryConfiguration()
+	RestoreDefaultRegistryConfiguration(context.Background())
 
 	t.Run("Get default endpoint", func(t *testing.T) {
 		ep, err := GetRegistryEndpoint(context.Background(), &image.ContainerImage{RegistryURL: ""})
@@ -143,7 +143,7 @@ func Test_GetEndpoints(t *testing.T) {
 }
 
 func Test_AddEndpoint(t *testing.T) {
-	RestoreDefaultRegistryConfiguration()
+	RestoreDefaultRegistryConfiguration(context.Background())
 
 	t.Run("Add new endpoint", func(t *testing.T) {
 		err := AddRegistryEndpoint(context.Background(), NewRegistryEndpoint("example.com", "Example", "https://example.com", "", "", false, TagListSortUnsorted, 5, 0))
@@ -173,7 +173,7 @@ func Test_AddEndpoint(t *testing.T) {
 }
 
 func Test_SetEndpointCredentials(t *testing.T) {
-	RestoreDefaultRegistryConfiguration()
+	RestoreDefaultRegistryConfiguration(context.Background())
 
 	t.Run("Set credentials on default registry", func(t *testing.T) {
 		err := SetRegistryEndpointCredentials(context.Background(), "", "env:FOOBAR")
@@ -195,7 +195,7 @@ func Test_SetEndpointCredentials(t *testing.T) {
 }
 
 func Test_SelectRegistryBasedOnMaxPrefixContains(t *testing.T) {
-	RestoreDefaultRegistryConfiguration()
+	RestoreDefaultRegistryConfiguration(context.Background())
 
 	t.Run("Set credentials on default registry", func(t *testing.T) {
 		ctx := context.Background()
@@ -214,7 +214,7 @@ func Test_SelectRegistryBasedOnMaxPrefixContains(t *testing.T) {
 }
 
 func Test_EndpointConcurrentAccess(t *testing.T) {
-	RestoreDefaultRegistryConfiguration()
+	RestoreDefaultRegistryConfiguration(context.Background())
 	const numRuns = 50
 	// Make sure we're not deadlocking on read
 	t.Run("Concurrent read access", func(t *testing.T) {
@@ -251,9 +251,9 @@ func Test_EndpointConcurrentAccess(t *testing.T) {
 }
 
 func Test_SetDefault(t *testing.T) {
-	RestoreDefaultRegistryConfiguration()
+	RestoreDefaultRegistryConfiguration(context.Background())
 
-	dep := GetDefaultRegistry()
+	dep := GetDefaultRegistry(context.Background())
 	require.NotNil(t, dep)
 	assert.Equal(t, "docker.io", dep.RegistryPrefix)
 	assert.True(t, dep.IsDefault)
@@ -263,11 +263,11 @@ func Test_SetDefault(t *testing.T) {
 	require.NotNil(t, ep)
 	require.False(t, ep.IsDefault)
 
-	SetDefaultRegistry(ep)
+	SetDefaultRegistry(nil, ep)
 	assert.True(t, ep.IsDefault)
 	assert.False(t, dep.IsDefault)
-	require.NotNil(t, GetDefaultRegistry())
-	assert.Equal(t, ep.RegistryPrefix, GetDefaultRegistry().RegistryPrefix)
+	require.NotNil(t, GetDefaultRegistry(context.Background()))
+	assert.Equal(t, ep.RegistryPrefix, GetDefaultRegistry(context.Background()).RegistryPrefix)
 }
 
 func Test_DeepCopy(t *testing.T) {
@@ -317,7 +317,7 @@ func TestGetTransport(t *testing.T) {
 			RegistryAPI: "secure-registry",
 			Insecure:    false,
 		}
-		transport := endpoint.GetTransport()
+		transport := endpoint.GetTransport(context.Background())
 
 		assert.NotNil(t, transport)
 		assert.NotNil(t, transport.TLSClientConfig)
@@ -329,7 +329,7 @@ func TestGetTransport(t *testing.T) {
 			RegistryAPI: "insecure-registry",
 			Insecure:    true,
 		}
-		transport := endpoint.GetTransport()
+		transport := endpoint.GetTransport(context.Background())
 
 		assert.NotNil(t, transport)
 		assert.NotNil(t, transport.TLSClientConfig)
@@ -339,10 +339,10 @@ func TestGetTransport(t *testing.T) {
 
 func Test_RestoreDefaultRegistryConfiguration(t *testing.T) {
 	// Call the function to restore default configuration
-	RestoreDefaultRegistryConfiguration()
+	RestoreDefaultRegistryConfiguration(context.Background())
 
 	// Retrieve the default registry endpoint
-	defaultEp := GetDefaultRegistry()
+	defaultEp := GetDefaultRegistry(context.Background())
 
 	// Validate that the default registry endpoint is not nil
 	require.NotNil(t, defaultEp)
@@ -392,17 +392,17 @@ func TestTransportCache(t *testing.T) {
 	}
 
 	// 1. Test cache MISS and creation of a new transport
-	transport1 := endpoint.GetTransport()
+	transport1 := endpoint.GetTransport(context.Background())
 	assert.NotNil(t, transport1, "Transport should not be nil on cache miss")
 
 	// 2. Test cache HIT
-	transport2 := endpoint.GetTransport()
+	transport2 := endpoint.GetTransport(context.Background())
 	assert.NotNil(t, transport2, "Transport should not be nil on cache hit")
 	assert.Same(t, transport1, transport2, "Should retrieve the same transport instance from cache")
 
 	// 3. Test cache clearing
 	ClearTransportCache()
-	transport3 := endpoint.GetTransport()
+	transport3 := endpoint.GetTransport(context.Background())
 	assert.NotSame(t, transport1, transport3, "Should create a new transport after cache is cleared")
 }
 
