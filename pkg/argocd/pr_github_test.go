@@ -273,6 +273,77 @@ func Test_GithubPRService_create(t *testing.T) {
 	}
 }
 
+func Test_GithubPRService_exists(t *testing.T) {
+	ctx := context.Background()
+
+	tests := []struct {
+		name       string
+		handler    http.HandlerFunc
+		wantExists bool
+		wantErrMsg string
+	}{
+		{
+			name: "no open PRs — returns false",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, http.MethodGet, r.Method)
+				assert.Equal(t, "org:image-updater-branch", r.URL.Query().Get("head"))
+				assert.Equal(t, "main", r.URL.Query().Get("base"))
+				assert.Equal(t, "open", r.URL.Query().Get("state"))
+
+				w.WriteHeader(http.StatusOK)
+				_ = json.NewEncoder(w).Encode([]*github.PullRequest{})
+			},
+			wantExists: false,
+		},
+		{
+			name: "one open PR — returns true",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusOK)
+				_ = json.NewEncoder(w).Encode([]*github.PullRequest{
+					{Number: github.Ptr(42)},
+				})
+			},
+			wantExists: true,
+		},
+		{
+			name: "multiple open PRs — returns true",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusOK)
+				_ = json.NewEncoder(w).Encode([]*github.PullRequest{
+					{Number: github.Ptr(42)},
+					{Number: github.Ptr(43)},
+				})
+			},
+			wantExists: true,
+		},
+		{
+			name: "API error — returns error",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusInternalServerError)
+			},
+			wantErrMsg: "could not list PRs for org/repo",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(tt.handler)
+			defer server.Close()
+
+			svc := newTestGithubPRService(server, nil)
+			exists, err := svc.exists(ctx, "main", "image-updater-branch")
+
+			if tt.wantErrMsg != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.wantErrMsg)
+			} else {
+				require.NoError(t, err)
+				assert.Equal(t, tt.wantExists, exists)
+			}
+		})
+	}
+}
+
 func Test_NewGithubPRService(t *testing.T) {
 	ctx := context.Background()
 

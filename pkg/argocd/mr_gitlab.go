@@ -59,11 +59,18 @@ func (g *GitLabMRService) create(ctx context.Context) error {
 	return nil
 }
 
-// list returns true if there is already an open MR from pushBranch into
+// exists returns true if there is already an open MR from pushBranch into
 // checkOutBranch.
-func (g *GitLabMRService) list(ctx context.Context, checkOutBranch, pushBranch string) (bool, error) {
-	// TODO: implement MR listing for idempotency check
-	return false, nil
+func (g *GitLabMRService) exists(ctx context.Context, checkOutBranch, pushBranch string) (bool, error) {
+	mrs, _, err := g.client.MergeRequests.ListProjectMergeRequests(g.projectID, &gitlab.ListProjectMergeRequestsOptions{
+		SourceBranch: gitlab.Ptr(pushBranch),
+		TargetBranch: gitlab.Ptr(checkOutBranch),
+		State:        gitlab.Ptr("opened"),
+	}, gitlab.WithContext(ctx))
+	if err != nil {
+		return false, fmt.Errorf("could not list MRs for %s: %w", g.projectID, err)
+	}
+	return len(mrs) > 0, nil
 }
 
 // NewGitLabMRService builds a GitLabMRService from the resolved write-back config

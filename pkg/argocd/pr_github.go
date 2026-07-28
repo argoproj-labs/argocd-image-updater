@@ -87,11 +87,18 @@ func isAlreadyExistsError(err error) bool {
 	return false
 }
 
-// list returns true if there is already an open PR from pushBranch into
+// exists returns true if there is already an open PR from pushBranch into
 // checkOutBranch.
-func (g *GithubPRService) list(ctx context.Context, checkOutBranch, pushBranch string) (bool, error) {
-	// TODO: implement PR listing for idempotency check
-	return false, nil
+func (g *GithubPRService) exists(ctx context.Context, checkOutBranch, pushBranch string) (bool, error) {
+	prs, _, err := g.client.PullRequests.List(ctx, g.owner, g.repo, &github.PullRequestListOptions{
+		Head:  g.owner + ":" + pushBranch,
+		Base:  checkOutBranch,
+		State: "open",
+	})
+	if err != nil {
+		return false, fmt.Errorf("could not list PRs for %s/%s: %w", g.owner, g.repo, err)
+	}
+	return len(prs) > 0, nil
 }
 
 // NewGithubPRService builds a GithubPRService from the resolved write-back config
