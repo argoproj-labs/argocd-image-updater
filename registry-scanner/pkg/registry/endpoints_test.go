@@ -263,7 +263,7 @@ func Test_SetDefault(t *testing.T) {
 	require.NotNil(t, ep)
 	require.False(t, ep.IsDefault)
 
-	SetDefaultRegistry(nil, ep)
+	SetDefaultRegistry(context.Background(), ep)
 	assert.True(t, ep.IsDefault)
 	assert.False(t, dep.IsDefault)
 	require.NotNil(t, GetDefaultRegistry(context.Background()))

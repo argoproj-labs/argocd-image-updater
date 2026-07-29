@@ -548,7 +548,11 @@ func (clt *registryClient) Referrers(ctx context.Context, dgst digest.Digest) ([
 func ping(ctx context.Context, manager challenge.Manager, endpoint *RegistryEndpoint, versionHeader string) ([]auth.APIVersion, error) {
 	httpc := &http.Client{Transport: endpoint.GetTransport(ctx)}
 	url := endpoint.RegistryAPI + "/v2/"
-	resp, err := httpc.Get(url)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := httpc.Do(req)
 	if err != nil {
 		return nil, err
 	}
