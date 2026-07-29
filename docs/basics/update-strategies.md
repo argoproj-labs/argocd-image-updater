@@ -25,9 +25,9 @@ The following update strategies are currently supported:
 
 * [semver](#strategy-semver) - Update to the latest version of an image
   considering semantic versioning constraints
-* [latest/newest-build](#strategy-latest) - Update to the most recently built image found in a registry
+* [newest-build](#strategy-latest) - Update to the most recently built image found in a registry (deprecated alias: `latest` — still accepted but may be removed in a future release)
 * [digest](#strategy-digest) - Update to the latest version of a given version (tag), using the tag's SHA digest
-* [name/alphabetical](#strategy-name) - Sorts tags alphabetically and update to the one with the highest cardinality
+* [alphabetical](#strategy-name) - Sorts tags alphabetically and update to the one with the highest cardinality (deprecated alias: `name` — still accepted but may be removed in a future release)
 
 !!!warning "Renamed image update strategies"
     The `latest` strategy has been renamed to `newest-build`, and `name` strategy has been renamed to `alphabetical`. 
@@ -130,7 +130,7 @@ a semantic version when using the `semver` update strategy.
 
 
 
-### <a name="strategy-latest"></a>latest/newest-build - Update to the most recently built image
+### <a name="strategy-latest"></a>newest-build - Update to the most recently built image
 
 
 !!!warning "Renamed image update strategies"
@@ -152,7 +152,7 @@ a semantic version when using the `semver` update strategy.
     value), the `latest` or `newest-build` strategy will not be able to determine which tag to
     update to.
 
-Strategy name: `latest` or `newest-build`
+Strategy name: `newest-build` (deprecated alias: `latest`)
 
 Basic configuration:
 
@@ -259,7 +259,7 @@ images:
     Detected usage of `name` will result in a warning message within the image-updater controller logs.
 
 
-Strategy name: `name` or `alphabetical`
+Strategy name: `alphabetical` (deprecated alias: `name`)
 
 Basic configuration:
 
