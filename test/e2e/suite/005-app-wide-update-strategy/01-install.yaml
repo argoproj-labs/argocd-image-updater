@@ -72,4 +72,4 @@ spec:
         - alias: "guestbook"
           imageName: "quay.io/dkarpele/my-guestbook:latest"
           commonUpdateSettings:
-            updateStrategy: "latest"
+            updateStrategy: "newest-build"

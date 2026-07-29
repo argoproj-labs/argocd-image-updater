@@ -575,7 +575,7 @@ images:
   - alias: "yourtool"
     imageName: "yourorg/yourimage"
     commonUpdateSettings:
-      updateStrategy: "latest"
+      updateStrategy: "newest-build"
       allowTags: "regexp:^v1.0.0-[0-9a-zA-Z]+$"
 ```
 

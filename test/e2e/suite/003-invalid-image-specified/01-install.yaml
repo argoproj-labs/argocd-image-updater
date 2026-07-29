@@ -35,7 +35,7 @@ metadata:
   namespace: argocd-image-updater-e2e
 spec:
   commonUpdateSettings:
-    updateStrategy: "latest"
+    updateStrategy: "newest-build"
   applicationRefs:
     - namePattern: "image-updater-003"
       images:

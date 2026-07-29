@@ -268,15 +268,6 @@ images:
   - alias: "alias"
     imageName: "some/image"
     commonUpdateSettings:
-      updateStrategy: "name"
-```
-or
-
-```yaml
-images:
-  - alias: "alias"
-    imageName: "some/image"
-    commonUpdateSettings:
       updateStrategy: "alphabetical"
 ```
 

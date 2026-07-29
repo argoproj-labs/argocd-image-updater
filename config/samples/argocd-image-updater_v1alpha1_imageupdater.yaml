@@ -32,7 +32,7 @@ spec:
           imageName: "test:1.1.0"
     - namePattern: "app-002"
       commonUpdateSettings:
-        updateStrategy: "latest" # Default strategy if not specified per image
+        updateStrategy: "newest-build" # Default strategy if not specified per image
         forceUpdate: true
         allowTags: "regexp:^[0-9a-f]{7}$"
         ignoreTags: [ "latest", "master" ]
@@ -84,7 +84,7 @@ spec:
         - alias: "nginx"
           imageName: "nginx:1.17.10"
       commonUpdateSettings:
-        updateStrategy: "latest" # Default strategy if not specified per image
+        updateStrategy: "newest-build" # Default strategy if not specified per image
         forceUpdate: true
         allowTags: "regexp:^[0-9a-f]{7}$"
         ignoreTags: [ "latest", "master" ]
