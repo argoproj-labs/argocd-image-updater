@@ -9,11 +9,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
 	executil "github.com/argoproj/argo-cd/v3/util/exec"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
 )
 
 // logHook captures logrus entries during tests. It mirrors the minimal API of
