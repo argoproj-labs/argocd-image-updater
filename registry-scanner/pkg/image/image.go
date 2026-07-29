@@ -179,6 +179,64 @@ func (list *ContainerImageList) ContainsImage(img *ContainerImage, checkVersion 
 	return nil
 }
 
+// MatchForDigestUpdate returns the live image that best represents the container
+// tracked by img, for digest-strategy update evaluation, when several containers
+// in the application share the same image name. It returns nil when there is no
+// better candidate than the caller's existing lookup.
+//
+// Argo CD's Status.Summary.Images (the source of the live image list) is
+// alias-less and deduplicated by full reference, so a plain ContainsImage lookup
+// (name + registry only, first match) can return a sibling container's live
+// image and either hide the tracked container's pending update or trigger a
+// spurious one. This narrows the match in two steps:
+//
+//  1. Prefer a live image whose tag name also matches img's tag name. This
+//     disambiguates aliases that share an image name but track different tags
+//     (e.g. tag-a vs tag-b), so each alias is evaluated against its own
+//     container instead of a sibling's.
+//  2. Among the candidates, prefer one whose digest differs from latestDigest —
+//     a container still on an older digest that needs updating. This
+//     disambiguates several containers that share both image name and tag (e.g.
+//     two deployments both on :develop) once their digests diverge.
+//
+// If no live image carries img's tag name (e.g. the summary lists digests
+// without tags), it falls back to a stale name+registry match, preserving the
+// previous name-only behavior.
+func (list *ContainerImageList) MatchForDigestUpdate(img *ContainerImage, latestDigest string) *ContainerImage {
+	wantTag := ""
+	if img.ImageTag != nil {
+		wantTag = img.ImageTag.TagName
+	}
+
+	var firstTagMatch, staleNameMatch *ContainerImage
+	for _, live := range *list {
+		if img.ImageName != live.ImageName || img.RegistryURL != live.RegistryURL {
+			continue
+		}
+		isStale := live.ImageTag != nil && live.ImageTag.IsDigest() && live.ImageTag.TagDigest != latestDigest
+		if isStale && staleNameMatch == nil {
+			staleNameMatch = live
+		}
+		if wantTag != "" && live.ImageTag != nil && live.ImageTag.TagName == wantTag {
+			if isStale {
+				// Same tag and still stale: this is exactly the container to update.
+				return live
+			}
+			if firstTagMatch == nil {
+				firstTagMatch = live
+			}
+		}
+	}
+
+	// Same tag but already current: return it so the caller evaluates this exact
+	// container (and correctly finds it up to date) rather than a sibling.
+	if firstTagMatch != nil {
+		return firstTagMatch
+	}
+	// No tag match available: fall back to a stale name+registry match if any.
+	return staleNameMatch
+}
+
 func (list *ContainerImageList) Originals() []string {
 	results := make([]string, len(*list))
 	for i, img := range *list {

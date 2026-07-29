@@ -199,6 +199,20 @@ func UpdateApplication(ctx context.Context, updateConf *UpdateConfiguration, sta
 			continue
 		}
 
+		// When several containers in the application reference the same image
+		// name, the live image list (Argo CD's alias-less, de-duplicated
+		// Status.Summary.Images) can cause the earlier ContainsImage lookup to
+		// resolve to a sibling container, hiding this image's pending update or
+		// triggering a spurious one. For digest strategy, re-select the live
+		// image that actually belongs to this alias (by tag, then by stale
+		// digest) so it is evaluated against its own container.
+		if vc.Strategy == image.StrategyDigest {
+			if m := applicationImages.MatchForDigestUpdate(applicationImage.ContainerImage, latest.TagDigest); m != nil && m != updateableImage {
+				imgCtx.Debugf("Multiple containers reference image '%s'; re-selected live image (tag '%s', digest '%s') for update evaluation", applicationImage.ImageName, m.ImageTag.TagName, m.ImageTag.TagDigest)
+				updateableImage = m
+			}
+		}
+
 		if needsUpdate(updateableImage, applicationImage.ContainerImage, latest, vc.Strategy) {
 			appImageWithTag := applicationImage.WithTag(latest)
 			appImageFullNameWithTag := appImageWithTag.GetFullNameWithTag()

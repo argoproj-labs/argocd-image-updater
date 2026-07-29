@@ -2230,6 +2230,106 @@ registries:
 		assert.Equal(t, 0, res.NumErrors)
 		assert.Equal(t, 1, res.NumImagesUpdated)
 	})
+
+	// Regression test for #1547: when two containers share the same image name
+	// and tag but their digests have diverged, the live image list
+	// (Status.Summary.Images) is alias-less and de-duplicated by full reference.
+	// A plain ContainsImage lookup returns the first name match — a sibling
+	// container that was already updated — hiding the tracked container's pending
+	// update. Without the fix this reports images_updated=0; with it, the tracked
+	// container is updated to the new digest.
+	t.Run("Test digest update when a sibling container shares the image name and tag (#1547)", func(t *testing.T) {
+		newDigest := "sha256:1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+		newDigestBytes := [32]byte{
+			0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef,
+			0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef,
+			0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef,
+			0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef,
+		}
+		// A different, older digest that our tracked container is still pinned to.
+		oldDigest := "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+
+		mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
+			regMock := regmock.RegistryClient{}
+			regMock.On("NewRepository", mock.Anything, mock.Anything).Return(nil)
+			regMock.On("Tags", mock.Anything).Return([]string{"latest"}, nil)
+			meta := &schema2.DeserializedManifest{}
+			regMock.On("ManifestForTag", mock.Anything, "latest").Return(meta, nil)
+			// The mutable "latest" tag now resolves to the NEW digest.
+			regMock.On("TagMetadata", mock.Anything, mock.Anything, mock.Anything).Return(&tag.TagInfo{
+				CreatedAt: time.Now(),
+				Digest:    newDigestBytes,
+			}, nil)
+			return &regMock, nil
+		}
+
+		argoClient := argomock.ArgoCD{}
+		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+
+		kubeClient := kube.ImageUpdaterKubernetesClient{
+			KubeClient: &registryKube.KubernetesClient{
+				Clientset: fake.NewFakeKubeClient(),
+			},
+		}
+
+		// We track one alias ("web"), still pinned to the old digest.
+		containerImg := image.NewFromIdentifier("web=docker.io/library/nginx:latest")
+		iuImg := NewImage(containerImg)
+		iuImg.UpdateStrategy = image.StrategyDigest
+
+		appImages := &ApplicationImages{
+			Application: v1alpha1.Application{
+				ObjectMeta: v1.ObjectMeta{
+					Name:      "guestbook",
+					Namespace: "guestbook",
+				},
+				Spec: v1alpha1.ApplicationSpec{
+					Source: &v1alpha1.ApplicationSource{
+						Kustomize: &v1alpha1.ApplicationSourceKustomize{
+							Images: v1alpha1.KustomizeImages{
+								// Our tracked container ("web") is still on the old digest.
+								v1alpha1.KustomizeImage("docker.io/library/nginx:latest@" + oldDigest),
+							},
+						},
+					},
+				},
+				Status: v1alpha1.ApplicationStatus{
+					SourceType: v1alpha1.ApplicationSourceTypeKustomize,
+					Summary: v1alpha1.ApplicationSummary{
+						// A sibling container ("worker") sharing the same image name and
+						// tag was already bumped to the new digest and is listed first;
+						// our tracked container is still on the old digest.
+						Images: []string{
+							"docker.io/library/nginx:latest@" + newDigest,
+							"docker.io/library/nginx:latest@" + oldDigest,
+						},
+					},
+				},
+			},
+			Images: ImageList{iuImg},
+			WriteBackConfig: &WriteBackConfig{
+				Method: WriteBackApplication,
+			},
+		}
+
+		res := UpdateApplication(context.Background(), &UpdateConfiguration{
+			NewRegFN:   mockClientFn,
+			ArgoClient: &argoClient,
+			KubeClient: &kubeClient,
+			UpdateApp:  appImages,
+			DryRun:     false,
+		}, NewSyncIterationState())
+
+		assert.Equal(t, 0, res.NumErrors)
+		assert.Equal(t, 1, res.NumImagesConsidered)
+		// The tracked container must be updated to the new digest, even though a
+		// sibling container already carries it in the (alias-less) live image list.
+		assert.Equal(t, 1, res.NumImagesUpdated,
+			"tracked container must be updated even when a sibling shares the image name and tag")
+		updatedImage := string(appImages.Application.Spec.Source.Kustomize.Images[0])
+		assert.Contains(t, updatedImage, "@"+newDigest,
+			"tracked container should be updated to the new digest")
+	})
 }
 
 func Test_MarshalParamsOverride(t *testing.T) {

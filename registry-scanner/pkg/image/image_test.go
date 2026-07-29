@@ -207,6 +207,78 @@ func Test_ContainerList(t *testing.T) {
 	})
 }
 
+func Test_MatchForDigestUpdate(t *testing.T) {
+	const (
+		imgRef  = "registry.example.com/org/app"
+		digNew  = "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+		digOld  = "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+		digTagB = "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+	)
+
+	t.Run("same tag: re-selects the stale digest when two containers share tag and name", func(t *testing.T) {
+		cfg := NewFromIdentifier(imgRef + ":develop")
+		live := ContainerImageList{
+			NewFromIdentifier(imgRef + ":develop@" + digNew), // sibling already updated, listed first
+			NewFromIdentifier(imgRef + ":develop@" + digOld), // our container, still stale
+		}
+		m := live.MatchForDigestUpdate(cfg, digNew)
+		require.NotNil(t, m)
+		assert.Equal(t, digOld, m.ImageTag.TagDigest)
+	})
+
+	t.Run("different tags: selects the container matching this alias's tag (#1547)", func(t *testing.T) {
+		cfg := NewFromIdentifier(imgRef + ":tag-a")
+		live := ContainerImageList{
+			NewFromIdentifier(imgRef + ":tag-b@" + digTagB), // sibling on a different tag, listed first
+			NewFromIdentifier(imgRef + ":tag-a@" + digOld),  // our container, still stale
+		}
+		m := live.MatchForDigestUpdate(cfg, digNew)
+		require.NotNil(t, m)
+		assert.Equal(t, "tag-a", m.ImageTag.TagName)
+		assert.Equal(t, digOld, m.ImageTag.TagDigest)
+	})
+
+	t.Run("different tags: returns this alias's own container even when current, not a sibling (#1547)", func(t *testing.T) {
+		// Our tag (tag-b) is unchanged (latest == digTagB); a sibling on tag-a differs.
+		// We must not pick the sibling, which would cause a spurious update.
+		cfg := NewFromIdentifier(imgRef + ":tag-b")
+		live := ContainerImageList{
+			NewFromIdentifier(imgRef + ":tag-a@" + digNew),  // sibling, different digest, listed first
+			NewFromIdentifier(imgRef + ":tag-b@" + digTagB), // our container, already current
+		}
+		m := live.MatchForDigestUpdate(cfg, digTagB)
+		require.NotNil(t, m)
+		assert.Equal(t, "tag-b", m.ImageTag.TagName)
+		assert.Equal(t, digTagB, m.ImageTag.TagDigest)
+	})
+
+	t.Run("falls back to a stale name match when no live image carries the tag", func(t *testing.T) {
+		cfg := NewFromIdentifier(imgRef + ":develop")
+		live := ContainerImageList{
+			NewFromIdentifier(imgRef + "@" + digOld), // digest-only, no tag name
+		}
+		m := live.MatchForDigestUpdate(cfg, digNew)
+		require.NotNil(t, m)
+		assert.Equal(t, digOld, m.ImageTag.TagDigest)
+	})
+
+	t.Run("returns nil when no image name matches", func(t *testing.T) {
+		cfg := NewFromIdentifier(imgRef + ":develop")
+		live := ContainerImageList{
+			NewFromIdentifier("registry.example.com/org/other:develop@" + digOld),
+		}
+		assert.Nil(t, live.MatchForDigestUpdate(cfg, digNew))
+	})
+
+	t.Run("returns nil when the only match is a different tag already at the latest digest", func(t *testing.T) {
+		cfg := NewFromIdentifier(imgRef + ":develop")
+		live := ContainerImageList{
+			NewFromIdentifier(imgRef + ":other@" + digNew),
+		}
+		assert.Nil(t, live.MatchForDigestUpdate(cfg, digNew))
+	})
+}
+
 func Test_getImageDigestFromTag(t *testing.T) {
 	tagAndDigest := "test-tag@sha256:abcde"
 	tagName, tagDigest := getImageDigestFromTag(tagAndDigest)
