@@ -286,7 +286,7 @@ spec:
   applicationRefs:
     - namePattern: "production-*"
       commonUpdateSettings:
-        updateStrategy: "latest"  # Override for production apps
+        updateStrategy: "newest-build"  # Override for production apps
         forceUpdate: true
       images:
         - alias: "app"
@@ -311,7 +311,7 @@ spec:
         - alias: "app"
           imageName: "myregistry/myapp:1.0"
           commonUpdateSettings:
-            updateStrategy: "latest"  # Override for this specific image
+            updateStrategy: "newest-build"  # Override for this specific image
         - alias: "database"
           imageName: "postgres:13"
           # Uses global semver strategy
@@ -415,7 +415,7 @@ spec:
         matchLabels:
           environment: "production"
       commonUpdateSettings:
-        updateStrategy: "latest"
+        updateStrategy: "newest-build"
         forceUpdate: true
       writeBackConfig:
         method: "git"
@@ -443,7 +443,7 @@ spec:
 This configuration:
 
 - Sets global defaults for semver updates
-- Overrides frontend applications to use latest strategy and Git write-back
+- Overrides frontend applications to use newest-build strategy and Git write-back
 - Uses specific update strategies for individual images
 - Combines name patterns with label selectors for precise targeting
 

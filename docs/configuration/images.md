@@ -115,8 +115,8 @@ Argo CD Image Updater can update images according to the following strategies:
 | Strategy              | Description                                                                |
 |-----------------------|----------------------------------------------------------------------------|
 | `semver`              | Update to the tag with the highest allowed semantic version                |
-| `latest/newest-build` | Update to the tag with the most recent creation date                       |
-| `name/alphabetical`   | Update to the tag with the latest entry from an alphabetically sorted list |
+| `newest-build`        | Update to the tag with the most recent creation date (deprecated alias: `latest`) |
+| `alphabetical`        | Update to the tag with the latest entry from an alphabetically sorted list (deprecated alias: `name`) |
 | `digest`              | Update to the most recent pushed version of a mutable tag                  |
 
 You can define the update strategy for each image independently by setting the
@@ -141,11 +141,11 @@ strategy `semver` will be used.
 
 !!!warning
     As of November 2020, Docker Hub has introduced pull limits for accounts on
-    the free plan and unauthenticated requests. The `latest/newest-build` update
+    the free plan and unauthenticated requests. The `newest-build` update
     strategy will perform manifest pulls for determining the most recently
     pushed tags, and these will count into your pull limits. So unless you are
     not affected by these pull limits, it is **not recommended** to use the
-    `latest/newest-build` update strategy with images hosted on Docker Hub.
+    `newest-build` update strategy with images hosted on Docker Hub.
 
 ## Filtering tags
 
@@ -575,7 +575,7 @@ images:
   - alias: "yourtool"
     imageName: "yourorg/yourimage"
     commonUpdateSettings:
-      updateStrategy: "latest"
+      updateStrategy: "newest-build"
       allowTags: "regexp:^v1.0.0-[0-9a-zA-Z]+$"
 ```
 
@@ -702,7 +702,7 @@ update strategies and set options for images.
 
 | Field            | Type     | Default    | Description                                                                     |
 |------------------|----------|------------|---------------------------------------------------------------------------------|
-| `updateStrategy` | string   | `"semver"` | Update strategy: `semver`, `latest/newest-build`, `digest`, `name/alphabetical` |
+| `updateStrategy` | string   | `"semver"` | Update strategy: `semver`, `newest-build`, `digest`, `alphabetical`. Deprecated aliases `latest` (for `newest-build`) and `name` (for `alphabetical`) are still accepted but may be removed in a future release. |
 | `forceUpdate`    | bool     | `false`    | Force updates even if image is not currently deployed                           |
 | `allowTags`      | string   | *none*     | Regex pattern for tags to allow                                                 |
 | `ignoreTags`     | []string | *none*     | List of glob patterns for tags to ignore                                        |
@@ -797,4 +797,4 @@ Settings can be configured at multiple levels with the following precedence (hig
 3. **ImageUpdater level** - Global defaults for all applications
 
 For example, if you set `updateStrategy: "semver"` at the global level but 
-`updateStrategy: "latest"` at the image level, the image will use `"latest"`.
+`updateStrategy: "newest-build"` at the image level, the image will use `"newest-build"`.

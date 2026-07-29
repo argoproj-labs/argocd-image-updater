@@ -42,7 +42,7 @@ spec:
         - alias: "app"
           imageName: "myapp:latest"
           commonUpdateSettings:
-            updateStrategy: "latest"  # Override for this specific image
+            updateStrategy: "newest-build"  # Override for this specific image
 ```
 
 ## ImageUpdater with Git write-back

@@ -65,8 +65,8 @@ RBAC authorization on Application resources etc. are fully supported.
   [update strategies](./basics/update-strategies.md)
     * `semver`: update to highest allowed version according to given image
     constraint,
-    * `latest/newest-build`: update to the most recently created image tag,
-    * `name/alphabetical`: update to the last tag in an alphabetically sorted list
+    * `newest-build`: update to the most recently created image tag (deprecated alias: `latest`),
+    * `alphabetical`: update to the last tag in an alphabetically sorted list (deprecated alias: `name`)
     * `digest`: update to the most recent pushed version of a mutable tag
 * Support for 
   [widely used container registries](./configuration/registries.md#supported-registries)
