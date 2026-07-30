@@ -158,7 +158,7 @@ type ImageConfig struct {
 	*CommonUpdateSettings `json:"commonUpdateSettings,omitempty"`
 
 	// ManifestTarget defines how and where to update this image in Kubernetes manifests.
-	// Only one of Helm or Kustomize should be specified within this block.
+	// Exactly one of Helm, Kustomize, or Plugin should be specified within this block.
 	// This whole block is optional if the image update isn't written to a manifest in a structured way.
 	// +optional
 	*ManifestTarget `json:"manifestTargets,omitempty"`
@@ -316,12 +316,14 @@ type PluginTarget struct {
 	// Example: "IMAGE_NAME", "REDIS_IMAGE_REPO".
 	// If Spec is set, this field is ignored.
 	// +optional
+	// +kubebuilder:validation:MaxLength=253
 	Name *string `json:"name,omitempty"`
 
 	// Tag is the environment variable name for the image tag part.
 	// Example: "IMAGE_TAG", "REDIS_IMAGE_VERSION".
 	// If Spec is set, this field is ignored.
 	// +optional
+	// +kubebuilder:validation:MaxLength=253
 	Tag *string `json:"tag,omitempty"`
 
 	// Spec is the environment variable name where the full image string
@@ -329,6 +331,7 @@ type PluginTarget struct {
 	// Use this if your plugin expects the entire image reference in a single env var.
 	// If this is set, Name and Tag will be ignored.
 	// +optional
+	// +kubebuilder:validation:MaxLength=253
 	Spec *string `json:"spec,omitempty"`
 }
 
