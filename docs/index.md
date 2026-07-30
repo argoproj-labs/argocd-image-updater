@@ -103,8 +103,11 @@ requests or bug reports related to the following:
 * Argo CD Image Updater can only update container images for applications whose
   manifests are rendered using *Kustomize*, *Helm*, or a *Config Management Plugin*.
   For Helm, the templates need to support specifying the image's tag (and possibly
-  name) using a parameter (i.e. `image.tag`). For Plugin apps, the plugin must
-  read image configuration from environment variables in the Application source.
+  name) using a parameter (i.e. `image.tag`). Plugin apps can be configured in two
+  ways: using `manifestTargets.plugin` (the plugin reads image configuration from
+  environment variables in the Application source), or using `manifestTargets.helm`
+  or `manifestTargets.kustomize` with the git write-back method (the plugin reads
+  from Kustomization or Helm values files committed to Git).
 
 Otherwise, current known limitations are:
 

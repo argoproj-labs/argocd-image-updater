@@ -428,11 +428,11 @@ plugin:
     value: 7.0.0
 ```
 
-### <a name="method-git-multi-source"></a>Multi-Source Applications (mixed Kustomize and Helm)
+### <a name="method-git-multi-source"></a>Multi-Source Applications (mixed Kustomize, Helm, and Plugin)
 
-Argo CD supports [multi-source applications](https://argo-cd.readthedocs.io/en/stable/user-guide/multiple_sources/) where an `Application` or `ApplicationSet` lists several sources. A common pattern is combining a Git/Kustomize source (your own workload) with one or more Helm chart sources (third-party dependencies such as Redis or PostgreSQL).
+Argo CD supports [multi-source applications](https://argo-cd.readthedocs.io/en/stable/user-guide/multiple_sources/) where an `Application` or `ApplicationSet` lists several sources. A common pattern is combining a Git/Kustomize source (your own workload) with one or more Helm chart sources (third-party dependencies such as Redis or PostgreSQL), or including a Plugin source alongside other source types.
 
-Image Updater handles this correctly: it identifies the correct write-back source by the `writeBackTarget` you configure. You only need to target the Kustomize or Helm source that contains your images; the other sources are left untouched.
+Image Updater handles this correctly: it identifies the correct write-back source by the `writeBackTarget` you configure and the source type detected from `Status.SourceTypes`. You only need to target the Kustomize, Helm, or Plugin source that contains your images; the other sources are left untouched.
 
 #### Kustomize + Helm example
 

@@ -350,8 +350,8 @@ func needsUpdate(updateableImage *image.ContainerImage, applicationImage *image.
 }
 
 // getAppImage retrieves the current image string from an Argo CD application.
-// It determines the application type (Kustomize or Helm) and calls the appropriate
-// function to extract the image information.
+// It determines the application type (Kustomize, Helm, or Plugin) and calls the
+// appropriate function to extract the image information.
 func getAppImage(ctx context.Context, app *v1alpha1.Application, wbc *WriteBackConfig, applicationImage *Image) (string, error) {
 	if applicationImage.PluginEnvName != "" || applicationImage.PluginEnvSpec != "" {
 		return GetPluginImage(ctx, app, wbc, applicationImage)
@@ -367,9 +367,9 @@ func getAppImage(ctx context.Context, app *v1alpha1.Application, wbc *WriteBackC
 	}
 }
 
-// setAppImage updates the image in the application's manifest based on its type (Kustomize or Helm).
-// It calls the appropriate function (SetKustomizeImage or SetHelmImage) to perform the update.
-// Returns an error if the application type is neither Helm nor Kustomize, or if the update fails.
+// setAppImage updates the image in the application's manifest based on its type (Kustomize, Helm, or Plugin).
+// It calls the appropriate function to perform the update.
+// Returns an error if the application type is unsupported, or if the update fails.
 func setAppImage(ctx context.Context, app *v1alpha1.Application, img *image.ContainerImage, wbc *WriteBackConfig, applicationImage *Image) error {
 	if applicationImage.PluginEnvName != "" || applicationImage.PluginEnvSpec != "" {
 		return SetPluginImage(ctx, app, img, wbc, applicationImage)

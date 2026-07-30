@@ -500,8 +500,14 @@ images:
 
 !!!note "Mutual exclusivity"
     `manifestTargets.plugin` is mutually exclusive with `manifestTargets.helm`
-    and `manifestTargets.kustomize`. Exactly one must be specified per image
+    and `manifestTargets.kustomize`. At most one may be specified per image
     when `manifestTargets` is present.
+
+!!!warning "Write-back target compatibility"
+    When using `manifestTargets.plugin`, do not set `writeBackConfig.gitConfig.writeBackTarget`
+    to `helmvalues` or `kustomization`. The plugin write-back format is incompatible with
+    Helm values files and Kustomize overlays. Use the default write-back target
+    (`.argocd-source-<appName>.yaml`) instead.
 
 ## Image Signature Verification
 

@@ -1,0 +1,27 @@
+apiVersion: argocd-image-updater.argoproj.io/v1alpha1
+kind: ImageUpdater
+metadata:
+  labels:
+    app.kubernetes.io/name: argocd-image-updater
+    app.kubernetes.io/managed-by: kustomize
+  name: argocd-image-updater-sample-plugin
+  namespace: argocd
+spec:
+  applicationRefs:
+    # Plugin app using separate name/tag env vars
+    - namePattern: "my-plugin-app"
+      images:
+        - alias: "myapp"
+          imageName: "myregistry/myapp:1.x"
+          manifestTargets:
+            plugin:
+              name: "IMAGE_NAME"
+              tag: "IMAGE_TAG"
+    # Plugin app using a single spec env var for the full image reference
+    - namePattern: "my-plugin-app-spec"
+      images:
+        - alias: "myapp"
+          imageName: "myregistry/myapp:1.x"
+          manifestTargets:
+            plugin:
+              spec: "APP_IMAGE"

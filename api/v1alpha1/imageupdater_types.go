@@ -250,7 +250,7 @@ type PullRequestGitLab struct {
 
 // ManifestTarget specifies the mechanism and details for updating image references in application manifests.
 // Exactly one of the fields (Helm, Kustomize, Plugin) must be set when this block is present.
-// +kubebuilder:validation:XValidation:rule="(has(self.helm) ? 1 : 0) + (has(self.kustomize) ? 1 : 0) + (has(self.plugin) ? 1 : 0) == 1",message="Exactly one of helm, kustomize, or plugin must be specified within manifestTargets."
+// +kubebuilder:validation:XValidation:rule="(has(self.helm) ? 1 : 0) + (has(self.kustomize) ? 1 : 0) + (has(self.plugin) ? 1 : 0) == 1",message="Exactly one of helm, kustomize, or plugin must be specified within manifestTargets if the block is present."
 type ManifestTarget struct {
 	// Helm specifies update parameters if the target manifest is managed by Helm
 	// and updates are to be made to Helm values files.
