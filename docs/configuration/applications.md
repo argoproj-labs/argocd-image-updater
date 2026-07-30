@@ -364,8 +364,10 @@ methods.
 
 With the **argocd** write-back method, updates are written directly to the
 Application's `spec.source.plugin.env` list. With the **git** write-back method,
-updates are written to the `.argocd-source-<appName>.yaml` file in the git
-repository, which Argo CD merges into the Application source at sync time.
+updates are written to the `.argocd-source-<appName>.yaml` file (or
+`.argocd-source-<namespace>_<appName>.yaml` when the Application namespace
+differs from the controller's configured namespace) in the git repository,
+which Argo CD merges into the Application source at sync time.
 
 ```yaml
 spec:
@@ -407,7 +409,7 @@ Configure the write-back target explicitly to control the file format:
 |--------|-----------------------|
 | `kustomization` or `kustomization:<path>` | `kustomization.yaml` (Kustomize image override) |
 | `helmvalues:<path>` | Helm values YAML |
-| *(none / default)* | `.argocd-source-<app>.yaml` (Helm parameter overrides) |
+| *(none / default)* | `.argocd-source-<app>.yaml` (source parameter overrides) |
 
 !!!note
     When using this approach, the `argocd` write-back method is not available

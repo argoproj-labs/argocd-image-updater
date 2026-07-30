@@ -292,6 +292,10 @@ spec:
                                       If Spec is set, this field is ignored.
                                     type: string
                                 type: object
+                                x-kubernetes-validations:
+                                - message: At least one of spec or name must be specified
+                                    in plugin target.
+                                  rule: has(self.spec) || has(self.name)
                             type: object
                             x-kubernetes-validations:
                             - message: Exactly one of helm, kustomize, or plugin must

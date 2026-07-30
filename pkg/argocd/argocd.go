@@ -1023,6 +1023,14 @@ func getPluginEnv(env argocdapi.Env, name string) string {
 // GetPluginImage gets the image set in Application source's plugin env vars
 // matching the configured env var names, or an empty string if not found.
 func GetPluginImage(ctx context.Context, app *argocdapi.Application, wbc *WriteBackConfig, applicationImage *Image) (string, error) {
+	// Use getApplicationSourceType (raw source type) instead of getApplicationType here,
+	// because getApplicationType maps plugin+git write-back to ApplicationTypeHelm for
+	// backward compatibility with the Helm hack. The raw source type correctly identifies
+	// plugin apps regardless of the write-back method.
+	if sourceType := getApplicationSourceType(app, wbc); sourceType != argocdapi.ApplicationSourceTypePlugin {
+		return "", fmt.Errorf("cannot get Plugin env vars from non-Plugin application")
+	}
+
 	appSource := getApplicationSource(ctx, app, wbc)
 	if appSource.Plugin == nil || len(appSource.Plugin.Env) == 0 {
 		return "", nil
@@ -1050,6 +1058,13 @@ func GetPluginImage(ctx context.Context, app *argocdapi.Application, wbc *WriteB
 // SetPluginImage sets image env vars on a plugin application's source
 func SetPluginImage(ctx context.Context, app *argocdapi.Application, newImage *image.ContainerImage, wbc *WriteBackConfig, applicationImage *Image) error {
 	log := log.LoggerFromContext(ctx)
+	// Use getApplicationSourceType (raw source type) instead of getApplicationType here,
+	// because getApplicationType maps plugin+git write-back to ApplicationTypeHelm for
+	// backward compatibility with the Helm hack. The raw source type correctly identifies
+	// plugin apps regardless of the write-back method.
+	if sourceType := getApplicationSourceType(app, wbc); sourceType != argocdapi.ApplicationSourceTypePlugin {
+		return fmt.Errorf("cannot set Plugin env vars on non-Plugin application")
+	}
 
 	peEnvSpec := applicationImage.PluginEnvSpec
 	peEnvName := applicationImage.PluginEnvName
