@@ -208,8 +208,10 @@ func ContextWithLogger(ctx context.Context, logger *logrus.Entry) context.Contex
 // If no logger is found in the context, it returns the global logger, ensuring
 // that a valid logger is always returned.
 func LoggerFromContext(ctx context.Context) *logrus.Entry {
-	if logger, ok := ctx.Value(loggerKey{}).(*logrus.Entry); ok {
-		return logger
+	if ctx != nil {
+		if logger, ok := ctx.Value(loggerKey{}).(*logrus.Entry); ok {
+			return logger
+		}
 	}
 	// Fallback to the global logger if none is found in the context.
 	return logrus.NewEntry(Log())

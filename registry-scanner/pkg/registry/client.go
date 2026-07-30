@@ -56,7 +56,7 @@ var knownMediaTypes = []string{
 //go:generate go run github.com/vektra/mockery/v2@v2.53.6 --name RoundTripper --srcpkg net/http --output ./mocks --outpkg mocks
 //go:generate go run github.com/vektra/mockery/v2@v2.53.6 --name Manager --srcpkg github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/registry/internal/client/auth/challenge --output ./mocks --outpkg mocks
 type RegistryClient interface {
-	NewRepository(nameInRepository string) error
+	NewRepository(ctx context.Context, nameInRepository string) error
 	Tags(ctx context.Context) ([]string, error)
 	ManifestForTag(ctx context.Context, tagStr string) (distribution.Manifest, error)
 	ManifestForDigest(ctx context.Context, dgst digest.Digest) (distribution.Manifest, error)
@@ -115,8 +115,10 @@ type rateLimitTransport struct {
 
 // RoundTrip is a custom RoundTrip method with rate-limiter
 func (rlt *rateLimitTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	logCtx := log.LoggerFromContext(r.Context())
+
 	rlt.limiter.Take()
-	log.Tracef("Performing HTTP %s %s", r.Method, r.URL)
+	logCtx.Tracef("Performing HTTP %s %s", r.Method, r.URL)
 	resp, err := rlt.transport.RoundTrip(r)
 	return resp, err
 }
@@ -139,10 +141,10 @@ func getTokenActions(registryAPI string) []string {
 
 // NewRepository is a wrapper for creating a registry client that is possibly
 // rate-limited by using a custom HTTP round tripper method.
-func (clt *registryClient) NewRepository(nameInRepository string) error {
+func (clt *registryClient) NewRepository(ctx context.Context, nameInRepository string) error {
 	urlToCall := strings.TrimSuffix(clt.endpoint.RegistryAPI, "/")
 	challengeManager1 := challenge.NewSimpleManager()
-	_, err := ping(challengeManager1, clt.endpoint, "")
+	_, err := ping(ctx, challengeManager1, clt.endpoint, "")
 	if err != nil {
 		return err
 	}
@@ -150,9 +152,9 @@ func (clt *registryClient) NewRepository(nameInRepository string) error {
 	actions := getTokenActions(clt.endpoint.RegistryAPI)
 
 	authTransport := transport.NewTransport(
-		clt.endpoint.GetTransport(), auth.NewAuthorizer(
+		clt.endpoint.GetTransport(ctx), auth.NewAuthorizer(
 			challengeManager1,
-			auth.NewTokenHandler(clt.endpoint.GetTransport(), clt.creds, nameInRepository, actions...),
+			auth.NewTokenHandler(clt.endpoint.GetTransport(ctx), clt.creds, nameInRepository, actions...),
 			auth.NewBasicHandler(clt.creds)))
 
 	rlt := &rateLimitTransport{
@@ -543,10 +545,14 @@ func (clt *registryClient) Referrers(ctx context.Context, dgst digest.Digest) ([
 
 // Implementation of ping method to initialize the challenge list
 // Without this, tokenHandler and AuthorizationHandler won't work
-func ping(manager challenge.Manager, endpoint *RegistryEndpoint, versionHeader string) ([]auth.APIVersion, error) {
-	httpc := &http.Client{Transport: endpoint.GetTransport()}
+func ping(ctx context.Context, manager challenge.Manager, endpoint *RegistryEndpoint, versionHeader string) ([]auth.APIVersion, error) {
+	httpc := &http.Client{Transport: endpoint.GetTransport(ctx)}
 	url := endpoint.RegistryAPI + "/v2/"
-	resp, err := httpc.Get(url)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := httpc.Do(req)
 	if err != nil {
 		return nil, err
 	}

@@ -45,6 +45,8 @@ func clearRegistries() {
 // LoadRegistryConfiguration loads a YAML-formatted registry configuration from
 // a given file at path.
 func LoadRegistryConfiguration(ctx context.Context, path string, clear bool) error {
+	logCtx := log.LoggerFromContext(ctx)
+
 	registryBytes, err := os.ReadFile(path)
 	if err != nil {
 		return err
@@ -63,12 +65,12 @@ func LoadRegistryConfiguration(ctx context.Context, path string, clear bool) err
 	for _, reg := range registryList.Items {
 		tagSortMode := TagListSortFromString(reg.TagSortMode)
 		if tagSortMode != TagListSortUnsorted {
-			log.Warnf("Registry %s has tag sort mode set to %s, meta data retrieval will be disabled for this registry.", reg.ApiURL, tagSortMode)
+			logCtx.Warnf("Registry %s has tag sort mode set to %s, meta data retrieval will be disabled for this registry.", reg.ApiURL, tagSortMode)
 		}
 		ep := NewRegistryEndpoint(reg.Prefix, reg.Name, reg.ApiURL, reg.Credentials, reg.DefaultNS, reg.Insecure, tagSortMode, reg.Limit, reg.CredsExpire)
 		if reg.IsDefault {
 			if haveDefault {
-				dep := GetDefaultRegistry()
+				dep := GetDefaultRegistry(ctx)
 				if dep == nil {
 					panic("unexpected: default registry should be set, but is not")
 				}
@@ -81,12 +83,12 @@ func LoadRegistryConfiguration(ctx context.Context, path string, clear bool) err
 		}
 
 		if reg.IsDefault {
-			SetDefaultRegistry(ep)
+			SetDefaultRegistry(ctx, ep)
 			haveDefault = true
 		}
 	}
 
-	log.Infof("Loaded %d registry configurations from %s", len(registryList.Items), path)
+	logCtx.Infof("Loaded %d registry configurations from %s", len(registryList.Items), path)
 	return nil
 }
 
@@ -130,7 +132,7 @@ func ParseRegistryConfiguration(yamlSource string) (RegistryList, error) {
 
 // RestRestoreDefaultRegistryConfiguration restores the registry configuration
 // to the default values.
-func RestoreDefaultRegistryConfiguration() {
+func RestoreDefaultRegistryConfiguration(ctx context.Context) {
 	registryLock.Lock()
 	defer registryLock.Unlock()
 	defaultRegistry = nil
@@ -138,7 +140,7 @@ func RestoreDefaultRegistryConfiguration() {
 	for k, v := range registryTweaks {
 		registries[k] = v.DeepCopy()
 		if v.IsDefault {
-			SetDefaultRegistry(registries[k])
+			SetDefaultRegistry(ctx, registries[k])
 		}
 	}
 }

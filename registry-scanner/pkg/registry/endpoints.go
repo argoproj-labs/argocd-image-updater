@@ -164,10 +164,10 @@ func AddRegistryEndpoint(ctx context.Context, ep *RegistryEndpoint) error {
 	// If the endpoint is supposed to be the default endpoint, make sure that
 	// any previously set default endpoint is unset.
 	if ep.IsDefault {
-		if dep := GetDefaultRegistry(); dep != nil {
+		if dep := GetDefaultRegistry(ctx); dep != nil {
 			dep.IsDefault = false
 		}
-		SetDefaultRegistry(ep)
+		SetDefaultRegistry(ctx, ep)
 	}
 	registries[prefix] = ep
 	registryLock.Unlock()
@@ -249,11 +249,13 @@ func GetRegistryEndpoint(ctx context.Context, img *image.ContainerImage) (*Regis
 }
 
 // SetDefaultRegistry sets a given registry endpoint as the default
-func SetDefaultRegistry(ep *RegistryEndpoint) {
-	log.Debugf("Setting default registry endpoint to %s", ep.RegistryPrefix)
+func SetDefaultRegistry(ctx context.Context, ep *RegistryEndpoint) {
+	logCtx := log.LoggerFromContext(ctx)
+
+	logCtx.Debugf("Setting default registry endpoint to %s", ep.RegistryPrefix)
 	ep.IsDefault = true
 	if defaultRegistry != nil {
-		log.Debugf("Previous default registry was %s", defaultRegistry.RegistryPrefix)
+		logCtx.Debugf("Previous default registry was %s", defaultRegistry.RegistryPrefix)
 		defaultRegistry.IsDefault = false
 	}
 	defaultRegistry = ep
@@ -261,11 +263,13 @@ func SetDefaultRegistry(ep *RegistryEndpoint) {
 
 // GetDefaultRegistry returns the registry endpoint that is set as default,
 // or nil if no default registry endpoint is set
-func GetDefaultRegistry() *RegistryEndpoint {
+func GetDefaultRegistry(ctx context.Context) *RegistryEndpoint {
+	logCtx := log.LoggerFromContext(ctx)
+
 	if defaultRegistry != nil {
-		log.Debugf("Getting default registry endpoint: %s", defaultRegistry.RegistryPrefix)
+		logCtx.Debugf("Getting default registry endpoint: %s", defaultRegistry.RegistryPrefix)
 	} else {
-		log.Debugf("No default registry defined.")
+		logCtx.Debugf("No default registry defined.")
 	}
 	return defaultRegistry
 }
@@ -324,11 +328,13 @@ func ClearTransportCache() {
 
 // GetTransport returns a transport object for this endpoint
 // Implements connection pooling and reuse to avoid creating new transports for each request
-func (ep *RegistryEndpoint) GetTransport() *http.Transport {
+func (ep *RegistryEndpoint) GetTransport(ctx context.Context) *http.Transport {
+	logCtx := log.LoggerFromContext(ctx)
+
 	// Check if we have a cached transport for this registry
 	if cachedTransport, found := transportCache.Get(ep.RegistryAPI); found {
 		transport := cachedTransport.(*http.Transport)
-		log.Debugf("Transport cache HIT for %s: %p", ep.RegistryAPI, transport)
+		logCtx.Debugf("Transport cache HIT for %s: %p", ep.RegistryAPI, transport)
 
 		// Validate that the transport is still usable
 		if isTransportValid(transport) {
@@ -336,11 +342,11 @@ func (ep *RegistryEndpoint) GetTransport() *http.Transport {
 		}
 
 		// Transport is stale, remove it from cache
-		log.Debugf("Transport for %s is stale, removing from cache", ep.RegistryAPI)
+		logCtx.Debugf("Transport for %s is stale, removing from cache", ep.RegistryAPI)
 		transportCache.Delete(ep.RegistryAPI)
 	}
 
-	log.Debugf("Transport cache MISS for %s", ep.RegistryAPI)
+	logCtx.Debugf("Transport cache MISS for %s", ep.RegistryAPI)
 
 	// Create a new transport with optimized connection pool settings
 	tlsC := &tls.Config{}
@@ -366,7 +372,7 @@ func (ep *RegistryEndpoint) GetTransport() *http.Transport {
 
 	// Cache the transport for reuse with default expiration (30 minutes)
 	transportCache.Set(ep.RegistryAPI, transport, memcache.DefaultExpiration)
-	log.Debugf("Cached NEW transport for %s: %p", ep.RegistryAPI, transport)
+	logCtx.Debugf("Cached NEW transport for %s: %p", ep.RegistryAPI, transport)
 
 	return transport
 }
