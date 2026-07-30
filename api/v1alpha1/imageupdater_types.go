@@ -309,8 +309,8 @@ type KustomizeTarget struct {
 // When the argocd write-back method is used, these env vars will be set in the Application
 // spec.source.plugin.env list. When the git write-back method is used, they will be written
 // to the .argocd-source-<appName>.yaml file in the git repository.
-// At least one of spec or name must be set.
-// +kubebuilder:validation:XValidation:rule="has(self.spec) || has(self.name)",message="At least one of spec or name must be specified in plugin target."
+// At least one of spec or name must be set to a non-empty value.
+// +kubebuilder:validation:XValidation:rule="(has(self.spec) && size(self.spec) > 0) || (has(self.name) && size(self.name) > 0)",message="At least one of spec or name must be specified in plugin target."
 type PluginTarget struct {
 	// Name is the environment variable name for the image repository/name part.
 	// Example: "IMAGE_NAME", "REDIS_IMAGE_REPO".

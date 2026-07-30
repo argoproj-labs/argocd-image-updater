@@ -295,7 +295,8 @@ spec:
                                 x-kubernetes-validations:
                                 - message: At least one of spec or name must be specified
                                     in plugin target.
-                                  rule: has(self.spec) || has(self.name)
+                                  rule: (has(self.spec) && size(self.spec) > 0) ||
+                                    (has(self.name) && size(self.name) > 0)
                             type: object
                             x-kubernetes-validations:
                             - message: Exactly one of helm, kustomize, or plugin must
