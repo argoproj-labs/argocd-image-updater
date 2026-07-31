@@ -2,6 +2,7 @@ package registry
 
 import (
 	"context"
+	"crypto/x509"
 	"fmt"
 	"os"
 	"time"
@@ -22,6 +23,7 @@ type RegistryConfiguration struct {
 	TagSortMode string        `yaml:"tagsortmode,omitempty"`
 	Prefix      string        `yaml:"prefix,omitempty"`
 	Insecure    bool          `yaml:"insecure,omitempty"`
+	CAFile      string        `yaml:"ca_file,omitempty"`
 	DefaultNS   string        `yaml:"defaultns,omitempty"`
 	Limit       int           `yaml:"limit,omitempty"`
 	IsDefault   bool          `yaml:"default,omitempty"`
@@ -30,6 +32,36 @@ type RegistryConfiguration struct {
 // RegistryList contains multiple RegistryConfiguration items
 type RegistryList struct {
 	Items []RegistryConfiguration `yaml:"registries"`
+}
+
+func newRegistryEndpointFromConfig(config RegistryConfiguration) (*RegistryEndpoint, error) {
+	endpoint := NewRegistryEndpoint(config.Prefix, config.Name, config.ApiURL, config.Credentials, config.DefaultNS, config.Insecure, TagListSortFromString(config.TagSortMode), config.Limit, config.CredsExpire)
+	rootCAs, err := loadRootCAs(config.CAFile)
+	if err != nil {
+		return nil, fmt.Errorf("could not configure CA certificates for registry %s: %w", config.Name, err)
+	}
+	endpoint.CAFile = config.CAFile
+	endpoint.rootCAs = rootCAs
+	return endpoint, nil
+}
+
+func loadRootCAs(caFile string) (*x509.CertPool, error) {
+	rootCAs, err := x509.SystemCertPool()
+	if err != nil {
+		return nil, fmt.Errorf("could not load system certificate pool: %w", err)
+	}
+	if caFile == "" {
+		return rootCAs, nil
+	}
+
+	certificates, err := os.ReadFile(caFile)
+	if err != nil {
+		return nil, fmt.Errorf("could not read CA file %s: %w", caFile, err)
+	}
+	if !rootCAs.AppendCertsFromPEM(certificates) {
+		return nil, fmt.Errorf("CA file %s does not contain a valid PEM certificate", caFile)
+	}
+	return rootCAs, nil
 }
 
 func clearRegistries() {
@@ -67,7 +99,10 @@ func LoadRegistryConfiguration(ctx context.Context, path string, clear bool) err
 		if tagSortMode != TagListSortUnsorted {
 			logCtx.Warnf("Registry %s has tag sort mode set to %s, meta data retrieval will be disabled for this registry.", reg.ApiURL, tagSortMode)
 		}
-		ep := NewRegistryEndpoint(reg.Prefix, reg.Name, reg.ApiURL, reg.Credentials, reg.DefaultNS, reg.Insecure, tagSortMode, reg.Limit, reg.CredsExpire)
+		ep, err := newRegistryEndpointFromConfig(reg)
+		if err != nil {
+			return err
+		}
 		if reg.IsDefault {
 			if haveDefault {
 				dep := GetDefaultRegistry(ctx)

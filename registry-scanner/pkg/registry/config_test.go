@@ -20,6 +20,20 @@ func Test_ParseRegistryConfFromYaml(t *testing.T) {
 		assert.Len(t, regList.Items, 4)
 	})
 
+	t.Run("Parse CA file from valid YAML", func(t *testing.T) {
+		registries := `
+registries:
+- name: Private Registry
+  api_url: https://registry.example.com
+  prefix: registry.example.com
+  ca_file: /app/config/certs/registry-ca.pem
+`
+		regList, err := ParseRegistryConfiguration(registries)
+		require.NoError(t, err)
+		require.Len(t, regList.Items, 1)
+		assert.Equal(t, "/app/config/certs/registry-ca.pem", regList.Items[0].CAFile)
+	})
+
 	t.Run("Parse from invalid YAML: no name found", func(t *testing.T) {
 		registries := `
 registries:

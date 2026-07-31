@@ -3,6 +3,7 @@ package registry
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"math"
 	"net/http"
@@ -83,6 +84,7 @@ type RegistryEndpoint struct {
 	Ping           bool
 	Credentials    string
 	Insecure       bool
+	CAFile         string
 	DefaultNS      string
 	CredsExpire    time.Duration
 	CredsUpdated   time.Time
@@ -92,6 +94,7 @@ type RegistryEndpoint struct {
 	IsDefault      bool
 	lock           sync.RWMutex
 	limit          int
+	rootCAs        *x509.CertPool
 }
 
 // registryTweaks should contain a list of registries whose settings cannot be
@@ -129,7 +132,10 @@ var credentialGroup singleflight.Group
 var transportCache = memcache.New(30*time.Minute, 10*time.Minute)
 
 func AddRegistryEndpointFromConfig(ctx context.Context, epc RegistryConfiguration) error {
-	ep := NewRegistryEndpoint(epc.Prefix, epc.Name, epc.ApiURL, epc.Credentials, epc.DefaultNS, epc.Insecure, TagListSortFromString(epc.TagSortMode), epc.Limit, epc.CredsExpire)
+	ep, err := newRegistryEndpointFromConfig(epc)
+	if err != nil {
+		return err
+	}
 	return AddRegistryEndpoint(ctx, ep)
 }
 
@@ -310,12 +316,14 @@ func (ep *RegistryEndpoint) DeepCopy() *RegistryEndpoint {
 	newEp.TagListSort = ep.TagListSort
 	newEp.Cache = cache.NewMemCache()
 	newEp.Insecure = ep.Insecure
+	newEp.CAFile = ep.CAFile
 	newEp.DefaultNS = ep.DefaultNS
 	newEp.Limiter = ep.Limiter
 	newEp.CredsExpire = ep.CredsExpire
 	newEp.CredsUpdated = ep.CredsUpdated
 	newEp.IsDefault = ep.IsDefault
 	newEp.limit = ep.limit
+	newEp.rootCAs = ep.rootCAs
 	ep.lock.RUnlock()
 	return newEp
 }
@@ -349,7 +357,15 @@ func (ep *RegistryEndpoint) GetTransport(ctx context.Context) *http.Transport {
 	logCtx.Debugf("Transport cache MISS for %s", ep.RegistryAPI)
 
 	// Create a new transport with optimized connection pool settings
-	tlsC := &tls.Config{}
+	rootCAs := ep.rootCAs
+	if rootCAs == nil {
+		var err error
+		rootCAs, err = x509.SystemCertPool()
+		if err != nil {
+			logCtx.Warnf("Could not load system certificate pool for %s: %v", ep.RegistryAPI, err)
+		}
+	}
+	tlsC := &tls.Config{RootCAs: rootCAs}
 	if ep.Insecure {
 		tlsC.InsecureSkipVerify = true
 	}

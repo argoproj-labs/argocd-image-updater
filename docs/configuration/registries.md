@@ -145,6 +145,13 @@ properties are optional, unless otherwise stated:
 
     Example value: `true`
 
+  * `ca_file` - Path to a PEM-encoded CA certificate bundle to trust for this
+    registry in addition to certificates from the system trust store.
+
+    Default value: _none_
+
+    Example value: `/app/config/certs/registry-ca.pem`
+
   * `limit` - The rate limit (max. number of requests per second) to use for
     this registry, specified as integer.
 
@@ -169,7 +176,7 @@ registries:
 - name: RedHat Quay
   api_url: https://quay.io
   prefix: quay.io
-  insecure: yes
+  ca_file: /app/config/certs/quay-ca.pem
   credentials: env:REGISTRY_SECRET
 ```
 

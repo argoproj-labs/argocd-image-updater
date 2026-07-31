@@ -2,8 +2,12 @@ package registry
 
 import (
 	"context"
+	"encoding/pem"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -321,7 +325,46 @@ func TestGetTransport(t *testing.T) {
 
 		assert.NotNil(t, transport)
 		assert.NotNil(t, transport.TLSClientConfig)
+		assert.NotNil(t, transport.TLSClientConfig.RootCAs)
 		assert.False(t, transport.TLSClientConfig.InsecureSkipVerify)
+	})
+
+	t.Run("trusts certificates from a registry CA file", func(t *testing.T) {
+		server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+			writer.WriteHeader(http.StatusOK)
+		}))
+		defer server.Close()
+
+		certificate := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: server.Certificate().Raw})
+		caFile := filepath.Join(t.TempDir(), "registry-ca.pem")
+		require.NoError(t, os.WriteFile(caFile, certificate, 0600))
+
+		endpoint, err := newRegistryEndpointFromConfig(RegistryConfiguration{
+			Name:   "private registry",
+			Prefix: "private.example.com",
+			ApiURL: server.URL,
+			CAFile: caFile,
+		})
+		require.NoError(t, err)
+
+		client := &http.Client{Transport: endpoint.GetTransport(context.Background())}
+		response, err := client.Get(server.URL)
+		require.NoError(t, err)
+		defer response.Body.Close()
+		assert.Equal(t, http.StatusOK, response.StatusCode)
+	})
+
+	t.Run("rejects an invalid registry CA file", func(t *testing.T) {
+		caFile := filepath.Join(t.TempDir(), "invalid-ca.pem")
+		require.NoError(t, os.WriteFile(caFile, []byte("not a certificate"), 0600))
+
+		_, err := newRegistryEndpointFromConfig(RegistryConfiguration{
+			Name:   "private registry",
+			Prefix: "private.example.com",
+			ApiURL: "https://private.example.com",
+			CAFile: caFile,
+		})
+		require.ErrorContains(t, err, "does not contain a valid PEM certificate")
 	})
 
 	t.Run("returns transport with insecure TLS config when Insecure is true", func(t *testing.T) {
