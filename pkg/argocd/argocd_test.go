@@ -295,7 +295,7 @@ func Test_GetApplicationType(t *testing.T) {
 		assert.Equal(t, "Kustomize", appType.String())
 	})
 
-	t.Run("Get application of unknown Type", func(t *testing.T) {
+	t.Run("Plugin app with nil wbc returns Plugin type", func(t *testing.T) {
 		application := &v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
 				Name:      "test-app",
@@ -310,8 +310,8 @@ func Test_GetApplicationType(t *testing.T) {
 			},
 		}
 		appType := GetApplicationType(application, nil)
-		assert.Equal(t, ApplicationTypeUnsupported, appType)
-		assert.Equal(t, "Unsupported", appType.String())
+		assert.Equal(t, ApplicationTypePlugin, appType)
+		assert.Equal(t, "Plugin", appType.String())
 	})
 
 	t.Run("Get application with kustomize target", func(t *testing.T) {
@@ -384,8 +384,7 @@ func Test_GetApplicationType(t *testing.T) {
 		assert.Equal(t, ApplicationTypeKustomize, GetApplicationType(application, wbc))
 	})
 
-	t.Run("Plugin app with argocd write-back remains unsupported", func(t *testing.T) {
-		// Spec.Source is intentionally omitted: source type is driven by Status.SourceType, not Spec.
+	t.Run("Plugin app with argocd write-back returns Plugin type", func(t *testing.T) {
 		application := &v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
 				Name:      "test-app",
@@ -396,11 +395,11 @@ func Test_GetApplicationType(t *testing.T) {
 				SourceType: v1alpha1.ApplicationSourceTypePlugin,
 			},
 		}
-		// nil wbc → unsupported
-		assert.Equal(t, ApplicationTypeUnsupported, GetApplicationType(application, nil))
-		// explicit argocd method → unsupported
+		// nil wbc → Plugin type
+		assert.Equal(t, ApplicationTypePlugin, GetApplicationType(application, nil))
+		// explicit argocd method → Plugin type
 		wbc := &WriteBackConfig{Method: WriteBackApplication}
-		assert.Equal(t, ApplicationTypeUnsupported, GetApplicationType(application, wbc))
+		assert.Equal(t, ApplicationTypePlugin, GetApplicationType(application, wbc))
 	})
 
 }
@@ -1630,6 +1629,178 @@ func Test_SetHelmImage(t *testing.T) {
 		assert.Equal(t, "mq@sha256:123456", tagParam.Value, "Existing tag value should not be overwritten with empty string")
 	})
 
+}
+
+func Test_SetPluginImage(t *testing.T) {
+	t.Run("Set plugin image with separate name and tag env vars", func(t *testing.T) {
+		app := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "test-app",
+				Namespace: "testns",
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: &v1alpha1.ApplicationSource{
+					Plugin: &v1alpha1.ApplicationSourcePlugin{
+						Name: "helmfile",
+						Env: v1alpha1.Env{
+							{Name: "REDIS_IMAGE_NAME", Value: "myregistry/redis"},
+							{Name: "REDIS_IMAGE_TAG", Value: "6.0.0"},
+						},
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypePlugin,
+			},
+		}
+
+		img := image.NewFromIdentifier("redis=myregistry/redis:7.0.0")
+		wbc := &WriteBackConfig{Method: WriteBackGit}
+		appImage := &Image{PluginEnvName: "REDIS_IMAGE_NAME", PluginEnvTag: "REDIS_IMAGE_TAG"}
+
+		err := SetPluginImage(context.Background(), app, img, wbc, appImage)
+		require.NoError(t, err)
+		require.NotNil(t, app.Spec.Source.Plugin)
+
+		assert.Equal(t, "myregistry/redis", getPluginEnv(app.Spec.Source.Plugin.Env, "REDIS_IMAGE_NAME"))
+		assert.Equal(t, "7.0.0", getPluginEnv(app.Spec.Source.Plugin.Env, "REDIS_IMAGE_TAG"))
+	})
+
+	t.Run("Set plugin image with spec env var", func(t *testing.T) {
+		app := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "test-app",
+				Namespace: "testns",
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: &v1alpha1.ApplicationSource{
+					Plugin: &v1alpha1.ApplicationSourcePlugin{
+						Name: "helmfile",
+						Env: v1alpha1.Env{
+							{Name: "REDIS_IMAGE", Value: "myregistry/redis:6.0.0"},
+						},
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypePlugin,
+			},
+		}
+
+		img := image.NewFromIdentifier("redis=myregistry/redis:7.0.0")
+		wbc := &WriteBackConfig{Method: WriteBackGit}
+		appImage := &Image{PluginEnvSpec: "REDIS_IMAGE"}
+
+		err := SetPluginImage(context.Background(), app, img, wbc, appImage)
+		require.NoError(t, err)
+		assert.Equal(t, "myregistry/redis:7.0.0", getPluginEnv(app.Spec.Source.Plugin.Env, "REDIS_IMAGE"))
+	})
+
+	t.Run("Set plugin image when plugin source is nil", func(t *testing.T) {
+		app := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "test-app",
+				Namespace: "testns",
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: &v1alpha1.ApplicationSource{},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypePlugin,
+			},
+		}
+
+		img := image.NewFromIdentifier("redis=myregistry/redis:7.0.0")
+		wbc := &WriteBackConfig{Method: WriteBackGit}
+		appImage := &Image{PluginEnvName: "IMAGE_NAME", PluginEnvTag: "IMAGE_TAG"}
+
+		err := SetPluginImage(context.Background(), app, img, wbc, appImage)
+		require.NoError(t, err)
+		require.NotNil(t, app.Spec.Source.Plugin)
+		assert.Equal(t, "myregistry/redis", getPluginEnv(app.Spec.Source.Plugin.Env, "IMAGE_NAME"))
+		assert.Equal(t, "7.0.0", getPluginEnv(app.Spec.Source.Plugin.Env, "IMAGE_TAG"))
+	})
+}
+
+func Test_GetPluginImage(t *testing.T) {
+	t.Run("Get plugin image with separate name and tag", func(t *testing.T) {
+		app := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "test-app",
+				Namespace: "testns",
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: &v1alpha1.ApplicationSource{
+					Plugin: &v1alpha1.ApplicationSourcePlugin{
+						Env: v1alpha1.Env{
+							{Name: "IMAGE_NAME", Value: "myregistry/redis"},
+							{Name: "IMAGE_TAG", Value: "7.0.0"},
+						},
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypePlugin,
+			},
+		}
+
+		wbc := &WriteBackConfig{Method: WriteBackGit}
+		appImage := &Image{PluginEnvName: "IMAGE_NAME", PluginEnvTag: "IMAGE_TAG"}
+
+		result, err := GetPluginImage(context.Background(), app, wbc, appImage)
+		require.NoError(t, err)
+		assert.Equal(t, "myregistry/redis:7.0.0", result)
+	})
+
+	t.Run("Get plugin image with spec", func(t *testing.T) {
+		app := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "test-app",
+				Namespace: "testns",
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: &v1alpha1.ApplicationSource{
+					Plugin: &v1alpha1.ApplicationSourcePlugin{
+						Env: v1alpha1.Env{
+							{Name: "REDIS_IMAGE", Value: "myregistry/redis:7.0.0"},
+						},
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypePlugin,
+			},
+		}
+
+		wbc := &WriteBackConfig{Method: WriteBackGit}
+		appImage := &Image{PluginEnvSpec: "REDIS_IMAGE"}
+
+		result, err := GetPluginImage(context.Background(), app, wbc, appImage)
+		require.NoError(t, err)
+		assert.Equal(t, "myregistry/redis:7.0.0", result)
+	})
+
+	t.Run("Get plugin image when plugin is nil", func(t *testing.T) {
+		app := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "test-app",
+				Namespace: "testns",
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: &v1alpha1.ApplicationSource{},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypePlugin,
+			},
+		}
+
+		wbc := &WriteBackConfig{Method: WriteBackGit}
+		appImage := &Image{PluginEnvName: "IMAGE_NAME", PluginEnvTag: "IMAGE_TAG"}
+
+		result, err := GetPluginImage(context.Background(), app, wbc, appImage)
+		require.NoError(t, err)
+		assert.Equal(t, "", result)
+	})
 }
 
 func TestKubernetesClient(t *testing.T) {
@@ -3079,6 +3250,50 @@ func Test_newImageFromManifestTargetSettings(t *testing.T) {
 		_, err := newImageFromManifestTargetSettings(settings, nil)
 		assert.Error(t, err)
 	})
+
+	t.Run("should apply plugin name and tag settings", func(t *testing.T) {
+		img := &Image{}
+		settings := &api.ManifestTarget{
+			Plugin: &api.PluginTarget{
+				Name: strPtr("IMAGE_NAME"),
+				Tag:  strPtr("IMAGE_TAG"),
+			},
+		}
+		result, err := newImageFromManifestTargetSettings(settings, img)
+		assert.NoError(t, err)
+		assert.Equal(t, "IMAGE_NAME", result.PluginEnvName)
+		assert.Equal(t, "IMAGE_TAG", result.PluginEnvTag)
+		assert.Empty(t, result.PluginEnvSpec)
+	})
+
+	t.Run("should apply plugin spec and ignore name/tag", func(t *testing.T) {
+		img := &Image{}
+		settings := &api.ManifestTarget{
+			Plugin: &api.PluginTarget{
+				Spec: strPtr("IMAGE_SPEC"),
+				Name: strPtr("should-be-ignored"),
+				Tag:  strPtr("should-be-ignored"),
+			},
+		}
+		result, err := newImageFromManifestTargetSettings(settings, img)
+		assert.NoError(t, err)
+		assert.Equal(t, "IMAGE_SPEC", result.PluginEnvSpec)
+		assert.Empty(t, result.PluginEnvName)
+		assert.Empty(t, result.PluginEnvTag)
+	})
+
+	t.Run("should return error when plugin and helm are both set", func(t *testing.T) {
+		settings := &api.ManifestTarget{
+			Plugin: &api.PluginTarget{
+				Name: strPtr("IMAGE_NAME"),
+			},
+			Helm: &api.HelmTarget{
+				Name: strPtr("image.name"),
+			},
+		}
+		_, err := newImageFromManifestTargetSettings(settings, nil)
+		assert.Error(t, err)
+	})
 }
 
 // Assisted-by: Gemini AI
@@ -3420,7 +3635,7 @@ func Test_processApplicationForUpdate(t *testing.T) {
 	}
 	unsupportedApp := &v1alpha1.Application{
 		ObjectMeta: v1.ObjectMeta{Name: "unsupported-app", Namespace: "testns"},
-		Status:     v1alpha1.ApplicationStatus{SourceType: v1alpha1.ApplicationSourceTypePlugin},
+		Status:     v1alpha1.ApplicationStatus{SourceType: v1alpha1.ApplicationSourceTypeDirectory},
 	}
 
 	appRefWithImages := api.ApplicationRef{
@@ -3760,10 +3975,10 @@ func Test_FilterApplicationsForUpdate(t *testing.T) {
 			Source: &v1alpha1.ApplicationSource{
 				RepoURL:        "https://github.com/example/repo.git",
 				TargetRevision: "main",
-				Path:           "plugin",
+				Path:           "directory",
 			},
 		},
-		Status: v1alpha1.ApplicationStatus{SourceType: v1alpha1.ApplicationSourceTypePlugin},
+		Status: v1alpha1.ApplicationStatus{SourceType: v1alpha1.ApplicationSourceTypeDirectory},
 	}
 
 	testCases := []struct {
@@ -4658,6 +4873,8 @@ func (a ApplicationType) String() string {
 		return "Kustomize"
 	case ApplicationTypeHelm:
 		return "Helm"
+	case ApplicationTypePlugin:
+		return "Plugin"
 	case ApplicationTypeUnsupported:
 		return "Unsupported"
 	default:

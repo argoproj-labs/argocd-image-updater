@@ -434,6 +434,9 @@ func newImageFromCommonUpdateSettings(ctx context.Context, settings *iuapi.Commo
 		HelmImageTag:       "",
 		HelmImageSpec:      "",
 		KustomizeImageName: "",
+		PluginEnvName:      "",
+		PluginEnvTag:       "",
+		PluginEnvSpec:      "",
 	}
 
 	if settings == nil {
@@ -626,8 +629,18 @@ func newImageFromManifestTargetSettings(settings *iuapi.ManifestTarget, img *Ima
 		return img, nil
 	}
 
-	if settings.Helm != nil && settings.Kustomize != nil {
-		return nil, fmt.Errorf("only one of the fields (Helm, Kustomize) should be set, dictating the update method")
+	count := 0
+	if settings.Helm != nil {
+		count++
+	}
+	if settings.Kustomize != nil {
+		count++
+	}
+	if settings.Plugin != nil {
+		count++
+	}
+	if count > 1 {
+		return nil, fmt.Errorf("only one of the fields (Helm, Kustomize, Plugin) should be set, dictating the update method")
 	}
 
 	// Layer the new settings on top, only if they are explicitly set (non-nil).
@@ -643,6 +656,16 @@ func newImageFromManifestTargetSettings(settings *iuapi.ManifestTarget, img *Ima
 	}
 	if settings.Kustomize != nil && settings.Kustomize.Name != nil {
 		img.KustomizeImageName = *settings.Kustomize.Name
+	}
+	if settings.Plugin != nil && settings.Plugin.Spec != nil {
+		img.PluginEnvSpec = *settings.Plugin.Spec
+	} else {
+		if settings.Plugin != nil && settings.Plugin.Name != nil {
+			img.PluginEnvName = *settings.Plugin.Name
+		}
+		if settings.Plugin != nil && settings.Plugin.Tag != nil {
+			img.PluginEnvTag = *settings.Plugin.Tag
+		}
 	}
 
 	return img, nil
@@ -988,6 +1011,97 @@ func SetKustomizeImage(ctx context.Context, app *argocdapi.Application, newImage
 	return nil
 }
 
+func getPluginEnv(env argocdapi.Env, name string) string {
+	for _, e := range env {
+		if e != nil && e.Name == name {
+			return e.Value
+		}
+	}
+	return ""
+}
+
+// GetPluginImage gets the image set in Application source's plugin env vars
+// matching the configured env var names, or an empty string if not found.
+func GetPluginImage(ctx context.Context, app *argocdapi.Application, wbc *WriteBackConfig, applicationImage *Image) (string, error) {
+	// Use getApplicationSourceType (raw source type) instead of getApplicationType here,
+	// because getApplicationType maps plugin+git write-back to ApplicationTypeHelm for
+	// backward compatibility with the Helm hack. The raw source type correctly identifies
+	// plugin apps regardless of the write-back method.
+	if sourceType := getApplicationSourceType(app, wbc); sourceType != argocdapi.ApplicationSourceTypePlugin {
+		return "", fmt.Errorf("cannot get Plugin env vars from non-Plugin application")
+	}
+
+	appSource := getApplicationSource(ctx, app, wbc)
+	if appSource.Plugin == nil || len(appSource.Plugin.Env) == 0 {
+		return "", nil
+	}
+
+	peEnvSpec := applicationImage.PluginEnvSpec
+	peEnvName := applicationImage.PluginEnvName
+	peEnvTag := applicationImage.PluginEnvTag
+
+	if peEnvSpec != "" {
+		if v := getPluginEnv(appSource.Plugin.Env, peEnvSpec); v != "" {
+			return v, nil
+		}
+	} else if peEnvName != "" && peEnvTag != "" {
+		name := getPluginEnv(appSource.Plugin.Env, peEnvName)
+		tag := getPluginEnv(appSource.Plugin.Env, peEnvTag)
+		if name != "" && tag != "" {
+			return name + ":" + tag, nil
+		}
+	}
+
+	return "", nil
+}
+
+// SetPluginImage sets image env vars on a plugin application's source
+func SetPluginImage(ctx context.Context, app *argocdapi.Application, newImage *image.ContainerImage, wbc *WriteBackConfig, applicationImage *Image) error {
+	log := log.LoggerFromContext(ctx)
+	// Use getApplicationSourceType (raw source type) instead of getApplicationType here,
+	// because getApplicationType maps plugin+git write-back to ApplicationTypeHelm for
+	// backward compatibility with the Helm hack. The raw source type correctly identifies
+	// plugin apps regardless of the write-back method.
+	if sourceType := getApplicationSourceType(app, wbc); sourceType != argocdapi.ApplicationSourceTypePlugin {
+		return fmt.Errorf("cannot set Plugin env vars on non-Plugin application")
+	}
+
+	peEnvSpec := applicationImage.PluginEnvSpec
+	peEnvName := applicationImage.PluginEnvName
+	peEnvTag := applicationImage.PluginEnvTag
+
+	log.Debugf("target plugin env vars: env-spec=%s env-name=%s, env-tag=%s", peEnvSpec, peEnvName, peEnvTag)
+
+	appSource := getApplicationSource(ctx, app, wbc)
+	if appSource.Plugin == nil {
+		appSource.Plugin = &argocdapi.ApplicationSourcePlugin{}
+	}
+
+	if peEnvSpec != "" {
+		appSource.Plugin.AddEnvEntry(&argocdapi.EnvEntry{
+			Name:  peEnvSpec,
+			Value: newImage.GetFullNameWithTag(),
+		})
+	} else {
+		if peEnvName != "" {
+			appSource.Plugin.AddEnvEntry(&argocdapi.EnvEntry{
+				Name:  peEnvName,
+				Value: newImage.GetFullNameWithoutTag(),
+			})
+		}
+		if peEnvTag != "" {
+			if tagValue := newImage.GetTagWithDigest(); tagValue != "" {
+				appSource.Plugin.AddEnvEntry(&argocdapi.EnvEntry{
+					Name:  peEnvTag,
+					Value: tagValue,
+				})
+			}
+		}
+	}
+
+	return nil
+}
+
 // GetImagesFromApplication returns the list of known images for the given application
 func GetImagesFromApplication(applicationImages *ApplicationImages) image.ContainerImageList {
 	images := make(image.ContainerImageList, 0)
@@ -1104,11 +1218,15 @@ func getApplicationType(app *argocdapi.Application, wbc *WriteBackConfig) Applic
 		return ApplicationTypeKustomize
 	} else if sourceType == argocdapi.ApplicationSourceTypeHelm {
 		return ApplicationTypeHelm
-	} else if sourceType == argocdapi.ApplicationSourceTypePlugin &&
-		wbc != nil && wbc.Method == WriteBackGit {
-		// Plugin apps: the write-back target format determines serialization, not the source type.
-		// KustomizeBase being non-empty is already caught above via getApplicationSourceType.
-		return ApplicationTypeHelm
+	} else if sourceType == argocdapi.ApplicationSourceTypePlugin {
+		if wbc != nil && wbc.Method == WriteBackGit {
+			// Backward compat: plugin apps with git write-back default to Helm serialization.
+			// Users with manifestTargets.helm on plugin apps continue working unchanged.
+			// The per-image plugin target check in getAppImage/setAppImage overrides this
+			// for images that have manifestTargets.plugin configured.
+			return ApplicationTypeHelm
+		}
+		return ApplicationTypePlugin
 	} else {
 		return ApplicationTypeUnsupported
 	}
@@ -1178,6 +1296,10 @@ func getApplicationSource(ctx context.Context, app *argocdapi.Application, wbc *
 			if sourceType == argocdapi.ApplicationSourceTypeKustomize && s.Kustomize != nil {
 				return s
 			}
+			// If source type is Plugin, look for Plugin source
+			if sourceType == argocdapi.ApplicationSourceTypePlugin && s.Plugin != nil {
+				return s
+			}
 		}
 
 		// Second pass: use Status.SourceTypes index alignment to handle implicit source types.
@@ -1193,10 +1315,10 @@ func getApplicationSource(ctx context.Context, app *argocdapi.Application, wbc *
 			}
 		}
 
-		// Fallback: look for any Helm or Kustomize source
+		// Fallback: look for any Helm, Kustomize, or Plugin source
 		for i := range app.Spec.Sources {
 			s := &app.Spec.Sources[i]
-			if s.Helm != nil || s.Kustomize != nil {
+			if s.Helm != nil || s.Kustomize != nil || s.Plugin != nil {
 				return s
 			}
 		}

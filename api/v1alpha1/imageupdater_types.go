@@ -158,7 +158,7 @@ type ImageConfig struct {
 	*CommonUpdateSettings `json:"commonUpdateSettings,omitempty"`
 
 	// ManifestTarget defines how and where to update this image in Kubernetes manifests.
-	// Only one of Helm or Kustomize should be specified within this block.
+	// Exactly one of Helm, Kustomize, or Plugin should be specified within this block.
 	// This whole block is optional if the image update isn't written to a manifest in a structured way.
 	// +optional
 	*ManifestTarget `json:"manifestTargets,omitempty"`
@@ -249,8 +249,8 @@ type PullRequestGitLab struct {
 }
 
 // ManifestTarget specifies the mechanism and details for updating image references in application manifests.
-// Only one of the fields (Helm, Kustomize) should be set, dictating the update method.
-// +kubebuilder:validation:XValidation:rule="has(self.helm) ? !has(self.kustomize) : has(self.kustomize)",message="Exactly one of helm or kustomize must be specified within manifestTargets if the block is present."
+// Exactly one of the fields (Helm, Kustomize, Plugin) must be set when this block is present.
+// +kubebuilder:validation:XValidation:rule="(has(self.helm) ? 1 : 0) + (has(self.kustomize) ? 1 : 0) + (has(self.plugin) ? 1 : 0) == 1",message="Exactly one of helm, kustomize, or plugin must be specified within manifestTargets if the block is present."
 type ManifestTarget struct {
 	// Helm specifies update parameters if the target manifest is managed by Helm
 	// and updates are to be made to Helm values files.
@@ -261,6 +261,13 @@ type ManifestTarget struct {
 	// and updates involve changing image tags in Kustomize configurations.
 	// +optional
 	Kustomize *KustomizeTarget `json:"kustomize,omitempty"`
+
+	// Plugin specifies update parameters if the target manifest is managed by a Config Management Plugin.
+	// When the argocd write-back method is configured, updates will be written as environment variables
+	// in the Argo CD Application spec.source.plugin.env list. When the git write-back method is
+	// configured, updates will be written to the .argocd-source-<appName>.yaml file in the git repository.
+	// +optional
+	Plugin *PluginTarget `json:"plugin,omitempty"`
 }
 
 // HelmTarget defines parameters for updating image references within Helm values.
@@ -295,6 +302,40 @@ type KustomizeTarget struct {
 	// Example: "docker.io/library/nginx".
 	// This field is required if the Kustomize target is used.
 	Name *string `json:"name"`
+}
+
+// PluginTarget defines parameters for updating image references via plugin environment variables.
+// The fields specify the names of environment variables that the plugin reads for image configuration.
+// When the argocd write-back method is used, these env vars will be set in the Application
+// spec.source.plugin.env list. When the git write-back method is used, they will be written
+// to the .argocd-source-<appName>.yaml file in the git repository.
+// At least one of spec or name must be set.
+// +kubebuilder:validation:XValidation:rule="has(self.spec) || has(self.name)",message="At least one of spec or name must be specified in plugin target."
+type PluginTarget struct {
+	// Name is the environment variable name for the image repository/name part.
+	// Example: "IMAGE_NAME", "REDIS_IMAGE_REPO".
+	// If Spec is set, this field is ignored.
+	// +optional
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=253
+	Name *string `json:"name,omitempty"`
+
+	// Tag is the environment variable name for the image tag part.
+	// Example: "IMAGE_TAG", "REDIS_IMAGE_VERSION".
+	// If Spec is set, this field is ignored.
+	// +optional
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=253
+	Tag *string `json:"tag,omitempty"`
+
+	// Spec is the environment variable name where the full image string
+	// (e.g., "image/name:1.0") should be written.
+	// Use this if your plugin expects the entire image reference in a single env var.
+	// If this is set, Name and Tag will be ignored.
+	// +optional
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=253
+	Spec *string `json:"spec,omitempty"`
 }
 
 // ImagesVerification defines the image signature verification policy for one or more images.

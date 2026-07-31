@@ -14,9 +14,9 @@ update image versions for your Argo CD Applications. When a new image is availab
 it updates the application by setting parameter overrides, either through the
 Argo CD API or by committing changes to a Git repository.
 
-Currently, it will only work with applications that are built using *Kustomize*
-or *Helm* tooling. Applications built from plain YAML or custom tools are not
-supported yet (and maybe never will). 
+Currently, it will only work with applications that are built using *Kustomize*,
+*Helm*, or *Plugin* (Config Management Plugin) tooling. Applications built from
+plain YAML are not supported yet (and maybe never will). 
 
 ## Documentation
 
@@ -92,10 +92,10 @@ to the repository.
 We think that this is a good compromise between functionality (have everything
 in Git) and ease-of-use (minimize conflicts).
 
-**Are there plans to extend functionality beyond Kustomize or Helm?**
+**Are there plans to extend functionality beyond Kustomize, Helm, or Plugin?**
 
-Not yet, since we are dependent upon what functionality Argo CD provides for
-these types of applications.
+Plugin (Config Management Plugin) applications are now supported. For other
+application types, we are dependent upon what functionality Argo CD provides.
 
 **Will it ever be fully integrated with Argo CD?**
 

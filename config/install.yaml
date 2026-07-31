@@ -219,7 +219,7 @@ spec:
                           manifestTargets:
                             description: |-
                               ManifestTarget defines how and where to update this image in Kubernetes manifests.
-                              Only one of Helm or Kustomize should be specified within this block.
+                              Exactly one of Helm, Kustomize, or Plugin should be specified within this block.
                               This whole block is optional if the image update isn't written to a manifest in a structured way.
                             properties:
                               helm:
@@ -265,11 +265,50 @@ spec:
                                 required:
                                 - name
                                 type: object
+                              plugin:
+                                description: |-
+                                  Plugin specifies update parameters if the target manifest is managed by a Config Management Plugin.
+                                  When the argocd write-back method is configured, updates will be written as environment variables
+                                  in the Argo CD Application spec.source.plugin.env list. When the git write-back method is
+                                  configured, updates will be written to the .argocd-source-<appName>.yaml file in the git repository.
+                                properties:
+                                  name:
+                                    description: |-
+                                      Name is the environment variable name for the image repository/name part.
+                                      Example: "IMAGE_NAME", "REDIS_IMAGE_REPO".
+                                      If Spec is set, this field is ignored.
+                                    maxLength: 253
+                                    minLength: 1
+                                    type: string
+                                  spec:
+                                    description: |-
+                                      Spec is the environment variable name where the full image string
+                                      (e.g., "image/name:1.0") should be written.
+                                      Use this if your plugin expects the entire image reference in a single env var.
+                                      If this is set, Name and Tag will be ignored.
+                                    maxLength: 253
+                                    minLength: 1
+                                    type: string
+                                  tag:
+                                    description: |-
+                                      Tag is the environment variable name for the image tag part.
+                                      Example: "IMAGE_TAG", "REDIS_IMAGE_VERSION".
+                                      If Spec is set, this field is ignored.
+                                    maxLength: 253
+                                    minLength: 1
+                                    type: string
+                                type: object
+                                x-kubernetes-validations:
+                                - message: At least one of spec or name must be specified
+                                    in plugin target.
+                                  rule: has(self.spec) || has(self.name)
                             type: object
                             x-kubernetes-validations:
-                            - message: Exactly one of helm or kustomize must be specified
-                                within manifestTargets if the block is present.
-                              rule: 'has(self.helm) ? !has(self.kustomize) : has(self.kustomize)'
+                            - message: Exactly one of helm, kustomize, or plugin must
+                                be specified within manifestTargets if the block is
+                                present.
+                              rule: '(has(self.helm) ? 1 : 0) + (has(self.kustomize)
+                                ? 1 : 0) + (has(self.plugin) ? 1 : 0) == 1'
                         required:
                         - alias
                         - imageName

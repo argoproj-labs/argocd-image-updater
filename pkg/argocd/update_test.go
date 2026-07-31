@@ -6852,6 +6852,164 @@ func Test_sortHelmParameters(t *testing.T) {
 	}
 }
 
+func Test_MarshalParamsOverride_Plugin(t *testing.T) {
+	t.Run("Plugin source from scratch", func(t *testing.T) {
+		expected := `
+plugin:
+  env:
+  - name: IMAGE_NAME
+    value: myregistry/redis
+  - name: IMAGE_TAG
+    value: 7.0.0
+`
+		app := v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{Name: "testapp"},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: &v1alpha1.ApplicationSource{
+					Plugin: &v1alpha1.ApplicationSourcePlugin{
+						Name: "helmfile",
+						Env: v1alpha1.Env{
+							{Name: "IMAGE_NAME", Value: "myregistry/redis"},
+							{Name: "IMAGE_TAG", Value: "7.0.0"},
+							{Name: "UNRELATED_VAR", Value: "keep-me"},
+						},
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypePlugin,
+			},
+		}
+		applicationImages := &ApplicationImages{
+			Application:     app,
+			WriteBackConfig: &WriteBackConfig{Method: WriteBackGit},
+			Images: ImageList{
+				{
+					ContainerImage: image.NewFromIdentifier("redis=myregistry/redis:7.0.0"),
+					PluginEnvName:  "IMAGE_NAME",
+					PluginEnvTag:   "IMAGE_TAG",
+				},
+			},
+		}
+
+		result, err := marshalParamsOverride(context.Background(), applicationImages, nil)
+		require.NoError(t, err)
+		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(result)))
+	})
+
+	t.Run("Plugin source merges with existing data", func(t *testing.T) {
+		expected := `
+plugin:
+  env:
+  - name: EXISTING_VAR
+    value: keep
+  - name: IMAGE_TAG
+    value: 8.0.0
+`
+		app := v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{Name: "testapp"},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: &v1alpha1.ApplicationSource{
+					Plugin: &v1alpha1.ApplicationSourcePlugin{
+						Env: v1alpha1.Env{
+							{Name: "IMAGE_TAG", Value: "8.0.0"},
+						},
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypePlugin,
+			},
+		}
+		originalData := []byte(`
+plugin:
+  env:
+  - name: EXISTING_VAR
+    value: keep
+  - name: IMAGE_TAG
+    value: "7.0.0"
+`)
+		applicationImages := &ApplicationImages{
+			Application:     app,
+			WriteBackConfig: &WriteBackConfig{Method: WriteBackGit},
+			Images: ImageList{
+				{
+					ContainerImage: image.NewFromIdentifier("redis=myregistry/redis:8.0.0"),
+					PluginEnvSpec:  "IMAGE_TAG",
+				},
+			},
+		}
+
+		result, err := marshalParamsOverride(context.Background(), applicationImages, originalData)
+		require.NoError(t, err)
+		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(result)))
+	})
+
+	t.Run("Plugin source returns empty when plugin is nil", func(t *testing.T) {
+		app := v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{Name: "testapp"},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: &v1alpha1.ApplicationSource{},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypePlugin,
+			},
+		}
+		applicationImages := &ApplicationImages{
+			Application:     app,
+			WriteBackConfig: &WriteBackConfig{Method: WriteBackGit},
+			Images: ImageList{
+				{
+					ContainerImage: image.NewFromIdentifier("redis=myregistry/redis:7.0.0"),
+					PluginEnvName:  "IMAGE_NAME",
+					PluginEnvTag:   "IMAGE_TAG",
+				},
+			},
+		}
+
+		result, err := marshalParamsOverride(context.Background(), applicationImages, nil)
+		require.NoError(t, err)
+		assert.Empty(t, result)
+	})
+
+	t.Run("Helm hack preserved - plugin app with helm targets uses Helm marshaling", func(t *testing.T) {
+		app := v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{Name: "testapp"},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: &v1alpha1.ApplicationSource{
+					Helm: &v1alpha1.ApplicationSourceHelm{
+						Parameters: []v1alpha1.HelmParameter{
+							{Name: "image.tag", Value: "7.0.0", ForceString: true},
+						},
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypePlugin,
+			},
+		}
+		applicationImages := &ApplicationImages{
+			Application: app,
+			WriteBackConfig: &WriteBackConfig{
+				Method: WriteBackGit,
+				Target: ".argocd-source-testapp.yaml",
+			},
+			Images: ImageList{
+				{
+					ContainerImage: image.NewFromIdentifier("redis=myregistry/redis:7.0.0"),
+					HelmImageTag:   "image.tag",
+				},
+			},
+		}
+
+		result, err := marshalParamsOverride(context.Background(), applicationImages, nil)
+		require.NoError(t, err)
+		assert.Contains(t, string(result), "helm:")
+		assert.Contains(t, string(result), "parameters:")
+		assert.NotContains(t, string(result), "plugin:")
+	})
+}
+
 // Helper function to create string pointers for testing
 func stringPtr(s string) *string {
 	return &s
