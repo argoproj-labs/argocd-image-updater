@@ -278,6 +278,7 @@ spec:
                                       Example: "IMAGE_NAME", "REDIS_IMAGE_REPO".
                                       If Spec is set, this field is ignored.
                                     maxLength: 253
+                                    minLength: 1
                                     type: string
                                   spec:
                                     description: |-
@@ -286,6 +287,7 @@ spec:
                                       Use this if your plugin expects the entire image reference in a single env var.
                                       If this is set, Name and Tag will be ignored.
                                     maxLength: 253
+                                    minLength: 1
                                     type: string
                                   tag:
                                     description: |-
@@ -293,13 +295,13 @@ spec:
                                       Example: "IMAGE_TAG", "REDIS_IMAGE_VERSION".
                                       If Spec is set, this field is ignored.
                                     maxLength: 253
+                                    minLength: 1
                                     type: string
                                 type: object
                                 x-kubernetes-validations:
                                 - message: At least one of spec or name must be specified
                                     in plugin target.
-                                  rule: (has(self.spec) && size(self.spec) > 0) ||
-                                    (has(self.name) && size(self.name) > 0)
+                                  rule: has(self.spec) || has(self.name)
                             type: object
                             x-kubernetes-validations:
                             - message: Exactly one of helm, kustomize, or plugin must
