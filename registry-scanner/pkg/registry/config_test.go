@@ -34,6 +34,23 @@ registries:
 		assert.Equal(t, "/app/config/certs/registry-ca.pem", regList.Items[0].CAFile)
 	})
 
+	t.Run("Parse inline CA data from valid YAML", func(t *testing.T) {
+		registries := `
+registries:
+- name: Private Registry
+  api_url: https://registry.example.com
+  prefix: registry.example.com
+  ca_data: |
+    -----BEGIN CERTIFICATE-----
+    certificate data
+    -----END CERTIFICATE-----
+`
+		regList, err := ParseRegistryConfiguration(registries)
+		require.NoError(t, err)
+		require.Len(t, regList.Items, 1)
+		assert.Contains(t, regList.Items[0].CAData, "BEGIN CERTIFICATE")
+	})
+
 	t.Run("Parse from invalid YAML: no name found", func(t *testing.T) {
 		registries := `
 registries:

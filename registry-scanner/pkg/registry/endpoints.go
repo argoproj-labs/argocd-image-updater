@@ -2,6 +2,7 @@ package registry
 
 import (
 	"context"
+	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
@@ -85,6 +86,7 @@ type RegistryEndpoint struct {
 	Credentials    string
 	Insecure       bool
 	CAFile         string
+	CAData         string
 	DefaultNS      string
 	CredsExpire    time.Duration
 	CredsUpdated   time.Time
@@ -317,6 +319,7 @@ func (ep *RegistryEndpoint) DeepCopy() *RegistryEndpoint {
 	newEp.Cache = cache.NewMemCache()
 	newEp.Insecure = ep.Insecure
 	newEp.CAFile = ep.CAFile
+	newEp.CAData = ep.CAData
 	newEp.DefaultNS = ep.DefaultNS
 	newEp.Limiter = ep.Limiter
 	newEp.CredsExpire = ep.CredsExpire
@@ -334,13 +337,19 @@ func ClearTransportCache() {
 	transportCache.Flush()
 }
 
+func (ep *RegistryEndpoint) transportCacheKey() string {
+	caDataHash := sha256.Sum256([]byte(ep.CAData))
+	return fmt.Sprintf("%s\x00%s\x00%s\x00%t\x00%x", ep.RegistryAPI, ep.RegistryPrefix, ep.CAFile, ep.Insecure, caDataHash)
+}
+
 // GetTransport returns a transport object for this endpoint
 // Implements connection pooling and reuse to avoid creating new transports for each request
 func (ep *RegistryEndpoint) GetTransport(ctx context.Context) *http.Transport {
 	logCtx := log.LoggerFromContext(ctx)
+	cacheKey := ep.transportCacheKey()
 
 	// Check if we have a cached transport for this registry
-	if cachedTransport, found := transportCache.Get(ep.RegistryAPI); found {
+	if cachedTransport, found := transportCache.Get(cacheKey); found {
 		transport := cachedTransport.(*http.Transport)
 		logCtx.Debugf("Transport cache HIT for %s: %p", ep.RegistryAPI, transport)
 
@@ -351,21 +360,16 @@ func (ep *RegistryEndpoint) GetTransport(ctx context.Context) *http.Transport {
 
 		// Transport is stale, remove it from cache
 		logCtx.Debugf("Transport for %s is stale, removing from cache", ep.RegistryAPI)
-		transportCache.Delete(ep.RegistryAPI)
+		transportCache.Delete(cacheKey)
 	}
 
 	logCtx.Debugf("Transport cache MISS for %s", ep.RegistryAPI)
 
 	// Create a new transport with optimized connection pool settings
-	rootCAs := ep.rootCAs
-	if rootCAs == nil {
-		var err error
-		rootCAs, err = x509.SystemCertPool()
-		if err != nil {
-			logCtx.Warnf("Could not load system certificate pool for %s: %v", ep.RegistryAPI, err)
-		}
+	tlsC := &tls.Config{}
+	if ep.rootCAs != nil {
+		tlsC.RootCAs = ep.rootCAs
 	}
-	tlsC := &tls.Config{RootCAs: rootCAs}
 	if ep.Insecure {
 		tlsC.InsecureSkipVerify = true
 	}
@@ -387,7 +391,7 @@ func (ep *RegistryEndpoint) GetTransport(ctx context.Context) *http.Transport {
 	}
 
 	// Cache the transport for reuse with default expiration (30 minutes)
-	transportCache.Set(ep.RegistryAPI, transport, memcache.DefaultExpiration)
+	transportCache.Set(cacheKey, transport, memcache.DefaultExpiration)
 	logCtx.Debugf("Cached NEW transport for %s: %p", ep.RegistryAPI, transport)
 
 	return transport

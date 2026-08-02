@@ -4,7 +4,9 @@ import (
 	"context"
 	"crypto/x509"
 	"fmt"
+	"net/url"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
@@ -24,6 +26,7 @@ type RegistryConfiguration struct {
 	Prefix      string        `yaml:"prefix,omitempty"`
 	Insecure    bool          `yaml:"insecure,omitempty"`
 	CAFile      string        `yaml:"ca_file,omitempty"`
+	CAData      string        `yaml:"ca_data,omitempty"`
 	DefaultNS   string        `yaml:"defaultns,omitempty"`
 	Limit       int           `yaml:"limit,omitempty"`
 	IsDefault   bool          `yaml:"default,omitempty"`
@@ -34,32 +37,62 @@ type RegistryList struct {
 	Items []RegistryConfiguration `yaml:"registries"`
 }
 
+var argoCDTLSCertsPath = "/app/config/tls"
+
 func newRegistryEndpointFromConfig(config RegistryConfiguration) (*RegistryEndpoint, error) {
 	endpoint := NewRegistryEndpoint(config.Prefix, config.Name, config.ApiURL, config.Credentials, config.DefaultNS, config.Insecure, TagListSortFromString(config.TagSortMode), config.Limit, config.CredsExpire)
-	rootCAs, err := loadRootCAs(config.CAFile)
+	endpoint.CAFile = config.CAFile
+	endpoint.CAData = config.CAData
+	if config.Insecure {
+		return endpoint, nil
+	}
+
+	caFile := config.CAFile
+	if caFile == "" {
+		caFile = discoverArgoCDCAFile(config.ApiURL)
+	}
+	rootCAs, err := loadRootCAs(caFile, config.CAData)
 	if err != nil {
 		return nil, fmt.Errorf("could not configure CA certificates for registry %s: %w", config.Name, err)
 	}
-	endpoint.CAFile = config.CAFile
+	endpoint.CAFile = caFile
 	endpoint.rootCAs = rootCAs
 	return endpoint, nil
 }
 
-func loadRootCAs(caFile string) (*x509.CertPool, error) {
+func discoverArgoCDCAFile(apiURL string) string {
+	parsedURL, err := url.Parse(apiURL)
+	if err != nil || parsedURL.Hostname() == "" {
+		return ""
+	}
+	caFile := filepath.Join(argoCDTLSCertsPath, parsedURL.Hostname())
+	if _, err := os.Stat(caFile); err != nil {
+		return ""
+	}
+	return caFile
+}
+
+func loadRootCAs(caFile, caData string) (*x509.CertPool, error) {
+	if caFile == "" && caData == "" {
+		return nil, nil
+	}
+
 	rootCAs, err := x509.SystemCertPool()
 	if err != nil {
 		return nil, fmt.Errorf("could not load system certificate pool: %w", err)
 	}
-	if caFile == "" {
-		return rootCAs, nil
+	if caData != "" && !rootCAs.AppendCertsFromPEM([]byte(caData)) {
+		return nil, fmt.Errorf("ca_data does not contain a valid PEM certificate")
 	}
 
-	certificates, err := os.ReadFile(caFile)
-	if err != nil {
-		return nil, fmt.Errorf("could not read CA file %s: %w", caFile, err)
-	}
-	if !rootCAs.AppendCertsFromPEM(certificates) {
-		return nil, fmt.Errorf("CA file %s does not contain a valid PEM certificate", caFile)
+	if caFile != "" {
+		certificates, err := os.ReadFile(caFile)
+		if err != nil {
+			return nil, fmt.Errorf("could not read CA file %s: %w", caFile, err)
+		}
+		if !rootCAs.AppendCertsFromPEM(certificates) {
+			return nil, fmt.Errorf("CA file %s does not contain a valid PEM certificate", caFile)
+		}
 	}
 	return rootCAs, nil
 }
