@@ -32,7 +32,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v7
       - name: Setup Golang
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
       - name: Download all Go modules
@@ -78,7 +78,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v7
       - name: Setup Golang
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
         env:
@@ -102,7 +102,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v7
       - name: Setup Golang
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
       - name: Run tests
@@ -155,7 +155,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v7
       - name: Setup Golang
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
       - name: Download all Go modules
@@ -237,7 +237,7 @@ jobs:
           # pull_request_target; it falls back to github.sha for workflow_dispatch.
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - name: Setup Golang
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v7
         with:
           go-version-file: 'test/ginkgo/go.mod'
       - name: GH actions workaround - Kill XSP4 process
