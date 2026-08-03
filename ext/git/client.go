@@ -22,10 +22,11 @@ import (
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	githttp "github.com/go-git/go-git/v5/plumbing/transport/http"
+	gitssh "github.com/go-git/go-git/v5/plumbing/transport/ssh"
 	"github.com/go-git/go-git/v5/storage/memory"
 	"github.com/google/uuid"
+	skeemaknownhosts "github.com/skeema/knownhosts"
 	"golang.org/x/crypto/ssh"
-	"golang.org/x/crypto/ssh/knownhosts"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	utilnet "k8s.io/apimachinery/pkg/util/net"
 
@@ -272,33 +273,81 @@ func GetRepoHTTPClient(ctx context.Context, repoURL string, insecure bool, creds
 	return customHTTPClient
 }
 
-func newAuth(ctx context.Context, repoURL string, creds Creds) (transport.AuthMethod, error) {
-	log := log.LoggerFromContext(ctx)
+// resolveSSHHostKeyConfig returns a HostKeyCallback bound to the
+// ssh_known_hosts file together with the HostKeyAlgorithms registered for the
+// given repo URL. Populating HostKeyAlgorithms is required to avoid
+// "knownhosts: key mismatch" handshake failures with go-git v5.16+ (see
+// go-git/go-git#1551).
+func resolveSSHHostKeyConfig(repoURL string) (ssh.HostKeyCallback, []string, error) {
+	db, err := skeemaknownhosts.NewDB(certutil.GetSSHKnownHostsDataPath())
+	if err != nil {
+		return nil, nil, err
+	}
+	var algos []string
+	if hostWithPort := SSHHostWithPort(repoURL); hostWithPort != "" {
+		algos = db.HostKeyAlgorithms(hostWithPort)
+	}
+	return db.HostKeyCallback(), algos, nil
+}
 
-	switch creds := creds.(type) {
-	case SSHCreds:
-		var sshUser string
-		if isSSH, user := IsSSHURL(repoURL); isSSH {
-			sshUser = user
-		}
+// buildSSHAuth returns a go-git SSH AuthMethod for repoURL. When creds is non
+// nil the supplied private key is used; otherwise the auth falls back to the
+// local ssh-agent (mirroring go-git's DefaultAuthBuilder). In both cases
+// host-key verification is wired against the ssh_known_hosts file rather
+// than the user's ~/.ssh/known_hosts, and HostKeyAlgorithms is populated to
+// avoid "knownhosts: key mismatch" with go-git v5.16+ (go-git/go-git#1551).
+func buildSSHAuth(repoURL string, creds *SSHCreds) (transport.AuthMethod, error) {
+	user := ""
+	if isSSH, u := IsSSHURL(repoURL); isSSH {
+		user = u
+	}
+
+	if creds != nil && creds.insecure {
 		signer, err := ssh.ParsePrivateKey([]byte(creds.sshPrivateKey))
 		if err != nil {
 			return nil, err
 		}
 		auth := &PublicKeysWithOptions{}
-		auth.User = sshUser
+		auth.User = user
 		auth.Signer = signer
-		if creds.insecure {
-			auth.HostKeyCallback = ssh.InsecureIgnoreHostKey()
-		} else {
-			// Set up validation of SSH known hosts for using our ssh_known_hosts
-			// file.
-			auth.HostKeyCallback, err = knownhosts.New(certutil.GetSSHKnownHostsDataPath())
-			if err != nil {
-				log.Errorf("Could not set-up SSH known hosts callback: %v", err)
-			}
-		}
+		auth.HostKeyCallback = ssh.InsecureIgnoreHostKey()
 		return auth, nil
+	}
+
+	cb, algos, err := resolveSSHHostKeyConfig(repoURL)
+	if err != nil {
+		return nil, fmt.Errorf("could not set up SSH known hosts callback for %s: %w", repoURL, err)
+	}
+
+	if creds == nil {
+		agentAuth, err := gitssh.NewSSHAgentAuth(user)
+		if err != nil {
+			return nil, err
+		}
+		agentAuth.HostKeyCallback = cb
+		agentAuth.HostKeyAlgorithms = algos
+		return agentAuth, nil
+	}
+
+	signer, err := ssh.ParsePrivateKey([]byte(creds.sshPrivateKey))
+	if err != nil {
+		return nil, err
+	}
+	auth := &PublicKeysWithOptions{}
+	auth.User = user
+	auth.Signer = signer
+	auth.HostKeyCallback = cb
+	auth.HostKeyAlgorithms = algos
+	auth.PublicKeys.HostKeyAlgorithms = algos
+	return auth, nil
+}
+
+func newAuth(ctx context.Context, repoURL string, creds Creds) (transport.AuthMethod, error) {
+	log := log.LoggerFromContext(ctx)
+
+	switch creds := creds.(type) {
+	case SSHCreds:
+		return buildSSHAuth(repoURL, &creds)
 	case HTTPSCreds:
 		auth := githttp.BasicAuth{Username: creds.username, Password: creds.password}
 		if auth.Username == "" {
@@ -325,6 +374,20 @@ func newAuth(ctx context.Context, repoURL string, creds Creds) (transport.AuthMe
 		auth := githttp.BasicAuth{Username: username, Password: token}
 		return &auth, nil
 	}
+
+	// Without explicit credentials, go-git's DefaultAuthBuilder would fall
+	// back to ssh-agent and read known_hosts from ~/.ssh / $SSH_KNOWN_HOSTS,
+	// ignoring the managed ssh_known_hosts. Build the same auth ourselves so
+	// we can wire in the managed known_hosts.
+	if isSSH, _ := IsSSHURL(repoURL); isSSH {
+		auth, err := buildSSHAuth(repoURL, nil)
+		if err != nil {
+			log.Debugf("falling back to go-git default SSH auth for %s: %v", repoURL, err)
+			return nil, nil
+		}
+		return auth, nil
+	}
+
 	return nil, nil
 }
 

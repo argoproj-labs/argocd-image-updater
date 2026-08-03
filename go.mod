@@ -43,7 +43,10 @@ require (
 	sigs.k8s.io/yaml v1.6.0
 )
 
-require github.com/opencontainers/go-digest v1.0.0
+require (
+	github.com/opencontainers/go-digest v1.0.0
+	github.com/skeema/knownhosts v1.3.1
+)
 
 require (
 	cel.dev/expr v0.25.1 // indirect
@@ -163,7 +166,6 @@ require (
 	github.com/robfig/cron/v3 v3.0.2-0.20210106135023-bc59245fe10e // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
 	github.com/sergi/go-diff v1.4.0 // indirect
-	github.com/skeema/knownhosts v1.3.1 // indirect
 	github.com/stretchr/objx v0.5.2 // indirect
 	github.com/vmihailenco/go-tinylfu v0.2.2 // indirect
 	github.com/vmihailenco/msgpack/v5 v5.4.1 // indirect
