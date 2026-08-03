@@ -22,7 +22,7 @@ require (
 	github.com/stretchr/testify v1.11.1
 	go.uber.org/ratelimit v0.3.1
 	golang.org/x/exp v0.0.0-20251023183803-a4bb9ffd2546
-	golang.org/x/sync v0.21.0
+	golang.org/x/sync v0.22.0
 	gopkg.in/yaml.v2 v2.4.0
 	k8s.io/api v0.34.0
 	k8s.io/apimachinery v0.34.0
