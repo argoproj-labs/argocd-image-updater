@@ -79,6 +79,16 @@ func Test_LatestVersion(t *testing.T) {
 		assert.Equal(t, "2.0.3", newTag.TagName)
 	})
 
+	t.Run("Find the latest version without any constraint excludes pre-release versions", func(t *testing.T) {
+		tagList := newImageTagList([]string{"v2.2.0", "v2.3.0-rc.0.18.g1abb7b5dd-ppc64le"})
+		img := NewFromIdentifier("xpkg.crossplane.io/crossplane/crossplane:v2.2.0")
+		vc := VersionConstraint{}
+		newTag, err := img.GetNewestVersionFromTags(context.Background(), &vc, tagList)
+		require.NoError(t, err)
+		require.NotNil(t, newTag)
+		assert.Equal(t, "v2.2.0", newTag.TagName)
+	})
+
 	t.Run("Find the latest version with a semver constraint that has no match", func(t *testing.T) {
 		tagList := newImageTagList([]string{"0.1", "0.5.1", "0.9", "2.0.3"})
 		img := NewFromIdentifier("jannfis/test:1.0")
