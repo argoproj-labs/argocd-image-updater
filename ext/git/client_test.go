@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 
@@ -453,6 +454,125 @@ func TestNewAuth_GoogleCloudCreds(t *testing.T) {
 		_, err := newAuth(ctx, "https://source.developers.google.com/p/project/r/repo", gcpCreds)
 		assert.Error(t, err)
 	})
+}
+
+// Test_newAuth_SSH_HostKeyAlgorithms verifies that for SSH creds with a known
+// host key, newAuth populates HostKeyAlgorithms on both PublicKeysWithOptions
+// and the embedded gitssh.PublicKeys.HostKeyCallbackHelper.
+func Test_newAuth_SSH_HostKeyAlgorithms(t *testing.T) {
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+
+	pemBlock, err := ssh.MarshalPrivateKey(priv, "")
+	require.NoError(t, err)
+	privPEM := pem.EncodeToMemory(pemBlock)
+
+	sshPub, err := ssh.NewPublicKey(pub)
+	require.NoError(t, err)
+	authorizedKey := ssh.MarshalAuthorizedKey(sshPub)
+
+	tmpDir := t.TempDir()
+	knownHostsLine := "example.com " + strings.TrimSpace(string(authorizedKey))
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "ssh_known_hosts"), []byte(knownHostsLine+"\n"), 0o600))
+
+	t.Setenv("ARGOCD_SSH_DATA_PATH", tmpDir)
+
+	auth, err := newAuth(context.Background(), "git@example.com:org/repo.git", SSHCreds{sshPrivateKey: string(privPEM)})
+	require.NoError(t, err)
+
+	pk, ok := auth.(*PublicKeysWithOptions)
+	require.Truef(t, ok, "expected *PublicKeysWithOptions but got %T", auth)
+
+	require.NotEmpty(t, pk.HostKeyAlgorithms, "wrapper HostKeyAlgorithms should be populated from known_hosts")
+	assert.Contains(t, pk.HostKeyAlgorithms, ssh.KeyAlgoED25519)
+	assert.Equal(t, pk.HostKeyAlgorithms, pk.PublicKeys.HostKeyAlgorithms,
+		"embedded helper HostKeyAlgorithms must mirror the wrapper field")
+
+	cfg, err := pk.ClientConfig()
+	require.NoError(t, err)
+	assert.Equal(t, pk.HostKeyAlgorithms, cfg.HostKeyAlgorithms,
+		"resolved ssh.ClientConfig must carry the configured HostKeyAlgorithms")
+}
+
+func Test_newAuth_SSH_InsecureSkipsKnownHosts(t *testing.T) {
+	_, priv, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	pemBlock, err := ssh.MarshalPrivateKey(priv, "")
+	require.NoError(t, err)
+	privPEM := pem.EncodeToMemory(pemBlock)
+
+	auth, err := newAuth(context.Background(), "git@example.com:org/repo.git", SSHCreds{sshPrivateKey: string(privPEM), insecure: true})
+	require.NoError(t, err)
+
+	pk, ok := auth.(*PublicKeysWithOptions)
+	require.Truef(t, ok, "expected *PublicKeysWithOptions but got %T", auth)
+	assert.Empty(t, pk.HostKeyAlgorithms)
+	assert.Empty(t, pk.PublicKeys.HostKeyAlgorithms)
+	assert.NotNil(t, pk.HostKeyCallback, "insecure mode should still install an InsecureIgnoreHostKey callback")
+}
+
+func Test_newAuth_SSH_HostNotInKnownHosts(t *testing.T) {
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+
+	pemBlock, err := ssh.MarshalPrivateKey(priv, "")
+	require.NoError(t, err)
+	privPEM := pem.EncodeToMemory(pemBlock)
+
+	sshPub, err := ssh.NewPublicKey(pub)
+	require.NoError(t, err)
+	authorizedKey := ssh.MarshalAuthorizedKey(sshPub)
+
+	tmpDir := t.TempDir()
+	knownHostsLine := "other.example.com " + strings.TrimSpace(string(authorizedKey))
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "ssh_known_hosts"), []byte(knownHostsLine+"\n"), 0o600))
+
+	t.Setenv("ARGOCD_SSH_DATA_PATH", tmpDir)
+
+	auth, err := newAuth(context.Background(), "git@example.com:org/repo.git", SSHCreds{sshPrivateKey: string(privPEM)})
+	require.NoError(t, err)
+
+	pk, ok := auth.(*PublicKeysWithOptions)
+	require.Truef(t, ok, "expected *PublicKeysWithOptions but got %T", auth)
+	assert.NotNil(t, pk.HostKeyCallback, "callback should still be wired even when target host is absent from known_hosts")
+	assert.Empty(t, pk.HostKeyAlgorithms, "no algorithms should be advertised when the target host is not in known_hosts")
+	assert.Empty(t, pk.PublicKeys.HostKeyAlgorithms)
+}
+
+func Test_newAuth_SSH_MalformedPrivateKey(t *testing.T) {
+	tmpDir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "ssh_known_hosts"), nil, 0o600))
+	t.Setenv("ARGOCD_SSH_DATA_PATH", tmpDir)
+
+	auth, err := newAuth(context.Background(), "git@example.com:org/repo.git", SSHCreds{sshPrivateKey: "not a valid PEM-encoded private key"})
+	require.Error(t, err)
+	assert.Nil(t, auth)
+}
+
+func Test_newAuth_SSH_KnownHostsUnreadable(t *testing.T) {
+	_, priv, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	pemBlock, err := ssh.MarshalPrivateKey(priv, "")
+	require.NoError(t, err)
+	privPEM := pem.EncodeToMemory(pemBlock)
+
+	t.Setenv("ARGOCD_SSH_DATA_PATH", t.TempDir())
+
+	auth, err := newAuth(context.Background(), "git@example.com:org/repo.git", SSHCreds{sshPrivateKey: string(privPEM)})
+	require.Error(t, err)
+	require.ErrorContains(t, err, "could not set up SSH known hosts callback")
+	assert.Nil(t, auth)
+}
+
+func Test_newAuth_SSH_NoCreds_AgentUnavailable(t *testing.T) {
+	tmpDir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "ssh_known_hosts"), nil, 0o600))
+	t.Setenv("ARGOCD_SSH_DATA_PATH", tmpDir)
+	t.Setenv("SSH_AUTH_SOCK", filepath.Join(tmpDir, "nonexistent-agent.sock"))
+
+	auth, err := newAuth(context.Background(), "git@example.com:org/repo.git", nil)
+	require.NoError(t, err, "missing ssh-agent should not bubble up as an error from newAuth")
+	assert.Nil(t, auth, "with no agent reachable, newAuth should fall through to go-git's DefaultAuthBuilder by returning nil")
 }
 
 // ---------------------------------------------------------------------------
