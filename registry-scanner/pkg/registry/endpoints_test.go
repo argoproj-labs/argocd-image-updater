@@ -2,7 +2,10 @@ package registry
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -370,6 +373,32 @@ func TestGetTransport(t *testing.T) {
 		require.NoError(t, err)
 
 		client := &http.Client{Transport: endpoint.GetTransport(context.Background())}
+		response, err := client.Get(server.URL)
+		require.NoError(t, err)
+		defer response.Body.Close()
+		assert.Equal(t, http.StatusOK, response.StatusCode)
+	})
+
+	t.Run("uses custom certificates when the system pool is unavailable", func(t *testing.T) {
+		server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+			writer.WriteHeader(http.StatusOK)
+		}))
+		defer server.Close()
+
+		originalSystemCertPool := systemCertPool
+		systemCertPool = func() (*x509.CertPool, error) {
+			return nil, errors.New("system certificate pool unavailable")
+		}
+		t.Cleanup(func() { systemCertPool = originalSystemCertPool })
+
+		certificate := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: server.Certificate().Raw})
+		rootCAs, err := loadRootCAs("", string(certificate))
+		require.NoError(t, err)
+
+		client := &http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{
+			MinVersion: tls.VersionTLS12,
+			RootCAs:    rootCAs,
+		}}}
 		response, err := client.Get(server.URL)
 		require.NoError(t, err)
 		defer response.Body.Close()

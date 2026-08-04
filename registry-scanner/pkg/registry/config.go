@@ -37,7 +37,10 @@ type RegistryList struct {
 	Items []RegistryConfiguration `yaml:"registries"`
 }
 
-var argoCDTLSCertsPath = "/app/config/tls"
+var (
+	argoCDTLSCertsPath = "/app/config/tls"
+	systemCertPool     = x509.SystemCertPool
+)
 
 func newRegistryEndpointFromConfig(config RegistryConfiguration) (*RegistryEndpoint, error) {
 	endpoint := NewRegistryEndpoint(config.Prefix, config.Name, config.ApiURL, config.Credentials, config.DefaultNS, config.Insecure, TagListSortFromString(config.TagSortMode), config.Limit, config.CredsExpire)
@@ -77,9 +80,10 @@ func loadRootCAs(caFile, caData string) (*x509.CertPool, error) {
 		return nil, nil
 	}
 
-	rootCAs, err := x509.SystemCertPool()
+	rootCAs, err := systemCertPool()
 	if err != nil {
-		return nil, fmt.Errorf("could not load system certificate pool: %w", err)
+		log.Warnf("Could not load system certificate pool, using empty pool: %v", err)
+		rootCAs = x509.NewCertPool()
 	}
 	if caData != "" && !rootCAs.AppendCertsFromPEM([]byte(caData)) {
 		return nil, fmt.Errorf("ca_data does not contain a valid PEM certificate")
