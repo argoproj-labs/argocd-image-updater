@@ -458,7 +458,3 @@ type ImageUpdaterList struct {
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []ImageUpdater `json:"items"`
 }
-
-func init() {
-	SchemeBuilder.Register(&ImageUpdater{}, &ImageUpdaterList{})
-}
