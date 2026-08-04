@@ -145,6 +145,28 @@ properties are optional, unless otherwise stated:
 
     Example value: `true`
 
+  * `ca_file` - Path to a PEM-encoded CA certificate bundle to trust for this
+    registry in addition to certificates from the system trust store.
+
+    When `ca_file` is omitted, Image Updater also checks
+    `/app/config/tls/<registry-hostname>` so certificates mounted from Argo CD's
+    `argocd-tls-certs-cm` are discovered automatically.
+
+    Default value: _none_
+
+    Example value: `/app/config/certs/registry-ca.pem`
+
+  * `ca_data` - PEM-encoded CA certificate data embedded directly in the
+    registry configuration. This can be used instead of mounting a certificate
+    file.
+
+    Default value: _none_
+
+    Example value: `-----BEGIN CERTIFICATE-----...`
+
+    CA file discovery and `ca_data` processing are skipped when `insecure` is
+    set to `true`.
+
   * `limit` - The rate limit (max. number of requests per second) to use for
     this registry, specified as integer.
 
@@ -169,7 +191,7 @@ registries:
 - name: RedHat Quay
   api_url: https://quay.io
   prefix: quay.io
-  insecure: yes
+  ca_file: /app/config/certs/quay-ca.pem
   credentials: env:REGISTRY_SECRET
 ```
 

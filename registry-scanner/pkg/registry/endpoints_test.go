@@ -2,8 +2,15 @@ package registry
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
+	"encoding/pem"
+	"errors"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -321,7 +328,146 @@ func TestGetTransport(t *testing.T) {
 
 		assert.NotNil(t, transport)
 		assert.NotNil(t, transport.TLSClientConfig)
+		assert.Nil(t, transport.TLSClientConfig.RootCAs)
 		assert.False(t, transport.TLSClientConfig.InsecureSkipVerify)
+	})
+
+	t.Run("trusts certificates from a registry CA file", func(t *testing.T) {
+		server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+			writer.WriteHeader(http.StatusOK)
+		}))
+		defer server.Close()
+
+		certificate := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: server.Certificate().Raw})
+		caFile := filepath.Join(t.TempDir(), "registry-ca.pem")
+		require.NoError(t, os.WriteFile(caFile, certificate, 0600))
+
+		endpoint, err := newRegistryEndpointFromConfig(RegistryConfiguration{
+			Name:   "private registry",
+			Prefix: "private.example.com",
+			ApiURL: server.URL,
+			CAFile: caFile,
+		})
+		require.NoError(t, err)
+
+		client := &http.Client{Transport: endpoint.GetTransport(context.Background())}
+		response, err := client.Get(server.URL)
+		require.NoError(t, err)
+		defer response.Body.Close()
+		assert.Equal(t, http.StatusOK, response.StatusCode)
+	})
+
+	t.Run("trusts certificates from inline registry CA data", func(t *testing.T) {
+		server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+			writer.WriteHeader(http.StatusOK)
+		}))
+		defer server.Close()
+
+		certificate := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: server.Certificate().Raw})
+		endpoint, err := newRegistryEndpointFromConfig(RegistryConfiguration{
+			Name:   "private registry",
+			Prefix: "private.example.com",
+			ApiURL: server.URL,
+			CAData: string(certificate),
+		})
+		require.NoError(t, err)
+
+		client := &http.Client{Transport: endpoint.GetTransport(context.Background())}
+		response, err := client.Get(server.URL)
+		require.NoError(t, err)
+		defer response.Body.Close()
+		assert.Equal(t, http.StatusOK, response.StatusCode)
+	})
+
+	t.Run("uses custom certificates when the system pool is unavailable", func(t *testing.T) {
+		server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+			writer.WriteHeader(http.StatusOK)
+		}))
+		defer server.Close()
+
+		originalSystemCertPool := systemCertPool
+		systemCertPool = func() (*x509.CertPool, error) {
+			return nil, errors.New("system certificate pool unavailable")
+		}
+		t.Cleanup(func() { systemCertPool = originalSystemCertPool })
+
+		certificate := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: server.Certificate().Raw})
+		rootCAs, err := loadRootCAs("", string(certificate))
+		require.NoError(t, err)
+
+		client := &http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{
+			MinVersion: tls.VersionTLS12,
+			RootCAs:    rootCAs,
+		}}}
+		response, err := client.Get(server.URL)
+		require.NoError(t, err)
+		defer response.Body.Close()
+		assert.Equal(t, http.StatusOK, response.StatusCode)
+	})
+
+	t.Run("auto-discovers Argo CD registry certificates", func(t *testing.T) {
+		server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+			writer.WriteHeader(http.StatusOK)
+		}))
+		defer server.Close()
+
+		certificate := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: server.Certificate().Raw})
+		originalPath := argoCDTLSCertsPath
+		argoCDTLSCertsPath = t.TempDir()
+		t.Cleanup(func() { argoCDTLSCertsPath = originalPath })
+		caFile := filepath.Join(argoCDTLSCertsPath, "127.0.0.1")
+		require.NoError(t, os.WriteFile(caFile, certificate, 0600))
+
+		endpoint, err := newRegistryEndpointFromConfig(RegistryConfiguration{
+			Name:   "private registry",
+			Prefix: "private.example.com",
+			ApiURL: server.URL,
+		})
+		require.NoError(t, err)
+		assert.Equal(t, caFile, endpoint.CAFile)
+
+		client := &http.Client{Transport: endpoint.GetTransport(context.Background())}
+		response, err := client.Get(server.URL)
+		require.NoError(t, err)
+		defer response.Body.Close()
+		assert.Equal(t, http.StatusOK, response.StatusCode)
+	})
+
+	t.Run("rejects an invalid registry CA file", func(t *testing.T) {
+		caFile := filepath.Join(t.TempDir(), "invalid-ca.pem")
+		require.NoError(t, os.WriteFile(caFile, []byte("not a certificate"), 0600))
+
+		_, err := newRegistryEndpointFromConfig(RegistryConfiguration{
+			Name:   "private registry",
+			Prefix: "private.example.com",
+			ApiURL: "https://private.example.com",
+			CAFile: caFile,
+		})
+		require.ErrorContains(t, err, "does not contain a valid PEM certificate")
+	})
+
+	t.Run("rejects invalid inline registry CA data", func(t *testing.T) {
+		_, err := newRegistryEndpointFromConfig(RegistryConfiguration{
+			Name:   "private registry",
+			Prefix: "private.example.com",
+			ApiURL: "https://private.example.com",
+			CAData: "not a certificate",
+		})
+		require.ErrorContains(t, err, "ca_data does not contain a valid PEM certificate")
+	})
+
+	t.Run("skips CA processing when insecure is true", func(t *testing.T) {
+		endpoint, err := newRegistryEndpointFromConfig(RegistryConfiguration{
+			Name:     "insecure registry",
+			Prefix:   "insecure.example.com",
+			ApiURL:   "https://insecure.example.com",
+			Insecure: true,
+			CAFile:   filepath.Join(t.TempDir(), "missing.pem"),
+			CAData:   "not a certificate",
+		})
+		require.NoError(t, err)
+		assert.Nil(t, endpoint.rootCAs)
+		assert.True(t, endpoint.GetTransport(context.Background()).TLSClientConfig.InsecureSkipVerify)
 	})
 
 	t.Run("returns transport with insecure TLS config when Insecure is true", func(t *testing.T) {
@@ -404,6 +550,15 @@ func TestTransportCache(t *testing.T) {
 	ClearTransportCache()
 	transport3 := endpoint.GetTransport(context.Background())
 	assert.NotSame(t, transport1, transport3, "Should create a new transport after cache is cleared")
+
+	// 4. Endpoints that share an API URL but have different TLS settings must not share transports.
+	endpointWithCustomCA := &RegistryEndpoint{
+		RegistryAPI:    endpoint.RegistryAPI,
+		RegistryPrefix: endpoint.RegistryPrefix,
+		CAFile:         "/different/ca.pem",
+	}
+	transport4 := endpointWithCustomCA.GetTransport(context.Background())
+	assert.NotSame(t, transport3, transport4, "Should not share transports across TLS settings")
 }
 
 // Test for transport validation logic
