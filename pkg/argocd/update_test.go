@@ -2330,6 +2330,103 @@ registries:
 		assert.Contains(t, updatedImage, "@"+newDigest,
 			"tracked container should be updated to the new digest")
 	})
+
+	// Regression test for #1547 Phase 3: after an Argo CD sync, the running image
+	// is recorded in Status.Summary.Images as a BARE digest (no tag name). For an
+	// up-to-date digest-strategy image, the "already up to date" branch re-writes
+	// the Helm tag parameter from the tag-less running image, so the tracked tag
+	// name (e.g. "develop") is lost and rewritten as "latest@<digest>" — data
+	// corruption that also produces a commit every reconcile cycle. The written
+	// tag must preserve the tracked tag name instead.
+	t.Run("Test digest up-to-date image keeps its tag when the running image is a bare digest (#1547 phase 3)", func(t *testing.T) {
+		digest := "sha256:1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+		digestBytes := [32]byte{
+			0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef,
+			0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef,
+			0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef,
+			0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef,
+		}
+
+		mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
+			regMock := regmock.RegistryClient{}
+			regMock.On("NewRepository", mock.Anything, mock.Anything).Return(nil)
+			regMock.On("Tags", mock.Anything).Return([]string{"develop"}, nil)
+			meta := &schema2.DeserializedManifest{}
+			regMock.On("ManifestForTag", mock.Anything, "develop").Return(meta, nil)
+			regMock.On("TagMetadata", mock.Anything, mock.Anything, mock.Anything).Return(&tag.TagInfo{
+				CreatedAt: time.Now(),
+				Digest:    digestBytes,
+			}, nil)
+			return &regMock, nil
+		}
+
+		argoClient := argomock.ArgoCD{}
+		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+
+		kubeClient := kube.ImageUpdaterKubernetesClient{
+			KubeClient: &registryKube.KubernetesClient{
+				Clientset: fake.NewFakeKubeClient(),
+			},
+		}
+
+		containerImg := image.NewFromIdentifier("web=docker.io/library/nginx:develop")
+		iuImg := NewImage(containerImg)
+		iuImg.UpdateStrategy = image.StrategyDigest
+		iuImg.HelmImageName = "image.name"
+		iuImg.HelmImageTag = "image.tag"
+
+		appImages := &ApplicationImages{
+			Application: v1alpha1.Application{
+				ObjectMeta: v1.ObjectMeta{
+					Name:      "guestbook",
+					Namespace: "guestbook",
+				},
+				Spec: v1alpha1.ApplicationSpec{
+					Source: &v1alpha1.ApplicationSource{
+						Helm: &v1alpha1.ApplicationSourceHelm{
+							Parameters: []v1alpha1.HelmParameter{
+								// Current, correct state: tag name preserved with the digest.
+								{Name: "image.name", Value: "docker.io/library/nginx", ForceString: true},
+								{Name: "image.tag", Value: "develop@" + digest, ForceString: true},
+							},
+						},
+					},
+				},
+				Status: v1alpha1.ApplicationStatus{
+					SourceType: v1alpha1.ApplicationSourceTypeHelm,
+					Summary: v1alpha1.ApplicationSummary{
+						// Phase 3: Argo CD records the running image as a BARE digest,
+						// with no tag name.
+						Images: []string{"docker.io/library/nginx@" + digest},
+					},
+				},
+			},
+			Images: ImageList{iuImg},
+			WriteBackConfig: &WriteBackConfig{
+				Method: WriteBackApplication,
+			},
+		}
+
+		res := UpdateApplication(context.Background(), &UpdateConfiguration{
+			NewRegFN:   mockClientFn,
+			ArgoClient: &argoClient,
+			KubeClient: &kubeClient,
+			UpdateApp:  appImages,
+			DryRun:     false,
+		}, NewSyncIterationState())
+
+		require.Equal(t, 0, res.NumErrors)
+
+		var tagValue string
+		for _, p := range appImages.Application.Spec.Source.Helm.Parameters {
+			if p.Name == "image.tag" {
+				tagValue = p.Value
+			}
+		}
+		// The tracked tag name must survive; it must NOT be rewritten to "latest".
+		assert.Equal(t, "develop@"+digest, tagValue,
+			"up-to-date image must keep its tracked tag name, not degrade to latest@<digest>")
+	})
 }
 
 func Test_MarshalParamsOverride(t *testing.T) {

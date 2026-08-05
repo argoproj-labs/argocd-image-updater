@@ -266,7 +266,22 @@ func UpdateApplication(ctx context.Context, updateConf *UpdateConfiguration, sta
 			// We need to explicitly set the up-to-date images in the spec too, so
 			// that we correctly marshal out the parameter overrides to include all
 			// images, regardless of those were updated or not.
-			err = setAppImage(imageOpCtx, &updateConf.UpdateApp.Application, applicationImage.WithTag(updateableImage.ImageTag), updateConf.UpdateApp.WriteBackConfig, applicationImage)
+			currentTag := updateableImage.ImageTag
+			// After a sync, Argo CD can record the running image in
+			// Status.Summary.Images as a bare digest with no tag name. For digest
+			// strategy, re-writing the image from that tag-less value drops the
+			// tracked tag name and degrades it to "latest@<digest>", corrupting the
+			// write-back and producing a commit every reconcile cycle. Preserve the
+			// alias's tracked tag name in that case.
+			if vc.Strategy == image.StrategyDigest && vc.Constraint != "" &&
+				(currentTag == nil || currentTag.TagName == "") {
+				digest := ""
+				if currentTag != nil {
+					digest = currentTag.TagDigest
+				}
+				currentTag = tag.NewImageTag(vc.Constraint, time.Unix(0, 0), digest)
+			}
+			err = setAppImage(imageOpCtx, &updateConf.UpdateApp.Application, applicationImage.WithTag(currentTag), updateConf.UpdateApp.WriteBackConfig, applicationImage)
 			if err != nil {
 				imgCtx.Errorf("Error while trying to update image: %v", err)
 				result.NumErrors += 1
