@@ -208,7 +208,7 @@ kubectl -n argocd-image-updater create secret generic git-creds \
   --from-literal=insecure='true'
 ```
 
-!!!warning "Breaking change: `insecure` default"
+!!!warning
     In previous versions, TLS verification was always skipped (`insecure` was
     hardcoded to `true`) when using secret-based GitHub App credentials. This
     has been fixed to default to `false`, matching the behavior of repository
