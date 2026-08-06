@@ -1,7 +1,7 @@
 # Webhook Configuration
 
-!!!warning "Breaking Change"
-    Starting with this release, the webhook server runs with **TLS enabled by default**.
+!!!warning
+    The webhook server runs with **TLS enabled by default**.
     If you previously relied on plain HTTP, you must explicitly opt out by setting the
     `--disable-tls` flag or the `DISABLE_TLS` environment variable. For details, see
     [TLS Configuration](#tls-configuration) below.

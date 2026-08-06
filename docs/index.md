@@ -4,7 +4,7 @@ A tool to automatically update the container images of Kubernetes workloads
 that are managed by
 [Argo CD](https://github.com/argoproj/argo-cd).
 
-!!!warning "Breaking Change: spec.namespace Field Removed"
+!!!warning "spec.namespace Field Removed"
     The `spec.namespace` field has been removed from the `ImageUpdater` API. Any CR that includes `spec.namespace` will fail validation. The controller uses the ImageUpdater CR's `metadata.namespace` to determine which namespace to search for applications. For details and migration examples, see [Namespace Field Removal](#namespace-field-removal) below.
 
 !!!warning "A note on the current status"

@@ -1,6 +1,6 @@
 # Getting Started
 
-!!!warning "Breaking Change: Default watch scope is now namespace-scoped"
+!!!warning "Default watch scope is now namespace-scoped"
     Previously, the controller operated in cluster-wide mode by default, watching
     all namespaces using a `ClusterRole` and `ClusterRoleBinding`. The default is
     now **namespace-scoped**: the controller watches only its own namespace using a
