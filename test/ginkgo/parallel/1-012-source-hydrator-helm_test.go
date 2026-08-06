@@ -47,7 +47,7 @@ var _ = Describe("ArgoCD Image Updater Parallel E2E Tests", func() {
 
 	// This test verifies that Image Updater correctly handles SourceHydrator Applications
 	// using git write-back with an external Helm values file.
-	Context("1-007-source-hydrator-helm-test", func() {
+	Context("1-012-source-hydrator-helm-test", func() {
 
 		var (
 			k8sClient    client.Client
@@ -101,8 +101,8 @@ var _ = Describe("ArgoCD Image Updater Parallel E2E Tests", func() {
 			argoCD = &argov1beta1api.ArgoCD{
 				ObjectMeta: metav1.ObjectMeta{Name: "argocd", Namespace: ns.Name},
 				Spec: argov1beta1api.ArgoCDSpec{
-					CmdParams: map[string]string{
-						"hydrator.enabled": "true",
+					SourceHydrator: argov1beta1api.ArgoCDSourceHydratorSpec{
+						Enabled: ptr.To(true),
 					},
 					ImageUpdater: argov1beta1api.ArgoCDImageUpdaterSpec{
 						Env: []corev1.EnvVar{
@@ -124,7 +124,7 @@ var _ = Describe("ArgoCD Image Updater Parallel E2E Tests", func() {
 			Eventually(argoCD, "5m", "3s").Should(argocdFixture.BeAvailable())
 
 			By("verifying all workloads are started")
-			deploymentsShouldExist := []string{"argocd-redis", "argocd-server", "argocd-repo-server", "argocd-argocd-image-updater-controller"}
+			deploymentsShouldExist := []string{"argocd-redis", "argocd-server", "argocd-repo-server", "argocd-commit-server", "argocd-argocd-image-updater-controller"}
 			for _, depl := range deploymentsShouldExist {
 				depl := &appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: depl, Namespace: ns.Name}}
 				Eventually(depl).Should(k8sFixture.ExistByName())
@@ -150,7 +150,7 @@ var _ = Describe("ArgoCD Image Updater Parallel E2E Tests", func() {
 					SourceHydrator: &appv1alpha1.SourceHydrator{
 						DrySource: appv1alpha1.DrySource{
 							RepoURL:        gitRepoURL,
-							Path:           "1-007-source-hydrator-helm-test/helm",
+							Path:           "1-012-source-hydrator-helm-test/helm",
 							TargetRevision: "HEAD",
 							Helm: &appv1alpha1.ApplicationSourceHelm{
 								ValueFiles: []string{"values.yaml"},
@@ -184,7 +184,7 @@ var _ = Describe("ArgoCD Image Updater Parallel E2E Tests", func() {
 			method := fmt.Sprintf("git:secret:%s/%s", ns.Name, iuFixture.Name)
 			branch := "master"
 			repository := gitRepoURL
-			writeBackTarget := "helmvalues:/1-007-source-hydrator-helm-test/helm/values.yaml"
+			writeBackTarget := "helmvalues:/1-012-source-hydrator-helm-test/helm/values.yaml"
 			helmImageName := "image.name"
 			helmImageTag := "image.tag"
 
