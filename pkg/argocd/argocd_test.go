@@ -1363,6 +1363,111 @@ func Test_SetKustomizeImage(t *testing.T) {
 		assert.Equal(t, v1alpha1.KustomizeImage("foobar=jannfis/foobar:1.0.1"), app.Spec.Source.Kustomize.Images[0])
 	})
 
+	t.Run("Test set Kustomize image parameters for two aliases sharing the same image name does not collide", func(t *testing.T) {
+		app := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "test-app",
+				Namespace: "testns",
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: &v1alpha1.ApplicationSource{
+					Kustomize: &v1alpha1.ApplicationSourceKustomize{
+						Images: v1alpha1.KustomizeImages{
+							"service-a=jannfis/foobar:tag-a",
+							"service-b=jannfis/foobar:tag-b",
+						},
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypeKustomize,
+			},
+		}
+		wbc := &WriteBackConfig{
+			Target: "kustomization:.",
+		}
+
+		imgA := image.NewFromIdentifier("service-a=jannfis/foobar:tag-a@sha256:digesta")
+		appImageA := &Image{KustomizeImageName: "service-a"}
+		err := SetKustomizeImage(context.Background(), app, imgA, wbc, appImageA)
+		require.NoError(t, err)
+
+		imgB := image.NewFromIdentifier("service-b=jannfis/foobar:tag-b@sha256:digestb")
+		appImageB := &Image{KustomizeImageName: "service-b"}
+		err = SetKustomizeImage(context.Background(), app, imgB, wbc, appImageB)
+		require.NoError(t, err)
+
+		require.NotNil(t, app.Spec.Source.Kustomize)
+		require.Len(t, app.Spec.Source.Kustomize.Images, 2)
+		assert.Equal(t, v1alpha1.KustomizeImage("service-a=jannfis/foobar:tag-a@sha256:digesta"), app.Spec.Source.Kustomize.Images[0])
+		assert.Equal(t, v1alpha1.KustomizeImage("service-b=jannfis/foobar:tag-b@sha256:digestb"), app.Spec.Source.Kustomize.Images[1])
+	})
+
+}
+
+func Test_GetKustomizeImage(t *testing.T) {
+	t.Run("Test get Kustomize image without alias name", func(t *testing.T) {
+		app := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "test-app",
+				Namespace: "testns",
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: &v1alpha1.ApplicationSource{
+					Kustomize: &v1alpha1.ApplicationSourceKustomize{
+						Images: v1alpha1.KustomizeImages{
+							"jannfis/foobar:1.0.0",
+						},
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypeKustomize,
+			},
+		}
+		appImage := &Image{ContainerImage: image.NewFromIdentifier("jannfis/foobar:1.0.0")}
+		result, err := GetKustomizeImage(context.Background(), app, nil, appImage)
+		require.NoError(t, err)
+		assert.Equal(t, "jannfis/foobar:1.0.0", result)
+	})
+
+	t.Run("Test get Kustomize image for two aliases sharing the same image name does not collide", func(t *testing.T) {
+		app := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "test-app",
+				Namespace: "testns",
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: &v1alpha1.ApplicationSource{
+					Kustomize: &v1alpha1.ApplicationSourceKustomize{
+						Images: v1alpha1.KustomizeImages{
+							"service-a=jannfis/foobar:tag-a",
+							"service-b=jannfis/foobar:tag-b",
+						},
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypeKustomize,
+			},
+		}
+
+		appImageA := &Image{
+			ContainerImage:     image.NewFromIdentifier("jannfis/foobar:tag-a"),
+			KustomizeImageName: "service-a",
+		}
+		resultA, err := GetKustomizeImage(context.Background(), app, nil, appImageA)
+		require.NoError(t, err)
+		assert.Equal(t, "service-a=jannfis/foobar:tag-a", resultA)
+
+		appImageB := &Image{
+			ContainerImage:     image.NewFromIdentifier("jannfis/foobar:tag-b"),
+			KustomizeImageName: "service-b",
+		}
+		resultB, err := GetKustomizeImage(context.Background(), app, nil, appImageB)
+		require.NoError(t, err)
+		assert.Equal(t, "service-b=jannfis/foobar:tag-b", resultB)
+	})
 }
 
 func Test_SetHelmImage(t *testing.T) {
