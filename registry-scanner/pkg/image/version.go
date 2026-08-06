@@ -108,11 +108,18 @@ func (img *ContainerImage) GetNewestVersionFromTags(ctx context.Context, vc *Ver
 		return nil, nil
 	}
 
-	// The given constraint MUST match a semver constraint
+	// The given constraint MUST match a semver constraint. When no constraint
+	// is configured, fall back to a wildcard constraint so that pre-release
+	// versions are still excluded unless explicitly allowed (e.g. via a
+	// constraint carrying a "-0" suffix), as documented.
 	var semverConstraint *semver.Constraints
 	var err error
-	if vc.Strategy == StrategySemVer && vc.Constraint != "" {
-		semverConstraint, err = semver.NewConstraint(vc.Constraint)
+	if vc.Strategy == StrategySemVer {
+		constraint := vc.Constraint
+		if constraint == "" {
+			constraint = "*"
+		}
+		semverConstraint, err = semver.NewConstraint(constraint)
 		if err != nil {
 			logCtx.Errorf("invalid constraint '%s' given: '%v'", vc, err)
 			return nil, err
