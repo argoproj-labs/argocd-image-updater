@@ -430,6 +430,24 @@ func marshalWithIndent(in interface{}, indent int) (out []byte, err error) {
 	return b.Bytes(), nil
 }
 
+// isStandardKustomizationDocument returns true if data looks like a standard
+// kustomization.yaml file (i.e. it declares "kind: Kustomization"), as opposed
+// to an argocd-image-updater parameter override file. Merging image overrides
+// into such a document would silently discard its other fields (resources,
+// namespace, etc.), so callers should reject it rather than overwrite it.
+func isStandardKustomizationDocument(data []byte) bool {
+	if len(data) == 0 {
+		return false
+	}
+	var doc struct {
+		Kind string `yaml:"kind"`
+	}
+	if err := yaml.Unmarshal(data, &doc); err != nil {
+		return false
+	}
+	return doc.Kind == "Kustomization"
+}
+
 // marshalParamsOverride marshals the parameter overrides of a given application
 // into YAML bytes
 func marshalParamsOverride(ctx context.Context, applicationImages *ApplicationImages, originalData []byte) ([]byte, error) {
@@ -494,6 +512,17 @@ func marshalParamsOverride(ctx context.Context, applicationImages *ApplicationIm
 	case ApplicationTypeKustomize:
 		if appSource.Kustomize == nil {
 			return []byte{}, nil
+		}
+
+		if isStandardKustomizationDocument(originalData) {
+			target := "the git write-back target"
+			if wbc != nil && wbc.Target != "" {
+				target = wbc.Target
+			}
+			return nil, fmt.Errorf("%s is a standard kustomization.yaml file (kind: Kustomization); "+
+				"writing image parameter overrides to it would discard its existing content. "+
+				"Point the git write-back target at a dedicated override file, or set writeBackTarget to "+
+				`"kustomization" to update the kustomization.yaml images list in place`, target)
 		}
 
 		var params kustomizeOverride
