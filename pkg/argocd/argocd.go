@@ -964,7 +964,19 @@ func GetKustomizeImage(ctx context.Context, app *argocdapi.Application, wbc *Wri
 	}
 
 	for _, a := range ksImages {
-		if a.Match(argocdapi.KustomizeImage(ksImageName)) {
+		curr := image.NewFromIdentifier(string(a))
+
+		// Entries must always agree on ImageName (registry+repo). When
+		// manifestTargets.kustomize.name is set and the entry already carries
+		// an alias, that alias must also match - otherwise two entries that
+		// share the same ImageName but target different kustomize image
+		// aliases would be treated as the same entry.
+		matched := curr.ImageName == applicationImage.ImageName
+		if ksImageName != "" && curr.ImageAlias != "" {
+			matched = matched && curr.ImageAlias == ksImageName
+		}
+
+		if matched {
 			return string(a), nil
 		}
 	}
@@ -999,7 +1011,18 @@ func SetKustomizeImage(ctx context.Context, app *argocdapi.Application, newImage
 		curr := image.NewFromIdentifier(string(kImg))
 		override := image.NewFromIdentifier(ksImageParam)
 
-		if curr.ImageName == override.ImageName {
+		// Entries must always agree on ImageName (registry+repo). When
+		// manifestTargets.kustomize.name is set and the entry already carries
+		// an alias, that alias must also match - otherwise two entries that
+		// share the same ImageName but target different kustomize image
+		// aliases would collapse onto the same slot, silently dropping one of
+		// them.
+		matched := curr.ImageName == override.ImageName
+		if ksImageName != "" && curr.ImageAlias != "" {
+			matched = matched && curr.ImageAlias == ksImageName
+		}
+
+		if matched {
 			curr.ImageAlias = override.ImageAlias
 			appSource.Kustomize.Images[i] = argocdapi.KustomizeImage(override.String())
 		}
