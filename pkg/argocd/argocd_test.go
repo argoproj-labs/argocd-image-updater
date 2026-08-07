@@ -2156,7 +2156,7 @@ func Test_parseImageList(t *testing.T) {
 					ImageName: "nginx:1.21.0",
 					ManifestTarget: &api.ManifestTarget{
 						Kustomize: &api.KustomizeTarget{
-							Name: strPtr("my-custom-nginx-name"),
+							Name: new("my-custom-nginx-name"),
 						},
 					},
 				},
@@ -2173,7 +2173,7 @@ func Test_parseImageList(t *testing.T) {
 					ImageName: "nginx:1.21.0",
 					ManifestTarget: &api.ManifestTarget{
 						Kustomize: &api.KustomizeTarget{
-							Name: strPtr("my-custom-nginx-name"),
+							Name: new("my-custom-nginx-name"),
 						},
 					},
 				},
@@ -2283,7 +2283,7 @@ func Test_parseImageList(t *testing.T) {
 				Alias:     "nginx",
 				ImageName: "nginx:1.21.0",
 				ImagesVerification: &api.ImagesVerification{
-					Enabled: boolPtr(false),
+					Enabled: new(false),
 				},
 			},
 		}
@@ -2373,10 +2373,6 @@ func Test_parseImageList(t *testing.T) {
 	})
 }
 
-// Helper functions to create pointers for test data, making the test setup cleaner.
-func strPtr(s string) *string { return &s }
-func boolPtr(b bool) *bool    { return &b }
-
 // Assisted-by: Gemini AI
 func Test_mergeCommonUpdateSettings(t *testing.T) {
 	t.Run("should return empty settings when all inputs are nil", func(t *testing.T) {
@@ -2386,7 +2382,7 @@ func Test_mergeCommonUpdateSettings(t *testing.T) {
 
 	t.Run("should use global settings when app settings are nil", func(t *testing.T) {
 		global := &api.CommonUpdateSettings{
-			UpdateStrategy: strPtr("semver"),
+			UpdateStrategy: new("semver"),
 		}
 		merged := mergeCommonUpdateSettings(global, nil)
 		assert.Equal(t, global, merged)
@@ -2394,7 +2390,7 @@ func Test_mergeCommonUpdateSettings(t *testing.T) {
 
 	t.Run("should use app settings when global settings are nil", func(t *testing.T) {
 		app := &api.CommonUpdateSettings{
-			UpdateStrategy: strPtr("latest"),
+			UpdateStrategy: new("latest"),
 		}
 		merged := mergeCommonUpdateSettings(nil, app)
 		assert.Equal(t, app, merged)
@@ -2402,11 +2398,11 @@ func Test_mergeCommonUpdateSettings(t *testing.T) {
 
 	t.Run("should override global settings with app settings", func(t *testing.T) {
 		global := &api.CommonUpdateSettings{
-			UpdateStrategy: strPtr("semver"),
-			AllowTags:      strPtr("v1.*"),
+			UpdateStrategy: new("semver"),
+			AllowTags:      new("v1.*"),
 		}
 		app := &api.CommonUpdateSettings{
-			UpdateStrategy: strPtr("latest"),
+			UpdateStrategy: new("latest"),
 		}
 		merged := mergeCommonUpdateSettings(global, app)
 		assert.Equal(t, "latest", *merged.UpdateStrategy)
@@ -2415,15 +2411,15 @@ func Test_mergeCommonUpdateSettings(t *testing.T) {
 
 	t.Run("should merge settings, taking non-nil fields from each level", func(t *testing.T) {
 		global := &api.CommonUpdateSettings{
-			UpdateStrategy: strPtr("semver"),
-			ForceUpdate:    boolPtr(false),
+			UpdateStrategy: new("semver"),
+			ForceUpdate:    new(false),
 		}
 		app := &api.CommonUpdateSettings{
-			ForceUpdate: boolPtr(true),
-			AllowTags:   strPtr("v1.*"),
+			ForceUpdate: new(true),
+			AllowTags:   new("v1.*"),
 		}
 		imageSettings := &api.CommonUpdateSettings{
-			AllowTags: strPtr("rc-*"),
+			AllowTags: new("rc-*"),
 		}
 		merged := mergeCommonUpdateSettings(global, app, imageSettings)
 		assert.Equal(t, "semver", *merged.UpdateStrategy)
@@ -2452,7 +2448,7 @@ func Test_mergeImagesVerification(t *testing.T) {
 	t.Run("global settings propagate when app level is nil", func(t *testing.T) {
 		global := &api.ImagesVerification{
 
-			Enabled:   boolPtr(true),
+			Enabled:   new(true),
 			CosignKey: secretRef("org-key", "cosign.pub"),
 		}
 		merged := mergeImagesVerification(global, nil)
@@ -2463,7 +2459,7 @@ func Test_mergeImagesVerification(t *testing.T) {
 	t.Run("image level overrides global cosignKey", func(t *testing.T) {
 		global := &api.ImagesVerification{
 
-			Enabled:   boolPtr(true),
+			Enabled:   new(true),
 			CosignKey: secretRef("org-key", "cosign.pub"),
 		}
 		imageLevel := &api.ImagesVerification{
@@ -2479,11 +2475,11 @@ func Test_mergeImagesVerification(t *testing.T) {
 	t.Run("image level enabled=false opts out while inheriting global key", func(t *testing.T) {
 		global := &api.ImagesVerification{
 
-			Enabled:   boolPtr(true),
+			Enabled:   new(true),
 			CosignKey: secretRef("org-key", "cosign.pub"),
 		}
 		imageLevel := &api.ImagesVerification{
-			Enabled: boolPtr(false),
+			Enabled: new(false),
 		}
 		merged := mergeImagesVerification(global, imageLevel)
 		assert.False(t, *merged.Enabled)
@@ -2493,7 +2489,7 @@ func Test_mergeImagesVerification(t *testing.T) {
 
 	t.Run("image level nil Enable does not override global Enable=false", func(t *testing.T) {
 		global := &api.ImagesVerification{
-			Enabled: boolPtr(false),
+			Enabled: new(false),
 		}
 		imageLevel := &api.ImagesVerification{
 			CosignKey: secretRef("image-key", "cosign.pub"),
@@ -2506,7 +2502,7 @@ func Test_mergeImagesVerification(t *testing.T) {
 	t.Run("three-level merge: image level wins over app over global", func(t *testing.T) {
 		global := &api.ImagesVerification{
 
-			Enabled:   boolPtr(true),
+			Enabled:   new(true),
 			CosignKey: secretRef("global-key", "cosign.pub"),
 		}
 		appLevel := &api.ImagesVerification{
@@ -2524,7 +2520,7 @@ func Test_mergeImagesVerification(t *testing.T) {
 	t.Run("empty non-nil struct does not overwrite previously merged values", func(t *testing.T) {
 		global := &api.ImagesVerification{
 
-			Enabled:   boolPtr(true),
+			Enabled:   new(true),
 			CosignKey: secretRef("org-key", "cosign.pub"),
 		}
 		empty := &api.ImagesVerification{}
@@ -2575,7 +2571,7 @@ func Test_newImageFromImagesVerification(t *testing.T) {
 
 	t.Run("enabled=false opts out without requiring method or secret", func(t *testing.T) {
 		img := baseImg()
-		settings := &api.ImagesVerification{Enabled: boolPtr(false)}
+		settings := &api.ImagesVerification{Enabled: new(false)}
 		result, err := newImageFromImagesVerification(makeKubeClient(), testNamespace, settings, img)
 		require.NoError(t, err)
 		assert.False(t, result.EnableVerification)
@@ -2585,7 +2581,7 @@ func Test_newImageFromImagesVerification(t *testing.T) {
 	t.Run("enabled=true without cosignKey returns error", func(t *testing.T) {
 		img := baseImg()
 		settings := &api.ImagesVerification{
-			Enabled: boolPtr(true),
+			Enabled: new(true),
 		}
 		_, err := newImageFromImagesVerification(makeKubeClient(), testNamespace, settings, img)
 		require.Error(t, err)
@@ -2648,10 +2644,10 @@ func Test_newImageFromSettings(t *testing.T) {
 	t.Run("should apply settings on top of defaults", func(t *testing.T) {
 		// Expected: The defaults are overridden by the provided settings.
 		settings := &api.CommonUpdateSettings{
-			UpdateStrategy: strPtr(image.StrategyNewestBuild.String()),
-			ForceUpdate:    boolPtr(true),
-			AllowTags:      strPtr("v1.*"),
-			PullSecret:     strPtr("my-secret"),
+			UpdateStrategy: new(image.StrategyNewestBuild.String()),
+			ForceUpdate:    new(true),
+			AllowTags:      new("v1.*"),
+			PullSecret:     new("my-secret"),
 			IgnoreTags:     []string{"v1.0.0"},
 		}
 
@@ -2694,7 +2690,7 @@ func Test_mergeWBCSettings(t *testing.T) {
 	})
 
 	t.Run("global set method is returned as-is when app is nil", func(t *testing.T) {
-		global := &api.WriteBackConfig{Method: strPtr("git")}
+		global := &api.WriteBackConfig{Method: new("git")}
 		merged := mergeWBCSettings(global, nil)
 		assert.Equal(t, "git", *merged.Method)
 		assert.NotSame(t, global, merged)
@@ -2710,7 +2706,7 @@ func Test_mergeWBCSettings(t *testing.T) {
 	// --- global is nil ---
 
 	t.Run("app explicit method is used when global is nil", func(t *testing.T) {
-		app := &api.WriteBackConfig{Method: strPtr("git")}
+		app := &api.WriteBackConfig{Method: new("git")}
 		merged := mergeWBCSettings(nil, app)
 		assert.Equal(t, "git", *merged.Method)
 	})
@@ -2725,15 +2721,15 @@ func Test_mergeWBCSettings(t *testing.T) {
 	// --- Method inheritance ---
 
 	t.Run("app inherits global method when app method is nil", func(t *testing.T) {
-		global := &api.WriteBackConfig{Method: strPtr("git")}
+		global := &api.WriteBackConfig{Method: new("git")}
 		app := &api.WriteBackConfig{} // Method is nil — should inherit
 		merged := mergeWBCSettings(global, app)
 		assert.Equal(t, "git", *merged.Method)
 	})
 
 	t.Run("app method overrides global method when explicitly set", func(t *testing.T) {
-		global := &api.WriteBackConfig{Method: strPtr("git")}
-		app := &api.WriteBackConfig{Method: strPtr(WriteBackMethodArgoCD)}
+		global := &api.WriteBackConfig{Method: new("git")}
+		app := &api.WriteBackConfig{Method: new(WriteBackMethodArgoCD)}
 		merged := mergeWBCSettings(global, app)
 		assert.Equal(t, WriteBackMethodArgoCD, *merged.Method)
 	})
@@ -2742,10 +2738,10 @@ func Test_mergeWBCSettings(t *testing.T) {
 
 	t.Run("global GitConfig is preserved when appWBC is nil", func(t *testing.T) {
 		global := &api.WriteBackConfig{
-			Method: strPtr("git"),
+			Method: new("git"),
 			GitConfig: &api.GitConfig{
-				Repository: strPtr("global-repo"),
-				Branch:     strPtr("global-branch"),
+				Repository: new("global-repo"),
+				Branch:     new("global-branch"),
 			},
 		}
 		merged := mergeWBCSettings(global, nil)
@@ -2757,8 +2753,8 @@ func Test_mergeWBCSettings(t *testing.T) {
 	t.Run("app GitConfig is used when global is nil", func(t *testing.T) {
 		app := &api.WriteBackConfig{
 			GitConfig: &api.GitConfig{
-				Repository: strPtr("app-repo"),
-				Branch:     strPtr("app-branch"),
+				Repository: new("app-repo"),
+				Branch:     new("app-branch"),
 			},
 		}
 		merged := mergeWBCSettings(nil, app)
@@ -2771,15 +2767,15 @@ func Test_mergeWBCSettings(t *testing.T) {
 
 	t.Run("app GitConfig fields override global GitConfig fields", func(t *testing.T) {
 		global := &api.WriteBackConfig{
-			Method: strPtr("git"),
+			Method: new("git"),
 			GitConfig: &api.GitConfig{
-				Repository: strPtr("global-repo"),
-				Branch:     strPtr("global-branch"),
+				Repository: new("global-repo"),
+				Branch:     new("global-branch"),
 			},
 		}
 		app := &api.WriteBackConfig{
 			GitConfig: &api.GitConfig{
-				Branch: strPtr("app-branch"),
+				Branch: new("app-branch"),
 			},
 		}
 		merged := mergeWBCSettings(global, app)
@@ -2791,10 +2787,10 @@ func Test_mergeWBCSettings(t *testing.T) {
 
 	t.Run("global GitConfig is fully inherited when app has no GitConfig", func(t *testing.T) {
 		global := &api.WriteBackConfig{
-			Method: strPtr("git"),
+			Method: new("git"),
 			GitConfig: &api.GitConfig{
-				Repository: strPtr("global-repo"),
-				Branch:     strPtr("global-branch"),
+				Repository: new("global-repo"),
+				Branch:     new("global-branch"),
 			},
 		}
 		app := &api.WriteBackConfig{} // no GitConfig at all
@@ -2805,10 +2801,10 @@ func Test_mergeWBCSettings(t *testing.T) {
 	})
 
 	t.Run("app GitConfig is created when only app has GitConfig", func(t *testing.T) {
-		global := &api.WriteBackConfig{Method: strPtr("git")}
+		global := &api.WriteBackConfig{Method: new("git")}
 		app := &api.WriteBackConfig{
 			GitConfig: &api.GitConfig{
-				Repository: strPtr("app-repo"),
+				Repository: new("app-repo"),
 			},
 		}
 		merged := mergeWBCSettings(global, app)
@@ -2818,14 +2814,14 @@ func Test_mergeWBCSettings(t *testing.T) {
 
 	t.Run("WriteBackTarget is overridden by app when set", func(t *testing.T) {
 		global := &api.WriteBackConfig{
-			Method: strPtr("git"),
+			Method: new("git"),
 			GitConfig: &api.GitConfig{
-				WriteBackTarget: strPtr("helmvalues:global/values.yaml"),
+				WriteBackTarget: new("helmvalues:global/values.yaml"),
 			},
 		}
 		app := &api.WriteBackConfig{
 			GitConfig: &api.GitConfig{
-				WriteBackTarget: strPtr("helmvalues:app/values.yaml"),
+				WriteBackTarget: new("helmvalues:app/values.yaml"),
 			},
 		}
 		merged := mergeWBCSettings(global, app)
@@ -2835,14 +2831,14 @@ func Test_mergeWBCSettings(t *testing.T) {
 
 	t.Run("WriteBackTarget is inherited from global when app does not set it", func(t *testing.T) {
 		global := &api.WriteBackConfig{
-			Method: strPtr("git"),
+			Method: new("git"),
 			GitConfig: &api.GitConfig{
-				WriteBackTarget: strPtr("helmvalues:global/values.yaml"),
+				WriteBackTarget: new("helmvalues:global/values.yaml"),
 			},
 		}
 		app := &api.WriteBackConfig{
 			GitConfig: &api.GitConfig{
-				Branch: strPtr("app-branch"),
+				Branch: new("app-branch"),
 			},
 		}
 		merged := mergeWBCSettings(global, app)
@@ -2853,7 +2849,7 @@ func Test_mergeWBCSettings(t *testing.T) {
 	// --- PullRequest merge ---
 
 	t.Run("app PullRequest GitHub should be set when global has none", func(t *testing.T) {
-		global := &api.WriteBackConfig{Method: strPtr("git")}
+		global := &api.WriteBackConfig{Method: new("git")}
 		app := &api.WriteBackConfig{
 			GitConfig: &api.GitConfig{
 				PullRequest: &api.PullRequest{GitHub: &api.PullRequestGitHub{}},
@@ -2867,7 +2863,7 @@ func Test_mergeWBCSettings(t *testing.T) {
 	})
 
 	t.Run("app PullRequest GitLab should be set when global has none", func(t *testing.T) {
-		global := &api.WriteBackConfig{Method: strPtr("git")}
+		global := &api.WriteBackConfig{Method: new("git")}
 		app := &api.WriteBackConfig{
 			GitConfig: &api.GitConfig{
 				PullRequest: &api.PullRequest{GitLab: &api.PullRequestGitLab{}},
@@ -2922,7 +2918,7 @@ func Test_mergeWBCSettings(t *testing.T) {
 			},
 		}
 		app := &api.WriteBackConfig{
-			GitConfig: &api.GitConfig{Branch: strPtr("app-branch")},
+			GitConfig: &api.GitConfig{Branch: new("app-branch")},
 		}
 		merged := mergeWBCSettings(global, app)
 		require.NotNil(t, merged.GitConfig.PullRequest)
@@ -2933,7 +2929,7 @@ func Test_mergeWBCSettings(t *testing.T) {
 	// --- Deep copy immutability ---
 
 	t.Run("mutating merged Method does not affect global", func(t *testing.T) {
-		global := &api.WriteBackConfig{Method: strPtr("git")}
+		global := &api.WriteBackConfig{Method: new("git")}
 		merged := mergeWBCSettings(global, nil)
 		newMethod := WriteBackMethodArgoCD
 		merged.Method = &newMethod
@@ -2943,8 +2939,8 @@ func Test_mergeWBCSettings(t *testing.T) {
 	t.Run("mutating merged GitConfig does not affect global GitConfig", func(t *testing.T) {
 		global := &api.WriteBackConfig{
 			GitConfig: &api.GitConfig{
-				Repository: strPtr("global-repo"),
-				Branch:     strPtr("global-branch"),
+				Repository: new("global-repo"),
+				Branch:     new("global-branch"),
 			},
 		}
 		merged := mergeWBCSettings(global, nil)
@@ -3000,7 +2996,7 @@ func Test_newWBCFromSettings(t *testing.T) {
 	t.Run("should set git method and keep default file path target when WriteBackTarget is nil", func(t *testing.T) {
 		app, kubeClient := createTestAppAndClient()
 		settings := &api.WriteBackConfig{
-			Method: strPtr("git"),
+			Method: new("git"),
 		}
 		wbc, err := newWBCFromSettings(context.Background(), app, kubeClient, nil, settings)
 		assert.NoError(t, err)
@@ -3011,9 +3007,9 @@ func Test_newWBCFromSettings(t *testing.T) {
 	t.Run("should set correct target for helmvalues", func(t *testing.T) {
 		app, kubeClient := createTestAppAndClient()
 		settings := &api.WriteBackConfig{
-			Method: strPtr("git"),
+			Method: new("git"),
 			GitConfig: &api.GitConfig{
-				WriteBackTarget: strPtr("helmvalues:another/values.yaml"),
+				WriteBackTarget: new("helmvalues:another/values.yaml"),
 			},
 		}
 		wbc, err := newWBCFromSettings(context.Background(), app, kubeClient, nil, settings)
@@ -3025,9 +3021,9 @@ func Test_newWBCFromSettings(t *testing.T) {
 	t.Run("should set correct kustomize base and keep default target", func(t *testing.T) {
 		app, kubeClient := createTestAppAndClient()
 		settings := &api.WriteBackConfig{
-			Method: strPtr("git"),
+			Method: new("git"),
 			GitConfig: &api.GitConfig{
-				WriteBackTarget: strPtr("kustomization:overlays/prod"),
+				WriteBackTarget: new("kustomization:overlays/prod"),
 			},
 		}
 		wbc, err := newWBCFromSettings(context.Background(), app, kubeClient, nil, settings)
@@ -3040,9 +3036,9 @@ func Test_newWBCFromSettings(t *testing.T) {
 	t.Run("should parse git branch correctly", func(t *testing.T) {
 		app, kubeClient := createTestAppAndClient()
 		settings := &api.WriteBackConfig{
-			Method: strPtr("git"),
+			Method: new("git"),
 			GitConfig: &api.GitConfig{
-				Branch: strPtr("main:feature-branch"),
+				Branch: new("main:feature-branch"),
 			},
 		}
 		wbc, err := newWBCFromSettings(context.Background(), app, kubeClient, nil, settings)
@@ -3055,7 +3051,7 @@ func Test_newWBCFromSettings(t *testing.T) {
 	t.Run("should handle invalid method string", func(t *testing.T) {
 		app, kubeClient := createTestAppAndClient()
 		settings := &api.WriteBackConfig{
-			Method: strPtr("unsupported"),
+			Method: new("unsupported"),
 		}
 		_, err := newWBCFromSettings(context.Background(), app, kubeClient, nil, settings)
 		assert.Error(t, err)
@@ -3064,9 +3060,9 @@ func Test_newWBCFromSettings(t *testing.T) {
 	t.Run("pullRequest with colon branch format should error", func(t *testing.T) {
 		app, kubeClient := createTestAppAndClient()
 		settings := &api.WriteBackConfig{
-			Method: strPtr("git"),
+			Method: new("git"),
 			GitConfig: &api.GitConfig{
-				Branch:      strPtr("main:target"),
+				Branch:      new("main:target"),
 				PullRequest: &api.PullRequest{GitHub: &api.PullRequestGitHub{}},
 			},
 		}
@@ -3077,9 +3073,9 @@ func Test_newWBCFromSettings(t *testing.T) {
 	t.Run("pullRequest with plain branch should not error on branch format", func(t *testing.T) {
 		app, kubeClient := createTestAppAndClient()
 		settings := &api.WriteBackConfig{
-			Method: strPtr("git"),
+			Method: new("git"),
 			GitConfig: &api.GitConfig{
-				Branch:      strPtr("main"),
+				Branch:      new("main"),
 				PullRequest: &api.PullRequest{GitHub: &api.PullRequestGitHub{}},
 			},
 		}
@@ -3091,7 +3087,7 @@ func Test_newWBCFromSettings(t *testing.T) {
 	t.Run("pullRequest github should set PRProviderGitHub", func(t *testing.T) {
 		app, kubeClient := createTestAppAndClient()
 		settings := &api.WriteBackConfig{
-			Method: strPtr("git"),
+			Method: new("git"),
 			GitConfig: &api.GitConfig{
 				PullRequest: &api.PullRequest{GitHub: &api.PullRequestGitHub{}},
 			},
@@ -3104,7 +3100,7 @@ func Test_newWBCFromSettings(t *testing.T) {
 	t.Run("pullRequest gitlab should set PRProviderGitLab", func(t *testing.T) {
 		app, kubeClient := createTestAppAndClient()
 		settings := &api.WriteBackConfig{
-			Method: strPtr("git"),
+			Method: new("git"),
 			GitConfig: &api.GitConfig{
 				PullRequest: &api.PullRequest{GitLab: &api.PullRequestGitLab{}},
 			},
@@ -3117,7 +3113,7 @@ func Test_newWBCFromSettings(t *testing.T) {
 	t.Run("pullRequest with no provider should error", func(t *testing.T) {
 		app, kubeClient := createTestAppAndClient()
 		settings := &api.WriteBackConfig{
-			Method: strPtr("git"),
+			Method: new("git"),
 			GitConfig: &api.GitConfig{
 				PullRequest: &api.PullRequest{},
 			},
@@ -3129,7 +3125,7 @@ func Test_newWBCFromSettings(t *testing.T) {
 	t.Run("pullRequest with both providers should error", func(t *testing.T) {
 		app, kubeClient := createTestAppAndClient()
 		settings := &api.WriteBackConfig{
-			Method: strPtr("git"),
+			Method: new("git"),
 			GitConfig: &api.GitConfig{
 				PullRequest: &api.PullRequest{
 					GitHub: &api.PullRequestGitHub{},
@@ -3144,7 +3140,7 @@ func Test_newWBCFromSettings(t *testing.T) {
 	t.Run("no pullRequest should leave PRProvider unsupported", func(t *testing.T) {
 		app, kubeClient := createTestAppAndClient()
 		settings := &api.WriteBackConfig{
-			Method: strPtr("git"),
+			Method: new("git"),
 		}
 		wbc, err := newWBCFromSettings(context.Background(), app, kubeClient, nil, settings)
 		assert.NoError(t, err)
@@ -3182,7 +3178,7 @@ func Test_newImageFromManifestTargetSettings(t *testing.T) {
 		}
 		settings := &api.ManifestTarget{
 			Helm: &api.HelmTarget{
-				Name: strPtr("child-helm"),
+				Name: new("child-helm"),
 			},
 		}
 		img, err := newImageFromManifestTargetSettings(settings, image)
@@ -3198,8 +3194,8 @@ func Test_newImageFromManifestTargetSettings(t *testing.T) {
 		}
 		settings := &api.ManifestTarget{
 			Helm: &api.HelmTarget{
-				Name: strPtr("child-helm-name"),
-				Tag:  strPtr("child-helm-tag"),
+				Name: new("child-helm-name"),
+				Tag:  new("child-helm-tag"),
 			},
 		}
 		img, err := newImageFromManifestTargetSettings(settings, image)
@@ -3212,9 +3208,9 @@ func Test_newImageFromManifestTargetSettings(t *testing.T) {
 	t.Run("should ignore helm name and tag when spec is present", func(t *testing.T) {
 		settings := &api.ManifestTarget{
 			Helm: &api.HelmTarget{
-				Spec: strPtr("child-helm-spec"),
-				Name: strPtr("should-be-ignored"),
-				Tag:  strPtr("should-be-ignored"),
+				Spec: new("child-helm-spec"),
+				Name: new("should-be-ignored"),
+				Tag:  new("should-be-ignored"),
 			},
 		}
 		img, err := newImageFromManifestTargetSettings(settings, &Image{HelmImageName: "image-helm-name", HelmImageTag: "image-helm-tag"})
@@ -3230,7 +3226,7 @@ func Test_newImageFromManifestTargetSettings(t *testing.T) {
 		}
 		settings := &api.ManifestTarget{
 			Kustomize: &api.KustomizeTarget{
-				Name: strPtr("child-kustomize"),
+				Name: new("child-kustomize"),
 			},
 		}
 		img, err := newImageFromManifestTargetSettings(settings, image)
@@ -3241,10 +3237,10 @@ func Test_newImageFromManifestTargetSettings(t *testing.T) {
 	t.Run("should return error when both helm and kustomize are set", func(t *testing.T) {
 		settings := &api.ManifestTarget{
 			Helm: &api.HelmTarget{
-				Name: strPtr("child-helm"),
+				Name: new("child-helm"),
 			},
 			Kustomize: &api.KustomizeTarget{
-				Name: strPtr("child-kustomize"),
+				Name: new("child-kustomize"),
 			},
 		}
 		_, err := newImageFromManifestTargetSettings(settings, nil)
@@ -3255,8 +3251,8 @@ func Test_newImageFromManifestTargetSettings(t *testing.T) {
 		img := &Image{}
 		settings := &api.ManifestTarget{
 			Plugin: &api.PluginTarget{
-				Name: strPtr("IMAGE_NAME"),
-				Tag:  strPtr("IMAGE_TAG"),
+				Name: new("IMAGE_NAME"),
+				Tag:  new("IMAGE_TAG"),
 			},
 		}
 		result, err := newImageFromManifestTargetSettings(settings, img)
@@ -3270,9 +3266,9 @@ func Test_newImageFromManifestTargetSettings(t *testing.T) {
 		img := &Image{}
 		settings := &api.ManifestTarget{
 			Plugin: &api.PluginTarget{
-				Spec: strPtr("IMAGE_SPEC"),
-				Name: strPtr("should-be-ignored"),
-				Tag:  strPtr("should-be-ignored"),
+				Spec: new("IMAGE_SPEC"),
+				Name: new("should-be-ignored"),
+				Tag:  new("should-be-ignored"),
 			},
 		}
 		result, err := newImageFromManifestTargetSettings(settings, img)
@@ -3285,10 +3281,10 @@ func Test_newImageFromManifestTargetSettings(t *testing.T) {
 	t.Run("should return error when plugin and helm are both set", func(t *testing.T) {
 		settings := &api.ManifestTarget{
 			Plugin: &api.PluginTarget{
-				Name: strPtr("IMAGE_NAME"),
+				Name: new("IMAGE_NAME"),
 			},
 			Helm: &api.HelmTarget{
-				Name: strPtr("image.name"),
+				Name: new("image.name"),
 			},
 		}
 		_, err := newImageFromManifestTargetSettings(settings, nil)
@@ -4132,26 +4128,26 @@ func Test_FilterApplicationsForUpdate(t *testing.T) {
 				ObjectMeta: v1.ObjectMeta{Name: "test-updater", Namespace: "testns"},
 				Spec: api.ImageUpdaterSpec{
 					CommonUpdateSettings: &api.CommonUpdateSettings{
-						UpdateStrategy: strPtr("digest"), // Should be ignored
-						ForceUpdate:    boolPtr(false),   // Should be ignored
+						UpdateStrategy: new("digest"), // Should be ignored
+						ForceUpdate:    new(false),    // Should be ignored
 					},
 					WriteBackConfig: &api.WriteBackConfig{
-						Method: strPtr("argocd"), // Should be ignored
+						Method: new("argocd"), // Should be ignored
 					},
 					ApplicationRefs: []api.ApplicationRef{
 						{
 							NamePattern: "annotated-app",
 							// These CR settings should be completely ignored
 							CommonUpdateSettings: &api.CommonUpdateSettings{
-								UpdateStrategy: strPtr("name"), // Should be ignored
+								UpdateStrategy: new("name"), // Should be ignored
 							},
 							WriteBackConfig: &api.WriteBackConfig{
-								Method: strPtr("argocd"), // Should be ignored
+								Method: new("argocd"), // Should be ignored
 							},
 							Images: []api.ImageConfig{
 								{Alias: "redis", ImageName: "redis:6"}, // Should be ignored
 							},
-							UseAnnotations: boolPtr(true),
+							UseAnnotations: new(true),
 						},
 					},
 				},
@@ -4191,7 +4187,7 @@ func Test_FilterApplicationsForUpdate(t *testing.T) {
 					ApplicationRefs: []api.ApplicationRef{
 						{
 							NamePattern:    "priority-test-app",
-							UseAnnotations: boolPtr(true),
+							UseAnnotations: new(true),
 						},
 					},
 				},
@@ -4235,7 +4231,7 @@ func Test_FilterApplicationsForUpdate(t *testing.T) {
 							Images: []api.ImageConfig{
 								{Alias: "redis", ImageName: "redis:6"}, // Should be ignored
 							},
-							UseAnnotations: boolPtr(true),
+							UseAnnotations: new(true),
 						},
 					},
 				},
@@ -4267,7 +4263,7 @@ func Test_FilterApplicationsForUpdate(t *testing.T) {
 					ApplicationRefs: []api.ApplicationRef{
 						{
 							NamePattern:    "no-annotation-app",
-							UseAnnotations: boolPtr(true),
+							UseAnnotations: new(true),
 						},
 					},
 				},
@@ -4301,7 +4297,7 @@ func Test_FilterApplicationsForUpdate(t *testing.T) {
 					ApplicationRefs: []api.ApplicationRef{
 						{
 							NamePattern:    "empty-annotation-app",
-							UseAnnotations: boolPtr(true),
+							UseAnnotations: new(true),
 						},
 					},
 				},
@@ -4336,7 +4332,7 @@ func Test_FilterApplicationsForUpdate(t *testing.T) {
 					ApplicationRefs: []api.ApplicationRef{
 						{
 							NamePattern:    "invalid-annotation-app",
-							UseAnnotations: boolPtr(true),
+							UseAnnotations: new(true),
 						},
 					},
 				},
@@ -4372,7 +4368,7 @@ func Test_FilterApplicationsForUpdate(t *testing.T) {
 					ApplicationRefs: []api.ApplicationRef{
 						{
 							NamePattern:    "conflict-manifest-app",
-							UseAnnotations: boolPtr(true),
+							UseAnnotations: new(true),
 						},
 					},
 				},
@@ -4409,7 +4405,7 @@ func Test_FilterApplicationsForUpdate(t *testing.T) {
 							Images: []api.ImageConfig{
 								{Alias: "redis", ImageName: "redis:6"}, // Should be used
 							},
-							UseAnnotations: boolPtr(false), // Explicitly false
+							UseAnnotations: new(false), // Explicitly false
 						},
 					},
 				},
@@ -4485,15 +4481,15 @@ func Test_FilterApplicationsForUpdate(t *testing.T) {
 				ObjectMeta: v1.ObjectMeta{Name: "test-updater", Namespace: "testns"},
 				Spec: api.ImageUpdaterSpec{
 					CommonUpdateSettings: &api.CommonUpdateSettings{
-						UpdateStrategy: strPtr("semver"), // Should be ignored
+						UpdateStrategy: new("semver"), // Should be ignored
 					},
 					ApplicationRefs: []api.ApplicationRef{
 						{
 							NamePattern: "app-wide-settings-app",
 							CommonUpdateSettings: &api.CommonUpdateSettings{
-								UpdateStrategy: strPtr("latest"), // Should be ignored
+								UpdateStrategy: new("latest"), // Should be ignored
 							},
-							UseAnnotations: boolPtr(true),
+							UseAnnotations: new(true),
 						},
 					},
 				},
@@ -4529,15 +4525,15 @@ func Test_FilterApplicationsForUpdate(t *testing.T) {
 				ObjectMeta: v1.ObjectMeta{Name: "test-updater", Namespace: "testns"},
 				Spec: api.ImageUpdaterSpec{
 					WriteBackConfig: &api.WriteBackConfig{
-						Method: strPtr("argocd"), // Should be ignored
+						Method: new("argocd"), // Should be ignored
 					},
 					ApplicationRefs: []api.ApplicationRef{
 						{
 							NamePattern: "wbc-annotation-app",
 							WriteBackConfig: &api.WriteBackConfig{
-								Method: strPtr("argocd"), // Should be ignored
+								Method: new("argocd"), // Should be ignored
 							},
-							UseAnnotations: boolPtr(true),
+							UseAnnotations: new(true),
 						},
 					},
 				},
@@ -4584,7 +4580,7 @@ func Test_FilterApplicationsForUpdate(t *testing.T) {
 				ObjectMeta: v1.ObjectMeta{Name: "test-updater", Namespace: "testns"},
 				Spec: api.ImageUpdaterSpec{
 					ApplicationRefs: []api.ApplicationRef{
-						{NamePattern: "verify-ann-app", UseAnnotations: boolPtr(true)},
+						{NamePattern: "verify-ann-app", UseAnnotations: new(true)},
 					},
 				},
 			},
@@ -4619,7 +4615,7 @@ func Test_FilterApplicationsForUpdate(t *testing.T) {
 					ApplicationRefs: []api.ApplicationRef{
 						{
 							NamePattern:    "verify-app-level-app",
-							UseAnnotations: boolPtr(true),
+							UseAnnotations: new(true),
 							ImagesVerification: &api.ImagesVerification{
 								CosignKey: &api.SecretRef{SecretName: "app-cosign-secret", Key: "cosign.pub"},
 							},
@@ -4670,7 +4666,7 @@ func Test_FilterApplicationsForUpdate(t *testing.T) {
 					ApplicationRefs: []api.ApplicationRef{
 						{
 							NamePattern:    "verify-ignore-global-app",
-							UseAnnotations: boolPtr(true),
+							UseAnnotations: new(true),
 							// ImagesVerification intentionally unset at app level
 						},
 					},

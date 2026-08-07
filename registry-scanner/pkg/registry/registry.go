@@ -236,7 +236,7 @@ func (ep *RegistryEndpoint) SetEndpointCredentials(ctx context.Context, kubeClie
 	flightKey := ep.RegistryAPI + "|" + effectiveSource
 
 	// Use singleflight to prevent concurrent credential fetching for the same registry
-	result, err, _ := credentialGroup.Do(flightKey, func() (interface{}, error) {
+	result, err, _ := credentialGroup.Do(flightKey, func() (any, error) {
 		return ep.setEndpointCredentialsInternal(ctx, kubeClient, secretVal)
 	})
 	if err != nil {

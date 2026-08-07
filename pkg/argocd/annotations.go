@@ -99,7 +99,7 @@ func getCommonUpdateSettingsFromAnnotations(app *argocdapi.Application, updateSt
 
 	if ignoreTagsStr, ok := app.Annotations[updateStrategyAnnotations.IgnoreTags]; ok {
 		var ignoreTags []string
-		for _, ignoreTag := range strings.Split(ignoreTagsStr, ",") {
+		for ignoreTag := range strings.SplitSeq(ignoreTagsStr, ",") {
 			ignoreTag = strings.TrimSpace(ignoreTag)
 			// Preserve empty strings in ignore-tags to match expected behavior
 			ignoreTags = append(ignoreTags, ignoreTag)
@@ -121,7 +121,7 @@ func getCommonUpdateSettingsFromAnnotations(app *argocdapi.Application, updateSt
 	if updateStrategyAnnotations.Platforms != "" {
 		if platformsStr, ok := app.Annotations[updateStrategyAnnotations.Platforms]; ok {
 			var platforms []string
-			for _, platform := range strings.Split(platformsStr, ",") {
+			for platform := range strings.SplitSeq(platformsStr, ",") {
 				platform = strings.TrimSpace(platform)
 				if platform != "" {
 					platforms = append(platforms, platform)

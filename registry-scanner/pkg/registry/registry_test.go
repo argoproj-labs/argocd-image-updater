@@ -374,7 +374,7 @@ registries:
 		numGoroutines := 10
 		errors := make([]error, numGoroutines)
 
-		for i := 0; i < numGoroutines; i++ {
+		for i := range numGoroutines {
 			wg.Add(1)
 			go func(idx int) {
 				defer wg.Done()
@@ -434,13 +434,11 @@ registries:
 
 		// Launch concurrent calls - these should not refetch
 		var wg sync.WaitGroup
-		for i := 0; i < 10; i++ {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
+		for range 10 {
+			wg.Go(func() {
 				_, err := ep.SetEndpointCredentials(ctx, nil, "")
 				assert.NoError(t, err)
-			}()
+			})
 		}
 		wg.Wait()
 

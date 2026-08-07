@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -314,9 +315,7 @@ func TestWebhookServerHandleWebhookOversizedBody(t *testing.T) {
 // TestProcessWebhookEvent tests the processWebhookEvent helper function
 func TestProcessWebhookEvent(t *testing.T) {
 	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		server := createMockServer(t, 8080)
 
 		event := &argocd.WebhookEvent{
@@ -329,7 +328,7 @@ func TestProcessWebhookEvent(t *testing.T) {
 		err := server.processWebhookEvent(context.Background(), event)
 		assert.NoError(t, err)
 
-	}()
+	})
 	wg.Wait()
 }
 
@@ -645,11 +644,8 @@ func TestValidateTLSConfig(t *testing.T) {
 		// Find a cipher that supports TLS 1.2
 		var tls12CipherID uint16
 		for _, cs := range tls.CipherSuites() {
-			for _, v := range cs.SupportedVersions {
-				if v == tls.VersionTLS12 {
-					tls12CipherID = cs.ID
-					break
-				}
+			if slices.Contains(cs.SupportedVersions, tls.VersionTLS12) {
+				tls12CipherID = cs.ID
 			}
 			if tls12CipherID != 0 {
 				break
@@ -793,7 +789,7 @@ func TestWebhookServerStartWithTLS(t *testing.T) {
 
 	address := fmt.Sprintf("https://localhost:%d/healthz", server.Port)
 	var lastErr error
-	for i := 0; i < 50; i++ {
+	for range 50 {
 		resp, err := tlsClient.Get(address)
 		if err == nil {
 			resp.Body.Close()
@@ -841,7 +837,7 @@ func TestWebhookServerTLSNextProtoDisablesHTTP2(t *testing.T) {
 	}
 	address := fmt.Sprintf("https://localhost:%d/healthz", server.Port)
 	var lastErr error
-	for i := 0; i < 50; i++ {
+	for range 50 {
 		resp, err := tlsClient.Get(address)
 		if err == nil {
 			resp.Body.Close()

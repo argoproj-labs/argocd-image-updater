@@ -14,6 +14,7 @@ import (
 	"os"
 	"path"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -78,13 +79,7 @@ func TestHTTPSCreds_Environ_insecure_true(t *testing.T) {
 		io.Close(closer)
 	})
 	require.NoError(t, err)
-	found := false
-	for _, envVar := range env {
-		if envVar == "GIT_SSL_NO_VERIFY=true" {
-			found = true
-			break
-		}
-	}
+	found := slices.Contains(env, "GIT_SSL_NO_VERIFY=true")
 	assert.True(t, found)
 }
 
@@ -96,13 +91,7 @@ func TestHTTPSCreds_Environ_insecure_false(t *testing.T) {
 		io.Close(closer)
 	})
 	require.NoError(t, err)
-	found := false
-	for _, envVar := range env {
-		if envVar == "GIT_SSL_NO_VERIFY=true" {
-			found = true
-			break
-		}
-	}
+	found := slices.Contains(env, "GIT_SSL_NO_VERIFY=true")
 	assert.False(t, found)
 }
 
@@ -426,7 +415,7 @@ func githubAppMockServer(t *testing.T, token string) (server *httptest.Server, t
 			n++
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusCreated)
-			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			_ = json.NewEncoder(w).Encode(map[string]any{
 				"token":      token,
 				"expires_at": time.Now().Add(time.Hour).Format(time.RFC3339),
 			})

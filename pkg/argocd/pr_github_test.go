@@ -215,8 +215,8 @@ func Test_GithubPRService_create(t *testing.T) {
 
 				w.WriteHeader(http.StatusCreated)
 				resp := github.PullRequest{
-					Number:  github.Ptr(42),
-					HTMLURL: github.Ptr("https://github.com/org/repo/pull/42"),
+					Number:  new(42),
+					HTMLURL: new("https://github.com/org/repo/pull/42"),
 				}
 				_ = json.NewEncoder(w).Encode(resp)
 			},
@@ -300,7 +300,7 @@ func Test_GithubPRService_exists(t *testing.T) {
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusOK)
 				_ = json.NewEncoder(w).Encode([]*github.PullRequest{
-					{Number: github.Ptr(42)},
+					{Number: new(42)},
 				})
 			},
 			wantExists: true,
@@ -310,8 +310,8 @@ func Test_GithubPRService_exists(t *testing.T) {
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusOK)
 				_ = json.NewEncoder(w).Encode([]*github.PullRequest{
-					{Number: github.Ptr(42)},
-					{Number: github.Ptr(43)},
+					{Number: new(42)},
+					{Number: new(43)},
 				})
 			},
 			wantExists: true,

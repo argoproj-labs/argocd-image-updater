@@ -141,7 +141,7 @@ func Test_ParseCredentialReference(t *testing.T) {
 func Test_FetchCredentialsFromSecret(t *testing.T) {
 	t.Run("Fetch credentials from secret", func(t *testing.T) {
 		secretData := make(map[string][]byte)
-		secretData["username_password"] = []byte(fmt.Sprintf("%s:%s", "foo", "bar"))
+		secretData["username_password"] = fmt.Appendf(nil, "%s:%s", "foo", "bar")
 		secret := fixture.NewSecret("test", "test", secretData)
 		clientset := fake.NewFakeClientsetWithResources(secret)
 		credSrc := &CredentialSource{
@@ -164,7 +164,7 @@ func Test_FetchCredentialsFromSecret(t *testing.T) {
 
 	t.Run("Fetch credentials from secret with invalid config", func(t *testing.T) {
 		secretData := make(map[string][]byte)
-		secretData["username_password"] = []byte(fmt.Sprintf("%s:%s", "foo", "bar"))
+		secretData["username_password"] = fmt.Appendf(nil, "%s:%s", "foo", "bar")
 		secret := fixture.NewSecret("test", "test", secretData)
 		clientset := fake.NewFakeClientsetWithResources(secret)
 		credSrc := &CredentialSource{

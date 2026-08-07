@@ -31,14 +31,14 @@ func NewCloudEventsWebhook(secret string) *CloudEventsWebhook {
 
 // cloudEventsPayload represents the structure of a CloudEvents v1.0 payload
 type cloudEventsPayload struct {
-	SpecVersion     string                 `json:"specversion"`
-	Type            string                 `json:"type"`
-	Source          string                 `json:"source"`
-	Subject         string                 `json:"subject"`
-	ID              string                 `json:"id"`
-	Time            string                 `json:"time"`
-	DataContentType string                 `json:"datacontenttype"`
-	Data            map[string]interface{} `json:"data"`
+	SpecVersion     string         `json:"specversion"`
+	Type            string         `json:"type"`
+	Source          string         `json:"source"`
+	Subject         string         `json:"subject"`
+	ID              string         `json:"id"`
+	Time            string         `json:"time"`
+	DataContentType string         `json:"datacontenttype"`
+	Data            map[string]any `json:"data"`
 }
 
 // GetRegistryType returns the registry type this handler supports
@@ -231,7 +231,7 @@ func (c *CloudEventsWebhook) parseEvent(payload *cloudEventsPayload, ctx context
 
 // extractECRRegistryURL extracts ECR registry URL from CloudEvents source
 // Source format: urn:aws:ecr:<region>:<account>:repository/<repo> or arn:aws:ecr:<region>:<account>:repository/<repo>
-func (c *CloudEventsWebhook) extractECRRegistryURL(source string, data map[string]interface{}) string {
+func (c *CloudEventsWebhook) extractECRRegistryURL(source string, data map[string]any) string {
 	// Try to extract from source URN/ARN
 	if strings.HasPrefix(source, "urn:aws:ecr:") || strings.HasPrefix(source, "arn:aws:ecr:") {
 		parts := strings.Split(source, ":")

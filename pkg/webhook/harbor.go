@@ -82,7 +82,7 @@ func (h *HarborWebhook) Parse(r *http.Request) (*argocd.WebhookEvent, error) {
 				RepoFullName string `json:"repo_full_name"`
 				RepoType     string `json:"repo_type"`
 			} `json:"repository"`
-			CustomAttributes map[string]interface{} `json:"custom_attributes"`
+			CustomAttributes map[string]any `json:"custom_attributes"`
 		} `json:"event_data"`
 	}
 

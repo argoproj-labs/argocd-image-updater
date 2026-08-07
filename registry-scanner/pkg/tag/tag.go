@@ -3,6 +3,7 @@ package tag
 import (
 	"context"
 	"encoding/hex"
+	"maps"
 	"sort"
 	"sync"
 	"time"
@@ -72,9 +73,7 @@ func NewImageTagWithLabels(tagName string, tagDate time.Time, tagDigest string, 
 	tag.TagDate = &tagDate
 	tag.TagDigest = tagDigest
 	tag.Labels = make(map[string]string, len(labels))
-	for k, v := range labels {
-		tag.Labels[k] = v
-	}
+	maps.Copy(tag.Labels, labels)
 	return tag
 }
 

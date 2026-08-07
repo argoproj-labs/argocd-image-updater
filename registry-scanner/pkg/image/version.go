@@ -57,13 +57,13 @@ const (
 type VersionConstraint struct {
 	Constraint string
 	MatchFunc  MatchFuncFn
-	MatchArgs  interface{}
+	MatchArgs  any
 	IgnoreList []string
 	Strategy   UpdateStrategy
 	Options    *options.ManifestOptions
 }
 
-type MatchFuncFn func(tagName string, pattern interface{}) bool
+type MatchFuncFn func(tagName string, pattern any) bool
 
 // String returns the string representation of VersionConstraint
 func (vc *VersionConstraint) String() string {

@@ -41,10 +41,10 @@ func (g *GithubPRService) create(ctx context.Context) error {
 	}
 
 	newPR := &github.NewPullRequest{
-		Title: github.Ptr(g.pr.title),
-		Head:  github.Ptr(g.pr.head),
-		Base:  github.Ptr(g.pr.base),
-		Body:  github.Ptr(g.pr.body),
+		Title: new(g.pr.title),
+		Head:  new(g.pr.head),
+		Base:  new(g.pr.base),
+		Body:  new(g.pr.body),
 	}
 	githubPullRequest, _, err := g.client.PullRequests.Create(ctx, g.owner, g.repo, newPR)
 	if err != nil {
@@ -187,11 +187,11 @@ func parseGitHubOwnerRepo(repoURL string) (owner, repo string, err error) {
 		if !strings.HasPrefix(repoURL, "ssh://") {
 			// SCP-style: git@github.com:owner/repo.git
 			// The colon separates the host from the path.
-			idx := strings.Index(repoURL, ":")
-			if idx < 0 {
+			_, after, ok := strings.Cut(repoURL, ":")
+			if !ok {
 				return "", "", fmt.Errorf("malformed SSH repo URL %q: missing colon separator", repoURL)
 			}
-			pathStr = repoURL[idx+1:]
+			pathStr = after
 		} else {
 			// ssh://git@github.com/owner/repo.git
 			u, parseErr := url.Parse(repoURL)
