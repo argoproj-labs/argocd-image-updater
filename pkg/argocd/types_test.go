@@ -62,7 +62,7 @@ func Test_MarkPRCreated(t *testing.T) {
 		state := NewSyncIterationState()
 		var wg sync.WaitGroup
 		results := make([]bool, 10)
-		for i := 0; i < 10; i++ {
+		for i := range 10 {
 			wg.Add(1)
 			go func(idx int) {
 				defer wg.Done()

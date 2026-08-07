@@ -257,8 +257,8 @@ func Test_commitChangesPR(t *testing.T) {
 			assert.Equal(t, http.MethodPost, r.Method)
 			w.WriteHeader(http.StatusCreated)
 			_ = json.NewEncoder(w).Encode(gogithub.PullRequest{
-				Number:  gogithub.Ptr(1),
-				HTMLURL: gogithub.Ptr("http://example.com/pull/1"),
+				Number:  new(1),
+				HTMLURL: new("http://example.com/pull/1"),
 			})
 		}))
 		defer server.Close()
@@ -281,7 +281,7 @@ func Test_commitChangesPR(t *testing.T) {
 			if r.Method == http.MethodGet {
 				// exists: an existing open PR
 				w.WriteHeader(http.StatusOK)
-				_ = json.NewEncoder(w).Encode([]*gogithub.PullRequest{{Number: gogithub.Ptr(42)}})
+				_ = json.NewEncoder(w).Encode([]*gogithub.PullRequest{{Number: new(42)}})
 				return
 			}
 			// create should not be reached because exists found an existing PR

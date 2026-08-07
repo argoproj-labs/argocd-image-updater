@@ -610,12 +610,12 @@ func TestImageUpdaterReconciler_Reconcile_AdvancedScenarios(t *testing.T) {
 			},
 			Spec: argocdimageupdaterv1alpha1.ImageUpdaterSpec{
 				CommonUpdateSettings: &argocdimageupdaterv1alpha1.CommonUpdateSettings{
-					UpdateStrategy: stringPtr("latest"),
+					UpdateStrategy: new("latest"),
 				},
 				WriteBackConfig: &argocdimageupdaterv1alpha1.WriteBackConfig{
-					Method: stringPtr("git"),
+					Method: new("git"),
 					GitConfig: &argocdimageupdaterv1alpha1.GitConfig{
-						Branch: stringPtr("main"),
+						Branch: new("main"),
 					},
 				},
 				ApplicationRefs: []argocdimageupdaterv1alpha1.ApplicationRef{
@@ -1699,7 +1699,7 @@ func TestImageUpdaterReconciler_Reconcile_MultipleCRs_CheckIntervalZero(t *testi
 
 		// Wait for all CRs to complete
 		completedCRs := make([]string, 0, len(crs))
-		for i := 0; i < len(crs); i++ {
+		for range crs {
 			select {
 			case crName := <-completionOrder:
 				completedCRs = append(completedCRs, crName)
@@ -2173,10 +2173,6 @@ func TestImageUpdaterReconciler_Reconcile_Finalizer(t *testing.T) {
 		assert.Contains(t, imageUpdater.Finalizers, "third-finalizer", "Third finalizer should be preserved")
 		assert.Len(t, imageUpdater.Finalizers, 3, "Should have exactly three finalizers remaining")
 	})
-}
-
-func stringPtr(s string) *string {
-	return &s
 }
 
 // Assisted-by: Gemini AI

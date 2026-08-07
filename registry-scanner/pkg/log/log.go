@@ -83,7 +83,7 @@ func WithContext() *LogContext {
 }
 
 // AddField adds a structured field to logctx
-func (logctx *LogContext) AddField(key string, value interface{}) *LogContext {
+func (logctx *LogContext) AddField(key string, value any) *LogContext {
 	logctx.mutex.Lock()
 	logctx.fields[key] = value
 	logctx.mutex.Unlock()
@@ -96,7 +96,7 @@ func Log() *logrus.Logger {
 }
 
 // Tracef logs a debug message for logctx to stdout
-func (logctx *LogContext) Tracef(format string, args ...interface{}) {
+func (logctx *LogContext) Tracef(format string, args ...any) {
 	logger.SetOutput(logctx.normalOut)
 	if len(logctx.fields) > 0 {
 		logger.WithFields(logctx.fields).Tracef(format, args...)
@@ -106,7 +106,7 @@ func (logctx *LogContext) Tracef(format string, args ...interface{}) {
 }
 
 // Debugf logs a debug message for logctx to stdout
-func (logctx *LogContext) Debugf(format string, args ...interface{}) {
+func (logctx *LogContext) Debugf(format string, args ...any) {
 	logger.SetOutput(logctx.normalOut)
 	if len(logctx.fields) > 0 {
 		logger.WithFields(logctx.fields).Debugf(format, args...)
@@ -116,7 +116,7 @@ func (logctx *LogContext) Debugf(format string, args ...interface{}) {
 }
 
 // Infof logs an informational message for logctx to stdout
-func (logctx *LogContext) Infof(format string, args ...interface{}) {
+func (logctx *LogContext) Infof(format string, args ...any) {
 	logger.SetOutput(logctx.normalOut)
 	if len(logctx.fields) > 0 {
 		logger.WithFields(logctx.fields).Infof(format, args...)
@@ -126,7 +126,7 @@ func (logctx *LogContext) Infof(format string, args ...interface{}) {
 }
 
 // Warnf logs a warning message for logctx to stdout
-func (logctx *LogContext) Warnf(format string, args ...interface{}) {
+func (logctx *LogContext) Warnf(format string, args ...any) {
 	logger.SetOutput(logctx.normalOut)
 	if len(logctx.fields) > 0 {
 		logger.WithFields(logctx.fields).Warnf(format, args...)
@@ -136,7 +136,7 @@ func (logctx *LogContext) Warnf(format string, args ...interface{}) {
 }
 
 // Errorf logs a non-fatal error message for logctx to stdout
-func (logctx *LogContext) Errorf(format string, args ...interface{}) {
+func (logctx *LogContext) Errorf(format string, args ...any) {
 	logger.SetOutput(logctx.errorOut)
 	if len(logctx.fields) > 0 {
 		logger.WithFields(logctx.fields).Errorf(format, args...)
@@ -146,7 +146,7 @@ func (logctx *LogContext) Errorf(format string, args ...interface{}) {
 }
 
 // Fatalf logs a fatal error message for logctx to stdout
-func (logctx *LogContext) Fatalf(format string, args ...interface{}) {
+func (logctx *LogContext) Fatalf(format string, args ...any) {
 	logger.SetOutput(logctx.errorOut)
 	if len(logctx.fields) > 0 {
 		logger.WithFields(logctx.fields).Fatalf(format, args...)
@@ -156,37 +156,37 @@ func (logctx *LogContext) Fatalf(format string, args ...interface{}) {
 }
 
 // Tracef logs a warning message without context to stdout
-func Tracef(format string, args ...interface{}) {
+func Tracef(format string, args ...any) {
 	logCtx := NewContext()
 	logCtx.Tracef(format, args...)
 }
 
 // Debugf logs a warning message without context to stdout
-func Debugf(format string, args ...interface{}) {
+func Debugf(format string, args ...any) {
 	logCtx := NewContext()
 	logCtx.Debugf(format, args...)
 }
 
 // Infof logs a warning message without context to stdout
-func Infof(format string, args ...interface{}) {
+func Infof(format string, args ...any) {
 	logCtx := NewContext()
 	logCtx.Infof(format, args...)
 }
 
 // Warnf logs a warning message without context to stdout
-func Warnf(format string, args ...interface{}) {
+func Warnf(format string, args ...any) {
 	logCtx := NewContext()
 	logCtx.Warnf(format, args...)
 }
 
 // Errorf logs an error message without context to stderr
-func Errorf(format string, args ...interface{}) {
+func Errorf(format string, args ...any) {
 	logCtx := NewContext()
 	logCtx.Errorf(format, args...)
 }
 
 // Fatalf logs a non-recoverable error message without context to stderr
-func Fatalf(format string, args ...interface{}) {
+func Fatalf(format string, args ...any) {
 	logCtx := NewContext()
 	logCtx.Fatalf(format, args...)
 }

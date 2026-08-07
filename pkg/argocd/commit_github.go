@@ -109,9 +109,9 @@ type createCommitOnBranchResponse struct {
 // server-side by GitHub and signed with GitHub's key; with a GitHub App
 // installation token they are authored as the App's bot user.
 func createCommitOnBranch(ctx context.Context, endpoint, token string, input *commitOnBranchInput) (string, error) {
-	payload, err := json.Marshal(map[string]interface{}{
+	payload, err := json.Marshal(map[string]any{
 		"query":     createCommitOnBranchMutation,
-		"variables": map[string]interface{}{"input": input},
+		"variables": map[string]any{"input": input},
 	})
 	if err != nil {
 		return "", fmt.Errorf("could not marshal createCommitOnBranch request: %w", err)
@@ -207,8 +207,8 @@ func commitChangesGithubAPI(ctx context.Context, wbc *WriteBackConfig, gitC git.
 			return err
 		}
 		ref := &github.Reference{
-			Ref:    github.Ptr("refs/heads/" + pushBranch),
-			Object: &github.GitObject{SHA: github.Ptr(headOID)},
+			Ref:    new("refs/heads/" + pushBranch),
+			Object: &github.GitObject{SHA: new(headOID)},
 		}
 		if _, _, err := restClient.Git.CreateRef(ctx, owner, repoName, ref); err != nil {
 			if !isRefAlreadyExistsError(err) {

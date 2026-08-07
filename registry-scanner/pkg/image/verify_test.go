@@ -64,7 +64,7 @@ func signPAE(t *testing.T, priv *ecdsa.PrivateKey, payloadType string, payload [
 func makeDSSEBundle(t *testing.T, priv *ecdsa.PrivateKey, imgDigest string) (manifest *ocischema.DeserializedManifest, blobDigest string, blobBytes []byte) {
 	t.Helper()
 
-	payload := []byte(fmt.Sprintf(`{"critical":{"image":{"docker-manifest-digest":"%s"}}}`, imgDigest))
+	payload := fmt.Appendf(nil, `{"critical":{"image":{"docker-manifest-digest":"%s"}}}`, imgDigest)
 	payloadType := "application/vnd.dev.cosign.simplesigning.v1+json"
 	paeHash := sha256.Sum256(computePAE(payloadType, payload))
 	sig, err := ecdsa.SignASN1(rand.Reader, priv, paeHash[:])
@@ -99,7 +99,7 @@ func makeDSSEBundle(t *testing.T, priv *ecdsa.PrivateKey, imgDigest string) (man
 func makeDSSEBundleWithSigners(t *testing.T, privKeys []*ecdsa.PrivateKey, imgDigest string) (manifest *ocischema.DeserializedManifest, blobDigest string, blobBytes []byte) {
 	t.Helper()
 
-	payload := []byte(fmt.Sprintf(`{"critical":{"image":{"docker-manifest-digest":"%s"}}}`, imgDigest))
+	payload := fmt.Appendf(nil, `{"critical":{"image":{"docker-manifest-digest":"%s"}}}`, imgDigest)
 	payloadType := "application/vnd.dev.cosign.simplesigning.v1+json"
 	paeHash := sha256.Sum256(computePAE(payloadType, payload))
 
@@ -141,7 +141,7 @@ func makeDSSEBundleWithSigners(t *testing.T, privKeys []*ecdsa.PrivateKey, imgDi
 func makeSimpleSigning(t *testing.T, priv *ecdsa.PrivateKey, imgDigest string) (manifest *ocischema.DeserializedManifest, blobDigest string, blobBytes []byte) {
 	t.Helper()
 
-	payload := []byte(fmt.Sprintf(`{"critical":{"image":{"docker-manifest-digest":"%s"},"type":"cosign container image signature"}}`, imgDigest))
+	payload := fmt.Appendf(nil, `{"critical":{"image":{"docker-manifest-digest":"%s"},"type":"cosign container image signature"}}`, imgDigest)
 	payloadHash := sha256.Sum256(payload)
 	sig, err := ecdsa.SignASN1(rand.Reader, priv, payloadHash[:])
 	require.NoError(t, err)
@@ -826,7 +826,7 @@ func Test_extractDSSEBundle(t *testing.T) {
 		testImageDigest = "sha256:29d4b64da00e01ca2ce893a1d2bfe5ca6e6421c107f52fdffe6537bf760ddc03"
 		otherDigest     = "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
 	)
-	payload := []byte(fmt.Sprintf(`{"critical":{"image":{"docker-manifest-digest":"%s"}}}`, testImageDigest))
+	payload := fmt.Appendf(nil, `{"critical":{"image":{"docker-manifest-digest":"%s"}}}`, testImageDigest)
 	payloadType := "application/vnd.dev.cosign.simplesigning.v1+json"
 	expectedDigest := godigest.Digest(testImageDigest)
 
@@ -907,7 +907,7 @@ func Test_extractDSSEBundle(t *testing.T) {
 
 	t.Run("payload digest mismatch returns error", func(t *testing.T) {
 		// Bundle claims a DIFFERENT image digest than expectedDigest — replay-attack scenario.
-		wrongPayload := []byte(fmt.Sprintf(`{"critical":{"image":{"docker-manifest-digest":"%s"}}}`, otherDigest))
+		wrongPayload := fmt.Appendf(nil, `{"critical":{"image":{"docker-manifest-digest":"%s"}}}`, otherDigest)
 		blobBytes, err := json.Marshal(sigstoreBundle{
 			DSSEEnvelope: &dsseEnvelope{
 				Payload:     base64.StdEncoding.EncodeToString(wrongPayload),
@@ -956,10 +956,10 @@ func Test_extractDSSEBundle(t *testing.T) {
 		// v1 Statement in the DSSE envelope instead of the legacy
 		// simple-signing JSON. Verified empirically against cosign v3.1.1.
 		inTotoPayloadType := "application/vnd.in-toto+json"
-		inTotoPayload := []byte(fmt.Sprintf(
+		inTotoPayload := fmt.Appendf(nil,
 			`{"_type":"https://in-toto.io/Statement/v1","subject":[{"digest":{"sha256":"%s"},"annotations":{}}],"predicateType":"https://sigstore.dev/cosign/sign/v1","predicate":{}}`,
 			expectedDigest.Encoded(),
-		))
+		)
 		paeHash := sha256.Sum256(computePAE(inTotoPayloadType, inTotoPayload))
 		sig, err := ecdsa.SignASN1(rand.Reader, kp.priv, paeHash[:])
 		require.NoError(t, err)
@@ -986,10 +986,10 @@ func Test_extractDSSEBundle(t *testing.T) {
 
 	t.Run("in-toto statement payload with mismatched subject digest fails", func(t *testing.T) {
 		inTotoPayloadType := "application/vnd.in-toto+json"
-		inTotoPayload := []byte(fmt.Sprintf(
+		inTotoPayload := fmt.Appendf(nil,
 			`{"_type":"https://in-toto.io/Statement/v1","subject":[{"digest":{"sha256":"%s"},"annotations":{}}],"predicateType":"https://sigstore.dev/cosign/sign/v1","predicate":{}}`,
 			godigest.Digest(otherDigest).Encoded(),
-		))
+		)
 		paeHash := sha256.Sum256(computePAE(inTotoPayloadType, inTotoPayload))
 		sig, err := ecdsa.SignASN1(rand.Reader, kp.priv, paeHash[:])
 		require.NoError(t, err)
@@ -1062,7 +1062,7 @@ func Test_VerifyWithPublicKey(t *testing.T) {
 		payloadType := "application/vnd.dev.cosign.simplesigning.v1+json"
 		// Content only needs to produce a verifiable ECDSA signature; digest binding
 		// is not exercised on the cache-hit path.
-		cachedPayload := []byte(fmt.Sprintf(`{"critical":{"image":{"docker-manifest-digest":"%s"}}}`, imgManifestDigest))
+		cachedPayload := fmt.Appendf(nil, `{"critical":{"image":{"docker-manifest-digest":"%s"}}}`, imgManifestDigest)
 		digestHex, sigB64 := signPAE(t, kp.priv, payloadType, cachedPayload)
 		img.ImageTag.TagSignatures = []*tag.TagSignature{{Sig: sigB64, PayloadDigest: digestHex}}
 

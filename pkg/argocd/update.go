@@ -414,7 +414,7 @@ func setAppImage(ctx context.Context, app *v1alpha1.Application, img *image.Cont
 	}
 }
 
-func marshalWithIndent(in interface{}, indent int) (out []byte, err error) {
+func marshalWithIndent(in any, indent int) (out []byte, err error) {
 	var b bytes.Buffer
 	encoder := yaml.NewEncoder(&b)
 	defer encoder.Close()
@@ -754,7 +754,7 @@ func nodeKindString(k yaml.Kind) string {
 }
 
 // setHelmValue sets value of the parameter passed from the CRD configuration.
-func setHelmValue(currentValues *yaml.Node, key string, value interface{}) error {
+func setHelmValue(currentValues *yaml.Node, key string, value any) error {
 	current := currentValues
 
 	// an unmarshalled document has a DocumentNode at the root, but
@@ -1055,7 +1055,7 @@ func isSafePlainScalar(s string) bool {
 	// Reject values a YAML parser resolves as a non-string (int, float, bool,
 	// null): written unquoted, an image tag like "1.20" or "true" would
 	// round-trip as a float/bool instead of a string.
-	var v interface{}
+	var v any
 	if err := yaml.Unmarshal([]byte(s), &v); err != nil {
 		return false
 	}

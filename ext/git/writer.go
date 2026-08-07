@@ -114,7 +114,7 @@ func (m *nativeGitClient) SymRefToBranch(ctx context.Context, symRef string) (st
 	if err != nil {
 		return "", fmt.Errorf("error running git: %v", err)
 	}
-	for _, l := range strings.Split(output, "\n") {
+	for l := range strings.SplitSeq(output, "\n") {
 		l = strings.TrimSpace(l)
 		if strings.HasPrefix(l, "HEAD branch:") {
 			b := strings.SplitN(l, ":", 2)

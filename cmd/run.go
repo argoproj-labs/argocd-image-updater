@@ -105,7 +105,7 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 				WithValues(logrusFieldsToLogrValues(common.ControllerLogFields)...)
 
 			setupLogger.Info("Controller runtime logger initialized.", "setAppLogLevel", cfg.LogLevel)
-			logFields := []interface{}{
+			logFields := []any{
 				"app", version.BinaryName() + ": " + version.Version(),
 				"loglevel", strings.ToUpper(cfg.LogLevel),
 				"interval", argocd.GetPrintableInterval(cfg.CheckInterval),
@@ -363,8 +363,8 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 // will be converted to a slice like:
 //
 //	[]interface{}{"controller", "imageupdater", "version", "v1.0"}
-func logrusFieldsToLogrValues(fields logrus.Fields) []interface{} {
-	values := make([]interface{}, 0, len(fields)*2)
+func logrusFieldsToLogrValues(fields logrus.Fields) []any {
+	values := make([]any, 0, len(fields)*2)
 	for key, val := range fields {
 		values = append(values, key, val)
 	}
@@ -522,7 +522,7 @@ func getCacheOptions(setupLogger logr.Logger, cfg *controller.ImageUpdaterConfig
 
 	// Comma-separated list: watch specific namespaces.
 	nsMap := make(map[string]cache.Config)
-	for _, ns := range strings.Split(watchNamespaces, ",") {
+	for ns := range strings.SplitSeq(watchNamespaces, ",") {
 		ns = strings.TrimSpace(ns)
 		if ns != "" {
 			nsMap[ns] = cache.Config{}

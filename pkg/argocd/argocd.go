@@ -804,7 +804,7 @@ func getHelmParam(params []argocdapi.HelmParameter, name string) *argocdapi.Helm
 // Helm parameters given as src.
 func mergeHelmParams(src []argocdapi.HelmParameter, merge []argocdapi.HelmParameter) []argocdapi.HelmParameter {
 	retParams := make([]argocdapi.HelmParameter, 0)
-	merged := make(map[string]interface{})
+	merged := make(map[string]any)
 
 	// first look for params that need replacement
 	for _, srcParam := range src {

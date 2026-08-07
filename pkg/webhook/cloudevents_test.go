@@ -124,7 +124,7 @@ func TestCloudEventsWebhook_Validate(t *testing.T) {
 func TestCloudEventsWebhook_Parse_ECR(t *testing.T) {
 	tests := []struct {
 		name            string
-		payload         map[string]interface{}
+		payload         map[string]any
 		wantRegistryURL string
 		wantRepository  string
 		wantTag         string
@@ -134,7 +134,7 @@ func TestCloudEventsWebhook_Parse_ECR(t *testing.T) {
 	}{
 		{
 			name: "valid ECR push event",
-			payload: map[string]interface{}{
+			payload: map[string]any{
 				"specversion":     "1.0",
 				"id":              "12345678-1234-1234-1234-123456789012",
 				"type":            "com.amazon.ecr.image.push",
@@ -142,7 +142,7 @@ func TestCloudEventsWebhook_Parse_ECR(t *testing.T) {
 				"subject":         "my-repo:v1.0.0",
 				"time":            "2025-11-27T10:00:00Z",
 				"datacontenttype": "application/json",
-				"data": map[string]interface{}{
+				"data": map[string]any{
 					"repositoryName": "my-repo",
 					"imageDigest":    "sha256:abcdef1234567890",
 					"imageTag":       "v1.0.0",
@@ -157,7 +157,7 @@ func TestCloudEventsWebhook_Parse_ECR(t *testing.T) {
 		},
 		{
 			name: "ECR event with namespace in repository name",
-			payload: map[string]interface{}{
+			payload: map[string]any{
 				"specversion":     "1.0",
 				"id":              "12345678-1234-1234-1234-123456789012",
 				"type":            "com.amazon.ecr.image.push",
@@ -165,7 +165,7 @@ func TestCloudEventsWebhook_Parse_ECR(t *testing.T) {
 				"subject":         "team/my-app:latest",
 				"time":            "2025-11-27T10:00:00Z",
 				"datacontenttype": "application/json",
-				"data": map[string]interface{}{
+				"data": map[string]any{
 					"repositoryName": "team/my-app",
 					"imageDigest":    "sha256:1234567890abcdef",
 					"imageTag":       "latest",
@@ -180,7 +180,7 @@ func TestCloudEventsWebhook_Parse_ECR(t *testing.T) {
 		},
 		{
 			name: "ECR event with subject fallback",
-			payload: map[string]interface{}{
+			payload: map[string]any{
 				"specversion":     "1.0",
 				"id":              "12345678-1234-1234-1234-123456789012",
 				"type":            "com.amazon.ecr.image.push",
@@ -188,7 +188,7 @@ func TestCloudEventsWebhook_Parse_ECR(t *testing.T) {
 				"subject":         "myrepo:v2.1.0",
 				"time":            "2025-11-27T10:00:00Z",
 				"datacontenttype": "application/json",
-				"data": map[string]interface{}{
+				"data": map[string]any{
 					"imageDigest": "sha256:fedcba0987654321",
 					"registryId":  "111111111111",
 				},
@@ -201,14 +201,14 @@ func TestCloudEventsWebhook_Parse_ECR(t *testing.T) {
 		},
 		{
 			name: "missing repository name",
-			payload: map[string]interface{}{
+			payload: map[string]any{
 				"specversion":     "1.0",
 				"id":              "12345678-1234-1234-1234-123456789012",
 				"type":            "com.amazon.ecr.image.push",
 				"source":          "urn:aws:ecr:us-east-1:123456789012:repository/test",
 				"time":            "2025-11-27T10:00:00Z",
 				"datacontenttype": "application/json",
-				"data": map[string]interface{}{
+				"data": map[string]any{
 					"imageTag":   "v1.0.0",
 					"registryId": "123456789012",
 				},
@@ -218,14 +218,14 @@ func TestCloudEventsWebhook_Parse_ECR(t *testing.T) {
 		},
 		{
 			name: "missing tag",
-			payload: map[string]interface{}{
+			payload: map[string]any{
 				"specversion":     "1.0",
 				"id":              "12345678-1234-1234-1234-123456789012",
 				"type":            "com.amazon.ecr.image.push",
 				"source":          "urn:aws:ecr:us-east-1:123456789012:repository/test",
 				"time":            "2025-11-27T10:00:00Z",
 				"datacontenttype": "application/json",
-				"data": map[string]interface{}{
+				"data": map[string]any{
 					"repositoryName": "test",
 					"registryId":     "123456789012",
 				},
@@ -267,7 +267,7 @@ func TestCloudEventsWebhook_Parse_ECR(t *testing.T) {
 func TestCloudEventsWebhook_Parse_Generic(t *testing.T) {
 	tests := []struct {
 		name            string
-		payload         map[string]interface{}
+		payload         map[string]any
 		wantRegistryURL string
 		wantRepository  string
 		wantTag         string
@@ -277,7 +277,7 @@ func TestCloudEventsWebhook_Parse_Generic(t *testing.T) {
 	}{
 		{
 			name: "generic container push event",
-			payload: map[string]interface{}{
+			payload: map[string]any{
 				"specversion":     "1.0",
 				"id":              "event-123",
 				"type":            "com.example.container.push",
@@ -285,7 +285,7 @@ func TestCloudEventsWebhook_Parse_Generic(t *testing.T) {
 				"subject":         "myapp:v1.2.3",
 				"time":            "2025-11-27T10:00:00Z",
 				"datacontenttype": "application/json",
-				"data": map[string]interface{}{
+				"data": map[string]any{
 					"repository":  "myapp",
 					"tag":         "v1.2.3",
 					"digest":      "sha256:abc123",
@@ -300,7 +300,7 @@ func TestCloudEventsWebhook_Parse_Generic(t *testing.T) {
 		},
 		{
 			name: "generic image event with alternate field names",
-			payload: map[string]interface{}{
+			payload: map[string]any{
 				"specversion":     "1.0",
 				"id":              "event-456",
 				"type":            "org.container.image.published",
@@ -308,7 +308,7 @@ func TestCloudEventsWebhook_Parse_Generic(t *testing.T) {
 				"subject":         "project/app:2.0.0",
 				"time":            "2025-11-27T10:00:00Z",
 				"datacontenttype": "application/json",
-				"data": map[string]interface{}{
+				"data": map[string]any{
 					"repositoryName": "project/app",
 					"imageTag":       "2.0.0",
 					"imageDigest":    "sha256:def456",
@@ -323,7 +323,7 @@ func TestCloudEventsWebhook_Parse_Generic(t *testing.T) {
 		},
 		{
 			name: "event with source URL extraction",
-			payload: map[string]interface{}{
+			payload: map[string]any{
 				"specversion":     "1.0",
 				"id":              "event-789",
 				"type":            "container.push",
@@ -331,7 +331,7 @@ func TestCloudEventsWebhook_Parse_Generic(t *testing.T) {
 				"subject":         "owner/repo:v3.0.0",
 				"time":            "2025-11-27T10:00:00Z",
 				"datacontenttype": "application/json",
-				"data": map[string]interface{}{
+				"data": map[string]any{
 					"repository": "owner/repo",
 					"tag":        "v3.0.0",
 				},
@@ -343,12 +343,12 @@ func TestCloudEventsWebhook_Parse_Generic(t *testing.T) {
 		},
 		{
 			name: "missing specversion",
-			payload: map[string]interface{}{
+			payload: map[string]any{
 				"id":              "event-123",
 				"type":            "container.push",
 				"source":          "https://registry.example.com",
 				"datacontenttype": "application/json",
-				"data": map[string]interface{}{
+				"data": map[string]any{
 					"repository": "myapp",
 					"tag":        "v1.0.0",
 				},
@@ -358,12 +358,12 @@ func TestCloudEventsWebhook_Parse_Generic(t *testing.T) {
 		},
 		{
 			name: "missing type",
-			payload: map[string]interface{}{
+			payload: map[string]any{
 				"specversion":     "1.0",
 				"id":              "event-123",
 				"source":          "https://registry.example.com",
 				"datacontenttype": "application/json",
-				"data": map[string]interface{}{
+				"data": map[string]any{
 					"repository": "myapp",
 					"tag":        "v1.0.0",
 				},
@@ -373,13 +373,13 @@ func TestCloudEventsWebhook_Parse_Generic(t *testing.T) {
 		},
 		{
 			name: "unsupported event type",
-			payload: map[string]interface{}{
+			payload: map[string]any{
 				"specversion":     "1.0",
 				"id":              "event-123",
 				"type":            "com.example.database.updated",
 				"source":          "https://db.example.com",
 				"datacontenttype": "application/json",
-				"data": map[string]interface{}{
+				"data": map[string]any{
 					"table": "users",
 				},
 			},
@@ -423,19 +423,19 @@ func TestCloudEventsWebhook_ExtractECRRegistryURL(t *testing.T) {
 	tests := []struct {
 		name   string
 		source string
-		data   map[string]interface{}
+		data   map[string]any
 		want   string
 	}{
 		{
 			name:   "valid ECR URN",
 			source: "urn:aws:ecr:us-east-1:123456789012:repository/myrepo",
-			data:   map[string]interface{}{},
+			data:   map[string]any{},
 			want:   "123456789012.dkr.ecr.us-east-1.amazonaws.com",
 		},
 		{
 			name:   "ECR URN with registryId fallback",
 			source: "urn:aws:ecr:eu-west-1:987654321098:repository/test",
-			data: map[string]interface{}{
+			data: map[string]any{
 				"registryId": "987654321098",
 			},
 			want: "987654321098.dkr.ecr.eu-west-1.amazonaws.com",
@@ -443,13 +443,13 @@ func TestCloudEventsWebhook_ExtractECRRegistryURL(t *testing.T) {
 		{
 			name:   "valid ARN format (arn:aws:ecr)",
 			source: "arn:aws:ecr:us-west-2:987654321098:repository/my-app",
-			data:   map[string]interface{}{},
+			data:   map[string]any{},
 			want:   "987654321098.dkr.ecr.us-west-2.amazonaws.com",
 		},
 		{
 			name:   "invalid source format",
 			source: "invalid-source",
-			data:   map[string]interface{}{},
+			data:   map[string]any{},
 			want:   "",
 		},
 	}

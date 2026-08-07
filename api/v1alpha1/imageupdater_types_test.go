@@ -204,7 +204,7 @@ var _ = Describe("ApplicationRef UseAnnotations Validation", func() {
 					ApplicationRefs: []ApplicationRef{
 						{
 							NamePattern:    "*",
-							UseAnnotations: boolPtr(false),
+							UseAnnotations: new(false),
 							LabelSelectors: &metav1.LabelSelector{
 								MatchLabels: map[string]string{
 									"app.kubernetes.io/part-of": "my-project-1",
@@ -231,7 +231,7 @@ var _ = Describe("ApplicationRef UseAnnotations Validation", func() {
 					ApplicationRefs: []ApplicationRef{
 						{
 							NamePattern:    "*",
-							UseAnnotations: boolPtr(false),
+							UseAnnotations: new(false),
 							LabelSelectors: &metav1.LabelSelector{
 								MatchLabels: map[string]string{
 									"app.kubernetes.io/part-of": "my-project-1",
@@ -268,7 +268,7 @@ var _ = Describe("ApplicationRef UseAnnotations Validation", func() {
 					ApplicationRefs: []ApplicationRef{
 						{
 							NamePattern:    "*",
-							UseAnnotations: boolPtr(true),
+							UseAnnotations: new(true),
 							LabelSelectors: &metav1.LabelSelector{
 								MatchLabels: map[string]string{
 									"app.kubernetes.io/part-of": "my-project-1",
@@ -298,7 +298,7 @@ var _ = Describe("ApplicationRef UseAnnotations Validation", func() {
 					ApplicationRefs: []ApplicationRef{
 						{
 							NamePattern:    "*",
-							UseAnnotations: boolPtr(true),
+							UseAnnotations: new(true),
 							LabelSelectors: &metav1.LabelSelector{
 								MatchLabels: map[string]string{
 									"app.kubernetes.io/part-of": "my-project-1",
@@ -389,7 +389,7 @@ var _ = Describe("ApplicationRef UseAnnotations Validation", func() {
 					ApplicationRefs: []ApplicationRef{
 						{
 							NamePattern:    "*",
-							UseAnnotations: boolPtr(false),
+							UseAnnotations: new(false),
 							Images:         []ImageConfig{}, // Empty array
 						},
 					},
@@ -413,12 +413,12 @@ var _ = Describe("ApplicationRef UseAnnotations Validation", func() {
 					ApplicationRefs: []ApplicationRef{
 						{
 							NamePattern:    "app-1",
-							UseAnnotations: boolPtr(true),
+							UseAnnotations: new(true),
 							// Valid: useAnnotations is true
 						},
 						{
 							NamePattern:    "app-2",
-							UseAnnotations: boolPtr(false),
+							UseAnnotations: new(false),
 							// Invalid: useAnnotations is false but no images
 						},
 					},
@@ -440,11 +440,11 @@ var _ = Describe("ApplicationRef UseAnnotations Validation", func() {
 					ApplicationRefs: []ApplicationRef{
 						{
 							NamePattern:    "app-1",
-							UseAnnotations: boolPtr(true),
+							UseAnnotations: new(true),
 						},
 						{
 							NamePattern:    "app-2",
-							UseAnnotations: boolPtr(false),
+							UseAnnotations: new(false),
 							Images: []ImageConfig{
 								{
 									Alias:     "nginx",
@@ -484,7 +484,7 @@ var _ = Describe("HelmTarget Validation", func() {
 									ImageName: "nginx:1.21.0",
 									ManifestTarget: &ManifestTarget{
 										Helm: &HelmTarget{
-											Spec: strPtr("image"),
+											Spec: new("image"),
 										},
 									},
 								},
@@ -518,9 +518,9 @@ var _ = Describe("HelmTarget Validation", func() {
 									ImageName: "nginx:1.21.0",
 									ManifestTarget: &ManifestTarget{
 										Helm: &HelmTarget{
-											Spec: strPtr("image"),
-											Name: strPtr("image.repository"),
-											Tag:  strPtr("image.tag"),
+											Spec: new("image"),
+											Name: new("image.repository"),
+											Tag:  new("image.tag"),
 										},
 									},
 								},
@@ -556,8 +556,8 @@ var _ = Describe("HelmTarget Validation", func() {
 									ImageName: "nginx:1.21.0",
 									ManifestTarget: &ManifestTarget{
 										Helm: &HelmTarget{
-											Name: strPtr("image.repository"),
-											Tag:  strPtr("image.tag"),
+											Name: new("image.repository"),
+											Tag:  new("image.tag"),
 										},
 									},
 								},
@@ -591,7 +591,7 @@ var _ = Describe("HelmTarget Validation", func() {
 									ImageName: "nginx:1.21.0",
 									ManifestTarget: &ManifestTarget{
 										Helm: &HelmTarget{
-											Name: strPtr("image.repository"),
+											Name: new("image.repository"),
 										},
 									},
 								},
@@ -625,7 +625,7 @@ var _ = Describe("HelmTarget Validation", func() {
 									ImageName: "nginx:1.21.0",
 									ManifestTarget: &ManifestTarget{
 										Helm: &HelmTarget{
-											Tag: strPtr("image.tag"),
+											Tag: new("image.tag"),
 										},
 									},
 								},
@@ -697,7 +697,7 @@ var _ = Describe("PullRequest Validation", func() {
 				ApplicationRefs: []ApplicationRef{
 					{
 						NamePattern:    "*",
-						UseAnnotations: boolPtr(true),
+						UseAnnotations: new(true),
 					},
 				},
 			},
@@ -745,13 +745,3 @@ var _ = Describe("PullRequest Validation", func() {
 		})
 	})
 })
-
-// Helper function to create a bool pointer
-func boolPtr(b bool) *bool {
-	return &b
-}
-
-// Helper function to create a string pointer
-func strPtr(s string) *string {
-	return &s
-}
