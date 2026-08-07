@@ -2739,6 +2739,55 @@ kustomize:
 		assert.Equal(t, "", strings.TrimSpace(string(yaml)))
 	})
 
+	t.Run("Target is a standard kustomization.yaml file", func(t *testing.T) {
+		app := v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name: "testapp",
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: &v1alpha1.ApplicationSource{
+					RepoURL:        "https://example.com/example",
+					TargetRevision: "main",
+					Kustomize: &v1alpha1.ApplicationSourceKustomize{
+						Images: v1alpha1.KustomizeImages{
+							"harbor.mark.demo/guli/gulimall-auth-server:ac47eef",
+						},
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypeKustomize,
+			},
+		}
+		// A standard kustomization.yaml, as opposed to an image-updater override file.
+		// Merging overrides into it would silently discard resources/namespace/etc.
+		originalData := []byte(`apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: gulimall-auth-server
+
+images:
+  - name: gulimall-auth-server
+    newName: harbor.mark.demo/guli/gulimall-auth-server
+    newTag: ac47eef
+
+resources:
+  - deployment.yaml
+  - service.yaml
+`)
+		applicationImages := &ApplicationImages{
+			Application: app,
+			Images: ImageList{
+				NewImage(
+					image.NewFromIdentifier("harbor.mark.demo/guli/gulimall-auth-server")),
+			},
+		}
+
+		yaml, err := marshalParamsOverride(context.Background(), applicationImages, originalData)
+		require.Error(t, err)
+		assert.Nil(t, yaml)
+		assert.Contains(t, err.Error(), "kind: Kustomization")
+	})
+
 	t.Run("Valid Helm source", func(t *testing.T) {
 		// foo and bar are live overrides on the Application that are not
 		// managed by any tracked image (the image below uses no alias, so
