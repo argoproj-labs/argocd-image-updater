@@ -391,38 +391,80 @@ func TestWebhookServerWebhookEndpoint(t *testing.T) {
 	}
 }
 
-// TestWebhookServerRateLimit tests to see if the webhook endpoint's rate limiting functionality works
+var validDockerHubBody = []byte(`{
+	"repository": {
+		"repo_name": "somepersononthisfakeregistry/myimagethatdoescoolstuff",
+		"name": "myimagethatdoescoolstuff",
+		"namespace": "randomplaceincluster"
+	},
+	"push_data": {
+		"tag": "v12.0.9"
+	}
+}`)
+
+// TestWebhookServerRateLimit tests that the rate limiter is called on a
+// successful enqueue and that its token is NOT consumed when the queue is full.
 func TestWebhookServerRateLimit(t *testing.T) {
+	t.Run("rate limiter called on successful enqueue", func(t *testing.T) {
+		server := createMockServer(t, 8080)
+		server.Handler.RegisterHandler(NewDockerHubWebhook(""))
+
+		mock := &mockRateLimiter{}
+		server.RateLimiter = mock
+
+		req := httptest.NewRequest(http.MethodPost, "/webhook?type=docker.io", bytes.NewReader(validDockerHubBody))
+		rec := httptest.NewRecorder()
+		server.handleWebhook(rec, req)
+
+		assert.Equal(t, http.StatusOK, rec.Result().StatusCode)
+		assert.True(t, mock.Called, "RateLimiter.Take should be called on successful enqueue")
+	})
+
+	t.Run("rate limiter NOT called when queue is full", func(t *testing.T) {
+		server := createMockServer(t, 8080)
+		server.Handler.RegisterHandler(NewDockerHubWebhook(""))
+		// Replace the queue with an unbuffered channel so the non-blocking send
+		// always falls through to the default (503) branch.
+		server.eventQueue = make(chan *argocd.WebhookEvent)
+
+		mock := &mockRateLimiter{}
+		server.RateLimiter = mock
+
+		req := httptest.NewRequest(http.MethodPost, "/webhook?type=docker.io", bytes.NewReader(validDockerHubBody))
+		rec := httptest.NewRecorder()
+		server.handleWebhook(rec, req)
+
+		assert.Equal(t, http.StatusServiceUnavailable, rec.Result().StatusCode)
+		assert.False(t, mock.Called, "RateLimiter.Take should NOT be called when queue is full")
+	})
+}
+
+// TestWebhookServerQueueFull verifies that handleWebhook returns 503 when the
+// event queue has no capacity and that a subsequent request succeeds once space
+// is available.
+func TestWebhookServerQueueFull(t *testing.T) {
 	server := createMockServer(t, 8080)
+	server.Handler.RegisterHandler(NewDockerHubWebhook(""))
+	// Size-1 queue so we can fill it with a single event.
+	server.eventQueue = make(chan *argocd.WebhookEvent, 1)
 
-	handler := NewDockerHubWebhook("")
-	assert.NotNil(t, handler, "Docker handler was nil")
+	sendWebhook := func() int {
+		req := httptest.NewRequest(http.MethodPost, "/webhook?type=docker.io", bytes.NewReader(validDockerHubBody))
+		rec := httptest.NewRecorder()
+		server.handleWebhook(rec, req)
+		return rec.Result().StatusCode
+	}
 
-	server.Handler.RegisterHandler(handler)
+	// First request fills the queue → 200.
+	assert.Equal(t, http.StatusOK, sendWebhook(), "first request should succeed")
+	// Second request finds the queue full → 503.
+	assert.Equal(t, http.StatusServiceUnavailable, sendWebhook(), "second request should be rejected when queue is full")
 
-	mock := &mockRateLimiter{}
-	server.RateLimiter = mock
+	// Drain the queue to make room.
+	<-server.eventQueue
 
-	body := []byte(`{
-		"repository": {
-			"repo_name": "somepersononthisfakeregistry/myimagethatdoescoolstuff",
-			"name": "myimagethatdoescoolstuff",
-			"namespace": "randomplaceincluster"
-		},
-		"push_data": {
-			"tag": "v12.0.9"
-		}
-	}`)
-
-	req := httptest.NewRequest(http.MethodPost, "/webhook?type=docker.io", bytes.NewReader(body))
-	rec := httptest.NewRecorder()
-
-	server.handleWebhook(rec, req)
-
-	// Wait for thread to call it.
-	time.Sleep(time.Second)
-
-	assert.True(t, mock.Called, "Take was not called")
+	// Third request succeeds again → 200.
+	assert.Equal(t, http.StatusOK, sendWebhook(), "request should succeed after queue is drained")
 }
 
 func TestParseTLSVersion(t *testing.T) {
