@@ -81,7 +81,7 @@ func init() {
 	githubAppTokenCache = gocache.New(githubAppCredsExp, 1*time.Minute)
 	// Set up eviction callback to close idle HTTP connections when cache entries expire.
 	// This prevents resource exhaustion from orphaned HTTP transports.
-	githubAppTokenCache.OnEvicted(func(_ string, value interface{}) {
+	githubAppTokenCache.OnEvicted(func(_ string, value any) {
 		if t, ok := value.(*githubAppInstallationTransport); ok && t.httpTransport != nil {
 			t.httpTransport.CloseIdleConnections()
 		}
@@ -475,7 +475,7 @@ func (g GitHubAppCreds) getAccessToken(ctx context.Context) (string, error) {
 
 	// Compute hash of creds for lookup in cache
 	h := sha256.New()
-	_, err := h.Write([]byte(fmt.Sprintf("%s %d %d %s", g.privateKey, g.appID, g.appInstallId, g.baseURL)))
+	_, err := h.Write(fmt.Appendf(nil, "%s %d %d %s", g.privateKey, g.appID, g.appInstallId, g.baseURL))
 	if err != nil {
 		return "", err
 	}

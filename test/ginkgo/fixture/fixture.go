@@ -533,8 +533,8 @@ func collectAndSavePodLogs(namespace, podSubstring, filepath string) {
 		return
 	}
 
-	pods := strings.Split(strings.TrimSpace(output), "\n")
-	for _, pod := range pods {
+	pods := strings.SplitSeq(strings.TrimSpace(output), "\n")
+	for pod := range pods {
 		if strings.Contains(pod, podSubstring) {
 			logs, err := osFixture.ExecCommandWithOutputParam(false, false, "kubectl", "logs", "-n", namespace, pod, "--tail=500")
 			if err != nil {

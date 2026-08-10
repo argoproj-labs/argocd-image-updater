@@ -227,7 +227,7 @@ func Test_EndpointConcurrentAccess(t *testing.T) {
 	t.Run("Concurrent read access", func(t *testing.T) {
 		var wg sync.WaitGroup
 		wg.Add(numRuns)
-		for i := 0; i < numRuns; i++ {
+		for range numRuns {
 			go func() {
 				ep, err := GetRegistryEndpoint(context.Background(), &image.ContainerImage{RegistryURL: "gcr.io"})
 				require.NoError(t, err)
@@ -242,7 +242,7 @@ func Test_EndpointConcurrentAccess(t *testing.T) {
 	t.Run("Concurrent write access", func(t *testing.T) {
 		var wg sync.WaitGroup
 		wg.Add(numRuns)
-		for i := 0; i < numRuns; i++ {
+		for i := range numRuns {
 			go func(i int) {
 				creds := fmt.Sprintf("secret:foo/secret-%d", i)
 				err := SetRegistryEndpointCredentials(context.Background(), "", creds)

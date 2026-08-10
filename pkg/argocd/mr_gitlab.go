@@ -40,10 +40,10 @@ func (g *GitLabMRService) create(ctx context.Context) error {
 	}
 
 	opts := &gitlab.CreateMergeRequestOptions{
-		Title:        gitlab.Ptr(g.pr.title),
-		SourceBranch: gitlab.Ptr(g.pr.head),
-		TargetBranch: gitlab.Ptr(g.pr.base),
-		Description:  gitlab.Ptr(g.pr.body),
+		Title:        new(g.pr.title),
+		SourceBranch: new(g.pr.head),
+		TargetBranch: new(g.pr.base),
+		Description:  new(g.pr.body),
 	}
 
 	mr, resp, err := g.client.MergeRequests.CreateMergeRequest(g.projectID, opts, gitlab.WithContext(ctx))
@@ -63,9 +63,9 @@ func (g *GitLabMRService) create(ctx context.Context) error {
 // checkOutBranch.
 func (g *GitLabMRService) exists(ctx context.Context, checkOutBranch, pushBranch string) (bool, error) {
 	mrs, _, err := g.client.MergeRequests.ListProjectMergeRequests(g.projectID, &gitlab.ListProjectMergeRequestsOptions{
-		SourceBranch: gitlab.Ptr(pushBranch),
-		TargetBranch: gitlab.Ptr(checkOutBranch),
-		State:        gitlab.Ptr("opened"),
+		SourceBranch: new(pushBranch),
+		TargetBranch: new(checkOutBranch),
+		State:        new("opened"),
 	}, gitlab.WithContext(ctx))
 	if err != nil {
 		return false, fmt.Errorf("could not list MRs for %s: %w", g.projectID, err)
@@ -148,11 +148,11 @@ func parseGitLabProject(repoURL string) (string, error) {
 	if isSSH, _ := git.IsSSHURL(repoURL); isSSH {
 		if !strings.HasPrefix(repoURL, "ssh://") {
 			// SCP-style: git@gitlab.com:group/repo.git
-			idx := strings.Index(repoURL, ":")
-			if idx < 0 {
+			_, after, ok := strings.Cut(repoURL, ":")
+			if !ok {
 				return "", fmt.Errorf("malformed SSH repo URL %q: missing colon separator", repoURL)
 			}
-			pathStr = repoURL[idx+1:]
+			pathStr = after
 		} else {
 			// ssh://git@gitlab.com/group/repo.git
 			u, parseErr := url.Parse(repoURL)

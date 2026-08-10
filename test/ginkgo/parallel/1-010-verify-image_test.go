@@ -28,7 +28,6 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	applicationFixture "github.com/argoproj-labs/argocd-image-updater/test/ginkgo/fixture/application"
@@ -193,7 +192,7 @@ var _ = Describe("ArgoCD Image Updater Parallel E2E Tests", func() {
 					},
 					SyncPolicy: &appv1alpha1.SyncPolicy{
 						Automated: &appv1alpha1.SyncPolicyAutomated{
-							Prune: ptr.To(true),
+							Prune: new(true),
 						},
 					},
 				},

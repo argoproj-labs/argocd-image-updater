@@ -27,7 +27,6 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	applicationFixture "github.com/argoproj-labs/argocd-image-updater/test/ginkgo/fixture/application"
@@ -152,8 +151,8 @@ spec:
 								Command: []string{"/var/run/argocd/argocd-cmp-server"},
 								Image:   "busybox",
 								SecurityContext: &corev1.SecurityContext{
-									RunAsNonRoot: ptr.To(true),
-									RunAsUser:    ptr.To(int64(999)),
+									RunAsNonRoot: new(true),
+									RunAsUser:    new(int64(999)),
 								},
 								VolumeMounts: []corev1.VolumeMount{
 									{Name: "var-files", MountPath: "/var/run/argocd"},
@@ -222,11 +221,11 @@ spec:
 						Path:           "1-011-plugin-argocd-write-back-test",
 						TargetRevision: "HEAD",
 						Plugin: &appv1alpha1.ApplicationSourcePlugin{
-						Env: appv1alpha1.Env{
-							&appv1alpha1.EnvEntry{Name: pluginEnvName, Value: "quay.io/dkarpele/my-guestbook"},
-							&appv1alpha1.EnvEntry{Name: pluginEnvTag, Value: "1.0.0"},
+							Env: appv1alpha1.Env{
+								&appv1alpha1.EnvEntry{Name: pluginEnvName, Value: "quay.io/dkarpele/my-guestbook"},
+								&appv1alpha1.EnvEntry{Name: pluginEnvTag, Value: "1.0.0"},
+							},
 						},
-					},
 					},
 					Destination: appv1alpha1.ApplicationDestination{
 						Server:    "https://kubernetes.default.svc",
@@ -234,7 +233,7 @@ spec:
 					},
 					SyncPolicy: &appv1alpha1.SyncPolicy{
 						Automated: &appv1alpha1.SyncPolicyAutomated{
-							Prune: ptr.To(true),
+							Prune: new(true),
 						},
 					},
 				},

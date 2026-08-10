@@ -15,6 +15,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -131,7 +132,7 @@ func ParseTLSCiphers(ciphers string) ([]uint16, error) {
 	}
 
 	var result []uint16
-	for _, name := range strings.Split(ciphers, ":") {
+	for name := range strings.SplitSeq(ciphers, ":") {
 		name = strings.TrimSpace(name)
 		if name == "" {
 			continue
@@ -160,13 +161,7 @@ func ValidateTLSConfig(minVersion, maxVersion uint16, cipherSuites []uint16) err
 		for _, cipherID := range cipherSuites {
 			for _, cs := range availableCiphers {
 				if cs.ID == cipherID {
-					supported := false
-					for _, v := range cs.SupportedVersions {
-						if v == minVersion {
-							supported = true
-							break
-						}
-					}
+					supported := slices.Contains(cs.SupportedVersions, minVersion)
 					if !supported {
 						return fmt.Errorf("cipher suite %s is not supported by minimum TLS version %s",
 							cs.Name, TLSVersionName(minVersion))

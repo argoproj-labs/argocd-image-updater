@@ -7,17 +7,17 @@ import (
 )
 
 // MatchFuncAny matches any pattern, i.e. always returns true
-func MatchFuncAny(tagName string, args interface{}) bool {
+func MatchFuncAny(tagName string, args any) bool {
 	return true
 }
 
 // MatchFuncNone matches no pattern, i.e. always returns false
-func MatchFuncNone(tagName string, args interface{}) bool {
+func MatchFuncNone(tagName string, args any) bool {
 	return false
 }
 
 // MatchFuncRegexp matches the tagName against regexp pattern and returns the result
-func MatchFuncRegexp(tagName string, args interface{}) bool {
+func MatchFuncRegexp(tagName string, args any) bool {
 	pattern, ok := args.(*regexp.Regexp)
 	if !ok {
 		log.Errorf("args is not a RegExp")

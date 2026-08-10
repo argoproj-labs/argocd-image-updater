@@ -214,21 +214,21 @@ func (src *CredentialSource) parseExtDefinition(definition string) error {
 // password for given registry URL
 func parseDockerConfigJson(ctx context.Context, registryURL string, jsonSource string) (string, string, error) {
 	log := log.LoggerFromContext(ctx)
-	var dockerConf map[string]interface{}
+	var dockerConf map[string]any
 	err := json.Unmarshal([]byte(jsonSource), &dockerConf)
 	if err != nil {
 		return "", "", err
 	}
-	auths, ok := dockerConf["auths"].(map[string]interface{})
+	auths, ok := dockerConf["auths"].(map[string]any)
 	if !ok {
 		return "", "", fmt.Errorf("no credentials in image pull secret")
 	}
 
 	var regPrefix string
-	if strings.HasPrefix(registryURL, "http://") {
-		regPrefix = strings.TrimPrefix(registryURL, "http://")
-	} else if strings.HasPrefix(registryURL, "https://") {
-		regPrefix = strings.TrimPrefix(registryURL, "https://")
+	if after, ok0 := strings.CutPrefix(registryURL, "http://"); ok0 {
+		regPrefix = after
+	} else if after, ok0 := strings.CutPrefix(registryURL, "https://"); ok0 {
+		regPrefix = after
 	} else {
 		regPrefix = registryURL
 	}
@@ -240,7 +240,7 @@ func parseDockerConfigJson(ctx context.Context, registryURL string, jsonSource s
 			log.Tracef("found registry %s in image pull secret, but we want %s (%s) - skipping", registry, registryURL, regPrefix)
 			continue
 		}
-		authEntry, ok := authConf.(map[string]interface{})
+		authEntry, ok := authConf.(map[string]any)
 		if !ok {
 			return "", "", fmt.Errorf("invalid auth entry for registry entry %s ('auths' entry should be map)", registry)
 		}

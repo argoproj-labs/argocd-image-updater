@@ -41,7 +41,7 @@ func Test_splitCommitMessage(t *testing.T) {
 
 func Test_createCommitOnBranch_Success(t *testing.T) {
 	var gotAuth string
-	var gotBody map[string]interface{}
+	var gotBody map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotAuth = r.Header.Get("Authorization")
 		require.NoError(t, json.NewDecoder(r.Body).Decode(&gotBody))
@@ -60,12 +60,12 @@ func Test_createCommitOnBranch_Success(t *testing.T) {
 	assert.Equal(t, "abc123", oid)
 	assert.Equal(t, "Bearer test-token", gotAuth)
 
-	vars := gotBody["variables"].(map[string]interface{})["input"].(map[string]interface{})
+	vars := gotBody["variables"].(map[string]any)["input"].(map[string]any)
 	assert.Equal(t, "headsha", vars["expectedHeadOid"])
-	branch := vars["branch"].(map[string]interface{})
+	branch := vars["branch"].(map[string]any)
 	assert.Equal(t, "example/repo", branch["repositoryNameWithOwner"])
 	assert.Equal(t, "main", branch["branchName"])
-	assert.Equal(t, "build: update image", vars["message"].(map[string]interface{})["headline"])
+	assert.Equal(t, "build: update image", vars["message"].(map[string]any)["headline"])
 }
 
 // Test_createCommitOnBranch_OmitsEmptyFileChangeLists pins that nil
@@ -74,7 +74,7 @@ func Test_createCommitOnBranch_Success(t *testing.T) {
 // GitHub's createCommitOnBranch resolver with the opaque "Something went
 // wrong while executing your query" error.
 func Test_createCommitOnBranch_OmitsEmptyFileChangeLists(t *testing.T) {
-	var gotBody map[string]interface{}
+	var gotBody map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.NoError(t, json.NewDecoder(r.Body).Decode(&gotBody))
 		fmt.Fprint(w, `{"data":{"createCommitOnBranch":{"commit":{"oid":"abc123"}}}}`)
@@ -91,7 +91,7 @@ func Test_createCommitOnBranch_OmitsEmptyFileChangeLists(t *testing.T) {
 	_, err := createCommitOnBranch(context.Background(), srv.URL, "t", input)
 	require.NoError(t, err)
 
-	fc := gotBody["variables"].(map[string]interface{})["input"].(map[string]interface{})["fileChanges"].(map[string]interface{})
+	fc := gotBody["variables"].(map[string]any)["input"].(map[string]any)["fileChanges"].(map[string]any)
 	assert.Contains(t, fc, "additions")
 	assert.NotContains(t, fc, "deletions", "nil deletions must be omitted, not marshaled as JSON null")
 }
@@ -140,7 +140,7 @@ func Test_commitChangesGithubAPI_ExistingBranch(t *testing.T) {
 		{Path: "old.yaml", Deleted: true},
 	})
 
-	var gotBody map[string]interface{}
+	var gotBody map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/graphql":
@@ -166,19 +166,19 @@ func Test_commitChangesGithubAPI_ExistingBranch(t *testing.T) {
 	err := commitChangesGithubAPI(context.Background(), wbc, gitMock, provider, "main", false)
 	require.NoError(t, err)
 
-	vars := gotBody["variables"].(map[string]interface{})["input"].(map[string]interface{})
+	vars := gotBody["variables"].(map[string]any)["input"].(map[string]any)
 	assert.Equal(t, "headsha123", vars["expectedHeadOid"])
-	assert.Equal(t, "main", vars["branch"].(map[string]interface{})["branchName"])
-	assert.Equal(t, "example/repo", vars["branch"].(map[string]interface{})["repositoryNameWithOwner"])
-	assert.Equal(t, "build: update image", vars["message"].(map[string]interface{})["headline"])
-	fc := vars["fileChanges"].(map[string]interface{})
-	additions := fc["additions"].([]interface{})
+	assert.Equal(t, "main", vars["branch"].(map[string]any)["branchName"])
+	assert.Equal(t, "example/repo", vars["branch"].(map[string]any)["repositoryNameWithOwner"])
+	assert.Equal(t, "build: update image", vars["message"].(map[string]any)["headline"])
+	fc := vars["fileChanges"].(map[string]any)
+	additions := fc["additions"].([]any)
 	require.Len(t, additions, 1)
-	assert.Equal(t, "overlays/kustomization.yaml", additions[0].(map[string]interface{})["path"])
-	assert.Equal(t, base64.StdEncoding.EncodeToString([]byte("images: []\n")), additions[0].(map[string]interface{})["contents"])
-	deletions := fc["deletions"].([]interface{})
+	assert.Equal(t, "overlays/kustomization.yaml", additions[0].(map[string]any)["path"])
+	assert.Equal(t, base64.StdEncoding.EncodeToString([]byte("images: []\n")), additions[0].(map[string]any)["contents"])
+	deletions := fc["deletions"].([]any)
 	require.Len(t, deletions, 1)
-	assert.Equal(t, "old.yaml", deletions[0].(map[string]interface{})["path"])
+	assert.Equal(t, "old.yaml", deletions[0].(map[string]any)["path"])
 }
 
 func Test_commitChangesGithubAPI_NewBranchCreatesRef(t *testing.T) {
@@ -191,7 +191,7 @@ func Test_commitChangesGithubAPI_NewBranchCreatesRef(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.URL.Path == "/api/v3/repos/example/repo/git/refs" && r.Method == http.MethodPost:
-			var body map[string]interface{}
+			var body map[string]any
 			require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
 			assert.Equal(t, "refs/heads/image-updater-branch", body["ref"])
 			assert.Equal(t, "basesha", body["sha"])

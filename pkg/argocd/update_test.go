@@ -2223,12 +2223,12 @@ registries:
 		// whose Payload() is nil, so godigest.FromBytes(nil) is the image manifest digest.
 		payloadType := "application/vnd.dev.cosign.simplesigning.v1+json"
 		imgManifestDigest := godigest.FromBytes(nil).String()
-		payload := []byte(fmt.Sprintf(
+		payload := fmt.Appendf(nil,
 			`{"critical":{"image":{"docker-manifest-digest":"%s"}}}`,
 			imgManifestDigest,
-		))
+		)
 		pae := append(
-			[]byte(fmt.Sprintf("DSSEv1 %d %s %d ", len(payloadType), payloadType, len(payload))),
+			fmt.Appendf(nil, "DSSEv1 %d %s %d ", len(payloadType), payloadType, len(payload)),
 			payload...,
 		)
 		paeHash := sha256.Sum256(pae)
@@ -4411,7 +4411,7 @@ replicas: 1
 		require.NoError(t, err)
 		assert.NotEmpty(t, override)
 
-		var out map[string]interface{}
+		var out map[string]any
 		err = yaml.Unmarshal(override, &out)
 		require.NoError(t, err)
 
@@ -4475,7 +4475,7 @@ replicas: 1
 		require.NoError(t, err)
 		assert.NotEmpty(t, override)
 
-		var out map[string]interface{}
+		var out map[string]any
 		err = yaml.Unmarshal(override, &out)
 		require.NoError(t, err)
 		_, ok := out["image.tag"]
@@ -5345,9 +5345,9 @@ func Test_GetWriteBackConfig(t *testing.T) {
 
 		// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
 		settings := &iuapi.WriteBackConfig{
-			Method: stringPtr("git"),
+			Method: new("git"),
 			GitConfig: &iuapi.GitConfig{
-				Branch: stringPtr("mybranch:mytargetbranch"),
+				Branch: new("mybranch:mytargetbranch"),
 			},
 		}
 
@@ -5383,9 +5383,9 @@ func Test_GetWriteBackConfig(t *testing.T) {
 
 		// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
 		settings := &iuapi.WriteBackConfig{
-			Method: stringPtr("git"),
+			Method: new("git"),
 			GitConfig: &iuapi.GitConfig{
-				Branch: stringPtr(":mytargetbranch"),
+				Branch: new(":mytargetbranch"),
 			},
 		}
 
@@ -5420,9 +5420,9 @@ func Test_GetWriteBackConfig(t *testing.T) {
 
 		// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
 		settings := &iuapi.WriteBackConfig{
-			Method: stringPtr("git"),
+			Method: new("git"),
 			GitConfig: &iuapi.GitConfig{
-				Branch: stringPtr("mybranch"),
+				Branch: new("mybranch"),
 			},
 		}
 
@@ -5460,7 +5460,7 @@ func Test_GetWriteBackConfig(t *testing.T) {
 
 		// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
 		settings := &iuapi.WriteBackConfig{
-			Method: stringPtr("argocd"),
+			Method: new("argocd"),
 		}
 
 		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, nil, settings)
@@ -5497,10 +5497,10 @@ func Test_GetWriteBackConfig(t *testing.T) {
 
 		// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
 		settings := &iuapi.WriteBackConfig{
-			Method: stringPtr("git"),
+			Method: new("git"),
 			GitConfig: &iuapi.GitConfig{
-				Branch:          stringPtr("mybranch:mytargetbranch"),
-				WriteBackTarget: stringPtr("kustomization:../bar"),
+				Branch:          new("mybranch:mytargetbranch"),
+				WriteBackTarget: new("kustomization:../bar"),
 			},
 		}
 
@@ -5539,10 +5539,10 @@ func Test_GetWriteBackConfig(t *testing.T) {
 
 		// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
 		settings := &iuapi.WriteBackConfig{
-			Method: stringPtr("git"),
+			Method: new("git"),
 			GitConfig: &iuapi.GitConfig{
-				Branch:          stringPtr("mybranch:mytargetbranch"),
-				WriteBackTarget: stringPtr("helmvalues:../bar/values.yaml"),
+				Branch:          new("mybranch:mytargetbranch"),
+				WriteBackTarget: new("helmvalues:../bar/values.yaml"),
 			},
 		}
 
@@ -5581,10 +5581,10 @@ func Test_GetWriteBackConfig(t *testing.T) {
 
 		// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
 		settings := &iuapi.WriteBackConfig{
-			Method: stringPtr("git"),
+			Method: new("git"),
 			GitConfig: &iuapi.GitConfig{
-				Branch:          stringPtr("mybranch:mytargetbranch"),
-				WriteBackTarget: stringPtr("helmvalues"),
+				Branch:          new("mybranch:mytargetbranch"),
+				WriteBackTarget: new("helmvalues"),
 			},
 		}
 
@@ -5623,10 +5623,10 @@ func Test_GetWriteBackConfig(t *testing.T) {
 
 		// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
 		settings := &iuapi.WriteBackConfig{
-			Method: stringPtr("git"),
+			Method: new("git"),
 			GitConfig: &iuapi.GitConfig{
-				Branch:          stringPtr("mybranch:mytargetbranch"),
-				WriteBackTarget: stringPtr("helmvalues:/helm/app/values.yaml"),
+				Branch:          new("mybranch:mytargetbranch"),
+				WriteBackTarget: new("helmvalues:/helm/app/values.yaml"),
 			},
 		}
 
@@ -5665,10 +5665,10 @@ func Test_GetWriteBackConfig(t *testing.T) {
 
 		// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
 		settings := &iuapi.WriteBackConfig{
-			Method: stringPtr("git"),
+			Method: new("git"),
 			GitConfig: &iuapi.GitConfig{
-				Branch:          stringPtr("mybranch:mytargetbranch"),
-				WriteBackTarget: stringPtr("target/folder/app-parameters.yaml"),
+				Branch:          new("mybranch:mytargetbranch"),
+				WriteBackTarget: new("target/folder/app-parameters.yaml"),
 			},
 		}
 
@@ -5707,9 +5707,9 @@ func Test_GetWriteBackConfig(t *testing.T) {
 
 		// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
 		settings := &iuapi.WriteBackConfig{
-			Method: stringPtr("git:error:argocd-image-updater/git-creds"),
+			Method: new("git:error:argocd-image-updater/git-creds"),
 			GitConfig: &iuapi.GitConfig{
-				Branch: stringPtr("mybranch:mytargetbranch"),
+				Branch: new("mybranch:mytargetbranch"),
 			},
 		}
 
@@ -5744,9 +5744,9 @@ func Test_GetWriteBackConfig(t *testing.T) {
 
 		// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
 		settings := &iuapi.WriteBackConfig{
-			Method: stringPtr("argocd"),
+			Method: new("argocd"),
 			GitConfig: &iuapi.GitConfig{
-				Branch: stringPtr("mybranch:mytargetbranch"),
+				Branch: new("mybranch:mytargetbranch"),
 			},
 		}
 
@@ -5783,9 +5783,9 @@ func Test_GetWriteBackConfig(t *testing.T) {
 
 		// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
 		settings := &iuapi.WriteBackConfig{
-			Method: stringPtr("unknown"),
+			Method: new("unknown"),
 			GitConfig: &iuapi.GitConfig{
-				Branch: stringPtr("mybranch:mytargetbranch"),
+				Branch: new("mybranch:mytargetbranch"),
 			},
 		}
 
@@ -5826,9 +5826,9 @@ func Test_GetGitCreds(t *testing.T) {
 		}
 		// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
 		settings := &iuapi.WriteBackConfig{
-			Method: stringPtr("git:secret:argocd-image-updater/git-creds"),
+			Method: new("git:secret:argocd-image-updater/git-creds"),
 			GitConfig: &iuapi.GitConfig{
-				Branch: stringPtr("mybranch:mytargetbranch"),
+				Branch: new("mybranch:mytargetbranch"),
 			},
 		}
 
@@ -5873,9 +5873,9 @@ func Test_GetGitCreds(t *testing.T) {
 		}
 		// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
 		settings := &iuapi.WriteBackConfig{
-			Method: stringPtr("git:secret:argocd-image-updater/git-creds"),
+			Method: new("git:secret:argocd-image-updater/git-creds"),
 			GitConfig: &iuapi.GitConfig{
-				Branch: stringPtr("mybranch:mytargetbranch"),
+				Branch: new("mybranch:mytargetbranch"),
 			},
 		}
 
@@ -5919,9 +5919,9 @@ func Test_GetGitCreds(t *testing.T) {
 			}
 			// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
 			settings := &iuapi.WriteBackConfig{
-				Method: stringPtr("git:secret:argocd-image-updater/git-creds"),
+				Method: new("git:secret:argocd-image-updater/git-creds"),
 				GitConfig: &iuapi.GitConfig{
-					Branch: stringPtr("mybranch:mytargetbranch"),
+					Branch: new("mybranch:mytargetbranch"),
 				},
 			}
 
@@ -5960,9 +5960,9 @@ func Test_GetGitCreds(t *testing.T) {
 		}
 		// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
 		settings := &iuapi.WriteBackConfig{
-			Method: stringPtr("git:secret:argocd-image-updater/git-creds"),
+			Method: new("git:secret:argocd-image-updater/git-creds"),
 			GitConfig: &iuapi.GitConfig{
-				Branch: stringPtr("mybranch:mytargetbranch"),
+				Branch: new("mybranch:mytargetbranch"),
 			},
 		}
 
@@ -6019,9 +6019,9 @@ func Test_GetGitCreds(t *testing.T) {
 		}
 		// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
 		settings := &iuapi.WriteBackConfig{
-			Method: stringPtr("git"),
+			Method: new("git"),
 			GitConfig: &iuapi.GitConfig{
-				Branch: stringPtr("mybranch:mytargetbranch"),
+				Branch: new("mybranch:mytargetbranch"),
 			},
 		}
 
@@ -6065,9 +6065,9 @@ func Test_GetGitCreds(t *testing.T) {
 		}
 		// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
 		settings := &iuapi.WriteBackConfig{
-			Method: stringPtr("git"),
+			Method: new("git"),
 			GitConfig: &iuapi.GitConfig{
-				Branch: stringPtr("mybranch:mytargetbranch"),
+				Branch: new("mybranch:mytargetbranch"),
 			},
 		}
 
@@ -6108,9 +6108,9 @@ func Test_GetGitCreds(t *testing.T) {
 		}
 		// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
 		settings := &iuapi.WriteBackConfig{
-			Method: stringPtr("git"),
+			Method: new("git"),
 			GitConfig: &iuapi.GitConfig{
-				Branch: stringPtr("mybranch:mytargetbranch"),
+				Branch: new("mybranch:mytargetbranch"),
 			},
 		}
 
@@ -6151,9 +6151,9 @@ func Test_GetGitCreds(t *testing.T) {
 		}
 		// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
 		settings := &iuapi.WriteBackConfig{
-			Method: stringPtr("git"),
+			Method: new("git"),
 			GitConfig: &iuapi.GitConfig{
-				Branch: stringPtr("mybranch:mytargetbranch"),
+				Branch: new("mybranch:mytargetbranch"),
 			},
 		}
 
@@ -6195,10 +6195,10 @@ func Test_GetGitCreds(t *testing.T) {
 
 		// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
 		settings := &iuapi.WriteBackConfig{
-			Method: stringPtr("git:secret:argocd-image-updater/git-creds"),
+			Method: new("git:secret:argocd-image-updater/git-creds"),
 			GitConfig: &iuapi.GitConfig{
-				Branch:     stringPtr("mybranch:mytargetbranch"),
-				Repository: stringPtr("git@github.com:example/example.git"),
+				Branch:     new("mybranch:mytargetbranch"),
+				Repository: new("git@github.com:example/example.git"),
 			},
 		}
 
@@ -6695,9 +6695,9 @@ replacements: []
 		}).Return(fmt.Errorf("could not configure git"))
 		// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
 		settings := &iuapi.WriteBackConfig{
-			Method: stringPtr("git"),
+			Method: new("git"),
 			GitConfig: &iuapi.GitConfig{
-				Branch: stringPtr("mybranch:mytargetbranch"),
+				Branch: new("mybranch:mytargetbranch"),
 			},
 		}
 
@@ -6728,9 +6728,9 @@ replacements: []
 		gitMock.On("Push", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 		// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
 		settings := &iuapi.WriteBackConfig{
-			Method: stringPtr("git"),
+			Method: new("git"),
 			GitConfig: &iuapi.GitConfig{
-				Branch: stringPtr("mybranch:mytargetbranch"),
+				Branch: new("mybranch:mytargetbranch"),
 			},
 		}
 		ctx := context.Background()
@@ -6756,9 +6756,9 @@ replacements: []
 		gitMock.On("Push", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 		// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
 		settings := &iuapi.WriteBackConfig{
-			Method: stringPtr("git"),
+			Method: new("git"),
 			GitConfig: &iuapi.GitConfig{
-				Branch: stringPtr("mybranch:mytargetbranch"),
+				Branch: new("mybranch:mytargetbranch"),
 			},
 		}
 		ctx := context.Background()
@@ -6783,9 +6783,9 @@ replacements: []
 		gitMock.On("Push", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 		// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
 		settings := &iuapi.WriteBackConfig{
-			Method: stringPtr("git"),
+			Method: new("git"),
 			GitConfig: &iuapi.GitConfig{
-				Branch: stringPtr("mybranch:mytargetbranch"),
+				Branch: new("mybranch:mytargetbranch"),
 			},
 		}
 		ctx := context.Background()
@@ -6811,9 +6811,9 @@ replacements: []
 		gitMock.On("Push", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 		// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
 		settings := &iuapi.WriteBackConfig{
-			Method: stringPtr("git"),
+			Method: new("git"),
 			GitConfig: &iuapi.GitConfig{
-				Branch: stringPtr("mybranch:mytargetbranch"),
+				Branch: new("mybranch:mytargetbranch"),
 			},
 		}
 		ctx := context.Background()
@@ -6839,9 +6839,9 @@ replacements: []
 		gitMock.On("Push", mock.Anything, mock.Anything, mock.Anything).Return(fmt.Errorf("cannot push"))
 		// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
 		settings := &iuapi.WriteBackConfig{
-			Method: stringPtr("git"),
+			Method: new("git"),
 			GitConfig: &iuapi.GitConfig{
-				Branch: stringPtr("mybranch:mytargetbranch"),
+				Branch: new("mybranch:mytargetbranch"),
 			},
 		}
 		ctx := context.Background()
@@ -6869,9 +6869,9 @@ replacements: []
 		gitMock.On("SymRefToBranch", mock.Anything).Return("", fmt.Errorf("failed to resolve ref"))
 		// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
 		settings := &iuapi.WriteBackConfig{
-			Method: stringPtr("git"),
+			Method: new("git"),
 			GitConfig: &iuapi.GitConfig{
-				Branch: stringPtr("mybranch:mytargetbranch"),
+				Branch: new("mybranch:mytargetbranch"),
 			},
 		}
 
@@ -7270,11 +7270,6 @@ plugin:
 		assert.Contains(t, string(result), "parameters:")
 		assert.NotContains(t, string(result), "plugin:")
 	})
-}
-
-// Helper function to create string pointers for testing
-func stringPtr(s string) *string {
-	return &s
 }
 
 // TestMarshalParamsOverride_PreservesFormatting verifies that when every write

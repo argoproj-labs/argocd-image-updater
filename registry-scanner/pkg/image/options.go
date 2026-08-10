@@ -35,7 +35,7 @@ func (img *ContainerImage) ParseUpdateStrategy(ctx context.Context, val string) 
 }
 
 // ParseMatch returns a matcher function and its argument from given value
-func (img *ContainerImage) ParseMatch(ctx context.Context, val string) (MatchFuncFn, interface{}) {
+func (img *ContainerImage) ParseMatch(ctx context.Context, val string) (MatchFuncFn, any) {
 	log := log.LoggerFromContext(ctx)
 
 	if val == "" {
