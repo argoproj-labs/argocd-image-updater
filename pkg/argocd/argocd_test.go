@@ -3139,6 +3139,20 @@ func Test_newWBCFromSettings(t *testing.T) {
 		assert.Equal(t, "some/path/.argocd-source-argocd-test_my-app.yaml", wbc.Target) // Target should be preserved
 	})
 
+	t.Run("should reject a bare write-back target that looks like a standard kustomization file", func(t *testing.T) {
+		app, kubeClient := createTestAppAndClient()
+		settings := &api.WriteBackConfig{
+			Method: strPtr("git"),
+			GitConfig: &api.GitConfig{
+				WriteBackTarget: strPtr("overlays/prod/kustomization.yaml"),
+			},
+		}
+		wbc, err := newWBCFromSettings(context.Background(), app, kubeClient, nil, settings)
+		assert.Error(t, err)
+		assert.Nil(t, wbc)
+		assert.Contains(t, err.Error(), "kustomization")
+	})
+
 	t.Run("should parse git branch correctly", func(t *testing.T) {
 		app, kubeClient := createTestAppAndClient()
 		settings := &api.WriteBackConfig{

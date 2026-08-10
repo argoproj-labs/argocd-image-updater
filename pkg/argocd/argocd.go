@@ -589,6 +589,19 @@ func newWBCFromSettings(ctx context.Context, app *argocdapi.Application, kubeCli
 			} else if strings.HasPrefix(target, common.HelmPrefix) {
 				wbc.Target = parseTarget(target, appSource.Path)
 			} else {
+				// A bare target whose file name is a standard kustomization file name is
+				// almost always a misconfiguration: writing image parameter overrides to a
+				// real kustomization.yaml would discard its existing content. Catch this
+				// early with a clear error rather than letting it fail later, deeper in the
+				// write-back path.
+				base := filepath.Base(target)
+				if base == "kustomization.yaml" || base == "kustomization.yml" || base == "Kustomization" {
+					return nil, fmt.Errorf(
+						`git write-back target %q looks like a standard kustomization file; `+
+							`writing image parameter overrides to it would discard its existing content. `+
+							`Use writeBackTarget: "kustomization:<path>" to update it in place instead, `+
+							`or point the target at a dedicated override file`, target)
+				}
 				wbc.Target = target
 			}
 		}
