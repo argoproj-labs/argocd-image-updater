@@ -414,7 +414,11 @@ func setAppImage(ctx context.Context, app *v1alpha1.Application, img *image.Cont
 	}
 }
 
-func marshalWithIndent(in any, indent int) (out []byte, err error) {
+// marshalWithIndent marshals in to YAML with the given indent, optionally
+// prepending an explicit "---" document-start marker. See
+// hasExplicitDocumentStart for why callers track and pass that bit through
+// explicitly rather than relying on the encoder to preserve it.
+func marshalWithIndent(in interface{}, indent int, explicitStart bool) (out []byte, err error) {
 	var b bytes.Buffer
 	encoder := yaml.NewEncoder(&b)
 	defer encoder.Close()
@@ -427,7 +431,34 @@ func marshalWithIndent(in any, indent int) (out []byte, err error) {
 	if err = encoder.Close(); err != nil {
 		return nil, err
 	}
-	return b.Bytes(), nil
+	out = b.Bytes()
+	if explicitStart {
+		out = append([]byte("---\n"), out...)
+	}
+	return out, nil
+}
+
+// hasExplicitDocumentStart reports whether raw's first line that isn't
+// blank, a "#" comment, or a "%YAML"/"%TAG" directive is a YAML
+// document-start marker ("---"). Directives are only ever valid directly
+// before a document-start marker, so skipping them is required for
+// correctness, not just leniency. Write-back re-marshals the target file
+// through an Encoder that has no memory of the source's original formatting,
+// so callers use this to carry that one bit of information through the
+// round-trip explicitly, rather than always adding or always dropping the
+// marker regardless of what the file looked like before.
+func hasExplicitDocumentStart(raw []byte) bool {
+	for _, line := range strings.Split(string(raw), "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") || strings.HasPrefix(trimmed, "%") {
+			continue
+		}
+		// A document-start marker is only valid at column 0, so check the
+		// untrimmed line rather than trimmed - an indented "---" is ordinary
+		// scalar content, not a marker.
+		return line == "---" || strings.HasPrefix(line, "--- ") || strings.HasPrefix(line, "---\t")
+	}
+	return false
 }
 
 // marshalParamsOverride marshals the parameter overrides of a given application
@@ -438,6 +469,7 @@ func marshalParamsOverride(ctx context.Context, applicationImages *ApplicationIm
 	var err error
 	app := &applicationImages.Application
 	wbc := applicationImages.WriteBackConfig
+	explicitStart := hasExplicitDocumentStart(originalData)
 
 	appSource := GetApplicationSource(ctx, app, wbc)
 
@@ -472,14 +504,14 @@ func marshalParamsOverride(ctx context.Context, applicationImages *ApplicationIm
 		}
 
 		if len(originalData) == 0 {
-			override, err = marshalWithIndent(newParams, defaultIndent)
+			override, err = marshalWithIndent(newParams, defaultIndent, explicitStart)
 		} else {
 			var params pluginOverride
 			if unmarshalErr := yaml.Unmarshal(originalData, &params); unmarshalErr != nil {
-				override, err = marshalWithIndent(newParams, defaultIndent)
+				override, err = marshalWithIndent(newParams, defaultIndent, explicitStart)
 			} else {
 				mergePluginOverride(&params, &newParams)
-				override, err = marshalWithIndent(params, defaultIndent)
+				override, err = marshalWithIndent(params, defaultIndent, explicitStart)
 			}
 		}
 		if err != nil {
@@ -504,16 +536,16 @@ func marshalParamsOverride(ctx context.Context, applicationImages *ApplicationIm
 		}
 
 		if len(originalData) == 0 {
-			override, err = marshalWithIndent(newParams, defaultIndent)
+			override, err = marshalWithIndent(newParams, defaultIndent, explicitStart)
 			break
 		}
 		err = yaml.Unmarshal(originalData, &params)
 		if err != nil {
-			override, err = marshalWithIndent(newParams, defaultIndent)
+			override, err = marshalWithIndent(newParams, defaultIndent, explicitStart)
 			break
 		}
 		mergeKustomizeOverride(&params, &newParams)
-		override, err = marshalWithIndent(params, defaultIndent)
+		override, err = marshalWithIndent(params, defaultIndent, explicitStart)
 	case ApplicationTypeHelm:
 		// Extract Helm parameters safely; Helm may be nil for SourceHydrator apps
 		// where the source type is auto-detected from files rather than set in the spec.
@@ -631,18 +663,18 @@ func marshalParamsOverride(ctx context.Context, applicationImages *ApplicationIm
 
 			if len(originalData) == 0 {
 				sortHelmParameters(newParams.Helm.Parameters)
-				override, err = marshalWithIndent(newParams, defaultIndent)
+				override, err = marshalWithIndent(newParams, defaultIndent, explicitStart)
 				break
 			}
 			err = yaml.Unmarshal(originalData, &params)
 			if err != nil {
 				sortHelmParameters(newParams.Helm.Parameters)
-				override, err = marshalWithIndent(newParams, defaultIndent)
+				override, err = marshalWithIndent(newParams, defaultIndent, explicitStart)
 				break
 			}
 			mergeHelmOverride(&params, &newParams)
 			sortHelmParameters(params.Helm.Parameters)
-			override, err = marshalWithIndent(params, defaultIndent)
+			override, err = marshalWithIndent(params, defaultIndent, explicitStart)
 		}
 	default:
 		err = fmt.Errorf("unsupported application type")
@@ -754,7 +786,7 @@ func nodeKindString(k yaml.Kind) string {
 }
 
 // setHelmValue sets value of the parameter passed from the CRD configuration.
-func setHelmValue(currentValues *yaml.Node, key string, value any) error {
+func setHelmValue(currentValues *yaml.Node, key string, value interface{}) error {
 	current := currentValues
 
 	// an unmarshalled document has a DocumentNode at the root, but
@@ -976,7 +1008,7 @@ func applyHelmValueWrites(root *yaml.Node, originalData []byte, writes []helmVal
 			return nil, fmt.Errorf("failed to set image parameter %s value: %v", w.kind, err)
 		}
 	}
-	return marshalWithIndent(root, defaultIndent)
+	return marshalWithIndent(root, defaultIndent, hasExplicitDocumentStart(originalData))
 }
 
 // patchHelmValuesInPlace edits value text directly in originalData. It succeeds
@@ -1055,7 +1087,7 @@ func isSafePlainScalar(s string) bool {
 	// Reject values a YAML parser resolves as a non-string (int, float, bool,
 	// null): written unquoted, an image tag like "1.20" or "true" would
 	// round-trip as a float/bool instead of a string.
-	var v any
+	var v interface{}
 	if err := yaml.Unmarshal([]byte(s), &v); err != nil {
 		return false
 	}

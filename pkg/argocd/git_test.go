@@ -474,6 +474,108 @@ images:
 `,
 			filter: filter,
 		},
+		{
+			name: "preserves leading document-start marker",
+			content: `---
+images:
+- name: foo
+  digest: sha12345
+`,
+			wantContent: `---
+images:
+- name: foo
+  digest: sha23456
+`,
+			filter: filter,
+		},
+		{
+			name: "does not add a document-start marker when absent",
+			content: `images:
+- name: foo
+  digest: sha12345
+`,
+			wantContent: `images:
+- name: foo
+  digest: sha23456
+`,
+			filter: filter,
+		},
+		{
+			name: "preserves marker after a leading comment",
+			content: `# leading comment
+---
+images:
+- name: foo
+  digest: sha12345
+`,
+			wantContent: `# leading comment
+---
+images:
+- name: foo
+  digest: sha23456
+`,
+			filter: filter,
+		},
+		{
+			name: "preserves a leading comment when no marker is present",
+			content: `# leading comment
+images:
+- name: foo
+  digest: sha12345
+`,
+			wantContent: `# leading comment
+images:
+- name: foo
+  digest: sha23456
+`,
+			filter: filter,
+		},
+		{
+			name: "preserves a leading blank line when no marker is present",
+			content: `
+images:
+- name: foo
+  digest: sha12345
+`,
+			wantContent: `
+images:
+- name: foo
+  digest: sha23456
+`,
+			filter: filter,
+		},
+		{
+			name: "preserves marker after a leading blank line",
+			content: `
+---
+images:
+- name: foo
+  digest: sha12345
+`,
+			wantContent: `
+---
+images:
+- name: foo
+  digest: sha23456
+`,
+			filter: filter,
+		},
+		{
+			name: "preserves marker after a leading YAML directive",
+			content: `%YAML 1.2
+---
+images:
+- name: foo
+  digest: sha12345
+`,
+			wantContent: `%YAML 1.2
+---
+images:
+- name: foo
+  digest: sha23456
+`,
+			filter: filter,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -666,4 +768,23 @@ func Test_commitChangesGit_APIMethodFallsBackWithoutAppCreds(t *testing.T) {
 	gitMock.AssertCalled(t, "Push", "origin", "main", false)
 	// The API commit path must not have been taken.
 	gitMock.AssertNotCalled(t, "WorkingTreeChanges")
+}
+
+func Test_hasDocumentStartAt(t *testing.T) {
+	tests := []struct {
+		name string
+		data string
+		want bool
+	}{
+		{name: "marker at column 0", data: "---\nfoo: bar\n", want: true},
+		{name: "marker at column 0 with trailing comment", data: "--- # header\nfoo: bar\n", want: true},
+		{name: "indented marker is not a document start", data: "   ---\nfoo: bar\n", want: false},
+		{name: "tab-indented marker is not a document start", data: "\t---\nfoo: bar\n", want: false},
+		{name: "no marker", data: "foo: bar\n", want: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, hasDocumentStartAt([]byte(tt.data), 0))
+		})
+	}
 }

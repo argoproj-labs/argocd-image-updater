@@ -2223,12 +2223,12 @@ registries:
 		// whose Payload() is nil, so godigest.FromBytes(nil) is the image manifest digest.
 		payloadType := "application/vnd.dev.cosign.simplesigning.v1+json"
 		imgManifestDigest := godigest.FromBytes(nil).String()
-		payload := fmt.Appendf(nil,
+		payload := []byte(fmt.Sprintf(
 			`{"critical":{"image":{"docker-manifest-digest":"%s"}}}`,
 			imgManifestDigest,
-		)
+		))
 		pae := append(
-			fmt.Appendf(nil, "DSSEv1 %d %s %d ", len(payloadType), payloadType, len(payload)),
+			[]byte(fmt.Sprintf("DSSEv1 %d %s %d ", len(payloadType), payloadType, len(payload))),
 			payload...,
 		)
 		paeHash := sha256.Sum256(pae)
@@ -4411,7 +4411,7 @@ replicas: 1
 		require.NoError(t, err)
 		assert.NotEmpty(t, override)
 
-		var out map[string]any
+		var out map[string]interface{}
 		err = yaml.Unmarshal(override, &out)
 		require.NoError(t, err)
 
@@ -4475,7 +4475,7 @@ replicas: 1
 		require.NoError(t, err)
 		assert.NotEmpty(t, override)
 
-		var out map[string]any
+		var out map[string]interface{}
 		err = yaml.Unmarshal(override, &out)
 		require.NoError(t, err)
 		_, ok := out["image.tag"]
@@ -4839,7 +4839,7 @@ image:
 		err = setHelmValue(&input, key, value)
 		require.NoError(t, err)
 
-		output, err := marshalWithIndent(&input, defaultIndent)
+		output, err := marshalWithIndent(&input, defaultIndent, false)
 		require.NoError(t, err)
 		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
 	})
@@ -4858,7 +4858,7 @@ image:
 		err = setHelmValue(&input, key, value)
 		require.NoError(t, err)
 
-		output, err := marshalWithIndent(&input, defaultIndent)
+		output, err := marshalWithIndent(&input, defaultIndent, false)
 		require.NoError(t, err)
 		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
 	})
@@ -4886,7 +4886,7 @@ image:
 		err = setHelmValue(&input, key, value)
 		require.NoError(t, err)
 
-		output, err := marshalWithIndent(&input, defaultIndent)
+		output, err := marshalWithIndent(&input, defaultIndent, false)
 		require.NoError(t, err)
 		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
 	})
@@ -4908,7 +4908,7 @@ tag: v2.0.0
 		err = setHelmValue(&input, key, value)
 		require.NoError(t, err)
 
-		output, err := marshalWithIndent(&input, defaultIndent)
+		output, err := marshalWithIndent(&input, defaultIndent, false)
 		require.NoError(t, err)
 		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
 	})
@@ -4929,7 +4929,7 @@ tag: v2.0.0
 		err = setHelmValue(&input, key, value)
 		require.NoError(t, err)
 
-		output, err := marshalWithIndent(&input, defaultIndent)
+		output, err := marshalWithIndent(&input, defaultIndent, false)
 		require.NoError(t, err)
 		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
 	})
@@ -4987,7 +4987,7 @@ image:
 		err = setHelmValue(&input, key, value)
 		require.NoError(t, err)
 
-		output, err := marshalWithIndent(&input, defaultIndent)
+		output, err := marshalWithIndent(&input, defaultIndent, false)
 		require.NoError(t, err)
 		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
 	})
@@ -5020,7 +5020,7 @@ image:
 		err = setHelmValue(&input, key, value)
 		require.NoError(t, err)
 
-		output, err := marshalWithIndent(&input, defaultIndent)
+		output, err := marshalWithIndent(&input, defaultIndent, false)
 		require.NoError(t, err)
 		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
 	})
@@ -5051,7 +5051,7 @@ image:
 		err = setHelmValue(&input, key, value)
 		require.NoError(t, err)
 
-		output, err := marshalWithIndent(&input, defaultIndent)
+		output, err := marshalWithIndent(&input, defaultIndent, false)
 		require.NoError(t, err)
 		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
 	})
@@ -5082,7 +5082,7 @@ images:
 		err = setHelmValue(&input, key, value)
 		require.NoError(t, err)
 
-		output, err := marshalWithIndent(&input, defaultIndent)
+		output, err := marshalWithIndent(&input, defaultIndent, false)
 		require.NoError(t, err)
 		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
 	})
@@ -5121,7 +5121,7 @@ images:
 		err = setHelmValue(&input, key, value)
 		require.NoError(t, err)
 
-		output, err := marshalWithIndent(&input, defaultIndent)
+		output, err := marshalWithIndent(&input, defaultIndent, false)
 		require.NoError(t, err)
 		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
 	})
@@ -5154,7 +5154,7 @@ extraContainers:
 		err = setHelmValue(&input, key, value)
 		require.NoError(t, err)
 
-		output, err := marshalWithIndent(&input, defaultIndent)
+		output, err := marshalWithIndent(&input, defaultIndent, false)
 		require.NoError(t, err)
 		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
 	})
@@ -5187,7 +5187,7 @@ extraContainers:
 		err = setHelmValue(&input, key, value)
 		require.NoError(t, err)
 
-		output, err := marshalWithIndent(&input, defaultIndent)
+		output, err := marshalWithIndent(&input, defaultIndent, false)
 		require.NoError(t, err)
 		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
 	})
@@ -5345,9 +5345,9 @@ func Test_GetWriteBackConfig(t *testing.T) {
 
 		// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
 		settings := &iuapi.WriteBackConfig{
-			Method: new("git"),
+			Method: stringPtr("git"),
 			GitConfig: &iuapi.GitConfig{
-				Branch: new("mybranch:mytargetbranch"),
+				Branch: stringPtr("mybranch:mytargetbranch"),
 			},
 		}
 
@@ -5383,9 +5383,9 @@ func Test_GetWriteBackConfig(t *testing.T) {
 
 		// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
 		settings := &iuapi.WriteBackConfig{
-			Method: new("git"),
+			Method: stringPtr("git"),
 			GitConfig: &iuapi.GitConfig{
-				Branch: new(":mytargetbranch"),
+				Branch: stringPtr(":mytargetbranch"),
 			},
 		}
 
@@ -5420,9 +5420,9 @@ func Test_GetWriteBackConfig(t *testing.T) {
 
 		// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
 		settings := &iuapi.WriteBackConfig{
-			Method: new("git"),
+			Method: stringPtr("git"),
 			GitConfig: &iuapi.GitConfig{
-				Branch: new("mybranch"),
+				Branch: stringPtr("mybranch"),
 			},
 		}
 
@@ -5460,7 +5460,7 @@ func Test_GetWriteBackConfig(t *testing.T) {
 
 		// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
 		settings := &iuapi.WriteBackConfig{
-			Method: new("argocd"),
+			Method: stringPtr("argocd"),
 		}
 
 		wbc, err := newWBCFromSettings(context.Background(), &app, &kubeClient, nil, settings)
@@ -5497,10 +5497,10 @@ func Test_GetWriteBackConfig(t *testing.T) {
 
 		// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
 		settings := &iuapi.WriteBackConfig{
-			Method: new("git"),
+			Method: stringPtr("git"),
 			GitConfig: &iuapi.GitConfig{
-				Branch:          new("mybranch:mytargetbranch"),
-				WriteBackTarget: new("kustomization:../bar"),
+				Branch:          stringPtr("mybranch:mytargetbranch"),
+				WriteBackTarget: stringPtr("kustomization:../bar"),
 			},
 		}
 
@@ -5539,10 +5539,10 @@ func Test_GetWriteBackConfig(t *testing.T) {
 
 		// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
 		settings := &iuapi.WriteBackConfig{
-			Method: new("git"),
+			Method: stringPtr("git"),
 			GitConfig: &iuapi.GitConfig{
-				Branch:          new("mybranch:mytargetbranch"),
-				WriteBackTarget: new("helmvalues:../bar/values.yaml"),
+				Branch:          stringPtr("mybranch:mytargetbranch"),
+				WriteBackTarget: stringPtr("helmvalues:../bar/values.yaml"),
 			},
 		}
 
@@ -5581,10 +5581,10 @@ func Test_GetWriteBackConfig(t *testing.T) {
 
 		// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
 		settings := &iuapi.WriteBackConfig{
-			Method: new("git"),
+			Method: stringPtr("git"),
 			GitConfig: &iuapi.GitConfig{
-				Branch:          new("mybranch:mytargetbranch"),
-				WriteBackTarget: new("helmvalues"),
+				Branch:          stringPtr("mybranch:mytargetbranch"),
+				WriteBackTarget: stringPtr("helmvalues"),
 			},
 		}
 
@@ -5623,10 +5623,10 @@ func Test_GetWriteBackConfig(t *testing.T) {
 
 		// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
 		settings := &iuapi.WriteBackConfig{
-			Method: new("git"),
+			Method: stringPtr("git"),
 			GitConfig: &iuapi.GitConfig{
-				Branch:          new("mybranch:mytargetbranch"),
-				WriteBackTarget: new("helmvalues:/helm/app/values.yaml"),
+				Branch:          stringPtr("mybranch:mytargetbranch"),
+				WriteBackTarget: stringPtr("helmvalues:/helm/app/values.yaml"),
 			},
 		}
 
@@ -5665,10 +5665,10 @@ func Test_GetWriteBackConfig(t *testing.T) {
 
 		// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
 		settings := &iuapi.WriteBackConfig{
-			Method: new("git"),
+			Method: stringPtr("git"),
 			GitConfig: &iuapi.GitConfig{
-				Branch:          new("mybranch:mytargetbranch"),
-				WriteBackTarget: new("target/folder/app-parameters.yaml"),
+				Branch:          stringPtr("mybranch:mytargetbranch"),
+				WriteBackTarget: stringPtr("target/folder/app-parameters.yaml"),
 			},
 		}
 
@@ -5707,9 +5707,9 @@ func Test_GetWriteBackConfig(t *testing.T) {
 
 		// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
 		settings := &iuapi.WriteBackConfig{
-			Method: new("git:error:argocd-image-updater/git-creds"),
+			Method: stringPtr("git:error:argocd-image-updater/git-creds"),
 			GitConfig: &iuapi.GitConfig{
-				Branch: new("mybranch:mytargetbranch"),
+				Branch: stringPtr("mybranch:mytargetbranch"),
 			},
 		}
 
@@ -5744,9 +5744,9 @@ func Test_GetWriteBackConfig(t *testing.T) {
 
 		// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
 		settings := &iuapi.WriteBackConfig{
-			Method: new("argocd"),
+			Method: stringPtr("argocd"),
 			GitConfig: &iuapi.GitConfig{
-				Branch: new("mybranch:mytargetbranch"),
+				Branch: stringPtr("mybranch:mytargetbranch"),
 			},
 		}
 
@@ -5783,9 +5783,9 @@ func Test_GetWriteBackConfig(t *testing.T) {
 
 		// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
 		settings := &iuapi.WriteBackConfig{
-			Method: new("unknown"),
+			Method: stringPtr("unknown"),
 			GitConfig: &iuapi.GitConfig{
-				Branch: new("mybranch:mytargetbranch"),
+				Branch: stringPtr("mybranch:mytargetbranch"),
 			},
 		}
 
@@ -5826,9 +5826,9 @@ func Test_GetGitCreds(t *testing.T) {
 		}
 		// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
 		settings := &iuapi.WriteBackConfig{
-			Method: new("git:secret:argocd-image-updater/git-creds"),
+			Method: stringPtr("git:secret:argocd-image-updater/git-creds"),
 			GitConfig: &iuapi.GitConfig{
-				Branch: new("mybranch:mytargetbranch"),
+				Branch: stringPtr("mybranch:mytargetbranch"),
 			},
 		}
 
@@ -5873,9 +5873,9 @@ func Test_GetGitCreds(t *testing.T) {
 		}
 		// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
 		settings := &iuapi.WriteBackConfig{
-			Method: new("git:secret:argocd-image-updater/git-creds"),
+			Method: stringPtr("git:secret:argocd-image-updater/git-creds"),
 			GitConfig: &iuapi.GitConfig{
-				Branch: new("mybranch:mytargetbranch"),
+				Branch: stringPtr("mybranch:mytargetbranch"),
 			},
 		}
 
@@ -5919,9 +5919,9 @@ func Test_GetGitCreds(t *testing.T) {
 			}
 			// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
 			settings := &iuapi.WriteBackConfig{
-				Method: new("git:secret:argocd-image-updater/git-creds"),
+				Method: stringPtr("git:secret:argocd-image-updater/git-creds"),
 				GitConfig: &iuapi.GitConfig{
-					Branch: new("mybranch:mytargetbranch"),
+					Branch: stringPtr("mybranch:mytargetbranch"),
 				},
 			}
 
@@ -5960,9 +5960,9 @@ func Test_GetGitCreds(t *testing.T) {
 		}
 		// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
 		settings := &iuapi.WriteBackConfig{
-			Method: new("git:secret:argocd-image-updater/git-creds"),
+			Method: stringPtr("git:secret:argocd-image-updater/git-creds"),
 			GitConfig: &iuapi.GitConfig{
-				Branch: new("mybranch:mytargetbranch"),
+				Branch: stringPtr("mybranch:mytargetbranch"),
 			},
 		}
 
@@ -6019,9 +6019,9 @@ func Test_GetGitCreds(t *testing.T) {
 		}
 		// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
 		settings := &iuapi.WriteBackConfig{
-			Method: new("git"),
+			Method: stringPtr("git"),
 			GitConfig: &iuapi.GitConfig{
-				Branch: new("mybranch:mytargetbranch"),
+				Branch: stringPtr("mybranch:mytargetbranch"),
 			},
 		}
 
@@ -6065,9 +6065,9 @@ func Test_GetGitCreds(t *testing.T) {
 		}
 		// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
 		settings := &iuapi.WriteBackConfig{
-			Method: new("git"),
+			Method: stringPtr("git"),
 			GitConfig: &iuapi.GitConfig{
-				Branch: new("mybranch:mytargetbranch"),
+				Branch: stringPtr("mybranch:mytargetbranch"),
 			},
 		}
 
@@ -6108,9 +6108,9 @@ func Test_GetGitCreds(t *testing.T) {
 		}
 		// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
 		settings := &iuapi.WriteBackConfig{
-			Method: new("git"),
+			Method: stringPtr("git"),
 			GitConfig: &iuapi.GitConfig{
-				Branch: new("mybranch:mytargetbranch"),
+				Branch: stringPtr("mybranch:mytargetbranch"),
 			},
 		}
 
@@ -6151,9 +6151,9 @@ func Test_GetGitCreds(t *testing.T) {
 		}
 		// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
 		settings := &iuapi.WriteBackConfig{
-			Method: new("git"),
+			Method: stringPtr("git"),
 			GitConfig: &iuapi.GitConfig{
-				Branch: new("mybranch:mytargetbranch"),
+				Branch: stringPtr("mybranch:mytargetbranch"),
 			},
 		}
 
@@ -6195,10 +6195,10 @@ func Test_GetGitCreds(t *testing.T) {
 
 		// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
 		settings := &iuapi.WriteBackConfig{
-			Method: new("git:secret:argocd-image-updater/git-creds"),
+			Method: stringPtr("git:secret:argocd-image-updater/git-creds"),
 			GitConfig: &iuapi.GitConfig{
-				Branch:     new("mybranch:mytargetbranch"),
-				Repository: new("git@github.com:example/example.git"),
+				Branch:     stringPtr("mybranch:mytargetbranch"),
+				Repository: stringPtr("git@github.com:example/example.git"),
 			},
 		}
 
@@ -6695,9 +6695,9 @@ replacements: []
 		}).Return(fmt.Errorf("could not configure git"))
 		// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
 		settings := &iuapi.WriteBackConfig{
-			Method: new("git"),
+			Method: stringPtr("git"),
 			GitConfig: &iuapi.GitConfig{
-				Branch: new("mybranch:mytargetbranch"),
+				Branch: stringPtr("mybranch:mytargetbranch"),
 			},
 		}
 
@@ -6728,9 +6728,9 @@ replacements: []
 		gitMock.On("Push", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 		// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
 		settings := &iuapi.WriteBackConfig{
-			Method: new("git"),
+			Method: stringPtr("git"),
 			GitConfig: &iuapi.GitConfig{
-				Branch: new("mybranch:mytargetbranch"),
+				Branch: stringPtr("mybranch:mytargetbranch"),
 			},
 		}
 		ctx := context.Background()
@@ -6756,9 +6756,9 @@ replacements: []
 		gitMock.On("Push", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 		// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
 		settings := &iuapi.WriteBackConfig{
-			Method: new("git"),
+			Method: stringPtr("git"),
 			GitConfig: &iuapi.GitConfig{
-				Branch: new("mybranch:mytargetbranch"),
+				Branch: stringPtr("mybranch:mytargetbranch"),
 			},
 		}
 		ctx := context.Background()
@@ -6783,9 +6783,9 @@ replacements: []
 		gitMock.On("Push", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 		// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
 		settings := &iuapi.WriteBackConfig{
-			Method: new("git"),
+			Method: stringPtr("git"),
 			GitConfig: &iuapi.GitConfig{
-				Branch: new("mybranch:mytargetbranch"),
+				Branch: stringPtr("mybranch:mytargetbranch"),
 			},
 		}
 		ctx := context.Background()
@@ -6811,9 +6811,9 @@ replacements: []
 		gitMock.On("Push", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 		// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
 		settings := &iuapi.WriteBackConfig{
-			Method: new("git"),
+			Method: stringPtr("git"),
 			GitConfig: &iuapi.GitConfig{
-				Branch: new("mybranch:mytargetbranch"),
+				Branch: stringPtr("mybranch:mytargetbranch"),
 			},
 		}
 		ctx := context.Background()
@@ -6839,9 +6839,9 @@ replacements: []
 		gitMock.On("Push", mock.Anything, mock.Anything, mock.Anything).Return(fmt.Errorf("cannot push"))
 		// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
 		settings := &iuapi.WriteBackConfig{
-			Method: new("git"),
+			Method: stringPtr("git"),
 			GitConfig: &iuapi.GitConfig{
-				Branch: new("mybranch:mytargetbranch"),
+				Branch: stringPtr("mybranch:mytargetbranch"),
 			},
 		}
 		ctx := context.Background()
@@ -6869,9 +6869,9 @@ replacements: []
 		gitMock.On("SymRefToBranch", mock.Anything).Return("", fmt.Errorf("failed to resolve ref"))
 		// Create iuapi.WriteBackConfig that represents the same configuration as the annotations
 		settings := &iuapi.WriteBackConfig{
-			Method: new("git"),
+			Method: stringPtr("git"),
 			GitConfig: &iuapi.GitConfig{
-				Branch: new("mybranch:mytargetbranch"),
+				Branch: stringPtr("mybranch:mytargetbranch"),
 			},
 		}
 
@@ -7272,6 +7272,11 @@ plugin:
 	})
 }
 
+// Helper function to create string pointers for testing
+func stringPtr(s string) *string {
+	return &s
+}
+
 // TestMarshalParamsOverride_PreservesFormatting verifies that when every write
 // updates an existing key, the values file is patched in place with byte-exact
 // preservation of comments, blank lines, indentation, anchors and inline
@@ -7559,6 +7564,132 @@ func TestMarshalParamsOverride_FallsBackForQuotedTarget(t *testing.T) {
 	tag, err := getHelmValue(&got, "config.image.tag")
 	require.NoError(t, err)
 	assert.Equal(t, "v2.0.0", tag)
+}
+
+// TestMarshalParamsOverride_PreservesDocumentStart_Kustomize verifies that a
+// Kustomize write-back keeps a leading YAML document-start marker ("---")
+// when the original file had one, and does not introduce one when it didn't.
+// argocd-image-updater's write-back re-marshals the target file through a
+// yaml.Encoder that has no memory of the source's original formatting, so
+// this is a deliberate, explicit round-trip rather than an accident of the
+// underlying library - and it has to hold in both directions: always adding
+// the marker would just move the "document-start" lint failure onto anyone
+// who enforces its absence instead of its presence.
+func TestMarshalParamsOverride_PreservesDocumentStart_Kustomize(t *testing.T) {
+	app := v1alpha1.Application{
+		ObjectMeta: v1.ObjectMeta{Name: "testapp"},
+		Spec: v1alpha1.ApplicationSpec{
+			Source: &v1alpha1.ApplicationSource{
+				RepoURL:        "https://example.com/example",
+				TargetRevision: "main",
+				Kustomize: &v1alpha1.ApplicationSourceKustomize{
+					Images: v1alpha1.KustomizeImages{"foo"},
+				},
+			},
+		},
+		Status: v1alpha1.ApplicationStatus{
+			SourceType: v1alpha1.ApplicationSourceTypeKustomize,
+		},
+	}
+	applicationImages := &ApplicationImages{
+		Application: app,
+		Images:      ImageList{NewImage(image.NewFromIdentifier("nginx"))},
+	}
+
+	t.Run("preserves marker when present", func(t *testing.T) {
+		originalData := []byte("---\nkustomize:\n  images:\n  - baz\n")
+		out, err := marshalParamsOverride(context.Background(), applicationImages, originalData)
+		require.NoError(t, err)
+		assert.True(t, strings.HasPrefix(string(out), "---\n"),
+			"expected output to start with '---', got: %q", string(out))
+	})
+
+	t.Run("does not add marker when absent", func(t *testing.T) {
+		originalData := []byte("kustomize:\n  images:\n  - baz\n")
+		out, err := marshalParamsOverride(context.Background(), applicationImages, originalData)
+		require.NoError(t, err)
+		assert.False(t, strings.HasPrefix(string(out), "---"),
+			"expected no '---' in output, got: %q", string(out))
+	})
+
+	t.Run("recognizes a tab-separated marker", func(t *testing.T) {
+		originalData := []byte("---\t# header\nkustomize:\n  images:\n  - baz\n")
+		out, err := marshalParamsOverride(context.Background(), applicationImages, originalData)
+		require.NoError(t, err)
+		assert.True(t, strings.HasPrefix(string(out), "---\n"),
+			"expected output to start with '---', got: %q", string(out))
+	})
+
+	t.Run("recognizes a marker after a leading YAML directive", func(t *testing.T) {
+		originalData := []byte("%YAML 1.2\n---\nkustomize:\n  images:\n  - baz\n")
+		out, err := marshalParamsOverride(context.Background(), applicationImages, originalData)
+		require.NoError(t, err)
+		assert.True(t, strings.HasPrefix(string(out), "---\n"),
+			"expected output to start with '---', got: %q", string(out))
+	})
+
+	t.Run("does not treat an indented marker as a document start", func(t *testing.T) {
+		originalData := []byte("   ---\nkustomize:\n  images:\n  - baz\n")
+		out, err := marshalParamsOverride(context.Background(), applicationImages, originalData)
+		require.NoError(t, err)
+		assert.False(t, strings.HasPrefix(string(out), "---"),
+			"expected no '---' in output, got: %q", string(out))
+	})
+}
+
+// TestMarshalParamsOverride_PreservesDocumentStart_HelmFallback exercises the
+// applyHelmValueWrites fallback path (setHelmValue + marshalWithIndent, not
+// the in-place byte patcher) to confirm it also carries the document-start
+// choice through, not just the Kustomize/plugin/plain-Helm branches in
+// marshalParamsOverride itself.
+func TestMarshalParamsOverride_PreservesDocumentStart_HelmFallback(t *testing.T) {
+	originalData := []byte(`---
+config:
+  image:
+    repository: myapp
+    tag: "v1.0.0"
+`)
+
+	app := v1alpha1.Application{
+		ObjectMeta: v1.ObjectMeta{Name: "testapp"},
+		Spec: v1alpha1.ApplicationSpec{
+			Sources: []v1alpha1.ApplicationSource{
+				{
+					Chart: "my-app",
+					Helm: &v1alpha1.ApplicationSourceHelm{
+						ReleaseName: "my-app",
+						ValueFiles:  []string{"$values/some/dir/values.yaml"},
+						Parameters: []v1alpha1.HelmParameter{
+							{Name: "config.image.repository", Value: "myapp", ForceString: true},
+							{Name: "config.image.tag", Value: "v2.0.0", ForceString: true},
+						},
+					},
+					RepoURL:        "https://example.com/example",
+					TargetRevision: "main",
+				},
+				{Ref: "values", RepoURL: "https://example.com/example2", TargetRevision: "main"},
+			},
+		},
+		Status: v1alpha1.ApplicationStatus{
+			SourceTypes: []v1alpha1.ApplicationSourceType{v1alpha1.ApplicationSourceTypeHelm, ""},
+			Summary:     v1alpha1.ApplicationSummary{Images: []string{"myapp:v1.0.0"}},
+		},
+	}
+
+	im := NewImage(image.NewFromIdentifier("app=myapp"))
+	im.HelmImageName = "config.image.repository"
+	im.HelmImageTag = "config.image.tag"
+
+	applicationImages := &ApplicationImages{
+		Application:     app,
+		Images:          ImageList{im},
+		WriteBackConfig: &WriteBackConfig{Target: "./test-values.yaml"},
+	}
+
+	out, err := marshalParamsOverride(context.Background(), applicationImages, originalData)
+	require.NoError(t, err)
+	assert.True(t, strings.HasPrefix(string(out), "---\n"),
+		"expected fallback path to preserve leading '---', got: %q", string(out))
 }
 
 // TestApplyHelmValueWrites_ArrayIndexMismatchDoesNotPatch exercises the write
