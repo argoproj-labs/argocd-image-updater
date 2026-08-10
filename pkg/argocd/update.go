@@ -663,10 +663,34 @@ func marshalParamsOverride(ctx context.Context, applicationImages *ApplicationIm
 			if appSource.Helm == nil {
 				return []byte{}, nil
 			}
+
+			// Only the Helm parameters that Image Updater actually manages (the
+			// image name/tag or image-spec parameter of each tracked image) may be
+			// written to the override file. appSource.Helm.Parameters reflects the
+			// live Application, which can also carry unrelated overrides (e.g. set
+			// manually via the Argo CD UI/API); those must not be persisted to git.
+			managedParamNames := make(map[string]bool)
+			for _, img := range applicationImages.Images {
+				helmParamName, helmParamVersion := getHelmParamNames(img)
+				if helmParamName != "" {
+					managedParamNames[helmParamName] = true
+				}
+				if helmParamVersion != "" {
+					managedParamNames[helmParamVersion] = true
+				}
+			}
+
+			managedParams := make([]v1alpha1.HelmParameter, 0, len(appSource.Helm.Parameters))
+			for _, p := range appSource.Helm.Parameters {
+				if managedParamNames[p.Name] {
+					managedParams = append(managedParams, p)
+				}
+			}
+
 			var params helmOverride
 			newParams := helmOverride{
 				Helm: helmParameters{
-					Parameters: appSource.Helm.Parameters,
+					Parameters: managedParams,
 				},
 			}
 
