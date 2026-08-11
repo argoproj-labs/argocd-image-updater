@@ -646,8 +646,8 @@ func leadingCommentPrefixLen(data []byte) int {
 // single-byte separator, and reports whether a newline was actually found
 // (data with no trailing newline is still one "line" for this purpose).
 func bytesCutNewline(data []byte) (line, rest []byte, found bool) {
-	if i := bytes.IndexByte(data, '\n'); i >= 0 {
-		return data[:i], data[i+1:], true
+	if before, after, ok := bytes.Cut(data, []byte{'\n'}); ok {
+		return before, after, true
 	}
 	return data, nil, false
 }

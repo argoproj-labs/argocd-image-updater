@@ -415,10 +415,10 @@ func setAppImage(ctx context.Context, app *v1alpha1.Application, img *image.Cont
 }
 
 // marshalWithIndent marshals in to YAML with the given indent, optionally
-// prepending an explicit "---" document-start marker. See
-// hasExplicitDocumentStart for why callers track and pass that bit through
-// explicitly rather than relying on the encoder to preserve it.
-func marshalWithIndent(in interface{}, indent int, explicitStart bool) (out []byte, err error) {
+// prepending docStartPrefix verbatim. See leadingDocumentStartPrefix for why
+// callers track and pass that prefix through explicitly rather than relying
+// on the encoder to preserve it.
+func marshalWithIndent(in any, indent int, docStartPrefix []byte) (out []byte, err error) {
 	var b bytes.Buffer
 	encoder := yaml.NewEncoder(&b)
 	defer encoder.Close()
@@ -432,33 +432,45 @@ func marshalWithIndent(in interface{}, indent int, explicitStart bool) (out []by
 		return nil, err
 	}
 	out = b.Bytes()
-	if explicitStart {
-		out = append([]byte("---\n"), out...)
+	if len(docStartPrefix) > 0 {
+		out = append(append([]byte{}, docStartPrefix...), out...)
 	}
 	return out, nil
 }
 
-// hasExplicitDocumentStart reports whether raw's first line that isn't
-// blank, a "#" comment, or a "%YAML"/"%TAG" directive is a YAML
-// document-start marker ("---"). Directives are only ever valid directly
+// leadingDocumentStartPrefix returns raw's leading run of blank lines, "#"
+// comments, and "%YAML"/"%TAG" directives, together with the "---"
+// document-start marker that follows them, verbatim and including its
+// trailing newline - or nil if that leading run isn't followed by an
+// explicit document-start marker. Directives are only ever valid directly
 // before a document-start marker, so skipping them is required for
 // correctness, not just leniency. Write-back re-marshals the target file
 // through an Encoder that has no memory of the source's original formatting,
-// so callers use this to carry that one bit of information through the
-// round-trip explicitly, rather than always adding or always dropping the
-// marker regardless of what the file looked like before.
-func hasExplicitDocumentStart(raw []byte) bool {
-	for _, line := range strings.Split(string(raw), "\n") {
-		trimmed := strings.TrimSpace(line)
+// so callers use this to carry that whole prefix through the round-trip
+// verbatim, rather than always adding or always dropping it regardless of
+// what the file looked like before.
+func leadingDocumentStartPrefix(raw []byte) []byte {
+	lines := strings.Split(string(raw), "\n")
+	n := 0
+	for n < len(lines) {
+		trimmed := strings.TrimSpace(lines[n])
 		if trimmed == "" || strings.HasPrefix(trimmed, "#") || strings.HasPrefix(trimmed, "%") {
+			n++
 			continue
 		}
-		// A document-start marker is only valid at column 0, so check the
-		// untrimmed line rather than trimmed - an indented "---" is ordinary
-		// scalar content, not a marker.
-		return line == "---" || strings.HasPrefix(line, "--- ") || strings.HasPrefix(line, "---\t")
+		break
 	}
-	return false
+	if n >= len(lines) {
+		return nil
+	}
+	// A document-start marker is only valid at column 0, so check the
+	// untrimmed line rather than trimmed - an indented "---" is ordinary
+	// scalar content, not a marker.
+	marker := lines[n]
+	if marker != "---" && !strings.HasPrefix(marker, "--- ") && !strings.HasPrefix(marker, "---\t") {
+		return nil
+	}
+	return []byte(strings.Join(lines[:n+1], "\n") + "\n")
 }
 
 // marshalParamsOverride marshals the parameter overrides of a given application
@@ -469,7 +481,7 @@ func marshalParamsOverride(ctx context.Context, applicationImages *ApplicationIm
 	var err error
 	app := &applicationImages.Application
 	wbc := applicationImages.WriteBackConfig
-	explicitStart := hasExplicitDocumentStart(originalData)
+	docStartPrefix := leadingDocumentStartPrefix(originalData)
 
 	appSource := GetApplicationSource(ctx, app, wbc)
 
@@ -504,14 +516,14 @@ func marshalParamsOverride(ctx context.Context, applicationImages *ApplicationIm
 		}
 
 		if len(originalData) == 0 {
-			override, err = marshalWithIndent(newParams, defaultIndent, explicitStart)
+			override, err = marshalWithIndent(newParams, defaultIndent, docStartPrefix)
 		} else {
 			var params pluginOverride
 			if unmarshalErr := yaml.Unmarshal(originalData, &params); unmarshalErr != nil {
-				override, err = marshalWithIndent(newParams, defaultIndent, explicitStart)
+				override, err = marshalWithIndent(newParams, defaultIndent, docStartPrefix)
 			} else {
 				mergePluginOverride(&params, &newParams)
-				override, err = marshalWithIndent(params, defaultIndent, explicitStart)
+				override, err = marshalWithIndent(params, defaultIndent, docStartPrefix)
 			}
 		}
 		if err != nil {
@@ -536,16 +548,16 @@ func marshalParamsOverride(ctx context.Context, applicationImages *ApplicationIm
 		}
 
 		if len(originalData) == 0 {
-			override, err = marshalWithIndent(newParams, defaultIndent, explicitStart)
+			override, err = marshalWithIndent(newParams, defaultIndent, docStartPrefix)
 			break
 		}
 		err = yaml.Unmarshal(originalData, &params)
 		if err != nil {
-			override, err = marshalWithIndent(newParams, defaultIndent, explicitStart)
+			override, err = marshalWithIndent(newParams, defaultIndent, docStartPrefix)
 			break
 		}
 		mergeKustomizeOverride(&params, &newParams)
-		override, err = marshalWithIndent(params, defaultIndent, explicitStart)
+		override, err = marshalWithIndent(params, defaultIndent, docStartPrefix)
 	case ApplicationTypeHelm:
 		// Extract Helm parameters safely; Helm may be nil for SourceHydrator apps
 		// where the source type is auto-detected from files rather than set in the spec.
@@ -663,18 +675,18 @@ func marshalParamsOverride(ctx context.Context, applicationImages *ApplicationIm
 
 			if len(originalData) == 0 {
 				sortHelmParameters(newParams.Helm.Parameters)
-				override, err = marshalWithIndent(newParams, defaultIndent, explicitStart)
+				override, err = marshalWithIndent(newParams, defaultIndent, docStartPrefix)
 				break
 			}
 			err = yaml.Unmarshal(originalData, &params)
 			if err != nil {
 				sortHelmParameters(newParams.Helm.Parameters)
-				override, err = marshalWithIndent(newParams, defaultIndent, explicitStart)
+				override, err = marshalWithIndent(newParams, defaultIndent, docStartPrefix)
 				break
 			}
 			mergeHelmOverride(&params, &newParams)
 			sortHelmParameters(params.Helm.Parameters)
-			override, err = marshalWithIndent(params, defaultIndent, explicitStart)
+			override, err = marshalWithIndent(params, defaultIndent, docStartPrefix)
 		}
 	default:
 		err = fmt.Errorf("unsupported application type")
@@ -786,7 +798,7 @@ func nodeKindString(k yaml.Kind) string {
 }
 
 // setHelmValue sets value of the parameter passed from the CRD configuration.
-func setHelmValue(currentValues *yaml.Node, key string, value interface{}) error {
+func setHelmValue(currentValues *yaml.Node, key string, value any) error {
 	current := currentValues
 
 	// an unmarshalled document has a DocumentNode at the root, but
@@ -1008,7 +1020,7 @@ func applyHelmValueWrites(root *yaml.Node, originalData []byte, writes []helmVal
 			return nil, fmt.Errorf("failed to set image parameter %s value: %v", w.kind, err)
 		}
 	}
-	return marshalWithIndent(root, defaultIndent, hasExplicitDocumentStart(originalData))
+	return marshalWithIndent(root, defaultIndent, leadingDocumentStartPrefix(originalData))
 }
 
 // patchHelmValuesInPlace edits value text directly in originalData. It succeeds
@@ -1087,7 +1099,7 @@ func isSafePlainScalar(s string) bool {
 	// Reject values a YAML parser resolves as a non-string (int, float, bool,
 	// null): written unquoted, an image tag like "1.20" or "true" would
 	// round-trip as a float/bool instead of a string.
-	var v interface{}
+	var v any
 	if err := yaml.Unmarshal([]byte(s), &v); err != nil {
 		return false
 	}
