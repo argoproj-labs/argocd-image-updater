@@ -434,7 +434,7 @@ func writeKustomization(ctx context.Context, applicationImages *ApplicationImage
 
 // updateKustomizeFile reads the kustomization file at path, applies the filter to it, and writes the result back
 // to the file. This is the same behavior as kyaml.UpdateFile, but it preserves the original order of YAML fields,
-// indentation of YAML sequences, and blank lines to minimize git diffs.
+// indentation of YAML sequences, blank lines, and a leading document-start marker to minimize git diffs.
 func updateKustomizeFile(ctx context.Context, filter kyaml.Filter, path string) (error, bool) {
 	log := log.LoggerFromContext(ctx)
 
@@ -444,13 +444,32 @@ func updateKustomizeFile(ctx context.Context, filter kyaml.Filter, path string) 
 		return err, false
 	}
 
+	// kio's ByteReadWriter discards a leading "---" document-start marker
+	// while parsing and never re-emits one for a single document. Detected
+	// after the leading run of blank lines/comments, not just at byte 0, so a
+	// marker preceded by a header comment is still found - that whole prefix
+	// (comments, blank lines, and the marker itself) sits outside any
+	// document node in kyaml's model and is dropped during parsing too, so
+	// both are restored together, verbatim, from these captured original
+	// bytes rather than from anything kyaml round-trips.
+	yPrefixLen := leadingCommentPrefixLen(yRaw)
+	hadDocStart := hasDocumentStartAt(yRaw, yPrefixLen)
+
 	// Encode blank lines as marker comments so they survive the kyaml round-trip.
 	// kyaml (go.yaml.in/yaml/v3) discards blank lines during parsing but preserves
 	// head comments, so we convert blank lines to comments and restore them afterward.
 	yEncoded := encodeBlankLines(yRaw)
 
+	// kio's YAML parser hard-errors on any input containing a "%YAML"/"%TAG"
+	// directive line, even though that content sits outside any document node
+	// and would otherwise just be dropped. Strip the whole leading prefix
+	// (comments, blank-line markers, and directives alike) before handing
+	// input to kio, since it's restored verbatim from yRaw at write time
+	// regardless of what kio does with it.
+	yBody := yEncoded[leadingCommentPrefixLen(yEncoded):]
+
 	// Read the yaml document from bytes (use encoded to keep comparison consistent)
-	originalYSlice, err := kio.FromBytes(yEncoded)
+	originalYSlice, err := kio.FromBytes(yBody)
 	if err != nil {
 		return err, false
 	}
@@ -470,7 +489,7 @@ func updateKustomizeFile(ctx context.Context, filter kyaml.Filter, path string) 
 	// Create a reader, preserving indentation of sequences
 	var out bytes.Buffer
 	rw := &kio.ByteReadWriter{
-		Reader:            bytes.NewBuffer(yEncoded),
+		Reader:            bytes.NewBuffer(yBody),
 		Writer:            &out,
 		PreserveSeqIndent: true,
 	}
@@ -515,8 +534,24 @@ func updateKustomizeFile(ctx context.Context, filter kyaml.Filter, path string) 
 		return nil, true
 	}
 
-	// Write to file the changes, restoring blank lines from the marker comments
-	if err := os.WriteFile(path, decodeBlankLines(out.Bytes()), 0600); err != nil {
+	// Write to file the changes, restoring blank lines from the marker comments,
+	// the leading comment/blank-line prefix, and the document-start marker, if
+	// the original had one. Content before "---" sits outside any document node
+	// in kyaml's model - it's dropped entirely during parsing, not merely
+	// un-preserved, so it never resurfaces in out.Bytes() no matter what
+	// encodeBlankLines does. It has to be spliced back in verbatim from the
+	// original bytes rather than searched for in the output. This applies
+	// whether or not the original had a document-start marker - a leading
+	// comment on a markerless file is just as much a part of the dropped
+	// prefix as one before "---".
+	outBytes := decodeBlankLines(out.Bytes())
+	restored := make([]byte, 0, yPrefixLen+4+len(outBytes))
+	restored = append(restored, yRaw[:yPrefixLen]...)
+	if hadDocStart && !bytes.HasPrefix(outBytes, []byte("---")) {
+		restored = append(restored, "---\n"...)
+	}
+	outBytes = append(restored, outBytes...)
+	if err := os.WriteFile(path, outBytes, 0600); err != nil {
 		return err, false
 	}
 
@@ -581,6 +616,55 @@ func encodeBlankLines(data []byte) []byte {
 // decodeBlankLines converts blank line markers back to actual blank lines.
 func decodeBlankLines(data []byte) []byte {
 	return bytes.ReplaceAll(data, []byte(blankLineMarker+"\n"), []byte("\n"))
+}
+
+// leadingCommentPrefixLen returns the byte length of data's leading run of
+// blank lines, "#"-comment lines, and "%YAML"/"%TAG" directive lines - all of
+// which sit outside any document node in kyaml's model and are dropped
+// entirely during parsing, along with a "---" marker they precede. Used so
+// that whole prefix can be located, captured, and spliced back in verbatim
+// rather than searched for in kyaml's output.
+func leadingCommentPrefixLen(data []byte) int {
+	offset := 0
+	for {
+		line, rest, found := bytesCutNewline(data[offset:])
+		trimmed := bytes.TrimSpace(line)
+		if len(trimmed) != 0 && trimmed[0] != '#' && trimmed[0] != '%' {
+			return offset
+		}
+		if !found {
+			return len(data)
+		}
+		// rest is a suffix of the original data slice (bytesCutNewline was
+		// given data[offset:], a suffix of data), so this is the byte index
+		// right after the newline just consumed.
+		offset = len(data) - len(rest)
+	}
+}
+
+// bytesCutNewline splits data at its first '\n', mirroring bytes.Cut for a
+// single-byte separator, and reports whether a newline was actually found
+// (data with no trailing newline is still one "line" for this purpose).
+func bytesCutNewline(data []byte) (line, rest []byte, found bool) {
+	if before, after, ok := bytes.Cut(data, []byte{'\n'}); ok {
+		return before, after, true
+	}
+	return data, nil, false
+}
+
+// hasDocumentStartAt reports whether data's line starting at byte offset
+// prefixLen is a YAML document-start marker ("---"), optionally followed by
+// whitespace and a trailing comment (e.g. "--- # header").
+func hasDocumentStartAt(data []byte, prefixLen int) bool {
+	line, _, _ := bytesCutNewline(data[prefixLen:])
+	// A document-start marker is only valid at column 0, so trim only
+	// trailing whitespace here - an indented "---" is ordinary scalar
+	// content, not a marker.
+	line = bytes.TrimRight(line, " \t\r\n")
+	if len(line) < 3 || string(line[:3]) != "---" {
+		return false
+	}
+	return len(line) == 3 || line[3] == ' ' || line[3] == '\t'
 }
 
 func findKustomization(base string) string {

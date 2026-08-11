@@ -4839,7 +4839,7 @@ image:
 		err = setHelmValue(&input, key, value)
 		require.NoError(t, err)
 
-		output, err := marshalWithIndent(&input, defaultIndent)
+		output, err := marshalWithIndent(&input, defaultIndent, nil)
 		require.NoError(t, err)
 		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
 	})
@@ -4858,7 +4858,7 @@ image:
 		err = setHelmValue(&input, key, value)
 		require.NoError(t, err)
 
-		output, err := marshalWithIndent(&input, defaultIndent)
+		output, err := marshalWithIndent(&input, defaultIndent, nil)
 		require.NoError(t, err)
 		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
 	})
@@ -4886,7 +4886,7 @@ image:
 		err = setHelmValue(&input, key, value)
 		require.NoError(t, err)
 
-		output, err := marshalWithIndent(&input, defaultIndent)
+		output, err := marshalWithIndent(&input, defaultIndent, nil)
 		require.NoError(t, err)
 		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
 	})
@@ -4908,7 +4908,7 @@ tag: v2.0.0
 		err = setHelmValue(&input, key, value)
 		require.NoError(t, err)
 
-		output, err := marshalWithIndent(&input, defaultIndent)
+		output, err := marshalWithIndent(&input, defaultIndent, nil)
 		require.NoError(t, err)
 		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
 	})
@@ -4929,7 +4929,7 @@ tag: v2.0.0
 		err = setHelmValue(&input, key, value)
 		require.NoError(t, err)
 
-		output, err := marshalWithIndent(&input, defaultIndent)
+		output, err := marshalWithIndent(&input, defaultIndent, nil)
 		require.NoError(t, err)
 		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
 	})
@@ -4987,7 +4987,7 @@ image:
 		err = setHelmValue(&input, key, value)
 		require.NoError(t, err)
 
-		output, err := marshalWithIndent(&input, defaultIndent)
+		output, err := marshalWithIndent(&input, defaultIndent, nil)
 		require.NoError(t, err)
 		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
 	})
@@ -5020,7 +5020,7 @@ image:
 		err = setHelmValue(&input, key, value)
 		require.NoError(t, err)
 
-		output, err := marshalWithIndent(&input, defaultIndent)
+		output, err := marshalWithIndent(&input, defaultIndent, nil)
 		require.NoError(t, err)
 		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
 	})
@@ -5051,7 +5051,7 @@ image:
 		err = setHelmValue(&input, key, value)
 		require.NoError(t, err)
 
-		output, err := marshalWithIndent(&input, defaultIndent)
+		output, err := marshalWithIndent(&input, defaultIndent, nil)
 		require.NoError(t, err)
 		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
 	})
@@ -5082,7 +5082,7 @@ images:
 		err = setHelmValue(&input, key, value)
 		require.NoError(t, err)
 
-		output, err := marshalWithIndent(&input, defaultIndent)
+		output, err := marshalWithIndent(&input, defaultIndent, nil)
 		require.NoError(t, err)
 		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
 	})
@@ -5121,7 +5121,7 @@ images:
 		err = setHelmValue(&input, key, value)
 		require.NoError(t, err)
 
-		output, err := marshalWithIndent(&input, defaultIndent)
+		output, err := marshalWithIndent(&input, defaultIndent, nil)
 		require.NoError(t, err)
 		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
 	})
@@ -5154,7 +5154,7 @@ extraContainers:
 		err = setHelmValue(&input, key, value)
 		require.NoError(t, err)
 
-		output, err := marshalWithIndent(&input, defaultIndent)
+		output, err := marshalWithIndent(&input, defaultIndent, nil)
 		require.NoError(t, err)
 		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
 	})
@@ -5187,7 +5187,7 @@ extraContainers:
 		err = setHelmValue(&input, key, value)
 		require.NoError(t, err)
 
-		output, err := marshalWithIndent(&input, defaultIndent)
+		output, err := marshalWithIndent(&input, defaultIndent, nil)
 		require.NoError(t, err)
 		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(output)))
 	})
@@ -7559,6 +7559,132 @@ func TestMarshalParamsOverride_FallsBackForQuotedTarget(t *testing.T) {
 	tag, err := getHelmValue(&got, "config.image.tag")
 	require.NoError(t, err)
 	assert.Equal(t, "v2.0.0", tag)
+}
+
+// TestMarshalParamsOverride_PreservesDocumentStart_Kustomize verifies that a
+// Kustomize write-back keeps a leading YAML document-start marker ("---")
+// when the original file had one, and does not introduce one when it didn't.
+// argocd-image-updater's write-back re-marshals the target file through a
+// yaml.Encoder that has no memory of the source's original formatting, so
+// this is a deliberate, explicit round-trip rather than an accident of the
+// underlying library - and it has to hold in both directions: always adding
+// the marker would just move the "document-start" lint failure onto anyone
+// who enforces its absence instead of its presence.
+func TestMarshalParamsOverride_PreservesDocumentStart_Kustomize(t *testing.T) {
+	app := v1alpha1.Application{
+		ObjectMeta: v1.ObjectMeta{Name: "testapp"},
+		Spec: v1alpha1.ApplicationSpec{
+			Source: &v1alpha1.ApplicationSource{
+				RepoURL:        "https://example.com/example",
+				TargetRevision: "main",
+				Kustomize: &v1alpha1.ApplicationSourceKustomize{
+					Images: v1alpha1.KustomizeImages{"foo"},
+				},
+			},
+		},
+		Status: v1alpha1.ApplicationStatus{
+			SourceType: v1alpha1.ApplicationSourceTypeKustomize,
+		},
+	}
+	applicationImages := &ApplicationImages{
+		Application: app,
+		Images:      ImageList{NewImage(image.NewFromIdentifier("nginx"))},
+	}
+
+	t.Run("preserves marker when present", func(t *testing.T) {
+		originalData := []byte("---\nkustomize:\n  images:\n  - baz\n")
+		out, err := marshalParamsOverride(context.Background(), applicationImages, originalData)
+		require.NoError(t, err)
+		assert.True(t, strings.HasPrefix(string(out), "---\n"),
+			"expected output to start with '---', got: %q", string(out))
+	})
+
+	t.Run("does not add marker when absent", func(t *testing.T) {
+		originalData := []byte("kustomize:\n  images:\n  - baz\n")
+		out, err := marshalParamsOverride(context.Background(), applicationImages, originalData)
+		require.NoError(t, err)
+		assert.False(t, strings.HasPrefix(string(out), "---"),
+			"expected no '---' in output, got: %q", string(out))
+	})
+
+	t.Run("recognizes a tab-separated marker", func(t *testing.T) {
+		originalData := []byte("---\t# header\nkustomize:\n  images:\n  - baz\n")
+		out, err := marshalParamsOverride(context.Background(), applicationImages, originalData)
+		require.NoError(t, err)
+		assert.True(t, strings.HasPrefix(string(out), "---\t# header\n"),
+			"expected output to start with '---\\t# header\\n', got: %q", string(out))
+	})
+
+	t.Run("recognizes a marker after a leading YAML directive", func(t *testing.T) {
+		originalData := []byte("%YAML 1.2\n---\nkustomize:\n  images:\n  - baz\n")
+		out, err := marshalParamsOverride(context.Background(), applicationImages, originalData)
+		require.NoError(t, err)
+		assert.True(t, strings.HasPrefix(string(out), "%YAML 1.2\n---\n"),
+			"expected output to start with '%%YAML 1.2\\n---\\n', got: %q", string(out))
+	})
+
+	t.Run("does not treat an indented marker as a document start", func(t *testing.T) {
+		originalData := []byte("   ---\nkustomize:\n  images:\n  - baz\n")
+		out, err := marshalParamsOverride(context.Background(), applicationImages, originalData)
+		require.NoError(t, err)
+		assert.False(t, strings.HasPrefix(string(out), "---"),
+			"expected no '---' in output, got: %q", string(out))
+	})
+}
+
+// TestMarshalParamsOverride_PreservesDocumentStart_HelmFallback exercises the
+// applyHelmValueWrites fallback path (setHelmValue + marshalWithIndent, not
+// the in-place byte patcher) to confirm it also carries the document-start
+// choice through, not just the Kustomize/plugin/plain-Helm branches in
+// marshalParamsOverride itself.
+func TestMarshalParamsOverride_PreservesDocumentStart_HelmFallback(t *testing.T) {
+	originalData := []byte(`---
+config:
+  image:
+    repository: myapp
+    tag: "v1.0.0"
+`)
+
+	app := v1alpha1.Application{
+		ObjectMeta: v1.ObjectMeta{Name: "testapp"},
+		Spec: v1alpha1.ApplicationSpec{
+			Sources: []v1alpha1.ApplicationSource{
+				{
+					Chart: "my-app",
+					Helm: &v1alpha1.ApplicationSourceHelm{
+						ReleaseName: "my-app",
+						ValueFiles:  []string{"$values/some/dir/values.yaml"},
+						Parameters: []v1alpha1.HelmParameter{
+							{Name: "config.image.repository", Value: "myapp", ForceString: true},
+							{Name: "config.image.tag", Value: "v2.0.0", ForceString: true},
+						},
+					},
+					RepoURL:        "https://example.com/example",
+					TargetRevision: "main",
+				},
+				{Ref: "values", RepoURL: "https://example.com/example2", TargetRevision: "main"},
+			},
+		},
+		Status: v1alpha1.ApplicationStatus{
+			SourceTypes: []v1alpha1.ApplicationSourceType{v1alpha1.ApplicationSourceTypeHelm, ""},
+			Summary:     v1alpha1.ApplicationSummary{Images: []string{"myapp:v1.0.0"}},
+		},
+	}
+
+	im := NewImage(image.NewFromIdentifier("app=myapp"))
+	im.HelmImageName = "config.image.repository"
+	im.HelmImageTag = "config.image.tag"
+
+	applicationImages := &ApplicationImages{
+		Application:     app,
+		Images:          ImageList{im},
+		WriteBackConfig: &WriteBackConfig{Target: "./test-values.yaml"},
+	}
+
+	out, err := marshalParamsOverride(context.Background(), applicationImages, originalData)
+	require.NoError(t, err)
+	assert.True(t, strings.HasPrefix(string(out), "---\n"),
+		"expected fallback path to preserve leading '---', got: %q", string(out))
 }
 
 // TestApplyHelmValueWrites_ArrayIndexMismatchDoesNotPatch exercises the write
