@@ -6,7 +6,7 @@ require (
 	github.com/argoproj-labs/argocd-image-updater v1.2.2
 	github.com/argoproj-labs/argocd-operator v0.19.0-rc1.0.20260806043718-4308d96d0a42
 	github.com/argoproj/argo-cd/gitops-engine v0.7.1-0.20250908182407-97ad5b59a627
-	github.com/argoproj/argo-cd/v3 v3.5.0
+	github.com/argoproj/argo-cd/v3 v3.5.1
 	github.com/google/go-github/v69 v69.2.0
 	github.com/onsi/ginkgo/v2 v2.32.0
 	github.com/onsi/gomega v1.42.1
@@ -15,7 +15,6 @@ require (
 	k8s.io/apiextensions-apiserver v0.36.1
 	k8s.io/apimachinery v0.36.1
 	k8s.io/client-go v0.36.1
-	k8s.io/utils v0.0.0-20260210185600-b8788abfbbc2
 	sigs.k8s.io/controller-runtime v0.24.1
 )
 
@@ -166,6 +165,7 @@ require (
 	k8s.io/kube-openapi v0.0.0-20260519202549-bbf5c5577288 // indirect
 	k8s.io/kubectl v0.36.1 // indirect
 	k8s.io/kubernetes v1.36.1 // indirect
+	k8s.io/utils v0.0.0-20260210185600-b8788abfbbc2 // indirect
 	oras.land/oras-go/v2 v2.6.2 // indirect
 	sigs.k8s.io/json v0.0.0-20250730193827-2d320260d730 // indirect
 	sigs.k8s.io/kustomize/api v0.21.1 // indirect
@@ -179,10 +179,10 @@ replace (
 	// Use local image-updater module to ensure tests use the latest API types from master
 	github.com/argoproj-labs/argocd-image-updater => ../../
 
-	// argo-cd v3.5.0 declares gitops-engine at a pseudo-version where go.mod
+	// argo-cd v3.5.1 declares gitops-engine at a pseudo-version where go.mod
 	// didn't exist yet, then overrides with replace => ./gitops-engine locally.
-	// Downstream consumers must resolve it themselves; pin to the v3.5.0 commit.
-	github.com/argoproj/argo-cd/gitops-engine => github.com/argoproj/argo-cd/gitops-engine v0.0.0-20260804074500-e95e1be88a2d
+	// Downstream consumers must resolve it themselves; pin to the v3.5.1 commit.
+	github.com/argoproj/argo-cd/gitops-engine => github.com/argoproj/argo-cd/gitops-engine v0.0.0-20260812112440-109ca7ca7113
 
 	// This replace block is from Argo CD v3.2.3 go.mod
 	github.com/golang/protobuf => github.com/golang/protobuf v1.5.4
