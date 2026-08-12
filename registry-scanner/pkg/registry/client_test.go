@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -15,6 +17,8 @@ import (
 	"github.com/distribution/distribution/v3/manifest/schema2"
 	godigest "github.com/opencontainers/go-digest"
 	"github.com/opencontainers/image-spec/specs-go"
+	"github.com/sirupsen/logrus"
+	logrustest "github.com/sirupsen/logrus/hooks/test"
 
 	distclient "github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/registry/internal/client"
 
@@ -28,6 +32,7 @@ import (
 	"go.uber.org/ratelimit"
 
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/image"
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/options"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/registry/mocks"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/tag"
@@ -218,6 +223,118 @@ func TestRoundTrip_Failure(t *testing.T) {
 	mockTransport.AssertExpectations(t)
 	assert.Error(t, err)
 	assert.Nil(t, actualResp)
+}
+
+// TestTokenResponseLoggingTransport_PreservesBody verifies that peeking at
+// the response body for trace logging does not corrupt what a downstream
+// reader (the token JSON decoder) sees, for bodies both smaller and larger
+// than the logging preview cap.
+func TestTokenResponseLoggingTransport_PreservesBody(t *testing.T) {
+	cases := map[string]string{
+		"smaller than preview cap": `{"access_token":"short-token"}`,
+		"larger than preview cap":  `{"access_token":"` + strings.Repeat("a", tokenResponseLogSize*2) + `"}`,
+	}
+	for name, body := range cases {
+		t.Run(name, func(t *testing.T) {
+			next := new(mocks.RoundTripper)
+			req := httptest.NewRequest(http.MethodGet, "http://example.com/token", nil)
+			next.On("RoundTrip", req).Return(&http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(body)),
+			}, nil)
+
+			tr := &tokenResponseLoggingTransport{next: next}
+			resp, err := tr.RoundTrip(req)
+			require.NoError(t, err)
+
+			gotBody, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+			assert.Equal(t, body, string(gotBody))
+			require.NoError(t, resp.Body.Close())
+		})
+	}
+}
+
+// TestTokenResponseLoggingTransport_DoesNotLogSuccessfulTokenResponse guards
+// against leaking a live access/refresh token: a normal, successful token
+// response is valid JSON and must never be written to the logs, even at
+// trace level.
+func TestTokenResponseLoggingTransport_DoesNotLogSuccessfulTokenResponse(t *testing.T) {
+	logger, hook := logrustest.NewNullLogger()
+	logger.SetLevel(logrus.TraceLevel)
+	ctx := log.ContextWithLogger(context.Background(), logrus.NewEntry(logger))
+
+	const tokenBody = `{"access_token":"super-secret-access-token","refresh_token":"super-secret-refresh-token"}`
+
+	next := new(mocks.RoundTripper)
+	req := httptest.NewRequest(http.MethodGet, "http://example.com/token", nil).WithContext(ctx)
+	next.On("RoundTrip", req).Return(&http.Response{
+		StatusCode: http.StatusOK,
+		Body:       io.NopCloser(strings.NewReader(tokenBody)),
+	}, nil)
+
+	tr := &tokenResponseLoggingTransport{next: next}
+	resp, err := tr.RoundTrip(req)
+	require.NoError(t, err)
+
+	gotBody, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	assert.Equal(t, tokenBody, string(gotBody))
+
+	assert.Empty(t, hook.AllEntries(), "a successful, valid JSON token response must not be logged")
+}
+
+// TestTokenResponseLoggingTransport_LogsBodyOnDecodeFailure reproduces the
+// scenario reported for issue 1024: a registry's token endpoint responds
+// with an HTML page (e.g. from a WAF or misconfigured proxy) instead of
+// JSON. The token decode fails with an opaque error, but trace-level
+// logging should now surface the actual response body to aid debugging.
+func TestTokenResponseLoggingTransport_LogsBodyOnDecodeFailure(t *testing.T) {
+	const htmlBody = `<html><body>Access Denied</body></html>`
+
+	logger, hook := logrustest.NewNullLogger()
+	logger.SetLevel(logrus.TraceLevel)
+	ctx := log.ContextWithLogger(context.Background(), logrus.NewEntry(logger))
+
+	var serverURL string
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/v2/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("WWW-Authenticate", fmt.Sprintf(`Bearer realm="%s/token",service="mock-registry"`, serverURL))
+		w.WriteHeader(http.StatusUnauthorized)
+	})
+	mux.HandleFunc("/token", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, htmlBody)
+	})
+
+	mockServer := httptest.NewServer(mux)
+	serverURL = mockServer.URL
+	defer mockServer.Close()
+
+	ep := &RegistryEndpoint{
+		RegistryAPI: mockServer.URL,
+		Limiter:     ratelimit.New(100),
+	}
+	client, err := NewClient(ep, "", "")
+	require.NoError(t, err)
+
+	err = client.NewRepository(ctx, "test/myimage")
+	require.NoError(t, err)
+
+	_, err = client.Tags(ctx)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unable to decode token response")
+
+	var loggedBody bool
+	for _, entry := range hook.AllEntries() {
+		if strings.Contains(entry.Message, htmlBody) {
+			loggedBody = true
+			break
+		}
+	}
+	assert.True(t, loggedBody, "expected trace log to contain the raw token endpoint response body")
 }
 
 func TestRefreshToken(t *testing.T) {
