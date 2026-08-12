@@ -769,20 +769,20 @@ func parseImageList(ctx context.Context, kubeClient *kube.ImageUpdaterKubernetes
 func getHelmParamNames(img *Image) (string, string) {
 	// Return default values without symbolic name given
 	if img == nil || img.ImageAlias == "" {
-		return "image.name", "image.tag"
+		return common.DefaultHelmImageName, common.DefaultHelmImageTag
 	}
-
-	var helmParamName, helmParamVersion string
 
 	// Image spec is a full-qualified specifier, if we have it, we return early
 	if param := img.HelmImageSpec; param != "" {
 		return strings.TrimSpace(param), ""
 	}
 
+	helmParamName := common.DefaultHelmImageName
 	if param := img.HelmImageName; param != "" {
 		helmParamName = param
 	}
 
+	helmParamVersion := common.DefaultHelmImageTag
 	if param := img.HelmImageTag; param != "" {
 		helmParamVersion = param
 	}

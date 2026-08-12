@@ -18,6 +18,7 @@ import (
 	ctrlFake "sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	api "github.com/argoproj-labs/argocd-image-updater/api/v1alpha1"
+	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/kube"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/image"
 	registryKube "github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/kube"
@@ -1115,7 +1116,7 @@ func Test_GetHelmParamNames(t *testing.T) {
 		assert.Equal(t, "image.tag", tag)
 	})
 
-	t.Run("Find non-existing image name and image tag", func(t *testing.T) {
+	t.Run("Default image name and image tag with alias", func(t *testing.T) {
 		name, tag := getHelmParamNames(
 			&Image{
 				ContainerImage: &image.ContainerImage{
@@ -1124,11 +1125,11 @@ func Test_GetHelmParamNames(t *testing.T) {
 				HelmImageName: "",
 				HelmImageTag:  ""},
 		)
-		assert.Empty(t, name)
-		assert.Empty(t, tag)
+		assert.Equal(t, common.DefaultHelmImageName, name)
+		assert.Equal(t, common.DefaultHelmImageTag, tag)
 	})
 
-	t.Run("Find existing image tag", func(t *testing.T) {
+	t.Run("Find existing image tag with default image name", func(t *testing.T) {
 		name, tag := getHelmParamNames(
 			&Image{
 				ContainerImage: &image.ContainerImage{
@@ -1136,11 +1137,11 @@ func Test_GetHelmParamNames(t *testing.T) {
 				},
 				HelmImageTag: "image.tag"},
 		)
-		assert.Empty(t, name)
+		assert.Equal(t, common.DefaultHelmImageName, name)
 		assert.Equal(t, "image.tag", tag)
 	})
 
-	t.Run("No suitable image found", func(t *testing.T) {
+	t.Run("Default image name and image tag with alias and no helm fields", func(t *testing.T) {
 		name, tag := getHelmParamNames(
 			&Image{
 				ContainerImage: &image.ContainerImage{
@@ -1148,8 +1149,8 @@ func Test_GetHelmParamNames(t *testing.T) {
 				},
 			},
 		)
-		assert.Empty(t, name)
-		assert.Empty(t, tag)
+		assert.Equal(t, common.DefaultHelmImageName, name)
+		assert.Equal(t, common.DefaultHelmImageTag, tag)
 	})
 
 }
