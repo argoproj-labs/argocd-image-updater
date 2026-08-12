@@ -170,14 +170,14 @@ func (t *tokenResponseLoggingTransport) RoundTrip(req *http.Request) (*http.Resp
 	n, _ := io.ReadFull(resp.Body, preview)
 	preview = preview[:n]
 
-	// Only trust json.Valid to mean "this is a normal token response" when
-	// the preview holds the entire body (n < tokenResponseLogSize, i.e. we
-	// hit EOF); a body truncated at the cap can't be conclusively judged
-	// valid or not, so it falls through to being logged like any other
-	// suspicious response.
+	// A truncated preview (n == tokenResponseLogSize) can't be conclusively
+	// judged invalid JSON, so it's only logged when the status itself is
+	// already suspicious; a successful response is never logged based on a
+	// truncated preview, since that could be a large-but-legitimate token
+	// response and logging it risks leaking a live access/refresh token.
 	success := resp.StatusCode >= 200 && resp.StatusCode < 300
-	completeValidJSON := n < tokenResponseLogSize && stdjson.Valid(preview)
-	if !success || !completeValidJSON {
+	invalidCompleteJSON := n < tokenResponseLogSize && !stdjson.Valid(preview)
+	if !success || invalidCompleteJSON {
 		log.LoggerFromContext(req.Context()).Tracef("Token endpoint %s returned HTTP %d, body: %q", req.URL, resp.StatusCode, preview)
 	}
 

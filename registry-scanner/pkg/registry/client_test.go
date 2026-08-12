@@ -258,30 +258,55 @@ func TestTokenResponseLoggingTransport_PreservesBody(t *testing.T) {
 // TestTokenResponseLoggingTransport_DoesNotLogSuccessfulTokenResponse guards
 // against leaking a live access/refresh token: a normal, successful token
 // response is valid JSON and must never be written to the logs, even at
-// trace level.
+// trace level - including when the response is large enough to fill or
+// exceed the preview cap, where the token decoder can no longer tell from
+// the truncated preview alone whether the full body is valid JSON.
 func TestTokenResponseLoggingTransport_DoesNotLogSuccessfulTokenResponse(t *testing.T) {
-	logger, hook := logrustest.NewNullLogger()
-	logger.SetLevel(logrus.TraceLevel)
-	ctx := log.ContextWithLogger(context.Background(), logrus.NewEntry(logger))
+	// padTokenBody builds a valid JSON token response whose serialized size
+	// is at least targetSize, by padding an extra field with 'x' characters.
+	padTokenBody := func(targetSize int) string {
+		const template = `{"access_token":"super-secret-access-token","refresh_token":"super-secret-refresh-token","pad":"%s"}`
+		overhead := len(fmt.Sprintf(template, ""))
+		padLen := 0
+		if targetSize > overhead {
+			padLen = targetSize - overhead
+		}
+		return fmt.Sprintf(template, strings.Repeat("x", padLen))
+	}
 
-	const tokenBody = `{"access_token":"super-secret-access-token","refresh_token":"super-secret-refresh-token"}`
+	tests := []struct {
+		name string
+		body string
+	}{
+		{name: "small body", body: `{"access_token":"super-secret-access-token","refresh_token":"super-secret-refresh-token"}`},
+		{name: "body exactly at preview cap", body: padTokenBody(tokenResponseLogSize)},
+		{name: "body above preview cap", body: padTokenBody(tokenResponseLogSize + 1024)},
+	}
 
-	next := new(mocks.RoundTripper)
-	req := httptest.NewRequest(http.MethodGet, "http://example.com/token", nil).WithContext(ctx)
-	next.On("RoundTrip", req).Return(&http.Response{
-		StatusCode: http.StatusOK,
-		Body:       io.NopCloser(strings.NewReader(tokenBody)),
-	}, nil)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			logger, hook := logrustest.NewNullLogger()
+			logger.SetLevel(logrus.TraceLevel)
+			ctx := log.ContextWithLogger(context.Background(), logrus.NewEntry(logger))
 
-	tr := &tokenResponseLoggingTransport{next: next}
-	resp, err := tr.RoundTrip(req)
-	require.NoError(t, err)
+			next := new(mocks.RoundTripper)
+			req := httptest.NewRequest(http.MethodGet, "http://example.com/token", nil).WithContext(ctx)
+			next.On("RoundTrip", req).Return(&http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(tt.body)),
+			}, nil)
 
-	gotBody, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	assert.Equal(t, tokenBody, string(gotBody))
+			tr := &tokenResponseLoggingTransport{next: next}
+			resp, err := tr.RoundTrip(req)
+			require.NoError(t, err)
 
-	assert.Empty(t, hook.AllEntries(), "a successful, valid JSON token response must not be logged")
+			gotBody, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+			assert.Equal(t, tt.body, string(gotBody))
+
+			assert.Empty(t, hook.AllEntries(), "a successful, valid JSON token response must not be logged")
+		})
+	}
 }
 
 // TestTokenResponseLoggingTransport_LogsBodyOnDecodeFailure reproduces the
