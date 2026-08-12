@@ -18,16 +18,26 @@ package parallel
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/pem"
 	"fmt"
+	"math/big"
+	"time"
 
 	applicationFixture "github.com/argoproj-labs/argocd-image-updater/test/ginkgo/fixture/application"
 	"github.com/argoproj/argo-cd/gitops-engine/pkg/health"
+	synccommon "github.com/argoproj/argo-cd/gitops-engine/pkg/sync/common"
 	appv1alpha1 "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -42,6 +52,60 @@ import (
 	fixtureUtils "github.com/argoproj-labs/argocd-image-updater/test/ginkgo/fixture/utils"
 	argov1beta1api "github.com/argoproj-labs/argocd-operator/api/v1beta1"
 )
+
+// generateTestTLSCert creates a self-signed CA and a server certificate with SANs
+// matching the git server's in-cluster DNS names. Returns PEM-encoded cert, key, and CA cert.
+func generateTestTLSCert(serviceName, namespace string) (certPEM, keyPEM, caCertPEM []byte) {
+	// Generate CA key and certificate
+	caKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	Expect(err).NotTo(HaveOccurred())
+
+	caTemplate := &x509.Certificate{
+		SerialNumber:          big.NewInt(1),
+		Subject:               pkix.Name{CommonName: "test-ca"},
+		NotBefore:             time.Now(),
+		NotAfter:              time.Now().Add(24 * time.Hour),
+		IsCA:                  true,
+		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
+		BasicConstraintsValid: true,
+	}
+	caCertDER, err := x509.CreateCertificate(rand.Reader, caTemplate, caTemplate, &caKey.PublicKey, caKey)
+	Expect(err).NotTo(HaveOccurred())
+	caCert, err := x509.ParseCertificate(caCertDER)
+	Expect(err).NotTo(HaveOccurred())
+
+	// Generate server key and certificate
+	serverKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	Expect(err).NotTo(HaveOccurred())
+
+	clusterDomain := fmt.Sprintf("%s.%s.svc.cluster.local", serviceName, namespace)
+	serverTemplate := &x509.Certificate{
+		SerialNumber: big.NewInt(2),
+		Subject:      pkix.Name{CommonName: clusterDomain},
+		DNSNames: []string{
+			"localhost",
+			serviceName,
+			fmt.Sprintf("%s.%s", serviceName, namespace),
+			fmt.Sprintf("%s.%s.svc", serviceName, namespace),
+			clusterDomain,
+		},
+		NotBefore:             time.Now(),
+		NotAfter:              time.Now().Add(24 * time.Hour),
+		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		BasicConstraintsValid: true,
+	}
+	serverCertDER, err := x509.CreateCertificate(rand.Reader, serverTemplate, caCert, &serverKey.PublicKey, caKey)
+	Expect(err).NotTo(HaveOccurred())
+
+	// Encode to PEM
+	certPEM = pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: serverCertDER})
+	serverKeyDER, err := x509.MarshalECPrivateKey(serverKey)
+	Expect(err).NotTo(HaveOccurred())
+	keyPEM = pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: serverKeyDER})
+	caCertPEM = pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: caCertDER})
+	return
+}
 
 var _ = Describe("ArgoCD Image Updater Parallel E2E Tests", func() {
 
@@ -90,17 +154,169 @@ var _ = Describe("ArgoCD Image Updater Parallel E2E Tests", func() {
 			By("creating simple namespace-scoped Argo CD instance with image updater enabled")
 			ns, cleanupFunc = fixture.CreateRandomE2ETestNamespaceWithCleanupFunc()
 
-			By("Creating local git repo")
-			iuFixture.CreateLocalGitRepo(ctx, k8sClient, ns.Name)
+			By("generating TLS certificate for the local git server")
+			certPEM, keyPEM, caCertPEM := generateTestTLSCert(iuFixture.Name, ns.Name)
+
+			By("creating TLS Secret for the git server")
+			tlsSecret := &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      iuFixture.Name + "-tls",
+					Namespace: ns.Name,
+				},
+				Data: map[string][]byte{
+					"tls.crt": certPEM,
+					"tls.key": keyPEM,
+				},
+			}
+			Expect(k8sClient.Create(ctx, tlsSecret)).To(Succeed())
+
+			By("creating local git repo with TLS certificate mounted")
+			gitImageRef := fmt.Sprintf("%s/%s:%s", iuFixture.GitImageRepo, iuFixture.GitImageName, iuFixture.GitImageTag)
+			depl := &appsv1.Deployment{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      iuFixture.Name,
+					Namespace: ns.Name,
+				},
+				Spec: appsv1.DeploymentSpec{
+					Selector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{
+							"app":       iuFixture.Name,
+							"component": ns.Name,
+						},
+					},
+					Template: corev1.PodTemplateSpec{
+						ObjectMeta: metav1.ObjectMeta{
+							Labels: map[string]string{
+								"app":       iuFixture.Name,
+								"component": ns.Name,
+							},
+						},
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{
+								{
+									Name:            iuFixture.GitImageName,
+									Image:           gitImageRef,
+									ImagePullPolicy: corev1.PullAlways,
+									Ports: []corev1.ContainerPort{
+										{ContainerPort: 8080},
+										{ContainerPort: 8081},
+									},
+									VolumeMounts: []corev1.VolumeMount{
+										{
+											Name:      "tls-cert",
+											MountPath: "/etc/nginx/localhost.crt",
+											SubPath:   "tls.crt",
+											ReadOnly:  true,
+										},
+										{
+											Name:      "tls-cert",
+											MountPath: "/etc/nginx/localhost.key",
+											SubPath:   "tls.key",
+											ReadOnly:  true,
+										},
+									},
+								},
+							},
+							Volumes: []corev1.Volume{
+								{
+									Name: "tls-cert",
+									VolumeSource: corev1.VolumeSource{
+										Secret: &corev1.SecretVolumeSource{
+											SecretName: tlsSecret.Name,
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, depl)).To(Succeed())
+
+			By("creating local git repo Service")
+			service := &corev1.Service{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      iuFixture.Name,
+					Namespace: ns.Name,
+				},
+				Spec: corev1.ServiceSpec{
+					Type: corev1.ServiceTypeNodePort,
+					Selector: map[string]string{
+						"app":       iuFixture.Name,
+						"component": ns.Name,
+					},
+					Ports: []corev1.ServicePort{
+						{
+							Name:       "unauth",
+							Protocol:   corev1.ProtocolTCP,
+							Port:       8080,
+							TargetPort: intstr.FromInt32(8080),
+						},
+						{
+							Name:       "auth",
+							Protocol:   corev1.ProtocolTCP,
+							Port:       8081,
+							TargetPort: intstr.FromInt32(8081),
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, service)).To(Succeed())
+
+			gitRepoURL := fmt.Sprintf("https://%s.%s.svc.cluster.local:8081/testdata.git", iuFixture.Name, ns.Name)
+
+			By("creating ArgoCD repository credential Secret")
+			repoSecret := &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      iuFixture.Name,
+					Namespace: ns.Name,
+					Labels: map[string]string{
+						"argocd.argoproj.io/secret-type": "repository",
+						"component":                      ns.Name,
+					},
+				},
+				StringData: map[string]string{
+					"url":      gitRepoURL,
+					"type":     "git",
+					"password": "git",
+					"username": "git",
+				},
+			}
+			Expect(k8sClient.Create(ctx, repoSecret)).To(Succeed())
+
+			By("creating repo-write-creds Secret for the commit-server")
+			repoWriteCredsURL := fmt.Sprintf("https://%s.%s.svc.cluster.local:8081/", iuFixture.Name, ns.Name)
+			writeCredsSecret := &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      iuFixture.Name + "-write-creds",
+					Namespace: ns.Name,
+					Labels: map[string]string{
+						"argocd.argoproj.io/secret-type": "repo-write-creds",
+					},
+				},
+				StringData: map[string]string{
+					"type":     "git",
+					"url":      repoWriteCredsURL,
+					"password": "git",
+					"username": "git",
+				},
+			}
+			Expect(k8sClient.Create(ctx, writeCredsSecret)).To(Succeed())
 
 			By("waiting for local git repo to be ready")
 			gitDepl := &appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: iuFixture.Name, Namespace: ns.Name}}
 			Eventually(gitDepl).Should(k8sFixture.ExistByName())
 			Eventually(gitDepl, "2m", "3s").Should(deplFixture.HaveReadyReplicas(1), "git repo server was not ready")
 
+			tlsHostKey := fmt.Sprintf("%s.%s.svc.cluster.local", iuFixture.Name, ns.Name)
 			argoCD = &argov1beta1api.ArgoCD{
 				ObjectMeta: metav1.ObjectMeta{Name: "argocd", Namespace: ns.Name},
 				Spec: argov1beta1api.ArgoCDSpec{
+					TLS: argov1beta1api.ArgoCDTLSSpec{
+						InitialCerts: map[string]string{
+							tlsHostKey: string(caCertPEM),
+						},
+					},
 					SourceHydrator: argov1beta1api.ArgoCDSourceHydratorSpec{
 						Enabled: ptr.To(true),
 					},
@@ -138,7 +354,6 @@ var _ = Describe("ArgoCD Image Updater Parallel E2E Tests", func() {
 			Eventually(statefulSet, "3m", "3s").Should(ssFixture.HaveReadyReplicas(1))
 
 			By("creating SourceHydrator Helm Application")
-			gitRepoURL := fmt.Sprintf("https://%s.%s.svc.cluster.local:8081/testdata.git", iuFixture.Name, ns.Name)
 			hydrateBranch := "environments/hydrator-test"
 			app := &appv1alpha1.Application{
 				ObjectMeta: metav1.ObjectMeta{
@@ -165,18 +380,28 @@ var _ = Describe("ArgoCD Image Updater Parallel E2E Tests", func() {
 						Server:    "https://kubernetes.default.svc",
 						Namespace: ns.Name,
 					},
-					SyncPolicy: &appv1alpha1.SyncPolicy{
-						Automated: &appv1alpha1.SyncPolicyAutomated{
-							Prune: ptr.To(true),
-						},
-					},
 				},
 			}
 			Expect(k8sClient.Create(ctx, app)).To(Succeed())
 
-			By("verifying deploying the Application succeeded")
-			Eventually(app, "4m", "3s").Should(applicationFixture.HaveHealthStatusCode(health.HealthStatusHealthy))
-			Eventually(app, "4m", "3s").Should(applicationFixture.HaveSyncStatusCode(appv1alpha1.SyncStatusCodeSynced))
+			By("waiting for Source Hydrator to hydrate the application")
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(app), app)).To(Succeed())
+				g.Expect(app.Status.SourceHydrator.CurrentOperation).NotTo(BeNil())
+				g.Expect(app.Status.SourceHydrator.CurrentOperation.Phase).To(
+					Equal(appv1alpha1.HydrateOperationPhaseHydrated),
+				)
+			}, "2m", "5s").Should(Succeed())
+
+			By("syncing hydrated manifests to the cluster")
+			Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(app), app)).To(Succeed())
+			app.Operation = &appv1alpha1.Operation{
+				Sync: &appv1alpha1.SyncOperation{},
+			}
+			Expect(k8sClient.Update(ctx, app)).To(Succeed())
+			Eventually(app, "2m", "5s").Should(applicationFixture.HaveOperationStatePhase(synccommon.OperationSucceeded))
+			Expect(app).Should(applicationFixture.HaveSyncStatusCode(appv1alpha1.SyncStatusCodeSynced))
+			Expect(app).Should(applicationFixture.HaveHealthStatusCode(health.HealthStatusHealthy))
 
 			By("creating ImageUpdater CR with git write-back targeting the Helm values file")
 			updateStrategy := "semver"
