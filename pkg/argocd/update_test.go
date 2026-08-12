@@ -2740,18 +2740,17 @@ kustomize:
 	})
 
 	t.Run("Valid Helm source", func(t *testing.T) {
+		// foo and bar are live overrides on the Application that are not
+		// managed by any tracked image (the image below uses no alias, so
+		// it only manages the default image.name/image.tag parameters).
+		// They must not be written to the override file - see GitHub issue
+		// #1174.
 		expected := `
 helm:
   parameters:
-  - name: bar
-    value: foo
-    forcestring: true
   - name: baz
     value: baz
     forcestring: false
-  - name: foo
-    value: bar
-    forcestring: true
 `
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
@@ -2803,15 +2802,11 @@ helm:
 	})
 
 	t.Run("Empty originalData error with valid Helm source", func(t *testing.T) {
+		// foo and bar are unrelated to the tracked image (see above), so a
+		// fresh override file must come out with no parameters at all.
 		expected := `
 helm:
-  parameters:
-  - name: bar
-    value: foo
-    forcestring: true
-  - name: foo
-    value: bar
-    forcestring: true
+  parameters: []
 `
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
@@ -2857,15 +2852,11 @@ helm:
 	})
 
 	t.Run("Invalid unmarshal originalData error with valid Helm source", func(t *testing.T) {
+		// Same as above: foo and bar are unrelated to the tracked image, so
+		// the regenerated override file must come out with no parameters.
 		expected := `
 helm:
-  parameters:
-  - name: bar
-    value: foo
-    forcestring: true
-  - name: foo
-    value: bar
-    forcestring: true
+  parameters: []
 `
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
@@ -2908,6 +2899,67 @@ helm:
 		require.NoError(t, err)
 		assert.NotEmpty(t, yaml)
 		assert.Equal(t, strings.TrimSpace(strings.ReplaceAll(expected, "\t", "  ")), strings.TrimSpace(string(yaml)))
+	})
+
+	t.Run("GitHub issue #1174 - only image-managed Helm parameters are committed", func(t *testing.T) {
+		expected := `
+helm:
+  parameters:
+  - name: image.name
+    value: nginx
+    forcestring: true
+  - name: image.tag
+    value: 1.2.3
+    forcestring: true
+`
+		app := v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name: "testapp",
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: &v1alpha1.ApplicationSource{
+					RepoURL:        "https://example.com/example",
+					TargetRevision: "main",
+					Helm: &v1alpha1.ApplicationSourceHelm{
+						Parameters: []v1alpha1.HelmParameter{
+							{
+								Name:        "image.name",
+								Value:       "nginx",
+								ForceString: true,
+							},
+							{
+								Name:        "image.tag",
+								Value:       "1.2.3",
+								ForceString: true,
+							},
+							{
+								// Set through the Argo CD UI/API, unrelated
+								// to any tracked image - must not leak into
+								// the git-managed override file.
+								Name:        "replicas",
+								Value:       "0",
+								ForceString: false,
+							},
+						},
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypeHelm,
+			},
+		}
+
+		applicationImages := &ApplicationImages{
+			Application: app,
+			Images: ImageList{
+				NewImage(
+					image.NewFromIdentifier("nginx")),
+			},
+		}
+		yaml, err := marshalParamsOverride(context.Background(), applicationImages, nil)
+		require.NoError(t, err)
+		assert.NotEmpty(t, yaml)
+		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(yaml)))
 	})
 
 	t.Run("Empty Helm source", func(t *testing.T) {
@@ -6410,9 +6462,12 @@ helm:
 		app.Spec.Source.TargetRevision = "HEAD"
 		wbc.GitBranch = ""
 
+		trackedImage := NewImage(image.NewFromIdentifier("myalias=nginx"))
+		trackedImage.HelmImageName = "bar"
+		trackedImage.HelmImageTag = "baz"
 		applicationImages := &ApplicationImages{
 			Application:     *app,
-			Images:          ImageList{},
+			Images:          ImageList{trackedImage},
 			WriteBackConfig: wbc,
 		}
 		err = commitChanges(ctx, applicationImages, nil)
@@ -6473,9 +6528,12 @@ helm:
 		app.Spec.Source.TargetRevision = "HEAD"
 		wbc.GitBranch = ""
 
+		trackedImage := NewImage(image.NewFromIdentifier("myalias=nginx"))
+		trackedImage.HelmImageName = "bar"
+		trackedImage.HelmImageTag = "baz"
 		applicationImages := &ApplicationImages{
 			Application:     *app,
-			Images:          ImageList{},
+			Images:          ImageList{trackedImage},
 			WriteBackConfig: wbc,
 		}
 		err = commitChanges(ctx, applicationImages, nil)
@@ -6536,9 +6594,12 @@ helm:
 		app.Spec.Source.TargetRevision = "HEAD"
 		wbc.GitBranch = ""
 
+		trackedImage := NewImage(image.NewFromIdentifier("myalias=nginx"))
+		trackedImage.HelmImageName = "bar"
+		trackedImage.HelmImageTag = "baz"
 		applicationImages := &ApplicationImages{
 			Application:     *app,
-			Images:          ImageList{},
+			Images:          ImageList{trackedImage},
 			WriteBackConfig: wbc,
 		}
 		err = commitChanges(ctx, applicationImages, nil)
