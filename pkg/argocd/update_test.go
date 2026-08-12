@@ -3518,7 +3518,7 @@ replicas: 1
 		assert.Equal(t, strings.TrimSpace(strings.ReplaceAll(expected, "\t", "  ")), strings.TrimSpace(string(yaml)))
 	})
 
-	t.Run("Missing image-tag for helmvalues write-back-target", func(t *testing.T) {
+	t.Run("Default image-tag for helmvalues write-back-target when only image-name is set", func(t *testing.T) {
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
 				Name: "testapp",
@@ -3530,12 +3530,12 @@ replicas: 1
 					Helm: &v1alpha1.ApplicationSourceHelm{
 						Parameters: []v1alpha1.HelmParameter{
 							{
-								Name:        "dockerimage.name",
+								Name:        "image.name",
 								Value:       "nginx",
 								ForceString: true,
 							},
 							{
-								Name:        "dockerimage.tag",
+								Name:        "image.tag",
 								Value:       "v1.0.0",
 								ForceString: true,
 							},
@@ -3565,12 +3565,12 @@ replicas: 1
 			},
 		}
 
-		_, err := marshalParamsOverride(context.Background(), applicationImages, originalData)
-		assert.Error(t, err)
-		assert.Equal(t, "could not find an image-tag for image nginx", err.Error())
+		yaml, err := marshalParamsOverride(context.Background(), applicationImages, originalData)
+		require.NoError(t, err)
+		assert.NotEmpty(t, yaml)
 	})
 
-	t.Run("Missing image-name for helmvalues write-back-target", func(t *testing.T) {
+	t.Run("Default image-name for helmvalues write-back-target when only image-tag is set", func(t *testing.T) {
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
 				Name: "testapp",
@@ -3617,9 +3617,9 @@ replicas: 1
 			},
 		}
 
-		_, err := marshalParamsOverride(context.Background(), applicationImages, originalData)
-		assert.Error(t, err)
-		assert.Equal(t, "could not find an image-name for image nginx", err.Error())
+		yaml, err := marshalParamsOverride(context.Background(), applicationImages, originalData)
+		require.NoError(t, err)
+		assert.NotEmpty(t, yaml)
 	})
 
 	t.Run("Image-name value not found uses fallback from ContainerImage", func(t *testing.T) {
