@@ -3,9 +3,11 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
 	"runtime"
 
 	"github.com/argoproj-labs/argocd-image-updater/pkg/argocd"
+	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/kube"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/image"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
@@ -111,7 +113,9 @@ argocd-image-updater test nginx --allow-tags '^1.19.\d+(\-.*)*$' --update-strate
 			vc.Options = vc.Options.WithMetadata(vc.Strategy.NeedsMetadata())
 
 			if registriesConfPath != "" {
-				if err := registry.LoadRegistryConfiguration(imgCtx, registriesConfPath, false); err != nil {
+				if st, err := os.Stat(registriesConfPath); err != nil || st.IsDir() {
+					imgLogger.Infof("registries configuration not found or is a directory, using default configuration: path=%s", registriesConfPath)
+				} else if err := registry.LoadRegistryConfiguration(imgCtx, registriesConfPath, false); err != nil {
 					imgLogger.Fatalf("could not load registries configuration: %v", err)
 				}
 			}
@@ -180,7 +184,7 @@ argocd-image-updater test nginx --allow-tags '^1.19.\d+(\-.*)*$' --update-strate
 	runCmd.Flags().StringVar(&allowTags, "allow-tags", "", "only consider tags in registry that satisfy the match function")
 	runCmd.Flags().StringArrayVar(&ignoreTags, "ignore-tags", nil, "ignore tags in registry that match given glob pattern")
 	runCmd.Flags().StringVar(&strategy, "update-strategy", "semver", "update strategy to use (one of semver, newest-build, alphabetical, digest)")
-	runCmd.Flags().StringVar(&registriesConfPath, "registries-conf-path", "", "path to registries configuration")
+	runCmd.Flags().StringVar(&registriesConfPath, "registries-conf-path", common.DefaultRegistriesConfPath, "path to registries configuration")
 	runCmd.Flags().StringVar(&logLevel, "loglevel", "debug", "log level to use (one of trace, debug, info, warn, error)")
 	runCmd.Flags().StringVar(&kubeConfig, "kubeconfig", "", "path to your Kubernetes client configuration")
 	runCmd.Flags().StringVar(&credentials, "credentials", "", "the credentials definition for the test (overrides registry config)")
