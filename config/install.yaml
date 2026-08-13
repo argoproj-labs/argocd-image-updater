@@ -442,6 +442,18 @@ spec:
                                   description: GitLab configures MR creation via the
                                     GitLab API.
                                   type: object
+                                labels:
+                                  description: |-
+                                    Labels to apply to the created pull/merge request.
+                                    GitLab sets them when the merge request is created; GitHub applies them
+                                    in a follow-up API call, so a labelling failure does not fail the update.
+                                  items:
+                                    maxLength: 255
+                                    minLength: 1
+                                    type: string
+                                  maxItems: 100
+                                  type: array
+                                  x-kubernetes-list-type: atomic
                               type: object
                               x-kubernetes-validations:
                               - message: Exactly one of github or gitlab must be set
@@ -592,6 +604,18 @@ spec:
                             description: GitLab configures MR creation via the GitLab
                               API.
                             type: object
+                          labels:
+                            description: |-
+                              Labels to apply to the created pull/merge request.
+                              GitLab sets them when the merge request is created; GitHub applies them
+                              in a follow-up API call, so a labelling failure does not fail the update.
+                            items:
+                              maxLength: 255
+                              minLength: 1
+                              type: string
+                            maxItems: 100
+                            type: array
+                            x-kubernetes-list-type: atomic
                         type: object
                         x-kubernetes-validations:
                         - message: Exactly one of github or gitlab must be set

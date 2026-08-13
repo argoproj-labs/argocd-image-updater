@@ -273,6 +273,80 @@ func Test_GithubPRService_create(t *testing.T) {
 	}
 }
 
+func Test_GithubPRService_create_labels(t *testing.T) {
+	ctx := context.Background()
+
+	newLabelHandler := func(labelPathHit *bool, gotLabels *[]string, labelStatus int) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			switch r.URL.Path {
+			case "/api/v3/repos/org/repo/pulls":
+				w.WriteHeader(http.StatusCreated)
+				_ = json.NewEncoder(w).Encode(github.PullRequest{Number: new(42)})
+			case "/api/v3/repos/org/repo/issues/42/labels":
+				*labelPathHit = true
+				var body []string
+				_ = json.NewDecoder(r.Body).Decode(&body)
+				*gotLabels = body
+				w.WriteHeader(labelStatus)
+				_ = json.NewEncoder(w).Encode([]*github.Label{})
+			default:
+				w.WriteHeader(http.StatusNotFound)
+			}
+		}
+	}
+
+	t.Run("labels are applied after the PR is created", func(t *testing.T) {
+		var hit bool
+		var gotLabels []string
+		server := httptest.NewServer(newLabelHandler(&hit, &gotLabels, http.StatusOK))
+		defer server.Close()
+
+		svc := newTestGithubPRService(server, &PullRequest{
+			title:  "chore: update images",
+			head:   "image-updater-branch",
+			base:   "main",
+			labels: []string{"image-update", "automated"},
+		})
+
+		require.NoError(t, svc.create(ctx))
+		assert.True(t, hit)
+		assert.Equal(t, []string{"image-update", "automated"}, gotLabels)
+	})
+
+	t.Run("no label request is made when no labels are configured", func(t *testing.T) {
+		var hit bool
+		var gotLabels []string
+		server := httptest.NewServer(newLabelHandler(&hit, &gotLabels, http.StatusOK))
+		defer server.Close()
+
+		svc := newTestGithubPRService(server, &PullRequest{
+			title: "chore: update images",
+			head:  "image-updater-branch",
+			base:  "main",
+		})
+
+		require.NoError(t, svc.create(ctx))
+		assert.False(t, hit)
+	})
+
+	t.Run("a failing label request does not fail PR creation", func(t *testing.T) {
+		var hit bool
+		var gotLabels []string
+		server := httptest.NewServer(newLabelHandler(&hit, &gotLabels, http.StatusInternalServerError))
+		defer server.Close()
+
+		svc := newTestGithubPRService(server, &PullRequest{
+			title:  "chore: update images",
+			head:   "image-updater-branch",
+			base:   "main",
+			labels: []string{"image-update"},
+		})
+
+		require.NoError(t, svc.create(ctx))
+		assert.True(t, hit)
+	})
+}
+
 func Test_GithubPRService_exists(t *testing.T) {
 	ctx := context.Background()
 

@@ -835,10 +835,11 @@ More specific scopes override less specific ones; absent fields are inherited fr
 
 #### PullRequest fields
 
-| Field    | Type              | Required | Description                                        |
-|----------|-------------------|----------|----------------------------------------------------|
-| `github` | PullRequestGitHub | No       | GitHub configures PR creation via the GitHub API.  |
-| `gitlab` | PullRequestGitLab | No       | GitLab configures MR creation via the GitLab API.  |
+| Field    | Type              | Required | Description                                                          |
+|----------|-------------------|----------|------------------------------------------------------------------------|
+| `github` | PullRequestGitHub | No       | GitHub configures PR creation via the GitHub API.                    |
+| `gitlab` | PullRequestGitLab | No       | GitLab configures MR creation via the GitLab API.                    |
+| `labels` | []string          | No       | Labels to apply to the created pull/merge request (max 100 entries). |
 
 Exactly one provider must be configured in `pullRequest`.
 

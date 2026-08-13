@@ -109,6 +109,7 @@ type WriteBackConfig struct {
 	GitRepo                string
 	GitCreds               git.CredsStore
 	PRProvider             PRProvider
+	PRLabels               []string
 	PullRequest            *PullRequest
 }
 

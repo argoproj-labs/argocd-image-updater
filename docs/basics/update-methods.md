@@ -564,6 +564,35 @@ truncated automatically.
 To customise the title and body, configure the
 [commit message template](#method-git-commit-message).
 
+#### PR labels
+
+Set `pullRequest.labels` to apply labels to every pull/merge request opened by
+Image Updater, for example to drive review automation or merge queues:
+
+```yaml
+writeBackConfig:
+  method: "git:secret:git-creds"
+  gitConfig:
+    repository: "https://github.com/example/example.git"
+    branch: "main"
+    pullRequest:
+      github: {}
+      labels:
+        - image-update
+        - automated
+```
+
+The field applies to both providers, but they behave slightly differently:
+
+* **GitLab** sets the labels in the same API call that creates the merge
+  request, and creates any label that does not yet exist in the project.
+* **GitHub** has no labels field on its PR creation API, so labels are applied
+  in a follow-up call once the PR exists. If that call fails (for example when
+  the token lacks issue write permission) a warning is logged and the update is
+  still treated as successful — the PR is created either way.
+
+Empty entries and duplicates are ignored.
+
 #### GitHub
 
 GitHub pull requests are supported for both github.com and GitHub Enterprise

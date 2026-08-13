@@ -480,6 +480,31 @@ func countPullRequestProviders(pr *iuapi.PullRequest) int {
 	return count
 }
 
+// sanitizePRLabels trims whitespace and drops empty entries and duplicates from
+// the configured pull/merge request labels, preserving the configured order.
+func sanitizePRLabels(labels []string) []string {
+	if len(labels) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(labels))
+	out := make([]string, 0, len(labels))
+	for _, l := range labels {
+		l = strings.TrimSpace(l)
+		if l == "" {
+			continue
+		}
+		if _, dup := seen[l]; dup {
+			continue
+		}
+		seen[l] = struct{}{}
+		out = append(out, l)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
 // mergeWBCSettings merges global and app-specific WriteBackConfig settings.
 // App-specific settings take precedence over global settings.
 // A nil Method on the app level means "inherit from global" (not "default to argocd").
@@ -627,6 +652,8 @@ func newWBCFromSettings(ctx context.Context, app *argocdapi.Application, kubeCli
 			if settings.GitConfig.PullRequest.GitLab != nil {
 				wbc.PRProvider = PRProviderGitLab
 			}
+
+			wbc.PRLabels = sanitizePRLabels(settings.GitConfig.PullRequest.Labels)
 		}
 	} else {
 		return nil, fmt.Errorf("invalid update mechanism: %s", *settings.Method)

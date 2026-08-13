@@ -12,6 +12,8 @@ spec:
     gitConfig:
       pullRequest:
         github: {}
+        labels:
+          - image-update
       repository: "https://github.com/example/example.git"
   applicationRefs:
     - namePattern: "app-001"

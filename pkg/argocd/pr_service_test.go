@@ -174,6 +174,19 @@ func Test_buildPullRequest(t *testing.T) {
 			assert.Equal(t, tt.wantBase, pr.base)
 		})
 	}
+
+	t.Run("labels are carried from the write-back config", func(t *testing.T) {
+		wbc := &WriteBackConfig{PRLabels: []string{"image-update", "automated"}}
+		pr, err := buildPullRequest(ctx, wbc, ns, name, baseBranch, headBranch)
+		require.NoError(t, err)
+		assert.Equal(t, []string{"image-update", "automated"}, pr.labels)
+	})
+
+	t.Run("no labels configured leaves PR labels empty", func(t *testing.T) {
+		pr, err := buildPullRequest(ctx, &WriteBackConfig{}, ns, name, baseBranch, headBranch)
+		require.NoError(t, err)
+		assert.Empty(t, pr.labels)
+	})
 }
 
 // --- Test_commitChangesPR ---

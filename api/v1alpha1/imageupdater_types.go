@@ -234,6 +234,16 @@ type PullRequest struct {
 	// GitLab configures MR creation via the GitLab API.
 	// +optional
 	GitLab *PullRequestGitLab `json:"gitlab,omitempty"`
+
+	// Labels to apply to the created pull/merge request.
+	// GitLab sets them when the merge request is created; GitHub applies them
+	// in a follow-up API call, so a labelling failure does not fail the update.
+	// +optional
+	// +listType=atomic
+	// +kubebuilder:validation:MaxItems=100
+	// +kubebuilder:validation:items:MinLength=1
+	// +kubebuilder:validation:items:MaxLength=255
+	Labels []string `json:"labels,omitempty"`
 }
 
 // PullRequestGitHub defines connection and filter options for creating GitHub pull requests.
