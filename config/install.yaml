@@ -75,7 +75,6 @@ spec:
                             This acts as the default if not overridden.
                           type: string
                         forceUpdate:
-                          default: false
                           description: |-
                             ForceUpdate specifies whether updates should be forced.
                             This acts as the default if not overridden.
@@ -102,7 +101,6 @@ spec:
                             This acts as the default if not overridden.
                           type: string
                         updateStrategy:
-                          default: semver
                           description: |-
                             UpdateStrategy defines the update strategy to apply.
                             Examples: "semver", "latest", "digest", "name".
@@ -137,7 +135,6 @@ spec:
                                   This acts as the default if not overridden.
                                 type: string
                               forceUpdate:
-                                default: false
                                 description: |-
                                   ForceUpdate specifies whether updates should be forced.
                                   This acts as the default if not overridden.
@@ -164,7 +161,6 @@ spec:
                                   This acts as the default if not overridden.
                                 type: string
                               updateStrategy:
-                                default: semver
                                 description: |-
                                   UpdateStrategy defines the update strategy to apply.
                                   Examples: "semver", "latest", "digest", "name".
@@ -498,7 +494,6 @@ spec:
                       This acts as the default if not overridden.
                     type: string
                   forceUpdate:
-                    default: false
                     description: |-
                       ForceUpdate specifies whether updates should be forced.
                       This acts as the default if not overridden.
@@ -525,7 +520,6 @@ spec:
                       This acts as the default if not overridden.
                     type: string
                   updateStrategy:
-                    default: semver
                     description: |-
                       UpdateStrategy defines the update strategy to apply.
                       Examples: "semver", "latest", "digest", "name".
