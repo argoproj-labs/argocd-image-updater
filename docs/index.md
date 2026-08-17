@@ -4,6 +4,24 @@ A tool to automatically update the container images of Kubernetes workloads
 that are managed by
 [Argo CD](https://github.com/argoproj/argo-cd).
 
+!!!warning "Migrate common update settings when upgrading to v1.4.0 CRDs"
+    In v1.0.0 through v1.3.x, the ImageUpdater CRD defaulted and stored
+    `updateStrategy: semver` and `forceUpdate: false` when these fields were
+    omitted from any existing `commonUpdateSettings`. These stored values
+    prevented inheritance from `spec.commonUpdateSettings` to
+    `spec.applicationRefs[].commonUpdateSettings` and
+    `spec.applicationRefs[].images[].commonUpdateSettings`, and from
+    `spec.applicationRefs[].commonUpdateSettings` to
+    `spec.applicationRefs[].images[].commonUpdateSettings`.
+
+    `ImageUpdater` resources created with v1.4.0 CRDs or later may therefore
+    behave differently from resources created with previous CRDs.
+
+    Because these values are persisted, upgrading to v1.4.0 CRDs alone does not
+    fix existing resources. After upgrading the CRDs, manually remove
+    unintentional `forceUpdate` and `updateStrategy` values, or delete and
+    recreate the affected `ImageUpdater` resources to restore inheritance.
+
 !!!warning "spec.namespace Field Removed"
     The `spec.namespace` field has been removed from the `ImageUpdater` API. Any CR that includes `spec.namespace` will fail validation. The controller uses the ImageUpdater CR's `metadata.namespace` to determine which namespace to search for applications. For details and migration examples, see [Namespace Field Removal](#namespace-field-removal) below.
 

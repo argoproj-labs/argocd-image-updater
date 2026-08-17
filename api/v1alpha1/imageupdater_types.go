@@ -177,13 +177,11 @@ type CommonUpdateSettings struct {
 	// Examples: "semver", "latest", "digest", "name".
 	// This acts as the default if not overridden at a more specific level.
 	// +optional
-	// +kubebuilder:default:="semver"
 	UpdateStrategy *string `json:"updateStrategy,omitempty"`
 
 	// ForceUpdate specifies whether updates should be forced.
 	// This acts as the default if not overridden.
 	// +optional
-	// +kubebuilder:default:=false
 	ForceUpdate *bool `json:"forceUpdate,omitempty"`
 
 	// AllowTags is a regex pattern for tags to allow.
