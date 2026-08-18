@@ -6,8 +6,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-
-	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
 )
 
 // TestNewTestCommand tests various flags and their default values.
@@ -22,7 +20,7 @@ func TestNewTestCommand(t *testing.T) {
 	asser.Equal("", testCmd.Flag("allow-tags").Value.String())
 	asser.Equal("[]", testCmd.Flag("ignore-tags").Value.String())
 	asser.Equal("semver", testCmd.Flag("update-strategy").Value.String())
-	asser.Equal(common.DefaultRegistriesConfPath, testCmd.Flag("registries-conf-path").Value.String())
+	asser.Equal("", testCmd.Flag("registries-conf-path").Value.String())
 	asser.Equal("debug", testCmd.Flag("loglevel").Value.String())
 	asser.Equal("", testCmd.Flag("kubeconfig").Value.String())
 	asser.Equal("", testCmd.Flag("credentials").Value.String())
