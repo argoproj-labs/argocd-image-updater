@@ -49,6 +49,8 @@ type PullRequest struct {
 	head string
 	// base is the branch the PR will be merged into (PR target, e.g. "main").
 	base string
+	// labels are applied to the pull/merge request on creation.
+	labels []string
 }
 
 // buildPullRequest derives the PR title, body, head and base from the
@@ -88,10 +90,11 @@ func buildPullRequest(ctx context.Context, wbc *WriteBackConfig, appNamespace, a
 	}
 
 	return &PullRequest{
-		title: title,
-		head:  pushBranch,
-		base:  checkOutBranch,
-		body:  body,
+		title:  title,
+		head:   pushBranch,
+		base:   checkOutBranch,
+		body:   body,
+		labels: wbc.PRLabels,
 	}, nil
 }
 

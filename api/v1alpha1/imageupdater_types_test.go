@@ -20,8 +20,10 @@ package v1alpha1
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -742,6 +744,53 @@ var _ = Describe("PullRequest Validation", func() {
 			err := k8sClient.Create(context.Background(), cr)
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("Exactly one of github or gitlab must be set"))
+		})
+	})
+
+	Context("when labels are set", func() {
+		It("should accept pullRequest with labels", func() {
+			cr := baseWithPR("pr-labels", &PullRequest{
+				GitHub: &PullRequestGitHub{},
+				Labels: []string{"image-update", "automated"},
+			})
+			err := k8sClient.Create(context.Background(), cr)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(k8sClient.Delete(context.Background(), cr)).To(Succeed())
+		})
+
+		It("should reject an empty label", func() {
+			cr := baseWithPR("pr-empty-label", &PullRequest{
+				GitHub: &PullRequestGitHub{},
+				Labels: []string{""},
+			})
+			err := k8sClient.Create(context.Background(), cr)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("should be at least 1 chars long"))
+		})
+
+		It("should reject a label longer than 255 characters", func() {
+			cr := baseWithPR("pr-long-label", &PullRequest{
+				GitHub: &PullRequestGitHub{},
+				Labels: []string{strings.Repeat("x", 256)},
+			})
+			err := k8sClient.Create(context.Background(), cr)
+			Expect(err).To(HaveOccurred())
+			// The text after "Too long" varies between Kubernetes versions.
+			Expect(err.Error()).To(ContainSubstring("spec.writeBackConfig.gitConfig.pullRequest.labels[0]: Too long"))
+		})
+
+		It("should reject more than 100 labels", func() {
+			labels := make([]string, 101)
+			for i := range labels {
+				labels[i] = fmt.Sprintf("label-%d", i)
+			}
+			cr := baseWithPR("pr-too-many-labels", &PullRequest{
+				GitHub: &PullRequestGitHub{},
+				Labels: labels,
+			})
+			err := k8sClient.Create(context.Background(), cr)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("must have at most 100 items"))
 		})
 	})
 })

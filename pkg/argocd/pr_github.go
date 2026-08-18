@@ -56,6 +56,14 @@ func (g *GithubPRService) create(ctx context.Context) error {
 	}
 	logCtx.Infof("created PR #%d %q → %q: %s", githubPullRequest.GetNumber(), g.pr.head, g.pr.base, githubPullRequest.GetHTMLURL())
 
+	// The GitHub PR creation API has no labels field, so labels are applied in a
+	// follow-up call. A failure here must not fail the whole update: the PR exists.
+	if len(g.pr.labels) > 0 {
+		if _, _, err := g.client.Issues.AddLabelsToIssue(ctx, g.owner, g.repo, githubPullRequest.GetNumber(), g.pr.labels); err != nil {
+			logCtx.Warnf("could not add labels %v to PR #%d: %v", g.pr.labels, githubPullRequest.GetNumber(), err)
+		}
+	}
+
 	return nil
 }
 

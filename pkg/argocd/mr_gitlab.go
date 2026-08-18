@@ -45,6 +45,9 @@ func (g *GitLabMRService) create(ctx context.Context) error {
 		TargetBranch: new(g.pr.base),
 		Description:  new(g.pr.body),
 	}
+	if len(g.pr.labels) > 0 {
+		opts.Labels = new(gitlab.LabelOptions(g.pr.labels))
+	}
 
 	mr, resp, err := g.client.MergeRequests.CreateMergeRequest(g.projectID, opts, gitlab.WithContext(ctx))
 	if err != nil {

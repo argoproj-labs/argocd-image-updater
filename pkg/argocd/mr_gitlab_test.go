@@ -247,6 +247,58 @@ func Test_GitLabMRService_create(t *testing.T) {
 	}
 }
 
+func Test_GitLabMRService_create_labels(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("labels are sent with the create request", func(t *testing.T) {
+		var gotLabels string
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			var body struct {
+				Labels string `json:"labels"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			gotLabels = body.Labels
+
+			w.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(w).Encode(map[string]any{"iid": 42})
+		}))
+		defer server.Close()
+
+		svc := newTestGitLabMRService(server, &PullRequest{
+			title:  "chore: update images",
+			head:   "image-updater-branch",
+			base:   "main",
+			body:   "automated update",
+			labels: []string{"image-update", "automated"},
+		})
+
+		require.NoError(t, svc.create(ctx))
+		assert.Equal(t, "image-update,automated", gotLabels)
+	})
+
+	t.Run("no labels field is sent when none are configured", func(t *testing.T) {
+		var hasLabels bool
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			var body map[string]any
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			_, hasLabels = body["labels"]
+
+			w.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(w).Encode(map[string]any{"iid": 42})
+		}))
+		defer server.Close()
+
+		svc := newTestGitLabMRService(server, &PullRequest{
+			title: "chore: update images",
+			head:  "image-updater-branch",
+			base:  "main",
+		})
+
+		require.NoError(t, svc.create(ctx))
+		assert.False(t, hasLabels)
+	})
+}
+
 func Test_GitLabMRService_exists(t *testing.T) {
 	ctx := context.Background()
 

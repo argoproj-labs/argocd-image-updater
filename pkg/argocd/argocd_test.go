@@ -2999,6 +2999,81 @@ func Test_mergeWBCSettings(t *testing.T) {
 		assert.Nil(t, merged.GitConfig.PullRequest.GitLab)
 	})
 
+	t.Run("global PullRequest labels should be inherited when app has no PullRequest", func(t *testing.T) {
+		global := &api.WriteBackConfig{
+			GitConfig: &api.GitConfig{
+				PullRequest: &api.PullRequest{
+					GitHub: &api.PullRequestGitHub{},
+					Labels: []string{"image-update"},
+				},
+			},
+		}
+		app := &api.WriteBackConfig{
+			GitConfig: &api.GitConfig{Branch: new("main")},
+		}
+		merged := mergeWBCSettings(global, app)
+		require.NotNil(t, merged.GitConfig.PullRequest)
+		assert.Equal(t, []string{"image-update"}, merged.GitConfig.PullRequest.Labels)
+	})
+
+	t.Run("app PullRequest labels should replace global PullRequest labels", func(t *testing.T) {
+		global := &api.WriteBackConfig{
+			GitConfig: &api.GitConfig{
+				PullRequest: &api.PullRequest{
+					GitHub: &api.PullRequestGitHub{},
+					Labels: []string{"global-label"},
+				},
+			},
+		}
+		app := &api.WriteBackConfig{
+			GitConfig: &api.GitConfig{
+				PullRequest: &api.PullRequest{
+					GitHub: &api.PullRequestGitHub{},
+					Labels: []string{"app-label"},
+				},
+			},
+		}
+		merged := mergeWBCSettings(global, app)
+		require.NotNil(t, merged.GitConfig.PullRequest)
+		assert.Equal(t, []string{"app-label"}, merged.GitConfig.PullRequest.Labels)
+	})
+
+	// An app-level pullRequest block replaces the global one wholesale, so a block
+	// without labels drops globally configured labels rather than inheriting them.
+	t.Run("app PullRequest without labels should drop global PullRequest labels", func(t *testing.T) {
+		global := &api.WriteBackConfig{
+			GitConfig: &api.GitConfig{
+				PullRequest: &api.PullRequest{
+					GitHub: &api.PullRequestGitHub{},
+					Labels: []string{"global-label"},
+				},
+			},
+		}
+		app := &api.WriteBackConfig{
+			GitConfig: &api.GitConfig{
+				PullRequest: &api.PullRequest{GitHub: &api.PullRequestGitHub{}},
+			},
+		}
+		merged := mergeWBCSettings(global, app)
+		require.NotNil(t, merged.GitConfig.PullRequest)
+		assert.Empty(t, merged.GitConfig.PullRequest.Labels)
+	})
+
+	t.Run("merged PullRequest labels should be a deep copy of the app labels", func(t *testing.T) {
+		appLabels := []string{"app-label"}
+		app := &api.WriteBackConfig{
+			GitConfig: &api.GitConfig{
+				PullRequest: &api.PullRequest{
+					GitHub: &api.PullRequestGitHub{},
+					Labels: appLabels,
+				},
+			},
+		}
+		merged := mergeWBCSettings(&api.WriteBackConfig{}, app)
+		appLabels[0] = "mutated"
+		assert.Equal(t, []string{"app-label"}, merged.GitConfig.PullRequest.Labels)
+	})
+
 	t.Run("app PullRequest GitLab should replace global PullRequest GitHub", func(t *testing.T) {
 		global := &api.WriteBackConfig{
 			GitConfig: &api.GitConfig{
@@ -3267,6 +3342,51 @@ func Test_newWBCFromSettings(t *testing.T) {
 		wbc, err := newWBCFromSettings(context.Background(), app, kubeClient, nil, settings)
 		assert.NoError(t, err)
 		assert.Equal(t, PRProviderUnsupported, wbc.PRProvider)
+	})
+
+	t.Run("pullRequest labels should be sanitized onto the write-back config", func(t *testing.T) {
+		app, kubeClient := createTestAppAndClient()
+		settings := &api.WriteBackConfig{
+			Method: new("git"),
+			GitConfig: &api.GitConfig{
+				PullRequest: &api.PullRequest{
+					GitHub: &api.PullRequestGitHub{},
+					Labels: []string{"image-update", " automated ", "", "image-update"},
+				},
+			},
+		}
+		wbc, err := newWBCFromSettings(context.Background(), app, kubeClient, nil, settings)
+		assert.NoError(t, err)
+		assert.Equal(t, []string{"image-update", "automated"}, wbc.PRLabels)
+	})
+
+	t.Run("pullRequest without labels should leave PRLabels empty", func(t *testing.T) {
+		app, kubeClient := createTestAppAndClient()
+		settings := &api.WriteBackConfig{
+			Method: new("git"),
+			GitConfig: &api.GitConfig{
+				PullRequest: &api.PullRequest{GitHub: &api.PullRequestGitHub{}},
+			},
+		}
+		wbc, err := newWBCFromSettings(context.Background(), app, kubeClient, nil, settings)
+		assert.NoError(t, err)
+		assert.Empty(t, wbc.PRLabels)
+	})
+
+	t.Run("pullRequest labels containing only blanks should leave PRLabels empty", func(t *testing.T) {
+		app, kubeClient := createTestAppAndClient()
+		settings := &api.WriteBackConfig{
+			Method: new("git"),
+			GitConfig: &api.GitConfig{
+				PullRequest: &api.PullRequest{
+					GitHub: &api.PullRequestGitHub{},
+					Labels: []string{"", "   "},
+				},
+			},
+		}
+		wbc, err := newWBCFromSettings(context.Background(), app, kubeClient, nil, settings)
+		assert.NoError(t, err)
+		assert.Nil(t, wbc.PRLabels)
 	})
 }
 
