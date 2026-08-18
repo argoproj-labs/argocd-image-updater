@@ -35,15 +35,19 @@ func NewFromIdentifier(identifier string) *ContainerImage {
 	}
 	if parsed, err := reference.ParseNormalizedNamed(imgRef); err == nil {
 		img := ContainerImage{}
-		img.RegistryURL = reference.Domain(parsed)
+		domain := reference.Domain(parsed)
+		img.RegistryURL = domain
 		// remove default registry for backwards-compatibility
 		if img.RegistryURL == "docker.io" && !strings.HasPrefix(imgRef, "docker.io") {
 			img.RegistryURL = ""
 		}
 		img.ImageAlias = alias
 		img.ImageName = reference.Path(parsed)
-		// if library/ was added to the image name, remove it
-		if !strings.HasPrefix(imgRef, "library/") {
+		// Docker Hub images without a namespace get the implicit library/
+		// namespace from normalization, e.g. nginx becomes docker.io/library/nginx.
+		// Remove that namespace again. Other registries use library/ as a normal
+		// path element, so keep it there.
+		if domain == "docker.io" && !strings.HasPrefix(imgRef, "library/") {
 			img.ImageName = strings.TrimPrefix(img.ImageName, "library/")
 		}
 		// Check for both tag and digest - an image can have both (e.g., image:tag@sha256:...)

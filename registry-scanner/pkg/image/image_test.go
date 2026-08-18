@@ -43,6 +43,21 @@ func Test_ParseImageTags(t *testing.T) {
 		assert.Equal(t, "library/test-image", image.GetFullNameWithoutTag())
 	})
 
+	t.Run("library namespace is kept for a private registry", func(t *testing.T) {
+		image := NewFromIdentifier("harbor.example.com/library/test-image:0.1")
+		assert.Equal(t, "harbor.example.com", image.RegistryURL)
+		assert.Equal(t, "library/test-image", image.ImageName)
+		assert.Equal(t, "harbor.example.com/library/test-image:0.1", image.GetFullNameWithTag())
+		assert.Equal(t, "harbor.example.com/library/test-image", image.GetFullNameWithoutTag())
+	})
+
+	t.Run("nested library namespace is kept for a private registry", func(t *testing.T) {
+		image := NewFromIdentifier("harbor.example.com/library/nested/test-image:0.1")
+		assert.Equal(t, "harbor.example.com", image.RegistryURL)
+		assert.Equal(t, "library/nested/test-image", image.ImageName)
+		assert.Equal(t, "harbor.example.com/library/nested/test-image:0.1", image.GetFullNameWithTag())
+	})
+
 	t.Run("Parse valid image name with registry info", func(t *testing.T) {
 		image := NewFromIdentifier("gcr.io/jannfis/test-image:0.1")
 		assert.Equal(t, "gcr.io", image.RegistryURL)
