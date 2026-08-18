@@ -3,9 +3,11 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
 	"runtime"
 
 	"github.com/argoproj-labs/argocd-image-updater/pkg/argocd"
+	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/kube"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/image"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
@@ -110,6 +112,19 @@ argocd-image-updater test nginx --allow-tags '^1.19.\d+(\-.*)*$' --update-strate
 			}
 			vc.Options = vc.Options.WithMetadata(vc.Strategy.NeedsMetadata())
 
+			// registriesConfPath defaults to "" so we can tell whether the user set it
+			// explicitly. When unset, fall back to the well-known default path only if it
+			// exists as a readable file; otherwise use the built-in in-memory defaults.
+			if registriesConfPath == "" {
+				if st, err := os.Stat(common.DefaultRegistriesConfPath); err == nil && !st.IsDir() {
+					registriesConfPath = common.DefaultRegistriesConfPath
+				} else {
+					imgLogger.Infof("no registries configuration at default path %s, using built-in defaults", common.DefaultRegistriesConfPath)
+				}
+			}
+
+			// The path is now either an explicit user value or a validated default. Any
+			// load error is fatal so misconfiguration is surfaced rather than masked.
 			if registriesConfPath != "" {
 				if err := registry.LoadRegistryConfiguration(imgCtx, registriesConfPath, false); err != nil {
 					imgLogger.Fatalf("could not load registries configuration: %v", err)
