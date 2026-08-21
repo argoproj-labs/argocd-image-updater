@@ -139,23 +139,15 @@ type multiReadCloser struct {
 }
 
 // tokenResponseLoggingTransport wraps the RoundTripper used exclusively for
-// OAuth/token requests. When a registry's token endpoint returns something
-// that can't be decoded as JSON (an HTML error page, a WAF challenge, a
-// login redirect, etc.), the resulting "unable to decode token response"
-// error carries no detail about what was actually returned, and by the time
-// that error surfaces the response body has already been fully consumed by
-// the decoder - so even trace-level logging shows nothing useful. This peeks
-// at the start of the body for trace logging while leaving it intact for the
-// token decoder that reads it next.
+// OAuth/token requests. It peeks at the start of the response body for trace
+// logging while leaving it intact for the token decoder that reads it next.
 //
 // A successful token response is a small JSON object that may carry a live
-// access or refresh token (see postTokenResponse/getTokenResponse in the
-// vendored internal/client/auth/session.go), so it is never logged: only a
-// non-2xx status or a body that isn't valid JSON - i.e. exactly the cases
-// this exists to debug - triggers the trace log. Non-2xx bodies are always
-// logged regardless of content, since a broken auth server could in theory
-// echo request data back in an error page; that's an accepted tradeoff for
-// making auth failures debuggable.
+// access or refresh token, so it is never logged: only a non-2xx status or a
+// body that isn't valid JSON triggers the trace log. Non-2xx bodies are
+// always logged regardless of content, since a broken auth server could in
+// theory echo request data back in an error page; that's an accepted
+// tradeoff for making auth failures debuggable.
 type tokenResponseLoggingTransport struct {
 	next http.RoundTripper
 }
@@ -167,16 +159,19 @@ func (t *tokenResponseLoggingTransport) RoundTrip(req *http.Request) (*http.Resp
 	}
 
 	preview := make([]byte, tokenResponseLogSize)
-	n, _ := io.ReadFull(resp.Body, preview)
+	n, readErr := io.ReadFull(resp.Body, preview)
 	preview = preview[:n]
 
-	// A truncated preview (n == tokenResponseLogSize) can't be conclusively
-	// judged invalid JSON, so it's only logged when the status itself is
-	// already suspicious; a successful response is never logged based on a
-	// truncated preview, since that could be a large-but-legitimate token
-	// response and logging it risks leaking a live access/refresh token.
+	// io.ReadFull reports io.EOF/io.ErrUnexpectedEOF when the body ends
+	// before filling preview - a complete, if short, read. Any other error
+	// means the read itself failed partway through (e.g. a dropped
+	// connection), so preview holds only a fragment of the real body; treat
+	// that like a cap-truncated preview and never judge it invalid JSON, so
+	// a successful response is never logged based on a fragment that could
+	// be a partial live access/refresh token.
+	bodyFullyRead := readErr == nil || errors.Is(readErr, io.EOF) || errors.Is(readErr, io.ErrUnexpectedEOF)
 	success := resp.StatusCode >= 200 && resp.StatusCode < 300
-	invalidCompleteJSON := n < tokenResponseLogSize && !stdjson.Valid(preview)
+	invalidCompleteJSON := bodyFullyRead && n < tokenResponseLogSize && !stdjson.Valid(preview)
 	if !success || invalidCompleteJSON {
 		log.LoggerFromContext(req.Context()).Tracef("Token endpoint %s returned HTTP %d, body: %q", req.URL, resp.StatusCode, preview)
 	}

@@ -309,6 +309,54 @@ func TestTokenResponseLoggingTransport_DoesNotLogSuccessfulTokenResponse(t *test
 	}
 }
 
+// erroringBody is an io.ReadCloser that returns some data and then a
+// non-EOF error, simulating a connection dropped partway through a response.
+type erroringBody struct {
+	data []byte
+	err  error
+}
+
+func (b *erroringBody) Read(p []byte) (int, error) {
+	if len(b.data) == 0 {
+		return 0, b.err
+	}
+	n := copy(p, b.data)
+	b.data = b.data[n:]
+	if len(b.data) == 0 {
+		return n, b.err
+	}
+	return n, nil
+}
+
+func (b *erroringBody) Close() error { return nil }
+
+// TestTokenResponseLoggingTransport_DoesNotLogOnReadError guards against
+// leaking a fragment of a live access/refresh token: if reading a successful
+// (2xx) response body fails partway through (e.g. a dropped connection), the
+// resulting preview is an incomplete fragment - almost certainly not valid
+// JSON - and must not be logged, since it could be part of a real token.
+func TestTokenResponseLoggingTransport_DoesNotLogOnReadError(t *testing.T) {
+	logger, hook := logrustest.NewNullLogger()
+	logger.SetLevel(logrus.TraceLevel)
+	ctx := log.ContextWithLogger(context.Background(), logrus.NewEntry(logger))
+
+	next := new(mocks.RoundTripper)
+	req := httptest.NewRequest(http.MethodGet, "http://example.com/token", nil).WithContext(ctx)
+	next.On("RoundTrip", req).Return(&http.Response{
+		StatusCode: http.StatusOK,
+		Body:       &erroringBody{data: []byte(`{"access_token":"super-secret-`), err: io.ErrClosedPipe},
+	}, nil)
+
+	tr := &tokenResponseLoggingTransport{next: next}
+	resp, err := tr.RoundTrip(req)
+	require.NoError(t, err)
+
+	_, err = io.ReadAll(resp.Body)
+	assert.ErrorIs(t, err, io.ErrClosedPipe)
+
+	assert.Empty(t, hook.AllEntries(), "a fragment from a failed read of a successful response must not be logged")
+}
+
 // TestTokenResponseLoggingTransport_LogsBodyOnDecodeFailure reproduces the
 // scenario reported for issue 1024: a registry's token endpoint responds
 // with an HTML page (e.g. from a WAF or misconfigured proxy) instead of
