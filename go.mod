@@ -5,7 +5,7 @@ go 1.26.3
 require (
 	github.com/argoproj-labs/argocd-image-updater/registry-scanner v1.3.0
 	github.com/argoproj/argo-cd/gitops-engine v0.7.1-0.20250908182407-97ad5b59a627
-	github.com/argoproj/argo-cd/v3 v3.5.1
+	github.com/argoproj/argo-cd/v3 v3.5.2
 	github.com/bmatcuk/doublestar/v4 v4.10.0
 	github.com/bombsimon/logrusr/v2 v2.0.1
 	github.com/bradleyfalzon/ghinstallation/v2 v2.19.0
