@@ -3,7 +3,7 @@
 CURRENT_DIR=$(shell pwd)
 CONTAINER_TOOL ?= docker
 # Default image for argocd-operator. Can be overridden.
-ARGOCD_OPERATOR_IMAGE ?= quay.io/argoprojlabs/argocd-operator:latest
+ARGOCD_OPERATOR_IMAGE ?= quay.io/argoprojlabs/argocd-operator:v0.18.0
 
 # Get version from root VERSION file
 IMAGE_NAMESPACE?=quay.io/argoprojlabs
