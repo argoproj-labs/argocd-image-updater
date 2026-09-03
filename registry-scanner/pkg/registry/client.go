@@ -1,11 +1,13 @@
 package registry
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	stdjson "encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -123,6 +125,61 @@ func (rlt *rateLimitTransport) RoundTrip(r *http.Request) (*http.Response, error
 	return resp, err
 }
 
+// tokenResponseLogSize caps how much of the OAuth/token endpoint's HTTP
+// response body is buffered for trace logging, so a misbehaving auth server
+// can't force us to hold an unbounded response in memory.
+const tokenResponseLogSize = 4096
+
+// multiReadCloser pairs a Reader assembled for peeking at a response body
+// with the original body's Closer, so the reconstructed body can still be
+// closed correctly by its caller.
+type multiReadCloser struct {
+	io.Reader
+	io.Closer
+}
+
+// tokenResponseLoggingTransport wraps the RoundTripper used exclusively for
+// OAuth/token requests. It peeks at the start of the response body for trace
+// logging while leaving it intact for the token decoder that reads it next.
+//
+// A successful token response is a small JSON object that may carry a live
+// access or refresh token, so it is never logged: only a non-2xx status or a
+// body that isn't valid JSON triggers the trace log. Non-2xx bodies are
+// always logged regardless of content, since a broken auth server could in
+// theory echo request data back in an error page; that's an accepted
+// tradeoff for making auth failures debuggable.
+type tokenResponseLoggingTransport struct {
+	next http.RoundTripper
+}
+
+func (t *tokenResponseLoggingTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	resp, err := t.next.RoundTrip(req)
+	if err != nil || resp == nil || resp.Body == nil {
+		return resp, err
+	}
+
+	preview := make([]byte, tokenResponseLogSize)
+	n, readErr := io.ReadFull(resp.Body, preview)
+	preview = preview[:n]
+
+	// io.ReadFull reports io.EOF/io.ErrUnexpectedEOF when the body ends
+	// before filling preview - a complete, if short, read. Any other error
+	// means the read itself failed partway through (e.g. a dropped
+	// connection), so preview holds only a fragment of the real body; treat
+	// that like a cap-truncated preview and never judge it invalid JSON, so
+	// a successful response is never logged based on a fragment that could
+	// be a partial live access/refresh token.
+	bodyFullyRead := readErr == nil || errors.Is(readErr, io.EOF) || errors.Is(readErr, io.ErrUnexpectedEOF)
+	success := resp.StatusCode >= 200 && resp.StatusCode < 300
+	invalidCompleteJSON := bodyFullyRead && n < tokenResponseLogSize && !stdjson.Valid(preview)
+	if !success || invalidCompleteJSON {
+		log.LoggerFromContext(req.Context()).Tracef("Token endpoint %s returned HTTP %d, body: %q", req.URL, resp.StatusCode, preview)
+	}
+
+	resp.Body = &multiReadCloser{Reader: io.MultiReader(bytes.NewReader(preview), resp.Body), Closer: resp.Body}
+	return resp, nil
+}
+
 // getTokenActions returns the list of OAuth2 Bearer token actions to request
 // for the given registry API. Extend this function when a registry requires
 // additional scopes beyond the default "pull".
@@ -154,7 +211,7 @@ func (clt *registryClient) NewRepository(ctx context.Context, nameInRepository s
 	authTransport := transport.NewTransport(
 		clt.endpoint.GetTransport(ctx), auth.NewAuthorizer(
 			challengeManager1,
-			auth.NewTokenHandler(clt.endpoint.GetTransport(ctx), clt.creds, nameInRepository, actions...),
+			auth.NewTokenHandler(&tokenResponseLoggingTransport{next: clt.endpoint.GetTransport(ctx)}, clt.creds, nameInRepository, actions...),
 			auth.NewBasicHandler(clt.creds)))
 
 	rlt := &rateLimitTransport{
