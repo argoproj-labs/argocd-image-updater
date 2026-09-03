@@ -16,7 +16,7 @@ require (
 	// to   "github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/registry/internal/..."
 	github.com/distribution/distribution/v3 v3.1.1
 	github.com/go-git/go-git/v5 v5.19.2
-	github.com/go-logr/logr v1.4.3
+	github.com/go-logr/logr v1.4.4
 	github.com/google/go-github/v69 v69.2.0
 	github.com/google/uuid v1.6.1-0.20241114170450-2d3c2a9cc518
 	github.com/onsi/ginkgo/v2 v2.32.0
