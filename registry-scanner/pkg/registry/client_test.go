@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -15,6 +17,8 @@ import (
 	"github.com/distribution/distribution/v3/manifest/schema2"
 	godigest "github.com/opencontainers/go-digest"
 	"github.com/opencontainers/image-spec/specs-go"
+	"github.com/sirupsen/logrus"
+	logrustest "github.com/sirupsen/logrus/hooks/test"
 
 	distclient "github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/registry/internal/client"
 
@@ -28,6 +32,7 @@ import (
 	"go.uber.org/ratelimit"
 
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/image"
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/options"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/registry/mocks"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/tag"
@@ -218,6 +223,191 @@ func TestRoundTrip_Failure(t *testing.T) {
 	mockTransport.AssertExpectations(t)
 	assert.Error(t, err)
 	assert.Nil(t, actualResp)
+}
+
+// TestTokenResponseLoggingTransport_PreservesBody verifies that peeking at
+// the response body for trace logging does not corrupt what a downstream
+// reader (the token JSON decoder) sees, for bodies both smaller and larger
+// than the logging preview cap.
+func TestTokenResponseLoggingTransport_PreservesBody(t *testing.T) {
+	cases := map[string]string{
+		"smaller than preview cap": `{"access_token":"short-token"}`,
+		"larger than preview cap":  `{"access_token":"` + strings.Repeat("a", tokenResponseLogSize*2) + `"}`,
+	}
+	for name, body := range cases {
+		t.Run(name, func(t *testing.T) {
+			next := new(mocks.RoundTripper)
+			req := httptest.NewRequest(http.MethodGet, "http://example.com/token", nil)
+			next.On("RoundTrip", req).Return(&http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(body)),
+			}, nil)
+
+			tr := &tokenResponseLoggingTransport{next: next}
+			resp, err := tr.RoundTrip(req)
+			require.NoError(t, err)
+
+			gotBody, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+			assert.Equal(t, body, string(gotBody))
+			require.NoError(t, resp.Body.Close())
+		})
+	}
+}
+
+// TestTokenResponseLoggingTransport_DoesNotLogSuccessfulTokenResponse guards
+// against leaking a live access/refresh token: a normal, successful token
+// response is valid JSON and must never be written to the logs, even at
+// trace level - including when the response is large enough to fill or
+// exceed the preview cap, where the token decoder can no longer tell from
+// the truncated preview alone whether the full body is valid JSON.
+func TestTokenResponseLoggingTransport_DoesNotLogSuccessfulTokenResponse(t *testing.T) {
+	// padTokenBody builds a valid JSON token response whose serialized size
+	// is at least targetSize, by padding an extra field with 'x' characters.
+	padTokenBody := func(targetSize int) string {
+		const template = `{"access_token":"super-secret-access-token","refresh_token":"super-secret-refresh-token","pad":"%s"}`
+		overhead := len(fmt.Sprintf(template, ""))
+		padLen := 0
+		if targetSize > overhead {
+			padLen = targetSize - overhead
+		}
+		return fmt.Sprintf(template, strings.Repeat("x", padLen))
+	}
+
+	tests := []struct {
+		name string
+		body string
+	}{
+		{name: "small body", body: `{"access_token":"super-secret-access-token","refresh_token":"super-secret-refresh-token"}`},
+		{name: "body exactly at preview cap", body: padTokenBody(tokenResponseLogSize)},
+		{name: "body above preview cap", body: padTokenBody(tokenResponseLogSize + 1024)},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			logger, hook := logrustest.NewNullLogger()
+			logger.SetLevel(logrus.TraceLevel)
+			ctx := log.ContextWithLogger(context.Background(), logrus.NewEntry(logger))
+
+			next := new(mocks.RoundTripper)
+			req := httptest.NewRequest(http.MethodGet, "http://example.com/token", nil).WithContext(ctx)
+			next.On("RoundTrip", req).Return(&http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(tt.body)),
+			}, nil)
+
+			tr := &tokenResponseLoggingTransport{next: next}
+			resp, err := tr.RoundTrip(req)
+			require.NoError(t, err)
+
+			gotBody, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+			assert.Equal(t, tt.body, string(gotBody))
+
+			assert.Empty(t, hook.AllEntries(), "a successful, valid JSON token response must not be logged")
+		})
+	}
+}
+
+// erroringBody is an io.ReadCloser that returns some data and then a
+// non-EOF error, simulating a connection dropped partway through a response.
+type erroringBody struct {
+	data []byte
+	err  error
+}
+
+func (b *erroringBody) Read(p []byte) (int, error) {
+	if len(b.data) == 0 {
+		return 0, b.err
+	}
+	n := copy(p, b.data)
+	b.data = b.data[n:]
+	if len(b.data) == 0 {
+		return n, b.err
+	}
+	return n, nil
+}
+
+func (b *erroringBody) Close() error { return nil }
+
+// TestTokenResponseLoggingTransport_DoesNotLogOnReadError guards against
+// leaking a fragment of a live access/refresh token: if reading a successful
+// (2xx) response body fails partway through (e.g. a dropped connection), the
+// resulting preview is an incomplete fragment - almost certainly not valid
+// JSON - and must not be logged, since it could be part of a real token.
+func TestTokenResponseLoggingTransport_DoesNotLogOnReadError(t *testing.T) {
+	logger, hook := logrustest.NewNullLogger()
+	logger.SetLevel(logrus.TraceLevel)
+	ctx := log.ContextWithLogger(context.Background(), logrus.NewEntry(logger))
+
+	next := new(mocks.RoundTripper)
+	req := httptest.NewRequest(http.MethodGet, "http://example.com/token", nil).WithContext(ctx)
+	next.On("RoundTrip", req).Return(&http.Response{
+		StatusCode: http.StatusOK,
+		Body:       &erroringBody{data: []byte(`{"access_token":"super-secret-`), err: io.ErrClosedPipe},
+	}, nil)
+
+	tr := &tokenResponseLoggingTransport{next: next}
+	resp, err := tr.RoundTrip(req)
+	require.NoError(t, err)
+
+	_, err = io.ReadAll(resp.Body)
+	assert.ErrorIs(t, err, io.ErrClosedPipe)
+
+	assert.Empty(t, hook.AllEntries(), "a fragment from a failed read of a successful response must not be logged")
+}
+
+// TestTokenResponseLoggingTransport_LogsBodyOnDecodeFailure reproduces the
+// scenario reported for issue 1024: a registry's token endpoint responds
+// with an HTML page (e.g. from a WAF or misconfigured proxy) instead of
+// JSON. The token decode fails with an opaque error, but trace-level
+// logging should now surface the actual response body to aid debugging.
+func TestTokenResponseLoggingTransport_LogsBodyOnDecodeFailure(t *testing.T) {
+	const htmlBody = `<html><body>Access Denied</body></html>`
+
+	logger, hook := logrustest.NewNullLogger()
+	logger.SetLevel(logrus.TraceLevel)
+	ctx := log.ContextWithLogger(context.Background(), logrus.NewEntry(logger))
+
+	var serverURL string
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/v2/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("WWW-Authenticate", fmt.Sprintf(`Bearer realm="%s/token",service="mock-registry"`, serverURL))
+		w.WriteHeader(http.StatusUnauthorized)
+	})
+	mux.HandleFunc("/token", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, htmlBody)
+	})
+
+	mockServer := httptest.NewServer(mux)
+	serverURL = mockServer.URL
+	defer mockServer.Close()
+
+	ep := &RegistryEndpoint{
+		RegistryAPI: mockServer.URL,
+		Limiter:     ratelimit.New(100),
+	}
+	client, err := NewClient(ep, "", "")
+	require.NoError(t, err)
+
+	err = client.NewRepository(ctx, "test/myimage")
+	require.NoError(t, err)
+
+	_, err = client.Tags(ctx)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unable to decode token response")
+
+	var loggedBody bool
+	for _, entry := range hook.AllEntries() {
+		if strings.Contains(entry.Message, htmlBody) {
+			loggedBody = true
+			break
+		}
+	}
+	assert.True(t, loggedBody, "expected trace log to contain the raw token endpoint response body")
 }
 
 func TestRefreshToken(t *testing.T) {
