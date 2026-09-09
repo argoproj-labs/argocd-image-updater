@@ -144,7 +144,7 @@ func getTokenActions(registryAPI string) []string {
 func (clt *registryClient) NewRepository(ctx context.Context, nameInRepository string) error {
 	urlToCall := strings.TrimSuffix(clt.endpoint.RegistryAPI, "/")
 	challengeManager1 := challenge.NewSimpleManager()
-	_, err := ping(ctx, challengeManager1, clt.endpoint, "")
+	_, err := ping(ctx, challengeManager1, clt.endpoint, "", clt.creds)
 	if err != nil {
 		return err
 	}
@@ -545,7 +545,7 @@ func (clt *registryClient) Referrers(ctx context.Context, dgst digest.Digest) ([
 
 // Implementation of ping method to initialize the challenge list
 // Without this, tokenHandler and AuthorizationHandler won't work
-func ping(ctx context.Context, manager challenge.Manager, endpoint *RegistryEndpoint, versionHeader string) ([]auth.APIVersion, error) {
+func ping(ctx context.Context, manager challenge.Manager, endpoint *RegistryEndpoint, versionHeader string, creds credentials) ([]auth.APIVersion, error) {
 	httpc := &http.Client{Transport: endpoint.GetTransport(ctx)}
 	url := endpoint.RegistryAPI + "/v2/"
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
@@ -564,6 +564,26 @@ func ping(ctx context.Context, manager challenge.Manager, endpoint *RegistryEndp
 
 	if err := manager.AddResponse(resp); err != nil {
 		return nil, err
+	}
+
+	// Some registries (e.g. zot) allow anonymous access to the /v2/ root
+	// endpoint but require authentication on individual repositories. Such a
+	// registry answers this ping with 200 and no WWW-Authenticate header, so
+	// no challenge gets recorded and the endpointAuthorizer would never
+	// attach the configured credentials to the later tag/manifest requests
+	// that do require them. When credentials are configured for this
+	// endpoint, register a synthetic Basic challenge so they get sent
+	// preemptively instead of only in reaction to a challenge that never
+	// arrives.
+	if resp.StatusCode == http.StatusOK && creds.username != "" && creds.password != "" {
+		syntheticChallenge := &http.Response{
+			StatusCode: http.StatusUnauthorized,
+			Header:     http.Header{"Www-Authenticate": []string{fmt.Sprintf("Basic realm=%q", endpoint.RegistryAPI)}},
+			Request:    resp.Request,
+		}
+		if err := manager.AddResponse(syntheticChallenge); err != nil {
+			return nil, err
+		}
 	}
 
 	return auth.APIVersions(resp, versionHeader), err

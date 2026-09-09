@@ -17,6 +17,7 @@ import (
 	"github.com/opencontainers/image-spec/specs-go"
 
 	distclient "github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/registry/internal/client"
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/registry/internal/client/auth/challenge"
 
 	"github.com/distribution/distribution/v3"
 	"github.com/distribution/distribution/v3/registry/api/errcode"
@@ -167,6 +168,50 @@ func TestNewRepository(t *testing.T) {
 		require.Error(t, err)
 	})
 
+}
+
+// TestNewRepository_AnonymousRootBasicAuthRepo reproduces the scenario reported
+// against a zot registry: the /v2/ root allows anonymous access (200, no
+// WWW-Authenticate challenge), but the tags endpoint for a given repository
+// requires Basic auth. Before the fix, no challenge was ever recorded for
+// this endpoint, so the endpointAuthorizer never attached the configured
+// credentials and every tag/manifest request went out unauthenticated.
+func TestNewRepository_AnonymousRootBasicAuthRepo(t *testing.T) {
+	var gotAuthHeader string
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/v2/", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	mux.HandleFunc("/v2/shrestech/printready-web/tags/list", func(w http.ResponseWriter, r *http.Request) {
+		gotAuthHeader = r.Header.Get("Authorization")
+		user, pass, ok := r.BasicAuth()
+		if !ok || user != "testuser" || pass != "testpass" {
+			w.Header().Set("WWW-Authenticate", `Basic realm="zot"`)
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, `{"name":"shrestech/printready-web","tags":["stg-latest"]}`)
+	})
+
+	mockServer := httptest.NewServer(mux)
+	defer mockServer.Close()
+
+	ep := &RegistryEndpoint{
+		RegistryAPI: mockServer.URL,
+		Limiter:     ratelimit.New(100),
+	}
+	client, err := NewClient(ep, "testuser", "testpass")
+	require.NoError(t, err)
+	err = client.NewRepository(context.Background(), "shrestech/printready-web")
+	require.NoError(t, err)
+
+	tags, err := client.Tags(context.Background())
+	require.NoError(t, err)
+	assert.Contains(t, tags, "stg-latest")
+	assert.NotEmpty(t, gotAuthHeader, "expected the configured credentials to be sent on the first request, not just after a 401")
 }
 
 func TestRoundTrip_Success(t *testing.T) {
@@ -712,7 +757,7 @@ func TestPing(t *testing.T) {
 		ep, err := GetRegistryEndpoint(context.Background(), &image.ContainerImage{RegistryURL: ""})
 		require.NoError(t, err)
 		mockManager.On("AddResponse", mock.Anything).Return(fmt.Errorf("fail ping"))
-		_, err = ping(context.Background(), mockManager, ep, "")
+		_, err = ping(context.Background(), mockManager, ep, "", credentials{})
 		require.Error(t, err)
 	})
 
@@ -721,7 +766,7 @@ func TestPing(t *testing.T) {
 		ep, err := GetRegistryEndpoint(context.Background(), &image.ContainerImage{RegistryURL: ""})
 		require.NoError(t, err)
 		mockManager.On("AddResponse", mock.Anything).Return(nil)
-		_, err = ping(context.Background(), mockManager, ep, "")
+		_, err = ping(context.Background(), mockManager, ep, "", credentials{})
 		require.NoError(t, err)
 	})
 
@@ -732,7 +777,7 @@ func TestPing(t *testing.T) {
 		mockManager := new(mocks.Manager)
 		ep := &RegistryEndpoint{RegistryAPI: testServer.URL}
 		mockManager.On("AddResponse", mock.Anything).Return(nil)
-		_, err := ping(context.Background(), mockManager, ep, "")
+		_, err := ping(context.Background(), mockManager, ep, "", credentials{})
 		require.Error(t, err)
 		assert.ErrorContains(t, err, "does not seem to be a valid v2 Docker Registry API")
 	})
@@ -741,9 +786,44 @@ func TestPing(t *testing.T) {
 		mockManager := new(mocks.Manager)
 		ep := &RegistryEndpoint{RegistryAPI: ""}
 		mockManager.On("AddResponse", mock.Anything).Return(nil)
-		_, err := ping(context.Background(), mockManager, ep, "")
+		_, err := ping(context.Background(), mockManager, ep, "", credentials{})
 		require.Error(t, err)
 		assert.ErrorContains(t, err, "unsupported protocol scheme")
+	})
+
+	t.Run("anonymous root, configured creds registers synthetic Basic challenge", func(t *testing.T) {
+		testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		}))
+		defer testServer.Close()
+		manager := challenge.NewSimpleManager()
+		ep := &RegistryEndpoint{RegistryAPI: testServer.URL}
+		_, err := ping(context.Background(), manager, ep, "", credentials{username: "user", password: "pass"})
+		require.NoError(t, err)
+
+		u, err := url.Parse(testServer.URL + "/v2/")
+		require.NoError(t, err)
+		challenges, err := manager.GetChallenges(*u)
+		require.NoError(t, err)
+		require.Len(t, challenges, 1)
+		assert.Equal(t, "basic", challenges[0].Scheme)
+	})
+
+	t.Run("anonymous root without configured creds registers no challenge", func(t *testing.T) {
+		testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		}))
+		defer testServer.Close()
+		manager := challenge.NewSimpleManager()
+		ep := &RegistryEndpoint{RegistryAPI: testServer.URL}
+		_, err := ping(context.Background(), manager, ep, "", credentials{})
+		require.NoError(t, err)
+
+		u, err := url.Parse(testServer.URL + "/v2/")
+		require.NoError(t, err)
+		challenges, err := manager.GetChallenges(*u)
+		require.NoError(t, err)
+		assert.Empty(t, challenges)
 	})
 }
 
