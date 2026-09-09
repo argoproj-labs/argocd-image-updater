@@ -174,6 +174,23 @@ func TestCommit(t *testing.T) {
 		assert.Contains(t, body, "Signed-off-by:")
 	})
 
+	t.Run("IgnoresExternalGitConfigParameters", func(t *testing.T) {
+		t.Setenv("GIT_CONFIG_PARAMETERS", "'commit.gpgsign=true'")
+
+		dir, client := newWriterTestRepo(t)
+		stageFile(t, dir, "f.txt", "content")
+
+		err := client.Commit(ctx, "*", &CommitOptions{
+			CommitMessageText: "signed off",
+			SignOff:           true,
+		})
+		assert.NoError(t, err)
+
+		signatureStatus, err := runCmdOut(dir, "git", "log", "-1", "--format=%G?")
+		assert.NoError(t, err)
+		assert.Equal(t, "N", signatureStatus)
+	})
+
 	t.Run("SSHSigning", func(t *testing.T) {
 		// Reuse setupRepoWithSignedCommit which already configures SSH signing
 		// in the local repo config (gpg.format, user.signingkey, allowed signers).
