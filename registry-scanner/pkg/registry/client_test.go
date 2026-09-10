@@ -812,6 +812,12 @@ func TestIsAuthError(t *testing.T) {
 		assert.True(t, IsAuthError(ctx, err))
 	})
 
+	t.Run("non-canonical JSON errcode.Errors returns true", func(t *testing.T) {
+		var err errcode.Errors
+		require.NoError(t, json.Unmarshal([]byte(`{"errors":[{"code":"UNAUTHORIZED","message":"you shall not pass"}]}`), &err))
+		assert.True(t, IsAuthError(ctx, err))
+	})
+
 	t.Run("errcode.Errors with other code returns false", func(t *testing.T) {
 		err := errcode.Errors{errcode.ErrorCodeUnknown.WithMessage("something else")}
 		assert.False(t, IsAuthError(ctx, err))
