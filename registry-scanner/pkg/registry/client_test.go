@@ -2,6 +2,7 @@ package registry
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -794,6 +795,20 @@ func TestIsAuthError(t *testing.T) {
 
 	t.Run("errcode.Errors with Denied returns true", func(t *testing.T) {
 		err := errcode.Errors{errcode.ErrorCodeDenied.WithMessage("access denied")}
+		assert.True(t, IsAuthError(ctx, err))
+	})
+
+	t.Run("bare errcode.Errors with Unauthorized returns true", func(t *testing.T) {
+		assert.True(t, IsAuthError(ctx, errcode.Errors{errcode.ErrorCodeUnauthorized}))
+	})
+
+	t.Run("bare errcode.Errors with Denied returns true", func(t *testing.T) {
+		assert.True(t, IsAuthError(ctx, errcode.Errors{errcode.ErrorCodeDenied}))
+	})
+
+	t.Run("canonical JSON errcode.Errors returns true", func(t *testing.T) {
+		var err errcode.Errors
+		require.NoError(t, json.Unmarshal([]byte(`{"errors":[{"code":"UNAUTHORIZED","message":"authentication required"}]}`), &err))
 		assert.True(t, IsAuthError(ctx, err))
 	})
 

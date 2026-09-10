@@ -475,12 +475,18 @@ func IsAuthError(ctx context.Context, err error) bool {
 	var errs errcode.Errors
 	if errors.As(err, &errs) {
 		for _, e := range errs {
+			var code errcode.ErrorCode
 			var errcodeErr errcode.Error
-			if errors.As(e, &errcodeErr) {
-				if errors.Is(errcodeErr.Code, errcode.ErrorCodeUnauthorized) || errors.Is(errcodeErr.Code, errcode.ErrorCodeDenied) {
-					log.Debugf("auth error from registry: %s", errcodeErr.Code.Message())
-					return true
-				}
+			switch {
+			case errors.As(e, &errcodeErr):
+				code = errcodeErr.Code
+			case errors.As(e, &code):
+			default:
+				continue
+			}
+			if code == errcode.ErrorCodeUnauthorized || code == errcode.ErrorCodeDenied {
+				log.Debugf("auth error from registry: %s", code.Message())
+				return true
 			}
 		}
 	}
