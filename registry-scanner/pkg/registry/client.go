@@ -164,8 +164,7 @@ func (crt *challengeRetryTransport) RoundTrip(req *http.Request) (*http.Response
 	if err != nil || resp.StatusCode != http.StatusUnauthorized {
 		return resp, err
 	}
-	challenges := challenge.ResponseChallenges(resp)
-	if len(challenges) == 0 {
+	if len(challenge.ResponseChallenges(resp)) == 0 {
 		return resp, nil
 	}
 	// Replaying a request that has a body requires GetBody to rewind it. Every
@@ -190,16 +189,22 @@ func (crt *challengeRetryTransport) RoundTrip(req *http.Request) (*http.Response
 		return resp, nil
 	}
 
-	if !crt.canSatisfy(challenges) {
+	usable, rawUsable := crt.satisfiableChallenges(resp)
+	if len(usable) == 0 {
 		return resp, nil
 	}
 
 	// challenge.simpleManager keys challenges by the responding request's path
 	// verbatim, while endpointAuthorizer looks them up under that path
-	// truncated at /v2/. Re-key the response so the two agree.
+	// truncated at /v2/. Re-key the response so the two agree, carrying only the
+	// schemes this client can answer.
+	header := make(http.Header, 1)
+	for _, raw := range rawUsable {
+		header.Add("WWW-Authenticate", raw)
+	}
 	if aerr := crt.manager.AddResponse(&http.Response{
 		StatusCode: resp.StatusCode,
-		Header:     resp.Header,
+		Header:     header,
 		Request:    &http.Request{URL: &pingURL},
 	}); aerr != nil {
 		logCtx.Debugf("Could not record authentication challenge for %s: %v", pingURL.String(), aerr)
@@ -207,7 +212,7 @@ func (crt *challengeRetryTransport) RoundTrip(req *http.Request) (*http.Response
 	}
 
 	if pingURL.Scheme != "https" {
-		for _, c := range challenges {
+		for _, c := range usable {
 			if c.Scheme == "basic" {
 				logCtx.Warnf("Registry %s requested HTTP Basic authentication over an unencrypted connection, credentials will be sent in cleartext", pingURL.Host)
 			}
@@ -232,22 +237,48 @@ func (crt *challengeRetryTransport) RoundTrip(req *http.Request) (*http.Response
 	return crt.base.RoundTrip(retryReq)
 }
 
-// canSatisfy reports whether any offered scheme can actually be answered with
-// what this client holds. Recording a Basic challenge with no credentials to
-// answer it would make endpointAuthorizer fail the replay before it reaches
-// the wire, replacing the registry's own "unauthorized" with an opaque
-// "no basic auth credentials". Bearer is always worth attempting: token
-// services routinely issue anonymous pull tokens.
-func (crt *challengeRetryTransport) canSatisfy(challenges []challenge.Challenge) bool {
-	for _, c := range challenges {
-		if c.Scheme != "basic" {
-			return true
-		}
-		if crt.creds.username != "" && crt.creds.password != "" {
-			return true
+// satisfiableChallenges returns the offered challenges this client can actually
+// answer, together with the raw WWW-Authenticate lines that produced them.
+//
+// Filtering has to happen before the challenges are recorded, not after.
+// endpointAuthorizer runs the handler for every recorded challenge and aborts
+// the whole request on the first handler error, so a Basic challenge recorded
+// with no credentials to answer it sinks the replay before it reaches the wire
+// -- even when a Bearer challenge offered alongside it would have succeeded
+// anonymously -- and replaces the registry's own "unauthorized" with an opaque
+// "no basic auth credentials".
+func (crt *challengeRetryTransport) satisfiableChallenges(resp *http.Response) ([]challenge.Challenge, []string) {
+	var (
+		usable []challenge.Challenge
+		raw    []string
+	)
+	for _, line := range resp.Header.Values("WWW-Authenticate") {
+		header := make(http.Header, 1)
+		header.Set("WWW-Authenticate", line)
+		// The parser yields at most one challenge per header line, so keeping
+		// the line is equivalent to keeping the challenge it parsed to.
+		for _, c := range challenge.ResponseChallenges(&http.Response{
+			StatusCode: http.StatusUnauthorized,
+			Header:     header,
+		}) {
+			if !crt.canSatisfy(c) {
+				continue
+			}
+			usable = append(usable, c)
+			raw = append(raw, line)
 		}
 	}
-	return false
+	return usable, raw
+}
+
+// canSatisfy reports whether an offered scheme can be answered with what this
+// client holds. Bearer is always worth attempting: token services routinely
+// issue anonymous pull tokens.
+func (crt *challengeRetryTransport) canSatisfy(c challenge.Challenge) bool {
+	if c.Scheme != "basic" {
+		return true
+	}
+	return crt.creds.username != "" && crt.creds.password != ""
 }
 
 // v2RootURL returns the /v2/ API root for a registry request URL. It mirrors
