@@ -6,6 +6,7 @@ import (
 	stdjson "encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -123,6 +124,147 @@ func (rlt *rateLimitTransport) RoundTrip(r *http.Request) (*http.Response, error
 	return resp, err
 }
 
+// challengeRetryTransport learns authentication challenges from real
+// repository responses instead of only from the /v2/ ping.
+//
+// The docker/distribution auth flow assumes a registry's /v2/ root advertises
+// the same authentication requirements as its repositories: NewRepository
+// pings /v2/ once, records whatever WWW-Authenticate challenge comes back, and
+// endpointAuthorizer attaches credentials to later requests only if a
+// challenge was recorded for that endpoint. Registries such as zot can be
+// configured to serve /v2/ anonymously while still requiring authentication on
+// individual repositories. Those answer the ping with 200 and no challenge, so
+// nothing is ever recorded and the configured credentials are never sent --
+// every tag and manifest read fails with "unauthorized: authentication
+// required".
+//
+// This round tripper closes that gap: when a repository request comes back 401
+// with a WWW-Authenticate header and no challenge is yet known for the
+// endpoint, it records the challenge and replays the request once. The replay
+// goes back through endpointAuthorizer, which now finds the challenge and
+// applies the matching handler. Credentials are therefore only ever sent to a
+// registry that asked for them, and whatever scheme the registry names is
+// honoured, so this covers Bearer as well as Basic.
+type challengeRetryTransport struct {
+	base    http.RoundTripper
+	manager challenge.Manager
+	creds   credentials
+	// root is the endpoint's own /v2/ API root. Challenges are learned only for
+	// this exact root, never for a host a request was redirected to. Blob reads
+	// on large registries redirect to object storage under paths that can
+	// themselves contain "/v2/" (the distribution S3 layout is
+	// /docker/registry/v2/blobs/...), and a signed-URL rejection there must
+	// never cause registry credentials to be replayed at a third party.
+	root url.URL
+}
+
+// RoundTrip implements http.RoundTripper.
+func (crt *challengeRetryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	resp, err := crt.base.RoundTrip(req)
+	if err != nil || resp.StatusCode != http.StatusUnauthorized {
+		return resp, err
+	}
+	challenges := challenge.ResponseChallenges(resp)
+	if len(challenges) == 0 {
+		return resp, nil
+	}
+	// Replaying a request that has a body requires GetBody to rewind it. Every
+	// call this client makes is a bodyless GET, so this only guards against
+	// future callers.
+	if req.Body != nil && req.GetBody == nil {
+		return resp, nil
+	}
+
+	pingURL, ok := v2RootURL(req.URL)
+	if !ok || pingURL != crt.root {
+		return resp, nil
+	}
+
+	logCtx := log.LoggerFromContext(req.Context())
+
+	// A challenge was already known for this endpoint, so endpointAuthorizer
+	// acted on it and the registry still said no. That is a genuine
+	// authentication failure rather than a discovery gap, and retrying would
+	// only double the request count for every unauthorized repository.
+	if known, kerr := crt.manager.GetChallenges(pingURL); kerr != nil || len(known) > 0 {
+		return resp, nil
+	}
+
+	if !crt.canSatisfy(challenges) {
+		return resp, nil
+	}
+
+	// challenge.simpleManager keys challenges by the responding request's path
+	// verbatim, while endpointAuthorizer looks them up under that path
+	// truncated at /v2/. Re-key the response so the two agree.
+	if aerr := crt.manager.AddResponse(&http.Response{
+		StatusCode: resp.StatusCode,
+		Header:     resp.Header,
+		Request:    &http.Request{URL: &pingURL},
+	}); aerr != nil {
+		logCtx.Debugf("Could not record authentication challenge for %s: %v", pingURL.String(), aerr)
+		return resp, nil
+	}
+
+	if pingURL.Scheme != "https" {
+		for _, c := range challenges {
+			if c.Scheme == "basic" {
+				logCtx.Warnf("Registry %s requested HTTP Basic authentication over an unencrypted connection, credentials will be sent in cleartext", pingURL.Host)
+			}
+		}
+	}
+
+	// Drain and close the 401 so the underlying connection can be reused, then
+	// replay. A clone is used so the inner transport does not overwrite the
+	// bookkeeping it keyed on the original request.
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+	resp.Body.Close()
+
+	retryReq := req.Clone(req.Context())
+	if req.GetBody != nil {
+		body, berr := req.GetBody()
+		if berr != nil {
+			return nil, berr
+		}
+		retryReq.Body = body
+	}
+	logCtx.Debugf("Learned authentication challenge from %s, retrying with credentials", req.URL)
+	return crt.base.RoundTrip(retryReq)
+}
+
+// canSatisfy reports whether any offered scheme can actually be answered with
+// what this client holds. Recording a Basic challenge with no credentials to
+// answer it would make endpointAuthorizer fail the replay before it reaches
+// the wire, replacing the registry's own "unauthorized" with an opaque
+// "no basic auth credentials". Bearer is always worth attempting: token
+// services routinely issue anonymous pull tokens.
+func (crt *challengeRetryTransport) canSatisfy(challenges []challenge.Challenge) bool {
+	for _, c := range challenges {
+		if c.Scheme != "basic" {
+			return true
+		}
+		if crt.creds.username != "" && crt.creds.password != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// v2RootURL returns the /v2/ API root for a registry request URL. It mirrors
+// the truncation that endpointAuthorizer.ModifyRequest performs, so the key it
+// produces is the one challenges are looked up under.
+func v2RootURL(u *url.URL) (url.URL, bool) {
+	path := u.Path
+	if v2Root := strings.Index(path, "/v2/"); v2Root != -1 {
+		path = path[:v2Root+4]
+	} else if v1Root := strings.Index(path, "/v1/"); v1Root != -1 {
+		path = path[:v1Root] + "/v2/"
+	} else {
+		return url.URL{}, false
+	}
+	return url.URL{Scheme: u.Scheme, Host: u.Host, Path: path}, true
+}
+
 // getTokenActions returns the list of OAuth2 Bearer token actions to request
 // for the given registry API. Extend this function when a registry requires
 // additional scopes beyond the default "pull".
@@ -167,13 +309,29 @@ func (clt *registryClient) NewRepository(ctx context.Context, nameInRepository s
 	if err != nil {
 		return err
 	}
-	clt.regClient, err = client.NewRepository(named, urlToCall, rlt)
+
+	// Registries that serve /v2/ anonymously never produce a challenge at ping
+	// time, so learn from the repository responses as well. This wraps the
+	// rate limiter rather than sitting under it, so a replayed request also
+	// takes a rate-limit token.
+	pingURL, err := url.Parse(urlToCall + "/v2/")
+	if err != nil {
+		return err
+	}
+	authRT := &challengeRetryTransport{
+		base:    rlt,
+		manager: challengeManager1,
+		creds:   clt.creds,
+		root:    url.URL{Scheme: pingURL.Scheme, Host: pingURL.Host, Path: pingURL.Path},
+	}
+
+	clt.regClient, err = client.NewRepository(named, urlToCall, authRT)
 	if err != nil {
 		return err
 	}
 	// Store the authenticated HTTP client for use by Referrers and any other
 	// raw-HTTP calls that the distribution ManifestService doesn't cover.
-	clt.httpClient = &http.Client{Transport: rlt}
+	clt.httpClient = &http.Client{Transport: authRT}
 	// Keep the plain repository path so Referrers can build the correct URL.
 	clt.nameInRepository = nameInRepository
 	return nil
