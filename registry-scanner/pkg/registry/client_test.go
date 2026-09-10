@@ -17,6 +17,7 @@ import (
 	"github.com/opencontainers/image-spec/specs-go"
 
 	distclient "github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/registry/internal/client"
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/registry/internal/client/auth/challenge"
 
 	"github.com/distribution/distribution/v3"
 	"github.com/distribution/distribution/v3/registry/api/errcode"
@@ -167,6 +168,219 @@ func TestNewRepository(t *testing.T) {
 		require.Error(t, err)
 	})
 
+}
+
+// anonymousRootRegistry builds a registry whose /v2/ root answers anonymously
+// with 200 and no challenge, while the tags endpoint for a single repository
+// demands the given auth scheme. It records the Authorization header seen on
+// every tags request, in order.
+func anonymousRootRegistry(t *testing.T, repo, scheme string, authorized func(*http.Request) bool) (*httptest.Server, *[]string) {
+	t.Helper()
+
+	var authHeaders []string
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/v2/", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	mux.HandleFunc("/v2/"+repo+"/tags/list", func(w http.ResponseWriter, r *http.Request) {
+		authHeaders = append(authHeaders, r.Header.Get("Authorization"))
+		if !authorized(r) {
+			w.Header().Set("WWW-Authenticate", scheme+` realm="test"`)
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintf(w, `{"name":%q,"tags":["stg-latest"]}`, repo)
+	})
+
+	server := httptest.NewServer(mux)
+	t.Cleanup(server.Close)
+	return server, &authHeaders
+}
+
+// TestNewRepository_AnonymousRootBasicAuthRepo reproduces the scenario reported
+// against a zot registry: the /v2/ root allows anonymous access (200, no
+// WWW-Authenticate challenge), but the tags endpoint for a given repository
+// requires Basic auth. The ping therefore records no challenge, so the
+// credentials have to be learned from the repository's own 401.
+func TestNewRepository_AnonymousRootBasicAuthRepo(t *testing.T) {
+	const repo = "shrestech/printready-web"
+
+	server, authHeaders := anonymousRootRegistry(t, repo, "Basic", func(r *http.Request) bool {
+		user, pass, ok := r.BasicAuth()
+		return ok && user == "testuser" && pass == "testpass"
+	})
+
+	ep := &RegistryEndpoint{RegistryAPI: server.URL, Limiter: ratelimit.New(100)}
+	client, err := NewClient(ep, "testuser", "testpass")
+	require.NoError(t, err)
+	require.NoError(t, client.NewRepository(context.Background(), repo))
+
+	tags, err := client.Tags(context.Background())
+	require.NoError(t, err)
+	assert.Contains(t, tags, "stg-latest")
+
+	// First attempt goes out anonymously, the 401 teaches the challenge, the
+	// replay carries the configured credentials.
+	require.Len(t, *authHeaders, 2)
+	assert.Empty(t, (*authHeaders)[0])
+	assert.NotEmpty(t, (*authHeaders)[1])
+}
+
+// TestNewRepository_AnonymousRootPublicRepo guards the scope of the fix: a
+// repository that never challenges must keep being scanned anonymously, even
+// when credentials are configured for the endpoint. Attaching them preemptively
+// would break public repositories on registries where the configured
+// credentials are stale or scoped elsewhere.
+func TestNewRepository_AnonymousRootPublicRepo(t *testing.T) {
+	const repo = "public/app"
+
+	server, authHeaders := anonymousRootRegistry(t, repo, "Basic", func(r *http.Request) bool { return true })
+
+	ep := &RegistryEndpoint{RegistryAPI: server.URL, Limiter: ratelimit.New(100)}
+	client, err := NewClient(ep, "testuser", "testpass")
+	require.NoError(t, err)
+	require.NoError(t, client.NewRepository(context.Background(), repo))
+
+	tags, err := client.Tags(context.Background())
+	require.NoError(t, err)
+	assert.Contains(t, tags, "stg-latest")
+
+	require.Len(t, *authHeaders, 1)
+	assert.Empty(t, (*authHeaders)[0], "credentials must not be sent to a repository that never asked for them")
+}
+
+// TestNewRepository_AnonymousRootBearerRepo covers the other half of the same
+// gap: an anonymous /v2/ root in front of repositories protected by a Bearer
+// token service. Learning the challenge from the repository response is
+// scheme-agnostic, so the token handler is selected here without the client
+// needing to guess.
+func TestNewRepository_AnonymousRootBearerRepo(t *testing.T) {
+	const repo = "private/app"
+
+	tokenService := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		user, pass, ok := r.BasicAuth()
+		if !ok || user != "testuser" || pass != "testpass" {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"token":"issued-token"}`)
+	}))
+	defer tokenService.Close()
+
+	var authHeaders []string
+	mux := http.NewServeMux()
+	mux.HandleFunc("/v2/", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	mux.HandleFunc("/v2/"+repo+"/tags/list", func(w http.ResponseWriter, r *http.Request) {
+		authHeaders = append(authHeaders, r.Header.Get("Authorization"))
+		if r.Header.Get("Authorization") != "Bearer issued-token" {
+			w.Header().Set("WWW-Authenticate",
+				fmt.Sprintf(`Bearer realm=%q,service="test"`, tokenService.URL))
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintf(w, `{"name":%q,"tags":["stg-latest"]}`, repo)
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	ep := &RegistryEndpoint{RegistryAPI: server.URL, Limiter: ratelimit.New(100)}
+	client, err := NewClient(ep, "testuser", "testpass")
+	require.NoError(t, err)
+	require.NoError(t, client.NewRepository(context.Background(), repo))
+
+	tags, err := client.Tags(context.Background())
+	require.NoError(t, err)
+	assert.Contains(t, tags, "stg-latest")
+
+	require.Len(t, authHeaders, 2)
+	assert.Empty(t, authHeaders[0])
+	assert.Equal(t, "Bearer issued-token", authHeaders[1])
+}
+
+// TestNewRepository_RedirectedBlobIsNotLearnedFrom covers the blob-redirect
+// shape used by large registries: the blob read is redirected to object storage
+// under a path that also contains "/v2/", and that host rejects the request.
+// Credentials for the registry must not be replayed at the redirect target.
+func TestNewRepository_RedirectedBlobIsNotLearnedFrom(t *testing.T) {
+	var storageAuthHeaders []string
+
+	storage := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		storageAuthHeaders = append(storageAuthHeaders, r.Header.Get("Authorization"))
+		w.Header().Set("WWW-Authenticate", `Basic realm="storage"`)
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer storage.Close()
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/v2/", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	mux.HandleFunc("/v2/some/app/blobs/", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, storage.URL+"/docker/registry/v2/blobs/sha256/deadbeef", http.StatusTemporaryRedirect)
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	ep := &RegistryEndpoint{RegistryAPI: server.URL, Limiter: ratelimit.New(100)}
+	client, err := NewClient(ep, "testuser", "testpass")
+	require.NoError(t, err)
+	require.NoError(t, client.NewRepository(context.Background(), "some/app"))
+
+	_, err = client.(*registryClient).BlobContent(context.Background(),
+		godigest.Digest("sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"))
+	require.Error(t, err)
+
+	require.Len(t, storageAuthHeaders, 1, "the redirect target must not be retried")
+	assert.Empty(t, storageAuthHeaders[0], "registry credentials must not be sent to the redirect target")
+}
+
+// TestNewRepository_AnonymousRootNoCredentials asserts that a Basic challenge
+// the client cannot answer is left unrecorded. Recording it would make
+// endpointAuthorizer fail the next request with "no basic auth credentials"
+// before it reaches the wire, replacing the registry's own error and hiding the
+// 401 from IsAuthError.
+func TestNewRepository_AnonymousRootNoCredentials(t *testing.T) {
+	const repo = "private/app"
+
+	server, authHeaders := anonymousRootRegistry(t, repo, "Basic", func(r *http.Request) bool { return false })
+
+	ep := &RegistryEndpoint{RegistryAPI: server.URL, Limiter: ratelimit.New(100)}
+	client, err := NewClient(ep, "", "")
+	require.NoError(t, err)
+	require.NoError(t, client.NewRepository(context.Background(), repo))
+
+	_, err = client.Tags(context.Background())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unauthorized")
+	assert.NotContains(t, err.Error(), "no basic auth credentials",
+		"the registry's own 401 must reach the caller, not an authorizer error")
+	assert.Len(t, *authHeaders, 1, "no replay is possible without credentials")
+}
+
+// TestNewRepository_AnonymousRootBadCredentials asserts the replay happens at
+// most once. A registry that rejects the credentials it asked for must not send
+// the client into a retry loop.
+func TestNewRepository_AnonymousRootBadCredentials(t *testing.T) {
+	const repo = "private/app"
+
+	server, authHeaders := anonymousRootRegistry(t, repo, "Basic", func(r *http.Request) bool { return false })
+
+	ep := &RegistryEndpoint{RegistryAPI: server.URL, Limiter: ratelimit.New(100)}
+	client, err := NewClient(ep, "testuser", "wrongpass")
+	require.NoError(t, err)
+	require.NoError(t, client.NewRepository(context.Background(), repo))
+
+	_, err = client.Tags(context.Background())
+	require.Error(t, err)
+	assert.Len(t, *authHeaders, 2, "expected exactly one replay after the challenge was learned")
 }
 
 func TestRoundTrip_Success(t *testing.T) {
@@ -744,6 +958,26 @@ func TestPing(t *testing.T) {
 		_, err := ping(context.Background(), mockManager, ep, "")
 		require.Error(t, err)
 		assert.ErrorContains(t, err, "unsupported protocol scheme")
+	})
+
+	// A registry that answers the ping anonymously must not have a challenge
+	// invented for it. Credentials are only ever attached in response to a
+	// challenge the registry actually sent; see challengeRetryTransport.
+	t.Run("anonymous root registers no challenge", func(t *testing.T) {
+		testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		}))
+		defer testServer.Close()
+		manager := challenge.NewSimpleManager()
+		ep := &RegistryEndpoint{RegistryAPI: testServer.URL}
+		_, err := ping(context.Background(), manager, ep, "")
+		require.NoError(t, err)
+
+		u, err := url.Parse(testServer.URL + "/v2/")
+		require.NoError(t, err)
+		challenges, err := manager.GetChallenges(*u)
+		require.NoError(t, err)
+		assert.Empty(t, challenges)
 	})
 }
 
