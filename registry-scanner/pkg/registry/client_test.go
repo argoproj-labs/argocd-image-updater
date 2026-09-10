@@ -383,6 +383,100 @@ func TestNewRepository_AnonymousRootBadCredentials(t *testing.T) {
 	assert.Len(t, *authHeaders, 2, "expected exactly one replay after the challenge was learned")
 }
 
+// TestNewRepository_AnonymousRootMixedChallengeNoCredentials covers a 401 that
+// offers Bearer and Basic together while no credentials are configured -- the
+// shape of a public repository on a registry that advertises both schemes.
+// endpointAuthorizer aborts a request on the first handler error, so recording
+// the unanswerable Basic challenge alongside the Bearer one would kill the
+// replay with "no basic auth credentials" even though the token service hands
+// out anonymous pull tokens. Only satisfiable schemes may be recorded.
+func TestNewRepository_AnonymousRootMixedChallengeNoCredentials(t *testing.T) {
+	const repo = "public/app"
+
+	tokenService := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"token":"anonymous-token"}`)
+	}))
+	defer tokenService.Close()
+
+	var authHeaders []string
+	mux := http.NewServeMux()
+	mux.HandleFunc("/v2/", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	mux.HandleFunc("/v2/"+repo+"/tags/list", func(w http.ResponseWriter, r *http.Request) {
+		authHeaders = append(authHeaders, r.Header.Get("Authorization"))
+		if r.Header.Get("Authorization") != "Bearer anonymous-token" {
+			w.Header().Add("WWW-Authenticate",
+				fmt.Sprintf(`Bearer realm=%q,service="test"`, tokenService.URL))
+			w.Header().Add("WWW-Authenticate", `Basic realm="test"`)
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintf(w, `{"name":%q,"tags":["stg-latest"]}`, repo)
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	ep := &RegistryEndpoint{RegistryAPI: server.URL, Limiter: ratelimit.New(100)}
+	client, err := NewClient(ep, "", "")
+	require.NoError(t, err)
+	require.NoError(t, client.NewRepository(context.Background(), repo))
+
+	tags, err := client.Tags(context.Background())
+	require.NoError(t, err)
+	assert.Contains(t, tags, "stg-latest")
+
+	require.Len(t, authHeaders, 2)
+	assert.Empty(t, authHeaders[0])
+	assert.Equal(t, "Bearer anonymous-token", authHeaders[1])
+}
+
+// TestNewRepository_AnonymousRootMixedChallengeUnauthorized pins the error the
+// caller sees when the same mixed challenge cannot be answered at all. It must
+// stay the registry's own 401 rather than an authorizer-level error raised
+// before the request ever reaches the wire.
+func TestNewRepository_AnonymousRootMixedChallengeUnauthorized(t *testing.T) {
+	const repo = "private/app"
+
+	tokenService := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"token":"anonymous-token"}`)
+	}))
+	defer tokenService.Close()
+
+	var authHeaders []string
+	mux := http.NewServeMux()
+	mux.HandleFunc("/v2/", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	mux.HandleFunc("/v2/"+repo+"/tags/list", func(w http.ResponseWriter, r *http.Request) {
+		authHeaders = append(authHeaders, r.Header.Get("Authorization"))
+		w.Header().Add("WWW-Authenticate",
+			fmt.Sprintf(`Bearer realm=%q,service="test"`, tokenService.URL))
+		w.Header().Add("WWW-Authenticate", `Basic realm="test"`)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		fmt.Fprint(w, `{"errors":[{"code":"UNAUTHORIZED","message":"authentication required"}]}`)
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	ep := &RegistryEndpoint{RegistryAPI: server.URL, Limiter: ratelimit.New(100)}
+	client, err := NewClient(ep, "", "")
+	require.NoError(t, err)
+	require.NoError(t, client.NewRepository(context.Background(), repo))
+
+	_, err = client.Tags(context.Background())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unauthorized")
+	assert.NotContains(t, err.Error(), "no basic auth credentials",
+		"the registry's own 401 must reach the caller, not an authorizer error")
+	assert.Len(t, authHeaders, 2, "expected exactly one replay after the challenge was learned")
+}
+
 func TestRoundTrip_Success(t *testing.T) {
 	// Create mocks
 	mockLimiter := new(mocks.Limiter)
