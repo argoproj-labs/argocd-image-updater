@@ -822,6 +822,14 @@ func TestIsAuthError(t *testing.T) {
 		assert.True(t, IsAuthError(ctx, err))
 	})
 
+	t.Run("non-canonical JSON errcode.Errors without message returns true", func(t *testing.T) {
+		// Test that registry error objects without a message field are recognized
+		// as auth errors; they decode to bare errcode.ErrorCode values
+		var err errcode.Errors
+		require.NoError(t, json.Unmarshal([]byte(`{"errors":[{"code":"UNAUTHORIZED"}]}`), &err))
+		assert.True(t, IsAuthError(ctx, err))
+	})
+
 	t.Run("errcode.Errors with other code returns false", func(t *testing.T) {
 		err := errcode.Errors{errcode.ErrorCodeUnknown.WithMessage("something else")}
 		assert.False(t, IsAuthError(ctx, err))
