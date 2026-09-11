@@ -450,7 +450,9 @@ func TagInfoFromReferences(ctx context.Context, client *registryClient, opts *op
 
 // IsAuthError reports whether err is an authentication/authorization failure (401/403)
 // from the distribution registry client. It uses errors.As to detect the client's
-// typed errors and errcode instead of matching error strings.
+// typed errors and errcode instead of matching error strings. This function handles
+// both structured errcode.Error values and bare errcode.ErrorCode values to ensure
+// comprehensive authentication error detection across different registry response formats.
 func IsAuthError(ctx context.Context, err error) bool {
 	log := log.LoggerFromContext(ctx)
 	if err == nil {
