@@ -189,7 +189,7 @@ images:
   - alias: "myalias"
     imageName: "some/image"
     commonUpdateSettings:
-      ignoreTags: <pattern1>[, <pattern2>, ...]
+      ignoreTags: [<pattern1>, <pattern2>, ...]
 ```
 
 You can use glob patterns as described in this
@@ -205,7 +205,7 @@ images:
   - alias: "myalias"
     imageName: "some/image"
     commonUpdateSettings:
-      ignoreTags: "*"
+      ignoreTags: ["*"]
 ```
 
 Please note that regular expressions are not supported to be used for patterns.
@@ -227,7 +227,7 @@ images:
   - alias: "myalias"
     imageName: "some/image"
     commonUpdateSettings:
-      platforms: "linux/arm64"
+      platforms: ["linux/arm64"]
 ```
 
 You can specify multiple allowed platforms as a comma-separated list of allowed
@@ -238,7 +238,7 @@ images:
   - alias: "myalias"
     imageName: "some/image"
     commonUpdateSettings:
-      platforms: "linux/arm64,linux/amd64"
+      platforms: ["linux/arm64", "linux/amd64"]
 ```
 
 The correct image to execute will be chosen by Kubernetes.
@@ -893,5 +893,5 @@ Settings can be configured at multiple levels with the following precedence (hig
 2. **ApplicationRef level** - Overrides global settings for applications matching the pattern
 3. **ImageUpdater level** - Global defaults for all applications
 
-For example, if you set `updateStrategy: "semver"` at the global level but 
+For example, if you set `updateStrategy: "semver"` at the global level but
 `updateStrategy: "newest-build"` at the image level, the image will use `"newest-build"`.
