@@ -32,3 +32,18 @@ func GetKubeConfig(ctx context.Context, namespace string, kubeConfig string) (*k
 
 	return kubeClient, nil
 }
+
+// Infer the type of the application based on the image's manifest target fields.
+// If no type can be inferred, return an error.
+func (image Image) GetType() (ApplicationType, error) {
+	if image.HelmImageName != "" || image.HelmImageTag != "" || image.HelmImageSpec != "" {
+		return ApplicationTypeHelm, nil
+	}
+	if image.KustomizeImageName != "" {
+		return ApplicationTypeKustomize, nil
+	}
+	if image.PluginEnvName != "" || image.PluginEnvTag != "" || image.PluginEnvSpec != "" {
+		return ApplicationTypePlugin, nil
+	}
+	return ApplicationTypeUnsupported, fmt.Errorf("no manifest target type found for image %s", image.String())
+}
