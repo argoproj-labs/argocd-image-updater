@@ -405,6 +405,60 @@ func Test_GetApplicationType(t *testing.T) {
 
 }
 
+func Test_GetAppImage_UsesCurrentImageTypeForSourceSelection(t *testing.T) {
+	application := &v1alpha1.Application{
+		ObjectMeta: v1.ObjectMeta{
+			Name:      "test-app",
+			Namespace: "argocd",
+		},
+		Spec: v1alpha1.ApplicationSpec{
+			Sources: []v1alpha1.ApplicationSource{
+				{
+					RepoURL: "https://example.invalid/helm.git",
+					Helm: &v1alpha1.ApplicationSourceHelm{
+						Parameters: []v1alpha1.HelmParameter{
+							{Name: common.DefaultHelmImageName, Value: "helm-image"},
+							{Name: common.DefaultHelmImageTag, Value: "1.0.0"},
+						},
+					},
+				},
+				{
+					RepoURL: "https://example.invalid/kustomize.git",
+					Kustomize: &v1alpha1.ApplicationSourceKustomize{
+						Images: v1alpha1.KustomizeImages{"kustomize-image:2.0.0"},
+					},
+				},
+			},
+		},
+		Status: v1alpha1.ApplicationStatus{
+			SourceTypes: []v1alpha1.ApplicationSourceType{
+				v1alpha1.ApplicationSourceTypeHelm,
+				v1alpha1.ApplicationSourceTypeKustomize,
+			},
+		},
+	}
+	wbc := &WriteBackConfig{}
+
+	helmImage := &Image{
+		ContainerImage: image.NewFromIdentifier("helm-image:1.0.0"),
+		HelmImageName:  common.DefaultHelmImageName,
+		HelmImageTag:   common.DefaultHelmImageTag,
+	}
+	helmSpec, err := getAppImage(context.Background(), application, wbc, helmImage)
+	require.NoError(t, err)
+	assert.Equal(t, "helm-image:1.0.0", helmSpec)
+	assert.Equal(t, ApplicationTypeHelm, wbc.ApplicationType)
+
+	kustomizeImage := &Image{
+		ContainerImage:     image.NewFromIdentifier("kustomize-image:2.0.0"),
+		KustomizeImageName: "kustomize-image",
+	}
+	kustomizeSpec, err := getAppImage(context.Background(), application, wbc, kustomizeImage)
+	require.NoError(t, err)
+	assert.Equal(t, "kustomize-image:2.0.0", kustomizeSpec)
+	assert.Equal(t, ApplicationTypeKustomize, wbc.ApplicationType)
+}
+
 func Test_GetApplicationSourceType(t *testing.T) {
 	t.Run("Get application Source Type for Helm", func(t *testing.T) {
 		application := &v1alpha1.Application{
