@@ -762,8 +762,9 @@ func Test_commitChangesGit_APIMethodFallsBackWithoutAppCreds(t *testing.T) {
 		return nil, false
 	}
 
-	err := commitChangesGit(context.Background(), appImages, nil, noopWriter)
+	noChanges, err := commitChangesGit(context.Background(), appImages, nil, noopWriter)
 	require.NoError(t, err)
+	assert.False(t, noChanges)
 	gitMock.AssertCalled(t, "Commit", "", mock.Anything)
 	gitMock.AssertCalled(t, "Push", "origin", "main", false)
 	// The API commit path must not have been taken.

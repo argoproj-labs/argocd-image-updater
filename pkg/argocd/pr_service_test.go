@@ -77,10 +77,19 @@ func (m *mockGitAndSCMCreds) SCMToken(_ context.Context) (string, error) {
 	return m.token, nil
 }
 
-// noopWriter is a changeWriter that skips the commit/push step.
-// commitChangesGit returns nil immediately after calling write when skip=true,
-// but only after buildPullRequest has already populated wbc.PullRequest.
+// noopWriter is a changeWriter that reports changes were written (skip=false),
+// letting commitChangesGit proceed through the (mocked) commit/push steps so
+// the PR/MR creation logic below it can be exercised.
 func noopWriter(_ context.Context, _ *ApplicationImages, _ git.Client) (error, bool) {
+	return nil, false
+}
+
+// noChangesWriter is a changeWriter that reports no changes were found
+// (skip=true), simulating a write-back target that already has the desired
+// value (e.g. forceUpdate re-evaluating an already-correct image).
+// commitChangesGit returns immediately after calling write when skip=true,
+// but only after buildPullRequest has already populated wbc.PullRequest.
+func noChangesWriter(_ context.Context, _ *ApplicationImages, _ git.Client) (error, bool) {
 	return nil, true
 }
 
@@ -255,6 +264,31 @@ func Test_commitChangesPR(t *testing.T) {
 		err := commitChangesPR(ctx, makeTestAppImages(wbc), nil, noopWriter)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "init failed")
+	})
+
+	t.Run("commitChangesGit finds no changes: PR/MR creation is skipped, no error", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method == http.MethodGet {
+				// exists: no existing PRs, so commitChangesPR proceeds to commitChangesGit.
+				w.WriteHeader(http.StatusOK)
+				_ = json.NewEncoder(w).Encode([]*gogithub.PullRequest{})
+				return
+			}
+			t.Error("create should not be called when the write-back produced no changes")
+		}))
+		defer server.Close()
+
+		wbc := &WriteBackConfig{
+			GitRepo:    server.URL + "/org/repo.git",
+			GitBranch:  "main",
+			PRProvider: PRProviderGitHub,
+			GitClient:  &mockGitClient{},
+			GetCreds: func(_ *argocdapi.Application) (git.Creds, error) {
+				return &mockGitAndSCMCreds{token: "github-token"}, nil
+			},
+		}
+		err := commitChangesPR(ctx, makeTestAppImages(wbc), nil, noChangesWriter)
+		require.NoError(t, err)
 	})
 
 	// --- GitHub API phase ---
