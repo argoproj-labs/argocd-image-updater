@@ -108,6 +108,11 @@ func buildPullRequest(ctx context.Context, wbc *WriteBackConfig, appNamespace, a
 // an existing open PR. When one is found the entire clone/marshal/push cycle
 // is skipped, avoiding unnecessary work on every reconciliation while a PR is
 // pending review.
+//
+// If commitChangesGit reports that the write-back produced no changes (e.g.
+// forceUpdate re-evaluated an image that already matches the target), no PR/MR
+// is opened: the push branch may only exist locally, and creating a PR/MR
+// against it would fail.
 func commitChangesPR(ctx context.Context, applicationImages *ApplicationImages, changeList []ChangeEntry, write changeWriter) error {
 	logCtx := log.LoggerFromContext(ctx)
 	app := applicationImages.Application
@@ -142,9 +147,16 @@ func commitChangesPR(ctx context.Context, applicationImages *ApplicationImages, 
 	}
 
 	// Push the image update commit to the head branch first.
-	err = commitChangesGit(ctx, applicationImages, changeList, write)
+	noChanges, err := commitChangesGit(ctx, applicationImages, changeList, write)
 	if err != nil {
 		return err
+	}
+	if noChanges {
+		// The write-back produced no diff (e.g. forceUpdate re-evaluated an
+		// image that already matches), so nothing was committed or pushed.
+		// The push branch may only exist locally (or not at all remotely),
+		// so opening a PR/MR against it here would fail.
+		return nil
 	}
 
 	if wbc.PullRequest == nil {
