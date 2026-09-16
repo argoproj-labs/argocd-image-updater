@@ -2,6 +2,7 @@ package registry
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -794,6 +795,38 @@ func TestIsAuthError(t *testing.T) {
 
 	t.Run("errcode.Errors with Denied returns true", func(t *testing.T) {
 		err := errcode.Errors{errcode.ErrorCodeDenied.WithMessage("access denied")}
+		assert.True(t, IsAuthError(ctx, err))
+	})
+
+	t.Run("bare errcode.Errors with Unauthorized returns true", func(t *testing.T) {
+		// Test that bare errcode.ErrorCodeUnauthorized values are recognized as auth errors
+		assert.True(t, IsAuthError(ctx, errcode.Errors{errcode.ErrorCodeUnauthorized}))
+	})
+
+	t.Run("bare errcode.Errors with Denied returns true", func(t *testing.T) {
+		// Test that bare errcode.ErrorCodeDenied values are recognized as auth errors
+		assert.True(t, IsAuthError(ctx, errcode.Errors{errcode.ErrorCodeDenied}))
+	})
+
+	t.Run("canonical JSON errcode.Errors returns true", func(t *testing.T) {
+		// Test that canonical JSON errcode.Error responses are recognized as auth errors
+		var err errcode.Errors
+		require.NoError(t, json.Unmarshal([]byte(`{"errors":[{"code":"UNAUTHORIZED","message":"authentication required"}]}`), &err))
+		assert.True(t, IsAuthError(ctx, err))
+	})
+
+	t.Run("non-canonical JSON errcode.Errors returns true", func(t *testing.T) {
+		// Test that non-canonical JSON errcode.Error responses are recognized as auth errors
+		var err errcode.Errors
+		require.NoError(t, json.Unmarshal([]byte(`{"errors":[{"code":"UNAUTHORIZED","message":"you shall not pass"}]}`), &err))
+		assert.True(t, IsAuthError(ctx, err))
+	})
+
+	t.Run("non-canonical JSON errcode.Errors without message returns true", func(t *testing.T) {
+		// Test that registry error objects without a message field are recognized
+		// as auth errors; they decode to bare errcode.ErrorCode values
+		var err errcode.Errors
+		require.NoError(t, json.Unmarshal([]byte(`{"errors":[{"code":"UNAUTHORIZED"}]}`), &err))
 		assert.True(t, IsAuthError(ctx, err))
 	})
 
