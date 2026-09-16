@@ -87,6 +87,12 @@ const (
 	ApplicationTypePlugin      ApplicationType = 3
 )
 
+var ApplicationTypeToSourceType = map[ApplicationType]argocdapi.ApplicationSourceType{
+	ApplicationTypeHelm:      argocdapi.ApplicationSourceTypeHelm,
+	ApplicationTypeKustomize: argocdapi.ApplicationSourceTypeKustomize,
+	ApplicationTypePlugin:    argocdapi.ApplicationSourceTypePlugin,
+}
+
 // WriteBackConfig holds information on how to write back the changes to an Application
 type WriteBackConfig struct {
 	Method     WriteBackMethod
@@ -111,6 +117,7 @@ type WriteBackConfig struct {
 	PRProvider             PRProvider
 	PRLabels               []string
 	PullRequest            *PullRequest
+	ApplicationType        ApplicationType
 }
 
 // WriteBackTargetKey returns a short hash that uniquely identifies the

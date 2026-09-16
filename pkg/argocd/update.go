@@ -400,16 +400,21 @@ func getAppImage(ctx context.Context, app *v1alpha1.Application, wbc *WriteBackC
 // It calls the appropriate function to perform the update.
 // Returns an error if the application type is unsupported, or if the update fails.
 func setAppImage(ctx context.Context, app *v1alpha1.Application, img *image.ContainerImage, wbc *WriteBackConfig, applicationImage *Image) error {
-	if applicationImage.PluginEnvName != "" || applicationImage.PluginEnvSpec != "" {
-		return SetPluginImage(ctx, app, img, wbc, applicationImage)
+	applicationType, err := applicationImage.GetType()
+	if err != nil {
+		return fmt.Errorf("failed to set application image: %v", err)
 	}
-	if appType := GetApplicationType(app, wbc); appType == ApplicationTypeKustomize {
+	// explicitly set the specified manifestTartget type to the WriteBackConfig to correctly handle the update for the specific application type
+	// this way we treat the argoImageUpdater manifest as the source of truth for the target application type, rather than relying on the application's spec/order
+	wbc.ApplicationType = applicationType
+	switch applicationType {
+	case ApplicationTypeKustomize:
 		return SetKustomizeImage(ctx, app, img, wbc, applicationImage)
-	} else if appType == ApplicationTypeHelm {
+	case ApplicationTypeHelm:
 		return SetHelmImage(ctx, app, img, wbc, applicationImage)
-	} else if appType == ApplicationTypePlugin {
+	case ApplicationTypePlugin:
 		return SetPluginImage(ctx, app, img, wbc, applicationImage)
-	} else {
+	default:
 		return fmt.Errorf("could not update application %s - unsupported application type", app)
 	}
 }
