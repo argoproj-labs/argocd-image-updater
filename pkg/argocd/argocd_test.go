@@ -1735,6 +1735,60 @@ func Test_SetHelmImage(t *testing.T) {
 		assert.Equal(t, "mq@sha256:123456", tagParam.Value, "Existing tag value should not be overwritten with empty string")
 	})
 
+	t.Run("Test set Helm image parameters on SourceHydrator app persists into DrySource", func(t *testing.T) {
+		// Reproduces https://github.com/argoproj-labs/argocd-image-updater/issues/1809 :
+		// getApplicationSource() returns a pointer to a throwaway ApplicationSource built
+		// from DrySource for SourceHydrator apps. When DrySource.Helm starts out nil,
+		// SetHelmImage assigns a brand-new *ApplicationSourceHelm to that throwaway copy,
+		// which must be written back into app.Spec.SourceHydrator.DrySource.Helm or the
+		// merged parameter is discarded the instant SetHelmImage returns.
+		app := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "hydrator-app",
+				Namespace: "testns",
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				SourceHydrator: &v1alpha1.SourceHydrator{
+					DrySource: v1alpha1.DrySource{
+						RepoURL: "https://example.com/repo.git",
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypeDirectory,
+				Summary: v1alpha1.ApplicationSummary{
+					Images: []string{
+						"jannfis/foobar:1.0.0",
+					},
+				},
+			},
+		}
+
+		img := image.NewFromIdentifier("foobar=jannfis/foobar:1.0.1")
+		wbc := &WriteBackConfig{
+			Target: "helmvalues:./values.yaml",
+		}
+		appImage := &Image{
+			HelmImageName: "image.name",
+			HelmImageTag:  "image.tag",
+		}
+		err := SetHelmImage(context.Background(), app, img, wbc, appImage)
+		require.NoError(t, err)
+
+		require.NotNil(t, app.Spec.SourceHydrator.DrySource.Helm, "merged Helm parameters must persist into DrySource")
+		tagParam := getHelmParam(app.Spec.SourceHydrator.DrySource.Helm.Parameters, "image.tag")
+		require.NotNil(t, tagParam)
+		assert.Equal(t, "1.0.1", tagParam.Value)
+
+		// A subsequent, independent read of the application source (e.g. from
+		// marshalParamsOverride computing the write-back diff) must observe the
+		// merged parameter instead of falling back to the stale live tag.
+		appSource := GetApplicationSource(context.Background(), app, wbc)
+		tagParam = getHelmParam(appSource.Helm.Parameters, "image.tag")
+		require.NotNil(t, tagParam)
+		assert.Equal(t, "1.0.1", tagParam.Value)
+	})
+
 }
 
 func Test_SetPluginImage(t *testing.T) {
