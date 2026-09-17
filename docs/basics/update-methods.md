@@ -559,7 +559,7 @@ If no custom commit message template is configured the defaults are:
 * **Body**: `This pull request was created automatically by argocd-image-updater for application <namespace>/<appName>.`
 
 Titles longer than 255 characters and bodies longer than 65 536 characters are
-truncated automatically.
+truncated automatically. Azure DevOps bodies are limited to 4 000 characters.
 
 To customise the title and body, configure the
 [commit message template](#method-git-commit-message).
@@ -582,10 +582,12 @@ writeBackConfig:
         - automated
 ```
 
-The field applies to both providers, but they behave slightly differently:
+The field applies to all providers, but they behave slightly differently:
 
 * **GitLab** sets the labels in the same API call that creates the merge
   request, and creates any label that does not yet exist in the project.
+* **Azure DevOps** sets the labels in the same API call that creates the pull
+  request.
 * **GitHub** has no labels field on its PR creation API, so labels are applied
   in a follow-up call once the PR exists. If that call fails (for example when
   the token lacks issue write permission) a warning is logged and the update is
@@ -653,6 +655,28 @@ writeBackConfig:
     pullRequest:
       gitlab: {}
 ```
+
+#### Azure DevOps
+
+For Azure Repos Git, configure `pullRequest.azuredevops`:
+
+```yaml
+writeBackConfig:
+  method: "git:secret:azure-devops-creds"
+  gitConfig:
+    repository: "https://dev.azure.com/organization/project/_git/repository"
+    branch: "main"
+    pullRequest:
+      azuredevops: {}
+```
+
+Supports `dev.azure.com`, `organization.visualstudio.com`, and Azure DevOps Server
+[2022.1 or newer](https://learn.microsoft.com/en-us/rest/api/azure/devops/#api-and-tfs-version-mapping).
+The API URL is derived from the repository URL, which must use HTTPS.
+
+Use an HTTPS secret with a `username` and a PAT in `password`.
+The PAT needs **Code (Read & write)** scope, and its owner must be able to push
+branches and create pull requests.
 
 ### <a name="method-git-commit-user"></a>Specifying the user and email address for commits
 
