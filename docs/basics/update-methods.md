@@ -539,7 +539,7 @@ pull requests.
 
 #### Credentials
 
-PR creation requires credentials that provide an API token — either a **personal
+PR creation requires credentials that carry a bearer token — either a **personal
 access token (PAT)** or a **GitHub App**. SSH keys cannot be used because they
 do not provide the HTTP token needed to call the SCM API.
 
