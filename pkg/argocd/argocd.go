@@ -979,6 +979,8 @@ func SetHelmImage(ctx context.Context, app *argocdapi.Application, newImage *ima
 
 	appSource.Helm.Parameters = mergeHelmParams(appSource.Helm.Parameters, mergeParams)
 
+	persistSourceHydratorMutation(app, appSource)
+
 	return nil
 }
 
@@ -1071,6 +1073,8 @@ func SetKustomizeImage(ctx context.Context, app *argocdapi.Application, newImage
 
 	appSource.Kustomize.MergeImage(argocdapi.KustomizeImage(ksImageParam))
 
+	persistSourceHydratorMutation(app, appSource)
+
 	return nil
 }
 
@@ -1161,6 +1165,8 @@ func SetPluginImage(ctx context.Context, app *argocdapi.Application, newImage *i
 			}
 		}
 	}
+
+	persistSourceHydratorMutation(app, appSource)
 
 	return nil
 }
@@ -1409,4 +1415,22 @@ func getApplicationSource(ctx context.Context, app *argocdapi.Application, wbc *
 	}
 
 	return app.Spec.Source
+}
+
+// persistSourceHydratorMutation writes Helm/Kustomize/Plugin mutations made on the
+// ApplicationSource returned by getApplicationSource back into the application's
+// SourceHydrator DrySource. For SourceHydrator apps, getApplicationSource returns a
+// pointer to a throwaway local copy (there is no single real ApplicationSource field
+// to alias), so any Set*Image call that assigns a brand-new Helm/Kustomize/Plugin
+// pointer into that copy would otherwise be silently discarded once the function
+// returns, and the mutation would never make it into the diff computed for write-back.
+// No-op for non-SourceHydrator apps, where getApplicationSource already returns a
+// pointer straight into app.Spec.Source.
+func persistSourceHydratorMutation(app *argocdapi.Application, appSource *argocdapi.ApplicationSource) {
+	if app.Spec.SourceHydrator == nil {
+		return
+	}
+	app.Spec.SourceHydrator.DrySource.Helm = appSource.Helm
+	app.Spec.SourceHydrator.DrySource.Kustomize = appSource.Kustomize
+	app.Spec.SourceHydrator.DrySource.Plugin = appSource.Plugin
 }
