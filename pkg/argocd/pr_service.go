@@ -21,6 +21,8 @@ const (
 	PRProviderGitHub
 	// PRProviderGitLab opens merge requests via the GitLab REST API.
 	PRProviderGitLab
+	// PRProviderAzureDevOps opens pull requests via the Azure DevOps REST API.
+	PRProviderAzureDevOps
 )
 
 // PRBranchTemplate is the Go template used to produce a deterministic head
@@ -180,6 +182,16 @@ func commitChangesPR(ctx context.Context, applicationImages *ApplicationImages, 
 		}
 		return nil
 
+	case PRProviderAzureDevOps:
+		g, err := NewAzureDevOpsPRService(ctx, wbc, tokenProvider)
+		if err != nil {
+			return err
+		}
+		if err := g.create(ctx); err != nil && !errors.Is(err, ErrPRAlreadyExists) {
+			return err
+		}
+		return nil
+
 	default:
 		return fmt.Errorf("unsupported PR provider: %d", wbc.PRProvider)
 	}
@@ -205,6 +217,8 @@ func skipIfPRExists(ctx context.Context, wbc *WriteBackConfig, tokenProvider git
 		svc, svcErr = NewGithubPRService(ctx, wbc, tokenProvider)
 	case PRProviderGitLab:
 		svc, svcErr = NewGitLabMRService(ctx, wbc, tokenProvider)
+	case PRProviderAzureDevOps:
+		svc, svcErr = NewAzureDevOpsPRService(ctx, wbc, tokenProvider)
 	default:
 		return false, fmt.Errorf("unsupported PR provider: %d", wbc.PRProvider)
 	}

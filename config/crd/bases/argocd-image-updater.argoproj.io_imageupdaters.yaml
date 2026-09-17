@@ -435,6 +435,10 @@ spec:
                                 When set, the controller opens a PR instead of pushing to the branch.
                                 If not specified write back config method is `git`.
                               properties:
+                                azuredevops:
+                                  description: AzureDevOps configures PR creation
+                                    via the Azure DevOps API.
+                                  type: object
                                 github:
                                   description: GitHub configures PR creation via the
                                     GitHub API.
@@ -446,7 +450,7 @@ spec:
                                 labels:
                                   description: |-
                                     Labels to apply to the created pull/merge request.
-                                    GitLab sets them when the merge request is created; GitHub applies them
+                                    GitLab and Azure DevOps set them on creation; GitHub applies them
                                     in a follow-up API call, so a labelling failure does not fail the update.
                                   items:
                                     maxLength: 255
@@ -457,9 +461,10 @@ spec:
                                   x-kubernetes-list-type: atomic
                               type: object
                               x-kubernetes-validations:
-                              - message: Exactly one of github or gitlab must be set
+                              - message: Exactly one of github, gitlab, or azuredevops
+                                  must be set
                                 rule: '(has(self.github) ? 1 : 0) + (has(self.gitlab)
-                                  ? 1 : 0) == 1'
+                                  ? 1 : 0) + (has(self.azuredevops) ? 1 : 0) == 1'
                             repository:
                               description: |-
                                 Repository URL to commit changes to.
@@ -597,6 +602,10 @@ spec:
                           When set, the controller opens a PR instead of pushing to the branch.
                           If not specified write back config method is `git`.
                         properties:
+                          azuredevops:
+                            description: AzureDevOps configures PR creation via the
+                              Azure DevOps API.
+                            type: object
                           github:
                             description: GitHub configures PR creation via the GitHub
                               API.
@@ -608,7 +617,7 @@ spec:
                           labels:
                             description: |-
                               Labels to apply to the created pull/merge request.
-                              GitLab sets them when the merge request is created; GitHub applies them
+                              GitLab and Azure DevOps set them on creation; GitHub applies them
                               in a follow-up API call, so a labelling failure does not fail the update.
                             items:
                               maxLength: 255
@@ -619,9 +628,10 @@ spec:
                             x-kubernetes-list-type: atomic
                         type: object
                         x-kubernetes-validations:
-                        - message: Exactly one of github or gitlab must be set
+                        - message: Exactly one of github, gitlab, or azuredevops must
+                            be set
                           rule: '(has(self.github) ? 1 : 0) + (has(self.gitlab) ?
-                            1 : 0) == 1'
+                            1 : 0) + (has(self.azuredevops) ? 1 : 0) == 1'
                       repository:
                         description: |-
                           Repository URL to commit changes to.

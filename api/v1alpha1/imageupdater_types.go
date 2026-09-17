@@ -225,7 +225,7 @@ type WriteBackConfig struct {
 // PullRequest holds provider-specific configuration for creating pull requests
 // when writing back image updates to Git. Exactly one of the providers must be set.
 // based on https://github.com/argoproj/argo-cd/blob/master/pkg/apis/application/v1alpha1/applicationset_types.go
-// +kubebuilder:validation:XValidation:rule="(has(self.github) ? 1 : 0) + (has(self.gitlab) ? 1 : 0) == 1",message="Exactly one of github or gitlab must be set"
+// +kubebuilder:validation:XValidation:rule="(has(self.github) ? 1 : 0) + (has(self.gitlab) ? 1 : 0) + (has(self.azuredevops) ? 1 : 0) == 1",message="Exactly one of github, gitlab, or azuredevops must be set"
 type PullRequest struct {
 	// GitHub configures PR creation via the GitHub API.
 	// +optional
@@ -235,8 +235,12 @@ type PullRequest struct {
 	// +optional
 	GitLab *PullRequestGitLab `json:"gitlab,omitempty"`
 
+	// AzureDevOps configures PR creation via the Azure DevOps API.
+	// +optional
+	AzureDevOps *PullRequestAzureDevOps `json:"azuredevops,omitempty"`
+
 	// Labels to apply to the created pull/merge request.
-	// GitLab sets them when the merge request is created; GitHub applies them
+	// GitLab and Azure DevOps set them on creation; GitHub applies them
 	// in a follow-up API call, so a labelling failure does not fail the update.
 	// +optional
 	// +listType=atomic
@@ -254,6 +258,11 @@ type PullRequestGitHub struct {
 // PullRequestGitLab defines connection and filter options for creating GitLab merge requests.
 // TODO: placeholder for gitlab. Will be implemented in GITOPS-9155
 type PullRequestGitLab struct {
+}
+
+// PullRequestAzureDevOps configures creation of Azure DevOps pull requests.
+// Empty struct because all necessary data can be fetched from GitConfig.
+type PullRequestAzureDevOps struct {
 }
 
 // ManifestTarget specifies the mechanism and details for updating image references in application manifests.
