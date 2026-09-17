@@ -187,7 +187,11 @@ func commitChangesPR(ctx context.Context, applicationImages *ApplicationImages, 
 		if err != nil {
 			return err
 		}
-		if err := g.create(ctx); err != nil && !errors.Is(err, ErrPRAlreadyExists) {
+
+		if err := g.create(ctx); err != nil {
+			if errors.Is(err, ErrPRAlreadyExists) {
+				return nil
+			}
 			return err
 		}
 		return nil

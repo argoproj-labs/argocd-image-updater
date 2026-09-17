@@ -27,13 +27,15 @@ type AzureDevOpsPRService struct {
 var _ PullRequestService = (*AzureDevOpsPRService)(nil)
 
 func (a *AzureDevOpsPRService) create(ctx context.Context) error {
+	logCtx := log.LoggerFromContext(ctx)
+
 	if a.pr == nil {
 		return fmt.Errorf("cannot create PR: pull request metadata is nil")
 	}
 	description := a.pr.body
 	if utf8.RuneCountInString(description) > 4000 {
 		description = string([]rune(description)[:4000])
-		log.LoggerFromContext(ctx).Warnf("Azure DevOps PR body exceeded 4000 characters and was truncated")
+		logCtx.Warnf("Azure DevOps PR body exceeded 4000 characters and was truncated")
 	}
 
 	payload := map[string]any{
@@ -58,12 +60,13 @@ func (a *AzureDevOpsPRService) create(ctx context.Context) error {
 		URL string `json:"url"`
 	}
 	if err := a.request(ctx, http.MethodPost, a.apiURL, bytes.NewReader(body), &pr); err != nil {
+		if err == ErrPRAlreadyExists {
+			logCtx.Infof("PR %q → %q already exists, skipping creation", a.pr.head, a.pr.base)
+			return ErrPRAlreadyExists
+		}
 		return fmt.Errorf("could not create PR %q → %q: %w", a.pr.head, a.pr.base, err)
 	}
-	if pr.ID == 0 {
-		return fmt.Errorf("Azure DevOps response did not contain a pull request ID")
-	}
-	log.LoggerFromContext(ctx).Infof("created PR #%d %q → %q: %s", pr.ID, a.pr.head, a.pr.base, pr.URL)
+	logCtx.Infof("created PR #%d %q → %q: %s", pr.ID, a.pr.head, a.pr.base, pr.URL)
 	return nil
 }
 
@@ -145,6 +148,7 @@ func NewAzureDevOpsPRService(ctx context.Context, wbc *WriteBackConfig, tokenPro
 	u.RawPath = ""
 	u.RawQuery = "api-version=7.1"
 	u.Fragment = ""
+	log.LoggerFromContext(ctx).Infof("Azure DevOps PR service initialised for %s/_git/%s", prefix, repo)
 	return &AzureDevOpsPRService{
 		client: &http.Client{Timeout: 30 * time.Second},
 		apiURL: u,

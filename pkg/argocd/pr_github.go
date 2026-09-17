@@ -14,7 +14,7 @@ import (
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
 )
 
-// ErrPRAlreadyExists is returned by create when the SCM provider reports that an open
+// ErrPRAlreadyExists is returned by create when GitHub reports that an open
 // PR for the same head → base pair already exists. The caller can treat this
 // as a successful no-op rather than a reconciliation failure.
 var ErrPRAlreadyExists = errors.New("PR already exists")

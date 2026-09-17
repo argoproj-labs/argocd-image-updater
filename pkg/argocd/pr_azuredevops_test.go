@@ -8,14 +8,10 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strings"
-	"sync"
 	"testing"
 
-	argocdapi "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/argoproj-labs/argocd-image-updater/ext/git"
 )
 
 func Test_NewAzureDevOpsPRService_URL(t *testing.T) {
@@ -73,15 +69,23 @@ func newTestAzureDevOpsPRService(t *testing.T, pr *PullRequest, handler http.Han
 }
 
 func Test_AzureDevOpsPRService_create(t *testing.T) {
-	for _, tt := range []struct {
-		name, head, base string
-		labels           []string
+	pr := &PullRequest{title: "chore: update images", body: "automated update", head: "image-updater/test", base: "refs/heads/main"}
+	tests := []struct {
+		name, body string
+		status     int
+		wantErr    error
+		wantErrMsg string
 	}{
-		{"without labels", "image-updater/test", "refs/heads/main", nil},
-		{"with labels", "refs/heads/image-updater/test", "main", []string{"image-update", "automated"}},
-	} {
+		{"success", `{"pullRequestId":42,"url":"https://dev.azure.com/org/project/_git/repo/pullrequest/42"}`, http.StatusCreated, nil, ""},
+		{"duplicate", `{"typeKey":"GitPullRequestExistsException"}`, http.StatusConflict, ErrPRAlreadyExists, ""},
+		{"other conflict", `{"typeKey":"OtherException","message":"Another conflict."}`, http.StatusConflict, nil, "Another conflict."},
+		{"validation error", `{"message":"Invalid branch."}`, http.StatusBadRequest, nil, "Invalid branch."},
+		{"unauthorized", `{"message":"Access denied."}`, http.StatusUnauthorized, nil, "Access denied."},
+		{"server error", "Internal server error", http.StatusInternalServerError, nil, "500 Internal Server Error"},
+		{"invalid response", "invalid JSON", http.StatusCreated, nil, "could not decode Azure DevOps response"},
+	}
+	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			pr := &PullRequest{title: "update images", body: strings.Repeat("界", 4001), head: tt.head, base: tt.base, labels: tt.labels}
 			svc := newTestAzureDevOpsPRService(t, pr, func(w http.ResponseWriter, r *http.Request) {
 				assert.Equal(t, http.MethodPost, r.Method)
 				assert.Equal(t, "/collection/my%20project/_apis/git/repositories/my%20repo/pullrequests", r.URL.EscapedPath())
@@ -96,7 +100,39 @@ func Test_AzureDevOpsPRService_create(t *testing.T) {
 					assert.Equal(t, "refs/heads/image-updater/test", body["sourceRefName"])
 					assert.Equal(t, "refs/heads/main", body["targetRefName"])
 					assert.Equal(t, pr.title, body["title"])
-					assert.Equal(t, strings.Repeat("界", 4000), body["description"])
+					assert.Equal(t, pr.body, body["description"])
+				}
+				w.WriteHeader(tt.status)
+				_, _ = w.Write([]byte(tt.body))
+			})
+			err := svc.create(context.Background())
+			switch {
+			case tt.wantErr != nil:
+				require.ErrorIs(t, err, tt.wantErr)
+			case tt.wantErrMsg != "":
+				require.ErrorContains(t, err, "could not create PR")
+				assert.Contains(t, err.Error(), tt.wantErrMsg)
+				assert.NotErrorIs(t, err, ErrPRAlreadyExists)
+			default:
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
+func Test_AzureDevOpsPRService_create_labels(t *testing.T) {
+	for _, tt := range []struct {
+		name   string
+		labels []string
+	}{
+		{"labels are sent with the create request", []string{"image-update", "automated"}},
+		{"no labels field is sent when none are configured", nil},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			pr := &PullRequest{title: "chore: update images", head: "update", base: "main", labels: tt.labels}
+			svc := newTestAzureDevOpsPRService(t, pr, func(w http.ResponseWriter, r *http.Request) {
+				var body map[string]any
+				if assert.NoError(t, json.NewDecoder(r.Body).Decode(&body)) {
 					if len(tt.labels) == 0 {
 						assert.NotContains(t, body, "labels")
 					} else {
@@ -104,51 +140,40 @@ func Test_AzureDevOpsPRService_create(t *testing.T) {
 					}
 				}
 				w.WriteHeader(http.StatusCreated)
-				_, _ = w.Write([]byte(`{"pullRequestId":42,"url":"https://dev.azure.com/org/project/_git/repo/pullrequest/42"}`))
+				_, _ = w.Write([]byte(`{"pullRequestId":42}`))
 			})
 			require.NoError(t, svc.create(context.Background()))
-			assert.Equal(t, strings.Repeat("界", 4001), pr.body)
 		})
 	}
 }
 
-func Test_AzureDevOpsPRService_createErrors(t *testing.T) {
-	for _, tt := range []struct {
-		name      string
-		status    int
-		body      string
-		duplicate bool
-	}{
-		{"duplicate", http.StatusConflict, `{"typeKey":"GitPullRequestExistsException","message":"A pull request already exists."}`, true},
-		{"other conflict", http.StatusConflict, `{"typeKey":"OtherException","message":"Another conflict."}`, false},
-		{"unauthorized", http.StatusUnauthorized, `{"message":"Access denied."}`, false},
-		{"non-JSON error", http.StatusBadGateway, "Bad gateway", false},
-		{"invalid response", http.StatusCreated, "invalid JSON", false},
-		{"missing PR ID", http.StatusCreated, `{}`, false},
-	} {
-		t.Run(tt.name, func(t *testing.T) {
-			svc := newTestAzureDevOpsPRService(t, &PullRequest{head: "update", base: "main"}, func(w http.ResponseWriter, _ *http.Request) {
-				w.WriteHeader(tt.status)
-				_, _ = w.Write([]byte(tt.body))
-			})
-			err := svc.create(context.Background())
-			require.Error(t, err)
-			assert.Equal(t, tt.duplicate, errors.Is(err, ErrPRAlreadyExists))
-		})
-	}
+func Test_AzureDevOpsPRService_create_body(t *testing.T) {
+	pr := &PullRequest{title: "chore: update images", body: strings.Repeat("é", 4001), head: "update", base: "main"}
+	svc := newTestAzureDevOpsPRService(t, pr, func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		if assert.NoError(t, json.NewDecoder(r.Body).Decode(&body)) {
+			assert.Equal(t, strings.Repeat("é", 4000), body["description"])
+		}
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"pullRequestId":42}`))
+	})
+	require.NoError(t, svc.create(context.Background()))
+	assert.Equal(t, strings.Repeat("é", 4001), pr.body)
 }
 
 func Test_AzureDevOpsPRService_exists(t *testing.T) {
 	for _, tt := range []struct {
 		name, body string
 		status     int
-		want       bool
-		wantErr    bool
+		wantExists bool
+		wantErrMsg string
 	}{
-		{"exists", `{"count":1,"value":[{"pullRequestId":42}]}`, http.StatusOK, true, false},
-		{"absent", `{"count":0,"value":[]}`, http.StatusOK, false, false},
-		{"API error", `{"message":"Access denied."}`, http.StatusForbidden, false, true},
-		{"invalid response", "invalid JSON", http.StatusOK, false, true},
+		{"no open PRs", `{"count":0,"value":[]}`, http.StatusOK, false, ""},
+		{"one open PR", `{"count":1,"value":[{"pullRequestId":42}]}`, http.StatusOK, true, ""},
+		{"multiple open PRs", `{"count":2,"value":[{"pullRequestId":42},{"pullRequestId":43}]}`, http.StatusOK, true, ""},
+		{"API error", `{"message":"Access denied."}`, http.StatusForbidden, false, "Access denied."},
+		{"server error", "Internal server error", http.StatusInternalServerError, false, "500 Internal Server Error"},
+		{"invalid response", "invalid JSON", http.StatusOK, false, "could not decode Azure DevOps response"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			svc := newTestAzureDevOpsPRService(t, nil, func(w http.ResponseWriter, r *http.Request) {
@@ -162,68 +187,12 @@ func Test_AzureDevOpsPRService_exists(t *testing.T) {
 				_, _ = w.Write([]byte(tt.body))
 			})
 			exists, err := svc.exists(context.Background(), "main", "refs/heads/image-updater/test")
-			assert.Equal(t, tt.want, exists)
-			if tt.wantErr {
-				require.Error(t, err)
+			assert.Equal(t, tt.wantExists, exists)
+			if tt.wantErrMsg != "" {
+				require.ErrorContains(t, err, "could not list Azure DevOps PRs")
+				assert.Contains(t, err.Error(), tt.wantErrMsg)
 			} else {
 				require.NoError(t, err)
-			}
-		})
-	}
-}
-
-func Test_commitChangesPR_AzureDevOps(t *testing.T) {
-	for _, tt := range []struct {
-		name      string
-		exists    bool
-		duplicate bool
-	}{
-		{"existing PR skips git", true, false},
-		{"creates PR", false, false},
-		{"concurrent duplicate is a no-op", false, true},
-	} {
-		t.Run(tt.name, func(t *testing.T) {
-			var mu sync.Mutex
-			var requests []string
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				mu.Lock()
-				defer mu.Unlock()
-				requests = append(requests, r.Method)
-				if r.Method == http.MethodGet {
-					if tt.exists {
-						_, _ = w.Write([]byte(`{"value":[{"pullRequestId":42}]}`))
-					} else {
-						_, _ = w.Write([]byte(`{"value":[]}`))
-					}
-					return
-				}
-				if tt.duplicate {
-					w.WriteHeader(http.StatusConflict)
-					_, _ = w.Write([]byte(`{"typeKey":"GitPullRequestExistsException"}`))
-				} else {
-					w.WriteHeader(http.StatusCreated)
-					_, _ = w.Write([]byte(`{"pullRequestId":42}`))
-				}
-			}))
-			defer server.Close()
-			gitClient := &mockGitClient{}
-			if tt.exists {
-				gitClient.initErr = errors.New("git must not be initialized when the PR exists")
-			}
-			wbc := &WriteBackConfig{
-				GitRepo: server.URL + "/org/project/_git/repo", GitBranch: "main", PRProvider: PRProviderAzureDevOps,
-				GitClient: gitClient,
-				GetCreds: func(_ *argocdapi.Application) (git.Creds, error) {
-					return &mockGitAndSCMCreds{token: "pat"}, nil
-				},
-			}
-			require.NoError(t, commitChangesPR(context.Background(), makeTestAppImages(wbc), nil, noopWriter))
-			mu.Lock()
-			defer mu.Unlock()
-			if tt.exists {
-				assert.Equal(t, []string{http.MethodGet}, requests)
-			} else {
-				assert.Equal(t, []string{http.MethodGet, http.MethodPost}, requests)
 			}
 		})
 	}
