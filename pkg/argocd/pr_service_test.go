@@ -446,7 +446,7 @@ func Test_commitChangesPR(t *testing.T) {
 		{"create fails with 400", `{"message":"Invalid branch."}`, http.StatusBadRequest, false, "could not create PR"},
 	} {
 		t.Run("Azure DevOps: "+tt.name, func(t *testing.T) {
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if r.Method == http.MethodGet {
 					if tt.exists {
 						_, _ = w.Write([]byte(`{"value":[{"pullRequestId":42}]}`))
@@ -463,6 +463,9 @@ func Test_commitChangesPR(t *testing.T) {
 				_, _ = w.Write([]byte(tt.body))
 			}))
 			defer server.Close()
+			transport := http.DefaultTransport
+			http.DefaultTransport = server.Client().Transport
+			t.Cleanup(func() { http.DefaultTransport = transport })
 
 			gitClient := &mockGitClient{}
 			if tt.exists {

@@ -672,7 +672,7 @@ writeBackConfig:
 
 Supports `dev.azure.com`, `organization.visualstudio.com`, and Azure DevOps Server
 [2022.1 or newer](https://learn.microsoft.com/en-us/rest/api/azure/devops/#api-and-tfs-version-mapping).
-The API URL is derived from the repository URL.
+The API URL is derived from the repository URL, which must use HTTPS.
 
 Use an HTTPS secret with a `username` and a PAT in `password`.
 The PAT needs **Code (Read & write)** scope, and its owner must be able to push

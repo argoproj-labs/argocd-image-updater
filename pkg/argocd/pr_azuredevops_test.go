@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -20,7 +21,7 @@ func Test_NewAzureDevOpsPRService_URL(t *testing.T) {
 	}{
 		{"Azure DevOps Services", "https://dev.azure.com/org/project/_git/repo", "https://dev.azure.com/org/project/_apis/git/repositories/repo/pullrequests"},
 		{"legacy Services URL", "https://org.visualstudio.com/DefaultCollection/project/_git/repo", "https://org.visualstudio.com/DefaultCollection/project/_apis/git/repositories/repo/pullrequests"},
-		{"Azure DevOps Server", "http://server:8080/tfs/collection/project/_git/repo.git", "http://server:8080/tfs/collection/project/_apis/git/repositories/repo.git/pullrequests"},
+		{"Azure DevOps Server", "https://server:8443/tfs/collection/project/_git/repo.git", "https://server:8443/tfs/collection/project/_apis/git/repositories/repo.git/pullrequests"},
 		{"escaped names and URL credentials", "https://user:password@dev.azure.com/org/my%20project/_git/my%20repo?secret=value#fragment", "https://dev.azure.com/org/my%20project/_apis/git/repositories/my%20repo/pullrequests"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
@@ -33,6 +34,8 @@ func Test_NewAzureDevOpsPRService_URL(t *testing.T) {
 		"", "git@ssh.dev.azure.com:v3/org/project/repo", "ssh://git@ssh.dev.azure.com/v3/org/project/repo",
 		"https:///org/project/_git/repo", "https://dev.azure.com/org/project/repo",
 		"https://dev.azure.com/org/project/_git/", "https://dev.azure.com/org/project/_git/repo/extra",
+		"http://dev.azure.com/org/project/_git/repo", "https://:443/org/project/_git/repo",
+		"https://bad host/org/project/_git/repo", "https://dev.azure.com:invalid/org/project/_git/repo",
 	} {
 		t.Run(repo, func(t *testing.T) {
 			_, err := NewAzureDevOpsPRService(context.Background(), &WriteBackConfig{GitRepo: repo}, &mockTokenProvider{token: "pat"})
@@ -59,13 +62,66 @@ func Test_NewAzureDevOpsPRService(t *testing.T) {
 
 func newTestAzureDevOpsPRService(t *testing.T, pr *PullRequest, handler http.HandlerFunc) *AzureDevOpsPRService {
 	t.Helper()
-	server := httptest.NewServer(handler)
+	server := httptest.NewTLSServer(handler)
 	t.Cleanup(server.Close)
 	svc, err := NewAzureDevOpsPRService(context.Background(), &WriteBackConfig{
 		GitRepo: server.URL + "/collection/my%20project/_git/my%20repo", PullRequest: pr,
 	}, &mockTokenProvider{token: "pat"})
 	require.NoError(t, err)
+	svc.client.Transport = server.Client().Transport
 	return svc
+}
+
+type azureDevOpsRoundTripper func(*http.Request) (*http.Response, error)
+
+func (f azureDevOpsRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
+
+func Test_AzureDevOpsPRService_redirects(t *testing.T) {
+	for _, tt := range []struct {
+		name, location, wantErr string
+		wantRequests            int
+	}{
+		{"same host", "https://dev.azure.com/redirected", "", 2},
+		{"relative URL", "/redirected", "", 2},
+		{"HTTP downgrade", "http://dev.azure.com/redirected", "refusing Azure DevOps redirect", 1},
+		{"different host", "https://example.com/redirected", "refusing Azure DevOps redirect", 1},
+		{"subdomain", "https://sub.dev.azure.com/redirected", "refusing Azure DevOps redirect", 1},
+		{"different port", "https://dev.azure.com:444/redirected", "refusing Azure DevOps redirect", 1},
+		{"redirect loop", "/loop", "stopped after 10 redirects", 10},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			svc, err := NewAzureDevOpsPRService(context.Background(), &WriteBackConfig{
+				GitRepo: "https://dev.azure.com/org/project/_git/repo",
+			}, &mockTokenProvider{token: "pat"})
+			require.NoError(t, err)
+			requests := 0
+			svc.client.Transport = azureDevOpsRoundTripper(func(req *http.Request) (*http.Response, error) {
+				requests++
+				_, password, ok := req.BasicAuth()
+				assert.True(t, ok)
+				assert.Equal(t, "pat", password)
+				status := http.StatusTemporaryRedirect
+				if req.URL.Path == "/redirected" {
+					status = http.StatusOK
+				}
+				return &http.Response{
+					StatusCode: status,
+					Header:     http.Header{"Location": {tt.location}},
+					Body:       io.NopCloser(strings.NewReader(`{"value":[]}`)),
+					Request:    req,
+				}, nil
+			})
+			_, err = svc.exists(context.Background(), "main", "update")
+			if tt.wantErr != "" {
+				require.ErrorContains(t, err, tt.wantErr)
+			} else {
+				require.NoError(t, err)
+			}
+			assert.Equal(t, tt.wantRequests, requests)
+		})
+	}
 }
 
 func Test_AzureDevOpsPRService_create(t *testing.T) {

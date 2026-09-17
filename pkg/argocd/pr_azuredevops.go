@@ -135,8 +135,8 @@ func NewAzureDevOpsPRService(ctx context.Context, wbc *WriteBackConfig, tokenPro
 	if err != nil {
 		return nil, fmt.Errorf("could not parse Azure DevOps repo URL: %w", err)
 	}
-	if (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" {
-		return nil, fmt.Errorf("Azure DevOps PR creation requires an HTTP(S) repository URL")
+	if u.Scheme != "https" || u.Hostname() == "" {
+		return nil, fmt.Errorf("Azure DevOps PR creation requires an HTTPS repository URL with a host")
 	}
 	prefix, repo, ok := strings.Cut(strings.TrimSuffix(u.Path, "/"), "/_git/")
 	if !ok || repo == "" || strings.Contains(repo, "/") {
@@ -150,7 +150,18 @@ func NewAzureDevOpsPRService(ctx context.Context, wbc *WriteBackConfig, tokenPro
 	u.Fragment = ""
 	log.LoggerFromContext(ctx).Infof("Azure DevOps PR service initialised for %s/_git/%s", prefix, repo)
 	return &AzureDevOpsPRService{
-		client: &http.Client{Timeout: 30 * time.Second},
+		client: &http.Client{
+			Timeout: 30 * time.Second,
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				if req.URL.Scheme != "https" || !strings.EqualFold(req.URL.Host, via[0].URL.Host) {
+					return fmt.Errorf("refusing Azure DevOps redirect to a different host or non-HTTPS URL")
+				}
+				if len(via) >= 10 {
+					return fmt.Errorf("stopped after 10 redirects")
+				}
+				return nil
+			},
+		},
 		apiURL: u,
 		token:  token,
 		pr:     wbc.PullRequest,
