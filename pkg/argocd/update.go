@@ -382,48 +382,63 @@ func needsUpdate(updateableImage *image.ContainerImage, applicationImage *image.
 // It determines the application type (Kustomize, Helm, or Plugin) and calls the
 // appropriate function to extract the image information.
 func getAppImage(ctx context.Context, app *v1alpha1.Application, wbc *WriteBackConfig, applicationImage *Image) (string, error) {
-	targetApplicationType, err := applicationImage.GetType()
+	targetApplicationType := getTargetApplicationType(app, wbc, applicationImage)
+	err := setApplicationTypeInWBC(wbc, targetApplicationType)
 	if err != nil {
 		return "", err
 	}
-	err = setApplicationTypeInWBC(wbc, targetApplicationType)
-	if err != nil {
-		return "", err
-	}
+	var img string
 	switch targetApplicationType {
 	case ApplicationTypeKustomize:
-		return GetKustomizeImage(ctx, app, wbc, applicationImage)
+		img, err = GetKustomizeImage(ctx, app, wbc, applicationImage)
 	case ApplicationTypeHelm:
-		return GetHelmImage(ctx, app, wbc, applicationImage)
+		img, err = GetHelmImage(ctx, app, wbc, applicationImage)
 	case ApplicationTypePlugin:
-		return GetPluginImage(ctx, app, wbc, applicationImage)
+		img, err = GetPluginImage(ctx, app, wbc, applicationImage)
 	default:
-		return "", fmt.Errorf("could not update application %s - unsupported application type", app)
+		img, err = "", fmt.Errorf("could not update application %s - unsupported application type", app)
 	}
+	_err := resetApplicationTypeInWBC(wbc)
+	if _err != nil {
+		return "", fmt.Errorf("failed to set application type in WriteBackConfig: %v", _err)
+	}
+	return img, err
 }
 
 // setAppImage updates the image in the application's manifest based on its type (Kustomize, Helm, or Plugin).
 // It calls the appropriate function to perform the update.
 // Returns an error if the application type is unsupported, or if the update fails.
 func setAppImage(ctx context.Context, app *v1alpha1.Application, img *image.ContainerImage, wbc *WriteBackConfig, applicationImage *Image) error {
-	targetApplicationType, err := applicationImage.GetType()
-	if err != nil {
-		return fmt.Errorf("failed to set application image: %v", err)
-	}
-	err = setApplicationTypeInWBC(wbc, targetApplicationType)
+	targetApplicationType := getTargetApplicationType(app, wbc, applicationImage)
+	err := setApplicationTypeInWBC(wbc, targetApplicationType)
 	if err != nil {
 		return err
 	}
 	switch targetApplicationType {
 	case ApplicationTypeKustomize:
-		return SetKustomizeImage(ctx, app, img, wbc, applicationImage)
+		err = SetKustomizeImage(ctx, app, img, wbc, applicationImage)
 	case ApplicationTypeHelm:
-		return SetHelmImage(ctx, app, img, wbc, applicationImage)
+		err = SetHelmImage(ctx, app, img, wbc, applicationImage)
 	case ApplicationTypePlugin:
-		return SetPluginImage(ctx, app, img, wbc, applicationImage)
+		err = SetPluginImage(ctx, app, img, wbc, applicationImage)
 	default:
-		return fmt.Errorf("could not update application %s - unsupported application type", app)
+		err = fmt.Errorf("could not update application %s - unsupported application type", app)
 	}
+	_err := resetApplicationTypeInWBC(wbc)
+	if _err != nil {
+		return fmt.Errorf("failed to set application type in WriteBackConfig: %v", _err)
+	}
+	return err
+}
+
+func getTargetApplicationType(app *v1alpha1.Application, wbc *WriteBackConfig, applicationImage *Image) ApplicationType {
+	// try to infer the application type from the image's manifest target fields first
+	// if the type cannot be inferred, fall back to the application source type
+	targetApplicationType := applicationImage.GetType()
+	if targetApplicationType == ApplicationTypeUnsupported {
+		targetApplicationType = getApplicationType(app, wbc)
+	}
+	return targetApplicationType
 }
 
 func setApplicationTypeInWBC(wbc *WriteBackConfig, applicationType ApplicationType) error {
@@ -434,6 +449,10 @@ func setApplicationTypeInWBC(wbc *WriteBackConfig, applicationType ApplicationTy
 		wbc.ApplicationType = applicationType
 	}
 	return nil
+}
+
+func resetApplicationTypeInWBC(wbc *WriteBackConfig) error {
+	return setApplicationTypeInWBC(wbc, ApplicationTypeUnsupported)
 }
 
 // marshalWithIndent marshals in to YAML with the given indent, optionally
