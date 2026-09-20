@@ -422,6 +422,102 @@ func Test_UpdateApplication(t *testing.T) {
 		assert.Equal(t, v1alpha1.KustomizeImage("kustomize-image=jannfis/barbar:1.0.1"), appImages.Application.Spec.Sources[1].Kustomize.Images[0])
 	})
 
+	t.Run("Test successful update multisource application using empty helm target", func(t *testing.T) {
+		mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
+			regMock := regmock.RegistryClient{}
+			regMock.On("NewRepository", mock.Anything, mock.MatchedBy(func(s string) bool {
+				return s == "jannfis/foobar" || s == "jannfis/barbar"
+			})).Return(nil)
+			regMock.On("Tags", mock.Anything).Return([]string{"1.0.1"}, nil)
+			return &regMock, nil
+		}
+
+		kubeClient := kube.ImageUpdaterKubernetesClient{
+			KubeClient: &registryKube.KubernetesClient{
+				Clientset: fake.NewFakeKubeClient(),
+			},
+		}
+
+		settings := &iuapi.ManifestTarget{
+			Helm: &iuapi.HelmTarget{},
+		}
+
+		img, err := newImageFromManifestTargetSettings(settings, &Image{
+			ContainerImage: image.NewFromIdentifier("jannfis/barbar:~1.0.0"),
+		})
+		assert.NoError(t, err)
+
+		appImages := &ApplicationImages{
+			Application: v1alpha1.Application{
+				ObjectMeta: v1.ObjectMeta{
+					Name:      "guestbook",
+					Namespace: "guestbook",
+				},
+				Spec: v1alpha1.ApplicationSpec{
+					Sources: []v1alpha1.ApplicationSource{
+						{
+							RepoURL: "https://example.invalid/kustomize.git",
+							Kustomize: &v1alpha1.ApplicationSourceKustomize{
+								Images: v1alpha1.KustomizeImages{"jannfis/foobar:1.0.0"},
+							},
+						},
+						{
+							RepoURL: "https://example.invalid/helm.git",
+							Helm: &v1alpha1.ApplicationSourceHelm{
+								Parameters: []v1alpha1.HelmParameter{
+									{Name: common.DefaultHelmImageName, Value: "jannfis/barbar", ForceString: true},
+									{Name: common.DefaultHelmImageTag, Value: "1.0.0", ForceString: true},
+								},
+							},
+						},
+					},
+				},
+				Status: v1alpha1.ApplicationStatus{
+					SourceTypes: []v1alpha1.ApplicationSourceType{
+						v1alpha1.ApplicationSourceTypeKustomize,
+						v1alpha1.ApplicationSourceTypeHelm,
+					},
+					Summary: v1alpha1.ApplicationSummary{
+						Images: []string{
+							"jannfis/foobar:1.0.0",
+							"jannfis/barbar:1.0.0",
+						},
+					},
+				},
+			},
+			Images: ImageList{
+				img,
+			},
+			WriteBackConfig: &WriteBackConfig{
+				Method: WriteBackApplication,
+			},
+		}
+
+		argoClient := argomock.ArgoCD{}
+		argoClient.On("UpdateSpec", mock.Anything, &application.ApplicationUpdateSpecRequest{
+			Name:         &appImages.Application.Name,
+			AppNamespace: &appImages.Application.Namespace,
+			Spec:         &appImages.Application.Spec,
+		}).Return(nil, nil)
+
+		res := UpdateApplication(context.Background(), &UpdateConfiguration{
+			NewRegFN:   mockClientFn,
+			ArgoClient: &argoClient,
+			KubeClient: &kubeClient,
+			UpdateApp:  appImages,
+			DryRun:     false,
+		}, NewSyncIterationState())
+		assert.Equal(t, 0, res.NumErrors)
+		assert.Equal(t, 0, res.NumSkipped)
+		assert.Equal(t, 1, res.NumApplicationsProcessed)
+		assert.Equal(t, 1, res.NumImagesConsidered)
+		assert.Equal(t, 1, res.NumImagesUpdated)
+		assert.Equal(t, []v1alpha1.HelmParameter{
+			{Name: common.DefaultHelmImageName, Value: "jannfis/barbar", ForceString: true},
+			{Name: common.DefaultHelmImageTag, Value: "1.0.1", ForceString: true}},
+			appImages.Application.Spec.Sources[1].Helm.Parameters)
+	})
+
 	t.Run("Test kustomize w/ different registry", func(t *testing.T) {
 		mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
 			regMock := regmock.RegistryClient{}
