@@ -684,16 +684,23 @@ func newImageFromManifestTargetSettings(settings *iuapi.ManifestTarget, img *Ima
 	}
 
 	// Layer the new settings on top, only if they are explicitly set (non-nil).
-	if settings.Helm != nil && settings.Helm.Spec != nil {
-		img.HelmImageSpec = *settings.Helm.Spec
-	} else {
-		if settings.Helm != nil && settings.Helm.Name != nil {
-			img.HelmImageName = *settings.Helm.Name
-		}
-		if settings.Helm != nil && settings.Helm.Tag != nil {
-			img.HelmImageTag = *settings.Helm.Tag
+	if settings.Helm != nil {
+		if settings.Helm.Spec != nil {
+			img.HelmImageSpec = *settings.Helm.Spec
+		} else {
+			if settings.Helm.Name != nil {
+				img.HelmImageName = *settings.Helm.Name
+			} else if img.HelmImageName == "" {
+				img.HelmImageName = common.DefaultHelmImageName
+			}
+			if settings.Helm.Tag != nil {
+				img.HelmImageTag = *settings.Helm.Tag
+			} else if img.HelmImageTag == "" {
+				img.HelmImageTag = common.DefaultHelmImageTag
+			}
 		}
 	}
+
 	if settings.Kustomize != nil && settings.Kustomize.Name != nil {
 		img.KustomizeImageName = *settings.Kustomize.Name
 	}
