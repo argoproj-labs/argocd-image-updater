@@ -684,16 +684,23 @@ func newImageFromManifestTargetSettings(settings *iuapi.ManifestTarget, img *Ima
 	}
 
 	// Layer the new settings on top, only if they are explicitly set (non-nil).
-	if settings.Helm != nil && settings.Helm.Spec != nil {
-		img.HelmImageSpec = *settings.Helm.Spec
-	} else {
-		if settings.Helm != nil && settings.Helm.Name != nil {
-			img.HelmImageName = *settings.Helm.Name
-		}
-		if settings.Helm != nil && settings.Helm.Tag != nil {
-			img.HelmImageTag = *settings.Helm.Tag
+	if settings.Helm != nil {
+		if settings.Helm.Spec != nil {
+			img.HelmImageSpec = *settings.Helm.Spec
+		} else {
+			if settings.Helm.Name != nil {
+				img.HelmImageName = *settings.Helm.Name
+			} else if img.HelmImageName == "" {
+				img.HelmImageName = common.DefaultHelmImageName
+			}
+			if settings.Helm.Tag != nil {
+				img.HelmImageTag = *settings.Helm.Tag
+			} else if img.HelmImageTag == "" {
+				img.HelmImageTag = common.DefaultHelmImageTag
+			}
 		}
 	}
+
 	if settings.Kustomize != nil && settings.Kustomize.Name != nil {
 		img.KustomizeImageName = *settings.Kustomize.Name
 	}
@@ -1309,6 +1316,10 @@ func getApplicationSourceType(app *argocdapi.Application, wbc *WriteBackConfig) 
 				return argocdapi.ApplicationSourceTypeHelm
 			}
 		}
+		// if no kustomizeBase or target is specified, check if the application type is explicitly set in the WriteBackConfig
+		if wbc.ApplicationType != ApplicationTypeUnsupported {
+			return ApplicationTypeToSourceType[wbc.ApplicationType]
+		}
 	}
 	if app.Spec.HasMultipleSources() {
 		for _, st := range app.Status.SourceTypes {
@@ -1379,6 +1390,7 @@ func getApplicationSource(ctx context.Context, app *argocdapi.Application, wbc *
 		}
 
 		// Fallback: look for any Helm, Kustomize, or Plugin source
+		log.Tracef("Could not get Source of type %s from multisource configuration. Returning any source of type Helm, Kustomize, or Plugin if available", sourceType)
 		for i := range app.Spec.Sources {
 			s := &app.Spec.Sources[i]
 			if s.Helm != nil || s.Kustomize != nil || s.Plugin != nil {
@@ -1386,7 +1398,7 @@ func getApplicationSource(ctx context.Context, app *argocdapi.Application, wbc *
 			}
 		}
 
-		log.Tracef("Could not get Source of type Helm or Kustomize from multisource configuration. Returning first source from the list")
+		log.Tracef("Could not get Source of type %s from multisource configuration. Returning first source from the list", sourceType)
 		return &app.Spec.Sources[0]
 	}
 
