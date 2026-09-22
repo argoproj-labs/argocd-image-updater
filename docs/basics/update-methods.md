@@ -586,8 +586,11 @@ The field applies to all providers, but they behave slightly differently:
 
 * **GitLab** sets the labels in the same API call that creates the merge
   request, and creates any label that does not yet exist in the project.
-* **Azure DevOps** sets the labels in the same API call that creates the pull
-  request.
+* **Azure DevOps** applies each label in a separate
+  [labels API call](https://learn.microsoft.com/en-us/rest/api/azure/devops/git/pull-request-labels/create?view=azure-devops-rest-7.1)
+  after creating the pull request. If a label cannot be applied, a warning is
+  logged and the remaining labels are still attempted. The update is treated as
+  successful because the PR has already been created.
 * **GitHub** has no labels field on its PR creation API, so labels are applied
   in a follow-up call once the PR exists. If that call fails (for example when
   the token lacks issue write permission) a warning is logged and the update is

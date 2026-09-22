@@ -178,27 +178,87 @@ func Test_AzureDevOpsPRService_create(t *testing.T) {
 
 func Test_AzureDevOpsPRService_create_labels(t *testing.T) {
 	for _, tt := range []struct {
-		name   string
-		labels []string
+		name        string
+		labels      []string
+		failedLabel string
+		wantLabels  []string
 	}{
-		{"labels are sent with the create request", []string{"image-update", "automated"}},
-		{"no labels field is sent when none are configured", nil},
+		{"apply labels after creation", []string{"image-update", "automated"}, "", []string{"image-update", "automated"}},
+		{"no labels configured", nil, "", nil},
+		{"continue after a label fails", []string{"image-update", "automated"}, "image-update", []string{"automated"}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			pr := &PullRequest{title: "chore: update images", head: "update", base: "main", labels: tt.labels}
+			var appliedLabels []string
+			var attemptedLabels []string
+			created := false
+			createRequests := 0
 			svc := newTestAzureDevOpsPRService(t, pr, func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, http.MethodPost, r.Method)
+				assert.Equal(t, "7.1", r.URL.Query().Get("api-version"))
+				assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
+				username, password, ok := r.BasicAuth()
+				assert.True(t, ok)
+				assert.Empty(t, username)
+				assert.Equal(t, "pat", password)
 				var body map[string]any
-				if assert.NoError(t, json.NewDecoder(r.Body).Decode(&body)) {
-					if len(tt.labels) == 0 {
-						assert.NotContains(t, body, "labels")
-					} else {
-						assert.Equal(t, []any{map[string]any{"name": "image-update"}, map[string]any{"name": "automated"}}, body["labels"])
-					}
+				if !assert.NoError(t, json.NewDecoder(r.Body).Decode(&body)) {
+					w.WriteHeader(http.StatusBadRequest)
+					return
 				}
-				w.WriteHeader(http.StatusCreated)
-				_, _ = w.Write([]byte(`{"pullRequestId":42}`))
+				switch r.URL.EscapedPath() {
+				case "/collection/my%20project/_apis/git/repositories/my%20repo/pullrequests":
+					createRequests++
+					assert.NotContains(t, body, "labels")
+					created = true
+					w.WriteHeader(http.StatusCreated)
+					// The labels endpoint must use the configured repository URL, not this response URL.
+					_, _ = w.Write([]byte(`{"pullRequestId":42,"url":"https://example.com/untrusted"}`))
+				case "/collection/my%20project/_apis/git/repositories/my%20repo/pullrequests/42/labels":
+					assert.True(t, created, "labels must be applied after the PR exists")
+					name, ok := body["name"].(string)
+					assert.True(t, ok)
+					assert.Len(t, body, 1)
+					attemptedLabels = append(attemptedLabels, name)
+					if name == tt.failedLabel {
+						w.WriteHeader(http.StatusForbidden)
+						_, _ = w.Write([]byte(`{"message":"Access denied."}`))
+						return
+					}
+					appliedLabels = append(appliedLabels, name)
+					_, _ = w.Write([]byte(`{"id":"label-id","name":"` + name + `","active":true}`))
+				default:
+					t.Errorf("unexpected request: %s", r.URL)
+					w.WriteHeader(http.StatusNotFound)
+				}
 			})
 			require.NoError(t, svc.create(context.Background()))
+			assert.Equal(t, 1, createRequests)
+			assert.Equal(t, tt.labels, attemptedLabels)
+			assert.Equal(t, tt.wantLabels, appliedLabels)
+		})
+	}
+}
+
+func Test_AzureDevOpsPRService_create_labels_creationFailed(t *testing.T) {
+	for _, tt := range []struct {
+		name, body string
+		status     int
+	}{
+		{"duplicate", `{"typeKey":"GitPullRequestExistsException"}`, http.StatusConflict},
+		{"forbidden", `{"message":"Access denied."}`, http.StatusForbidden},
+		{"missing PR ID", `{}`, http.StatusCreated},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			requests := 0
+			svc := newTestAzureDevOpsPRService(t, &PullRequest{labels: []string{"image-update"}}, func(w http.ResponseWriter, r *http.Request) {
+				requests++
+				assert.Equal(t, "/collection/my%20project/_apis/git/repositories/my%20repo/pullrequests", r.URL.EscapedPath())
+				w.WriteHeader(tt.status)
+				_, _ = w.Write([]byte(tt.body))
+			})
+			require.Error(t, svc.create(context.Background()))
+			assert.Equal(t, 1, requests, "labels must not be applied without a created PR")
 		})
 	}
 }

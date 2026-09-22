@@ -44,13 +44,6 @@ func (a *AzureDevOpsPRService) create(ctx context.Context) error {
 		"sourceRefName": azureDevOpsBranchRef(a.pr.head),
 		"targetRefName": azureDevOpsBranchRef(a.pr.base),
 	}
-	if len(a.pr.labels) > 0 {
-		labels := make([]map[string]string, 0, len(a.pr.labels))
-		for _, name := range a.pr.labels {
-			labels = append(labels, map[string]string{"name": name})
-		}
-		payload["labels"] = labels
-	}
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return fmt.Errorf("could not encode PR: %w", err)
@@ -66,8 +59,28 @@ func (a *AzureDevOpsPRService) create(ctx context.Context) error {
 		}
 		return fmt.Errorf("could not create PR %q → %q: %w", a.pr.head, a.pr.base, err)
 	}
+	if pr.ID <= 0 {
+		return fmt.Errorf("could not create PR: Azure DevOps response did not contain a valid pull request ID")
+	}
 	logCtx.Infof("created PR #%d %q → %q: %s", pr.ID, a.pr.head, a.pr.base, pr.URL)
+	// Azure DevOps ignores labels in the PR creation payload. Apply each label
+	// using the labels API after the PR exists, as with GitHub's follow-up call.
+	for _, name := range a.pr.labels {
+		if err := a.addLabel(ctx, pr.ID, name); err != nil {
+			logCtx.Warnf("could not add label %q to PR #%d: %v", name, pr.ID, err)
+		}
+	}
 	return nil
+}
+
+func (a *AzureDevOpsPRService) addLabel(ctx context.Context, prID int, name string) error {
+	body, err := json.Marshal(map[string]string{"name": name})
+	if err != nil {
+		return fmt.Errorf("could not encode PR label: %w", err)
+	}
+	endpoint := a.apiURL.JoinPath(fmt.Sprintf("%d", prID), "labels")
+	var label json.RawMessage
+	return a.request(ctx, http.MethodPost, endpoint, bytes.NewReader(body), &label)
 }
 
 func (a *AzureDevOpsPRService) exists(ctx context.Context, checkOutBranch, pushBranch string) (bool, error) {

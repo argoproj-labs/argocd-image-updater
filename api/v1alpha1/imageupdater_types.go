@@ -240,8 +240,8 @@ type PullRequest struct {
 	AzureDevOps *PullRequestAzureDevOps `json:"azuredevops,omitempty"`
 
 	// Labels to apply to the created pull/merge request.
-	// GitLab and Azure DevOps set them on creation; GitHub applies them
-	// in a follow-up API call, so a labelling failure does not fail the update.
+	// GitLab sets them on creation; GitHub and Azure DevOps apply them
+	// in follow-up API calls, so a labelling failure does not fail the update.
 	// +optional
 	// +listType=atomic
 	// +kubebuilder:validation:MaxItems=100
