@@ -262,7 +262,7 @@ GitLab; add your own hosts to it as you would for Argo CD itself.
     username/password secrets. This keeps existing setups working unchanged.
     For these secrets, an invalid value keeps the default and logs a
     warning. GitHub App secrets default to `"false"`, and an invalid value
-    there also falls back to `"false"`.
+    there also falls back to `"false"`, without a warning.
 
 ### <a name="method-git-repository"></a>Specifying a repository when using a Helm repository in repoURL
 
