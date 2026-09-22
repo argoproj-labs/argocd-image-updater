@@ -260,8 +260,9 @@ GitLab; add your own hosts to it as you would for Argo CD itself.
 !!!note
     The optional `insecure` field defaults to `"true"` for SSH and
     username/password secrets. This keeps existing setups working unchanged.
-    GitHub App secrets default to `"false"`. Any value other than a valid
-    boolean keeps the default and logs a warning.
+    For these secrets, an invalid value keeps the default and logs a
+    warning. GitHub App secrets default to `"false"`, and an invalid value
+    there also falls back to `"false"`.
 
 ### <a name="method-git-repository"></a>Specifying a repository when using a Helm repository in repoURL
 
