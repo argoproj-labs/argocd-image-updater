@@ -1332,16 +1332,24 @@ func getApplicationSourceType(app *argocdapi.Application, wbc *WriteBackConfig) 
 	// For SourceHydrator apps, Status.SourceType reflects the sync source (typically
 	// "Directory" since it syncs rendered manifests), not the dry source. If the DrySource
 	// has explicit Helm/Kustomize/Plugin config, use that to determine the actual type.
+	//
+	// Plugin is checked first: a CMP is only ever configured explicitly, while a Helm or
+	// Kustomize block can be one we added ourselves. persistSourceHydratorMutation writes
+	// the staged parameters back into the DrySource, and on a plugin app with git
+	// write-back SetHelmImage is the serializer for images that use manifestTargets.helm
+	// (see getApplicationType), so DrySource.Helm can become non-nil mid-cycle. Checking
+	// Helm first would reclassify the app as Helm from that point on and make the next
+	// SetPluginImage/GetPluginImage for an image with manifestTargets.plugin fail.
 	if app.Spec.SourceHydrator != nil {
 		ds := app.Spec.SourceHydrator.DrySource
+		if ds.Plugin != nil {
+			return argocdapi.ApplicationSourceTypePlugin
+		}
 		if ds.Helm != nil {
 			return argocdapi.ApplicationSourceTypeHelm
 		}
 		if ds.Kustomize != nil {
 			return argocdapi.ApplicationSourceTypeKustomize
-		}
-		if ds.Plugin != nil {
-			return argocdapi.ApplicationSourceTypePlugin
 		}
 	}
 

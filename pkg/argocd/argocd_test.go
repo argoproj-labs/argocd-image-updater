@@ -1469,6 +1469,37 @@ func Test_GetKustomizeImage(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, "service-b=jannfis/foobar:tag-b", resultB)
 	})
+
+	t.Run("Test set Kustomize image on SourceHydrator app persists into DrySource", func(t *testing.T) {
+		// Same persistence problem as the Helm case in issue #1809: with
+		// DrySource.Kustomize nil, SetKustomizeImage allocates onto the
+		// ApplicationSource that getApplicationSource synthesized from DrySource.
+		app := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{Name: "hydrator-app", Namespace: "testns"},
+			Spec: v1alpha1.ApplicationSpec{
+				SourceHydrator: &v1alpha1.SourceHydrator{
+					DrySource: v1alpha1.DrySource{RepoURL: "https://example.com/repo.git", Path: "base"},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypeDirectory,
+				Summary:    v1alpha1.ApplicationSummary{Images: []string{"jannfis/foobar:1.0.0"}},
+			},
+		}
+
+		wbc := &WriteBackConfig{Method: WriteBackGit, KustomizeBase: "base"}
+		err := SetKustomizeImage(context.Background(), app,
+			image.NewFromIdentifier("foobar=jannfis/foobar:1.0.1"), wbc,
+			&Image{ContainerImage: image.NewFromIdentifier("jannfis/foobar:1.0.0")})
+		require.NoError(t, err)
+
+		require.NotNil(t, app.Spec.SourceHydrator.DrySource.Kustomize, "merged Kustomize image must persist into DrySource")
+		assert.Contains(t, app.Spec.SourceHydrator.DrySource.Kustomize.Images, v1alpha1.KustomizeImage("jannfis/foobar:1.0.1"))
+
+		appSource := GetApplicationSource(context.Background(), app, wbc)
+		require.NotNil(t, appSource.Kustomize)
+		assert.Contains(t, appSource.Kustomize.Images, v1alpha1.KustomizeImage("jannfis/foobar:1.0.1"))
+	})
 }
 
 func Test_SetHelmImage(t *testing.T) {
@@ -1766,7 +1797,8 @@ func Test_SetHelmImage(t *testing.T) {
 
 		img := image.NewFromIdentifier("foobar=jannfis/foobar:1.0.1")
 		wbc := &WriteBackConfig{
-			Target: "helmvalues:./values.yaml",
+			// Target holds the resolved path, not the raw "helmvalues:" annotation value.
+			Target: "./values.yaml",
 		}
 		appImage := &Image{
 			HelmImageName: "image.name",
@@ -1880,6 +1912,80 @@ func Test_SetPluginImage(t *testing.T) {
 		assert.Equal(t, "myregistry/redis", getPluginEnv(app.Spec.Source.Plugin.Env, "IMAGE_NAME"))
 		assert.Equal(t, "7.0.0", getPluginEnv(app.Spec.Source.Plugin.Env, "IMAGE_TAG"))
 	})
+
+	t.Run("Set plugin image on SourceHydrator app persists into DrySource", func(t *testing.T) {
+		app := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{Name: "hydrator-app", Namespace: "testns"},
+			Spec: v1alpha1.ApplicationSpec{
+				SourceHydrator: &v1alpha1.SourceHydrator{
+					DrySource: v1alpha1.DrySource{
+						RepoURL: "https://example.com/repo.git",
+						Plugin:  &v1alpha1.ApplicationSourcePlugin{Name: "helmfile"},
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{SourceType: v1alpha1.ApplicationSourceTypeDirectory},
+		}
+
+		wbc := &WriteBackConfig{Method: WriteBackApplication}
+		err := SetPluginImage(context.Background(), app,
+			image.NewFromIdentifier("redis=myregistry/redis:7.0.0"), wbc,
+			&Image{PluginEnvName: "IMAGE_NAME", PluginEnvTag: "IMAGE_TAG"})
+		require.NoError(t, err)
+
+		ds := app.Spec.SourceHydrator.DrySource
+		require.NotNil(t, ds.Plugin)
+		assert.Equal(t, "myregistry/redis", getPluginEnv(ds.Plugin.Env, "IMAGE_NAME"))
+		assert.Equal(t, "7.0.0", getPluginEnv(ds.Plugin.Env, "IMAGE_TAG"))
+	})
+}
+
+// A plugin SourceHydrator app with git write-back serializes images that use
+// manifestTargets.helm through SetHelmImage (see getApplicationType), which stages
+// parameters into DrySource.Helm. Classification must keep reporting Plugin so that a
+// later image using manifestTargets.plugin is still handled by Set/GetPluginImage -
+// otherwise, whether an image gets updated depends on the order images are processed in.
+func Test_SourceHydratorPluginApp_StaysPluginAfterHelmStaging(t *testing.T) {
+	app := &v1alpha1.Application{
+		ObjectMeta: v1.ObjectMeta{Name: "hydrator-app", Namespace: "testns"},
+		Spec: v1alpha1.ApplicationSpec{
+			SourceHydrator: &v1alpha1.SourceHydrator{
+				DrySource: v1alpha1.DrySource{
+					RepoURL: "https://example.com/repo.git",
+					Plugin:  &v1alpha1.ApplicationSourcePlugin{Name: "helmfile"},
+				},
+			},
+		},
+		Status: v1alpha1.ApplicationStatus{
+			SourceType: v1alpha1.ApplicationSourceTypeDirectory,
+			Summary:    v1alpha1.ApplicationSummary{Images: []string{"nginx:1.0.0", "redis:2.0.0"}},
+		},
+	}
+
+	wbc := &WriteBackConfig{Method: WriteBackGit, Target: ".argocd-source-hydrator-app.yaml"}
+	require.Equal(t, v1alpha1.ApplicationSourceTypePlugin, GetApplicationSourceType(app, wbc))
+
+	helmImage := &Image{
+		ContainerImage: image.NewFromIdentifier("nginx=nginx:1.0.0"),
+		HelmImageName:  "image.name",
+		HelmImageTag:   "image.tag",
+	}
+	require.NoError(t, setAppImage(context.Background(), app,
+		image.NewFromIdentifier("nginx=nginx:1.1.0"), wbc, helmImage))
+	require.NotNil(t, app.Spec.SourceHydrator.DrySource.Helm)
+
+	assert.Equal(t, v1alpha1.ApplicationSourceTypePlugin, GetApplicationSourceType(app, wbc),
+		"staged Helm parameters must not reclassify a plugin app")
+
+	pluginImage := &Image{
+		ContainerImage: image.NewFromIdentifier("redis=redis:2.0.0"),
+		PluginEnvName:  "REDIS_NAME",
+		PluginEnvTag:   "REDIS_TAG",
+	}
+	require.NoError(t, setAppImage(context.Background(), app,
+		image.NewFromIdentifier("redis=redis:2.1.0"), wbc, pluginImage))
+	assert.Equal(t, "redis", getPluginEnv(app.Spec.SourceHydrator.DrySource.Plugin.Env, "REDIS_NAME"))
+	assert.Equal(t, "2.1.0", getPluginEnv(app.Spec.SourceHydrator.DrySource.Plugin.Env, "REDIS_TAG"))
 }
 
 func Test_GetPluginImage(t *testing.T) {
