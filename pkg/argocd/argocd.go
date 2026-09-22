@@ -1432,8 +1432,10 @@ func getApplicationSource(ctx context.Context, app *argocdapi.Application, wbc *
 // to alias), so any Set*Image call that assigns a brand-new Helm/Kustomize/Plugin
 // pointer into that copy would otherwise be silently discarded once the function
 // returns, and the mutation would never make it into the diff computed for write-back.
-// No-op for non-SourceHydrator apps, where getApplicationSource already returns a
-// pointer straight into app.Spec.Source.
+// No-op for non-SourceHydrator apps. That covers both single-source apps, where
+// getApplicationSource returns a pointer straight into app.Spec.Source, and
+// multi-source apps, where it returns a pointer into app.Spec.Sources[i]; since
+// HasMultipleSources requires SourceHydrator == nil, the two cases never overlap.
 func persistSourceHydratorMutation(app *argocdapi.Application, appSource *argocdapi.ApplicationSource) {
 	if app.Spec.SourceHydrator == nil {
 		return

@@ -1767,12 +1767,8 @@ func Test_SetHelmImage(t *testing.T) {
 	})
 
 	t.Run("Test set Helm image parameters on SourceHydrator app persists into DrySource", func(t *testing.T) {
-		// Reproduces https://github.com/argoproj-labs/argocd-image-updater/issues/1809 :
-		// getApplicationSource() returns a pointer to a throwaway ApplicationSource built
-		// from DrySource for SourceHydrator apps. When DrySource.Helm starts out nil,
-		// SetHelmImage assigns a brand-new *ApplicationSourceHelm to that throwaway copy,
-		// which must be written back into app.Spec.SourceHydrator.DrySource.Helm or the
-		// merged parameter is discarded the instant SetHelmImage returns.
+		// Leave DrySource.Helm nil to exercise allocation of a new Helm config.
+		// The update must remain visible through a fresh GetApplicationSource call.
 		app := &v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
 				Name:      "hydrator-app",
