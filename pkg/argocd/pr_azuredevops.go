@@ -63,8 +63,6 @@ func (a *AzureDevOpsPRService) create(ctx context.Context) error {
 		return fmt.Errorf("could not create PR: Azure DevOps response did not contain a valid pull request ID")
 	}
 	logCtx.Infof("created PR #%d %q → %q: %s", pr.ID, a.pr.head, a.pr.base, pr.URL)
-	// Apply each label using the dedicated labels API after the PR exists,
-	// as with GitHub's follow-up call.
 	for _, name := range a.pr.labels {
 		if err := a.addLabel(ctx, pr.ID, name); err != nil {
 			logCtx.Warnf("could not add label %q to PR #%d: %v", name, pr.ID, err)
