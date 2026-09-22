@@ -150,7 +150,6 @@ func NewAzureDevOpsPRService(ctx context.Context, wbc *WriteBackConfig, tokenPro
 		return nil, fmt.Errorf("Azure DevOps PR creation requires an HTTPS repository URL with a host")
 	}
 	prefix, repo, ok := strings.Cut(strings.TrimSuffix(u.Path, "/"), "/_git/")
-	repo = strings.TrimSuffix(repo, ".git")
 	if !ok || repo == "" || strings.Contains(repo, "/") {
 		return nil, fmt.Errorf("Azure DevOps repository URL must end with /_git/{repository}")
 	}

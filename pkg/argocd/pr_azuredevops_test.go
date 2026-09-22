@@ -20,13 +20,9 @@ func Test_NewAzureDevOpsPRService_URL(t *testing.T) {
 		name, repo, want string
 	}{
 		{"Azure DevOps Services", "https://dev.azure.com/org/project/_git/repo", "https://dev.azure.com/org/project/_apis/git/repositories/repo/pullrequests"},
-		{"Azure DevOps Services with git suffix", "https://dev.azure.com/org/project/_git/repo.git", "https://dev.azure.com/org/project/_apis/git/repositories/repo/pullrequests"},
 		{"legacy Services URL", "https://org.visualstudio.com/DefaultCollection/project/_git/repo", "https://org.visualstudio.com/DefaultCollection/project/_apis/git/repositories/repo/pullrequests"},
-		{"legacy Services URL with git suffix", "https://org.visualstudio.com/DefaultCollection/project/_git/repo.git", "https://org.visualstudio.com/DefaultCollection/project/_apis/git/repositories/repo/pullrequests"},
-		{"Azure DevOps Server", "https://server:8443/tfs/collection/project/_git/repo", "https://server:8443/tfs/collection/project/_apis/git/repositories/repo/pullrequests"},
-		{"Azure DevOps Server with git suffix", "https://server:8443/tfs/collection/project/_git/repo.git", "https://server:8443/tfs/collection/project/_apis/git/repositories/repo/pullrequests"},
+		{"Azure DevOps Server", "https://server:8443/tfs/collection/project/_git/repo.git", "https://server:8443/tfs/collection/project/_apis/git/repositories/repo.git/pullrequests"},
 		{"escaped names and URL credentials", "https://user:password@dev.azure.com/org/my%20project/_git/my%20repo?secret=value#fragment", "https://dev.azure.com/org/my%20project/_apis/git/repositories/my%20repo/pullrequests"},
-		{"git suffix with escaped names and trailing slash", "https://dev.azure.com/org/my%20project/_git/my%20repo.git/", "https://dev.azure.com/org/my%20project/_apis/git/repositories/my%20repo/pullrequests"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			svc, err := NewAzureDevOpsPRService(context.Background(), &WriteBackConfig{GitRepo: tt.repo}, &mockTokenProvider{token: "pat"})
@@ -38,7 +34,6 @@ func Test_NewAzureDevOpsPRService_URL(t *testing.T) {
 		"", "git@ssh.dev.azure.com:v3/org/project/repo", "ssh://git@ssh.dev.azure.com/v3/org/project/repo",
 		"https:///org/project/_git/repo", "https://dev.azure.com/org/project/repo",
 		"https://dev.azure.com/org/project/_git/", "https://dev.azure.com/org/project/_git/repo/extra",
-		"https://dev.azure.com/org/project/_git/.git", "https://dev.azure.com/org/project/_git/.git/",
 		"http://dev.azure.com/org/project/_git/repo", "https://:443/org/project/_git/repo",
 		"https://bad host/org/project/_git/repo", "https://dev.azure.com:invalid/org/project/_git/repo",
 	} {
