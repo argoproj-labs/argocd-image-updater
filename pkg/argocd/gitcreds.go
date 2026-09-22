@@ -137,7 +137,8 @@ func getCredsFromSecret(wbc *WriteBackConfig, credentialsSecret string, kubeClie
 		if sshPrivateKey, ok = credentials["sshPrivateKey"]; !ok {
 			return nil, fmt.Errorf("invalid secret %s: does not contain field sshPrivateKey", credentialsSecret)
 		}
-		return git.NewSSHCreds(string(sshPrivateKey), "", true, wbc.GitCreds, ""), nil
+		insecure := parseLegacyInsecure(credentials, credentialsSecret)
+		return git.NewSSHCreds(string(sshPrivateKey), "", insecure, wbc.GitCreds, ""), nil
 	} else if git.IsHTTPSURL(wbc.GitRepo) {
 		var username, password, githubAppID, githubAppInstallationID, githubAppPrivateKey []byte
 		if githubAppID, ok = credentials["githubAppID"]; ok {
@@ -166,9 +167,31 @@ func getCredsFromSecret(wbc *WriteBackConfig, credentialsSecret string, kubeClie
 			if password, ok = credentials["password"]; !ok {
 				return nil, fmt.Errorf("invalid secret %s: does not contain field password", credentialsSecret)
 			}
-			return git.NewHTTPSCreds(string(username), string(password), "", "", true, "", wbc.GitCreds, false), nil
+			insecure := parseLegacyInsecure(credentials, credentialsSecret)
+			return git.NewHTTPSCreds(string(username), string(password), "", "", insecure, "", wbc.GitCreds, false), nil
 		}
 		return nil, fmt.Errorf("invalid repository credentials in secret %s: does not contain githubAppID or username", credentialsSecret)
 	}
 	return nil, fmt.Errorf("unknown repository type")
+}
+
+// parseLegacyInsecure reads the optional "insecure" field of a write-back
+// credentials secret for the SSH and username/password paths. These paths
+// historically skipped host key (SSH) and TLS (HTTPS) verification
+// unconditionally, so an absent field keeps that behavior for backward
+// compatibility. Setting insecure to "false" enables verification: SSH host
+// keys are checked against the mounted ssh_known_hosts, and HTTPS certificates
+// against the system trust store. A value that cannot be parsed keeps the
+// legacy default and logs a warning, so a typo is visible rather than silent.
+func parseLegacyInsecure(credentials map[string][]byte, credentialsSecret string) bool {
+	raw, ok := credentials["insecure"]
+	if !ok {
+		return true
+	}
+	insecure, err := strconv.ParseBool(strings.TrimSpace(string(raw)))
+	if err != nil {
+		log.Warnf("invalid value %q for field insecure in secret %s, keeping the default of skipping verification: %v", string(raw), credentialsSecret, err)
+		return true
+	}
+	return insecure
 }
