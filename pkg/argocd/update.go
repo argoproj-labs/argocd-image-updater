@@ -221,6 +221,12 @@ func UpdateApplication(ctx context.Context, updateConf *UpdateConfiguration, sta
 			// and compare with new image
 			appImageSpec, err := getAppImage(imageOpCtx, &updateConf.UpdateApp.Application, updateConf.UpdateApp.WriteBackConfig, applicationImage)
 			if err != nil {
+				// Typically a per-image manifest target that does not match the
+				// application's type (e.g. manifestTargets.plugin on a Helm app).
+				// Report it - skipping quietly leaves the image permanently
+				// un-updated with no trace in the logs or the error count.
+				imgCtx.Errorf("Unable to read the current image from the application: %v", err)
+				result.NumErrors += 1
 				continue
 			}
 			if appImageSpec == appImageFullNameWithTag {

@@ -123,6 +123,61 @@ func Test_UpdateApplication(t *testing.T) {
 		assert.Equal(t, 2, res.NumImagesUpdated)
 	})
 
+	t.Run("Image whose manifest target does not match the application type is reported", func(t *testing.T) {
+		// A per-image plugin target on a Helm application makes getAppImage route to
+		// GetPluginImage, which rejects the non-plugin app. The image cannot be updated,
+		// so the run must say so - skipping quietly leaves the image permanently stuck
+		// with nothing in the logs and a clean error count.
+		mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
+			regMock := regmock.RegistryClient{}
+			regMock.On("NewRepository", mock.Anything, mock.Anything).Return(nil)
+			regMock.On("Tags", mock.Anything).Return([]string{"1.0.2", "1.0.3"}, nil)
+			return &regMock, nil
+		}
+
+		argoClient := argomock.ArgoCD{}
+		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+
+		kubeClient := kube.ImageUpdaterKubernetesClient{
+			KubeClient: &registryKube.KubernetesClient{
+				Clientset: fake.NewFakeKubeClient(),
+			},
+		}
+
+		img := NewImage(image.NewFromIdentifier("foobar=gcr.io/jannfis/foobar:>=1.0.1"))
+		img.PluginEnvName = "IMAGE_NAME"
+		img.PluginEnvTag = "IMAGE_TAG"
+
+		appImages := &ApplicationImages{
+			Application: v1alpha1.Application{
+				ObjectMeta: v1.ObjectMeta{Name: "guestbook", Namespace: "guestbook"},
+				Spec: v1alpha1.ApplicationSpec{
+					Source: &v1alpha1.ApplicationSource{
+						Helm: &v1alpha1.ApplicationSourceHelm{},
+					},
+				},
+				Status: v1alpha1.ApplicationStatus{
+					SourceType: v1alpha1.ApplicationSourceTypeHelm,
+					Summary: v1alpha1.ApplicationSummary{
+						Images: []string{"gcr.io/jannfis/foobar:1.0.1"},
+					},
+				},
+			},
+			WriteBackConfig: &WriteBackConfig{Method: WriteBackApplication},
+			Images:          ImageList{img},
+		}
+		res := UpdateApplication(context.Background(), &UpdateConfiguration{
+			NewRegFN:   mockClientFn,
+			ArgoClient: &argoClient,
+			KubeClient: &kubeClient,
+			UpdateApp:  appImages,
+			DryRun:     false,
+		}, NewSyncIterationState())
+		assert.Equal(t, 1, res.NumImagesConsidered)
+		assert.Equal(t, 0, res.NumImagesUpdated)
+		assert.Equal(t, 1, res.NumErrors)
+	})
+
 	t.Run("Update app w/ GitHub App creds", func(t *testing.T) {
 		mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
 			regMock := regmock.RegistryClient{}
