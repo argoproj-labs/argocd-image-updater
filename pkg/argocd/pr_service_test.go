@@ -431,4 +431,61 @@ func Test_commitChangesPR(t *testing.T) {
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "could not create MR")
 	})
+
+	// --- Azure DevOps API phase ---
+
+	for _, tt := range []struct {
+		name, body string
+		status     int
+		exists     bool
+		wantErrMsg string
+	}{
+		{"PR created successfully", `{"pullRequestId":42}`, http.StatusCreated, false, ""},
+		{"existing PR skips git", "", http.StatusOK, true, ""},
+		{"concurrent duplicate is a no-op", `{"typeKey":"GitPullRequestExistsException"}`, http.StatusConflict, false, ""},
+		{"create fails with 400", `{"message":"Invalid branch."}`, http.StatusBadRequest, false, "could not create PR"},
+	} {
+		t.Run("Azure DevOps: "+tt.name, func(t *testing.T) {
+			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method == http.MethodGet {
+					if tt.exists {
+						_, _ = w.Write([]byte(`{"value":[{"pullRequestId":42}]}`))
+					} else {
+						_, _ = w.Write([]byte(`{"value":[]}`))
+					}
+					return
+				}
+				assert.Equal(t, http.MethodPost, r.Method)
+				if tt.exists {
+					t.Error("create should not be called when exists finds an existing PR")
+				}
+				w.WriteHeader(tt.status)
+				_, _ = w.Write([]byte(tt.body))
+			}))
+			defer server.Close()
+			transport := http.DefaultTransport
+			http.DefaultTransport = server.Client().Transport
+			t.Cleanup(func() { http.DefaultTransport = transport })
+
+			gitClient := &mockGitClient{}
+			if tt.exists {
+				gitClient.initErr = fmt.Errorf("git must not be initialized when the PR exists")
+			}
+			wbc := &WriteBackConfig{
+				GitRepo:    server.URL + "/org/project/_git/repo",
+				GitBranch:  "main",
+				PRProvider: PRProviderAzureDevOps,
+				GitClient:  gitClient,
+				GetCreds: func(_ *argocdapi.Application) (git.Creds, error) {
+					return &mockGitAndSCMCreds{token: "pat"}, nil
+				},
+			}
+			err := commitChangesPR(ctx, makeTestAppImages(wbc), nil, noopWriter)
+			if tt.wantErrMsg != "" {
+				require.ErrorContains(t, err, tt.wantErrMsg)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
 }

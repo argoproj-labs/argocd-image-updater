@@ -3475,6 +3475,19 @@ func Test_newWBCFromSettings(t *testing.T) {
 		assert.ErrorContains(t, err, "pullRequest must have exactly one provider configured, got 0")
 	})
 
+	t.Run("pullRequest azuredevops should set PRProviderAzureDevOps", func(t *testing.T) {
+		app, kubeClient := createTestAppAndClient()
+		settings := &api.WriteBackConfig{
+			Method: new("git"),
+			GitConfig: &api.GitConfig{
+				PullRequest: &api.PullRequest{AzureDevOps: &api.PullRequestAzureDevOps{}},
+			},
+		}
+		wbc, err := newWBCFromSettings(context.Background(), app, kubeClient, nil, settings)
+		assert.NoError(t, err)
+		assert.Equal(t, PRProviderAzureDevOps, wbc.PRProvider)
+	})
+
 	t.Run("pullRequest with both providers should error", func(t *testing.T) {
 		app, kubeClient := createTestAppAndClient()
 		settings := &api.WriteBackConfig{
@@ -5283,7 +5296,7 @@ func Test_countPullRequestProviders(t *testing.T) {
 		expected int
 	}{
 		{
-			name:     "nil GitHub and GitLab",
+			name:     "no providers",
 			pr:       &api.PullRequest{},
 			expected: 0,
 		},
@@ -5301,6 +5314,16 @@ func Test_countPullRequestProviders(t *testing.T) {
 			name:     "both GitHub and GitLab",
 			pr:       &api.PullRequest{GitHub: &api.PullRequestGitHub{}, GitLab: &api.PullRequestGitLab{}},
 			expected: 2,
+		},
+		{
+			name:     "only Azure DevOps",
+			pr:       &api.PullRequest{AzureDevOps: &api.PullRequestAzureDevOps{}},
+			expected: 1,
+		},
+		{
+			name:     "all providers",
+			pr:       &api.PullRequest{GitHub: &api.PullRequestGitHub{}, GitLab: &api.PullRequestGitLab{}, AzureDevOps: &api.PullRequestAzureDevOps{}},
+			expected: 3,
 		},
 	}
 
