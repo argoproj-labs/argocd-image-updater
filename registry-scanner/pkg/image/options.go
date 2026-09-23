@@ -28,6 +28,8 @@ func (img *ContainerImage) ParseUpdateStrategy(ctx context.Context, val string) 
 		return StrategyAlphabetical
 	case "digest":
 		return StrategyDigest
+	case "calver":
+		return StrategyCalVer
 	default:
 		logCtx.Warnf("Unknown sort option %s -- using semver", val)
 		return StrategySemVer

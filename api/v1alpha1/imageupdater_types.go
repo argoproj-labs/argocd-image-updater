@@ -174,7 +174,7 @@ type ImageConfig struct {
 // globally, per ApplicationRef, or per ImageConfig.
 type CommonUpdateSettings struct {
 	// UpdateStrategy defines the update strategy to apply.
-	// Examples: "semver", "latest", "digest", "name".
+	// Examples: "semver", "newest-build", "alphabetical", "digest", "calver".
 	// This acts as the default if not overridden at a more specific level.
 	// +optional
 	UpdateStrategy *string `json:"updateStrategy,omitempty"`

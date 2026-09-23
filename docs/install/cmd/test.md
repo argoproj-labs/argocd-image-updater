@@ -53,9 +53,13 @@ Path to registries configuration
 
 Only consider tags matching semantic version constraint
 
+**--calver-layout *layout***
+
+Layout of the version encoded in the tags, e.g. vYYYY-0M-0D (calver strategy only). When not given, the layout is read from the tag of the image argument, the same way the controller reads it, or defaults to YYYY.0M.0D
+
 **--update-strategy *strategy***
 
-Update strategy to use (one of semver, newest-build, alphabetical, digest) (default "semver")
+Update strategy to use (one of semver, newest-build, alphabetical, digest, calver) (default "semver")
 
 ## Examples
 

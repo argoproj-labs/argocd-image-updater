@@ -86,6 +86,7 @@ RBAC authorization on Application resources etc. are fully supported.
     * `newest-build`: update to the most recently created image tag (deprecated alias: `latest`),
     * `alphabetical`: update to the last tag in an alphabetically sorted list (deprecated alias: `name`)
     * `digest`: update to the most recent pushed version of a mutable tag
+    * `calver`: update to the newest tag according to a calendar versioning scheme
 * Support for 
   [widely used container registries](./configuration/registries.md#supported-registries)
 * Support for private container registries via 
