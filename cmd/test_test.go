@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/image"
+
 	"github.com/stretchr/testify/assert"
 )
 
