@@ -777,6 +777,16 @@ func parseImageList(ctx context.Context, kubeClient *kube.ImageUpdaterKubernetes
 
 		img.ContainerImage = image.NewFromIdentifier(im.Alias + "=" + im.ImageName)
 
+		// Catch a strategy that cannot work with the tag the image is
+		// configured with while the configuration is being read. This runs
+		// every cycle, like the rest of this function, but it fails before the
+		// registry is asked for anything, which is what the round-trip per
+		// cycle would otherwise cost.
+		if err := img.ContainerImage.ValidateUpdateStrategy(img.UpdateStrategy); err != nil {
+			log.Warnf("Skipping image %s: the %s strategy reads the tag as its layout, and this one cannot be used: %v", im.ImageName, img.UpdateStrategy, err)
+			continue
+		}
+
 		// Check if any of the images match the webhook event
 		if webhookEvent != nil {
 			log.Debugf("Checking webhook match for image `%s`: event=(%s/%s), image=(%s/%s)",

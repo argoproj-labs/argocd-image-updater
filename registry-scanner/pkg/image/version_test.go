@@ -169,6 +169,7 @@ func Test_UpdateStrategy_String(t *testing.T) {
 		{"StrategyNewestBuild", StrategyNewestBuild, "newest-build"},
 		{"StrategyAlphabetical", StrategyAlphabetical, "alphabetical"},
 		{"StrategyDigest", StrategyDigest, "digest"},
+		{"StrategyCalVer", StrategyCalVer, "calver"},
 		{"unknown", UpdateStrategy(-1), "unknown"},
 	}
 	for _, tt := range tests {

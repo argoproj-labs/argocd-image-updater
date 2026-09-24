@@ -13,15 +13,35 @@ import (
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/options"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/registry"
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/tag"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"go.uber.org/ratelimit"
 )
 
+// resolveCalVerLayout returns the calver layout the test command should run
+// with, along with the layout written in the image tag, if any.
+//
+// The controller takes the layout from the tag position of the image name, so
+// this command has to do the same by default, or copying a line out of the
+// image list would test something other than what the controller runs. The
+// --calver-layout flag overrides it, and an empty result selects the default
+// layout further down.
+func resolveCalVerLayout(flagLayout string, img *image.ContainerImage) (layout, imageTagLayout string) {
+	if img != nil && img.ImageTag != nil {
+		imageTagLayout = img.ImageTag.TagName
+	}
+	if flagLayout != "" {
+		return flagLayout, imageTagLayout
+	}
+	return imageTagLayout, imageTagLayout
+}
+
 func newTestCommand() *cobra.Command {
 	var (
 		semverConstraint   string
+		calverLayout       string
 		strategy           string
 		registriesConfPath string
 		logLevel           string
@@ -90,6 +110,22 @@ argocd-image-updater test nginx --allow-tags '^1.19.\d+(\-.*)*$' --update-strate
 			}
 
 			vc.Strategy = img.ParseUpdateStrategy(imgCtx, strategy)
+
+			// The calver strategy reads its layout from the constraint, so a
+			// semver constraint must not leak into it.
+			if vc.Strategy == image.StrategyCalVer {
+				layout, imageTagLayout := resolveCalVerLayout(calverLayout, img)
+				switch {
+				case calverLayout == "" && imageTagLayout != "":
+					imgLogger.Infof("Using the image tag as the calver layout: %s", layout)
+				case calverLayout != "" && imageTagLayout != "" && imageTagLayout != calverLayout:
+					imgLogger.Warnf("--calver-layout %s overrides the layout %s written in the image tag", calverLayout, imageTagLayout)
+				}
+				vc.Constraint = layout
+				if _, err := tag.NewCalVerLayout(layout); err != nil {
+					imgLogger.Fatalf("Could not parse calver layout: %v", err)
+				}
+			}
 
 			if allowTags != "" {
 				vc.MatchFunc, vc.MatchArgs = img.ParseMatch(imgCtx, allowTags)
@@ -192,9 +228,10 @@ argocd-image-updater test nginx --allow-tags '^1.19.\d+(\-.*)*$' --update-strate
 	}
 
 	runCmd.Flags().StringVar(&semverConstraint, "semver-constraint", "", "only consider tags matching semantic version constraint")
+	runCmd.Flags().StringVar(&calverLayout, "calver-layout", "", "layout of the version encoded in the tags, e.g. vYYYY-0M-0D (calver strategy only). When not given, the layout is read from the tag of the image argument, the same way the controller reads it, or defaults to YYYY.0M.0D")
 	runCmd.Flags().StringVar(&allowTags, "allow-tags", "", "only consider tags in registry that satisfy the match function")
 	runCmd.Flags().StringArrayVar(&ignoreTags, "ignore-tags", nil, "ignore tags in registry that match given glob pattern")
-	runCmd.Flags().StringVar(&strategy, "update-strategy", "semver", "update strategy to use (one of semver, newest-build, alphabetical, digest)")
+	runCmd.Flags().StringVar(&strategy, "update-strategy", "semver", "update strategy to use (one of semver, newest-build, alphabetical, digest, calver)")
 	runCmd.Flags().StringVar(&registriesConfPath, "registries-conf-path", "", "path to registries configuration")
 	runCmd.Flags().StringVar(&logLevel, "loglevel", "debug", "log level to use (one of trace, debug, info, warn, error)")
 	runCmd.Flags().StringVar(&kubeConfig, "kubeconfig", "", "path to your Kubernetes client configuration")

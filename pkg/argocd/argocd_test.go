@@ -2514,6 +2514,84 @@ func Test_parseImageList(t *testing.T) {
 		assert.ElementsMatch(t, expected, *got)
 	})
 
+	// The calver strategy reads the tag position of the image name as the
+	// layout of the tags in the registry, so the whole layout has to survive
+	// being parsed as an image reference, and a layout that cannot work has to
+	// be caught here rather than once per cycle against the registry.
+	t.Run("CalVer: the layout survives the image reference", func(t *testing.T) {
+		layouts := []string{
+			"vYYYY-0M-0D",
+			"vYYYY-0M-0D-MICRO",
+			"vYY.MINOR.MICRO-MODIFIER",
+			"release-YYYY_0M_0D",
+			"YYYY0M0D",
+			"MAJOR.YY.0M",
+		}
+		for _, layout := range layouts {
+			t.Run(layout, func(t *testing.T) {
+				images := []api.ImageConfig{{
+					Alias:                "app",
+					ImageName:            "ghcr.io/myorg/app:" + layout,
+					CommonUpdateSettings: &api.CommonUpdateSettings{UpdateStrategy: new(image.StrategyCalVer.String())},
+				}}
+				got := parseImageList(context.Background(), nil, "", images, nil, nil, nil)
+				require.NotNil(t, got)
+				require.Len(t, *got, 1, "layout %s did not survive the image reference", layout)
+
+				img := (*got)[0]
+				assert.Equal(t, image.StrategyCalVer, img.UpdateStrategy)
+				require.NotNil(t, img.ImageTag)
+				assert.Equal(t, layout, img.ImageTag.TagName, "the layout must reach the updater unchanged")
+			})
+		}
+	})
+
+	t.Run("CalVer: an image with no tag falls back to the default layout", func(t *testing.T) {
+		images := []api.ImageConfig{{
+			Alias:                "app",
+			ImageName:            "ghcr.io/myorg/app",
+			CommonUpdateSettings: &api.CommonUpdateSettings{UpdateStrategy: new(image.StrategyCalVer.String())},
+		}}
+		got := parseImageList(context.Background(), nil, "", images, nil, nil, nil)
+		require.NotNil(t, got)
+		require.Len(t, *got, 1)
+		assert.Nil(t, (*got)[0].ImageTag)
+	})
+
+	t.Run("CalVer: an unusable layout is rejected when the config is read", func(t *testing.T) {
+		// A concrete tag in the layout position is the mistake this strategy
+		// invites, and it must not cost a registry round-trip per cycle.
+		for _, badLayout := range []string{"v2026-01-30", "vYYYY-0M-D", "v0M-0D"} {
+			t.Run(badLayout, func(t *testing.T) {
+				images := []api.ImageConfig{{
+					Alias:                "app",
+					ImageName:            "ghcr.io/myorg/app:" + badLayout,
+					CommonUpdateSettings: &api.CommonUpdateSettings{UpdateStrategy: new(image.StrategyCalVer.String())},
+				}}
+				got := parseImageList(context.Background(), nil, "", images, nil, nil, nil)
+				require.NotNil(t, got)
+				assert.Len(t, *got, 0, "layout %s should have been rejected", badLayout)
+			})
+		}
+	})
+
+	t.Run("Other strategies keep accepting a concrete tag", func(t *testing.T) {
+		// The layout check is specific to calver and must not reject the
+		// version constraints every other strategy puts in that position.
+		for _, strategy := range []image.UpdateStrategy{image.StrategySemVer, image.StrategyDigest, image.StrategyNewestBuild, image.StrategyAlphabetical} {
+			t.Run(strategy.String(), func(t *testing.T) {
+				images := []api.ImageConfig{{
+					Alias:                "app",
+					ImageName:            "ghcr.io/myorg/app:1.2.x",
+					CommonUpdateSettings: &api.CommonUpdateSettings{UpdateStrategy: new(strategy.String())},
+				}}
+				got := parseImageList(context.Background(), nil, "", images, nil, nil, nil)
+				require.NotNil(t, got)
+				assert.Len(t, *got, 1)
+			})
+		}
+	})
+
 	// Image signature verification behavior
 	makeVerifyKubeClient := func(secrets ...runtime.Object) *kube.ImageUpdaterKubernetesClient {
 		clientset := fake.NewFakeClientsetWithResources(secrets...)
@@ -2932,6 +3010,19 @@ func Test_newImageFromSettings(t *testing.T) {
 		assert.NotNil(t, img)
 		assert.Equal(t, image.StrategySemVer, img.UpdateStrategy)
 		assert.False(t, img.ForceUpdate)
+	})
+
+	t.Run("should resolve the calver strategy", func(t *testing.T) {
+		// The calver layout travels in the image tag rather than in the
+		// settings, so the settings only have to resolve the strategy itself.
+		settings := &api.CommonUpdateSettings{
+			UpdateStrategy: new(image.StrategyCalVer.String()),
+		}
+
+		img := newImageFromCommonUpdateSettings(context.Background(), settings)
+
+		assert.NotNil(t, img)
+		assert.Equal(t, image.StrategyCalVer, img.UpdateStrategy)
 	})
 }
 
