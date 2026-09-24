@@ -177,6 +177,17 @@ kubectl -n argocd-image-updater create secret generic git-creds \
   --from-literal=password=somepassword
 ```
 
+By default, TLS certificate verification is skipped for user credentials. To
+verify the server certificate against the system trust store, add
+`insecure: "false"` to the secret:
+
+```bash
+kubectl -n argocd-image-updater create secret generic git-creds \
+  --from-literal=username=someuser \
+  --from-literal=password=somepassword \
+  --from-literal=insecure=false
+```
+
 If the repository is accessed using GitHub app credentials, the secret requires three fields `githubAppID` which holds the GitHub Application ID, `githubAppInstallationID` which holds the GitHub Organization Installation ID, and `githubAppPrivateKey` which holds the GitHub Application private key. The GitHub Application must be installed into the target repository with write access.
 You can generate such a secret using `kubectl`, e.g.:
 
@@ -229,6 +240,29 @@ format. To create such a secret from an existing private key, you can use
 kubectl -n argocd-image-updater create secret generic git-creds \
   --from-file=sshPrivateKey=~/.ssh/id_rsa
 ```
+
+By default, SSH host key verification is skipped for secret-based SSH
+credentials, and every push logs a warning saying so. To verify host keys,
+add `insecure: "false"` to the secret:
+
+```bash
+kubectl -n argocd-image-updater create secret generic git-creds \
+  --from-file=sshPrivateKey=~/.ssh/id_rsa \
+  --from-literal=insecure=false
+```
+
+With verification enabled, host keys are checked against the
+`argocd-ssh-known-hosts-cm` ConfigMap, which the default installation mounts
+at `/app/config/ssh`. The Git host must be listed there, or the push fails.
+Argo CD ships this ConfigMap with keys for common hosts such as GitHub and
+GitLab; add your own hosts to it as you would for Argo CD itself.
+
+!!!note
+    The optional `insecure` field defaults to `"true"` for SSH and
+    username/password secrets. This keeps existing setups working unchanged.
+    For these secrets, an invalid value keeps the default and logs a
+    warning. GitHub App secrets default to `"false"`, and an invalid value
+    there also falls back to `"false"`, without a warning.
 
 ### <a name="method-git-repository"></a>Specifying a repository when using a Helm repository in repoURL
 

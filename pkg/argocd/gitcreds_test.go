@@ -55,9 +55,31 @@ func TestGetCredsFromSecret(t *testing.T) {
 		"insecure":                []byte("maybe"),
 	})
 
+	sshDefault := fixture.NewSecret("ns", "ssh-default", map[string][]byte{
+		"sshPrivateKey": []byte("sshkey"),
+	})
+	sshStrict := fixture.NewSecret("ns", "ssh-strict", map[string][]byte{
+		"sshPrivateKey": []byte("sshkey"),
+		"insecure":      []byte("false"),
+	})
+	sshInsecure := fixture.NewSecret("ns", "ssh-insecure", map[string][]byte{
+		"sshPrivateKey": []byte("sshkey"),
+		"insecure":      []byte("true"),
+	})
+	sshBadInsecure := fixture.NewSecret("ns", "ssh-bad-insecure", map[string][]byte{
+		"sshPrivateKey": []byte("sshkey"),
+		"insecure":      []byte("maybe"),
+	})
+	httpsStrict := fixture.NewSecret("ns", "https-strict", map[string][]byte{
+		"username": []byte("myuser"),
+		"password": []byte("mypass"),
+		"insecure": []byte("false"),
+	})
+
 	kubeClient := kube.ImageUpdaterKubernetesClient{
 		KubeClient: &registryKube.KubernetesClient{
-			Clientset: fake.NewFakeClientsetWithResources(secret1, secret2, secret3, secret4, secret5, secret6),
+			Clientset: fake.NewFakeClientsetWithResources(secret1, secret2, secret3, secret4, secret5, secret6,
+				sshDefault, sshStrict, sshInsecure, sshBadInsecure, httpsStrict),
 		},
 	}
 
@@ -143,6 +165,41 @@ func TestGetCredsFromSecret(t *testing.T) {
 				"", "https://github.com/org/repo.git",
 				"", "", false, "", store,
 			),
+		},
+		{
+			name:          "SSH without insecure field keeps skipping host key verification",
+			gitRepo:       "git@github.com:example/repo.git",
+			secretRef:     "ns/ssh-default",
+			namespace:     "ns",
+			expectedCreds: git.NewSSHCreds("sshkey", "", true, store, ""),
+		},
+		{
+			name:          "SSH with insecure=false verifies host keys",
+			gitRepo:       "git@github.com:example/repo.git",
+			secretRef:     "ns/ssh-strict",
+			namespace:     "ns",
+			expectedCreds: git.NewSSHCreds("sshkey", "", false, store, ""),
+		},
+		{
+			name:          "SSH with insecure=true skips host key verification",
+			gitRepo:       "ssh://git@github.com/example/repo.git",
+			secretRef:     "ns/ssh-insecure",
+			namespace:     "ns",
+			expectedCreds: git.NewSSHCreds("sshkey", "", true, store, ""),
+		},
+		{
+			name:          "SSH with malformed insecure value keeps the legacy default",
+			gitRepo:       "git@github.com:example/repo.git",
+			secretRef:     "ns/ssh-bad-insecure",
+			namespace:     "ns",
+			expectedCreds: git.NewSSHCreds("sshkey", "", true, store, ""),
+		},
+		{
+			name:          "HTTPS with insecure=false verifies TLS",
+			gitRepo:       "https://github.com/example/repo.git",
+			secretRef:     "ns/https-strict",
+			namespace:     "ns",
+			expectedCreds: git.NewHTTPSCreds("myuser", "mypass", "", "", false, "", store, false),
 		},
 	}
 
