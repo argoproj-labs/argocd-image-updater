@@ -111,10 +111,10 @@ func buildPullRequest(ctx context.Context, wbc *WriteBackConfig, appNamespace, a
 // is skipped, avoiding unnecessary work on every reconciliation while a PR is
 // pending review.
 //
-// If commitChangesGit reports that the write-back produced no changes (e.g.
-// forceUpdate re-evaluated an image that already matches the target), no PR/MR
-// is opened: the push branch may only exist locally, and creating a PR/MR
-// against it would fail.
+// If commitChangesGit reports that nothing was pushed — the write-back produced
+// no changes (e.g. forceUpdate re-evaluated an image that already matches the
+// target) and the head branch was created locally in this call — no PR/MR is
+// opened, because the branch does not exist on the remote.
 func commitChangesPR(ctx context.Context, applicationImages *ApplicationImages, changeList []ChangeEntry, write changeWriter) error {
 	logCtx := log.LoggerFromContext(ctx)
 	app := applicationImages.Application
@@ -149,15 +149,17 @@ func commitChangesPR(ctx context.Context, applicationImages *ApplicationImages, 
 	}
 
 	// Push the image update commit to the head branch first.
-	noChanges, err := commitChangesGit(ctx, applicationImages, changeList, write)
+	nothingPushed, err := commitChangesGit(ctx, applicationImages, changeList, write)
 	if err != nil {
 		return err
 	}
-	if noChanges {
-		// The write-back produced no diff (e.g. forceUpdate re-evaluated an
-		// image that already matches), so nothing was committed or pushed.
-		// The push branch may only exist locally (or not at all remotely),
-		// so opening a PR/MR against it here would fail.
+	if nothingPushed {
+		// The head branch exists only in the local clone, so there is nothing
+		// for a PR/MR to point at. A head branch that is already on the remote
+		// carries the desired change even when this cycle wrote no diff, so
+		// commitChangesGit reports false for it and the PR/MR below is still
+		// opened — which is what recreates a PR after an earlier create() call
+		// failed with the branch already pushed.
 		return nil
 	}
 

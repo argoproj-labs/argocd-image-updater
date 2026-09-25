@@ -172,9 +172,12 @@ func getWriteBackBranch(ctx context.Context, app *v1alpha1.Application, wbc *Wri
 
 // commitChangesGit commits any changes required for updating one or more images
 // after the UpdateApplication cycle has finished. The returned bool reports
-// whether the write-back callback found no changes to make (e.g. the target
-// already has the desired value), in which case no commit, push, or PR/MR
-// should be attempted by the caller.
+// whether nothing reached the remote: the write-back callback found no changes
+// to make (e.g. the target already has the desired value) *and* the head branch
+// was created locally in this call, so it does not exist on the remote. Callers
+// must not open a PR/MR in that case. A head branch that was fetched from the
+// remote already carries the desired change, so false is returned for it and a
+// PR/MR may still be opened.
 func commitChangesGit(ctx context.Context, applicationImages *ApplicationImages, changeList []ChangeEntry, write changeWriter) (bool, error) {
 	logCtx := log.LoggerFromContext(ctx)
 
@@ -286,8 +289,8 @@ func commitChangesGit(ctx context.Context, applicationImages *ApplicationImages,
 	if err, skip := write(ctx, applicationImages, gitC); err != nil {
 		return false, err
 	} else if skip {
-		logCtx.Debugf("no changes to write back for application, skipping commit, push and PR/MR")
-		return true, nil
+		logCtx.Debugf("no changes to write back for application, skipping commit and push")
+		return pushBranchCreated, nil
 	}
 
 	// In API commit mode, hand the prepared working tree over to the GitHub
