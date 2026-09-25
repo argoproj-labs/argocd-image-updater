@@ -1254,9 +1254,11 @@ func commitChanges(ctx context.Context, applicationImages *ApplicationImages, ch
 		}
 		// if the kustomize base is set, the target is a kustomization
 		if wbc.KustomizeBase != "" {
-			return commitChangesGit(ctx, applicationImages, changeList, writeKustomization)
+			_, err := commitChangesGit(ctx, applicationImages, changeList, writeKustomization)
+			return err
 		}
-		return commitChangesGit(ctx, applicationImages, changeList, writeOverrides)
+		_, err := commitChangesGit(ctx, applicationImages, changeList, writeOverrides)
+		return err
 	default:
 		return fmt.Errorf("unknown write back method set: %d", wbc.Method)
 	}

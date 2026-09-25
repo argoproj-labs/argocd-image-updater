@@ -171,21 +171,27 @@ func getWriteBackBranch(ctx context.Context, app *v1alpha1.Application, wbc *Wri
 }
 
 // commitChangesGit commits any changes required for updating one or more images
-// after the UpdateApplication cycle has finished.
-func commitChangesGit(ctx context.Context, applicationImages *ApplicationImages, changeList []ChangeEntry, write changeWriter) error {
+// after the UpdateApplication cycle has finished. The returned bool reports
+// whether nothing reached the remote: the write-back callback found no changes
+// to make (e.g. the target already has the desired value) *and* the head branch
+// was created locally in this call, so it does not exist on the remote. Callers
+// must not open a PR/MR in that case. A head branch that was fetched from the
+// remote already carries the desired change, so false is returned for it and a
+// PR/MR may still be opened.
+func commitChangesGit(ctx context.Context, applicationImages *ApplicationImages, changeList []ChangeEntry, write changeWriter) (bool, error) {
 	logCtx := log.LoggerFromContext(ctx)
 
 	app := applicationImages.Application
 	wbc := applicationImages.WriteBackConfig
 	creds, err := wbc.GetCreds(&app)
 	if err != nil {
-		return fmt.Errorf("could not get creds for repo '%s': %v", wbc.GitRepo, err)
+		return false, fmt.Errorf("could not get creds for repo '%s': %v", wbc.GitRepo, err)
 	}
 	var gitC git.Client
 	if wbc.GitClient == nil {
 		tempRoot, err := os.MkdirTemp(os.TempDir(), fmt.Sprintf("git-%s", app.Name))
 		if err != nil {
-			return err
+			return false, err
 		}
 		defer func() {
 			err := os.RemoveAll(tempRoot)
@@ -195,14 +201,14 @@ func commitChangesGit(ctx context.Context, applicationImages *ApplicationImages,
 		}()
 		gitC, err = git.NewClientExt(wbc.GitRepo, tempRoot, creds, false, false, "")
 		if err != nil {
-			return err
+			return false, err
 		}
 	} else {
 		gitC = wbc.GitClient
 	}
 	err = gitC.Init(ctx)
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	// The branch to checkout is either a configured branch in the write-back
@@ -220,7 +226,7 @@ func commitChangesGit(ctx context.Context, applicationImages *ApplicationImages,
 		checkOutBranch, err = gitC.SymRefToBranch(ctx, checkOutBranch)
 		logCtx.Infof("resolved remote default branch to '%s' and using that for operations", checkOutBranch)
 		if err != nil {
-			return err
+			return false, err
 		}
 	}
 
@@ -236,18 +242,18 @@ func commitChangesGit(ctx context.Context, applicationImages *ApplicationImages,
 		logCtx.Tracef("setting git push branch for PR/MR mode using custom template '%s'", customTemplate)
 		pushBranch = TemplateBranchName(ctx, customTemplate, app.Namespace, app.Name, wbc.WriteBackTargetKey(), changeList)
 		if pushBranch == "" {
-			return fmt.Errorf("git branch name could not be created from the template: %s", customTemplate)
+			return false, fmt.Errorf("git branch name could not be created from the template: %s", customTemplate)
 		}
 		wbc.PullRequest, err = buildPullRequest(ctx, wbc, app.Namespace, app.Name, checkOutBranch, pushBranch)
 		if err != nil {
-			return err
+			return false, err
 		}
 	} else if wbc.GitWriteBranch != "" {
 		// use GitWriteBranch for git mode without PR
 		logCtx.Debugf("Using branch template: %s", wbc.GitWriteBranch)
 		pushBranch = TemplateBranchName(ctx, wbc.GitWriteBranch, "", "", "", changeList)
 		if pushBranch == "" {
-			return fmt.Errorf("git branch name could not be created from the template: %s", wbc.GitWriteBranch)
+			return false, fmt.Errorf("git branch name could not be created from the template: %s", wbc.GitWriteBranch)
 		}
 	}
 
@@ -259,31 +265,32 @@ func commitChangesGit(ctx context.Context, applicationImages *ApplicationImages,
 		if fetchErr != nil {
 			err = gitC.ShallowFetch(ctx, checkOutBranch, 1)
 			if err != nil {
-				return err
+				return false, err
 			}
 			logCtx.Debugf("Creating branch '%s' and using that for push operations", pushBranch)
 			err = gitC.Branch(ctx, checkOutBranch, pushBranch)
 			if err != nil {
-				return err
+				return false, err
 			}
 			pushBranchCreated = true
 		}
 	} else {
 		err = gitC.ShallowFetch(ctx, checkOutBranch, 1)
 		if err != nil {
-			return err
+			return false, err
 		}
 	}
 
 	err = gitC.Checkout(ctx, pushBranch, false)
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	if err, skip := write(ctx, applicationImages, gitC); err != nil {
-		return err
+		return false, err
 	} else if skip {
-		return nil
+		logCtx.Debugf("no changes to write back for application, skipping commit and push")
+		return pushBranchCreated, nil
 	}
 
 	// In API commit mode, hand the prepared working tree over to the GitHub
@@ -292,7 +299,7 @@ func commitChangesGit(ctx context.Context, applicationImages *ApplicationImages,
 	// falls back to the normal git command-line path.
 	if wbc.GitCommitMethod == GitCommitMethodAPI {
 		if tokenProvider, ok := githubAppCredsProvider(creds); ok {
-			return commitChangesGithubAPI(ctx, wbc, gitC, tokenProvider, pushBranch, pushBranchCreated)
+			return false, commitChangesGithubAPI(ctx, wbc, gitC, tokenProvider, pushBranch, pushBranchCreated)
 		}
 		logCtx.Warnf("git-commit-method 'api' requires GitHub App credentials for repo '%s', falling back to git command-line commit", wbc.GitRepo)
 	}
@@ -301,13 +308,13 @@ func commitChangesGit(ctx context.Context, applicationImages *ApplicationImages,
 	if wbc.GitCommitMessage != "" {
 		cm, err := os.CreateTemp("", "image-updater-commit-msg")
 		if err != nil {
-			return fmt.Errorf("could not create temp file: %v", err)
+			return false, fmt.Errorf("could not create temp file: %v", err)
 		}
 		logCtx.Debugf("Writing commit message to %s", cm.Name())
 		err = os.WriteFile(cm.Name(), []byte(wbc.GitCommitMessage), 0600)
 		if err != nil {
 			_ = cm.Close()
-			return fmt.Errorf("could not write commit message to %s: %v", cm.Name(), err)
+			return false, fmt.Errorf("could not write commit message to %s: %v", cm.Name(), err)
 		}
 		commitOpts.CommitMessagePath = cm.Name()
 		_ = cm.Close()
@@ -318,7 +325,7 @@ func commitChangesGit(ctx context.Context, applicationImages *ApplicationImages,
 	if wbc.GitCommitUser != "" && wbc.GitCommitEmail != "" {
 		err = gitC.Config(ctx, wbc.GitCommitUser, wbc.GitCommitEmail)
 		if err != nil {
-			return err
+			return false, err
 		}
 	}
 
@@ -331,14 +338,14 @@ func commitChangesGit(ctx context.Context, applicationImages *ApplicationImages,
 
 	err = gitC.Commit(ctx, "", commitOpts)
 	if err != nil {
-		return err
+		return false, err
 	}
 	err = gitC.Push(ctx, "origin", pushBranch, pushBranch != checkOutBranch)
 	if err != nil {
-		return err
+		return false, err
 	}
 
-	return nil
+	return false, nil
 }
 
 func writeOverrides(ctx context.Context, applicationImages *ApplicationImages, gitC git.Client) (err error, skip bool) {
