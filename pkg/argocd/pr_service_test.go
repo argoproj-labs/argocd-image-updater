@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	argocdapi "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1"
@@ -311,7 +312,7 @@ func Test_commitChangesPR(t *testing.T) {
 	})
 
 	t.Run("no changes but head branch already on remote: PR/MR is still created", func(t *testing.T) {
-		var created bool
+		var created atomic.Bool
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.Method == http.MethodGet {
 				// exists: no open PR, e.g. a previous create() failed after the push.
@@ -319,7 +320,7 @@ func Test_commitChangesPR(t *testing.T) {
 				_ = json.NewEncoder(w).Encode([]*gogithub.PullRequest{})
 				return
 			}
-			created = true
+			created.Store(true)
 			w.WriteHeader(http.StatusCreated)
 			_ = json.NewEncoder(w).Encode(gogithub.PullRequest{Number: new(1)})
 		}))
@@ -339,7 +340,7 @@ func Test_commitChangesPR(t *testing.T) {
 		}
 		err := commitChangesPR(ctx, makeTestAppImages(wbc), nil, noChangesWriter)
 		require.NoError(t, err)
-		assert.True(t, created,
+		assert.True(t, created.Load(),
 			"a PR must still be opened for a head branch that is already pushed, "+
 				"so a create() that failed on an earlier cycle is retried")
 	})
