@@ -623,6 +623,11 @@ The field applies to all providers, but they behave slightly differently:
 * **Azure DevOps** applies labels in separate API calls after creating the
   pull request. If a call fails, a warning is logged and the remaining labels
   are still attempted. The update is still treated as successful.
+* **Gitea** applies labels by name in a single follow-up call after creating
+  the pull request. Only labels that already exist in the repository or its
+  organization are attached. Labels by name need Gitea 1.22 or Forgejo 8 or
+  newer. If the call fails, a warning is logged and the update is still
+  treated as successful.
 * **GitHub** has no labels field on its PR creation API, so labels are applied
   in a follow-up call once the PR exists. If that call fails (for example when
   the token lacks issue write permission) a warning is logged and the update is
@@ -712,6 +717,31 @@ The API URL is derived from the repository URL, which must use HTTPS.
 Use an HTTPS secret with a `username` and a PAT in `password`.
 The PAT needs **Code (Read & write)** scope, and its owner must be able to push
 branches and create pull requests.
+
+#### Gitea
+
+For Gitea (and Forgejo, which keeps a compatible API), configure
+`pullRequest.gitea`:
+
+```yaml
+writeBackConfig:
+  method: "git:secret:gitea-creds"
+  gitConfig:
+    repository: "https://gitea.example.com/org/repo.git"
+    branch: "main"
+    pullRequest:
+      gitea: {}
+```
+
+The API URL is derived from the repository URL, which must use HTTP or HTTPS.
+Instances served under a sub-path (for example
+`https://example.com/gitea/org/repo.git`) are supported. Plain HTTP is meant
+for in-cluster service URLs such as `http://gitea-http.gitea.svc:3000`: the
+token is then sent unencrypted, so prefer HTTPS on any other network.
+
+Use an HTTPS secret with a `username` and an access token in `password`.
+The token needs the **write:repository** scope to push the head branch and open
+the pull request, and **write:issue** to apply labels.
 
 ### <a name="method-git-commit-user"></a>Specifying the user and email address for commits
 

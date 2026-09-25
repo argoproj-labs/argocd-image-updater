@@ -576,4 +576,64 @@ func Test_commitChangesPR(t *testing.T) {
 			}
 		})
 	}
+
+	// --- Gitea API phase ---
+
+	for _, tt := range []struct {
+		name, body string
+		status     int
+		exists     bool
+		wantErrMsg string
+	}{
+		{"PR created successfully", `{"number":42}`, http.StatusCreated, false, ""},
+		{"existing PR skips git", "", http.StatusOK, true, ""},
+		{"concurrent duplicate is a no-op", `{"message":"pull request already exists for these targets"}`, http.StatusConflict, false, ""},
+		{"create fails with 422", `{"message":"Invalid PullRequest"}`, http.StatusUnprocessableEntity, false, "could not create PR"},
+	} {
+		t.Run("Gitea: "+tt.name, func(t *testing.T) {
+			var pushBranch string
+			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method == http.MethodGet {
+					if tt.exists && r.URL.Query().Get("page") == "1" {
+						_, _ = fmt.Fprintf(w, `[{"number":42,"head":{"ref":%q,"repo_id":1},"base":{"ref":"main","repo_id":1}}]`, pushBranch)
+					} else {
+						_, _ = w.Write([]byte(`[]`))
+					}
+					return
+				}
+				assert.Equal(t, http.MethodPost, r.Method)
+				if tt.exists {
+					t.Error("create should not be called when exists finds an existing PR")
+				}
+				w.WriteHeader(tt.status)
+				_, _ = w.Write([]byte(tt.body))
+			}))
+			defer server.Close()
+			transport := http.DefaultTransport
+			http.DefaultTransport = server.Client().Transport
+			t.Cleanup(func() { http.DefaultTransport = transport })
+
+			gitClient := &mockGitClient{}
+			if tt.exists {
+				gitClient.initErr = fmt.Errorf("git must not be initialized when the PR exists")
+			}
+			wbc := &WriteBackConfig{
+				GitRepo:    server.URL + "/owner/repo.git",
+				GitBranch:  "main",
+				PRProvider: PRProviderGitea,
+				GitClient:  gitClient,
+				GetCreds: func(_ *argocdapi.Application) (git.Creds, error) {
+					return &mockGitAndSCMCreds{token: "token"}, nil
+				},
+			}
+			appImages := makeTestAppImages(wbc)
+			pushBranch = TemplateBranchName(ctx, PRBranchTemplate, appImages.Application.Namespace, appImages.Application.Name, wbc.WriteBackTargetKey(), nil)
+			err := commitChangesPR(ctx, appImages, nil, noopWriter)
+			if tt.wantErrMsg != "" {
+				require.ErrorContains(t, err, tt.wantErrMsg)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
 }
