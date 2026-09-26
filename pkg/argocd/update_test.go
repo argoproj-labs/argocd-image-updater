@@ -6419,7 +6419,7 @@ func Test_CommitUpdates(t *testing.T) {
 			Images:          ImageList{},
 			WriteBackConfig: wbc,
 		}
-		err = commitChanges(ctx, applicationImages, nil)
+		_, err = commitChanges(ctx, applicationImages, nil)
 		assert.NoError(t, err)
 	})
 
@@ -6449,7 +6449,7 @@ func Test_CommitUpdates(t *testing.T) {
 			Images:          ImageList{},
 			WriteBackConfig: wbc,
 		}
-		err = commitChanges(ctx, applicationImages, nil)
+		_, err = commitChanges(ctx, applicationImages, nil)
 		assert.NoError(t, err)
 	})
 
@@ -6482,7 +6482,7 @@ func Test_CommitUpdates(t *testing.T) {
 			Images:          ImageList{},
 			WriteBackConfig: wbc,
 		}
-		err = commitChanges(ctx, applicationImages, nil)
+		_, err = commitChanges(ctx, applicationImages, nil)
 		assert.NoError(t, err)
 	})
 
@@ -6520,7 +6520,7 @@ func Test_CommitUpdates(t *testing.T) {
 			Images:          ImageList{},
 			WriteBackConfig: wbc,
 		}
-		err = commitChanges(ctx, applicationImages, cl)
+		_, err = commitChanges(ctx, applicationImages, cl)
 		assert.NoError(t, err)
 	})
 
@@ -6569,7 +6569,7 @@ helm:
 			Images:          ImageList{trackedImage},
 			WriteBackConfig: wbc,
 		}
-		err = commitChanges(ctx, applicationImages, nil)
+		_, err = commitChanges(ctx, applicationImages, nil)
 		assert.NoError(t, err)
 		override, err := os.ReadFile(of)
 		assert.NoError(t, err)
@@ -6635,7 +6635,7 @@ helm:
 			Images:          ImageList{trackedImage},
 			WriteBackConfig: wbc,
 		}
-		err = commitChanges(ctx, applicationImages, nil)
+		_, err = commitChanges(ctx, applicationImages, nil)
 		assert.NoError(t, err)
 		override, err := os.ReadFile(of)
 		assert.NoError(t, err)
@@ -6701,7 +6701,7 @@ helm:
 			Images:          ImageList{trackedImage},
 			WriteBackConfig: wbc,
 		}
-		err = commitChanges(ctx, applicationImages, nil)
+		_, err = commitChanges(ctx, applicationImages, nil)
 		assert.NoError(t, err)
 		override, err := os.ReadFile(of)
 		assert.NoError(t, err)
@@ -6759,7 +6759,7 @@ replacements: []
 			Images:          ImageList{},
 			WriteBackConfig: wbc,
 		}
-		err = commitChanges(ctx, applicationImages, nil)
+		_, err = commitChanges(ctx, applicationImages, nil)
 		assert.NoError(t, err)
 		kust, err := os.ReadFile(kf)
 		assert.NoError(t, err)
@@ -6783,7 +6783,7 @@ replacements: []
 			Images:          ImageList{},
 			WriteBackConfig: wbc,
 		}
-		err = commitChanges(ctx, applicationImages, nil)
+		_, err = commitChanges(ctx, applicationImages, nil)
 		assert.NoError(t, err)
 		kust, err = os.ReadFile(kf)
 		assert.NoError(t, err)
@@ -6833,7 +6833,7 @@ replacements: []
 			Images:          ImageList{},
 			WriteBackConfig: wbc,
 		}
-		err = commitChanges(ctx, applicationImages, nil)
+		_, err = commitChanges(ctx, applicationImages, nil)
 		assert.NoError(t, err)
 	})
 
@@ -6875,7 +6875,7 @@ replacements: []
 			Images:          ImageList{},
 			WriteBackConfig: wbc,
 		}
-		err = commitChanges(ctx, applicationImages, nil)
+		_, err = commitChanges(ctx, applicationImages, nil)
 		assert.Errorf(t, err, "could not configure git")
 	})
 
@@ -6903,7 +6903,7 @@ replacements: []
 			Images:          ImageList{},
 			WriteBackConfig: wbc,
 		}
-		err = commitChanges(ctx, applicationImages, nil)
+		_, err = commitChanges(ctx, applicationImages, nil)
 		assert.Errorf(t, err, "cannot init")
 	})
 
@@ -6931,7 +6931,7 @@ replacements: []
 			Images:          ImageList{},
 			WriteBackConfig: wbc,
 		}
-		err = commitChanges(ctx, applicationImages, nil)
+		_, err = commitChanges(ctx, applicationImages, nil)
 		assert.Errorf(t, err, "cannot init")
 	})
 	t.Run("Cannot checkout", func(t *testing.T) {
@@ -6958,7 +6958,7 @@ replacements: []
 			Images:          ImageList{},
 			WriteBackConfig: wbc,
 		}
-		err = commitChanges(ctx, applicationImages, nil)
+		_, err = commitChanges(ctx, applicationImages, nil)
 		assert.Errorf(t, err, "cannot checkout")
 	})
 
@@ -6986,7 +6986,7 @@ replacements: []
 			Images:          ImageList{},
 			WriteBackConfig: wbc,
 		}
-		err = commitChanges(ctx, applicationImages, nil)
+		_, err = commitChanges(ctx, applicationImages, nil)
 		assert.Errorf(t, err, "cannot commit")
 	})
 
@@ -7014,7 +7014,7 @@ replacements: []
 			Images:          ImageList{},
 			WriteBackConfig: wbc,
 		}
-		err = commitChanges(ctx, applicationImages, nil)
+		_, err = commitChanges(ctx, applicationImages, nil)
 		assert.Errorf(t, err, "cannot push")
 	})
 
@@ -7047,7 +7047,7 @@ replacements: []
 			Images:          ImageList{},
 			WriteBackConfig: wbc,
 		}
-		err = commitChanges(ctx, applicationImages, nil)
+		_, err = commitChanges(ctx, applicationImages, nil)
 		assert.Errorf(t, err, "failed to resolve ref")
 	})
 }

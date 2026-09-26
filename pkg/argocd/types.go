@@ -204,6 +204,14 @@ func (state *SyncIterationState) MarkPRCreated(targetKey string) bool {
 	return true
 }
 
+// ReleasePRReservation clears the reservation taken by MarkPRCreated for the
+// given write-back target key, so a subsequent call for the same key succeeds.
+func (state *SyncIterationState) ReleasePRReservation(targetKey string) {
+	state.lock.Lock()
+	defer state.lock.Unlock()
+	delete(state.prCreated, targetKey)
+}
+
 // GetRepositoryLock returns the lock for a specified repository
 func (state *SyncIterationState) GetRepositoryLock(repository string) *sync.Mutex {
 	state.lock.Lock()

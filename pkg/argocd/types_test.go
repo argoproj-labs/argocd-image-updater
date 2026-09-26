@@ -80,6 +80,16 @@ func Test_MarkPRCreated(t *testing.T) {
 		assert.Equal(t, 1, trueCount, "exactly one goroutine should get true")
 	})
 }
+
+func Test_ReleasePRReservation(t *testing.T) {
+	state := NewSyncIterationState()
+	assert.True(t, state.MarkPRCreated("target-a"))
+	assert.True(t, state.MarkPRCreated("target-b"))
+	state.ReleasePRReservation("target-a")
+	assert.True(t, state.MarkPRCreated("target-a"))
+	assert.False(t, state.MarkPRCreated("target-b"))
+}
+
 func Test_IsValidGitCommitMethod(t *testing.T) {
 	assert.True(t, IsValidGitCommitMethod(""))
 	assert.True(t, IsValidGitCommitMethod("git"))

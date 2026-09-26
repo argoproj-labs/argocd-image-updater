@@ -8,6 +8,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -207,6 +209,126 @@ func Test_buildPullRequest(t *testing.T) {
 	})
 }
 
+// --- Test_commitChangesLocked_PRReservation ---
+
+func Test_commitChangesLocked_PRReservation(t *testing.T) {
+	ctx := context.Background()
+
+	// newServer returns a GitHub API stub reporting no open PRs and counting
+	// PR creations.
+	newServer := func(created *atomic.Int32) *httptest.Server {
+		return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method == http.MethodGet {
+				w.WriteHeader(http.StatusOK)
+				_ = json.NewEncoder(w).Encode([]*gogithub.PullRequest{})
+				return
+			}
+			created.Add(1)
+			w.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(w).Encode(gogithub.PullRequest{Number: new(1)})
+		}))
+	}
+
+	// newWbc returns a PR write-back config for the same target key on every
+	// call, using the given git client.
+	newWbc := func(serverURL string, gitC git.Client) *WriteBackConfig {
+		return &WriteBackConfig{
+			Method:     WriteBackGit,
+			GitRepo:    serverURL + "/org/repo.git",
+			GitBranch:  "main",
+			Target:     ".argocd-source-test-app.yaml",
+			PRProvider: PRProviderGitHub,
+			GitClient:  gitC,
+			GetCreds: func(_ *argocdapi.Application) (git.Creds, error) {
+				return &mockGitAndSCMCreds{token: "github-token"}, nil
+			},
+		}
+	}
+
+	// newAppImages returns a Kustomize application for the given config.
+	newAppImages := func(wbc *WriteBackConfig) *ApplicationImages {
+		ai := makeTestAppImages(wbc)
+		ai.Application.Spec.Source = &argocdapi.ApplicationSource{
+			Kustomize: &argocdapi.ApplicationSourceKustomize{
+				Images: argocdapi.KustomizeImages{"jannfis/foobar:1.0.1"},
+			},
+		}
+		ai.Application.Status.SourceType = argocdapi.ApplicationSourceTypeKustomize
+		return ai
+	}
+
+	// Only the base branch exists on the remote, so the head branch is
+	// created locally.
+	localHeadOnly := func(branch string) error {
+		if branch == "main" {
+			return nil
+		}
+		return fmt.Errorf("couldn't find remote ref %s", branch)
+	}
+
+	t.Run("reservation is released when nothing was pushed", func(t *testing.T) {
+		var created atomic.Int32
+		server := newServer(&created)
+		defer server.Close()
+		state := NewSyncIterationState()
+
+		// Application A: the target file already has the desired content, so
+		// the write-back produces no diff and nothing is pushed.
+		rootA := t.TempDir()
+		wbcA := newWbc(server.URL, &mockGitClient{root: rootA, shallowFetchErr: localHeadOnly})
+		aiA := newAppImages(wbcA)
+		current, err := marshalParamsOverride(ctx, aiA, nil)
+		require.NoError(t, err)
+		require.NoError(t, os.WriteFile(filepath.Join(rootA, wbcA.Target), current, 0600))
+		err = commitChangesLocked(ctx, aiA, state, nil)
+		require.NoError(t, err)
+		assert.Equal(t, int32(0), created.Load())
+
+		// Application B: same write-back target, the target file does not
+		// exist yet, so there is a real change to push.
+		wbcB := newWbc(server.URL, &mockGitClient{root: t.TempDir(), shallowFetchErr: localHeadOnly})
+		require.Equal(t, wbcA.WriteBackTargetKey(), wbcB.WriteBackTargetKey())
+		err = commitChangesLocked(ctx, newAppImages(wbcB), state, nil)
+		require.NoError(t, err)
+		assert.Equal(t, int32(1), created.Load(),
+			"B must still open a PR for the target when A pushed nothing")
+	})
+
+	t.Run("reservation is retained when the write-back fails", func(t *testing.T) {
+		var created atomic.Int32
+		server := newServer(&created)
+		defer server.Close()
+		state := NewSyncIterationState()
+
+		wbcA := newWbc(server.URL, &mockGitClient{initErr: fmt.Errorf("init failed")})
+		err := commitChangesLocked(ctx, newAppImages(wbcA), state, nil)
+		require.Error(t, err)
+
+		wbcB := newWbc(server.URL, &mockGitClient{root: t.TempDir(), shallowFetchErr: localHeadOnly})
+		err = commitChangesLocked(ctx, newAppImages(wbcB), state, nil)
+		require.NoError(t, err)
+		assert.Equal(t, int32(0), created.Load(),
+			"B must be skipped while A holds the reservation")
+		assert.False(t, state.MarkPRCreated(wbcB.WriteBackTargetKey()))
+	})
+
+	t.Run("reservation is retained when a PR was created", func(t *testing.T) {
+		var created atomic.Int32
+		server := newServer(&created)
+		defer server.Close()
+		state := NewSyncIterationState()
+
+		wbcA := newWbc(server.URL, &mockGitClient{root: t.TempDir(), shallowFetchErr: localHeadOnly})
+		err := commitChangesLocked(ctx, newAppImages(wbcA), state, nil)
+		require.NoError(t, err)
+
+		wbcB := newWbc(server.URL, &mockGitClient{root: t.TempDir(), shallowFetchErr: localHeadOnly})
+		err = commitChangesLocked(ctx, newAppImages(wbcB), state, nil)
+		require.NoError(t, err)
+		assert.Equal(t, int32(1), created.Load(), "only one PR per target per cycle")
+	})
+}
+
 // --- Test_commitChangesPR ---
 
 func Test_commitChangesPR(t *testing.T) {
@@ -224,7 +346,7 @@ func Test_commitChangesPR(t *testing.T) {
 				return &mockGitAndSCMCreds{token: "token"}, nil
 			},
 		}
-		err := commitChangesPR(ctx, makeTestAppImages(wbc), nil, noopWriter)
+		_, err := commitChangesPR(ctx, makeTestAppImages(wbc), nil, noopWriter)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "unsupported PR provider")
 	})
@@ -238,7 +360,7 @@ func Test_commitChangesPR(t *testing.T) {
 				return nil, fmt.Errorf("secret not found")
 			},
 		}
-		err := commitChangesPR(ctx, makeTestAppImages(wbc), nil, noopWriter)
+		_, err := commitChangesPR(ctx, makeTestAppImages(wbc), nil, noopWriter)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "could not get creds")
 	})
@@ -253,7 +375,7 @@ func Test_commitChangesPR(t *testing.T) {
 				return git.NopCreds{}, nil
 			},
 		}
-		err := commitChangesPR(ctx, makeTestAppImages(wbc), nil, noopWriter)
+		_, err := commitChangesPR(ctx, makeTestAppImages(wbc), nil, noopWriter)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "do not support PR creation")
 	})
@@ -270,7 +392,7 @@ func Test_commitChangesPR(t *testing.T) {
 				return &mockGitAndSCMCreds{token: "token"}, nil
 			},
 		}
-		err := commitChangesPR(ctx, makeTestAppImages(wbc), nil, noopWriter)
+		_, err := commitChangesPR(ctx, makeTestAppImages(wbc), nil, noopWriter)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "init failed")
 	})
@@ -307,8 +429,9 @@ func Test_commitChangesPR(t *testing.T) {
 				return &mockGitAndSCMCreds{token: "github-token"}, nil
 			},
 		}
-		err := commitChangesPR(ctx, makeTestAppImages(wbc), nil, noChangesWriter)
+		nothingPushed, err := commitChangesPR(ctx, makeTestAppImages(wbc), nil, noChangesWriter)
 		require.NoError(t, err)
+		assert.True(t, nothingPushed)
 	})
 
 	t.Run("no changes but head branch already on remote: PR/MR is still created", func(t *testing.T) {
@@ -338,8 +461,9 @@ func Test_commitChangesPR(t *testing.T) {
 				return &mockGitAndSCMCreds{token: "github-token"}, nil
 			},
 		}
-		err := commitChangesPR(ctx, makeTestAppImages(wbc), nil, noChangesWriter)
+		nothingPushed, err := commitChangesPR(ctx, makeTestAppImages(wbc), nil, noChangesWriter)
 		require.NoError(t, err)
+		assert.False(t, nothingPushed)
 		assert.True(t, created.Load(),
 			"a PR must still be opened for a head branch that is already pushed, "+
 				"so a create() that failed on an earlier cycle is retried")
@@ -373,7 +497,7 @@ func Test_commitChangesPR(t *testing.T) {
 				return &mockGitAndSCMCreds{token: "github-token"}, nil
 			},
 		}
-		err := commitChangesPR(ctx, makeTestAppImages(wbc), nil, noopWriter)
+		_, err := commitChangesPR(ctx, makeTestAppImages(wbc), nil, noopWriter)
 		require.NoError(t, err)
 	})
 
@@ -399,7 +523,7 @@ func Test_commitChangesPR(t *testing.T) {
 				return &mockGitAndSCMCreds{token: "github-token"}, nil
 			},
 		}
-		err := commitChangesPR(ctx, makeTestAppImages(wbc), nil, noopWriter)
+		_, err := commitChangesPR(ctx, makeTestAppImages(wbc), nil, noopWriter)
 		require.NoError(t, err)
 	})
 
@@ -428,7 +552,7 @@ func Test_commitChangesPR(t *testing.T) {
 				return &mockGitAndSCMCreds{token: "github-token"}, nil
 			},
 		}
-		err := commitChangesPR(ctx, makeTestAppImages(wbc), nil, noopWriter)
+		_, err := commitChangesPR(ctx, makeTestAppImages(wbc), nil, noopWriter)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "could not create PR")
 	})
@@ -461,7 +585,7 @@ func Test_commitChangesPR(t *testing.T) {
 				return &mockGitAndSCMCreds{token: "gitlab-token"}, nil
 			},
 		}
-		err := commitChangesPR(ctx, makeTestAppImages(wbc), nil, noopWriter)
+		_, err := commitChangesPR(ctx, makeTestAppImages(wbc), nil, noopWriter)
 		require.NoError(t, err)
 	})
 
@@ -487,7 +611,7 @@ func Test_commitChangesPR(t *testing.T) {
 				return &mockGitAndSCMCreds{token: "gitlab-token"}, nil
 			},
 		}
-		err := commitChangesPR(ctx, makeTestAppImages(wbc), nil, noopWriter)
+		_, err := commitChangesPR(ctx, makeTestAppImages(wbc), nil, noopWriter)
 		require.NoError(t, err)
 	})
 
@@ -515,7 +639,7 @@ func Test_commitChangesPR(t *testing.T) {
 				return &mockGitAndSCMCreds{token: "gitlab-token"}, nil
 			},
 		}
-		err := commitChangesPR(ctx, makeTestAppImages(wbc), nil, noopWriter)
+		_, err := commitChangesPR(ctx, makeTestAppImages(wbc), nil, noopWriter)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "could not create MR")
 	})
@@ -568,7 +692,7 @@ func Test_commitChangesPR(t *testing.T) {
 					return &mockGitAndSCMCreds{token: "pat"}, nil
 				},
 			}
-			err := commitChangesPR(ctx, makeTestAppImages(wbc), nil, noopWriter)
+			_, err := commitChangesPR(ctx, makeTestAppImages(wbc), nil, noopWriter)
 			if tt.wantErrMsg != "" {
 				require.ErrorContains(t, err, tt.wantErrMsg)
 			} else {

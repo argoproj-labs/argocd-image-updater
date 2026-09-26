@@ -114,8 +114,9 @@ func buildPullRequest(ctx context.Context, wbc *WriteBackConfig, appNamespace, a
 // If commitChangesGit reports that nothing was pushed — the write-back produced
 // no changes (e.g. forceUpdate re-evaluated an image that already matches the
 // target) and the head branch was created locally in this call — no PR/MR is
-// opened, because the branch does not exist on the remote.
-func commitChangesPR(ctx context.Context, applicationImages *ApplicationImages, changeList []ChangeEntry, write changeWriter) error {
+// opened, because the branch does not exist on the remote, and true is
+// returned so the caller can tell that nothing exists remotely for the target.
+func commitChangesPR(ctx context.Context, applicationImages *ApplicationImages, changeList []ChangeEntry, write changeWriter) (bool, error) {
 	logCtx := log.LoggerFromContext(ctx)
 	app := applicationImages.Application
 	wbc := applicationImages.WriteBackConfig
@@ -125,12 +126,12 @@ func commitChangesPR(ctx context.Context, applicationImages *ApplicationImages, 
 	// HTTPSCreds return a plain string. No redundant network calls occur.
 	creds, err := wbc.GetCreds(&app)
 	if err != nil {
-		return fmt.Errorf("could not get creds for repo '%s': %v", wbc.GitRepo, err)
+		return false, fmt.Errorf("could not get creds for repo '%s': %v", wbc.GitRepo, err)
 	}
 
 	tokenProvider, ok := creds.(git.SCMTokenProvider)
 	if !ok {
-		return fmt.Errorf("credentials type %T do not support PR creation (use HTTPS or GitHub App credentials)", creds)
+		return false, fmt.Errorf("credentials type %T do not support PR creation (use HTTPS or GitHub App credentials)", creds)
 	}
 
 	// Try to detect an existing open PR before cloning and pushing to avoid
@@ -144,14 +145,14 @@ func commitChangesPR(ctx context.Context, applicationImages *ApplicationImages, 
 		if skipped, skipErr := skipIfPRExists(ctx, wbc, tokenProvider, checkOutBranch, app.Namespace, app.Name, changeList); skipErr != nil {
 			logCtx.Warnf("could not check for existing PR, proceeding with update: %v", skipErr)
 		} else if skipped {
-			return nil
+			return false, nil
 		}
 	}
 
 	// Push the image update commit to the head branch first.
 	nothingPushed, err := commitChangesGit(ctx, applicationImages, changeList, write)
 	if err != nil {
-		return err
+		return false, err
 	}
 	if nothingPushed {
 		// The head branch exists only in the local clone, so there is nothing
@@ -160,58 +161,58 @@ func commitChangesPR(ctx context.Context, applicationImages *ApplicationImages, 
 		// commitChangesGit reports false for it and the PR/MR below is still
 		// opened — which is what recreates a PR after an earlier create() call
 		// failed with the branch already pushed.
-		return nil
+		return true, nil
 	}
 
 	if wbc.PullRequest == nil {
-		return fmt.Errorf("pull request structure is not initialized")
+		return false, fmt.Errorf("pull request structure is not initialized")
 	}
 
 	switch wbc.PRProvider {
 	case PRProviderGitHub:
 		g, err := NewGithubPRService(ctx, wbc, tokenProvider)
 		if err != nil {
-			return err
+			return false, err
 		}
 
 		if err := g.create(ctx); err != nil {
 			if errors.Is(err, ErrPRAlreadyExists) {
-				return nil
+				return false, nil
 			}
-			return err
+			return false, err
 		}
-		return nil
+		return false, nil
 
 	case PRProviderGitLab:
 		g, err := NewGitLabMRService(ctx, wbc, tokenProvider)
 		if err != nil {
-			return err
+			return false, err
 		}
 
 		if err := g.create(ctx); err != nil {
 			if errors.Is(err, ErrMRAlreadyExists) {
-				return nil
+				return false, nil
 			}
-			return err
+			return false, err
 		}
-		return nil
+		return false, nil
 
 	case PRProviderAzureDevOps:
 		g, err := NewAzureDevOpsPRService(ctx, wbc, tokenProvider)
 		if err != nil {
-			return err
+			return false, err
 		}
 
 		if err := g.create(ctx); err != nil {
 			if errors.Is(err, ErrPRAlreadyExists) {
-				return nil
+				return false, nil
 			}
-			return err
+			return false, err
 		}
-		return nil
+		return false, nil
 
 	default:
-		return fmt.Errorf("unsupported PR provider: %d", wbc.PRProvider)
+		return false, fmt.Errorf("unsupported PR provider: %d", wbc.PRProvider)
 	}
 }
 

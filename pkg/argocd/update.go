@@ -1214,24 +1214,38 @@ func commitChangesLocked(ctx context.Context, applicationImages *ApplicationImag
 		defer lock.Unlock()
 	}
 
+	var targetKey string
+	var reserved bool
 	if wbc.PRProvider > 0 {
-		targetKey := wbc.WriteBackTargetKey()
+		targetKey = wbc.WriteBackTargetKey()
 		if !state.MarkPRCreated(targetKey) {
 			logCtx.Infof("Skipping PR creation: another application already created a PR for the same write-back target in this cycle")
 			return nil
 		}
+		reserved = true
 	}
 
-	return commitChanges(ctx, applicationImages, changeList)
+	nothingPushed, err := commitChanges(ctx, applicationImages, changeList)
+	if reserved && err == nil && nothingPushed {
+		// Nothing reached the remote for this target, so no PR/MR exists for
+		// it. Release the reservation so that another application sharing the
+		// same write-back target can still write back in this cycle. The
+		// reservation is kept on every other path, including errors, since
+		// the head branch may already have been pushed.
+		state.ReleasePRReservation(targetKey)
+	}
+	return err
 }
 
 // commitChanges commits any changes required for updating one or more images
-// after the UpdateApplication cycle has finished.
-func commitChanges(ctx context.Context, applicationImages *ApplicationImages, changeList []ChangeEntry) error {
+// after the UpdateApplication cycle has finished. For git write-back, the
+// returned bool reports whether nothing was pushed to the remote (see
+// commitChangesGit).
+func commitChanges(ctx context.Context, applicationImages *ApplicationImages, changeList []ChangeEntry) (bool, error) {
 	app := applicationImages.Application
 	wbc := applicationImages.WriteBackConfig
 	if wbc == nil {
-		return fmt.Errorf("write back method is not defined")
+		return false, fmt.Errorf("write back method is not defined")
 	}
 	switch wbc.Method {
 	case WriteBackApplication:
@@ -1241,7 +1255,7 @@ func commitChanges(ctx context.Context, applicationImages *ApplicationImages, ch
 			Spec:         &app.Spec,
 		})
 		if err != nil {
-			return err
+			return false, err
 		}
 	case WriteBackGit:
 		if wbc.PRProvider > 0 {
@@ -1254,15 +1268,13 @@ func commitChanges(ctx context.Context, applicationImages *ApplicationImages, ch
 		}
 		// if the kustomize base is set, the target is a kustomization
 		if wbc.KustomizeBase != "" {
-			_, err := commitChangesGit(ctx, applicationImages, changeList, writeKustomization)
-			return err
+			return commitChangesGit(ctx, applicationImages, changeList, writeKustomization)
 		}
-		_, err := commitChangesGit(ctx, applicationImages, changeList, writeOverrides)
-		return err
+		return commitChangesGit(ctx, applicationImages, changeList, writeOverrides)
 	default:
-		return fmt.Errorf("unknown write back method set: %d", wbc.Method)
+		return false, fmt.Errorf("unknown write back method set: %d", wbc.Method)
 	}
-	return nil
+	return false, nil
 }
 
 func isOnlyWhitespace(data []byte) bool {
