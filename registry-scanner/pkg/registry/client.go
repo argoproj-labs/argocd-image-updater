@@ -637,9 +637,45 @@ func TagInfoFromReferences(ctx context.Context, client *registryClient, opts *op
 	return ti, nil
 }
 
+// registryErrorCode extracts the registry error code from err, along with a
+// message suitable for logging. The bool reports whether err's chain contains a
+// registry error code at all; it is false for any other error, in which case the
+// code and message are zero and must not be used. Note that the zero ErrorCode is
+// not a sentinel - it is unregistered and stringifies as "UNKNOWN", which is
+// indistinguishable from a genuine code, so callers must branch on the bool.
+//
+// Both encodings are handled: the structured errcode.Error, which carries the
+// registry's own message, and a bare errcode.ErrorCode, which is what
+// errcode.Errors.UnmarshalJSON produces for an error object that has no detail
+// and either no message or the code's canonical message. The structured form
+// must be tested first: errcode.Error does not unwrap to its Code.
+func registryErrorCode(err error) (errcode.ErrorCode, string, bool) {
+	var errcodeErr errcode.Error
+	if errors.As(err, &errcodeErr) {
+		msg := errcodeErr.Message
+		if msg == "" {
+			msg = errcodeErr.Code.Message()
+		}
+		return errcodeErr.Code, msg, true
+	}
+	var code errcode.ErrorCode
+	if errors.As(err, &code) {
+		return code, code.Message(), true
+	}
+	return 0, "", false
+}
+
+// isAuthErrorCode reports whether code denotes an authentication or
+// authorization failure.
+func isAuthErrorCode(code errcode.ErrorCode) bool {
+	return code == errcode.ErrorCodeUnauthorized || code == errcode.ErrorCodeDenied
+}
+
 // IsAuthError reports whether err is an authentication/authorization failure (401/403)
 // from the distribution registry client. It uses errors.As to detect the client's
-// typed errors and errcode instead of matching error strings.
+// typed errors and errcode instead of matching error strings. This function handles
+// both structured errcode.Error values and bare errcode.ErrorCode values to ensure
+// comprehensive authentication error detection across different registry response formats.
 func IsAuthError(ctx context.Context, err error) bool {
 	log := log.LoggerFromContext(ctx)
 	if err == nil {
@@ -661,17 +697,24 @@ func IsAuthError(ctx context.Context, err error) bool {
 		}
 		return false
 	}
+	// A registry may report the failure either as an errcode.Errors slice, which
+	// is what a well-formed JSON error body decodes to, or as a single unwrapped
+	// errcode value. The distribution client produces the latter for a 4xx with
+	// an empty body, a missing or non-JSON Content-Type, or a body it cannot
+	// unmarshal - all common when a proxy sits in front of the registry.
 	var errs errcode.Errors
 	if errors.As(err, &errs) {
 		for _, e := range errs {
-			var errcodeErr errcode.Error
-			if errors.As(e, &errcodeErr) {
-				if errors.Is(errcodeErr.Code, errcode.ErrorCodeUnauthorized) || errors.Is(errcodeErr.Code, errcode.ErrorCodeDenied) {
-					log.Debugf("auth error from registry: %s", errcodeErr.Code.Message())
-					return true
-				}
+			if code, msg, ok := registryErrorCode(e); ok && isAuthErrorCode(code) {
+				log.Debugf("auth error from registry: %s", msg)
+				return true
 			}
 		}
+		return false
+	}
+	if code, msg, ok := registryErrorCode(err); ok && isAuthErrorCode(code) {
+		log.Debugf("auth error from registry: %s", msg)
+		return true
 	}
 	return false
 }
