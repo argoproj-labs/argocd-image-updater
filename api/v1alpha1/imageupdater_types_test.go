@@ -733,6 +733,15 @@ var _ = Describe("PullRequest Validation", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(k8sClient.Delete(context.Background(), cr)).To(Succeed())
 		})
+
+		It("should accept pullRequest with only gitea", func() {
+			cr := baseWithPR("pr-gitea-only", &PullRequest{
+				Gitea: &PullRequestGitea{},
+			})
+			err := k8sClient.Create(context.Background(), cr)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(k8sClient.Delete(context.Background(), cr)).To(Succeed())
+		})
 	})
 
 	Context("when zero providers are set", func() {
@@ -740,7 +749,7 @@ var _ = Describe("PullRequest Validation", func() {
 			cr := baseWithPR("pr-no-provider", &PullRequest{})
 			err := k8sClient.Create(context.Background(), cr)
 			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("Exactly one of github, gitlab, or azuredevops must be set"))
+			Expect(err.Error()).To(ContainSubstring("Exactly one of github, gitlab, azuredevops, or gitea must be set"))
 		})
 	})
 
@@ -752,18 +761,30 @@ var _ = Describe("PullRequest Validation", func() {
 			})
 			err := k8sClient.Create(context.Background(), cr)
 			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("Exactly one of github, gitlab, or azuredevops must be set"))
+			Expect(err.Error()).To(ContainSubstring("Exactly one of github, gitlab, azuredevops, or gitea must be set"))
 		})
 
 		DescribeTable("should reject azuredevops with another provider", func(name string, pr *PullRequest) {
 			cr := baseWithPR(name, pr)
 			err := k8sClient.Create(context.Background(), cr)
 			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("Exactly one of github, gitlab, or azuredevops must be set"))
+			Expect(err.Error()).To(ContainSubstring("Exactly one of github, gitlab, azuredevops, or gitea must be set"))
 		},
 			Entry("github", "pr-azuredevops-github", &PullRequest{AzureDevOps: &PullRequestAzureDevOps{}, GitHub: &PullRequestGitHub{}}),
 			Entry("gitlab", "pr-azuredevops-gitlab", &PullRequest{AzureDevOps: &PullRequestAzureDevOps{}, GitLab: &PullRequestGitLab{}}),
 			Entry("github and gitlab", "pr-all-providers", &PullRequest{AzureDevOps: &PullRequestAzureDevOps{}, GitHub: &PullRequestGitHub{}, GitLab: &PullRequestGitLab{}}),
+		)
+
+		DescribeTable("should reject gitea with another provider", func(name string, pr *PullRequest) {
+			cr := baseWithPR(name, pr)
+			err := k8sClient.Create(context.Background(), cr)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("Exactly one of github, gitlab, azuredevops, or gitea must be set"))
+		},
+			Entry("github", "pr-gitea-github", &PullRequest{Gitea: &PullRequestGitea{}, GitHub: &PullRequestGitHub{}}),
+			Entry("gitlab", "pr-gitea-gitlab", &PullRequest{Gitea: &PullRequestGitea{}, GitLab: &PullRequestGitLab{}}),
+			Entry("azuredevops", "pr-gitea-azuredevops", &PullRequest{Gitea: &PullRequestGitea{}, AzureDevOps: &PullRequestAzureDevOps{}}),
+			Entry("all providers", "pr-gitea-all-providers", &PullRequest{Gitea: &PullRequestGitea{}, GitHub: &PullRequestGitHub{}, GitLab: &PullRequestGitLab{}, AzureDevOps: &PullRequestAzureDevOps{}}),
 		)
 	})
 

@@ -3579,6 +3579,19 @@ func Test_newWBCFromSettings(t *testing.T) {
 		assert.Equal(t, PRProviderAzureDevOps, wbc.PRProvider)
 	})
 
+	t.Run("pullRequest gitea should set PRProviderGitea", func(t *testing.T) {
+		app, kubeClient := createTestAppAndClient()
+		settings := &api.WriteBackConfig{
+			Method: new("git"),
+			GitConfig: &api.GitConfig{
+				PullRequest: &api.PullRequest{Gitea: &api.PullRequestGitea{}},
+			},
+		}
+		wbc, err := newWBCFromSettings(context.Background(), app, kubeClient, nil, settings)
+		assert.NoError(t, err)
+		assert.Equal(t, PRProviderGitea, wbc.PRProvider)
+	})
+
 	t.Run("pullRequest with both providers should error", func(t *testing.T) {
 		app, kubeClient := createTestAppAndClient()
 		settings := &api.WriteBackConfig{
@@ -5412,9 +5425,14 @@ func Test_countPullRequestProviders(t *testing.T) {
 			expected: 1,
 		},
 		{
+			name:     "only Gitea",
+			pr:       &api.PullRequest{Gitea: &api.PullRequestGitea{}},
+			expected: 1,
+		},
+		{
 			name:     "all providers",
-			pr:       &api.PullRequest{GitHub: &api.PullRequestGitHub{}, GitLab: &api.PullRequestGitLab{}, AzureDevOps: &api.PullRequestAzureDevOps{}},
-			expected: 3,
+			pr:       &api.PullRequest{GitHub: &api.PullRequestGitHub{}, GitLab: &api.PullRequestGitLab{}, AzureDevOps: &api.PullRequestAzureDevOps{}, Gitea: &api.PullRequestGitea{}},
+			expected: 4,
 		},
 	}
 
