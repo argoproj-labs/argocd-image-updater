@@ -406,6 +406,16 @@ func Test_UpdateApplication(t *testing.T) {
 			},
 		}
 
+		settings := &iuapi.ManifestTarget{
+			Kustomize: &iuapi.KustomizeTarget{},
+		}
+
+		img, err := newImageFromManifestTargetSettings(settings, &Image{
+			ContainerImage:     image.NewFromIdentifier("jannfis/barbar:~1.0.0"),
+			KustomizeImageName: "kustomize-image",
+		})
+		assert.NoError(t, err)
+
 		appImages := &ApplicationImages{
 			Application: v1alpha1.Application{
 				ObjectMeta: v1.ObjectMeta{
@@ -445,10 +455,7 @@ func Test_UpdateApplication(t *testing.T) {
 				},
 			},
 			Images: ImageList{
-				&Image{
-					ContainerImage:     image.NewFromIdentifier("jannfis/barbar:~1.0.0"),
-					KustomizeImageName: "kustomize-image",
-				},
+				img,
 			},
 			WriteBackConfig: &WriteBackConfig{
 				Method: WriteBackApplication,

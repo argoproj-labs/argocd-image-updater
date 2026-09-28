@@ -388,8 +388,11 @@ func needsUpdate(updateableImage *image.ContainerImage, applicationImage *image.
 // It determines the application type (Kustomize, Helm, or Plugin) and calls the
 // appropriate function to extract the image information.
 func getAppImage(ctx context.Context, app *v1alpha1.Application, wbc *WriteBackConfig, applicationImage *Image) (string, error) {
+	if applicationImage.PluginEnvName != "" || applicationImage.PluginEnvSpec != "" {
+		return GetPluginImage(ctx, app, wbc, applicationImage)
+	}
 	targetApplicationType := getTargetApplicationType(app, wbc, applicationImage)
-	err := setApplicationTypeInWBC(wbc, targetApplicationType)
+	err := setManifestTargetInWBC(wbc, targetApplicationType)
 	if err != nil {
 		return "", err
 	}
@@ -404,7 +407,7 @@ func getAppImage(ctx context.Context, app *v1alpha1.Application, wbc *WriteBackC
 	default:
 		img, err = "", fmt.Errorf("could not update application %s - unsupported application type", app)
 	}
-	_err := resetApplicationTypeInWBC(wbc)
+	_err := resetManifestTargetInWBC(wbc)
 	if _err != nil {
 		return "", fmt.Errorf("failed to set application type in WriteBackConfig: %v", _err)
 	}
@@ -415,8 +418,11 @@ func getAppImage(ctx context.Context, app *v1alpha1.Application, wbc *WriteBackC
 // It calls the appropriate function to perform the update.
 // Returns an error if the application type is unsupported, or if the update fails.
 func setAppImage(ctx context.Context, app *v1alpha1.Application, img *image.ContainerImage, wbc *WriteBackConfig, applicationImage *Image) error {
+	if applicationImage.PluginEnvName != "" || applicationImage.PluginEnvSpec != "" {
+		return SetPluginImage(ctx, app, img, wbc, applicationImage)
+	}
 	targetApplicationType := getTargetApplicationType(app, wbc, applicationImage)
-	err := setApplicationTypeInWBC(wbc, targetApplicationType)
+	err := setManifestTargetInWBC(wbc, targetApplicationType)
 	if err != nil {
 		return err
 	}
@@ -430,7 +436,7 @@ func setAppImage(ctx context.Context, app *v1alpha1.Application, img *image.Cont
 	default:
 		err = fmt.Errorf("could not update application %s - unsupported application type", app)
 	}
-	_err := resetApplicationTypeInWBC(wbc)
+	_err := resetManifestTargetInWBC(wbc)
 	if _err != nil {
 		return fmt.Errorf("failed to set application type in WriteBackConfig: %v", _err)
 	}
@@ -438,27 +444,27 @@ func setAppImage(ctx context.Context, app *v1alpha1.Application, img *image.Cont
 }
 
 func getTargetApplicationType(app *v1alpha1.Application, wbc *WriteBackConfig, applicationImage *Image) ApplicationType {
-	// try to infer the application type from the image's manifest target fields first
+	// infer the application type from the image's manifest target fields first
 	// if the type cannot be inferred, fall back to the application source type
-	targetApplicationType := applicationImage.GetType()
+	targetApplicationType := applicationImage.GetTargetType()
 	if targetApplicationType == ApplicationTypeUnsupported {
 		targetApplicationType = getApplicationType(app, wbc)
 	}
 	return targetApplicationType
 }
 
-func setApplicationTypeInWBC(wbc *WriteBackConfig, applicationType ApplicationType) error {
+func setManifestTargetInWBC(wbc *WriteBackConfig, applicationType ApplicationType) error {
 	if wbc == nil {
 		return fmt.Errorf("WriteBackConfig is nil")
 	}
-	if wbc.ApplicationType != applicationType {
-		wbc.ApplicationType = applicationType
+	if wbc.ManifestTarget != applicationType {
+		wbc.ManifestTarget = applicationType
 	}
 	return nil
 }
 
-func resetApplicationTypeInWBC(wbc *WriteBackConfig) error {
-	return setApplicationTypeInWBC(wbc, ApplicationTypeUnsupported)
+func resetManifestTargetInWBC(wbc *WriteBackConfig) error {
+	return setManifestTargetInWBC(wbc, ApplicationTypeUnsupported)
 }
 
 // marshalWithIndent marshals in to YAML with the given indent, optionally

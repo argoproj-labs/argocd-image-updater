@@ -35,7 +35,7 @@ func GetKubeConfig(ctx context.Context, namespace string, kubeConfig string) (*k
 
 // Infer the type of the application based on the image's manifest target fields.
 // If no type can be inferred, return ApplicationTypeUnsupported
-func (image Image) GetType() ApplicationType {
+func (image Image) GetTargetType() ApplicationType {
 	if image.HelmImageName != "" || image.HelmImageTag != "" || image.HelmImageSpec != "" {
 		return ApplicationTypeHelm
 	}

@@ -117,7 +117,7 @@ type WriteBackConfig struct {
 	PRProvider             PRProvider
 	PRLabels               []string
 	PullRequest            *PullRequest
-	ApplicationType        ApplicationType
+	ManifestTarget         ApplicationType
 }
 
 // WriteBackTargetKey returns a short hash that uniquely identifies the
