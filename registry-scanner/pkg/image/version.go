@@ -23,6 +23,8 @@ const (
 	StrategyAlphabetical UpdateStrategy = 2
 	// StrategyDigest defines the digest strategy.
 	StrategyDigest UpdateStrategy = 3
+	// StrategyCalVer defines the calver strategy.
+	StrategyCalVer UpdateStrategy = 4
 )
 
 // String returns the string representation of the update strategy.
@@ -36,6 +38,8 @@ func (us UpdateStrategy) String() string {
 		return "alphabetical"
 	case StrategyDigest:
 		return "digest"
+	case StrategyCalVer:
+		return "calver"
 	}
 
 	return "unknown"
@@ -78,11 +82,44 @@ func NewVersionConstraint() *VersionConstraint {
 	}
 }
 
+// ValidateUpdateStrategy reports whether strategy can work with the tag the
+// image is configured with. It exists so that a mistake in the configuration
+// is reported when the configuration is read, rather than once per cycle after
+// a needless round-trip to the registry.
+//
+// Only the calver strategy has anything to check: it reads the configured tag
+// as the layout of the tags in the registry, and a layout that cannot be
+// parsed can never match anything.
+func (img *ContainerImage) ValidateUpdateStrategy(strategy UpdateStrategy) error {
+	if strategy != StrategyCalVer {
+		return nil
+	}
+	var layout string
+	if img.ImageTag != nil {
+		layout = img.ImageTag.TagName
+	}
+	_, err := tag.NewCalVerLayout(layout)
+	return err
+}
+
 // GetNewestVersionFromTags returns the latest available version from a list of
 // tags while optionally taking a semver constraint into account. Returns nil
 // if no suitable version could be found or the registry returned no tags.
 func (img *ContainerImage) GetNewestVersionFromTags(ctx context.Context, vc *VersionConstraint, tagList *tag.ImageTagList) (*tag.ImageTag, error) {
 	logCtx := log.LoggerFromContext(ctx)
+
+	// The calver strategy reads the constraint as the layout of the tags, so
+	// it has to be parsed before the tags can be sorted.
+	var calVerLayout *tag.CalVerLayout
+	if vc.Strategy == StrategyCalVer {
+		var err error
+		calVerLayout, err = tag.NewCalVerLayout(vc.Constraint)
+		if err != nil {
+			logCtx.Errorf("the calver strategy reads the image tag as a tag layout, and this one is not valid: %v", err)
+			return nil, err
+		}
+		logCtx.Debugf("using calver layout %s", calVerLayout)
+	}
 
 	var availableTags tag.SortableImageTagList
 	switch vc.Strategy {
@@ -94,6 +131,8 @@ func (img *ContainerImage) GetNewestVersionFromTags(ctx context.Context, vc *Ver
 		availableTags = tagList.SortByDate()
 	case StrategyDigest:
 		availableTags = tagList.SortAlphabetically()
+	case StrategyCalVer:
+		availableTags = tagList.SortByCalVer(ctx, calVerLayout)
 	}
 
 	considerTags := tag.SortableImageTagList{}
@@ -101,7 +140,14 @@ func (img *ContainerImage) GetNewestVersionFromTags(ctx context.Context, vc *Ver
 	// It makes no sense to proceed if we have no available tags
 	if len(availableTags) == 0 {
 		if len(tagList.Tags()) > 0 {
-			logCtx.Warnf("no tags for image %s matched by the %s strategy", img.GetFullNameWithoutTag(), vc.Strategy)
+			if calVerLayout != nil {
+				// For calver the layout is the likeliest reason nothing
+				// matched, so naming the strategy alone would send the reader
+				// looking in the wrong place.
+				logCtx.Warnf("no tags for image %s matched the calver layout %s", img.GetFullNameWithoutTag(), calVerLayout)
+			} else {
+				logCtx.Warnf("no tags for image %s matched by the %s strategy", img.GetFullNameWithoutTag(), vc.Strategy)
+			}
 		} else {
 			logCtx.Warnf("no tags found for image %s in registry", img.GetFullNameWithoutTag())
 		}

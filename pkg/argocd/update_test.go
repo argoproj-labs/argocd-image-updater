@@ -124,6 +124,61 @@ func Test_UpdateApplication(t *testing.T) {
 		assert.Equal(t, 2, res.NumImagesUpdated)
 	})
 
+	t.Run("Image whose manifest target does not match the application type is reported", func(t *testing.T) {
+		// A per-image plugin target on a Helm application makes getAppImage route to
+		// GetPluginImage, which rejects the non-plugin app. The image cannot be updated,
+		// so the run must say so - skipping quietly leaves the image permanently stuck
+		// with nothing in the logs and a clean error count.
+		mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
+			regMock := regmock.RegistryClient{}
+			regMock.On("NewRepository", mock.Anything, mock.Anything).Return(nil)
+			regMock.On("Tags", mock.Anything).Return([]string{"1.0.2", "1.0.3"}, nil)
+			return &regMock, nil
+		}
+
+		argoClient := argomock.ArgoCD{}
+		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+
+		kubeClient := kube.ImageUpdaterKubernetesClient{
+			KubeClient: &registryKube.KubernetesClient{
+				Clientset: fake.NewFakeKubeClient(),
+			},
+		}
+
+		img := NewImage(image.NewFromIdentifier("foobar=gcr.io/jannfis/foobar:>=1.0.1"))
+		img.PluginEnvName = "IMAGE_NAME"
+		img.PluginEnvTag = "IMAGE_TAG"
+
+		appImages := &ApplicationImages{
+			Application: v1alpha1.Application{
+				ObjectMeta: v1.ObjectMeta{Name: "guestbook", Namespace: "guestbook"},
+				Spec: v1alpha1.ApplicationSpec{
+					Source: &v1alpha1.ApplicationSource{
+						Helm: &v1alpha1.ApplicationSourceHelm{},
+					},
+				},
+				Status: v1alpha1.ApplicationStatus{
+					SourceType: v1alpha1.ApplicationSourceTypeHelm,
+					Summary: v1alpha1.ApplicationSummary{
+						Images: []string{"gcr.io/jannfis/foobar:1.0.1"},
+					},
+				},
+			},
+			WriteBackConfig: &WriteBackConfig{Method: WriteBackApplication},
+			Images:          ImageList{img},
+		}
+		res := UpdateApplication(context.Background(), &UpdateConfiguration{
+			NewRegFN:   mockClientFn,
+			ArgoClient: &argoClient,
+			KubeClient: &kubeClient,
+			UpdateApp:  appImages,
+			DryRun:     false,
+		}, NewSyncIterationState())
+		assert.Equal(t, 1, res.NumImagesConsidered)
+		assert.Equal(t, 0, res.NumImagesUpdated)
+		assert.Equal(t, 1, res.NumErrors)
+	})
+
 	t.Run("Update app w/ GitHub App creds", func(t *testing.T) {
 		mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
 			regMock := regmock.RegistryClient{}
@@ -3804,6 +3859,50 @@ replicas: 1
 		yaml, err := marshalParamsOverride(context.Background(), applicationImages, originalData)
 		require.NoError(t, err)
 		assert.NotEmpty(t, yaml)
+	})
+
+	t.Run("SourceHydrator app with helmvalues write-back-target renders the new tag", func(t *testing.T) {
+		// End-to-end form of https://github.com/argoproj-labs/argocd-image-updater/issues/1809.
+		// setAppImage stages the new tag and marshalParamsOverride reads the source back a
+		// second time to build the diff; before the fix that second read saw an unmodified
+		// DrySource, fell back to the live (old) tag, and produced a file identical to the
+		// one already committed - so the updater logged success but never pushed anything.
+		app := v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{Name: "myapp", Namespace: "argocd"},
+			Spec: v1alpha1.ApplicationSpec{
+				SourceHydrator: &v1alpha1.SourceHydrator{
+					DrySource: v1alpha1.DrySource{
+						RepoURL:        "https://example.com/repo.git",
+						Path:           "chart",
+						TargetRevision: "main",
+					},
+					SyncSource: v1alpha1.SyncSource{TargetBranch: "env/dev", Path: "chart"},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				// Argo CD reports the sync source (rendered manifests) here, not the dry source.
+				SourceType: v1alpha1.ApplicationSourceTypeDirectory,
+				Summary:    v1alpha1.ApplicationSummary{Images: []string{"nginx:1.0.0"}},
+			},
+		}
+
+		im := NewImage(image.NewFromIdentifier("nginx=nginx:1.0.0"))
+		im.HelmImageName = "image.name"
+		im.HelmImageTag = "image.tag"
+		wbc := &WriteBackConfig{Method: WriteBackGit, Target: "./values.yaml"}
+
+		require.Equal(t, ApplicationTypeHelm, GetApplicationType(&app, wbc))
+		require.NoError(t, setAppImage(context.Background(), &app,
+			image.NewFromIdentifier("nginx=nginx:1.1.0"), wbc, im))
+
+		originalData := []byte("image:\n  name: nginx\n  tag: 1.0.0\n")
+		yaml, err := marshalParamsOverride(context.Background(), &ApplicationImages{
+			Application:     app,
+			Images:          ImageList{im},
+			WriteBackConfig: wbc,
+		}, originalData)
+		require.NoError(t, err)
+		assert.Equal(t, "image:\n  name: nginx\n  tag: 1.1.0\n", string(yaml))
 	})
 
 	t.Run("Default image-name for helmvalues write-back-target when only image-tag is set", func(t *testing.T) {

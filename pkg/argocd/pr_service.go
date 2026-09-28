@@ -21,6 +21,8 @@ const (
 	PRProviderGitHub
 	// PRProviderGitLab opens merge requests via the GitLab REST API.
 	PRProviderGitLab
+	// PRProviderAzureDevOps opens pull requests via the Azure DevOps REST API.
+	PRProviderAzureDevOps
 )
 
 // PRBranchTemplate is the Go template used to produce a deterministic head
@@ -108,6 +110,11 @@ func buildPullRequest(ctx context.Context, wbc *WriteBackConfig, appNamespace, a
 // an existing open PR. When one is found the entire clone/marshal/push cycle
 // is skipped, avoiding unnecessary work on every reconciliation while a PR is
 // pending review.
+//
+// If commitChangesGit reports that nothing was pushed — the write-back produced
+// no changes (e.g. forceUpdate re-evaluated an image that already matches the
+// target) and the head branch was created locally in this call — no PR/MR is
+// opened, because the branch does not exist on the remote.
 func commitChangesPR(ctx context.Context, applicationImages *ApplicationImages, changeList []ChangeEntry, write changeWriter) error {
 	logCtx := log.LoggerFromContext(ctx)
 	app := applicationImages.Application
@@ -142,9 +149,18 @@ func commitChangesPR(ctx context.Context, applicationImages *ApplicationImages, 
 	}
 
 	// Push the image update commit to the head branch first.
-	err = commitChangesGit(ctx, applicationImages, changeList, write)
+	nothingPushed, err := commitChangesGit(ctx, applicationImages, changeList, write)
 	if err != nil {
 		return err
+	}
+	if nothingPushed {
+		// The head branch exists only in the local clone, so there is nothing
+		// for a PR/MR to point at. A head branch that is already on the remote
+		// carries the desired change even when this cycle wrote no diff, so
+		// commitChangesGit reports false for it and the PR/MR below is still
+		// opened — which is what recreates a PR after an earlier create() call
+		// failed with the branch already pushed.
+		return nil
 	}
 
 	if wbc.PullRequest == nil {
@@ -180,6 +196,20 @@ func commitChangesPR(ctx context.Context, applicationImages *ApplicationImages, 
 		}
 		return nil
 
+	case PRProviderAzureDevOps:
+		g, err := NewAzureDevOpsPRService(ctx, wbc, tokenProvider)
+		if err != nil {
+			return err
+		}
+
+		if err := g.create(ctx); err != nil {
+			if errors.Is(err, ErrPRAlreadyExists) {
+				return nil
+			}
+			return err
+		}
+		return nil
+
 	default:
 		return fmt.Errorf("unsupported PR provider: %d", wbc.PRProvider)
 	}
@@ -205,6 +235,8 @@ func skipIfPRExists(ctx context.Context, wbc *WriteBackConfig, tokenProvider git
 		svc, svcErr = NewGithubPRService(ctx, wbc, tokenProvider)
 	case PRProviderGitLab:
 		svc, svcErr = NewGitLabMRService(ctx, wbc, tokenProvider)
+	case PRProviderAzureDevOps:
+		svc, svcErr = NewAzureDevOpsPRService(ctx, wbc, tokenProvider)
 	default:
 		return false, fmt.Errorf("unsupported PR provider: %d", wbc.PRProvider)
 	}

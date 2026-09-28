@@ -177,6 +177,17 @@ kubectl -n argocd-image-updater create secret generic git-creds \
   --from-literal=password=somepassword
 ```
 
+By default, TLS certificate verification is skipped for user credentials. To
+verify the server certificate against the system trust store, add
+`insecure: "false"` to the secret:
+
+```bash
+kubectl -n argocd-image-updater create secret generic git-creds \
+  --from-literal=username=someuser \
+  --from-literal=password=somepassword \
+  --from-literal=insecure=false
+```
+
 If the repository is accessed using GitHub app credentials, the secret requires three fields `githubAppID` which holds the GitHub Application ID, `githubAppInstallationID` which holds the GitHub Organization Installation ID, and `githubAppPrivateKey` which holds the GitHub Application private key. The GitHub Application must be installed into the target repository with write access.
 You can generate such a secret using `kubectl`, e.g.:
 
@@ -229,6 +240,29 @@ format. To create such a secret from an existing private key, you can use
 kubectl -n argocd-image-updater create secret generic git-creds \
   --from-file=sshPrivateKey=~/.ssh/id_rsa
 ```
+
+By default, SSH host key verification is skipped for secret-based SSH
+credentials, and every push logs a warning saying so. To verify host keys,
+add `insecure: "false"` to the secret:
+
+```bash
+kubectl -n argocd-image-updater create secret generic git-creds \
+  --from-file=sshPrivateKey=~/.ssh/id_rsa \
+  --from-literal=insecure=false
+```
+
+With verification enabled, host keys are checked against the
+`argocd-ssh-known-hosts-cm` ConfigMap, which the default installation mounts
+at `/app/config/ssh`. The Git host must be listed there, or the push fails.
+Argo CD ships this ConfigMap with keys for common hosts such as GitHub and
+GitLab; add your own hosts to it as you would for Argo CD itself.
+
+!!!note
+    The optional `insecure` field defaults to `"true"` for SSH and
+    username/password secrets. This keeps existing setups working unchanged.
+    For these secrets, an invalid value keeps the default and logs a
+    warning. GitHub App secrets default to `"false"`, and an invalid value
+    there also falls back to `"false"`, without a warning.
 
 ### <a name="method-git-repository"></a>Specifying a repository when using a Helm repository in repoURL
 
@@ -559,7 +593,7 @@ If no custom commit message template is configured the defaults are:
 * **Body**: `This pull request was created automatically by argocd-image-updater for application <namespace>/<appName>.`
 
 Titles longer than 255 characters and bodies longer than 65 536 characters are
-truncated automatically.
+truncated automatically. Azure DevOps bodies are limited to 4 000 characters.
 
 To customise the title and body, configure the
 [commit message template](#method-git-commit-message).
@@ -582,10 +616,13 @@ writeBackConfig:
         - automated
 ```
 
-The field applies to both providers, but they behave slightly differently:
+The field applies to all providers, but they behave slightly differently:
 
 * **GitLab** sets the labels in the same API call that creates the merge
   request, and creates any label that does not yet exist in the project.
+* **Azure DevOps** applies labels in separate API calls after creating the
+  pull request. If a call fails, a warning is logged and the remaining labels
+  are still attempted. The update is still treated as successful.
 * **GitHub** has no labels field on its PR creation API, so labels are applied
   in a follow-up call once the PR exists. If that call fails (for example when
   the token lacks issue write permission) a warning is logged and the update is
@@ -653,6 +690,28 @@ writeBackConfig:
     pullRequest:
       gitlab: {}
 ```
+
+#### Azure DevOps
+
+For Azure Repos Git, configure `pullRequest.azuredevops`:
+
+```yaml
+writeBackConfig:
+  method: "git:secret:azure-devops-creds"
+  gitConfig:
+    repository: "https://dev.azure.com/organization/project/_git/repository"
+    branch: "main"
+    pullRequest:
+      azuredevops: {}
+```
+
+Supports `dev.azure.com`, `organization.visualstudio.com`, and Azure DevOps Server
+[2022.1 or newer](https://learn.microsoft.com/en-us/rest/api/azure/devops/#api-and-tfs-version-mapping).
+The API URL is derived from the repository URL, which must use HTTPS.
+
+Use an HTTPS secret with a `username` and a PAT in `password`.
+The PAT needs **Code (Read & write)** scope, and its owner must be able to push
+branches and create pull requests.
 
 ### <a name="method-git-commit-user"></a>Specifying the user and email address for commits
 

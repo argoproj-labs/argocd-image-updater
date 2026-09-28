@@ -477,6 +477,9 @@ func countPullRequestProviders(pr *iuapi.PullRequest) int {
 	if pr.GitLab != nil {
 		count++
 	}
+	if pr.AzureDevOps != nil {
+		count++
+	}
 	return count
 }
 
@@ -652,6 +655,9 @@ func newWBCFromSettings(ctx context.Context, app *argocdapi.Application, kubeCli
 			if settings.GitConfig.PullRequest.GitLab != nil {
 				wbc.PRProvider = PRProviderGitLab
 			}
+			if settings.GitConfig.PullRequest.AzureDevOps != nil {
+				wbc.PRProvider = PRProviderAzureDevOps
+			}
 
 			wbc.PRLabels = sanitizePRLabels(settings.GitConfig.PullRequest.Labels)
 		}
@@ -777,6 +783,16 @@ func parseImageList(ctx context.Context, kubeClient *kube.ImageUpdaterKubernetes
 		}
 
 		img.ContainerImage = image.NewFromIdentifier(im.Alias + "=" + im.ImageName)
+
+		// Catch a strategy that cannot work with the tag the image is
+		// configured with while the configuration is being read. This runs
+		// every cycle, like the rest of this function, but it fails before the
+		// registry is asked for anything, which is what the round-trip per
+		// cycle would otherwise cost.
+		if err := img.ContainerImage.ValidateUpdateStrategy(img.UpdateStrategy); err != nil {
+			log.Warnf("Skipping image %s: the %s strategy reads the tag as its layout, and this one cannot be used: %v", im.ImageName, img.UpdateStrategy, err)
+			continue
+		}
 
 		// Check if any of the images match the webhook event
 		if webhookEvent != nil {
@@ -986,6 +1002,8 @@ func SetHelmImage(ctx context.Context, app *argocdapi.Application, newImage *ima
 
 	appSource.Helm.Parameters = mergeHelmParams(appSource.Helm.Parameters, mergeParams)
 
+	persistSourceHydratorMutation(app, appSource)
+
 	return nil
 }
 
@@ -1078,6 +1096,8 @@ func SetKustomizeImage(ctx context.Context, app *argocdapi.Application, newImage
 
 	appSource.Kustomize.MergeImage(argocdapi.KustomizeImage(ksImageParam))
 
+	persistSourceHydratorMutation(app, appSource)
+
 	return nil
 }
 
@@ -1168,6 +1188,8 @@ func SetPluginImage(ctx context.Context, app *argocdapi.Application, newImage *i
 			}
 		}
 	}
+
+	persistSourceHydratorMutation(app, appSource)
 
 	return nil
 }
@@ -1337,16 +1359,24 @@ func getApplicationSourceType(app *argocdapi.Application, wbc *WriteBackConfig) 
 	// For SourceHydrator apps, Status.SourceType reflects the sync source (typically
 	// "Directory" since it syncs rendered manifests), not the dry source. If the DrySource
 	// has explicit Helm/Kustomize/Plugin config, use that to determine the actual type.
+	//
+	// Plugin is checked first: a CMP is only ever configured explicitly, while a Helm or
+	// Kustomize block can be one we added ourselves. persistSourceHydratorMutation writes
+	// the staged parameters back into the DrySource, and on a plugin app with git
+	// write-back SetHelmImage is the serializer for images that use manifestTargets.helm
+	// (see getApplicationType), so DrySource.Helm can become non-nil mid-cycle. Checking
+	// Helm first would reclassify the app as Helm from that point on and make the next
+	// SetPluginImage/GetPluginImage for an image with manifestTargets.plugin fail.
 	if app.Spec.SourceHydrator != nil {
 		ds := app.Spec.SourceHydrator.DrySource
+		if ds.Plugin != nil {
+			return argocdapi.ApplicationSourceTypePlugin
+		}
 		if ds.Helm != nil {
 			return argocdapi.ApplicationSourceTypeHelm
 		}
 		if ds.Kustomize != nil {
 			return argocdapi.ApplicationSourceTypeKustomize
-		}
-		if ds.Plugin != nil {
-			return argocdapi.ApplicationSourceTypePlugin
 		}
 	}
 
@@ -1421,4 +1451,24 @@ func getApplicationSource(ctx context.Context, app *argocdapi.Application, wbc *
 	}
 
 	return app.Spec.Source
+}
+
+// persistSourceHydratorMutation writes Helm/Kustomize/Plugin mutations made on the
+// ApplicationSource returned by getApplicationSource back into the application's
+// SourceHydrator DrySource. For SourceHydrator apps, getApplicationSource returns a
+// pointer to a throwaway local copy (there is no single real ApplicationSource field
+// to alias), so any Set*Image call that assigns a brand-new Helm/Kustomize/Plugin
+// pointer into that copy would otherwise be silently discarded once the function
+// returns, and the mutation would never make it into the diff computed for write-back.
+// No-op for non-SourceHydrator apps. That covers both single-source apps, where
+// getApplicationSource returns a pointer straight into app.Spec.Source, and
+// multi-source apps, where it returns a pointer into app.Spec.Sources[i]; since
+// HasMultipleSources requires SourceHydrator == nil, the two cases never overlap.
+func persistSourceHydratorMutation(app *argocdapi.Application, appSource *argocdapi.ApplicationSource) {
+	if app.Spec.SourceHydrator == nil {
+		return
+	}
+	app.Spec.SourceHydrator.DrySource.Helm = appSource.Helm
+	app.Spec.SourceHydrator.DrySource.Kustomize = appSource.Kustomize
+	app.Spec.SourceHydrator.DrySource.Plugin = appSource.Plugin
 }

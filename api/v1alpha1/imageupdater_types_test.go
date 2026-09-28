@@ -724,18 +724,27 @@ var _ = Describe("PullRequest Validation", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(k8sClient.Delete(context.Background(), cr)).To(Succeed())
 		})
-	})
 
-	Context("when zero providers are set", func() {
-		It("should reject pullRequest with neither github nor gitlab", func() {
-			cr := baseWithPR("pr-no-provider", &PullRequest{})
+		It("should accept pullRequest with only azuredevops", func() {
+			cr := baseWithPR("pr-azuredevops-only", &PullRequest{
+				AzureDevOps: &PullRequestAzureDevOps{},
+			})
 			err := k8sClient.Create(context.Background(), cr)
-			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("Exactly one of github or gitlab must be set"))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(k8sClient.Delete(context.Background(), cr)).To(Succeed())
 		})
 	})
 
-	Context("when both providers are set", func() {
+	Context("when zero providers are set", func() {
+		It("should reject pullRequest with no provider", func() {
+			cr := baseWithPR("pr-no-provider", &PullRequest{})
+			err := k8sClient.Create(context.Background(), cr)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("Exactly one of github, gitlab, or azuredevops must be set"))
+		})
+	})
+
+	Context("when multiple providers are set", func() {
 		It("should reject pullRequest with both github and gitlab", func() {
 			cr := baseWithPR("pr-both-providers", &PullRequest{
 				GitHub: &PullRequestGitHub{},
@@ -743,8 +752,19 @@ var _ = Describe("PullRequest Validation", func() {
 			})
 			err := k8sClient.Create(context.Background(), cr)
 			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("Exactly one of github or gitlab must be set"))
+			Expect(err.Error()).To(ContainSubstring("Exactly one of github, gitlab, or azuredevops must be set"))
 		})
+
+		DescribeTable("should reject azuredevops with another provider", func(name string, pr *PullRequest) {
+			cr := baseWithPR(name, pr)
+			err := k8sClient.Create(context.Background(), cr)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("Exactly one of github, gitlab, or azuredevops must be set"))
+		},
+			Entry("github", "pr-azuredevops-github", &PullRequest{AzureDevOps: &PullRequestAzureDevOps{}, GitHub: &PullRequestGitHub{}}),
+			Entry("gitlab", "pr-azuredevops-gitlab", &PullRequest{AzureDevOps: &PullRequestAzureDevOps{}, GitLab: &PullRequestGitLab{}}),
+			Entry("github and gitlab", "pr-all-providers", &PullRequest{AzureDevOps: &PullRequestAzureDevOps{}, GitHub: &PullRequestGitHub{}, GitLab: &PullRequestGitLab{}}),
+		)
 	})
 
 	Context("when labels are set", func() {

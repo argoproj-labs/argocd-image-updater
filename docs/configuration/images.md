@@ -65,11 +65,8 @@ in the
 of the [Semver library](https://github.com/Masterminds/semver) we're using.
 
 !!!note
-    If you use an [update strategy](#update-strategies) other than `semver` or
-    `digest`, the `version_constraint` will not have any effect and all tags
-    returned from the registry will be considered for update. If you need to
-    further restrict the list of tags to consider, see [filtering tags](#filtering-tags)
-    below.
+    If you use an [update strategy](#update-strategies) other than `semver`, `digest` or `calver`, the `version_constraint` will not have any effect and all tags returned from the registry will be considered for update. 
+    The `calver` strategy reads it as the [tag layout](../basics/update-strategies.md#strategy-calver) rather than as a version constraint. If you need to further restrict the list of tags to consider, see [filtering tags](#filtering-tags) below.
 
 ### Forcing Image Updates
 
@@ -133,6 +130,7 @@ Argo CD Image Updater can update images according to the following strategies:
 | `newest-build`        | Update to the tag with the most recent creation date (deprecated alias: `latest`) |
 | `alphabetical`        | Update to the tag with the latest entry from an alphabetically sorted list (deprecated alias: `name`) |
 | `digest`              | Update to the most recent pushed version of a mutable tag                  |
+| `calver`              | Update to the newest tag of a calendar versioning scheme, e.g. `vYYYY-0M-0D` |
 
 You can define the update strategy for each image independently by setting the
 following annotation to an appropriate value:
@@ -804,7 +802,7 @@ update strategies and set options for images.
 
 | Field            | Type     | Default    | Description                                                                     |
 |------------------|----------|------------|---------------------------------------------------------------------------------|
-| `updateStrategy` | string   | `"semver"` | Update strategy: `semver`, `newest-build`, `digest`, `alphabetical`. Deprecated aliases `latest` (for `newest-build`) and `name` (for `alphabetical`) are still accepted but may be removed in a future release. |
+| `updateStrategy` | string   | `"semver"` | Update strategy: `semver`, `newest-build`, `digest`, `alphabetical`, `calver`. Deprecated aliases `latest` (for `newest-build`) and `name` (for `alphabetical`) are still accepted but may be removed in a future release. |
 | `forceUpdate`    | bool     | `false`    | Force updates even if image is not currently deployed                           |
 | `allowTags`      | string   | *none*     | Regex pattern for tags to allow                                                 |
 | `ignoreTags`     | []string | *none*     | List of glob patterns for tags to ignore                                        |
@@ -854,9 +852,10 @@ More specific scopes override less specific ones; absent fields are inherited fr
 |----------|-------------------|----------|------------------------------------------------------------------------|
 | `github` | PullRequestGitHub | No       | GitHub configures PR creation via the GitHub API.                    |
 | `gitlab` | PullRequestGitLab | No       | GitLab configures MR creation via the GitLab API.                    |
-| `labels` | []string          | No       | Labels to apply to the created pull/merge request (max 100 entries). |
+| `azuredevops` | PullRequestAzureDevOps | No | Azure DevOps configures PR creation via the Azure DevOps API. |
+| `labels` | []string          | No       | Labels to apply to the created pull/merge request (max 100 entries). See [PR labels](../basics/update-methods.md#pr-labels) for provider-specific behavior. |
 
-Exactly one provider must be configured in `pullRequest`.
+Exactly one of `github`, `gitlab`, or `azuredevops` must be configured in `pullRequest`.
 
 #### PullRequestGitHub fields
 
@@ -869,6 +868,15 @@ Exactly one provider must be configured in `pullRequest`.
 | Field | Type | Required | Description                                                                  |
 |-------|------|----------|------------------------------------------------------------------------------|
 | —     | —    | —        | No configurable fields. All required data (repository URL, branch, credentials) is taken from the enclosing `gitConfig` and `writeBackConfig.method`. |
+
+#### PullRequestAzureDevOps fields
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| —     | —    | —        | No configurable fields. All required data (repository URL, branch, credentials) is taken from the enclosing `gitConfig` and `writeBackConfig.method`. |
+
+See [Azure DevOps](../basics/update-methods.md#azure-devops) for repository URL
+and credential requirements.
 
 #### ManifestTargets fields
 

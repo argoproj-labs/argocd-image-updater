@@ -2,6 +2,7 @@ package argocd
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"testing"
 	"text/template"
@@ -762,12 +763,72 @@ func Test_commitChangesGit_APIMethodFallsBackWithoutAppCreds(t *testing.T) {
 		return nil, false
 	}
 
-	err := commitChangesGit(context.Background(), appImages, nil, noopWriter)
+	nothingPushed, err := commitChangesGit(context.Background(), appImages, nil, noopWriter)
 	require.NoError(t, err)
+	assert.False(t, nothingPushed)
 	gitMock.AssertCalled(t, "Commit", "", mock.Anything)
 	gitMock.AssertCalled(t, "Push", "origin", "main", false)
 	// The API commit path must not have been taken.
 	gitMock.AssertNotCalled(t, "WorkingTreeChanges")
+}
+
+// Test_commitChangesGit_NothingPushed verifies that the returned flag reports
+// whether anything reached the remote, not merely whether the change writer
+// skipped. A head branch created locally in this call does not exist on the
+// remote; one fetched from the remote already carries the desired change.
+func Test_commitChangesGit_NothingPushed(t *testing.T) {
+	skipWriter := func(ctx context.Context, ai *ApplicationImages, gitC git.Client) (error, bool) {
+		return nil, true
+	}
+
+	newWBC := func(gitC git.Client) *WriteBackConfig {
+		return &WriteBackConfig{
+			Method:         WriteBackGit,
+			GitClient:      gitC,
+			GitBranch:      "main",
+			GitWriteBranch: "feature",
+			GitRepo:        "https://github.com/example/repo.git",
+			GetCreds: func(app *v1alpha1.Application) (git.Creds, error) {
+				return git.NopCreds{}, nil
+			},
+		}
+	}
+	appImages := func(wbc *WriteBackConfig) *ApplicationImages {
+		return &ApplicationImages{
+			Application:     v1alpha1.Application{ObjectMeta: v1.ObjectMeta{Name: "testapp"}},
+			WriteBackConfig: wbc,
+		}
+	}
+
+	t.Run("head branch missing on remote: nothing was pushed", func(t *testing.T) {
+		gitMock := &gitmock.Client{}
+		gitMock.On("Init").Return(nil)
+		gitMock.On("ShallowFetch", "feature").Return(fmt.Errorf("couldn't find remote ref feature"))
+		gitMock.On("ShallowFetch", "main").Return(nil)
+		gitMock.On("Branch", "main", "feature").Return(nil)
+		gitMock.On("Checkout", "feature", false).Return(nil)
+
+		wbc := newWBC(gitMock)
+		nothingPushed, err := commitChangesGit(context.Background(), appImages(wbc), nil, skipWriter)
+		require.NoError(t, err)
+		assert.True(t, nothingPushed)
+		gitMock.AssertNotCalled(t, "Commit", mock.Anything, mock.Anything)
+		gitMock.AssertNotCalled(t, "Push", mock.Anything, mock.Anything, mock.Anything)
+	})
+
+	t.Run("head branch exists on remote: it already carries the change", func(t *testing.T) {
+		gitMock := &gitmock.Client{}
+		gitMock.On("Init").Return(nil)
+		gitMock.On("ShallowFetch", "feature").Return(nil)
+		gitMock.On("Checkout", "feature", false).Return(nil)
+
+		wbc := newWBC(gitMock)
+		nothingPushed, err := commitChangesGit(context.Background(), appImages(wbc), nil, skipWriter)
+		require.NoError(t, err)
+		assert.False(t, nothingPushed)
+		gitMock.AssertNotCalled(t, "Branch", mock.Anything, mock.Anything)
+		gitMock.AssertNotCalled(t, "Commit", mock.Anything, mock.Anything)
+	})
 }
 
 func Test_hasDocumentStartAt(t *testing.T) {

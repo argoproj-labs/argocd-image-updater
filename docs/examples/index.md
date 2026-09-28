@@ -193,6 +193,8 @@ of the write-back target) and opens a pull request from that branch into
 Multiple applications sharing the same write-back target will reuse the same
 PR branch, avoiding duplicate pull requests.
 
+For Azure Repos, see the [Azure DevOps configuration example](../basics/update-methods.md#azure-devops).
+
 ## Using `semver` update strategy with version constraints
 
 ```yaml

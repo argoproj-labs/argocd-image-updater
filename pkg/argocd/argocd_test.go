@@ -1469,6 +1469,37 @@ func Test_GetKustomizeImage(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, "service-b=jannfis/foobar:tag-b", resultB)
 	})
+
+	t.Run("Test set Kustomize image on SourceHydrator app persists into DrySource", func(t *testing.T) {
+		// Same persistence problem as the Helm case in issue #1809: with
+		// DrySource.Kustomize nil, SetKustomizeImage allocates onto the
+		// ApplicationSource that getApplicationSource synthesized from DrySource.
+		app := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{Name: "hydrator-app", Namespace: "testns"},
+			Spec: v1alpha1.ApplicationSpec{
+				SourceHydrator: &v1alpha1.SourceHydrator{
+					DrySource: v1alpha1.DrySource{RepoURL: "https://example.com/repo.git", Path: "base"},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypeDirectory,
+				Summary:    v1alpha1.ApplicationSummary{Images: []string{"jannfis/foobar:1.0.0"}},
+			},
+		}
+
+		wbc := &WriteBackConfig{Method: WriteBackGit, KustomizeBase: "base"}
+		err := SetKustomizeImage(context.Background(), app,
+			image.NewFromIdentifier("foobar=jannfis/foobar:1.0.1"), wbc,
+			&Image{ContainerImage: image.NewFromIdentifier("jannfis/foobar:1.0.0")})
+		require.NoError(t, err)
+
+		require.NotNil(t, app.Spec.SourceHydrator.DrySource.Kustomize, "merged Kustomize image must persist into DrySource")
+		assert.Contains(t, app.Spec.SourceHydrator.DrySource.Kustomize.Images, v1alpha1.KustomizeImage("jannfis/foobar:1.0.1"))
+
+		appSource := GetApplicationSource(context.Background(), app, wbc)
+		require.NotNil(t, appSource.Kustomize)
+		assert.Contains(t, appSource.Kustomize.Images, v1alpha1.KustomizeImage("jannfis/foobar:1.0.1"))
+	})
 }
 
 func Test_SetHelmImage(t *testing.T) {
@@ -1735,6 +1766,57 @@ func Test_SetHelmImage(t *testing.T) {
 		assert.Equal(t, "mq@sha256:123456", tagParam.Value, "Existing tag value should not be overwritten with empty string")
 	})
 
+	t.Run("Test set Helm image parameters on SourceHydrator app persists into DrySource", func(t *testing.T) {
+		// Leave DrySource.Helm nil to exercise allocation of a new Helm config.
+		// The update must remain visible through a fresh GetApplicationSource call.
+		app := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "hydrator-app",
+				Namespace: "testns",
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				SourceHydrator: &v1alpha1.SourceHydrator{
+					DrySource: v1alpha1.DrySource{
+						RepoURL: "https://example.com/repo.git",
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypeDirectory,
+				Summary: v1alpha1.ApplicationSummary{
+					Images: []string{
+						"jannfis/foobar:1.0.0",
+					},
+				},
+			},
+		}
+
+		img := image.NewFromIdentifier("foobar=jannfis/foobar:1.0.1")
+		wbc := &WriteBackConfig{
+			// Target holds the resolved path, not the raw "helmvalues:" annotation value.
+			Target: "./values.yaml",
+		}
+		appImage := &Image{
+			HelmImageName: "image.name",
+			HelmImageTag:  "image.tag",
+		}
+		err := SetHelmImage(context.Background(), app, img, wbc, appImage)
+		require.NoError(t, err)
+
+		require.NotNil(t, app.Spec.SourceHydrator.DrySource.Helm, "merged Helm parameters must persist into DrySource")
+		tagParam := getHelmParam(app.Spec.SourceHydrator.DrySource.Helm.Parameters, "image.tag")
+		require.NotNil(t, tagParam)
+		assert.Equal(t, "1.0.1", tagParam.Value)
+
+		// A subsequent, independent read of the application source (e.g. from
+		// marshalParamsOverride computing the write-back diff) must observe the
+		// merged parameter instead of falling back to the stale live tag.
+		appSource := GetApplicationSource(context.Background(), app, wbc)
+		tagParam = getHelmParam(appSource.Helm.Parameters, "image.tag")
+		require.NotNil(t, tagParam)
+		assert.Equal(t, "1.0.1", tagParam.Value)
+	})
+
 }
 
 func Test_SetPluginImage(t *testing.T) {
@@ -1826,6 +1908,80 @@ func Test_SetPluginImage(t *testing.T) {
 		assert.Equal(t, "myregistry/redis", getPluginEnv(app.Spec.Source.Plugin.Env, "IMAGE_NAME"))
 		assert.Equal(t, "7.0.0", getPluginEnv(app.Spec.Source.Plugin.Env, "IMAGE_TAG"))
 	})
+
+	t.Run("Set plugin image on SourceHydrator app persists into DrySource", func(t *testing.T) {
+		app := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{Name: "hydrator-app", Namespace: "testns"},
+			Spec: v1alpha1.ApplicationSpec{
+				SourceHydrator: &v1alpha1.SourceHydrator{
+					DrySource: v1alpha1.DrySource{
+						RepoURL: "https://example.com/repo.git",
+						Plugin:  &v1alpha1.ApplicationSourcePlugin{Name: "helmfile"},
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{SourceType: v1alpha1.ApplicationSourceTypeDirectory},
+		}
+
+		wbc := &WriteBackConfig{Method: WriteBackApplication}
+		err := SetPluginImage(context.Background(), app,
+			image.NewFromIdentifier("redis=myregistry/redis:7.0.0"), wbc,
+			&Image{PluginEnvName: "IMAGE_NAME", PluginEnvTag: "IMAGE_TAG"})
+		require.NoError(t, err)
+
+		ds := app.Spec.SourceHydrator.DrySource
+		require.NotNil(t, ds.Plugin)
+		assert.Equal(t, "myregistry/redis", getPluginEnv(ds.Plugin.Env, "IMAGE_NAME"))
+		assert.Equal(t, "7.0.0", getPluginEnv(ds.Plugin.Env, "IMAGE_TAG"))
+	})
+}
+
+// A plugin SourceHydrator app with git write-back serializes images that use
+// manifestTargets.helm through SetHelmImage (see getApplicationType), which stages
+// parameters into DrySource.Helm. Classification must keep reporting Plugin so that a
+// later image using manifestTargets.plugin is still handled by Set/GetPluginImage -
+// otherwise, whether an image gets updated depends on the order images are processed in.
+func Test_SourceHydratorPluginApp_StaysPluginAfterHelmStaging(t *testing.T) {
+	app := &v1alpha1.Application{
+		ObjectMeta: v1.ObjectMeta{Name: "hydrator-app", Namespace: "testns"},
+		Spec: v1alpha1.ApplicationSpec{
+			SourceHydrator: &v1alpha1.SourceHydrator{
+				DrySource: v1alpha1.DrySource{
+					RepoURL: "https://example.com/repo.git",
+					Plugin:  &v1alpha1.ApplicationSourcePlugin{Name: "helmfile"},
+				},
+			},
+		},
+		Status: v1alpha1.ApplicationStatus{
+			SourceType: v1alpha1.ApplicationSourceTypeDirectory,
+			Summary:    v1alpha1.ApplicationSummary{Images: []string{"nginx:1.0.0", "redis:2.0.0"}},
+		},
+	}
+
+	wbc := &WriteBackConfig{Method: WriteBackGit, Target: ".argocd-source-hydrator-app.yaml"}
+	require.Equal(t, v1alpha1.ApplicationSourceTypePlugin, GetApplicationSourceType(app, wbc))
+
+	helmImage := &Image{
+		ContainerImage: image.NewFromIdentifier("nginx=nginx:1.0.0"),
+		HelmImageName:  "image.name",
+		HelmImageTag:   "image.tag",
+	}
+	require.NoError(t, setAppImage(context.Background(), app,
+		image.NewFromIdentifier("nginx=nginx:1.1.0"), wbc, helmImage))
+	require.NotNil(t, app.Spec.SourceHydrator.DrySource.Helm)
+
+	assert.Equal(t, v1alpha1.ApplicationSourceTypePlugin, GetApplicationSourceType(app, wbc),
+		"staged Helm parameters must not reclassify a plugin app")
+
+	pluginImage := &Image{
+		ContainerImage: image.NewFromIdentifier("redis=redis:2.0.0"),
+		PluginEnvName:  "REDIS_NAME",
+		PluginEnvTag:   "REDIS_TAG",
+	}
+	require.NoError(t, setAppImage(context.Background(), app,
+		image.NewFromIdentifier("redis=redis:2.1.0"), wbc, pluginImage))
+	assert.Equal(t, "redis", getPluginEnv(app.Spec.SourceHydrator.DrySource.Plugin.Env, "REDIS_NAME"))
+	assert.Equal(t, "2.1.0", getPluginEnv(app.Spec.SourceHydrator.DrySource.Plugin.Env, "REDIS_TAG"))
 }
 
 func Test_GetPluginImage(t *testing.T) {
@@ -2358,6 +2514,84 @@ func Test_parseImageList(t *testing.T) {
 		assert.ElementsMatch(t, expected, *got)
 	})
 
+	// The calver strategy reads the tag position of the image name as the
+	// layout of the tags in the registry, so the whole layout has to survive
+	// being parsed as an image reference, and a layout that cannot work has to
+	// be caught here rather than once per cycle against the registry.
+	t.Run("CalVer: the layout survives the image reference", func(t *testing.T) {
+		layouts := []string{
+			"vYYYY-0M-0D",
+			"vYYYY-0M-0D-MICRO",
+			"vYY.MINOR.MICRO-MODIFIER",
+			"release-YYYY_0M_0D",
+			"YYYY0M0D",
+			"MAJOR.YY.0M",
+		}
+		for _, layout := range layouts {
+			t.Run(layout, func(t *testing.T) {
+				images := []api.ImageConfig{{
+					Alias:                "app",
+					ImageName:            "ghcr.io/myorg/app:" + layout,
+					CommonUpdateSettings: &api.CommonUpdateSettings{UpdateStrategy: new(image.StrategyCalVer.String())},
+				}}
+				got := parseImageList(context.Background(), nil, "", images, nil, nil, nil)
+				require.NotNil(t, got)
+				require.Len(t, *got, 1, "layout %s did not survive the image reference", layout)
+
+				img := (*got)[0]
+				assert.Equal(t, image.StrategyCalVer, img.UpdateStrategy)
+				require.NotNil(t, img.ImageTag)
+				assert.Equal(t, layout, img.ImageTag.TagName, "the layout must reach the updater unchanged")
+			})
+		}
+	})
+
+	t.Run("CalVer: an image with no tag falls back to the default layout", func(t *testing.T) {
+		images := []api.ImageConfig{{
+			Alias:                "app",
+			ImageName:            "ghcr.io/myorg/app",
+			CommonUpdateSettings: &api.CommonUpdateSettings{UpdateStrategy: new(image.StrategyCalVer.String())},
+		}}
+		got := parseImageList(context.Background(), nil, "", images, nil, nil, nil)
+		require.NotNil(t, got)
+		require.Len(t, *got, 1)
+		assert.Nil(t, (*got)[0].ImageTag)
+	})
+
+	t.Run("CalVer: an unusable layout is rejected when the config is read", func(t *testing.T) {
+		// A concrete tag in the layout position is the mistake this strategy
+		// invites, and it must not cost a registry round-trip per cycle.
+		for _, badLayout := range []string{"v2026-01-30", "vYYYY-0M-D", "v0M-0D"} {
+			t.Run(badLayout, func(t *testing.T) {
+				images := []api.ImageConfig{{
+					Alias:                "app",
+					ImageName:            "ghcr.io/myorg/app:" + badLayout,
+					CommonUpdateSettings: &api.CommonUpdateSettings{UpdateStrategy: new(image.StrategyCalVer.String())},
+				}}
+				got := parseImageList(context.Background(), nil, "", images, nil, nil, nil)
+				require.NotNil(t, got)
+				assert.Len(t, *got, 0, "layout %s should have been rejected", badLayout)
+			})
+		}
+	})
+
+	t.Run("Other strategies keep accepting a concrete tag", func(t *testing.T) {
+		// The layout check is specific to calver and must not reject the
+		// version constraints every other strategy puts in that position.
+		for _, strategy := range []image.UpdateStrategy{image.StrategySemVer, image.StrategyDigest, image.StrategyNewestBuild, image.StrategyAlphabetical} {
+			t.Run(strategy.String(), func(t *testing.T) {
+				images := []api.ImageConfig{{
+					Alias:                "app",
+					ImageName:            "ghcr.io/myorg/app:1.2.x",
+					CommonUpdateSettings: &api.CommonUpdateSettings{UpdateStrategy: new(strategy.String())},
+				}}
+				got := parseImageList(context.Background(), nil, "", images, nil, nil, nil)
+				require.NotNil(t, got)
+				assert.Len(t, *got, 1)
+			})
+		}
+	})
+
 	// Image signature verification behavior
 	makeVerifyKubeClient := func(secrets ...runtime.Object) *kube.ImageUpdaterKubernetesClient {
 		clientset := fake.NewFakeClientsetWithResources(secrets...)
@@ -2776,6 +3010,19 @@ func Test_newImageFromSettings(t *testing.T) {
 		assert.NotNil(t, img)
 		assert.Equal(t, image.StrategySemVer, img.UpdateStrategy)
 		assert.False(t, img.ForceUpdate)
+	})
+
+	t.Run("should resolve the calver strategy", func(t *testing.T) {
+		// The calver layout travels in the image tag rather than in the
+		// settings, so the settings only have to resolve the strategy itself.
+		settings := &api.CommonUpdateSettings{
+			UpdateStrategy: new(image.StrategyCalVer.String()),
+		}
+
+		img := newImageFromCommonUpdateSettings(context.Background(), settings)
+
+		assert.NotNil(t, img)
+		assert.Equal(t, image.StrategyCalVer, img.UpdateStrategy)
 	})
 }
 
@@ -3317,6 +3564,19 @@ func Test_newWBCFromSettings(t *testing.T) {
 		}
 		_, err := newWBCFromSettings(context.Background(), app, kubeClient, nil, settings)
 		assert.ErrorContains(t, err, "pullRequest must have exactly one provider configured, got 0")
+	})
+
+	t.Run("pullRequest azuredevops should set PRProviderAzureDevOps", func(t *testing.T) {
+		app, kubeClient := createTestAppAndClient()
+		settings := &api.WriteBackConfig{
+			Method: new("git"),
+			GitConfig: &api.GitConfig{
+				PullRequest: &api.PullRequest{AzureDevOps: &api.PullRequestAzureDevOps{}},
+			},
+		}
+		wbc, err := newWBCFromSettings(context.Background(), app, kubeClient, nil, settings)
+		assert.NoError(t, err)
+		assert.Equal(t, PRProviderAzureDevOps, wbc.PRProvider)
 	})
 
 	t.Run("pullRequest with both providers should error", func(t *testing.T) {
@@ -5127,7 +5387,7 @@ func Test_countPullRequestProviders(t *testing.T) {
 		expected int
 	}{
 		{
-			name:     "nil GitHub and GitLab",
+			name:     "no providers",
 			pr:       &api.PullRequest{},
 			expected: 0,
 		},
@@ -5145,6 +5405,16 @@ func Test_countPullRequestProviders(t *testing.T) {
 			name:     "both GitHub and GitLab",
 			pr:       &api.PullRequest{GitHub: &api.PullRequestGitHub{}, GitLab: &api.PullRequestGitLab{}},
 			expected: 2,
+		},
+		{
+			name:     "only Azure DevOps",
+			pr:       &api.PullRequest{AzureDevOps: &api.PullRequestAzureDevOps{}},
+			expected: 1,
+		},
+		{
+			name:     "all providers",
+			pr:       &api.PullRequest{GitHub: &api.PullRequestGitHub{}, GitLab: &api.PullRequestGitLab{}, AzureDevOps: &api.PullRequestAzureDevOps{}},
+			expected: 3,
 		},
 	}
 
