@@ -28,6 +28,9 @@ const giteaListPageSize = 50
 // check gives up and create relies on Gitea's 409 duplicate detection.
 const giteaMaxListPages = 20
 
+// giteaAPITimeout bounds a single Gitea API request.
+const giteaAPITimeout = 30 * time.Second
+
 // GiteaPRService implements PullRequestService for Gitea and Forgejo.
 type GiteaPRService struct {
 	client *http.Client
@@ -207,31 +210,34 @@ func NewGiteaPRService(ctx context.Context, wbc *WriteBackConfig, tokenProvider 
 	if err != nil {
 		return nil, err
 	}
+	// The concrete credential types also implement git.Creds; anything else
+	// simply contributes no TLS client certificate.
+	creds, _ := tokenProvider.(git.Creds)
 	log.LoggerFromContext(ctx).Infof("Gitea PR service initialised for %s/%s", owner, repo)
 	return &GiteaPRService{
-		client: &http.Client{
-			Timeout: 30 * time.Second,
-			CheckRedirect: func(req *http.Request, via []*http.Request) error {
-				// The token travels in a header: never follow a redirect to
-				// another host, nor from HTTPS down to plain HTTP.
-				if !strings.EqualFold(req.URL.Host, via[0].URL.Host) || (via[0].URL.Scheme == "https" && req.URL.Scheme != "https") {
-					return fmt.Errorf("refusing Gitea redirect to a different host or non-HTTPS URL")
-				}
-				// A 301, 302 or 303 turns a POST into a body-less GET, which
-				// would surface as a misleading decoding error.
-				if req.Method != via[0].Method {
-					return fmt.Errorf("refusing Gitea redirect that turns %s into %s", via[0].Method, req.Method)
-				}
-				if len(via) >= 10 {
-					return fmt.Errorf("stopped after 10 redirects")
-				}
-				return nil
-			},
-		},
+		client: newSCMAPIHTTPClient(ctx, wbc.GitRepo, creds, giteaAPITimeout, giteaCheckRedirect),
 		apiURL: apiURL,
 		token:  token,
 		pr:     wbc.PullRequest,
 	}, nil
+}
+
+// giteaCheckRedirect is the redirect policy for the Gitea API client.
+func giteaCheckRedirect(req *http.Request, via []*http.Request) error {
+	// The token travels in a header: never follow a redirect to another host,
+	// nor from HTTPS down to plain HTTP.
+	if !strings.EqualFold(req.URL.Host, via[0].URL.Host) || (via[0].URL.Scheme == "https" && req.URL.Scheme != "https") {
+		return fmt.Errorf("refusing Gitea redirect to a different host or non-HTTPS URL")
+	}
+	// A 301, 302 or 303 turns a POST into a body-less GET, which would surface
+	// as a misleading decoding error.
+	if req.Method != via[0].Method {
+		return fmt.Errorf("refusing Gitea redirect that turns %s into %s", via[0].Method, req.Method)
+	}
+	if len(via) >= 10 {
+		return fmt.Errorf("stopped after 10 redirects")
+	}
+	return nil
 }
 
 // giteaRepoAPIURL derives the repository API root from an HTTP(S) clone URL:

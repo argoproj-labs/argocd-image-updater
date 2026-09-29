@@ -609,9 +609,9 @@ func Test_commitChangesPR(t *testing.T) {
 				_, _ = w.Write([]byte(tt.body))
 			}))
 			defer server.Close()
-			transport := http.DefaultTransport
-			http.DefaultTransport = server.Client().Transport
-			t.Cleanup(func() { http.DefaultTransport = transport })
+			// The Gitea API client takes its root CAs from the Argo CD TLS
+			// certificate store, not from http.DefaultTransport.
+			trustServerViaCertStore(t, server)
 
 			gitClient := &mockGitClient{}
 			if tt.exists {
