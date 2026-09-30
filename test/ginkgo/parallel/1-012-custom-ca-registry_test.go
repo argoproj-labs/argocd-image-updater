@@ -101,6 +101,9 @@ var _ = Describe("ArgoCD Image Updater Custom CA Certificate E2E Tests", func() 
 		}
 
 		cleanupTest := func(tc *testContext) {
+			// Collect debug info BEFORE cleanup so controller pod logs are still available.
+			fixture.OutputDebugOnFail(tc.ns)
+
 			if tc.imageUpdater != nil {
 				By("deleting ImageUpdater CR")
 				_ = k8sClient.Delete(ctx, tc.imageUpdater)
@@ -116,8 +119,6 @@ var _ = Describe("ArgoCD Image Updater Custom CA Certificate E2E Tests", func() 
 			if tc.cleanupFunc != nil {
 				tc.cleanupFunc()
 			}
-
-			fixture.OutputDebugOnFail(tc.ns)
 		}
 
 		setupTest := func(registriesConf string, extraSetup func(*testContext)) *testContext {
