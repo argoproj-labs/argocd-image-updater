@@ -26,7 +26,6 @@ func (r *ImageUpdaterReconciler) RunImageUpdater(ctx context.Context, cr *iuapi.
 	if err != nil {
 		return result, err
 	}
-	r.Config.ArgoClient = argoClient
 
 	// Get the list of applications that are allowed for updates.
 	appList, err := argocd.FilterApplicationsForUpdate(ctx, argoClient, r.Config.KubeClient, r.Config.ArgocdDB, cr, webhookEvent)
@@ -83,7 +82,7 @@ func (r *ImageUpdaterReconciler) RunImageUpdater(ctx context.Context, cr *iuapi.
 
 			upconf := &argocd.UpdateConfiguration{
 				NewRegFN:               registry.NewClient,
-				ArgoClient:             r.Config.ArgoClient,
+				ArgoClient:             argoClient,
 				KubeClient:             r.Config.KubeClient,
 				ArgocdDB:               r.Config.ArgocdDB,
 				UpdateApp:              &curApplication,
