@@ -75,7 +75,10 @@ Each test follows this pattern:
 
 4. **Create ImageUpdater CR**
    - Configures ImageUpdater to watch applications matching `app*`
-   - Specifies image update for guestbook using semver strategy
+   - Specifies `127.0.0.1:30000/test-image:~1.0` with the semver strategy
+   - Sets `forceUpdate: true` because that image is not one the guestbook
+     Application actually runs; without it `GetImagesAndAliasesFromApplication`
+     skips any configured image missing from `.status.summary.images`
 
 5. **Restart Controller** (for scenarios 2 & 3)
    - Deletes the ImageUpdater controller pod
@@ -83,54 +86,49 @@ Each test follows this pattern:
 
 6. **Verify Image Update**
    - Monitors the Application's Kustomize images field
-   - Confirms image update succeeded (proves TLS handshake worked with custom CA)
+   - Confirms the image was rewritten to `127.0.0.1:30000/test-image:1.0.2`
+     (proves TLS handshake worked with custom CA)
 
 ## Prerequisites
 
-Before running these tests, ensure:
+The simplest path is `make -C test/ginkgo test-e2e`, which does everything below
+and then runs the full parallel and sequential suites. To set things up
+piecemeal, from `test/ginkgo`:
 
-1. **Test Registry is Running**
+1. **k3d Cluster is Running** (the suites run on k3d, not Kind)
    ```bash
-   make test-e2e-prereqs
+   k3d cluster list     # check
+   make k3d-cluster-create
+   ```
+
+2. **Test Registry is Running**
+   ```bash
+   make create-local-container-registry
+   make push-signature-test-images   # pushes test-image 1.0.0/1.0.1/1.0.2
    ```
    This deploys:
    - `e2e-registry-public` deployment in `argocd-operator-system` namespace
-   - TLS secret `e2e-registry-public-tls` with self-signed certificate
+   - TLS secret `e2e-registry-public-tls` with a self-signed certificate whose
+     SANs cover the in-cluster Service DNS names and `127.0.0.1`
    - Service exposing registry on NodePort 30000
-
-2. **Kind Cluster is Running**
-   ```bash
-   # Check if cluster exists
-   kind get clusters
-   
-   # If not, create it
-   make test-e2e-cluster
-   ```
 
 ## Running the Tests
 
-### Run all custom CA tests:
+The parallel suite runs via the root Makefile's `e2e-tests-parallel-ginkgo`
+target. To run only these specs, invoke the ginkgo CLI with a focus directly
+from the repository root:
+
 ```bash
-cd test/ginkgo
-make test-parallel GINKGO_FOCUS="1-012-custom-ca-registry"
+# All custom CA tests
+./bin/ginkgo -v --trace --timeout 90m --focus "1-012-custom-ca-registry" -r ./test/ginkgo/parallel
+
+# A specific scenario
+./bin/ginkgo -v --trace --focus "ca_data" -r ./test/ginkgo/parallel
+./bin/ginkgo -v --trace --focus "ca_file" -r ./test/ginkgo/parallel
+./bin/ginkgo -v --trace --focus "auto-discovery" -r ./test/ginkgo/parallel
 ```
 
-### Run a specific scenario:
-```bash
-# ca_data test
-make test-parallel GINKGO_FOCUS="ca_data"
-
-# ca_file test
-make test-parallel GINKGO_FOCUS="ca_file"
-
-# auto-discovery test
-make test-parallel GINKGO_FOCUS="auto-discovery"
-```
-
-### Run with verbose output:
-```bash
-make test-parallel GINKGO_FOCUS="1-012" GINKGO_ARGS="-v"
-```
+(`make ginkgo` installs the CLI into `./bin` if it is not present.)
 
 ## Key Design Decisions
 
@@ -158,12 +156,12 @@ Scenarios 2 and 3 restart the controller pod because:
 
 ### Test Registry Not Found
 ```
-Error: registry TLS secret not found - run 'make test-e2e-prereqs' first
+registry TLS secret not found - ensure e2e prerequisites are deployed
 ```
 Solution: Run prerequisite setup:
 ```bash
 cd test/ginkgo
-make test-e2e-prereqs
+make create-local-container-registry
 ```
 
 ### Vendor Sync Issues
@@ -196,3 +194,7 @@ Look for:
 - Unit tests: `registry-scanner/pkg/registry/endpoints_test.go`
 - Documentation: `docs/configuration/registries.md`
 - Test registry manifests: `test/ginkgo/prereqs/assets/registry.yaml`
+- Registry certificate generation: `test/ginkgo/prereqs/assets/generate-registry-tls-secrets.sh`
+  (the certificate must carry subjectAltName entries — Go has ignored the
+  Common Name for hostname verification since 1.15, so a CN-only certificate
+  fails verification no matter which of the three CA mechanisms is used)

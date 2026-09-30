@@ -28,6 +28,7 @@ package parallel
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/argoproj/argo-cd/gitops-engine/pkg/health"
@@ -70,20 +71,23 @@ var _ = Describe("ArgoCD Image Updater Custom CA Certificate E2E Tests", func() 
 			ctx = context.Background()
 		})
 
-		// Helper function to extract CA certificate from the registry's ConfigMap
+		// Helper function to extract the CA certificate the test registry serves.
+		// The registry is self-signed, so its serving certificate doubles as the
+		// trust anchor; it lives in the kubernetes.io/tls secret mounted by the
+		// registry deployment (see prereqs/assets/generate-registry-tls-secrets.sh).
 		getRegistryCA := func() string {
-			By("extracting CA certificate from registry ConfigMap")
-			configMap := &corev1.ConfigMap{
+			By("extracting CA certificate from registry TLS secret")
+			secret := &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      "e2e-registry-public",
+					Name:      "e2e-registry-public-tls",
 					Namespace: "argocd-operator-system",
 				},
 			}
-			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(configMap), configMap)
-			Expect(err).ToNot(HaveOccurred(), "registry ConfigMap not found - ensure e2e prerequisites are deployed")
+			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(secret), secret)
+			Expect(err).ToNot(HaveOccurred(), "registry TLS secret not found - ensure e2e prerequisites are deployed")
 
-			caCert := configMap.Data["registry.crt"]
-			Expect(caCert).ToNot(BeEmpty(), "registry.crt not found in registry ConfigMap")
+			caCert := string(secret.Data[corev1.TLSCertKey])
+			Expect(caCert).ToNot(BeEmpty(), corev1.TLSCertKey+" not found in registry TLS secret")
 			return caCert
 		}
 
@@ -96,10 +100,37 @@ var _ = Describe("ArgoCD Image Updater Custom CA Certificate E2E Tests", func() 
 			app          *appv1alpha1.Application
 		}
 
+		cleanupTest := func(tc *testContext) {
+			if tc.imageUpdater != nil {
+				By("deleting ImageUpdater CR")
+				_ = k8sClient.Delete(ctx, tc.imageUpdater)
+				Eventually(tc.imageUpdater, "2m", "3s").Should(k8sFixture.NotExistByName())
+			}
+
+			if tc.argoCD != nil {
+				By("deleting ArgoCD CR")
+				_ = k8sClient.Delete(ctx, tc.argoCD)
+				Eventually(tc.argoCD, "2m", "3s").Should(k8sFixture.NotExistByName())
+			}
+
+			if tc.cleanupFunc != nil {
+				tc.cleanupFunc()
+			}
+
+			fixture.OutputDebugOnFail(tc.ns)
+		}
+
 		setupTest := func(registriesConf string, extraSetup func(*testContext)) *testContext {
 			tc := &testContext{}
 
 			tc.ns, tc.cleanupFunc = fixture.CreateRandomE2ETestNamespaceWithCleanupFunc()
+
+			// Register cleanup immediately: every step below can fail, and without this
+			// the namespace, ArgoCD CR and ImageUpdater CR would leak and
+			// OutputDebugOnFail would never run for the failure we most need to debug.
+			DeferCleanup(func() {
+				cleanupTest(tc)
+			})
 
 			if extraSetup != nil {
 				extraSetup(tc)
@@ -183,6 +214,10 @@ var _ = Describe("ArgoCD Image Updater Custom CA Certificate E2E Tests", func() 
 
 			By("creating ImageUpdater CR")
 			updateStrategy := "semver"
+			// The guestbook Application does not run 127.0.0.1:30000/test-image, and
+			// GetImagesAndAliasesFromApplication drops configured images that are not
+			// live in .status.summary.images unless force-update is set.
+			forceUpdate := true
 			tc.imageUpdater = &imageUpdaterApi.ImageUpdater{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "image-updater",
@@ -198,6 +233,7 @@ var _ = Describe("ArgoCD Image Updater Custom CA Certificate E2E Tests", func() 
 									ImageName: "127.0.0.1:30000/test-image:~1.0",
 									CommonUpdateSettings: &imageUpdaterApi.CommonUpdateSettings{
 										UpdateStrategy: &updateStrategy,
+										ForceUpdate:    &forceUpdate,
 									},
 								},
 							},
@@ -210,28 +246,50 @@ var _ = Describe("ArgoCD Image Updater Custom CA Certificate E2E Tests", func() 
 			return tc
 		}
 
-		cleanupTest := func(tc *testContext) {
-			if tc.imageUpdater != nil {
-				By("deleting ImageUpdater CR")
-				_ = k8sClient.Delete(ctx, tc.imageUpdater)
-				Eventually(tc.imageUpdater, "2m", "3s").Should(k8sFixture.NotExistByName())
-			}
+		// restartImageUpdaterController deletes the running controller pod and waits
+		// for a fresh one to become ready, so that changes to argocd-tls-certs-cm are
+		// picked up (the ConfigMap is mounted and read at startup).
+		restartImageUpdaterController := func(tc *testContext) {
+			deplName := "argocd-argocd-image-updater-controller"
+			controllerPods := client.MatchingLabels{"app.kubernetes.io/name": deplName}
 
-			if tc.argoCD != nil {
-				By("deleting ArgoCD CR")
-				_ = k8sClient.Delete(ctx, tc.argoCD)
-				Eventually(tc.argoCD, "2m", "3s").Should(k8sFixture.NotExistByName())
-			}
+			By("restarting image updater controller to pick up argocd-tls-certs-cm")
+			var podToDelete string
+			Eventually(func() error {
+				podList := &corev1.PodList{}
+				if err := k8sClient.List(ctx, podList, client.InNamespace(tc.ns.Name), controllerPods); err != nil {
+					return err
+				}
+				if len(podList.Items) == 0 {
+					return fmt.Errorf("no %s pod found in namespace %s", deplName, tc.ns.Name)
+				}
+				podToDelete = podList.Items[0].Name
+				return k8sClient.Delete(ctx, &podList.Items[0])
+			}, "1m", "3s").Should(Succeed())
 
-			if tc.cleanupFunc != nil {
-				tc.cleanupFunc()
-			}
+			By("waiting for old pod to be fully terminated")
+			Eventually(func() bool {
+				podList := &corev1.PodList{}
+				if err := k8sClient.List(ctx, podList, client.InNamespace(tc.ns.Name), controllerPods); err != nil {
+					return false
+				}
+				for _, pod := range podList.Items {
+					if pod.Name == podToDelete {
+						return false
+					}
+				}
+				return true
+			}, "2m", "3s").Should(BeTrue())
 
-			fixture.OutputDebugOnFail(tc.ns)
+			By("waiting for controller to be ready with mounted TLS certs")
+			depl := &appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: deplName, Namespace: tc.ns.Name}}
+			Eventually(depl, "3m", "3s").Should(deplFixture.HaveReadyReplicas(1), deplName+" was not ready")
 		}
 
 		verifyImageUpdate := func(tc *testContext) {
 			By("ensuring that the Application image has been updated")
+			// The registry holds 1.0.0/1.0.1/1.0.2, so the ~1.0 semver constraint
+			// resolves deterministically to 1.0.2.
 			triggerRefresh := iuFixture.TriggerArgoCDRefresh(ctx, k8sClient, tc.app)
 			Eventually(func() string {
 				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(tc.app), tc.app)
@@ -246,7 +304,7 @@ var _ = Describe("ArgoCD Image Updater Custom CA Certificate E2E Tests", func() 
 				}
 
 				return ""
-			}, "2m", "3s").Should(ContainSubstring("127.0.0.1:30000/test-image:1.0."), "image should have been updated to a newer 1.0.x version")
+			}, "2m", "3s").Should(Equal("127.0.0.1:30000/test-image:1.0.2"), "image should have been updated to the newest 1.0.x version")
 		}
 
 		It("should connect to registry with self-signed cert using ca_data (inline certificate)", func() {
@@ -264,9 +322,6 @@ var _ = Describe("ArgoCD Image Updater Custom CA Certificate E2E Tests", func() 
     ` + indentedCert
 
 			tc := setupTest(registriesConf, nil)
-			DeferCleanup(func() {
-				cleanupTest(tc)
-			})
 
 			verifyImageUpdate(tc)
 		})
@@ -300,50 +355,7 @@ var _ = Describe("ArgoCD Image Updater Custom CA Certificate E2E Tests", func() 
 				Expect(k8sClient.Create(ctx, tlsCertsConfigMap)).To(Succeed())
 			})
 
-			// Restart the controller to pick up the argocd-tls-certs-cm
-			By("restarting image updater controller to mount argocd-tls-certs-cm")
-			var podToDelete string
-			Eventually(func() error {
-				podList := &corev1.PodList{}
-				err := k8sClient.List(ctx, podList, client.InNamespace(tc.ns.Name), client.MatchingLabels{
-					"app.kubernetes.io/name": "argocd-argocd-image-updater-controller",
-				})
-				if err != nil {
-					return err
-				}
-				if len(podList.Items) > 0 {
-					podToDelete = podList.Items[0].Name
-					return k8sClient.Delete(ctx, &podList.Items[0])
-				}
-				return nil
-			}, "1m", "3s").Should(Succeed())
-
-			By("waiting for old pod to be fully terminated")
-			Eventually(func() bool {
-				podList := &corev1.PodList{}
-				err := k8sClient.List(ctx, podList, client.InNamespace(tc.ns.Name), client.MatchingLabels{
-					"app.kubernetes.io/name": "argocd-argocd-image-updater-controller",
-				})
-				if err != nil {
-					return false
-				}
-				// Check that the old pod is gone
-				for _, pod := range podList.Items {
-					if pod.Name == podToDelete {
-						return false
-					}
-				}
-				return true
-			}, "2m", "3s").Should(BeTrue())
-
-			By("waiting for controller to be ready with mounted TLS certs")
-			deplName := "argocd-argocd-image-updater-controller"
-			depl := &appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: deplName, Namespace: tc.ns.Name}}
-			Eventually(depl, "3m", "3s").Should(deplFixture.HaveReadyReplicas(1), deplName+" was not ready")
-
-			DeferCleanup(func() {
-				cleanupTest(tc)
-			})
+			restartImageUpdaterController(tc)
 
 			verifyImageUpdate(tc)
 		})
@@ -376,50 +388,7 @@ var _ = Describe("ArgoCD Image Updater Custom CA Certificate E2E Tests", func() 
 				Expect(k8sClient.Create(ctx, tlsCertsConfigMap)).To(Succeed())
 			})
 
-			// Restart the controller to pick up the argocd-tls-certs-cm
-			By("restarting image updater controller to pick up argocd-tls-certs-cm")
-			var podToDelete string
-			Eventually(func() error {
-				podList := &corev1.PodList{}
-				err := k8sClient.List(ctx, podList, client.InNamespace(tc.ns.Name), client.MatchingLabels{
-					"app.kubernetes.io/name": "argocd-argocd-image-updater-controller",
-				})
-				if err != nil {
-					return err
-				}
-				if len(podList.Items) > 0 {
-					podToDelete = podList.Items[0].Name
-					return k8sClient.Delete(ctx, &podList.Items[0])
-				}
-				return nil
-			}, "1m", "3s").Should(Succeed())
-
-			By("waiting for old pod to be fully terminated")
-			Eventually(func() bool {
-				podList := &corev1.PodList{}
-				err := k8sClient.List(ctx, podList, client.InNamespace(tc.ns.Name), client.MatchingLabels{
-					"app.kubernetes.io/name": "argocd-argocd-image-updater-controller",
-				})
-				if err != nil {
-					return false
-				}
-				// Check that the old pod is gone
-				for _, pod := range podList.Items {
-					if pod.Name == podToDelete {
-						return false
-					}
-				}
-				return true
-			}, "2m", "3s").Should(BeTrue())
-
-			By("waiting for controller to be ready with mounted TLS certs")
-			deplName := "argocd-argocd-image-updater-controller"
-			depl := &appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: deplName, Namespace: tc.ns.Name}}
-			Eventually(depl, "3m", "3s").Should(deplFixture.HaveReadyReplicas(1), deplName+" was not ready")
-
-			DeferCleanup(func() {
-				cleanupTest(tc)
-			})
+			restartImageUpdaterController(tc)
 
 			verifyImageUpdate(tc)
 		})
