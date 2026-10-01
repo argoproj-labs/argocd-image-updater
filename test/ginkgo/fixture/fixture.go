@@ -526,6 +526,35 @@ func appendToFile(filepath string, content string) {
 	}
 }
 
+// GetPodLogs returns the concatenated logs of every pod in the namespace whose name
+// contains podSubstring.
+//
+// Unlike collectAndSavePodLogs, which writes to the debug artifacts of an already
+// failing test, this is meant for tests that need to assert on what a component
+// logged. That matters for tests whose expectation is that nothing happens: on its
+// own, "nothing happened" cannot tell a component correctly refusing to act apart
+// from a misconfigured test in which the component never ran at all.
+func GetPodLogs(namespace string, podSubstring string) (string, error) {
+	output, err := osFixture.ExecCommandWithOutputParam(false, false, "kubectl", "get", "po", "-n", namespace, "-o=name")
+	if err != nil {
+		return "", fmt.Errorf("unable to list pods in namespace %s: %w", namespace, err)
+	}
+
+	var logs strings.Builder
+	for pod := range strings.SplitSeq(strings.TrimSpace(output), "\n") {
+		if !strings.Contains(pod, podSubstring) {
+			continue
+		}
+		podLogs, err := osFixture.ExecCommandWithOutputParam(false, false, "kubectl", "logs", "-n", namespace, pod)
+		if err != nil {
+			return "", fmt.Errorf("unable to get logs for pod %s: %w", pod, err)
+		}
+		logs.WriteString(podLogs)
+	}
+
+	return logs.String(), nil
+}
+
 // collectAndSavePodLogs collects logs from pods matching the given substring and saves to a file
 func collectAndSavePodLogs(namespace, podSubstring, filepath string) {
 	output, err := osFixture.ExecCommandWithOutputParam(false, false, "kubectl", "get", "po", "-n", namespace, "-o=name")
