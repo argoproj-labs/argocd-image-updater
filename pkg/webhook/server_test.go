@@ -12,6 +12,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -26,12 +27,14 @@ import (
 	"github.com/argoproj-labs/argocd-image-updater/pkg/argocd"
 )
 
+// mockRateLimiter records whether Take was called. handleWebhook calls Take
+// from a separate goroutine, so the flag must be safe for concurrent access.
 type mockRateLimiter struct {
-	Called bool
+	called atomic.Bool
 }
 
 func (m *mockRateLimiter) Take() time.Time {
-	m.Called = true
+	m.called.Store(true)
 	return time.Now()
 }
 
@@ -418,10 +421,8 @@ func TestWebhookServerRateLimit(t *testing.T) {
 
 	server.handleWebhook(rec, req)
 
-	// Wait for thread to call it.
-	time.Sleep(time.Second)
-
-	assert.True(t, mock.Called, "Take was not called")
+	// Take is called from the goroutine handleWebhook starts.
+	assert.Eventually(t, mock.called.Load, 5*time.Second, 10*time.Millisecond, "Take was not called")
 }
 
 func TestParseTLSVersion(t *testing.T) {
