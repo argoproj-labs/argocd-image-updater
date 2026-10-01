@@ -838,9 +838,10 @@ More specific scopes override less specific ones; absent fields are inherited fr
 | `github` | PullRequestGitHub | No       | GitHub configures PR creation via the GitHub API.                    |
 | `gitlab` | PullRequestGitLab | No       | GitLab configures MR creation via the GitLab API.                    |
 | `azuredevops` | PullRequestAzureDevOps | No | Azure DevOps configures PR creation via the Azure DevOps API. |
+| `gitea` | PullRequestGitea | No | Gitea configures PR creation via the Gitea API (also used for Forgejo). |
 | `labels` | []string          | No       | Labels to apply to the created pull/merge request (max 100 entries). See [PR labels](../basics/update-methods.md#pr-labels) for provider-specific behavior. |
 
-Exactly one of `github`, `gitlab`, or `azuredevops` must be configured in `pullRequest`.
+Exactly one of `github`, `gitlab`, `azuredevops`, or `gitea` must be configured in `pullRequest`.
 
 #### PullRequestGitHub fields
 
@@ -861,6 +862,15 @@ Exactly one of `github`, `gitlab`, or `azuredevops` must be configured in `pullR
 | —     | —    | —        | No configurable fields. All required data (repository URL, branch, credentials) is taken from the enclosing `gitConfig` and `writeBackConfig.method`. |
 
 See [Azure DevOps](../basics/update-methods.md#azure-devops) for repository URL
+and credential requirements.
+
+#### PullRequestGitea fields
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| —     | —    | —        | No configurable fields. All required data (repository URL, branch, credentials) is taken from the enclosing `gitConfig` and `writeBackConfig.method`. |
+
+See [Gitea](../basics/update-methods.md#gitea) for repository URL
 and credential requirements.
 
 #### ManifestTarget fields

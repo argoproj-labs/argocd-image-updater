@@ -480,6 +480,9 @@ func countPullRequestProviders(pr *iuapi.PullRequest) int {
 	if pr.AzureDevOps != nil {
 		count++
 	}
+	if pr.Gitea != nil {
+		count++
+	}
 	return count
 }
 
@@ -657,6 +660,9 @@ func newWBCFromSettings(ctx context.Context, app *argocdapi.Application, kubeCli
 			}
 			if settings.GitConfig.PullRequest.AzureDevOps != nil {
 				wbc.PRProvider = PRProviderAzureDevOps
+			}
+			if settings.GitConfig.PullRequest.Gitea != nil {
+				wbc.PRProvider = PRProviderGitea
 			}
 
 			wbc.PRLabels = sanitizePRLabels(settings.GitConfig.PullRequest.Labels)
