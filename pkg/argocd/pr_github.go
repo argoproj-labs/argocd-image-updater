@@ -140,7 +140,7 @@ func NewGithubPRService(ctx context.Context, wbc *WriteBackConfig, tokenProvider
 		}
 	}
 
-	client, err := newGithubRESTClient(token, apiBaseURL)
+	client, err := newGithubRESTClient(token, apiBaseURL, scmInsecure(tokenProvider))
 	if err != nil {
 		return nil, err
 	}
@@ -161,11 +161,12 @@ func NewGithubPRService(ctx context.Context, wbc *WriteBackConfig, tokenProvider
 
 // newGithubRESTClient builds an authenticated go-github client for github.com
 // (empty apiBaseURL) or a GitHub Enterprise instance (apiBaseURL like
-// https://HOST/api/v3).
-func newGithubRESTClient(token, apiBaseURL string) (*github.Client, error) {
+// https://HOST/api/v3). insecure skips TLS verification for the API host.
+func newGithubRESTClient(token, apiBaseURL string, insecure bool) (*github.Client, error) {
 	if apiBaseURL == "" {
-		// github.com: no enterprise URLs needed, nil uses http.DefaultClient
-		return github.NewClient(nil).WithAuthToken(token), nil
+		// github.com: no enterprise URLs needed
+		httpClient := git.NewSCMAPIHTTPClient("https://api.github.com", insecure)
+		return github.NewClient(httpClient).WithAuthToken(token), nil
 	}
 	// uploadURL must be scheme+host only so WithEnterpriseURLs appends
 	// /api/uploads/ correctly — passing apiBaseURL for both would produce
@@ -175,7 +176,8 @@ func newGithubRESTClient(token, apiBaseURL string) (*github.Client, error) {
 		return nil, fmt.Errorf("invalid GitHub API base URL %q: %w", apiBaseURL, parseErr)
 	}
 	uploadURL := u.Scheme + "://" + u.Host
-	client, err := github.NewClient(nil).WithAuthToken(token).WithEnterpriseURLs(apiBaseURL, uploadURL)
+	httpClient := git.NewSCMAPIHTTPClient(apiBaseURL, insecure)
+	client, err := github.NewClient(httpClient).WithAuthToken(token).WithEnterpriseURLs(apiBaseURL, uploadURL)
 	if err != nil {
 		return nil, fmt.Errorf("could not create GitHub enterprise client for %q: %w", apiBaseURL, err)
 	}

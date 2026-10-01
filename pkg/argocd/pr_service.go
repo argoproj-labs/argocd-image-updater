@@ -232,6 +232,13 @@ func commitChangesPR(ctx context.Context, applicationImages *ApplicationImages, 
 	}
 }
 
+// scmInsecure reports whether SCM API calls made with tokenProvider should skip
+// TLS verification, following the repository's "insecure" setting.
+func scmInsecure(tokenProvider git.SCMTokenProvider) bool {
+	p, ok := tokenProvider.(git.SCMInsecureProvider)
+	return ok && p.SCMInsecure()
+}
+
 // skipIfPRExists resolves the push branch name from the template and queries
 // the SCM provider for an open PR from pushBranch → checkOutBranch. It returns
 // (true, nil) when an open PR is found and the caller should skip the update.

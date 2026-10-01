@@ -514,6 +514,13 @@ func TestGitHubAppCreds_SCMAPIBaseURL(t *testing.T) {
 	})
 }
 
+func TestSCMInsecure(t *testing.T) {
+	assert.True(t, HTTPSCreds{insecure: true}.SCMInsecure())
+	assert.False(t, HTTPSCreds{}.SCMInsecure())
+	assert.True(t, GitHubAppCreds{insecure: true}.SCMInsecure())
+	assert.False(t, GitHubAppCreds{}.SCMInsecure())
+}
+
 // ---------------------------------------------------------------------------
 // GitHubAppCreds Environ
 // ---------------------------------------------------------------------------

@@ -14,6 +14,7 @@ import (
 	"math/big"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -382,6 +383,41 @@ func TestCustomHTTPClient(t *testing.T) {
 		assert.Equal(t, false, transport.TLSClientConfig.InsecureSkipVerify)
 		assert.NotNil(t, transport.TLSClientConfig.RootCAs)
 	}
+}
+
+func TestNewSCMAPIHTTPClient(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	get := func(client *http.Client) error {
+		resp, err := client.Get(server.URL)
+		if err == nil {
+			resp.Body.Close()
+		}
+		return err
+	}
+
+	t.Run("no custom settings uses the default transport", func(t *testing.T) {
+		t.Setenv(common.EnvVarTLSDataPath, t.TempDir())
+		client := NewSCMAPIHTTPClient(server.URL, false)
+		assert.Nil(t, client.Transport)
+		assert.ErrorContains(t, get(client), "certificate signed by unknown authority")
+	})
+
+	t.Run("certificate in Argo CD TLS store is trusted", func(t *testing.T) {
+		temppath := t.TempDir()
+		certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: server.Certificate().Raw})
+		require.NoError(t, os.WriteFile(filepath.Join(temppath, "127.0.0.1"), certPEM, 0600))
+		t.Setenv(common.EnvVarTLSDataPath, temppath)
+		assert.NoError(t, get(NewSCMAPIHTTPClient(server.URL, false)))
+	})
+
+	t.Run("insecure skips verification", func(t *testing.T) {
+		t.Setenv(common.EnvVarTLSDataPath, t.TempDir())
+		assert.NoError(t, get(NewSCMAPIHTTPClient(server.URL, true)))
+	})
 }
 
 func TestLsRemote(t *testing.T) {
