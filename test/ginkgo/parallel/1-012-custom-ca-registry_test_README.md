@@ -5,7 +5,8 @@
 Test file: `1-012-custom-ca-registry_test.go`
 
 This test suite validates the custom CA certificate feature for registries (PR #1743).
-It tests all three ways to provide CA certificates for registries with self-signed TLS certificates.
+It tests all three ways to provide CA certificates for registries with self-signed TLS
+certificates, plus a negative control that asserts what happens when none of them is used.
 
 ## Test Scenarios
 
@@ -55,9 +56,25 @@ It tests all three ways to provide CA certificates for registries with self-sign
     prefix: 127.0.0.1:30000
   ```
 
+### 4. No CA configured (negative control)
+**Test:** "should not update image when no CA certificate is configured for the registry"
+
+- Identical to scenario 3 except that no `argocd-tls-certs-cm` is created, so the
+  registry has no trust anchor anywhere: no `ca_data`, no `ca_file`, nothing to
+  auto-discover
+- Asserts the controller logs `x509: certificate signed by unknown authority`, then
+  asserts with `Consistently` that the Application's Kustomize images stay empty
+- Configuration:
+  ```yaml
+  registries:
+  - name: Local Registry without a CA
+    api_url: https://e2e-registry-public.argocd-operator-system.svc.cluster.local
+    prefix: 127.0.0.1:30000
+  ```
+
 ## How the Tests Work
 
-Each test follows this pattern:
+Scenarios 1-3 follow this pattern:
 
 1. **Extract CA Certificate**
    - Gets CA cert from `e2e-registry-public-tls` secret in `argocd-operator-system` namespace
@@ -80,14 +97,13 @@ Each test follows this pattern:
      Application actually runs; without it `GetImagesAndAliasesFromApplication`
      skips any configured image missing from `.status.summary.images`
 
-5. **Restart Controller** (for scenarios 2 & 3)
-   - Deletes the ImageUpdater controller pod
-   - Ensures `argocd-tls-certs-cm` changes are picked up
-
-6. **Verify Image Update**
+5. **Verify Image Update**
    - Monitors the Application's Kustomize images field
    - Confirms the image was rewritten to `127.0.0.1:30000/test-image:1.0.2`
      (proves TLS handshake worked with custom CA)
+
+Scenario 4 shares steps 1-4, then asserts the opposite outcome: first that the
+certificate was rejected, and only then that no update ever lands.
 
 ## Prerequisites
 
@@ -145,12 +161,26 @@ The `ca_file` test uses `argocd-tls-certs-cm` instead of a separate ConfigMap be
 - No need to modify the ArgoCD CR or operator behavior
 - Demonstrates that `argocd-tls-certs-cm` can contain arbitrary certificate files, not just hostname-based keys
 
-### Controller Restart Required
+### No Controller Restart Is Needed
 
-Scenarios 2 and 3 restart the controller pod because:
-- ConfigMap changes aren't automatically reloaded
-- The registry client caches TLS configuration at startup
-- In production, users would typically restart the controller after updating `argocd-tls-certs-cm`
+`registries.conf` and `argocd-tls-certs-cm` are both read once, at controller
+startup, and are never reloaded afterwards. In production that means a restart
+after changing either one.
+
+The tests avoid needing one by creating both ConfigMaps *before* the ArgoCD CR, so
+the operator has them mounted by the time it creates the image updater Deployment
+and the very first pod starts with the certificate already in place. That ordering
+is load-bearing - moving the `argocd-tls-certs-cm` creation after the ArgoCD CR
+would make scenarios 2 and 3 fail until the pod happened to restart.
+
+### Why the Negative Control Checks the Logs
+
+Scenario 4 asserts that no update happens, which on its own is a weak oracle: a
+typo in the `prefix`, an ImageUpdater CR that matches nothing, or a controller that
+never started would all produce the same "nothing happened" and keep the test green
+long after it stopped guarding anything. Requiring the x509 error in the controller
+logs first pins the reason, turning the assertion into "no update, *because* the
+certificate was rejected".
 
 ## Troubleshooting
 
@@ -187,6 +217,10 @@ Look for:
 
 - Each scenario: ~3-5 minutes
 - Total suite: ~10-15 minutes (parallel execution)
+
+Scenario 4 spends a fixed 90 seconds in `Consistently` proving the absence of an
+update. For reference, the positive scenarios land their update within roughly
+20-30 seconds of the controller becoming ready, so that window is a wide margin.
 
 ## Related Files
 

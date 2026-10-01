@@ -22,13 +22,15 @@ limitations under the License.
 // 2. ca_file: Reference a mounted certificate file path in registries.conf
 // 3. Auto-discovery: Use argocd-tls-certs-cm with hostname-based key naming
 //
+// A fourth scenario is a negative control: with none of the three configured, the
+// update must not happen, and must not happen because the certificate was rejected.
+//
 // All tests use the e2e-registry-public test registry deployed in argocd-operator-system
 // namespace with a self-signed certificate.
 package parallel
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
 	"github.com/argoproj/argo-cd/gitops-engine/pkg/health"
@@ -133,6 +135,11 @@ var _ = Describe("ArgoCD Image Updater Custom CA Certificate E2E Tests", func() 
 				cleanupTest(tc)
 			})
 
+			// extraSetup runs before the ArgoCD CR is created, and that ordering is
+			// load-bearing: registries.conf and argocd-tls-certs-cm are both read once,
+			// at controller startup. Creating them here means the operator has already
+			// mounted them by the time it creates the image updater Deployment, so the
+			// first pod starts with the certificate in place and no restart is needed.
 			if extraSetup != nil {
 				extraSetup(tc)
 			}
@@ -247,46 +254,6 @@ var _ = Describe("ArgoCD Image Updater Custom CA Certificate E2E Tests", func() 
 			return tc
 		}
 
-		// restartImageUpdaterController deletes the running controller pod and waits
-		// for a fresh one to become ready, so that changes to argocd-tls-certs-cm are
-		// picked up (the ConfigMap is mounted and read at startup).
-		restartImageUpdaterController := func(tc *testContext) {
-			deplName := "argocd-argocd-image-updater-controller"
-			controllerPods := client.MatchingLabels{"app.kubernetes.io/name": deplName}
-
-			By("restarting image updater controller to pick up argocd-tls-certs-cm")
-			var podToDelete string
-			Eventually(func() error {
-				podList := &corev1.PodList{}
-				if err := k8sClient.List(ctx, podList, client.InNamespace(tc.ns.Name), controllerPods); err != nil {
-					return err
-				}
-				if len(podList.Items) == 0 {
-					return fmt.Errorf("no %s pod found in namespace %s", deplName, tc.ns.Name)
-				}
-				podToDelete = podList.Items[0].Name
-				return k8sClient.Delete(ctx, &podList.Items[0])
-			}, "1m", "3s").Should(Succeed())
-
-			By("waiting for old pod to be fully terminated")
-			Eventually(func() bool {
-				podList := &corev1.PodList{}
-				if err := k8sClient.List(ctx, podList, client.InNamespace(tc.ns.Name), controllerPods); err != nil {
-					return false
-				}
-				for _, pod := range podList.Items {
-					if pod.Name == podToDelete {
-						return false
-					}
-				}
-				return true
-			}, "2m", "3s").Should(BeTrue())
-
-			By("waiting for controller to be ready with mounted TLS certs")
-			depl := &appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: deplName, Namespace: tc.ns.Name}}
-			Eventually(depl, "3m", "3s").Should(deplFixture.HaveReadyReplicas(1), deplName+" was not ready")
-		}
-
 		verifyImageUpdate := func(tc *testContext) {
 			By("ensuring that the Application image has been updated")
 			// The registry holds 1.0.0/1.0.1/1.0.2, so the ~1.0 semver constraint
@@ -356,8 +323,6 @@ var _ = Describe("ArgoCD Image Updater Custom CA Certificate E2E Tests", func() 
 				Expect(k8sClient.Create(ctx, tlsCertsConfigMap)).To(Succeed())
 			})
 
-			restartImageUpdaterController(tc)
-
 			verifyImageUpdate(tc)
 		})
 
@@ -389,9 +354,55 @@ var _ = Describe("ArgoCD Image Updater Custom CA Certificate E2E Tests", func() 
 				Expect(k8sClient.Create(ctx, tlsCertsConfigMap)).To(Succeed())
 			})
 
-			restartImageUpdaterController(tc)
-
 			verifyImageUpdate(tc)
+		})
+
+		It("should not update image when no CA certificate is configured for the registry", func() {
+			// Negative control for the three scenarios above. Each of them asserts that
+			// an update succeeds once a CA is configured, which proves the feature is
+			// present but not that it is doing the work: a regression that silently
+			// stopped verifying certificates altogether would leave all three green.
+			// This scenario removes the only thing that differs - the CA - and asserts
+			// both that no update happens and that it does not happen *because* the
+			// registry's certificate was rejected.
+			registriesConf := `registries:
+- name: Local Registry without a CA
+  api_url: https://e2e-registry-public.argocd-operator-system.svc.cluster.local
+  prefix: 127.0.0.1:30000
+`
+
+			tc := setupTest(registriesConf, nil)
+
+			// The reconcile interval is 0, so the controller only contacts the registry
+			// in response to an event; the refresh is what gives it something to react to.
+			triggerRefresh := iuFixture.TriggerArgoCDRefresh(ctx, k8sClient, tc.app)
+
+			By("waiting for the image updater to reject the registry's self-signed certificate")
+			Eventually(func() string {
+				triggerRefresh()
+				logs, err := fixture.GetPodLogs(tc.ns.Name, "argocd-image-updater-controller")
+				if err != nil {
+					GinkgoWriter.Println("unable to read image updater controller logs:", err)
+					return ""
+				}
+				return logs
+			}, "3m", "5s").Should(ContainSubstring("x509: certificate signed by unknown authority"),
+				"the controller should have refused to trust the registry with no CA configured")
+
+			By("ensuring that the Application image is never updated")
+			Consistently(func() string {
+				if err := k8sClient.Get(ctx, client.ObjectKeyFromObject(tc.app), tc.app); err != nil {
+					return ""
+				}
+
+				triggerRefresh()
+
+				if tc.app.Spec.Source.Kustomize != nil && len(tc.app.Spec.Source.Kustomize.Images) > 0 {
+					return string(tc.app.Spec.Source.Kustomize.Images[0])
+				}
+
+				return ""
+			}, "90s", "3s").Should(BeEmpty(), "image must not be updated while the registry's certificate is untrusted")
 		})
 	})
 })
