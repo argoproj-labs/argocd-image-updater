@@ -159,7 +159,7 @@ func NewAzureDevOpsPRService(ctx context.Context, wbc *WriteBackConfig, tokenPro
 	u.RawPath = ""
 	u.RawQuery = "api-version=7.1"
 	u.Fragment = ""
-	client := git.NewSCMAPIHTTPClient(u.String(), scmInsecure(tokenProvider))
+	client := git.NewSCMAPIHTTPClient(u.String())
 	client.Timeout = 30 * time.Second
 	client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
 		if req.URL.Scheme != "https" || !strings.EqualFold(req.URL.Host, via[0].URL.Host) {

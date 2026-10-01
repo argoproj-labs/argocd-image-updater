@@ -401,7 +401,7 @@ func TestNewSCMAPIHTTPClient(t *testing.T) {
 
 	t.Run("no custom settings uses the default transport", func(t *testing.T) {
 		t.Setenv(common.EnvVarTLSDataPath, t.TempDir())
-		client := NewSCMAPIHTTPClient(server.URL, false)
+		client := NewSCMAPIHTTPClient(server.URL)
 		assert.Nil(t, client.Transport)
 		assert.ErrorContains(t, get(client), "certificate signed by unknown authority")
 	})
@@ -411,12 +411,7 @@ func TestNewSCMAPIHTTPClient(t *testing.T) {
 		certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: server.Certificate().Raw})
 		require.NoError(t, os.WriteFile(filepath.Join(temppath, "127.0.0.1"), certPEM, 0600))
 		t.Setenv(common.EnvVarTLSDataPath, temppath)
-		assert.NoError(t, get(NewSCMAPIHTTPClient(server.URL, false)))
-	})
-
-	t.Run("insecure skips verification", func(t *testing.T) {
-		t.Setenv(common.EnvVarTLSDataPath, t.TempDir())
-		assert.NoError(t, get(NewSCMAPIHTTPClient(server.URL, true)))
+		assert.NoError(t, get(NewSCMAPIHTTPClient(server.URL)))
 	})
 }
 

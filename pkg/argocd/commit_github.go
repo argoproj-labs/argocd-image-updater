@@ -202,7 +202,7 @@ func commitChangesGithubAPI(ctx context.Context, wbc *WriteBackConfig, gitC git.
 	}
 
 	if branchCreated {
-		restClient, err := newGithubRESTClient(token, apiBaseURL, scmInsecure(tokenProvider))
+		restClient, err := newGithubRESTClient(token, apiBaseURL)
 		if err != nil {
 			return err
 		}
@@ -243,7 +243,7 @@ func commitChangesGithubAPI(ctx context.Context, wbc *WriteBackConfig, gitC git.
 
 	logCtx.Debugf("committing via GitHub API: commit author/committer and local signing settings are determined by GitHub (App bot user)")
 	endpoint := graphQLEndpoint(apiBaseURL)
-	httpClient := git.NewSCMAPIHTTPClient(endpoint, scmInsecure(tokenProvider))
+	httpClient := git.NewSCMAPIHTTPClient(endpoint)
 	httpClient.Timeout = githubGraphQLTimeout
 	commitOID, err := createCommitOnBranch(ctx, httpClient, endpoint, token, input)
 	if err != nil {

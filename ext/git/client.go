@@ -268,25 +268,24 @@ func GetRepoHTTPClient(ctx context.Context, repoURL string, insecure bool, creds
 // NewSCMAPIHTTPClient returns an HTTP client for calls to an SCM provider's
 // API at apiURL, such as opening a pull request. Like GetRepoHTTPClient, it
 // trusts the certificates registered for the host in the Argo CD TLS
-// certificate store, and skips verification if insecure is true. The host is
-// taken from apiURL rather than the repository URL because the two can differ,
-// e.g. for GitHub Enterprise. If neither applies, the client uses
+// certificate store. The host is taken from apiURL rather than the repository
+// URL because the two can differ, e.g. for GitHub Enterprise. If no
+// certificates are registered for the host, the client uses
 // http.DefaultTransport.
-func NewSCMAPIHTTPClient(apiURL string, insecure bool) *http.Client {
-	var tlsConfig *tls.Config
-	if insecure {
-		tlsConfig = &tls.Config{InsecureSkipVerify: true}
-	} else if certPool := serverRootCAs(apiURL); certPool != nil {
-		tlsConfig = &tls.Config{RootCAs: certPool}
-	}
-	if tlsConfig == nil {
+//
+// TLS verification is never disabled here: the repository's insecure setting
+// defaults to true for some write-back secrets for backwards compatibility,
+// and honouring it would send the SCM token over unverified connections.
+func NewSCMAPIHTTPClient(apiURL string) *http.Client {
+	certPool := serverRootCAs(apiURL)
+	if certPool == nil {
 		return &http.Client{}
 	}
 	transport := &http.Transport{Proxy: http.ProxyFromEnvironment}
 	if defaultTransport, ok := http.DefaultTransport.(*http.Transport); ok {
 		transport = defaultTransport.Clone()
 	}
-	transport.TLSClientConfig = tlsConfig
+	transport.TLSClientConfig = &tls.Config{RootCAs: certPool}
 	return &http.Client{Transport: transport}
 }
 

@@ -121,7 +121,7 @@ func NewGitLabMRService(ctx context.Context, wbc *WriteBackConfig, tokenProvider
 		clientURL = apiBaseURL
 		opts = append(opts, gitlab.WithBaseURL(apiBaseURL))
 	}
-	opts = append(opts, gitlab.WithHTTPClient(git.NewSCMAPIHTTPClient(clientURL, scmInsecure(tokenProvider))))
+	opts = append(opts, gitlab.WithHTTPClient(git.NewSCMAPIHTTPClient(clientURL)))
 
 	client, err := gitlab.NewClient(token, opts...)
 	if err != nil {

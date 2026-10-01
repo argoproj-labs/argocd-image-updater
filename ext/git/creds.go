@@ -62,13 +62,6 @@ type SCMAPIBaseURLProvider interface {
 	SCMAPIBaseURL() string
 }
 
-// SCMInsecureProvider is implemented by credential types that carry the
-// repository's "insecure" setting, so that SCM API calls skip TLS verification
-// in the same cases the Git transport does.
-type SCMInsecureProvider interface {
-	SCMInsecure() bool
-}
-
 const (
 	// ASKPASS_NONCE_ENV is the environment variable that is used to pass the nonce to the askpass script
 	ASKPASS_NONCE_ENV = "ARGOCD_GIT_ASKPASS_NONCE"
@@ -288,11 +281,6 @@ func (c HTTPSCreds) GetClientCertKey() string {
 // SCMToken returns the HTTPS password, which is expected to be a PAT or OAuth token.
 func (c HTTPSCreds) SCMToken(_ context.Context) (string, error) {
 	return c.password, nil
-}
-
-// SCMInsecure reports whether the repository is configured as insecure.
-func (c HTTPSCreds) SCMInsecure() bool {
-	return c.insecure
 }
 
 // SSH implementation
@@ -555,11 +543,6 @@ func (g GitHubAppCreds) SCMToken(ctx context.Context) (string, error) {
 // derived from the repository URL by the caller.
 func (g GitHubAppCreds) SCMAPIBaseURL() string {
 	return g.baseURL
-}
-
-// SCMInsecure reports whether the repository is configured as insecure.
-func (g GitHubAppCreds) SCMInsecure() bool {
-	return g.insecure
 }
 
 // GoogleCloudCreds to authenticate to Google Cloud Source repositories
