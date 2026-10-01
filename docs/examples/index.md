@@ -194,6 +194,7 @@ Multiple applications sharing the same write-back target will reuse the same
 PR branch, avoiding duplicate pull requests.
 
 For Azure Repos, see the [Azure DevOps configuration example](../basics/update-methods.md#azure-devops).
+For Gitea or Forgejo, see the [Gitea configuration example](../basics/update-methods.md#gitea).
 
 ## Using `semver` update strategy with version constraints
 

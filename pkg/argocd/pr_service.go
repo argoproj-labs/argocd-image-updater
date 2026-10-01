@@ -23,6 +23,8 @@ const (
 	PRProviderGitLab
 	// PRProviderAzureDevOps opens pull requests via the Azure DevOps REST API.
 	PRProviderAzureDevOps
+	// PRProviderGitea opens pull requests via the Gitea REST API (also Forgejo).
+	PRProviderGitea
 )
 
 // PRBranchTemplate is the Go template used to produce a deterministic head
@@ -210,6 +212,20 @@ func commitChangesPR(ctx context.Context, applicationImages *ApplicationImages, 
 		}
 		return nil
 
+	case PRProviderGitea:
+		g, err := NewGiteaPRService(ctx, wbc, tokenProvider)
+		if err != nil {
+			return err
+		}
+
+		if err := g.create(ctx); err != nil {
+			if errors.Is(err, ErrPRAlreadyExists) {
+				return nil
+			}
+			return err
+		}
+		return nil
+
 	default:
 		return fmt.Errorf("unsupported PR provider: %d", wbc.PRProvider)
 	}
@@ -237,6 +253,8 @@ func skipIfPRExists(ctx context.Context, wbc *WriteBackConfig, tokenProvider git
 		svc, svcErr = NewGitLabMRService(ctx, wbc, tokenProvider)
 	case PRProviderAzureDevOps:
 		svc, svcErr = NewAzureDevOpsPRService(ctx, wbc, tokenProvider)
+	case PRProviderGitea:
+		svc, svcErr = NewGiteaPRService(ctx, wbc, tokenProvider)
 	default:
 		return false, fmt.Errorf("unsupported PR provider: %d", wbc.PRProvider)
 	}

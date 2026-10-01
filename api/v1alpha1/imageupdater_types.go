@@ -225,7 +225,7 @@ type WriteBackConfig struct {
 // PullRequest holds provider-specific configuration for creating pull requests
 // when writing back image updates to Git. Exactly one of the providers must be set.
 // based on https://github.com/argoproj/argo-cd/blob/master/pkg/apis/application/v1alpha1/applicationset_types.go
-// +kubebuilder:validation:XValidation:rule="(has(self.github) ? 1 : 0) + (has(self.gitlab) ? 1 : 0) + (has(self.azuredevops) ? 1 : 0) == 1",message="Exactly one of github, gitlab, or azuredevops must be set"
+// +kubebuilder:validation:XValidation:rule="(has(self.github) ? 1 : 0) + (has(self.gitlab) ? 1 : 0) + (has(self.azuredevops) ? 1 : 0) + (has(self.gitea) ? 1 : 0) == 1",message="Exactly one of github, gitlab, azuredevops, or gitea must be set"
 type PullRequest struct {
 	// GitHub configures PR creation via the GitHub API.
 	// +optional
@@ -239,8 +239,12 @@ type PullRequest struct {
 	// +optional
 	AzureDevOps *PullRequestAzureDevOps `json:"azuredevops,omitempty"`
 
+	// Gitea configures PR creation via the Gitea API (also used for Forgejo).
+	// +optional
+	Gitea *PullRequestGitea `json:"gitea,omitempty"`
+
 	// Labels to apply to the created pull/merge request.
-	// GitLab sets them on creation; GitHub and Azure DevOps apply them
+	// GitLab sets them on creation; GitHub, Azure DevOps and Gitea apply them
 	// in follow-up API calls, so a labelling failure does not fail the update.
 	// +optional
 	// +listType=atomic
@@ -263,6 +267,11 @@ type PullRequestGitLab struct {
 // PullRequestAzureDevOps configures creation of Azure DevOps pull requests.
 // Empty struct because all necessary data can be fetched from GitConfig.
 type PullRequestAzureDevOps struct {
+}
+
+// PullRequestGitea configures creation of Gitea (and Forgejo) pull requests.
+// Empty struct because all necessary data can be fetched from GitConfig.
+type PullRequestGitea struct {
 }
 
 // ManifestTarget specifies the mechanism and details for updating image references in application manifests.
