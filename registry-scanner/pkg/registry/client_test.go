@@ -2,11 +2,14 @@ package registry
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -1125,10 +1128,118 @@ func TestIsAuthError(t *testing.T) {
 		assert.True(t, IsAuthError(ctx, err))
 	})
 
+	t.Run("bare errcode.Errors with Unauthorized returns true", func(t *testing.T) {
+		// Test that bare errcode.ErrorCodeUnauthorized values are recognized as auth errors
+		assert.True(t, IsAuthError(ctx, errcode.Errors{errcode.ErrorCodeUnauthorized}))
+	})
+
+	t.Run("bare errcode.Errors with Denied returns true", func(t *testing.T) {
+		// Test that bare errcode.ErrorCodeDenied values are recognized as auth errors
+		assert.True(t, IsAuthError(ctx, errcode.Errors{errcode.ErrorCodeDenied}))
+	})
+
+	t.Run("JSON with canonical message decodes to bare code and returns true", func(t *testing.T) {
+		// An element whose message equals the code's canonical message and that
+		// carries no detail is decoded to a bare errcode.ErrorCode, not errcode.Error
+		var err errcode.Errors
+		require.NoError(t, json.Unmarshal([]byte(`{"errors":[{"code":"UNAUTHORIZED","message":"authentication required"}]}`), &err))
+		require.IsType(t, errcode.ErrorCode(0), err[0])
+		assert.True(t, IsAuthError(ctx, err))
+	})
+
+	t.Run("JSON with custom message decodes to errcode.Error and returns true", func(t *testing.T) {
+		// A message that differs from the canonical one is preserved, so the
+		// element stays a structured errcode.Error
+		var err errcode.Errors
+		require.NoError(t, json.Unmarshal([]byte(`{"errors":[{"code":"UNAUTHORIZED","message":"you shall not pass"}]}`), &err))
+		require.IsType(t, errcode.Error{}, err[0])
+		assert.True(t, IsAuthError(ctx, err))
+	})
+
+	t.Run("JSON without message returns true", func(t *testing.T) {
+		// Test that registry error objects without a message field are recognized
+		// as auth errors; they decode to bare errcode.ErrorCode values
+		var err errcode.Errors
+		require.NoError(t, json.Unmarshal([]byte(`{"errors":[{"code":"UNAUTHORIZED"}]}`), &err))
+		assert.True(t, IsAuthError(ctx, err))
+	})
+
 	t.Run("errcode.Errors with other code returns false", func(t *testing.T) {
 		err := errcode.Errors{errcode.ErrorCodeUnknown.WithMessage("something else")}
 		assert.False(t, IsAuthError(ctx, err))
 	})
+
+	// The distribution client returns a single, unwrapped errcode value - not an
+	// errcode.Errors slice - whenever a 4xx response has an empty body, no
+	// Content-Type, a non-JSON Content-Type, or a body it cannot unmarshal.
+
+	t.Run("unwrapped errcode.Error with Unauthorized returns true", func(t *testing.T) {
+		assert.True(t, IsAuthError(ctx, errcode.ErrorCodeUnauthorized.WithMessage("")))
+	})
+
+	t.Run("unwrapped errcode.Error with Denied returns true", func(t *testing.T) {
+		assert.True(t, IsAuthError(ctx, errcode.ErrorCodeDenied.WithMessage("access to the requested resource is not authorized")))
+	})
+
+	t.Run("unwrapped errcode.Error with detail returns true", func(t *testing.T) {
+		assert.True(t, IsAuthError(ctx, errcode.ErrorCodeUnauthorized.WithDetail([]byte("<html>401 Authorization Required</html>"))))
+	})
+
+	t.Run("unwrapped errcode.ErrorCode with Unauthorized returns true", func(t *testing.T) {
+		assert.True(t, IsAuthError(ctx, errcode.ErrorCodeUnauthorized))
+	})
+
+	t.Run("unwrapped errcode.ErrorCode with Denied returns true", func(t *testing.T) {
+		assert.True(t, IsAuthError(ctx, errcode.ErrorCodeDenied))
+	})
+
+	t.Run("unwrapped errcode with other code returns false", func(t *testing.T) {
+		assert.False(t, IsAuthError(ctx, errcode.ErrorCodeUnknown.WithMessage("boom")))
+		assert.False(t, IsAuthError(ctx, errcode.ErrorCodeTooManyRequests))
+	})
+
+	t.Run("wrapped unwrapped errcode.Error returns true", func(t *testing.T) {
+		err := fmt.Errorf("listing tags: %w", errcode.ErrorCodeUnauthorized.WithMessage(""))
+		assert.True(t, IsAuthError(ctx, err))
+	})
+}
+
+// TestIsAuthErrorFromHTTPResponse covers the end-to-end paths through the
+// distribution client's response parsing that yield a single unwrapped errcode
+// rather than an errcode.Errors slice.
+func TestIsAuthErrorFromHTTPResponse(t *testing.T) {
+	ctx := context.Background()
+	tests := []struct {
+		name        string
+		statusCode  int
+		contentType string
+		body        string
+		expect      bool
+	}{
+		{name: "401 with empty body", statusCode: http.StatusUnauthorized, contentType: "application/json", expect: true},
+		{name: "401 with no content-type", statusCode: http.StatusUnauthorized, body: "unauthorized", expect: true},
+		{name: "401 with html body", statusCode: http.StatusUnauthorized, contentType: "text/html", body: "<html>401 Authorization Required</html>", expect: true},
+		{name: "401 with unparseable json body", statusCode: http.StatusUnauthorized, contentType: "application/json", body: `{"message":"denied"}`, expect: true},
+		{name: "403 with html body", statusCode: http.StatusForbidden, contentType: "text/html", body: "<html>403 Forbidden</html>", expect: true},
+		{name: "401 with json errors body", statusCode: http.StatusUnauthorized, contentType: "application/json", body: `{"errors":[{"code":"UNAUTHORIZED","message":"authentication required"}]}`, expect: true},
+		{name: "404 with html body", statusCode: http.StatusNotFound, contentType: "text/html", body: "<html>404 Not Found</html>", expect: false},
+		{name: "429 with empty body", statusCode: http.StatusTooManyRequests, contentType: "application/json", expect: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resp := &http.Response{
+				StatusCode: tt.statusCode,
+				Header:     http.Header{},
+				Body:       io.NopCloser(strings.NewReader(tt.body)),
+			}
+			if tt.contentType != "" {
+				resp.Header.Set("Content-Type", tt.contentType)
+			}
+			err := distclient.HandleHTTPResponseError(resp)
+			require.Error(t, err)
+			assert.Equal(t, tt.expect, IsAuthError(ctx, err))
+		})
+	}
 }
 
 // makeRegistryClient is a shared helper that creates a real RegistryClient backed
