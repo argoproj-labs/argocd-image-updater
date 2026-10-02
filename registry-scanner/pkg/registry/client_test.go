@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -1284,4 +1285,130 @@ func Test_Referrers(t *testing.T) {
 		assert.Nil(t, refs)
 		assert.Contains(t, err.Error(), "decoding")
 	})
+}
+
+func TestRetryAfter(t *testing.T) {
+	now := time.Date(2026, 10, 2, 12, 0, 0, 0, time.UTC)
+	tests := []struct {
+		name  string
+		value string
+		want  time.Duration
+	}{
+		{"missing", "", tooManyRequestsDefaultWait},
+		{"unparsable", "soon", tooManyRequestsDefaultWait},
+		{"zero seconds", "0", 0},
+		{"seconds", "5", 5 * time.Second},
+		{"negative seconds", "-3", 0},
+		{"seconds above the cap", "120", tooManyRequestsMaxWait},
+		{"http date", now.Add(10 * time.Second).Format(http.TimeFormat), 10 * time.Second},
+		{"http date in the past", now.Add(-time.Minute).Format(http.TimeFormat), 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, retryAfter(tt.value, now))
+		})
+	}
+}
+
+func TestTooManyRequestsRetryTransport(t *testing.T) {
+	// throttling answers the first `throttled` requests with 429 and the rest with 200.
+	throttling := func(throttled int32, retryAfter string) (*httptest.Server, *atomic.Int32) {
+		var requests atomic.Int32
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if requests.Add(1) <= throttled {
+				w.Header().Set("Retry-After", retryAfter)
+				w.WriteHeader(http.StatusTooManyRequests)
+				return
+			}
+			w.WriteHeader(http.StatusOK)
+		}))
+		t.Cleanup(server.Close)
+		return server, &requests
+	}
+	rt := &tooManyRequestsRetryTransport{base: http.DefaultTransport}
+
+	t.Run("retries a throttled GET until it succeeds", func(t *testing.T) {
+		server, requests := throttling(2, "0")
+		req, err := http.NewRequest(http.MethodGet, server.URL, nil)
+		require.NoError(t, err)
+		resp, err := rt.RoundTrip(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		assert.Equal(t, http.StatusOK, resp.StatusCode)
+		assert.Equal(t, int32(3), requests.Load())
+	})
+
+	t.Run("returns the 429 once the retries are used up", func(t *testing.T) {
+		server, requests := throttling(100, "0")
+		req, err := http.NewRequest(http.MethodGet, server.URL, nil)
+		require.NoError(t, err)
+		resp, err := rt.RoundTrip(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		assert.Equal(t, http.StatusTooManyRequests, resp.StatusCode)
+		assert.Equal(t, int32(1+tooManyRequestsMaxRetries), requests.Load())
+	})
+
+	t.Run("does not retry other methods", func(t *testing.T) {
+		server, requests := throttling(1, "0")
+		req, err := http.NewRequest(http.MethodPost, server.URL, nil)
+		require.NoError(t, err)
+		resp, err := rt.RoundTrip(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		assert.Equal(t, http.StatusTooManyRequests, resp.StatusCode)
+		assert.Equal(t, int32(1), requests.Load())
+	})
+
+	t.Run("stops waiting when the context is done", func(t *testing.T) {
+		server, requests := throttling(1, "30")
+		ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+		defer cancel()
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, server.URL, nil)
+		require.NoError(t, err)
+		start := time.Now()
+		_, err = rt.RoundTrip(req)
+		require.ErrorIs(t, err, context.DeadlineExceeded)
+		assert.Less(t, time.Since(start), 5*time.Second)
+		assert.Equal(t, int32(1), requests.Load())
+	})
+}
+
+// TestTags_RetriesThrottledPage covers a paginated tag list where the registry
+// throttles one page: the page is retried and the full list comes back.
+func TestTags_RetriesThrottledPage(t *testing.T) {
+	const repo = "org/app"
+	var page2Requests atomic.Int32
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/v2/", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	mux.HandleFunc("/v2/"+repo+"/tags/list", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Query().Get("last") == "" {
+			w.Header().Set("Link", fmt.Sprintf(`</v2/%s/tags/list?n=2&last=b>; rel="next"`, repo))
+			fmt.Fprintf(w, `{"name":%q,"tags":["a","b"]}`, repo)
+			return
+		}
+		if page2Requests.Add(1) == 1 {
+			w.Header().Set("Retry-After", "0")
+			w.WriteHeader(http.StatusTooManyRequests)
+			fmt.Fprint(w, `{"errors":[{"code":"TOOMANYREQUESTS","message":"retry-after: 963.091µs, allowed: 44000/minute"}]}`)
+			return
+		}
+		fmt.Fprintf(w, `{"name":%q,"tags":["c"]}`, repo)
+	})
+	server := httptest.NewServer(mux)
+	t.Cleanup(server.Close)
+
+	ep := &RegistryEndpoint{RegistryAPI: server.URL, Limiter: ratelimit.New(100)}
+	client, err := NewClient(ep, "", "")
+	require.NoError(t, err)
+	require.NoError(t, client.NewRepository(context.Background(), repo))
+
+	tags, err := client.Tags(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, []string{"a", "b", "c"}, tags)
+	assert.Equal(t, int32(2), page2Requests.Load())
 }
