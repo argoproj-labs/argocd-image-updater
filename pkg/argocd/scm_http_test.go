@@ -15,6 +15,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/argoproj/argo-cd/v3/common"
+
 	"github.com/argoproj-labs/argocd-image-updater/ext/git"
 )
 
@@ -29,7 +31,7 @@ func trustServerViaCertStore(t *testing.T, server *httptest.Server) {
 	pemData := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: server.Certificate().Raw})
 	require.NotNil(t, pemData)
 	require.NoError(t, os.WriteFile(filepath.Join(dir, u.Hostname()), pemData, 0o600))
-	t.Setenv("ARGOCD_TLS_DATA_PATH", dir)
+	t.Setenv(common.EnvVarTLSDataPath, dir)
 }
 
 func Test_newSCMAPIHTTPClient(t *testing.T) {
@@ -40,7 +42,7 @@ func Test_newSCMAPIHTTPClient(t *testing.T) {
 	repoURL := server.URL + "/owner/repo.git"
 
 	t.Run("certificate not registered", func(t *testing.T) {
-		t.Setenv("ARGOCD_TLS_DATA_PATH", t.TempDir())
+		t.Setenv(common.EnvVarTLSDataPath, t.TempDir())
 		client := newSCMAPIHTTPClient(context.Background(), repoURL, nil, 5*time.Second, nil)
 		// The request fails during the TLS handshake, so there is no body.
 		_, err := client.Get(server.URL)
@@ -127,6 +129,16 @@ func Test_SCMAPIClients_UseCertStore(t *testing.T) {
 			},
 		},
 		{
+			name:          "Gitea",
+			usesRepoCreds: true,
+			call: func(t *testing.T, tokenProvider git.SCMTokenProvider) error {
+				svc, err := NewGiteaPRService(ctx, &WriteBackConfig{GitRepo: server.URL + "/owner/repo.git"}, tokenProvider)
+				require.NoError(t, err)
+				_, err = svc.exists(ctx, "main", "branch")
+				return err
+			},
+		},
+		{
 			name: "GitHub API commit",
 			call: func(t *testing.T, _ git.SCMTokenProvider) error {
 				dir := t.TempDir()
@@ -146,7 +158,7 @@ func Test_SCMAPIClients_UseCertStore(t *testing.T) {
 	for _, p := range providers {
 		t.Run(p.name, func(t *testing.T) {
 			t.Run("certificate not registered", func(t *testing.T) {
-				t.Setenv("ARGOCD_TLS_DATA_PATH", t.TempDir())
+				t.Setenv(common.EnvVarTLSDataPath, t.TempDir())
 				require.ErrorContains(t, p.call(t, &mockTokenProvider{token: "token"}), "certificate signed by unknown authority")
 			})
 			t.Run("certificate registered in the Argo CD cert store", func(t *testing.T) {
@@ -155,7 +167,7 @@ func Test_SCMAPIClients_UseCertStore(t *testing.T) {
 			})
 			if p.usesRepoCreds {
 				t.Run("insecure credentials do not disable verification", func(t *testing.T) {
-					t.Setenv("ARGOCD_TLS_DATA_PATH", t.TempDir())
+					t.Setenv(common.EnvVarTLSDataPath, t.TempDir())
 					require.ErrorContains(t, p.call(t, legacyInsecureCreds), "certificate signed by unknown authority")
 				})
 			}
