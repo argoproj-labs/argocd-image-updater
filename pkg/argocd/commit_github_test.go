@@ -55,7 +55,7 @@ func Test_createCommitOnBranch_Success(t *testing.T) {
 	input.ExpectedHeadOID = "headsha"
 	input.Message.Headline = "build: update image"
 
-	oid, err := createCommitOnBranch(context.Background(), srv.URL, "test-token", input)
+	oid, err := createCommitOnBranch(context.Background(), srv.Client(), srv.URL, "test-token", input)
 	require.NoError(t, err)
 	assert.Equal(t, "abc123", oid)
 	assert.Equal(t, "Bearer test-token", gotAuth)
@@ -88,7 +88,7 @@ func Test_createCommitOnBranch_OmitsEmptyFileChangeLists(t *testing.T) {
 	input.Message.Headline = "build: update image"
 	input.FileChanges.Additions = []graphQLFileAddition{{Path: "a.yaml", Contents: "eA=="}}
 
-	_, err := createCommitOnBranch(context.Background(), srv.URL, "t", input)
+	_, err := createCommitOnBranch(context.Background(), srv.Client(), srv.URL, "t", input)
 	require.NoError(t, err)
 
 	fc := gotBody["variables"].(map[string]any)["input"].(map[string]any)["fileChanges"].(map[string]any)
@@ -102,7 +102,7 @@ func Test_createCommitOnBranch_GraphQLError(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	_, err := createCommitOnBranch(context.Background(), srv.URL, "t", &commitOnBranchInput{})
+	_, err := createCommitOnBranch(context.Background(), srv.Client(), srv.URL, "t", &commitOnBranchInput{})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "Expected head OID did not match")
 }
@@ -113,7 +113,7 @@ func Test_createCommitOnBranch_HTTPError(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	_, err := createCommitOnBranch(context.Background(), srv.URL, "t", &commitOnBranchInput{})
+	_, err := createCommitOnBranch(context.Background(), srv.Client(), srv.URL, "t", &commitOnBranchInput{})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "HTTP 401")
 }

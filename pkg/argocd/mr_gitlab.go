@@ -115,10 +115,16 @@ func NewGitLabMRService(ctx context.Context, wbc *WriteBackConfig, tokenProvider
 		}
 	}
 
+	clientURL := "https://gitlab.com"
 	var opts []gitlab.ClientOptionFunc
 	if apiBaseURL != "" {
+		clientURL = apiBaseURL
 		opts = append(opts, gitlab.WithBaseURL(apiBaseURL))
 	}
+	// The concrete credential types also implement git.Creds; anything else
+	// simply contributes no TLS client certificate.
+	creds, _ := tokenProvider.(git.Creds)
+	opts = append(opts, gitlab.WithHTTPClient(newSCMAPIHTTPClient(ctx, clientURL, creds, gitlabAPITimeout, nil)))
 
 	client, err := gitlab.NewClient(token, opts...)
 	if err != nil {

@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"time"
 	"unicode/utf8"
 
 	"github.com/argoproj-labs/argocd-image-updater/ext/git"
@@ -159,24 +158,28 @@ func NewAzureDevOpsPRService(ctx context.Context, wbc *WriteBackConfig, tokenPro
 	u.RawPath = ""
 	u.RawQuery = "api-version=7.1"
 	u.Fragment = ""
+	// The concrete credential types also implement git.Creds; anything else
+	// simply contributes no TLS client certificate.
+	creds, _ := tokenProvider.(git.Creds)
 	log.LoggerFromContext(ctx).Infof("Azure DevOps PR service initialised for %s/_git/%s", prefix, repo)
 	return &AzureDevOpsPRService{
-		client: &http.Client{
-			Timeout: 30 * time.Second,
-			CheckRedirect: func(req *http.Request, via []*http.Request) error {
-				if req.URL.Scheme != "https" || !strings.EqualFold(req.URL.Host, via[0].URL.Host) {
-					return fmt.Errorf("refusing Azure DevOps redirect to a different host or non-HTTPS URL")
-				}
-				if len(via) >= 10 {
-					return fmt.Errorf("stopped after 10 redirects")
-				}
-				return nil
-			},
-		},
+		client: newSCMAPIHTTPClient(ctx, u.String(), creds, azureDevOpsAPITimeout, azureDevOpsCheckRedirect),
 		apiURL: u,
 		token:  token,
 		pr:     wbc.PullRequest,
 	}, nil
+}
+
+// azureDevOpsCheckRedirect is the redirect policy for the Azure DevOps API
+// client: same host over HTTPS only, at most 10 redirects.
+func azureDevOpsCheckRedirect(req *http.Request, via []*http.Request) error {
+	if req.URL.Scheme != "https" || !strings.EqualFold(req.URL.Host, via[0].URL.Host) {
+		return fmt.Errorf("refusing Azure DevOps redirect to a different host or non-HTTPS URL")
+	}
+	if len(via) >= 10 {
+		return fmt.Errorf("stopped after 10 redirects")
+	}
+	return nil
 }
 
 func azureDevOpsBranchRef(branch string) string {
