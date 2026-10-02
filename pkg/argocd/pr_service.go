@@ -216,16 +216,16 @@ func commitChangesPR(ctx context.Context, applicationImages *ApplicationImages, 
 	case PRProviderGitea:
 		g, err := NewGiteaPRService(ctx, wbc, tokenProvider)
 		if err != nil {
-			return err
+			return false, err
 		}
 
 		if err := g.create(ctx); err != nil {
 			if errors.Is(err, ErrPRAlreadyExists) {
-				return nil
+				return false, nil
 			}
-			return err
+			return false, err
 		}
-		return nil
+		return false, nil
 
 	default:
 		return false, fmt.Errorf("unsupported PR provider: %d", wbc.PRProvider)

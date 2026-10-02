@@ -752,7 +752,7 @@ func Test_commitChangesPR(t *testing.T) {
 			}
 			appImages := makeTestAppImages(wbc)
 			pushBranch = TemplateBranchName(ctx, PRBranchTemplate, appImages.Application.Namespace, appImages.Application.Name, wbc.WriteBackTargetKey(), nil)
-			err := commitChangesPR(ctx, appImages, nil, noopWriter)
+			_, err := commitChangesPR(ctx, appImages, nil, noopWriter)
 			if tt.wantErrMsg != "" {
 				require.ErrorContains(t, err, tt.wantErrMsg)
 			} else {
