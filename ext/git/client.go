@@ -3,7 +3,6 @@ package git
 import (
 	"context"
 	"crypto/tls"
-	"crypto/x509"
 	"fmt"
 	"math"
 	"net/http"
@@ -259,48 +258,19 @@ func GetRepoHTTPClient(ctx context.Context, repoURL string, insecure bool, creds
 		transport.TLSClientConfig.InsecureSkipVerify = true
 		return customHTTPClient
 	}
-	if certPool := serverRootCAs(repoURL); certPool != nil {
+	parsedURL, err := url.Parse(repoURL)
+	if err != nil {
+		return customHTTPClient
+	}
+	serverCertificatePem, err := certutil.GetCertificateForConnect(parsedURL.Host)
+	if err != nil {
+		return customHTTPClient
+	}
+	if len(serverCertificatePem) > 0 {
+		certPool := certutil.GetCertPoolFromPEMData(serverCertificatePem)
 		transport.TLSClientConfig.RootCAs = certPool
 	}
 	return customHTTPClient
-}
-
-// NewSCMAPIHTTPClient returns an HTTP client for calls to an SCM provider's
-// API at apiURL, such as opening a pull request. Like GetRepoHTTPClient, it
-// trusts the certificates registered for the host in the Argo CD TLS
-// certificate store. The host is taken from apiURL rather than the repository
-// URL because the two can differ, e.g. for GitHub Enterprise. If no
-// certificates are registered for the host, the client uses
-// http.DefaultTransport.
-//
-// TLS verification is never disabled here: the repository's insecure setting
-// defaults to true for some write-back secrets for backwards compatibility,
-// and honouring it would send the SCM token over unverified connections.
-func NewSCMAPIHTTPClient(apiURL string) *http.Client {
-	certPool := serverRootCAs(apiURL)
-	if certPool == nil {
-		return &http.Client{}
-	}
-	transport := &http.Transport{Proxy: http.ProxyFromEnvironment}
-	if defaultTransport, ok := http.DefaultTransport.(*http.Transport); ok {
-		transport = defaultTransport.Clone()
-	}
-	transport.TLSClientConfig = &tls.Config{RootCAs: certPool}
-	return &http.Client{Transport: transport}
-}
-
-// serverRootCAs returns the certificates registered for the host of rawURL in
-// the Argo CD TLS certificate store, or nil if there are none.
-func serverRootCAs(rawURL string) *x509.CertPool {
-	parsedURL, err := url.Parse(rawURL)
-	if err != nil {
-		return nil
-	}
-	serverCertificatePem, err := certutil.GetCertificateForConnect(parsedURL.Host)
-	if err != nil || len(serverCertificatePem) == 0 {
-		return nil
-	}
-	return certutil.GetCertPoolFromPEMData(serverCertificatePem)
 }
 
 // resolveSSHHostKeyConfig returns a HostKeyCallback bound to the
