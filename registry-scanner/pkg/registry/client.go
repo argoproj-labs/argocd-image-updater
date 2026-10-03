@@ -138,14 +138,15 @@ const (
 // tooManyRequestsRetryTransport retries GET and HEAD requests that the
 // registry answers with 429 Too Many Requests, after waiting for the
 // response's Retry-After. A tag list is fetched page by page, so without
-// this a single throttled page fails the whole listing.
+// this a single throttled page fails the whole listing. Requests with a body
+// are not retried, since the body would already be consumed.
 type tooManyRequestsRetryTransport struct {
 	base http.RoundTripper
 }
 
 // RoundTrip performs the request, retrying it on 429 Too Many Requests.
 func (t *tooManyRequestsRetryTransport) RoundTrip(r *http.Request) (*http.Response, error) {
-	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+	if (r.Method != http.MethodGet && r.Method != http.MethodHead) || (r.Body != nil && r.Body != http.NoBody) {
 		return t.base.RoundTrip(r)
 	}
 	for attempt := 1; ; attempt++ {
