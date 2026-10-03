@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -1352,6 +1353,17 @@ func TestTooManyRequestsRetryTransport(t *testing.T) {
 	t.Run("does not retry other methods", func(t *testing.T) {
 		server, requests := throttling(1, "0")
 		req, err := http.NewRequest(http.MethodPost, server.URL, nil)
+		require.NoError(t, err)
+		resp, err := rt.RoundTrip(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		assert.Equal(t, http.StatusTooManyRequests, resp.StatusCode)
+		assert.Equal(t, int32(1), requests.Load())
+	})
+
+	t.Run("does not retry a request with a body", func(t *testing.T) {
+		server, requests := throttling(1, "0")
+		req, err := http.NewRequest(http.MethodGet, server.URL, strings.NewReader("body"))
 		require.NoError(t, err)
 		resp, err := rt.RoundTrip(req)
 		require.NoError(t, err)
