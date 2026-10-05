@@ -140,7 +140,10 @@ func NewGithubPRService(ctx context.Context, wbc *WriteBackConfig, tokenProvider
 		}
 	}
 
-	client, err := newGithubRESTClient(token, apiBaseURL)
+	// The concrete credential types also implement git.Creds; anything else
+	// simply contributes no TLS client certificate.
+	creds, _ := tokenProvider.(git.Creds)
+	client, err := newGithubRESTClient(ctx, token, apiBaseURL, creds)
 	if err != nil {
 		return nil, err
 	}
@@ -161,11 +164,13 @@ func NewGithubPRService(ctx context.Context, wbc *WriteBackConfig, tokenProvider
 
 // newGithubRESTClient builds an authenticated go-github client for github.com
 // (empty apiBaseURL) or a GitHub Enterprise instance (apiBaseURL like
-// https://HOST/api/v3).
-func newGithubRESTClient(token, apiBaseURL string) (*github.Client, error) {
+// https://HOST/api/v3). Its HTTP client is keyed on the API host, which can
+// differ from the repository host for GitHub Enterprise.
+func newGithubRESTClient(ctx context.Context, token, apiBaseURL string, creds git.Creds) (*github.Client, error) {
 	if apiBaseURL == "" {
-		// github.com: no enterprise URLs needed, nil uses http.DefaultClient
-		return github.NewClient(nil).WithAuthToken(token), nil
+		// github.com: no enterprise URLs needed
+		httpClient := newSCMAPIHTTPClient(ctx, "https://api.github.com", creds, githubAPITimeout, nil)
+		return github.NewClient(httpClient).WithAuthToken(token), nil
 	}
 	// uploadURL must be scheme+host only so WithEnterpriseURLs appends
 	// /api/uploads/ correctly — passing apiBaseURL for both would produce
@@ -175,7 +180,8 @@ func newGithubRESTClient(token, apiBaseURL string) (*github.Client, error) {
 		return nil, fmt.Errorf("invalid GitHub API base URL %q: %w", apiBaseURL, parseErr)
 	}
 	uploadURL := u.Scheme + "://" + u.Host
-	client, err := github.NewClient(nil).WithAuthToken(token).WithEnterpriseURLs(apiBaseURL, uploadURL)
+	httpClient := newSCMAPIHTTPClient(ctx, apiBaseURL, creds, githubAPITimeout, nil)
+	client, err := github.NewClient(httpClient).WithAuthToken(token).WithEnterpriseURLs(apiBaseURL, uploadURL)
 	if err != nil {
 		return nil, fmt.Errorf("could not create GitHub enterprise client for %q: %w", apiBaseURL, err)
 	}

@@ -8,6 +8,13 @@ import (
 	"github.com/argoproj-labs/argocd-image-updater/ext/git"
 )
 
+// Request budgets for the SCM API clients that have no other deadline.
+const (
+	githubAPITimeout      = 30 * time.Second
+	gitlabAPITimeout      = 30 * time.Second
+	azureDevOpsAPITimeout = 30 * time.Second
+)
+
 // newSCMAPIHTTPClient builds the HTTP client a PullRequestService uses for its
 // REST API calls, so that those calls share the TLS configuration already
 // applied to Git operations against the same repository: custom root CAs taken

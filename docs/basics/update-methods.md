@@ -583,6 +583,17 @@ Configure credentials via the `writeBackConfig.method` field using the
 secret). The author identity of the commits and the PR is derived from those
 credentials.
 
+#### TLS for the SCM API
+
+Calls to the SCM API (opening the PR/MR, and creating signed commits through
+the GitHub API) trust the certificates for the API host in the TLS certificate
+directory used by the Git transport (`ARGOCD_TLS_DATA_PATH`, e.g. a mount of
+Argo CD's `argocd-tls-certs-cm`). They do not also need to be added to the
+system trust store, e.g. with `SSL_CERT_DIR`.
+
+TLS verification is always on for SCM API calls, regardless of the
+repository's `insecure` setting, because those calls carry the access token.
+
 #### PR title and body
 
 The pull request title is taken from the **first line** of the rendered Git

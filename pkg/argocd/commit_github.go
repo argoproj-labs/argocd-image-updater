@@ -85,9 +85,9 @@ type graphQLFileDeletion struct {
 // GitHub-signed commit on a branch.
 const createCommitOnBranchMutation = `mutation($input: CreateCommitOnBranchInput!) { createCommitOnBranch(input: $input) { commit { oid } } }`
 
-// githubGraphQLHTTPClient bounds the GraphQL request even when the caller's
+// githubGraphQLTimeout bounds the GraphQL request even when the caller's
 // context carries no deadline; context cancellation still applies first.
-var githubGraphQLHTTPClient = &http.Client{Timeout: 30 * time.Second}
+const githubGraphQLTimeout = 30 * time.Second
 
 // createCommitOnBranchResponse is the GraphQL response envelope for the
 // createCommitOnBranch mutation.
@@ -108,7 +108,7 @@ type createCommitOnBranchResponse struct {
 // the OID of the created commit. Commits created this way are constructed
 // server-side by GitHub and signed with GitHub's key; with a GitHub App
 // installation token they are authored as the App's bot user.
-func createCommitOnBranch(ctx context.Context, endpoint, token string, input *commitOnBranchInput) (string, error) {
+func createCommitOnBranch(ctx context.Context, httpClient *http.Client, endpoint, token string, input *commitOnBranchInput) (string, error) {
 	payload, err := json.Marshal(map[string]any{
 		"query":     createCommitOnBranchMutation,
 		"variables": map[string]any{"input": input},
@@ -122,7 +122,7 @@ func createCommitOnBranch(ctx context.Context, endpoint, token string, input *co
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := githubGraphQLHTTPClient.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("createCommitOnBranch request failed: %w", err)
 	}
@@ -195,6 +195,9 @@ func commitChangesGithubAPI(ctx context.Context, wbc *WriteBackConfig, gitC git.
 	if p, ok := tokenProvider.(git.SCMAPIBaseURLProvider); ok {
 		apiBaseURL = p.SCMAPIBaseURL()
 	}
+	// The concrete credential types also implement git.Creds; anything else
+	// simply contributes no TLS client certificate.
+	creds, _ := tokenProvider.(git.Creds)
 
 	owner, repoName, err := parseGitHubOwnerRepo(wbc.GitRepo)
 	if err != nil {
@@ -202,7 +205,7 @@ func commitChangesGithubAPI(ctx context.Context, wbc *WriteBackConfig, gitC git.
 	}
 
 	if branchCreated {
-		restClient, err := newGithubRESTClient(token, apiBaseURL)
+		restClient, err := newGithubRESTClient(ctx, token, apiBaseURL, creds)
 		if err != nil {
 			return err
 		}
@@ -242,7 +245,9 @@ func commitChangesGithubAPI(ctx context.Context, wbc *WriteBackConfig, gitC git.
 	}
 
 	logCtx.Debugf("committing via GitHub API: commit author/committer and local signing settings are determined by GitHub (App bot user)")
-	commitOID, err := createCommitOnBranch(ctx, graphQLEndpoint(apiBaseURL), token, input)
+	endpoint := graphQLEndpoint(apiBaseURL)
+	httpClient := newSCMAPIHTTPClient(ctx, endpoint, creds, githubGraphQLTimeout, nil)
+	commitOID, err := createCommitOnBranch(ctx, httpClient, endpoint, token, input)
 	if err != nil {
 		return err
 	}
