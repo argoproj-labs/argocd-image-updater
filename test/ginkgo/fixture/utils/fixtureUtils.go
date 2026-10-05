@@ -10,6 +10,7 @@ import (
 
 	admissionv1 "k8s.io/api/admissionregistration/v1"
 	apps "k8s.io/api/apps/v1"
+	authorizationv1 "k8s.io/api/authorization/v1"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -63,6 +64,10 @@ func getKubeClient(config *rest.Config) (client.Client, *runtime.Scheme, error) 
 		return nil, nil, err
 	}
 	if err := rbacv1.AddToScheme(scheme); err != nil {
+		return nil, nil, err
+	}
+
+	if err := authorizationv1.AddToScheme(scheme); err != nil {
 		return nil, nil, err
 	}
 

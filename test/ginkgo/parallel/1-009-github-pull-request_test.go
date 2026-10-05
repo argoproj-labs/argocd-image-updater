@@ -224,6 +224,8 @@ var _ = Describe("ArgoCD Image Updater Parallel E2E Tests", func() {
 			Eventually(statefulSet).Should(ssFixture.HaveReplicas(1))
 			Eventually(statefulSet, "3m", "3s").Should(ssFixture.HaveReadyReplicas(1))
 
+			iuFixture.WaitForControllerRBAC(ctx, k8sClient, ns.Name)
+
 			// ---------------------------------------------------------------
 			// 3. Create the ArgoCD Application (source: local git repo).
 			// ---------------------------------------------------------------
