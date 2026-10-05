@@ -136,6 +136,8 @@ var _ = Describe("ArgoCD Image Updater Parallel E2E Tests", func() {
 			Eventually(statefulSet).Should(ssFixture.HaveReplicas(1))
 			Eventually(statefulSet, "3m", "3s").Should(ssFixture.HaveReadyReplicas(1))
 
+			iuFixture.WaitForControllerRBAC(ctx, k8sClient, ns.Name)
+
 			By("creating Application")
 			app := &appv1alpha1.Application{
 				ObjectMeta: metav1.ObjectMeta{
@@ -276,6 +278,8 @@ var _ = Describe("ArgoCD Image Updater Parallel E2E Tests", func() {
 			Eventually(statefulSet).Should(k8sFixture.ExistByName())
 			Eventually(statefulSet).Should(ssFixture.HaveReplicas(1))
 			Eventually(statefulSet, "3m", "3s").Should(ssFixture.HaveReadyReplicas(1))
+
+			iuFixture.WaitForControllerRBAC(ctx, k8sClient, ns.Name)
 
 			By("creating Application")
 			app := &appv1alpha1.Application{

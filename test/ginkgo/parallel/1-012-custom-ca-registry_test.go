@@ -194,6 +194,8 @@ var _ = Describe("ArgoCD Image Updater Custom CA Certificate E2E Tests", func() 
 			Eventually(statefulSet).Should(ssFixture.HaveReplicas(1))
 			Eventually(statefulSet, "3m", "3s").Should(ssFixture.HaveReadyReplicas(1))
 
+			iuFixture.WaitForControllerRBAC(ctx, k8sClient, tc.ns.Name)
+
 			By("creating Application")
 			tc.app = &appv1alpha1.Application{
 				ObjectMeta: metav1.ObjectMeta{

@@ -205,6 +205,8 @@ spec:
 			Eventually(statefulSet).Should(ssFixture.HaveReplicas(1))
 			Eventually(statefulSet, "3m", "3s").Should(ssFixture.HaveReadyReplicas(1))
 
+			iuFixture.WaitForControllerRBAC(ctx, k8sClient, ns.Name)
+
 			By("creating plugin-type Application")
 			pluginEnvName := "IMAGE_NAME"
 			pluginEnvTag := "IMAGE_TAG"

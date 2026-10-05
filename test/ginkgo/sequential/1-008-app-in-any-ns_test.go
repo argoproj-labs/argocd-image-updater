@@ -35,6 +35,7 @@ import (
 	"github.com/argoproj-labs/argocd-image-updater/test/ginkgo/fixture"
 	argocdFixture "github.com/argoproj-labs/argocd-image-updater/test/ginkgo/fixture/argocd"
 	deplFixture "github.com/argoproj-labs/argocd-image-updater/test/ginkgo/fixture/deployment"
+	iuFixture "github.com/argoproj-labs/argocd-image-updater/test/ginkgo/fixture/imageupdater"
 	k8sFixture "github.com/argoproj-labs/argocd-image-updater/test/ginkgo/fixture/k8s"
 	ssFixture "github.com/argoproj-labs/argocd-image-updater/test/ginkgo/fixture/statefulset"
 	fixtureUtils "github.com/argoproj-labs/argocd-image-updater/test/ginkgo/fixture/utils"
@@ -217,6 +218,8 @@ var _ = Describe("ArgoCD Image Updater Sequential E2E Tests", func() {
 
 			app := createGuestbookApp(ctx, k8sClient, nsDev.Name, nsDev.Name)
 			appQE := createGuestbookApp(ctx, k8sClient, nsQE.Name, nsQE.Name)
+
+			iuFixture.WaitForControllerRBAC(ctx, k8sClient, ns.Name, nsDev.Name, nsQE.Name)
 
 			imageUpdater = createImageUpdaterAndVerify(ctx, k8sClient, nsDev.Name, app)
 			imageUpdaterQE = createImageUpdaterAndVerify(ctx, k8sClient, nsQE.Name, appQE)

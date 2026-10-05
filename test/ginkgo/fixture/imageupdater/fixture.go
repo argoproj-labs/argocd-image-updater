@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	appsv1 "k8s.io/api/apps/v1"
+	authorizationv1 "k8s.io/api/authorization/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 
@@ -169,6 +170,54 @@ func TriggerArgoCDRefresh(ctx context.Context, k8sClient client.Client, app clie
 			if err := k8sClient.Update(ctx, app); err != nil {
 				GinkgoWriter.Println("TriggerArgoCDRefresh: failed to update app:", err)
 			}
+		}
+	}
+}
+
+// ControllerName is the name the operator gives the image updater Deployment and
+// its ServiceAccount for an ArgoCD instance named "argocd".
+const ControllerName = "argocd-argocd-image-updater-controller"
+
+// WaitForControllerRBAC blocks until the image updater ServiceAccount in namespace
+// is allowed to write an update back, i.e. to update Applications and ImageUpdater
+// statuses in appNamespaces (namespace itself, when none are given).
+//
+// A Ready Deployment is not enough to start a test on. The operator creates the
+// workload and its Role/RoleBinding independently, so the controller can be running
+// and already holding the leader lease while the API server still rejects its
+// writes. With IMAGE_UPDATER_INTERVAL=0 the reconciler runs a CR once and does not
+// requeue after such a failure, so an ImageUpdater created inside that window never
+// updates anything, and the test waits out its whole timeout for an image that will
+// never be written. See https://github.com/argoproj-labs/argocd-image-updater/issues/1848.
+func WaitForControllerRBAC(ctx context.Context, k8sClient client.Client, namespace string, appNamespaces ...string) {
+	By("waiting for the image updater ServiceAccount to be allowed to write updates back")
+
+	if len(appNamespaces) == 0 {
+		appNamespaces = []string{namespace}
+	}
+	user := fmt.Sprintf("system:serviceaccount:%s:%s", namespace, ControllerName)
+
+	for _, appNamespace := range appNamespaces {
+		for _, attrs := range []authorizationv1.ResourceAttributes{
+			{Verb: "update", Group: "argoproj.io", Resource: "applications"},
+			{Verb: "update", Group: "argocd-image-updater.argoproj.io", Resource: "imageupdaters", Subresource: "status"},
+		} {
+			attrs.Namespace = appNamespace
+			Eventually(func() (bool, error) {
+				// A SubjectAccessReview is a virtual resource: creating one asks the
+				// API server to answer the question rather than persisting anything.
+				review := &authorizationv1.SubjectAccessReview{
+					Spec: authorizationv1.SubjectAccessReviewSpec{
+						User:               user,
+						ResourceAttributes: &attrs,
+					},
+				}
+				if err := k8sClient.Create(ctx, review); err != nil {
+					return false, err
+				}
+				return review.Status.Allowed, nil
+			}, "3m", "2s").Should(BeTrue(),
+				"%s was never granted %s on %s/%s in namespace %s", user, attrs.Verb, attrs.Group, attrs.Resource, appNamespace)
 		}
 	}
 }

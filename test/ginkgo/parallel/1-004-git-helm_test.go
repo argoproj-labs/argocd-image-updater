@@ -136,6 +136,8 @@ var _ = Describe("ArgoCD Image Updater Parallel E2E Tests", func() {
 			Eventually(statefulSet).Should(ssFixture.HaveReplicas(1))
 			Eventually(statefulSet, "3m", "3s").Should(ssFixture.HaveReadyReplicas(1))
 
+			iuFixture.WaitForControllerRBAC(ctx, k8sClient, ns.Name)
+
 			By("creating single-source Helm Application")
 			gitRepoURL := fmt.Sprintf("https://%s.%s.svc.cluster.local:8081/testdata.git", iuFixture.Name, ns.Name)
 			app := &appv1alpha1.Application{
