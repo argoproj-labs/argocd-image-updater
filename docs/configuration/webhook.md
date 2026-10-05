@@ -421,8 +421,22 @@ argocd-image-updater webhook \
 
 !!!note
     TLS 1.3 cipher suites are not configurable by design. The `--tlsciphers` flag only
-    affects connections that negotiate TLS 1.2 or lower. A warning is logged if ciphers
-    are specified while the minimum version is 1.3.
+    affects connections that negotiate TLS 1.2 or lower. TLS 1.3 suite names are ignored
+    (with a warning) wherever they appear in `--tlsciphers`, and the whole list is ignored
+    when the minimum version is 1.3.
+
+!!!note
+    `--tlsminversion` is a floor on the negotiated handshake, not a requirement that every
+    configured suite be usable at that floor. Cipher suites are offered only for the version
+    actually negotiated, so `--tlsminversion 1.1` together with a TLS 1.2 suite is valid and
+    means "accept TLS 1.1 and above, and use this suite when 1.2 is negotiated". Beyond
+    rejecting suite names that Go does not consider secure, cipher suite selection is left
+    to the Go standard library.
+
+A minimum version of `1.0` is accepted but clamped up to `1.2`, with a warning. TLS 1.0 is
+never negotiated — the clamp only avoids failing to start when a cluster-wide TLS policy
+(such as OpenShift's built-in `Old` profile) reports a 1.0 floor. A *maximum* version of
+`1.0` is still an error, since it asks the server to cap at a version it never speaks.
 
 ### Providing Your Own Certificate
 

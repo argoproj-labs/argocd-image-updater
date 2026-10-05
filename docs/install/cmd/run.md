@@ -251,7 +251,8 @@ Can also be set with the `TLS_MAX_VERSION` environment variable.
 **--tlsminversion *version***
 
 Minimum TLS version to accept. Valid values are `1.1`, `1.2`, and `1.3`. Defaults to `1.3`.
-TLS 1.0 is not supported.
+TLS 1.0 is not supported: a configured minimum of `1.0` is clamped up to `1.2` with a warning,
+so the server still starts but never negotiates TLS 1.0.
 
 Can also be set with the `TLS_MIN_VERSION` environment variable.
 
