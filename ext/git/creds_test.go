@@ -55,7 +55,7 @@ func TestHTTPSCreds_Environ_no_cert_cleanup(t *testing.T) {
 	ctx := context.Background()
 
 	store := &memoryCredsStore{creds: make(map[string]cred)}
-	creds := NewHTTPSCreds("", "", "", "", true, "", store, false)
+	creds := NewHTTPSCreds("", "", "", "", true, "", "", store, false)
 	closer, env, err := creds.Environ(ctx)
 	require.NoError(t, err)
 	var nonce string
@@ -73,7 +73,7 @@ func TestHTTPSCreds_Environ_no_cert_cleanup(t *testing.T) {
 func TestHTTPSCreds_Environ_insecure_true(t *testing.T) {
 	ctx := context.Background()
 
-	creds := NewHTTPSCreds("", "", "", "", true, "", &NoopCredsStore{}, false)
+	creds := NewHTTPSCreds("", "", "", "", true, "", "", &NoopCredsStore{}, false)
 	closer, env, err := creds.Environ(ctx)
 	t.Cleanup(func() {
 		io.Close(closer)
@@ -85,7 +85,7 @@ func TestHTTPSCreds_Environ_insecure_true(t *testing.T) {
 
 func TestHTTPSCreds_Environ_insecure_false(t *testing.T) {
 	ctx := context.Background()
-	creds := NewHTTPSCreds("", "", "", "", false, "", &NoopCredsStore{}, false)
+	creds := NewHTTPSCreds("", "", "", "", false, "", "", &NoopCredsStore{}, false)
 	closer, env, err := creds.Environ(ctx)
 	t.Cleanup(func() {
 		io.Close(closer)
@@ -99,7 +99,7 @@ func TestHTTPSCreds_Environ_forceBasicAuth(t *testing.T) {
 	t.Run("Enabled and credentials set", func(t *testing.T) {
 		ctx := context.Background()
 		store := &memoryCredsStore{creds: make(map[string]cred)}
-		creds := NewHTTPSCreds("username", "password", "", "", false, "", store, true)
+		creds := NewHTTPSCreds("username", "password", "", "", false, "", "", store, true)
 		closer, env, err := creds.Environ(ctx)
 		require.NoError(t, err)
 		defer closer.Close()
@@ -118,7 +118,7 @@ func TestHTTPSCreds_Environ_forceBasicAuth(t *testing.T) {
 	t.Run("Enabled but credentials not set", func(t *testing.T) {
 		ctx := context.Background()
 		store := &memoryCredsStore{creds: make(map[string]cred)}
-		creds := NewHTTPSCreds("", "", "", "", false, "", store, true)
+		creds := NewHTTPSCreds("", "", "", "", false, "", "", store, true)
 		closer, env, err := creds.Environ(ctx)
 		require.NoError(t, err)
 		defer closer.Close()
@@ -136,7 +136,7 @@ func TestHTTPSCreds_Environ_forceBasicAuth(t *testing.T) {
 	t.Run("Disabled with credentials set", func(t *testing.T) {
 		ctx := context.Background()
 		store := &memoryCredsStore{creds: make(map[string]cred)}
-		creds := NewHTTPSCreds("username", "password", "", "", false, "", store, false)
+		creds := NewHTTPSCreds("username", "password", "", "", false, "", "", store, false)
 		closer, env, err := creds.Environ(ctx)
 		require.NoError(t, err)
 		defer closer.Close()
@@ -155,7 +155,7 @@ func TestHTTPSCreds_Environ_forceBasicAuth(t *testing.T) {
 	t.Run("Disabled with credentials not set", func(t *testing.T) {
 		ctx := context.Background()
 		store := &memoryCredsStore{creds: make(map[string]cred)}
-		creds := NewHTTPSCreds("", "", "", "", false, "", store, false)
+		creds := NewHTTPSCreds("", "", "", "", false, "", "", store, false)
 		closer, env, err := creds.Environ(ctx)
 		require.NoError(t, err)
 		defer closer.Close()
@@ -176,7 +176,7 @@ func TestHTTPSCreds_Environ_clientCert(t *testing.T) {
 	ctx := context.Background()
 
 	store := &memoryCredsStore{creds: make(map[string]cred)}
-	creds := NewHTTPSCreds("", "", "clientCertData", "clientCertKey", false, "", store, false)
+	creds := NewHTTPSCreds("", "", "clientCertData", "clientCertKey", false, "", "", store, false)
 	closer, env, err := creds.Environ(ctx)
 	require.NoError(t, err)
 	var cert, key string
@@ -468,7 +468,7 @@ func TestNewGitHubAppCreds(t *testing.T) {
 	// non-nil and that the underlying concrete type also satisfies the two SCM
 	// provider interfaces (verified at compile time above).
 	creds := NewGitHubAppCreds(42, 7, string(key), "https://github.example.com", "https://github.example.com/org/repo",
-		"certdata", "keydata", false, "", &NoopCredsStore{})
+		"certdata", "keydata", false, "", "", &NoopCredsStore{})
 	assert.NotNil(t, creds)
 	assert.Implements(t, (*SCMTokenProvider)(nil), creds)
 	assert.Implements(t, (*SCMAPIBaseURLProvider)(nil), creds)
@@ -650,4 +650,30 @@ func TestGitHubAppCreds_Environ_invalidPrivateKey(t *testing.T) {
 
 	_, _, err := creds.Environ(ctx)
 	assert.Error(t, err, "invalid private key must produce an error")
+}
+
+func TestRepoProxyOptions(t *testing.T) {
+	const (
+		proxyURL = "http://proxy.example.com:3128"
+		noProxy  = "internal.example.com,10.0.0.0/8"
+	)
+	store := NoopCredsStore{}
+
+	tests := map[string]Creds{
+		"HTTPSCreds":     NewHTTPSCreds("user", "pass", "", "", false, proxyURL, noProxy, store, false),
+		"GitHubAppCreds": NewGitHubAppCreds(1, 2, "key", "", "https://github.com/org/repo.git", "", "", false, proxyURL, noProxy, store),
+	}
+	for name, creds := range tests {
+		t.Run(name, func(t *testing.T) {
+			opts, ok := creds.(RepoProxyOptions)
+			require.True(t, ok)
+			assert.Equal(t, proxyURL, opts.Proxy())
+			assert.Equal(t, noProxy, opts.NoProxy())
+		})
+	}
+
+	t.Run("credentials without proxy settings", func(t *testing.T) {
+		_, ok := Creds(NopCreds{}).(RepoProxyOptions)
+		assert.False(t, ok)
+	})
 }
