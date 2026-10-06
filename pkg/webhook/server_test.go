@@ -533,16 +533,27 @@ func TestBuildTLSConfig(t *testing.T) {
 		assert.Contains(t, err.Error(), "minimum TLS 1.3 cannot be higher than maximum TLS 1.2")
 	})
 
-	t.Run("one-sided version range is valid", func(t *testing.T) {
-		// An unset version is 0 ("use the Go default") and must not be read as
-		// a bound the other end can exceed.
-		for _, cfg := range []*TLSConfig{
-			{MaxVersion: "1.1"},
-			{MinVersion: "1.3"},
-		} {
-			_, err := cfg.buildTLSConfig(context.Background())
-			assert.NoError(t, err, "min=%q max=%q", cfg.MinVersion, cfg.MaxVersion)
-		}
+	t.Run("unset minimum leaves the maximum unbounded above", func(t *testing.T) {
+		_, err := (&TLSConfig{MinVersion: "1.3"}).buildTLSConfig(context.Background())
+		assert.NoError(t, err)
+	})
+
+	t.Run("maximum below the crypto/tls default minimum is invalid", func(t *testing.T) {
+		// crypto/tls floors a server at TLS 1.2 when MinVersion is unset, so
+		// this range is empty and every handshake would fail.
+		_, err := (&TLSConfig{MaxVersion: "1.1"}).buildTLSConfig(context.Background())
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "maximum TLS 1.1 is below TLS 1.2")
+		assert.Contains(t, err.Error(), "set --tlsminversion explicitly")
+	})
+
+	t.Run("explicit minimum opens up a low maximum", func(t *testing.T) {
+		// The escape hatch the error above points at: naming the minimum
+		// explicitly makes crypto/tls offer TLS 1.1.
+		tlsCfg, err := (&TLSConfig{MinVersion: "1.1", MaxVersion: "1.1"}).buildTLSConfig(context.Background())
+		require.NoError(t, err)
+		assert.Equal(t, uint16(tls.VersionTLS11), tlsCfg.MinVersion)
+		assert.Equal(t, uint16(tls.VersionTLS11), tlsCfg.MaxVersion)
 	})
 
 	t.Run("invalid min version", func(t *testing.T) {

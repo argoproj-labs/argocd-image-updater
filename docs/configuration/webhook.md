@@ -438,6 +438,11 @@ never negotiated — the clamp only avoids failing to start when a cluster-wide 
 (such as OpenShift's built-in `Old` profile) reports a 1.0 floor. A *maximum* version of
 `1.0` is still an error, since it asks the server to cap at a version it never speaks.
 
+Clearing the minimum with `--tlsminversion ""` does not remove the floor — the Go standard
+library still refuses to negotiate below TLS 1.2 for a server. Pairing an empty minimum with
+a maximum of `1.1` leaves no negotiable version at all, so it is rejected at startup; name
+the minimum explicitly (`--tlsminversion 1.1`) if you need to serve TLS 1.1.
+
 ### Providing Your Own Certificate
 
 To use your own TLS certificate, create the Secret `argocd-image-updater-tls`, which is

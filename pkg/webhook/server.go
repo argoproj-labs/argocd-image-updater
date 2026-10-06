@@ -1,6 +1,7 @@
 package webhook
 
 import (
+	"cmp"
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -37,6 +38,12 @@ const (
 	DefaultTLSMinVersion = "1.3"
 	// DefaultTLSMaxVersion is the default maximum TLS version
 	DefaultTLSMaxVersion = "1.3"
+
+	// goDefaultTLSMinVersion mirrors the minimum version crypto/tls enforces
+	// for a server when tls.Config.MinVersion is left unset. An unset minimum
+	// is therefore a floor of its own, not "no floor": a server configured
+	// with only a maximum below this rejects every handshake.
+	goDefaultTLSMinVersion = tls.VersionTLS12
 )
 
 // TLSConfig holds TLS configuration for the server
@@ -198,12 +205,19 @@ func (t *TLSConfig) buildTLSConfig(ctx context.Context) (*tls.Config, error) {
 	}
 	tlsCfg.MaxVersion = maxVer
 
-	// An inverted range leaves the server with no version it can negotiate at
-	// all, so fail fast on it. A zero version means "use the Go default" and
-	// puts no bound on the other end.
-	if minVer != 0 && maxVer != 0 && minVer > maxVer {
-		return nil, fmt.Errorf("minimum %s cannot be higher than maximum %s",
-			tls.VersionName(minVer), tls.VersionName(maxVer))
+	// An empty range leaves the server with no version it can negotiate at all,
+	// so fail fast on it. An unset minimum is not unbounded below: crypto/tls
+	// floors a server at goDefaultTLSMinVersion, so "no minimum, maximum 1.1"
+	// rejects every handshake just as surely as an inverted range does.
+	if maxVer != 0 {
+		if effectiveMin := cmp.Or(minVer, uint16(goDefaultTLSMinVersion)); effectiveMin > maxVer {
+			if minVer == 0 {
+				return nil, fmt.Errorf("maximum %s is below %s, the minimum crypto/tls applies when no minimum is configured; set --tlsminversion explicitly to negotiate below %s",
+					tls.VersionName(maxVer), tls.VersionName(goDefaultTLSMinVersion), tls.VersionName(goDefaultTLSMinVersion))
+			}
+			return nil, fmt.Errorf("minimum %s cannot be higher than maximum %s",
+				tls.VersionName(minVer), tls.VersionName(maxVer))
+		}
 	}
 
 	ciphers, err := ParseTLSCiphers(t.Ciphers)
