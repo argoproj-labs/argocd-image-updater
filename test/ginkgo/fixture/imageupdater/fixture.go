@@ -195,29 +195,85 @@ func WaitForControllerRBAC(ctx context.Context, k8sClient client.Client, namespa
 	if len(appNamespaces) == 0 {
 		appNamespaces = []string{namespace}
 	}
-	user := fmt.Sprintf("system:serviceaccount:%s:%s", namespace, ControllerName)
 
 	for _, appNamespace := range appNamespaces {
-		for _, attrs := range []authorizationv1.ResourceAttributes{
-			{Verb: "update", Group: "argoproj.io", Resource: "applications"},
-			{Verb: "update", Group: "argocd-image-updater.argoproj.io", Resource: "imageupdaters", Subresource: "status"},
-		} {
-			attrs.Namespace = appNamespace
+		for _, attrs := range controllerWriteAttributes(appNamespace) {
 			Eventually(func() (bool, error) {
-				// A SubjectAccessReview is a virtual resource: creating one asks the
-				// API server to answer the question rather than persisting anything.
-				review := &authorizationv1.SubjectAccessReview{
-					Spec: authorizationv1.SubjectAccessReviewSpec{
-						User:               user,
-						ResourceAttributes: &attrs,
-					},
-				}
-				if err := k8sClient.Create(ctx, review); err != nil {
-					return false, err
-				}
-				return review.Status.Allowed, nil
+				return controllerCanWrite(ctx, k8sClient, namespace, attrs)
 			}, "3m", "2s").Should(BeTrue(),
-				"%s was never granted %s on %s/%s in namespace %s", user, attrs.Verb, attrs.Group, attrs.Resource, appNamespace)
+				"the image updater ServiceAccount in %s was never granted %s on %s/%s in namespace %s",
+				namespace, attrs.Verb, attrs.Group, attrs.Resource, appNamespace)
 		}
 	}
+}
+
+// ReportControllerRBAC prints whether the image updater ServiceAccount in
+// namespace is still allowed to write an update back. It reports and returns;
+// nothing here asserts, so it is safe to call from failure-time debug output.
+//
+// Specs gate on WaitForControllerRBAC before creating their ImageUpdater CR, yet
+// the controller has still been seen rejected with "cannot update resource
+// \"applications\"" seconds later. Asking the same question again once the spec
+// has failed tells the two possible causes apart: "no" means the grant really was
+// withdrawn after the gate passed, "yes" alongside the controller's 403 means the
+// gate is measuring the wrong thing and needs replacing rather than keeping.
+// See https://github.com/argoproj-labs/argocd-image-updater/issues/1848.
+func ReportControllerRBAC(ctx context.Context, k8sClient client.Client, namespace string) {
+	user, _ := controllerSubject(namespace)
+	for _, attrs := range controllerWriteAttributes(namespace) {
+		resource := attrs.Resource
+		if attrs.Subresource != "" {
+			resource += "/" + attrs.Subresource
+		}
+		allowed, err := controllerCanWrite(ctx, k8sClient, namespace, attrs)
+		if err != nil {
+			GinkgoWriter.Printf("could not check whether %s may %s %s in %s: %v\n",
+				user, attrs.Verb, resource, namespace, err)
+			continue
+		}
+		GinkgoWriter.Printf("may %s %s %s in %s? %t\n", user, attrs.Verb, resource, namespace, allowed)
+	}
+}
+
+// controllerSubject returns the user and groups a ServiceAccount token for the
+// image updater controller in namespace presents to the API server.
+func controllerSubject(namespace string) (string, []string) {
+	return fmt.Sprintf("system:serviceaccount:%s:%s", namespace, ControllerName),
+		[]string{"system:serviceaccounts", "system:serviceaccounts:" + namespace, "system:authenticated"}
+}
+
+// controllerWriteAttributes returns the authorization questions that decide
+// whether the controller can record an update in appNamespace: the Application
+// write, and the ImageUpdater status write that reports the result.
+func controllerWriteAttributes(appNamespace string) []authorizationv1.ResourceAttributes {
+	return []authorizationv1.ResourceAttributes{
+		{Namespace: appNamespace, Verb: "update", Group: "argoproj.io", Resource: "applications"},
+		{Namespace: appNamespace, Verb: "update", Group: "argocd-image-updater.argoproj.io", Resource: "imageupdaters", Subresource: "status"},
+	}
+}
+
+// controllerCanWrite asks the API server whether the image updater
+// ServiceAccount in namespace is allowed the given access.
+//
+// A SubjectAccessReview names the subject in its own body, so this only needs
+// create on subjectaccessreviews — unlike `kubectl auth can-i --as`, which
+// impersonates and would be rejected outright if the test credential lacked
+// impersonate rights on the user or any of its groups.
+func controllerCanWrite(ctx context.Context, k8sClient client.Client, namespace string, attrs authorizationv1.ResourceAttributes) (bool, error) {
+	user, groups := controllerSubject(namespace)
+	// A SubjectAccessReview is a virtual resource: creating one asks the API
+	// server to answer the question rather than persisting anything.
+	review := &authorizationv1.SubjectAccessReview{
+		Spec: authorizationv1.SubjectAccessReviewSpec{
+			User: user,
+			// Without the groups the SA actually carries, a permission granted to
+			// one of them rather than to the SA itself would read as a denial.
+			Groups:             groups,
+			ResourceAttributes: &attrs,
+		},
+	}
+	if err := k8sClient.Create(ctx, review); err != nil {
+		return false, err
+	}
+	return review.Status.Allowed, nil
 }
