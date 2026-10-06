@@ -31,6 +31,7 @@ import (
 	apierr "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	iuFixture "github.com/argoproj-labs/argocd-image-updater/test/ginkgo/fixture/imageupdater"
 	osFixture "github.com/argoproj-labs/argocd-image-updater/test/ginkgo/fixture/os"
 	"github.com/argoproj-labs/argocd-image-updater/test/ginkgo/fixture/utils"
 )
@@ -667,6 +668,8 @@ func OutputDebugOnFail(namespaceParams ...any) {
 			GinkgoWriter.Println("----------------------------------------------------------------")
 		}
 
+		outputImageUpdaterRBAC(namespace)
+
 		// Collect ArgoCD component logs and save to /tmp/ for CI artifact upload
 		collectAndSavePodLogs(namespace, "argocd-application-controller", "/tmp/e2e-application-controller.log")
 		collectAndSavePodLogs(namespace, "argocd-server", "/tmp/e2e-server.log")
@@ -686,6 +689,53 @@ func OutputDebugOnFail(namespaceParams ...any) {
 
 	GinkgoWriter.Println("You can skip this debug output by setting 'SKIP_DEBUG_OUTPUT=true'")
 
+}
+
+// outputImageUpdaterRBAC dumps the RBAC the image updater controller depends on,
+// plus a fresh authorization check for the two writes it performs.
+//
+// Specs gate on WaitForControllerRBAC before creating their ImageUpdater CR, yet
+// the controller has still been seen rejected with "cannot update resource
+// \"applications\"" seconds later. Either the grant is withdrawn after the gate
+// passes, or the gate's SubjectAccessReview does not reflect what the controller
+// actually gets. `kubectl auth can-i --as` issues the same review through a
+// different client, so running it here at failure time tells the two apart:
+// a "no" means the permission really went away, a "yes" means the gate is
+// measuring the wrong thing.
+// See https://github.com/argoproj-labs/argocd-image-updater/issues/1848.
+func outputImageUpdaterRBAC(namespace string) {
+	kubectlOutput, err := osFixture.ExecCommandWithOutputParam(false, true, "kubectl", "get",
+		"serviceaccount,role,rolebinding", "-n", namespace, "-o", "yaml")
+	if err != nil {
+		GinkgoWriter.Println("unable to get RBAC for namespace", namespace, err, kubectlOutput)
+	} else {
+		GinkgoWriter.Println("")
+		GinkgoWriter.Println("----------------------------------------------------------------")
+		GinkgoWriter.Println("'kubectl get serviceaccount,role,rolebinding -n " + namespace + " -o yaml':")
+		GinkgoWriter.Println(kubectlOutput)
+		GinkgoWriter.Println("----------------------------------------------------------------")
+	}
+
+	serviceAccount := fmt.Sprintf("system:serviceaccount:%s:%s", namespace, iuFixture.ControllerName)
+	for _, check := range []struct{ resource, subresource string }{
+		{resource: "applications.argoproj.io"},
+		{resource: "imageupdaters.argocd-image-updater.argoproj.io", subresource: "status"},
+	} {
+		// The subresource goes in --subresource, not in the resource argument:
+		// `can-i update imageupdaters/status` reads "status" as the object name and
+		// would answer a different question.
+		args := []string{"kubectl", "auth", "can-i", "update", check.resource, "-n", namespace, "--as", serviceAccount}
+		if check.subresource != "" {
+			args = append(args, "--subresource", check.subresource)
+		}
+		// `can-i` exits non-zero when the answer is "no", so the output carries the
+		// answer either way and a non-nil error is not on its own worth reporting.
+		kubectlOutput, err := osFixture.ExecCommandWithOutputParam(false, true, args...)
+		GinkgoWriter.Println("answer:", strings.TrimSpace(kubectlOutput))
+		if err != nil {
+			GinkgoWriter.Println("(can-i exited with:", err, ")")
+		}
+	}
 }
 
 // EnsureRunningOnOpenShift should be called if a test requires OpenShift (for example, it uses Route CR).
