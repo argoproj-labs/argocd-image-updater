@@ -529,7 +529,30 @@ func TestBuildTLSConfig(t *testing.T) {
 		}
 		_, err := cfg.buildTLSConfig(context.Background())
 		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "cannot be higher than")
+		assert.Contains(t, err.Error(), "minimum TLS 1.3 cannot be higher than maximum TLS 1.2")
+	})
+
+	t.Run("unset minimum leaves the maximum unbounded above", func(t *testing.T) {
+		_, err := (&TLSConfig{MinVersion: "1.3"}).buildTLSConfig(context.Background())
+		assert.NoError(t, err)
+	})
+
+	t.Run("maximum below the crypto/tls default minimum is invalid", func(t *testing.T) {
+		// crypto/tls floors a server at TLS 1.2 when MinVersion is unset, so
+		// this range is empty and every handshake would fail.
+		_, err := (&TLSConfig{MaxVersion: "1.1"}).buildTLSConfig(context.Background())
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "maximum TLS 1.1 is below TLS 1.2")
+		assert.Contains(t, err.Error(), "set --tlsminversion explicitly")
+	})
+
+	t.Run("explicit minimum opens up a low maximum", func(t *testing.T) {
+		// The escape hatch the error above points at: naming the minimum
+		// explicitly makes crypto/tls offer TLS 1.1.
+		tlsCfg, err := (&TLSConfig{MinVersion: "1.1", MaxVersion: "1.1"}).buildTLSConfig(context.Background())
+		require.NoError(t, err)
+		assert.Equal(t, uint16(tls.VersionTLS11), tlsCfg.MinVersion)
+		assert.Equal(t, uint16(tls.VersionTLS11), tlsCfg.MaxVersion)
 	})
 
 	t.Run("invalid min version", func(t *testing.T) {
@@ -539,6 +562,29 @@ func TestBuildTLSConfig(t *testing.T) {
 		_, err := cfg.buildTLSConfig(context.Background())
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "--tlsminversion")
+	})
+
+	t.Run("min version 1.0 is clamped instead of fatal", func(t *testing.T) {
+		// #1850: a cluster TLS policy naming a 1.0 floor must not stop the
+		// server from starting. We still never negotiate TLS 1.0.
+		cfg := &TLSConfig{
+			MinVersion: "1.0",
+			MaxVersion: "1.3",
+		}
+		tlsCfg, err := cfg.buildTLSConfig(context.Background())
+		require.NoError(t, err)
+		assert.Equal(t, uint16(tls.VersionTLS12), tlsCfg.MinVersion)
+	})
+
+	t.Run("max version 1.0 is still rejected", func(t *testing.T) {
+		// Unlike a minimum, a maximum of 1.0 cannot be satisfied by clamping:
+		// it asks us to cap at a version we never speak.
+		cfg := &TLSConfig{
+			MaxVersion: "1.0",
+		}
+		_, err := cfg.buildTLSConfig(context.Background())
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "--tlsmaxversion")
 	})
 
 	t.Run("invalid max version", func(t *testing.T) {
@@ -561,11 +607,47 @@ func TestBuildTLSConfig(t *testing.T) {
 
 	t.Run("with valid ciphers colon-separated", func(t *testing.T) {
 		cfg := &TLSConfig{
-			Ciphers: "TLS_AES_128_GCM_SHA256:TLS_AES_256_GCM_SHA384",
+			MinVersion: "1.2",
+			Ciphers:    "TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384:TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256",
 		}
 		tlsCfg, err := cfg.buildTLSConfig(context.Background())
 		require.NoError(t, err)
 		assert.Len(t, tlsCfg.CipherSuites, 2)
+	})
+
+	t.Run("TLS 1.3 cipher names are dropped when min version is below 1.3", func(t *testing.T) {
+		cfg := &TLSConfig{
+			MinVersion: "1.2",
+			Ciphers:    "TLS_AES_128_GCM_SHA256:TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256",
+		}
+		tlsCfg, err := cfg.buildTLSConfig(context.Background())
+		require.NoError(t, err)
+		// Go ignores TLS 1.3 suites in CipherSuites, so they never reach validation.
+		assert.Equal(t, []uint16{tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256}, tlsCfg.CipherSuites)
+	})
+
+	t.Run("only TLS 1.3 cipher names with min version below 1.3 falls back to defaults", func(t *testing.T) {
+		cfg := &TLSConfig{
+			MinVersion: "1.2",
+			Ciphers:    "TLS_AES_128_GCM_SHA256:TLS_AES_256_GCM_SHA384",
+		}
+		tlsCfg, err := cfg.buildTLSConfig(context.Background())
+		require.NoError(t, err)
+		assert.Empty(t, tlsCfg.CipherSuites)
+	})
+
+	t.Run("low min version with TLS 1.2 cipher is accepted", func(t *testing.T) {
+		// Regression test for #1850: --tlsminversion 1.1 with a TLS 1.2-only
+		// cipher is a valid configuration — the suite is simply offered when
+		// TLS 1.2 is negotiated.
+		cfg := &TLSConfig{
+			MinVersion: "1.1",
+			MaxVersion: "1.3",
+			Ciphers:    "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256",
+		}
+		tlsCfg, err := cfg.buildTLSConfig(context.Background())
+		require.NoError(t, err)
+		assert.Equal(t, []uint16{tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256}, tlsCfg.CipherSuites)
 	})
 
 	t.Run("http2 can be enabled explicitly", func(t *testing.T) {
@@ -602,70 +684,81 @@ func TestBuildTLSConfig(t *testing.T) {
 	})
 }
 
-func TestValidateTLSConfig(t *testing.T) {
-	t.Run("valid config", func(t *testing.T) {
-		err := ValidateTLSConfig(tls.VersionTLS12, tls.VersionTLS13, nil)
-		assert.NoError(t, err)
-	})
+func TestParseTLSMinVersion(t *testing.T) {
+	tests := []struct {
+		name      string
+		input     string
+		expected  uint16
+		expectErr bool
+	}{
+		{"empty means default", "", 0, false},
+		{"1.1", "1.1", tls.VersionTLS11, false},
+		{"1.2", "1.2", tls.VersionTLS12, false},
+		{"1.3", "TLS1.3", tls.VersionTLS13, false},
+		// #1850: a configured minimum of 1.0 is clamped up, not fatal.
+		{"1.0 is clamped to 1.2", "1.0", tls.VersionTLS12, false},
+		{"tls1.0 is clamped to 1.2", "TLS1.0", tls.VersionTLS12, false},
+		{"1.0 with whitespace is clamped to 1.2", " 1.0 ", tls.VersionTLS12, false},
+		{"still rejects nonsense", "1.4", 0, true},
+	}
 
-	t.Run("min greater than max", func(t *testing.T) {
-		err := ValidateTLSConfig(tls.VersionTLS13, tls.VersionTLS12, nil)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			v, err := parseTLSMinVersion(context.Background(), tt.input)
+			if tt.expectErr {
+				assert.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.expected, v)
+		})
+	}
+
+	t.Run("1.0 is never negotiable", func(t *testing.T) {
+		// Clamping the minimum must not make TLS 1.0 reachable anywhere else.
+		_, err := ParseTLSVersion("1.0")
 		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "cannot be higher than")
+		v, err := parseTLSMinVersion(context.Background(), "1.0")
+		require.NoError(t, err)
+		assert.Greater(t, v, uint16(tls.VersionTLS10))
 	})
+}
 
-	t.Run("cipher incompatible with min version", func(t *testing.T) {
-		// TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256 only supports TLS 1.2, not 1.3
-		var tls12OnlyCipherID uint16
-		for _, cs := range tls.CipherSuites() {
-			isTLS12Only := false
-			for _, v := range cs.SupportedVersions {
-				if v == tls.VersionTLS12 {
-					isTLS12Only = true
-				}
-				if v == tls.VersionTLS13 {
-					isTLS12Only = false
-					break
-				}
-			}
-			if isTLS12Only {
-				tls12OnlyCipherID = cs.ID
-				break
-			}
-		}
-		if tls12OnlyCipherID != 0 {
-			err := ValidateTLSConfig(tls.VersionTLS13, tls.VersionTLS13, []uint16{tls12OnlyCipherID})
-			assert.Error(t, err)
-			assert.Contains(t, err.Error(), "is not supported by minimum TLS version")
-		}
-	})
+func TestDropTLS13Ciphers(t *testing.T) {
+	tests := []struct {
+		name            string
+		input           []uint16
+		expectedKept    []uint16
+		expectedDropped []string
+	}{
+		{"empty input", nil, nil, nil},
+		{
+			"TLS 1.2 suites are kept",
+			[]uint16{tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256},
+			[]uint16{tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256},
+			nil,
+		},
+		{
+			"TLS 1.3 suites are dropped",
+			[]uint16{tls.TLS_AES_128_GCM_SHA256, tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256},
+			[]uint16{tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256},
+			[]string{"TLS_AES_128_GCM_SHA256"},
+		},
+		{
+			"all TLS 1.3 suites",
+			[]uint16{tls.TLS_AES_128_GCM_SHA256, tls.TLS_AES_256_GCM_SHA384},
+			nil,
+			[]string{"TLS_AES_128_GCM_SHA256", "TLS_AES_256_GCM_SHA384"},
+		},
+	}
 
-	t.Run("cipher compatible with min version", func(t *testing.T) {
-		// Find a cipher that supports TLS 1.2
-		var tls12CipherID uint16
-		for _, cs := range tls.CipherSuites() {
-			if slices.Contains(cs.SupportedVersions, tls.VersionTLS12) {
-				tls12CipherID = cs.ID
-			}
-			if tls12CipherID != 0 {
-				break
-			}
-		}
-		if tls12CipherID != 0 {
-			err := ValidateTLSConfig(tls.VersionTLS12, tls.VersionTLS13, []uint16{tls12CipherID})
-			assert.NoError(t, err)
-		}
-	})
-
-	t.Run("no ciphers is valid", func(t *testing.T) {
-		err := ValidateTLSConfig(tls.VersionTLS13, tls.VersionTLS13, nil)
-		assert.NoError(t, err)
-	})
-
-	t.Run("zero versions skip validation", func(t *testing.T) {
-		err := ValidateTLSConfig(0, 0, nil)
-		assert.NoError(t, err)
-	})
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			kept, dropped := dropTLS13Ciphers(tt.input)
+			assert.Equal(t, tt.expectedKept, kept)
+			assert.Equal(t, tt.expectedDropped, dropped)
+		})
+	}
 }
 
 func TestInsecureCipherRejected(t *testing.T) {
@@ -678,38 +771,27 @@ func TestInsecureCipherRejected(t *testing.T) {
 	}
 }
 
-func TestBuildTLSConfigCipherVersionIncompatibility(t *testing.T) {
-	// Find a TLS 1.2-only cipher
-	var tls12OnlyCipher string
+func TestBuildTLSConfigKeepsEveryTLS12Cipher(t *testing.T) {
+	// Every TLS 1.1/1.2 suite Go considers secure must survive buildTLSConfig
+	// unchanged, at any supported minimum version. Cross-checking suites
+	// against the version range is crypto/tls's job, not ours (#1850).
 	for _, cs := range tls.CipherSuites() {
-		isTLS12Only := false
-		for _, v := range cs.SupportedVersions {
-			if v == tls.VersionTLS12 {
-				isTLS12Only = true
-			}
-			if v == tls.VersionTLS13 {
-				isTLS12Only = false
-				break
-			}
+		if !slices.ContainsFunc(cs.SupportedVersions, func(v uint16) bool { return v < tls.VersionTLS13 }) {
+			continue
 		}
-		if isTLS12Only {
-			tls12OnlyCipher = cs.Name
-			break
+		for _, minVer := range []string{"", "1.1", "1.2"} {
+			t.Run(fmt.Sprintf("%s/min=%q", cs.Name, minVer), func(t *testing.T) {
+				cfg := &TLSConfig{
+					MinVersion: minVer,
+					MaxVersion: "1.3",
+					Ciphers:    cs.Name,
+				}
+				tlsCfg, err := cfg.buildTLSConfig(context.Background())
+				require.NoError(t, err)
+				assert.Equal(t, []uint16{cs.ID}, tlsCfg.CipherSuites)
+			})
 		}
 	}
-	if tls12OnlyCipher == "" {
-		t.Skip("no TLS 1.2-only cipher found")
-	}
-
-	cfg := &TLSConfig{
-		MinVersion: "1.2",
-		MaxVersion: "1.3",
-		Ciphers:    tls12OnlyCipher,
-	}
-	// With min=1.2, the cipher is accepted (it supports 1.2) — no error
-	tlsCfg, err := cfg.buildTLSConfig(context.Background())
-	require.NoError(t, err)
-	assert.Len(t, tlsCfg.CipherSuites, 1)
 }
 
 func TestBuildTLSConfigCiphersIgnoredForTLS13Only(t *testing.T) {
