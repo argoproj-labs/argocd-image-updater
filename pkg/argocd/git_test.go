@@ -284,6 +284,15 @@ func Test_parseImageOverride(t *testing.T) {
 			Name:   "acme/app",
 			Digest: "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
 		}},
+		{"keep docker hub library namespace", "docker.io/library/postgres:16.6-alpine", types.Image{
+			Name:   "docker.io/library/postgres",
+			NewTag: "16.6-alpine",
+		}},
+		{"keep docker hub library namespace with alias", "pg=docker.io/library/postgres:16.6-alpine", types.Image{
+			Name:    "pg",
+			NewName: "docker.io/library/postgres",
+			NewTag:  "16.6-alpine",
+		}},
 	}
 
 	for _, tt := range cases {

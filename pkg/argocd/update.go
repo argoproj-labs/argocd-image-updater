@@ -213,8 +213,15 @@ func UpdateApplication(ctx context.Context, updateConf *UpdateConfiguration, sta
 			}
 		}
 
+		// Write the image back the way the live manifest spells it (#1012).
+		nameSource := applicationImage.ContainerImage
+		if !nameSource.DiffersFrom(updateableImage, false) {
+			nameSource = updateableImage
+		}
+
 		if needsUpdate(updateableImage, applicationImage.ContainerImage, latest, vc.Strategy) {
-			appImageWithTag := applicationImage.WithTag(latest)
+			appImageWithTag := nameSource.WithTag(latest)
+			appImageWithTag.ImageAlias = applicationImage.ImageAlias
 			appImageFullNameWithTag := appImageWithTag.GetFullNameWithTag()
 
 			// Check if new image is already set in Application Spec when write back is set to argocd
@@ -287,7 +294,9 @@ func UpdateApplication(ctx context.Context, updateConf *UpdateConfiguration, sta
 				}
 				currentTag = tag.NewImageTag(vc.Constraint, time.Unix(0, 0), digest)
 			}
-			err = setAppImage(imageOpCtx, &updateConf.UpdateApp.Application, applicationImage.WithTag(currentTag), updateConf.UpdateApp.WriteBackConfig, applicationImage)
+			currentImage := nameSource.WithTag(currentTag)
+			currentImage.ImageAlias = applicationImage.ImageAlias
+			err = setAppImage(imageOpCtx, &updateConf.UpdateApp.Application, currentImage, updateConf.UpdateApp.WriteBackConfig, applicationImage)
 			if err != nil {
 				imgCtx.Errorf("Error while trying to update image: %v", err)
 				result.NumErrors += 1

@@ -389,6 +389,73 @@ func Test_UpdateApplication(t *testing.T) {
 		assert.Equal(t, 2, res.NumImagesUpdated)
 	})
 
+	t.Run("Test kustomize writes the image name as the live manifest spells it", func(t *testing.T) {
+		cases := []struct {
+			name, configured, live, expected string
+			changes                          []string
+		}{
+			{"explicit library namespace", "web=docker.io/library/nginx:~1.0.0", "docker.io/library/nginx:1.0.0", "docker.io/library/nginx:1.0.1", []string{"web"}},
+			{"library namespace only in the manifest", "web=docker.io/nginx:~1.0.0", "docker.io/library/nginx:1.0.0", "docker.io/library/nginx:1.0.1", []string{"web"}},
+			{"library namespace only in the configuration", "web=docker.io/library/nginx:~1.0.0", "docker.io/nginx:1.0.0", "docker.io/nginx:1.0.1", []string{"web"}},
+			{"already on the latest tag", "web=docker.io/library/nginx:~1.0.0", "docker.io/nginx:1.0.1", "docker.io/nginx:1.0.1", nil},
+		}
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
+					regMock := regmock.RegistryClient{}
+					regMock.On("NewRepository", mock.Anything, mock.Anything).Return(nil)
+					regMock.On("Tags", mock.Anything).Return([]string{"1.0.1"}, nil)
+					return &regMock, nil
+				}
+				argoClient := argomock.ArgoCD{}
+				argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+				kubeClient := kube.ImageUpdaterKubernetesClient{
+					KubeClient: &registryKube.KubernetesClient{
+						Clientset: fake.NewFakeKubeClient(),
+					},
+				}
+				appImages := &ApplicationImages{
+					Application: v1alpha1.Application{
+						ObjectMeta: v1.ObjectMeta{
+							Name:      "guestbook",
+							Namespace: "guestbook",
+						},
+						Spec: v1alpha1.ApplicationSpec{
+							Source: &v1alpha1.ApplicationSource{
+								Kustomize: &v1alpha1.ApplicationSourceKustomize{
+									Images: v1alpha1.KustomizeImages{v1alpha1.KustomizeImage(tc.live)},
+								},
+							},
+						},
+						Status: v1alpha1.ApplicationStatus{
+							SourceType: v1alpha1.ApplicationSourceTypeKustomize,
+							Summary: v1alpha1.ApplicationSummary{
+								Images: []string{tc.live},
+							},
+						},
+					},
+					Images: ImageList{NewImage(image.NewFromIdentifier(tc.configured))},
+					WriteBackConfig: &WriteBackConfig{
+						Method: WriteBackApplication,
+					},
+				}
+				res := UpdateApplication(context.Background(), &UpdateConfiguration{
+					NewRegFN:   mockClientFn,
+					ArgoClient: &argoClient,
+					KubeClient: &kubeClient,
+					UpdateApp:  appImages,
+				}, NewSyncIterationState())
+				assert.Equal(t, 0, res.NumErrors)
+				var aliases []string
+				for _, c := range res.Changes {
+					aliases = append(aliases, c.Image.ImageAlias)
+				}
+				assert.Equal(t, tc.changes, aliases)
+				assert.Equal(t, v1alpha1.KustomizeImages{v1alpha1.KustomizeImage(tc.expected)}, appImages.Application.Spec.Source.Kustomize.Images)
+			})
+		}
+	})
+
 	t.Run("Test kustomize w/ different registry", func(t *testing.T) {
 		mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
 			regMock := regmock.RegistryClient{}
