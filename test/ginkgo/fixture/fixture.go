@@ -632,6 +632,11 @@ func OutputDebugOnFail(namespaceParams ...any) {
 
 	for _, namespace := range namespaces {
 
+		// First: the steps below bail out of this iteration when they fail, and a
+		// namespace too broken to list is exactly when the RBAC state is worth
+		// having.
+		outputImageUpdaterRBAC(namespace)
+
 		kubectlOutput, err := osFixture.ExecCommandWithOutputParam(false, true, "kubectl", "get", "all", "-n", namespace)
 		if err != nil {
 			GinkgoWriter.Println("unable to list", namespace, err, kubectlOutput)
@@ -668,8 +673,6 @@ func OutputDebugOnFail(namespaceParams ...any) {
 			GinkgoWriter.Println("----------------------------------------------------------------")
 		}
 
-		outputImageUpdaterRBAC(namespace)
-
 		// Collect ArgoCD component logs and save to /tmp/ for CI artifact upload
 		collectAndSavePodLogs(namespace, "argocd-application-controller", "/tmp/e2e-application-controller.log")
 		collectAndSavePodLogs(namespace, "argocd-server", "/tmp/e2e-server.log")
@@ -697,12 +700,14 @@ func OutputDebugOnFail(namespaceParams ...any) {
 // Specs gate on WaitForControllerRBAC before creating their ImageUpdater CR, yet
 // the controller has still been seen rejected with "cannot update resource
 // \"applications\"" seconds later. Either the grant is withdrawn after the gate
-// passes, or the gate's SubjectAccessReview does not reflect what the controller
-// actually gets. `kubectl auth can-i --as` issues the same review through a
-// different client, so running it here at failure time tells the two apart:
-// a "no" means the permission really went away, a "yes" means the gate is
+// passes, or the gate's check does not reflect what the controller actually gets.
+// Re-asking at failure time tells the two apart: a "no" means the permission
+// really went away, a "yes" alongside the controller's 403 means the gate is
 // measuring the wrong thing.
 // See https://github.com/argoproj-labs/argocd-image-updater/issues/1848.
+//
+// This is debug output on an already-failed spec: everything here reports and
+// moves on, nothing asserts, so it can only ever add to the failure message.
 func outputImageUpdaterRBAC(namespace string) {
 	kubectlOutput, err := osFixture.ExecCommandWithOutputParam(false, true, "kubectl", "get",
 		"serviceaccount,role,rolebinding", "-n", namespace, "-o", "yaml")
@@ -716,7 +721,17 @@ func outputImageUpdaterRBAC(namespace string) {
 		GinkgoWriter.Println("----------------------------------------------------------------")
 	}
 
+	// Impersonate the full identity a ServiceAccount token presents, not just the
+	// username: a grant made to one of these groups rather than to the SA itself
+	// would otherwise read as "no" here and be mistaken for a withdrawn grant.
 	serviceAccount := fmt.Sprintf("system:serviceaccount:%s:%s", namespace, iuFixture.ControllerName)
+	identity := []string{
+		"--as", serviceAccount,
+		"--as-group", "system:serviceaccounts",
+		"--as-group", "system:serviceaccounts:" + namespace,
+		"--as-group", "system:authenticated",
+	}
+
 	for _, check := range []struct{ resource, subresource string }{
 		{resource: "applications.argoproj.io"},
 		{resource: "imageupdaters.argocd-image-updater.argoproj.io", subresource: "status"},
@@ -724,14 +739,14 @@ func outputImageUpdaterRBAC(namespace string) {
 		// The subresource goes in --subresource, not in the resource argument:
 		// `can-i update imageupdaters/status` reads "status" as the object name and
 		// would answer a different question.
-		args := []string{"kubectl", "auth", "can-i", "update", check.resource, "-n", namespace, "--as", serviceAccount}
+		args := append([]string{"kubectl", "auth", "can-i", "update", check.resource, "-n", namespace}, identity...)
 		if check.subresource != "" {
 			args = append(args, "--subresource", check.subresource)
 		}
 		// `can-i` exits non-zero when the answer is "no", so the output carries the
 		// answer either way and a non-nil error is not on its own worth reporting.
 		kubectlOutput, err := osFixture.ExecCommandWithOutputParam(false, true, args...)
-		GinkgoWriter.Println("answer:", strings.TrimSpace(kubectlOutput))
+		GinkgoWriter.Println("can-i answer:", strings.TrimSpace(kubectlOutput))
 		if err != nil {
 			GinkgoWriter.Println("(can-i exited with:", err, ")")
 		}
