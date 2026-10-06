@@ -7662,16 +7662,10 @@ func TestResolveHelmScalarNode_ArrayIndexMismatch(t *testing.T) {
 	assert.Equal(t, "v1.0.0", node.Value)
 }
 
-// TestMarshalParamsOverride_FallsBackForQuotedTarget verifies that when the
-// value being updated is itself a quoted scalar (which the in-place patcher
-// cannot rewrite safely), marshalParamsOverride falls back to re-marshalling
-// and still updates the value to the new tag.
-func TestMarshalParamsOverride_FallsBackForQuotedTarget(t *testing.T) {
-	originalData := []byte(`config:
-  image:
-    repository: myapp
-    tag: "v1.0.0"
-`)
+// marshalHelmTagUpdate runs marshalParamsOverride against a values file whose
+// image lives under image.name / image.tag, bumping the tag to newTag.
+func marshalHelmTagUpdate(t *testing.T, originalData []byte, newTag string) []byte {
+	t.Helper()
 
 	app := v1alpha1.Application{
 		ObjectMeta: v1.ObjectMeta{Name: "testapp"},
@@ -7683,8 +7677,8 @@ func TestMarshalParamsOverride_FallsBackForQuotedTarget(t *testing.T) {
 						ReleaseName: "my-app",
 						ValueFiles:  []string{"$values/some/dir/values.yaml"},
 						Parameters: []v1alpha1.HelmParameter{
-							{Name: "config.image.repository", Value: "myapp", ForceString: true},
-							{Name: "config.image.tag", Value: "v2.0.0", ForceString: true},
+							{Name: "image.name", Value: "myapp", ForceString: true},
+							{Name: "image.tag", Value: newTag, ForceString: true},
 						},
 					},
 					RepoURL:        "https://example.com/example",
@@ -7700,8 +7694,8 @@ func TestMarshalParamsOverride_FallsBackForQuotedTarget(t *testing.T) {
 	}
 
 	im := NewImage(image.NewFromIdentifier("app=myapp"))
-	im.HelmImageName = "config.image.repository"
-	im.HelmImageTag = "config.image.tag"
+	im.HelmImageName = "image.name"
+	im.HelmImageTag = "image.tag"
 
 	applicationImages := &ApplicationImages{
 		Application:     app,
@@ -7711,14 +7705,157 @@ func TestMarshalParamsOverride_FallsBackForQuotedTarget(t *testing.T) {
 
 	out, err := marshalParamsOverride(context.Background(), applicationImages, originalData)
 	require.NoError(t, err)
+	return out
+}
+
+// TestMarshalParamsOverride_PatchesQuotedTargetInPlace verifies that a quoted
+// tag is patched in place like a plain one: the quote style is kept and the
+// rest of the file is preserved byte-for-byte.
+func TestMarshalParamsOverride_PatchesQuotedTargetInPlace(t *testing.T) {
+	const valuesTemplate = `# header comment
+
+image:
+  name: myapp
+  tag: %s  # current version
+
+other:
+  key: value
+`
+	tests := []struct {
+		name     string
+		original string
+		newTag   string
+		expected string
+	}{
+		{name: "double-quoted", original: `"v1.0.0"`, newTag: "v2.0.0", expected: `"v2.0.0"`},
+		{name: "single-quoted", original: `'v1.0.0'`, newTag: "v2.0.0", expected: `'v2.0.0'`},
+		{name: "double-quoted numeric", original: `"100"`, newTag: "101", expected: `"101"`},
+		{name: "single-quoted numeric", original: `'100'`, newTag: "101", expected: `'101'`},
+		{name: "plain to a value that needs quotes", original: `v1.0.0`, newTag: "101", expected: `"101"`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			out := marshalHelmTagUpdate(t, []byte(fmt.Sprintf(valuesTemplate, tt.original)), tt.newTag)
+			assert.Equal(t, fmt.Sprintf(valuesTemplate, tt.expected), string(out))
+
+			var got yaml.Node
+			require.NoError(t, yaml.Unmarshal(out, &got))
+			tag, err := getHelmValue(&got, "image.tag")
+			require.NoError(t, err)
+			assert.Equal(t, tt.newTag, tag)
+		})
+	}
+}
+
+// TestMarshalParamsOverride_FallsBackForEscapedQuotedTarget verifies that when
+// the value being updated is a quoted scalar the in-place patcher cannot
+// rewrite safely (here it uses an escape sequence), marshalParamsOverride falls
+// back to re-marshalling and still updates the value to the new tag.
+func TestMarshalParamsOverride_FallsBackForEscapedQuotedTarget(t *testing.T) {
+	originalData := []byte(`image:
+  name: myapp
+  tag: "v1\x2e0.0"
+`)
+
+	out := marshalHelmTagUpdate(t, originalData, "v2.0.0")
 
 	// The fallback re-marshals the document, so assert on the parsed value
 	// rather than on exact bytes.
 	var got yaml.Node
 	require.NoError(t, yaml.Unmarshal(out, &got))
-	tag, err := getHelmValue(&got, "config.image.tag")
+	tag, err := getHelmValue(&got, "image.tag")
 	require.NoError(t, err)
 	assert.Equal(t, "v2.0.0", tag)
+}
+
+// TestMarshalParamsOverride_KeepsFoldedScalarAcrossWrites is a regression test
+// for blank lines piling up inside a folded scalar on every write-back. A
+// quoted tag, or a new tag that needs quotes, used to skip the in-place patch
+// and re-marshal the whole file.
+func TestMarshalParamsOverride_KeepsFoldedScalarAcrossWrites(t *testing.T) {
+	const valuesTemplate = `image:
+  name: myapp
+  tag: %s
+componentEnv:
+  CONFIG_JSON: >
+
+
+    {
+      "a": 1,
+
+      "b": 2
+    }
+  OTHER: value
+`
+	tests := []struct {
+		name     string
+		original string
+		tags     []string
+		expected string
+	}{
+		{name: "plain tag", original: `v1.0.0`, tags: []string{"v1.0.1", "v1.0.2", "v1.0.3"}, expected: `v1.0.3`},
+		{name: "double-quoted tag", original: `"v1.0.0"`, tags: []string{"v1.0.1", "v1.0.2", "v1.0.3"}, expected: `"v1.0.3"`},
+		{name: "single-quoted tag", original: `'v1.0.0'`, tags: []string{"v1.0.1", "v1.0.2", "v1.0.3"}, expected: `'v1.0.3'`},
+		{name: "tag that needs quotes", original: `v1.0.0`, tags: []string{"101", "102", "103"}, expected: `"103"`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			data := []byte(fmt.Sprintf(valuesTemplate, tt.original))
+			for _, tag := range tt.tags {
+				data = marshalHelmTagUpdate(t, data, tag)
+			}
+			assert.Equal(t, fmt.Sprintf(valuesTemplate, tt.expected), string(data))
+		})
+	}
+}
+
+// TestPatchScalarValue covers which scalar styles are rewritten in place and
+// which are left to the re-marshalling fallback.
+func TestPatchScalarValue(t *testing.T) {
+	tests := []struct {
+		name     string
+		line     string
+		newValue string
+		expected string
+		patched  bool
+	}{
+		{name: "plain", line: `tag: v1  # note`, newValue: "v2", expected: `tag: v2  # note`, patched: true},
+		{name: "plain to quoted", line: `tag: v1  # note`, newValue: "1.20", expected: `tag: "1.20"  # note`, patched: true},
+		{name: "plain to a value that needs escaping", line: `tag: v1`, newValue: `a"b: c`, patched: false},
+		{name: "double-quoted", line: `tag: "v1"  # note`, newValue: "v2", expected: `tag: "v2"  # note`, patched: true},
+		{name: "double-quoted to numeric", line: `tag: "v1"`, newValue: "1.20", expected: `tag: "1.20"`, patched: true},
+		{name: "double-quoted to a value with a quote", line: `tag: "v1"`, newValue: `v"2`, patched: false},
+		{name: "double-quoted to a value with a backslash", line: `tag: "v1"`, newValue: `v\2`, patched: false},
+		{name: "double-quoted with an escape", line: `tag: "v\x31"`, newValue: "v2", patched: false},
+		{name: "single-quoted", line: `tag: 'v1'  # note`, newValue: "v2", expected: `tag: 'v2'  # note`, patched: true},
+		{name: "single-quoted to a value with a quote", line: `tag: 'v1'`, newValue: `v'2`, patched: false},
+		{name: "single-quoted with an escaped quote", line: `tag: 'v''1'`, newValue: "v2", patched: false},
+		{name: "non-ASCII value", line: `tag: "v1"`, newValue: "v2é", patched: false},
+		{name: "literal block scalar", line: "tag: |\n  v1", newValue: "v2", patched: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var root yaml.Node
+			require.NoError(t, yaml.Unmarshal([]byte(tt.line), &root))
+			node, err := resolveHelmScalarNode(&root, "tag")
+			require.NoError(t, err)
+
+			lines := strings.Split(tt.line, "\n")
+			patched := patchScalarValue(lines, node, tt.newValue)
+			assert.Equal(t, tt.patched, patched)
+			if !tt.patched {
+				assert.Equal(t, tt.line, strings.Join(lines, "\n"), "lines must be untouched when not patched")
+				return
+			}
+			assert.Equal(t, tt.expected, strings.Join(lines, "\n"))
+
+			var got yaml.Node
+			require.NoError(t, yaml.Unmarshal([]byte(strings.Join(lines, "\n")), &got))
+			value, err := getHelmValue(&got, "tag")
+			require.NoError(t, err)
+			assert.Equal(t, tt.newValue, value)
+		})
+	}
 }
 
 // TestMarshalParamsOverride_PreservesDocumentStart_Kustomize verifies that a
