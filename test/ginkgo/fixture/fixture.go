@@ -31,6 +31,7 @@ import (
 	apierr "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	iuFixture "github.com/argoproj-labs/argocd-image-updater/test/ginkgo/fixture/imageupdater"
 	osFixture "github.com/argoproj-labs/argocd-image-updater/test/ginkgo/fixture/os"
 	"github.com/argoproj-labs/argocd-image-updater/test/ginkgo/fixture/utils"
 )
@@ -631,6 +632,11 @@ func OutputDebugOnFail(namespaceParams ...any) {
 
 	for _, namespace := range namespaces {
 
+		// First: the steps below bail out of this iteration when they fail, and a
+		// namespace too broken to list is exactly when the RBAC state is worth
+		// having.
+		outputImageUpdaterRBAC(namespace)
+
 		kubectlOutput, err := osFixture.ExecCommandWithOutputParam(false, true, "kubectl", "get", "all", "-n", namespace)
 		if err != nil {
 			GinkgoWriter.Println("unable to list", namespace, err, kubectlOutput)
@@ -686,6 +692,33 @@ func OutputDebugOnFail(namespaceParams ...any) {
 
 	GinkgoWriter.Println("You can skip this debug output by setting 'SKIP_DEBUG_OUTPUT=true'")
 
+}
+
+// outputImageUpdaterRBAC dumps the RBAC the image updater controller depends on,
+// then re-asks whether it may still write an update back — see
+// ReportControllerRBAC for why that second question is worth asking.
+//
+// This is debug output on an already-failed spec: everything here reports and
+// moves on, nothing asserts, so it can only ever add to the failure message.
+func outputImageUpdaterRBAC(namespace string) {
+	kubectlOutput, err := osFixture.ExecCommandWithOutputParam(false, true, "kubectl", "get",
+		"serviceaccount,role,rolebinding", "-n", namespace, "-o", "yaml")
+	if err != nil {
+		GinkgoWriter.Println("unable to get RBAC for namespace", namespace, err, kubectlOutput)
+	} else {
+		GinkgoWriter.Println("")
+		GinkgoWriter.Println("----------------------------------------------------------------")
+		GinkgoWriter.Println("'kubectl get serviceaccount,role,rolebinding -n " + namespace + " -o yaml':")
+		GinkgoWriter.Println(kubectlOutput)
+		GinkgoWriter.Println("----------------------------------------------------------------")
+	}
+
+	k8sClient, _, err := utils.GetE2ETestKubeClientWithError()
+	if err != nil {
+		GinkgoWriter.Println("unable to check image updater permissions for namespace", namespace, err)
+		return
+	}
+	iuFixture.ReportControllerRBAC(context.Background(), k8sClient, namespace)
 }
 
 // EnsureRunningOnOpenShift should be called if a test requires OpenShift (for example, it uses Route CR).

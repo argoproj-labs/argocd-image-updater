@@ -166,9 +166,17 @@ var _ = Describe("ArgoCD Image Updater Custom CA Certificate E2E Tests", func() 
 								Name:  "IMAGE_UPDATER_LOGLEVEL",
 								Value: "trace",
 							},
+							// Not the run-once mode (interval 0) the other suites use.
+							// There the reconciler processes a CR exactly once and does
+							// not requeue when the run fails, so a single transient
+							// error — an Application write rejected while the operator
+							// is still settling the controller's RBAC, say — loses the
+							// update for good and this spec waits out its whole
+							// timeout. A real interval turns that into one more cycle.
+							// See https://github.com/argoproj-labs/argocd-image-updater/issues/1848.
 							{
 								Name:  "IMAGE_UPDATER_INTERVAL",
-								Value: "0",
+								Value: "15s",
 							},
 						},
 						Enabled: true,
@@ -375,8 +383,8 @@ var _ = Describe("ArgoCD Image Updater Custom CA Certificate E2E Tests", func() 
 
 			tc := setupTest(registriesConf, nil)
 
-			// The reconcile interval is 0, so the controller only contacts the registry
-			// in response to an event; the refresh is what gives it something to react to.
+			// The controller reaches the registry on its own interval, but the refresh
+			// keeps the Application moving so a missed cycle does not stall the spec.
 			triggerRefresh := iuFixture.TriggerArgoCDRefresh(ctx, k8sClient, tc.app)
 
 			By("waiting for the image updater to reject the registry's self-signed certificate")

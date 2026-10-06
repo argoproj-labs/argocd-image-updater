@@ -1,6 +1,7 @@
 package webhook
 
 import (
+	"cmp"
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -37,6 +38,12 @@ const (
 	DefaultTLSMinVersion = "1.3"
 	// DefaultTLSMaxVersion is the default maximum TLS version
 	DefaultTLSMaxVersion = "1.3"
+
+	// goDefaultTLSMinVersion mirrors the minimum version crypto/tls enforces
+	// for a server when tls.Config.MinVersion is left unset. An unset minimum
+	// is therefore a floor of its own, not "no floor": a server configured
+	// with only a maximum below this rejects every handshake.
+	goDefaultTLSMinVersion = tls.VersionTLS12
 )
 
 // TLSConfig holds TLS configuration for the server
@@ -94,16 +101,6 @@ var tlsVersionMap = map[string]uint16{
 	"tls1.3": tls.VersionTLS13,
 }
 
-// TLSVersionName returns a human-readable name for a TLS version constant.
-func TLSVersionName(version uint16) string {
-	for name, v := range tlsVersionMap {
-		if v == version {
-			return name
-		}
-	}
-	return fmt.Sprintf("unknown (%d)", version)
-}
-
 // ParseTLSVersion parses a TLS version string (e.g. "1.2", "1.3", "TLS1.2") into a tls version constant.
 // Returns 0 if the string is empty (meaning "use default").
 func ParseTLSVersion(version string) (uint16, error) {
@@ -115,6 +112,24 @@ func ParseTLSVersion(version string) (uint16, error) {
 		return 0, fmt.Errorf("unsupported TLS version: %q (supported: 1.1, 1.2, 1.3)", version)
 	}
 	return v, nil
+}
+
+// parseTLSMinVersion parses the configured minimum TLS version.
+//
+// Unlike ParseTLSVersion it does not fail on TLS 1.0: the minimum is clamped
+// up to TLS 1.2 with a warning instead. Clamping a minimum upward can only
+// strengthen the connection — TLS 1.0 stays out of tlsVersionMap, so it can
+// never be negotiated either way — and a cluster-wide TLS policy that names a
+// 1.0 floor (such as OpenShift's built-in "Old" profile) should not leave the
+// server unable to start. We clamp to 1.2 rather than 1.1 because RFC 8996
+// deprecates both 1.0 and 1.1.
+func parseTLSMinVersion(ctx context.Context, version string) (uint16, error) {
+	switch strings.ToLower(strings.TrimSpace(version)) {
+	case "1.0", "tls1.0":
+		log.LoggerFromContext(ctx).Warnf("--tlsminversion %q is not supported (TLS 1.0 is deprecated by RFC 8996), using 1.2 instead", version)
+		return tls.VersionTLS12, nil
+	}
+	return ParseTLSVersion(version)
 }
 
 // ParseTLSCiphers parses a colon-separated list of cipher suite names into cipher suite IDs.
@@ -146,33 +161,31 @@ func ParseTLSCiphers(ciphers string) ([]uint16, error) {
 	return result, nil
 }
 
-// ValidateTLSConfig validates the TLS configuration parameters.
-// It checks that:
-//   - The minimum TLS version is not greater than the maximum TLS version
-//   - All configured cipher suites are compatible with the minimum TLS version
-func ValidateTLSConfig(minVersion, maxVersion uint16, cipherSuites []uint16) error {
-	if minVersion != 0 && maxVersion != 0 && minVersion > maxVersion {
-		return fmt.Errorf("minimum TLS version (%s) cannot be higher than maximum TLS version (%s)",
-			TLSVersionName(minVersion), TLSVersionName(maxVersion))
-	}
-
-	if len(cipherSuites) > 0 && minVersion != 0 {
-		availableCiphers := tls.CipherSuites()
-		for _, cipherID := range cipherSuites {
-			for _, cs := range availableCiphers {
-				if cs.ID == cipherID {
-					supported := slices.Contains(cs.SupportedVersions, minVersion)
-					if !supported {
-						return fmt.Errorf("cipher suite %s is not supported by minimum TLS version %s",
-							cs.Name, TLSVersionName(minVersion))
-					}
-					break
-				}
+// dropTLS13Ciphers removes cipher suites that can only be negotiated at
+// TLS 1.3 from the given list. TLS 1.3 suites are not configurable in Go, so
+// listing them in tls.Config.CipherSuites has no effect other than to make the
+// configured list differ from the one crypto/tls actually considers. It
+// returns the remaining suites plus the names of the ones that were dropped,
+// so the caller can tell the admin which entries were ignored.
+func dropTLS13Ciphers(cipherSuites []uint16) (kept []uint16, dropped []string) {
+	for _, id := range cipherSuites {
+		tls13Only := false
+		for _, cs := range tls.CipherSuites() {
+			if cs.ID != id {
+				continue
 			}
+			tls13Only = len(cs.SupportedVersions) > 0 &&
+				!slices.ContainsFunc(cs.SupportedVersions, func(v uint16) bool { return v < tls.VersionTLS13 })
+			if tls13Only {
+				dropped = append(dropped, cs.Name)
+			}
+			break
+		}
+		if !tls13Only {
+			kept = append(kept, id)
 		}
 	}
-
-	return nil
+	return kept, dropped
 }
 
 // buildTLSConfig creates a *tls.Config from the TLSConfig settings.
@@ -180,7 +193,7 @@ func (t *TLSConfig) buildTLSConfig(ctx context.Context) (*tls.Config, error) {
 	log := log.LoggerFromContext(ctx)
 	tlsCfg := &tls.Config{} //nolint:gosec // min version is set below from user config
 
-	minVer, err := ParseTLSVersion(t.MinVersion)
+	minVer, err := parseTLSMinVersion(ctx, t.MinVersion)
 	if err != nil {
 		return nil, fmt.Errorf("invalid --tlsminversion: %w", err)
 	}
@@ -192,23 +205,51 @@ func (t *TLSConfig) buildTLSConfig(ctx context.Context) (*tls.Config, error) {
 	}
 	tlsCfg.MaxVersion = maxVer
 
+	// An empty range leaves the server with no version it can negotiate at all,
+	// so fail fast on it. An unset minimum is not unbounded below: crypto/tls
+	// floors a server at goDefaultTLSMinVersion, so "no minimum, maximum 1.1"
+	// rejects every handshake just as surely as an inverted range does.
+	if maxVer != 0 {
+		if effectiveMin := cmp.Or(minVer, uint16(goDefaultTLSMinVersion)); effectiveMin > maxVer {
+			if minVer == 0 {
+				return nil, fmt.Errorf("maximum %s is below %s, the minimum crypto/tls applies when no minimum is configured; set --tlsminversion explicitly to negotiate below %s",
+					tls.VersionName(maxVer), tls.VersionName(goDefaultTLSMinVersion), tls.VersionName(goDefaultTLSMinVersion))
+			}
+			return nil, fmt.Errorf("minimum %s cannot be higher than maximum %s",
+				tls.VersionName(minVer), tls.VersionName(maxVer))
+		}
+	}
+
 	ciphers, err := ParseTLSCiphers(t.Ciphers)
 	if err != nil {
 		return nil, fmt.Errorf("invalid --tlsciphers: %w", err)
 	}
 
-	// Go's tls.Config.CipherSuites only applies to TLS 1.0–1.2.
+	// Cipher suites are deliberately not cross-checked against the version
+	// range. The minimum version is a floor on the negotiated handshake, not a
+	// requirement that every configured suite be usable at that floor: Go
+	// applies tls.Config.CipherSuites per negotiated version, so suites that do
+	// not apply to the version actually negotiated are simply not offered. That
+	// makes "accept TLS 1.1 and above, and use this TLS 1.2 suite whenever 1.2
+	// is negotiated" a perfectly ordinary configuration. Beyond rejecting suite
+	// names Go itself does not consider secure (see ParseTLSCiphers), suite
+	// selection is left to crypto/tls, which knows best what it can negotiate.
+	//
+	// Go's tls.Config.CipherSuites only applies to TLS 1.1 and 1.2.
 	// TLS 1.3 cipher suites are not configurable and are always enabled.
-	if len(ciphers) > 0 && minVer >= tls.VersionTLS13 {
-		log.Warnf("--tlsciphers has no effect when --tlsminversion is 1.3 or higher (TLS 1.3 cipher suites are not configurable), ignoring")
-		ciphers = nil
+	if len(ciphers) > 0 {
+		if minVer >= tls.VersionTLS13 {
+			log.Warnf("--tlsciphers has no effect when --tlsminversion is 1.3 or higher (TLS 1.3 cipher suites are not configurable), ignoring")
+			ciphers = nil
+		} else if kept, dropped := dropTLS13Ciphers(ciphers); len(dropped) > 0 {
+			log.Warnf("Ignoring TLS 1.3 cipher suites in --tlsciphers (TLS 1.3 cipher suites are not configurable): %s", strings.Join(dropped, ", "))
+			if len(kept) == 0 {
+				log.Warnf("No configurable cipher suites left in --tlsciphers, using the Go standard library defaults")
+			}
+			ciphers = kept
+		}
 	}
 	tlsCfg.CipherSuites = ciphers
-
-	// Validate TLS version range and cipher/version compatibility
-	if err := ValidateTLSConfig(minVer, maxVer, ciphers); err != nil {
-		return nil, err
-	}
 
 	if !t.EnableHTTP2 {
 		log.Debugf("Disabling HTTP/2 on webhook TLS server")
