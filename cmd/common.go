@@ -55,7 +55,9 @@ type WebhookConfig struct {
 	TLSMaxVersion string
 	// TLSCiphers is a colon-separated list of TLS cipher suite names
 	TLSCiphers string
-	// TLSCurvePreferences is a colon-separated list of TLS curve preferences
+	// TLSCurvePreferences is a colon-separated list of allowed TLS key exchange
+	// groups. List order is ignored; Go chooses from this set using its
+	// internal preference order.
 	TLSCurvePreferences string
 }
 

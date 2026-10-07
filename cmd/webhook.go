@@ -116,7 +116,7 @@ Supported registries:
 	webhookCmd.Flags().StringVar(&webhookCfg.TLSMinVersion, "tlsminversion", env.GetStringVal("TLS_MIN_VERSION", webhook.DefaultTLSMinVersion), "Minimum TLS version (e.g. 1.2, 1.3)")
 	webhookCmd.Flags().StringVar(&webhookCfg.TLSMaxVersion, "tlsmaxversion", env.GetStringVal("TLS_MAX_VERSION", webhook.DefaultTLSMaxVersion), "Maximum TLS version (e.g. 1.2, 1.3)")
 	webhookCmd.Flags().StringVar(&webhookCfg.TLSCiphers, "tlsciphers", env.GetStringVal("TLS_CIPHERS", ""), "Colon-separated list of TLS cipher suites (e.g. TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384:TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256)")
-	webhookCmd.Flags().StringVar(&webhookCfg.TLSCurvePreferences, "tlscurvepreferences", env.GetStringVal("TLS_CURVE_PREFERENCES", ""), "Colon-separated list of TLS curve preferences (e.g. X25519:P-256:P-384:P-521)")
+	webhookCmd.Flags().StringVar(&webhookCfg.TLSCurvePreferences, "tlscurvepreferences", env.GetStringVal("TLS_CURVE_PREFERENCES", ""), "Colon-separated list of allowed TLS key exchange groups (e.g. X25519:CurveP256). Order is ignored; Go selects from this set using its internal preference order")
 
 	return webhookCmd
 }
