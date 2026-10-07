@@ -12,6 +12,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"maps"
 	"math/big"
 	"net"
 	"net/http"
@@ -60,6 +61,8 @@ type TLSConfig struct {
 	MaxVersion string
 	// Ciphers is a colon-separated list of TLS cipher suite names
 	Ciphers string
+	// CurvePreferences is a colon-separated list of TLS curve preferences
+	CurvePreferences string
 }
 
 // WebhookServer manages webhook endpoints and triggers update checks
@@ -251,6 +254,14 @@ func (t *TLSConfig) buildTLSConfig(ctx context.Context) (*tls.Config, error) {
 	}
 	tlsCfg.CipherSuites = ciphers
 
+	if len(t.CurvePreferences) > 0 {
+		curves, err := parseCurvePreferences(strings.Split(t.CurvePreferences, ":"))
+		if err != nil {
+			return nil, fmt.Errorf("invalid --tlscurvepreferences: %w", err)
+		}
+		tlsCfg.CurvePreferences = curves
+	}
+
 	if !t.EnableHTTP2 {
 		log.Debugf("Disabling HTTP/2 on webhook TLS server")
 		tlsCfg.NextProtos = []string{"http/1.1"}
@@ -258,6 +269,40 @@ func (t *TLSConfig) buildTLSConfig(ctx context.Context) (*tls.Config, error) {
 
 	return tlsCfg, nil
 }
+
+// parseCurvePreferences parses a list of curve names into a list of CurveID values.
+func parseCurvePreferences(names []string) ([]tls.CurveID, error) {
+	if len(names) == 0 {
+		return nil, nil
+	}
+	curves := make([]tls.CurveID, 0, len(names))
+	for _, name := range names {
+		if id, ok := allowedCurveNames[name]; ok {
+			curves = append(curves, id)
+		} else {
+			return nil, fmt.Errorf("unknown curve: %q (supported: %v)", name, slices.Sorted(maps.Keys(allowedCurveNames)))
+		}
+	}
+	return curves, nil
+}
+
+var allowedCurveNames = func() map[string]tls.CurveID {
+	curves := []tls.CurveID{
+		tls.X25519MLKEM768,
+		tls.SecP256r1MLKEM768,
+		tls.SecP384r1MLKEM1024,
+		tls.X25519,
+		tls.CurveP256,
+		tls.CurveP384,
+		tls.CurveP521,
+	}
+
+	allowed := make(map[string]tls.CurveID, len(curves))
+	for _, curve := range curves {
+		allowed[curve.String()] = curve
+	}
+	return allowed
+}()
 
 // generateSelfSignedCert generates a self-signed TLS certificate in memory.
 func generateSelfSignedCert() (tls.Certificate, error) {

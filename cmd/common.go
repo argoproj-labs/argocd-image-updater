@@ -55,6 +55,8 @@ type WebhookConfig struct {
 	TLSMaxVersion string
 	// TLSCiphers is a colon-separated list of TLS cipher suite names
 	TLSCiphers string
+	// TLSCurvePreferences is a colon-separated list of TLS curve preferences
+	TLSCurvePreferences string
 }
 
 // SetupCommon initializes common components (logging, context, etc.)
@@ -220,12 +222,13 @@ func SetupWebhookServer(ctx context.Context, webhookCfg *WebhookConfig, reconcil
 	// Configure TLS
 	server.DisableTLS = webhookCfg.DisableTLS
 	server.TLS = &webhook.TLSConfig{
-		CertFile:    webhook.DefaultTLSCertPath,
-		KeyFile:     webhook.DefaultTLSKeyPath,
-		MinVersion:  webhookCfg.TLSMinVersion,
-		MaxVersion:  webhookCfg.TLSMaxVersion,
-		Ciphers:     webhookCfg.TLSCiphers,
-		EnableHTTP2: webhookCfg.EnableHTTP2,
+		CertFile:         webhook.DefaultTLSCertPath,
+		KeyFile:          webhook.DefaultTLSKeyPath,
+		MinVersion:       webhookCfg.TLSMinVersion,
+		MaxVersion:       webhookCfg.TLSMaxVersion,
+		Ciphers:          webhookCfg.TLSCiphers,
+		CurvePreferences: webhookCfg.TLSCurvePreferences,
+		EnableHTTP2:      webhookCfg.EnableHTTP2,
 	}
 
 	if webhookCfg.RateLimitNumAllowedRequests > 0 {

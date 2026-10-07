@@ -1257,6 +1257,12 @@ spec:
               key: tls.ciphers
               name: argocd-image-updater-config
               optional: true
+        - name: TLS_CURVE_PREFERENCES
+          valueFrom:
+            configMapKeyRef:
+              name: argocd-image-updater-config
+              key: tls.curve-preferences
+              optional: true
         image: quay.io/argoprojlabs/argocd-image-updater:latest
         livenessProbe:
           httpGet:

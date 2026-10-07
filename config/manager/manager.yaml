@@ -222,6 +222,12 @@ spec:
                 name: argocd-image-updater-config
                 key: tls.ciphers
                 optional: true
+          - name: TLS_CURVE_PREFERENCES
+            valueFrom:
+              configMapKeyRef:
+                name: argocd-image-updater-config
+                key: tls.curve-preferences
+                optional: true
         securityContext:
           allowPrivilegeEscalation: false
           capabilities:
