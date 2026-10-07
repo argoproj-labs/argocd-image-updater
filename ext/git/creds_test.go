@@ -617,6 +617,28 @@ func TestGitHubAppCreds_Environ_tokenCaching(t *testing.T) {
 	assert.Equal(t, 1, *requestCount, "token endpoint must be called exactly once due to caching")
 }
 
+func TestGitHubAppCreds_Environ_tokenCachePerProxy(t *testing.T) {
+	ctx := context.Background()
+
+	key := generateRSAPrivateKeyPEM(t)
+	server, requestCount := githubAppMockServer(t, "ghs_proxy_token")
+	direct := newTestGitHubAppCreds(t, key, server.URL, &NoopCredsStore{})
+	// The mock server listens on a loopback address, which is never proxied,
+	// so these credentials still reach it.
+	proxied := newTestGitHubAppCreds(t, key, server.URL, &NoopCredsStore{}, func(c *GitHubAppCreds) {
+		c.proxy = "http://proxy.example.com:3128"
+		c.noProxy = "internal.example.com"
+	})
+
+	for _, creds := range []GitHubAppCreds{direct, proxied, proxied} {
+		closer, _, err := creds.Environ(ctx)
+		require.NoError(t, err)
+		io.Close(closer)
+	}
+
+	assert.Equal(t, 2, *requestCount, "credentials with different proxy settings must not share a cached transport")
+}
+
 // ---------------------------------------------------------------------------
 // GitHubAppCreds SCMToken
 // ---------------------------------------------------------------------------

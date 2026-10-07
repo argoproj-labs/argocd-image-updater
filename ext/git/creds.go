@@ -509,7 +509,9 @@ func (g GitHubAppCreds) getAccessToken(ctx context.Context) (string, error) {
 
 	// Compute hash of creds for lookup in cache
 	h := sha256.New()
-	_, err := h.Write(fmt.Appendf(nil, "%s %d %d %s", g.privateKey, g.appID, g.appInstallId, g.baseURL))
+	// The proxy settings are part of the key because the cached transport is
+	// bound to them.
+	_, err := h.Write(fmt.Appendf(nil, "%s %d %d %s %s %s", g.privateKey, g.appID, g.appInstallId, g.baseURL, g.proxy, g.noProxy))
 	if err != nil {
 		return "", err
 	}
