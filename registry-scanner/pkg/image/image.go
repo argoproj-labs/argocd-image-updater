@@ -20,6 +20,8 @@ type ContainerImage struct {
 	KustomizeImage *ContainerImage
 
 	original string
+	// explicitLibrary keeps a stripped "docker.io/library/" prefix for writing the name back.
+	explicitLibrary bool
 }
 
 type ContainerImageList []*ContainerImage
@@ -49,6 +51,7 @@ func NewFromIdentifier(identifier string) *ContainerImage {
 		// path element, so keep it there.
 		if domain == "docker.io" && !strings.HasPrefix(imgRef, "library/") {
 			img.ImageName = strings.TrimPrefix(img.ImageName, "library/")
+			img.explicitLibrary = strings.HasPrefix(imgRef, "docker.io/library/")
 		}
 		// Check for both tag and digest - an image can have both (e.g., image:tag@sha256:...)
 		// We need to handle both cases, not use else-if which would miss the tag when digest is present
@@ -73,6 +76,11 @@ func NewFromIdentifier(identifier string) *ContainerImage {
 	img := ContainerImage{}
 	img.RegistryURL = getRegistryFromIdentifier(identifier)
 	img.ImageAlias, img.ImageName, img.ImageTag = getImageTagFromIdentifier(identifier)
+	// Constraints such as ~1.0 fail reference parsing; normalize Docker Hub the same way.
+	if img.RegistryURL == "docker.io" && strings.HasPrefix(img.ImageName, "library/") {
+		img.ImageName = strings.TrimPrefix(img.ImageName, "library/")
+		img.explicitLibrary = true
+	}
 	img.original = identifier
 	return &img
 }
@@ -93,6 +101,9 @@ func (img *ContainerImage) GetFullNameWithoutTag() string {
 	if img.RegistryURL != "" {
 		if !strings.HasPrefix(img.ImageName, img.RegistryURL+"/") {
 			str += img.RegistryURL + "/"
+			if img.explicitLibrary {
+				str += "library/"
+			}
 		}
 	}
 	str += img.ImageName
@@ -102,13 +113,7 @@ func (img *ContainerImage) GetFullNameWithoutTag() string {
 // GetFullNameWithTag returns the complete image slug, including the registry
 // and any tag digest or tag name set for the image.
 func (img *ContainerImage) GetFullNameWithTag() string {
-	str := ""
-	if img.RegistryURL != "" {
-		if !strings.HasPrefix(img.ImageName, img.RegistryURL+"/") {
-			str += img.RegistryURL + "/"
-		}
-	}
-	str += img.ImageName
+	str := img.GetFullNameWithoutTag()
 	if img.ImageTag != nil {
 		if img.ImageTag.TagName != "" {
 			str += ":"
@@ -158,6 +163,7 @@ func (img *ContainerImage) WithTag(newTag *tag.ImageTag) *ContainerImage {
 	nimg.ImageName = img.ImageName
 	nimg.ImageTag = newTag
 	nimg.ImageAlias = img.ImageAlias
+	nimg.explicitLibrary = img.explicitLibrary
 	return nimg
 }
 
