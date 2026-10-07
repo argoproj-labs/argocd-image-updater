@@ -54,6 +54,7 @@ func TestNewWebhookCommand(t *testing.T) {
 	asser.Equal(env.GetStringVal("TLS_MIN_VERSION", "1.3"), controllerCommand.Flag("tlsminversion").Value.String())
 	asser.Equal(env.GetStringVal("TLS_MAX_VERSION", "1.3"), controllerCommand.Flag("tlsmaxversion").Value.String())
 	asser.Equal(env.GetStringVal("TLS_CIPHERS", ""), controllerCommand.Flag("tlsciphers").Value.String())
+	asser.Equal(env.GetStringVal("TLS_CURVE_PREFERENCES", ""), controllerCommand.Flag("tlscurvepreferences").Value.String())
 
 	asser.Nil(controllerCommand.Help())
 }

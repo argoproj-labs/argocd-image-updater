@@ -683,6 +683,75 @@ func TestBuildTLSConfig(t *testing.T) {
 		assert.Nil(t, tlsCfg.NextProtos,
 			"NextProtos must be nil when EnableHTTP2 is true so net/http can manage ALPN freely")
 	})
+
+	t.Run("with single curve preference", func(t *testing.T) {
+		cfg := &TLSConfig{
+			CurvePreferences: "X25519MLKEM768",
+		}
+		tlsCfg, err := cfg.buildTLSConfig(context.Background())
+		require.NoError(t, err)
+		assert.Equal(t, []tls.CurveID{tls.X25519MLKEM768}, tlsCfg.CurvePreferences)
+	})
+
+	t.Run("with single curve preference", func(t *testing.T) {
+		cfg := &TLSConfig{
+			CurvePreferences: "X25519MLKEM768",
+		}
+		tlsCfg, err := cfg.buildTLSConfig(context.Background())
+		require.NoError(t, err)
+		assert.Equal(t, []tls.CurveID{tls.X25519MLKEM768}, tlsCfg.CurvePreferences)
+	})
+
+	t.Run("with multiple curve preferences", func(t *testing.T) {
+		cfg := &TLSConfig{
+			CurvePreferences: "X25519MLKEM768:SecP256r1MLKEM768:X25519:CurveP256",
+		}
+		tlsCfg, err := cfg.buildTLSConfig(context.Background())
+		require.NoError(t, err)
+		assert.Equal(t, []tls.CurveID{
+			tls.X25519MLKEM768,
+			tls.SecP256r1MLKEM768,
+			tls.X25519,
+			tls.CurveP256,
+		}, tlsCfg.CurvePreferences)
+	})
+
+	t.Run("with all supported curve preferences", func(t *testing.T) {
+		cfg := &TLSConfig{
+			CurvePreferences: "X25519MLKEM768:SecP256r1MLKEM768:SecP384r1MLKEM1024:X25519:CurveP256:CurveP384:CurveP521",
+		}
+		tlsCfg, err := cfg.buildTLSConfig(context.Background())
+		require.NoError(t, err)
+		assert.Equal(t, []tls.CurveID{
+			tls.X25519MLKEM768,
+			tls.SecP256r1MLKEM768,
+			tls.SecP384r1MLKEM1024,
+			tls.X25519,
+			tls.CurveP256,
+			tls.CurveP384,
+			tls.CurveP521,
+		}, tlsCfg.CurvePreferences)
+	})
+
+	t.Run("invalid curve preference", func(t *testing.T) {
+		cfg := &TLSConfig{
+			CurvePreferences: "X25519:NOT_A_REAL_CURVE",
+		}
+		_, err := cfg.buildTLSConfig(context.Background())
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "--tlscurvepreferences")
+		assert.Contains(t, err.Error(), "unknown curve")
+	})
+
+	t.Run("empty curve preference leaves defaults", func(t *testing.T) {
+		cfg := &TLSConfig{
+			CurvePreferences: "",
+		}
+		tlsCfg, err := cfg.buildTLSConfig(context.Background())
+		require.NoError(t, err)
+		assert.Nil(t, tlsCfg.CurvePreferences)
+	})
+
 }
 
 func TestParseTLSMinVersion(t *testing.T) {
@@ -975,4 +1044,124 @@ func TestWebhookServerStartWithCorruptCert(t *testing.T) {
 	err = server.Start(context.Background())
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to load TLS certificate")
+}
+
+func TestParseCurvePreferences(t *testing.T) {
+	tests := []struct {
+		name      string
+		input     []string
+		expected  []tls.CurveID
+		expectErr bool
+	}{
+		{
+			name:     "empty list returns nil",
+			input:    nil,
+			expected: nil,
+		},
+		{
+			name:     "X25519MLKEM768",
+			input:    []string{"X25519MLKEM768"},
+			expected: []tls.CurveID{tls.X25519MLKEM768},
+		},
+		{
+			name:     "SecP256r1MLKEM768",
+			input:    []string{"SecP256r1MLKEM768"},
+			expected: []tls.CurveID{tls.SecP256r1MLKEM768},
+		},
+		{
+			name:     "SecP384r1MLKEM1024",
+			input:    []string{"SecP384r1MLKEM1024"},
+			expected: []tls.CurveID{tls.SecP384r1MLKEM1024},
+		},
+		{
+			name:     "X25519",
+			input:    []string{"X25519"},
+			expected: []tls.CurveID{tls.X25519},
+		},
+		{
+			name:     "CurveP256",
+			input:    []string{"CurveP256"},
+			expected: []tls.CurveID{tls.CurveP256},
+		},
+		{
+			name:     "CurveP384",
+			input:    []string{"CurveP384"},
+			expected: []tls.CurveID{tls.CurveP384},
+		},
+		{
+			name:     "CurveP521",
+			input:    []string{"CurveP521"},
+			expected: []tls.CurveID{tls.CurveP521},
+		},
+		{
+			name: "multiple curves",
+			input: []string{
+				"X25519MLKEM768",
+				"SecP256r1MLKEM768",
+				"SecP384r1MLKEM1024",
+				"X25519",
+				"CurveP256",
+				"CurveP384",
+				"CurveP521",
+			},
+			expected: []tls.CurveID{
+				tls.X25519MLKEM768,
+				tls.SecP256r1MLKEM768,
+				tls.SecP384r1MLKEM1024,
+				tls.X25519,
+				tls.CurveP256,
+				tls.CurveP384,
+				tls.CurveP521,
+			},
+		},
+		{
+			name:  "preserves configured order",
+			input: []string{"CurveP521", "X25519MLKEM768", "CurveP256"},
+			expected: []tls.CurveID{
+				tls.CurveP521,
+				tls.X25519MLKEM768,
+				tls.CurveP256,
+			},
+		},
+		{
+			name:      "unknown curve",
+			input:     []string{"UnknownCurve"},
+			expectErr: true,
+		},
+		{
+			name:      "unknown curve after valid curve",
+			input:     []string{"X25519", "UnknownCurve"},
+			expectErr: true,
+		},
+		{
+			name:      "empty curve name",
+			input:     []string{""},
+			expectErr: true,
+		},
+		{
+			name:      "whitespace around curve name is rejected",
+			input:     []string{" X25519 "},
+			expectErr: true,
+		},
+		{
+			name:      "case sensitive curve name",
+			input:     []string{"x25519"},
+			expectErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := parseCurvePreferences(tt.input)
+
+			if tt.expectErr {
+				assert.Error(t, err)
+				assert.Nil(t, result)
+				return
+			}
+
+			require.NoError(t, err)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
 }
