@@ -7638,6 +7638,7 @@ func TestIsSafePlainScalar(t *testing.T) {
 		"a: b",                                  // mapping-like
 		"tag #1",                                // trailing-comment-like
 		"-latest", "*anchor", "&anchor", "@ref", // reserved leading chars
+		"v1\rcandidate", // reads back as a different string
 	}
 	for _, s := range unsafe {
 		assert.False(t, isSafePlainScalar(s), "%q should fall back to re-marshalling", s)

@@ -1174,7 +1174,9 @@ func isSafePlainScalar(s string) bool {
 	if err := yaml.Unmarshal([]byte(s), &v); err != nil {
 		return false
 	}
-	if _, ok := v.(string); !ok {
+	// The decoded value must also be the same string: a carriage return, for
+	// example, is folded into a space when read back.
+	if decoded, ok := v.(string); !ok || decoded != s {
 		return false
 	}
 	// goyaml.v3 follows the YAML 1.2 core schema, so it decodes these as
