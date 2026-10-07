@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"os"
@@ -49,6 +50,10 @@ type WebhookConfig struct {
 	RateLimitNumAllowedRequests int
 	// DisableTLS disables TLS and runs the webhook server with plain HTTP
 	DisableTLS bool
+	// TLSCertFile is the path to the TLS certificate file for the webhook server
+	TLSCertFile string
+	// TLSKeyFile is the path to the TLS private key file for the webhook server
+	TLSKeyFile string
 	// TLSMinVersion is the minimum TLS version (e.g. "1.2", "1.3")
 	TLSMinVersion string
 	// TLSMaxVersion is the maximum TLS version (e.g. "1.2", "1.3")
@@ -220,8 +225,8 @@ func SetupWebhookServer(ctx context.Context, webhookCfg *WebhookConfig, reconcil
 	// Configure TLS
 	server.DisableTLS = webhookCfg.DisableTLS
 	server.TLS = &webhook.TLSConfig{
-		CertFile:    webhook.DefaultTLSCertPath,
-		KeyFile:     webhook.DefaultTLSKeyPath,
+		CertFile:    cmp.Or(webhookCfg.TLSCertFile, webhook.DefaultTLSCertPath),
+		KeyFile:     cmp.Or(webhookCfg.TLSKeyFile, webhook.DefaultTLSKeyPath),
 		MinVersion:  webhookCfg.TLSMinVersion,
 		MaxVersion:  webhookCfg.TLSMaxVersion,
 		Ciphers:     webhookCfg.TLSCiphers,

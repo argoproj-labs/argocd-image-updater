@@ -1239,6 +1239,18 @@ spec:
               key: disable-tls
               name: argocd-image-updater-config
               optional: true
+        - name: WEBHOOK_TLS_CERT_FILE
+          valueFrom:
+            configMapKeyRef:
+              key: webhook.tls-cert-file
+              name: argocd-image-updater-config
+              optional: true
+        - name: WEBHOOK_TLS_KEY_FILE
+          valueFrom:
+            configMapKeyRef:
+              key: webhook.tls-key-file
+              name: argocd-image-updater-config
+              optional: true
         - name: TLS_MIN_VERSION
           valueFrom:
             configMapKeyRef:
@@ -1300,7 +1312,7 @@ spec:
           name: ssh-signing-key
           readOnly: true
           subPath: sshPrivateKey
-        - mountPath: /app/config/tls
+        - mountPath: /app/config/webhook/tls
           name: argocd-image-updater-tls
           readOnly: true
       securityContext:

@@ -215,4 +215,21 @@ Can also be set with the `WEBHOOK_REQUIRE_SECRET` environment variable.
     secret configured. Only use this during local development or in a fully
     network-isolated environment.
 
+**--webhook-tls-cert-file *path***
+
+Path to the TLS certificate file for the webhook server. Defaults to
+`/app/config/webhook/tls/tls.crt`. When neither this flag nor `--webhook-tls-key-file`
+is changed and the default location holds no keypair, a keypair at the previous default
+location `/app/config/tls/tls.crt` and `/app/config/tls/tls.key` is used instead, with a
+deprecation warning.
+
+Can also be set with the `WEBHOOK_TLS_CERT_FILE` environment variable.
+
+**--webhook-tls-key-file *path***
+
+Path to the TLS private key file for the webhook server. Defaults to
+`/app/config/webhook/tls/tls.key`.
+
+Can also be set with the `WEBHOOK_TLS_KEY_FILE` environment variable.
+
 [label selector syntax]: https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/#label-selectors
