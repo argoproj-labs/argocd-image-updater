@@ -442,10 +442,9 @@ argocd-image-updater webhook \
     allow-list, not a negotiation preference order: Go ignores list order and chooses from
     the set using its internal preference order. Supported groups are `X25519MLKEM768`,
     `SecP256r1MLKEM768`, `SecP384r1MLKEM1024`, `MLKEM1024`, `X25519`, `CurveP256`,
-    `CurveP384`, and `CurveP521`. Hybrid post-quantum groups (`*MLKEM*`) are TLS 1.3-only. If
-    `--tlsmaxversion` is below `1.3` and the list contains only hybrid groups, startup
-    fails — include a classical group such as `X25519` or `CurveP256`, or raise the
-    maximum version to `1.3`.
+    `CurveP384`, and `CurveP521`. Hybrid post-quantum groups (`*MLKEM*`) are TLS 1.3-only;
+    `crypto/tls` ignores them for lower negotiated versions. Include a classical group
+    such as `X25519` or `CurveP256` if clients may negotiate below TLS 1.3.
 
 A minimum version of `1.0` is accepted but clamped up to `1.2`, with a warning. TLS 1.0 is
 never negotiated — the clamp only avoids failing to start when a cluster-wide TLS policy

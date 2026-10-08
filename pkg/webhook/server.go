@@ -270,13 +270,8 @@ func (t *TLSConfig) buildTLSConfig(ctx context.Context) (*tls.Config, error) {
 		if err != nil {
 			return nil, fmt.Errorf("invalid --tlscurvepreferences: %w", err)
 		}
-		// Hybrid/PQ groups are TLS 1.3-only. Go silently drops them from any
-		// lower version, so a hybrid-only allow-list with --tlsmaxversion
-		// below 1.3 leaves the server with no usable group.
-		if maxVer != 0 && maxVer < tls.VersionTLS13 && !hasClassicalKeyExchange(curves) {
-			return nil, fmt.Errorf("--tlscurvepreferences %q lists only TLS 1.3 key exchange groups, but --tlsmaxversion is %s; include a classical group such as X25519 or CurveP256, or raise --tlsmaxversion to 1.3",
-				t.CurvePreferences, tls.VersionName(maxVer))
-		}
+		// Hybrid/PQ groups are TLS 1.3-only; crypto/tls drops them for lower
+		// versions at handshake time, so no local allow-list cross-check.
 		tlsCfg.CurvePreferences = curves
 	}
 
@@ -305,25 +300,6 @@ func parseCurvePreferences(names []string) ([]tls.CurveID, error) {
 		}
 	}
 	return curves, nil
-}
-
-// isTLS13OnlyKeyExchange reports whether curve is a hybrid/post-quantum group
-// that crypto/tls only offers for TLS 1.3 (mirrors Go's unexported helper).
-func isTLS13OnlyKeyExchange(curve tls.CurveID) bool {
-	switch curve {
-	case tls.X25519MLKEM768, tls.SecP256r1MLKEM768, tls.SecP384r1MLKEM1024, tls.MLKEM1024:
-		return true
-	default:
-		return false
-	}
-}
-
-// hasClassicalKeyExchange reports whether curves includes at least one group
-// usable below TLS 1.3 (X25519 / NIST P-curves).
-func hasClassicalKeyExchange(curves []tls.CurveID) bool {
-	return slices.ContainsFunc(curves, func(c tls.CurveID) bool {
-		return !isTLS13OnlyKeyExchange(c)
-	})
 }
 
 var allowedCurveNames = func() map[string]tls.CurveID {
