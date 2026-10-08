@@ -31,15 +31,18 @@ const (
 // certificate is only picked up from credentials implementing
 // git.GenericHTTPSCreds.
 //
-// The insecure and proxy parameters of git.GetRepoHTTPClient are passed as
-// false and "" because neither is reachable from a git.Creds value (both fields
-// are unexported and have no accessor). This matches what getGitClient already
-// does for the Git side, so the two paths stay consistent.
+// The proxy and no-proxy settings of the repository are taken from the
+// credentials too, so API calls leave through the same proxy as Git operations.
+//
+// The insecure parameter of git.GetRepoHTTPClient is always false: API calls
+// carry the access token, and write-back secrets default insecure to true for
+// backward compatibility on the Git side only (see parseLegacyInsecure).
 //
 // timeout and checkRedirect are supplied by the caller so each provider keeps
 // its own request budget and redirect policy.
 func newSCMAPIHTTPClient(ctx context.Context, repoURL string, creds git.Creds, timeout time.Duration, checkRedirect func(req *http.Request, via []*http.Request) error) *http.Client {
-	client := git.GetRepoHTTPClient(ctx, repoURL, false, creds, "")
+	proxy, noProxy := repoProxyOptions(creds)
+	client := git.GetRepoHTTPClient(ctx, repoURL, false, creds, proxy, noProxy)
 	client.Timeout = timeout
 	client.CheckRedirect = checkRedirect
 	return client

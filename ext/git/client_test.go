@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"encoding/pem"
 	"fmt"
+	"net/http"
 	"os"
 	"os/exec"
 	"path"
@@ -362,7 +363,7 @@ func TestNewAuth_HTTPSCreds(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("WithUsername", func(t *testing.T) {
-		creds := NewHTTPSCreds("alice", "secret", "", "", false, "", &NoopCredsStore{}, false)
+		creds := NewHTTPSCreds("alice", "secret", "", "", false, "", "", &NoopCredsStore{}, false)
 		auth, err := newAuth(ctx, "https://github.com/org/repo", creds)
 		require.NoError(t, err)
 		basic, ok := auth.(*githttp.BasicAuth)
@@ -372,7 +373,7 @@ func TestNewAuth_HTTPSCreds(t *testing.T) {
 	})
 
 	t.Run("EmptyUsername_defaultsToXAccessToken", func(t *testing.T) {
-		creds := NewHTTPSCreds("", "mytoken", "", "", false, "", &NoopCredsStore{}, false)
+		creds := NewHTTPSCreds("", "mytoken", "", "", false, "", "", &NoopCredsStore{}, false)
 		auth, err := newAuth(ctx, "https://github.com/org/repo", creds)
 		require.NoError(t, err)
 		basic, ok := auth.(*githttp.BasicAuth)
@@ -694,4 +695,40 @@ func TestGetRefs_WithoutCacheLoading(t *testing.T) {
 
 	// Result must still be stored.
 	assert.Equal(t, 1, cache.setCount)
+}
+
+func TestGetRepoHTTPClient_Proxy(t *testing.T) {
+	const proxyURL = "http://proxy.example.com:3128"
+
+	client := GetRepoHTTPClient(context.Background(), "https://git.example.com/org/repo.git", false, NopCreds{}, proxyURL, "internal.example.com")
+	transport, ok := client.Transport.(*http.Transport)
+	require.True(t, ok)
+
+	req, err := http.NewRequest(http.MethodGet, "https://git.example.com/org/repo.git", nil)
+	require.NoError(t, err)
+	got, err := transport.Proxy(req)
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.Equal(t, proxyURL, got.String())
+
+	req, err = http.NewRequest(http.MethodGet, "https://internal.example.com/org/repo.git", nil)
+	require.NoError(t, err)
+	got, err = transport.Proxy(req)
+	require.NoError(t, err)
+	assert.Nil(t, got, "hosts in noProxy must not go through the proxy")
+}
+
+func Test_nativeGitClient_ProxyEnv(t *testing.T) {
+	const proxyURL = "http://proxy.example.com:3128"
+
+	client, err := NewClientExt("https://git.example.com/org/repo.git", t.TempDir(), NopCreds{}, false, false, proxyURL, WithNoProxy("internal.example.com"))
+	require.NoError(t, err)
+
+	// A shell alias makes git print the environment its subprocesses run with.
+	out, err := client.(*nativeGitClient).runCmd(context.Background(), "-c", "alias.printenv=!env", "printenv")
+	require.NoError(t, err)
+	env := strings.Split(out, "\n")
+	assert.Contains(t, env, "http_proxy="+proxyURL)
+	assert.Contains(t, env, "https_proxy="+proxyURL)
+	assert.Contains(t, env, "no_proxy=internal.example.com")
 }

@@ -154,6 +154,16 @@ type GenericHTTPSCreds interface {
 var _ GenericHTTPSCreds = HTTPSCreds{}
 
 // HTTPSCreds implementation
+// RepoProxyOptions is implemented by credentials that carry the proxy settings
+// of the repository they belong to, so that the Git client and the SCM API
+// clients can route their requests the same way.
+type RepoProxyOptions interface {
+	// Proxy returns the HTTP/HTTPS proxy used to access the repository
+	Proxy() string
+	// NoProxy returns the hosts that must not go through the proxy
+	NoProxy() string
+}
+
 type HTTPSCreds struct {
 	// Username for authentication
 	username string
@@ -167,13 +177,15 @@ type HTTPSCreds struct {
 	clientCertKey string
 	// HTTP/HTTPS proxy used to access repository
 	proxy string
+	// Hosts that are accessed without the proxy
+	noProxy string
 	// temporal credentials store
 	store CredsStore
 	// whether to force usage of basic auth
 	forceBasicAuth bool
 }
 
-func NewHTTPSCreds(username string, password string, clientCertData string, clientCertKey string, insecure bool, proxy string, store CredsStore, forceBasicAuth bool) GenericHTTPSCreds {
+func NewHTTPSCreds(username string, password string, clientCertData string, clientCertKey string, insecure bool, proxy string, noProxy string, store CredsStore, forceBasicAuth bool) GenericHTTPSCreds {
 	return HTTPSCreds{
 		username,
 		password,
@@ -181,9 +193,20 @@ func NewHTTPSCreds(username string, password string, clientCertData string, clie
 		clientCertData,
 		clientCertKey,
 		proxy,
+		noProxy,
 		store,
 		forceBasicAuth,
 	}
+}
+
+// Proxy returns the HTTP/HTTPS proxy used to access the repository
+func (c HTTPSCreds) Proxy() string {
+	return c.proxy
+}
+
+// NoProxy returns the hosts that are accessed without the proxy
+func (c HTTPSCreds) NoProxy() string {
+	return c.noProxy
 }
 
 func (c HTTPSCreds) BasicAuthHeader() string {
@@ -389,12 +412,23 @@ type GitHubAppCreds struct {
 	clientCertKey  string
 	insecure       bool
 	proxy          string
+	noProxy        string
 	store          CredsStore
 }
 
 // NewGitHubAppCreds provide github app credentials
-func NewGitHubAppCreds(appID int64, appInstallId int64, privateKey string, baseURL string, repoURL string, clientCertData string, clientCertKey string, insecure bool, proxy string, store CredsStore) GenericHTTPSCreds {
-	return GitHubAppCreds{appID: appID, appInstallId: appInstallId, privateKey: privateKey, baseURL: baseURL, repoURL: repoURL, clientCertData: clientCertData, clientCertKey: clientCertKey, insecure: insecure, proxy: proxy, store: store}
+func NewGitHubAppCreds(appID int64, appInstallId int64, privateKey string, baseURL string, repoURL string, clientCertData string, clientCertKey string, insecure bool, proxy string, noProxy string, store CredsStore) GenericHTTPSCreds {
+	return GitHubAppCreds{appID: appID, appInstallId: appInstallId, privateKey: privateKey, baseURL: baseURL, repoURL: repoURL, clientCertData: clientCertData, clientCertKey: clientCertKey, insecure: insecure, proxy: proxy, noProxy: noProxy, store: store}
+}
+
+// Proxy returns the HTTP/HTTPS proxy used to access the repository
+func (g GitHubAppCreds) Proxy() string {
+	return g.proxy
+}
+
+// NoProxy returns the hosts that are accessed without the proxy
+func (g GitHubAppCreds) NoProxy() string {
+	return g.noProxy
 }
 
 func (g GitHubAppCreds) Environ(ctx context.Context) (io.Closer, []string, error) {
@@ -475,7 +509,9 @@ func (g GitHubAppCreds) getAccessToken(ctx context.Context) (string, error) {
 
 	// Compute hash of creds for lookup in cache
 	h := sha256.New()
-	_, err := h.Write(fmt.Appendf(nil, "%s %d %d %s", g.privateKey, g.appID, g.appInstallId, g.baseURL))
+	// The proxy settings are part of the key because the cached transport is
+	// bound to them.
+	_, err := h.Write(fmt.Appendf(nil, "%s %d %d %s %s %s", g.privateKey, g.appID, g.appInstallId, g.baseURL, g.proxy, g.noProxy))
 	if err != nil {
 		return "", err
 	}
@@ -496,7 +532,7 @@ func (g GitHubAppCreds) getAccessToken(ctx context.Context) (string, error) {
 	}
 
 	// Create a new GitHub transport
-	c := GetRepoHTTPClient(ctx, baseUrl, g.insecure, g, g.proxy)
+	c := GetRepoHTTPClient(ctx, baseUrl, g.insecure, g, g.proxy, g.noProxy)
 	// Store reference to the underlying HTTP transport for cleanup on eviction
 	httpTransport, _ := c.Transport.(*http.Transport)
 	itr, err := ghinstallation.New(c.Transport,
