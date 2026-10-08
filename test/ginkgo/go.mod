@@ -1,6 +1,6 @@
 module github.com/argoproj-labs/argocd-image-updater/test/ginkgo
 
-go 1.26.3
+go 1.27.0
 
 require (
 	github.com/argoproj-labs/argocd-image-updater v1.3.0

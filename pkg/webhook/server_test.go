@@ -718,7 +718,7 @@ func TestBuildTLSConfig(t *testing.T) {
 
 	t.Run("with all supported curve preferences", func(t *testing.T) {
 		cfg := &TLSConfig{
-			CurvePreferences: "X25519MLKEM768:SecP256r1MLKEM768:SecP384r1MLKEM1024:X25519:CurveP256:CurveP384:CurveP521",
+			CurvePreferences: "X25519MLKEM768:SecP256r1MLKEM768:SecP384r1MLKEM1024:MLKEM1024:X25519:CurveP256:CurveP384:CurveP521",
 		}
 		tlsCfg, err := cfg.buildTLSConfig(context.Background())
 		require.NoError(t, err)
@@ -726,6 +726,7 @@ func TestBuildTLSConfig(t *testing.T) {
 			tls.X25519MLKEM768,
 			tls.SecP256r1MLKEM768,
 			tls.SecP384r1MLKEM1024,
+			tls.MLKEM1024,
 			tls.X25519,
 			tls.CurveP256,
 			tls.CurveP384,
@@ -767,7 +768,7 @@ func TestBuildTLSConfig(t *testing.T) {
 	t.Run("rejects multiple hybrid-only curves when TLS 1.3 is disabled", func(t *testing.T) {
 		cfg := &TLSConfig{
 			MaxVersion:       "1.2",
-			CurvePreferences: "X25519MLKEM768:SecP256r1MLKEM768:SecP384r1MLKEM1024",
+			CurvePreferences: "X25519MLKEM768:SecP256r1MLKEM768:SecP384r1MLKEM1024:MLKEM1024",
 		}
 		_, err := cfg.buildTLSConfig(context.Background())
 		require.Error(t, err)
@@ -1116,6 +1117,11 @@ func TestParseCurvePreferences(t *testing.T) {
 			expected: []tls.CurveID{tls.SecP384r1MLKEM1024},
 		},
 		{
+			name:     "MLKEM1024",
+			input:    []string{"MLKEM1024"},
+			expected: []tls.CurveID{tls.MLKEM1024},
+		},
+		{
 			name:     "X25519",
 			input:    []string{"X25519"},
 			expected: []tls.CurveID{tls.X25519},
@@ -1141,6 +1147,7 @@ func TestParseCurvePreferences(t *testing.T) {
 				"X25519MLKEM768",
 				"SecP256r1MLKEM768",
 				"SecP384r1MLKEM1024",
+				"MLKEM1024",
 				"X25519",
 				"CurveP256",
 				"CurveP384",
@@ -1150,6 +1157,7 @@ func TestParseCurvePreferences(t *testing.T) {
 				tls.X25519MLKEM768,
 				tls.SecP256r1MLKEM768,
 				tls.SecP384r1MLKEM1024,
+				tls.MLKEM1024,
 				tls.X25519,
 				tls.CurveP256,
 				tls.CurveP384,

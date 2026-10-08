@@ -1,6 +1,6 @@
 module github.com/argoproj-labs/argocd-image-updater
 
-go 1.27
+go 1.27.0
 
 require (
 	github.com/argoproj-labs/argocd-image-updater/registry-scanner v1.3.0
