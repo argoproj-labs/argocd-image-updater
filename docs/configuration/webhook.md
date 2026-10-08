@@ -404,7 +404,7 @@ or via environment variable:
 DISABLE_TLS=true argocd-image-updater webhook
 ```
 
-### TLS Version and Cipher Configuration
+### TLS Version, Cipher, and Curve Configuration
 
 The minimum and maximum TLS versions both default to **1.3**. Valid values are `1.1`,
 `1.2`, and `1.3`. TLS 1.0 is not supported.
@@ -417,6 +417,10 @@ argocd-image-updater webhook --tlsminversion 1.2 --tlsmaxversion 1.3
 argocd-image-updater webhook \
   --tlsminversion 1.2 \
   --tlsciphers TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384:TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
+
+# Restrict key exchange groups (allow-list; order is ignored)
+argocd-image-updater webhook \
+  --tlscurvepreferences X25519MLKEM768:X25519:CurveP256
 ```
 
 !!!note
@@ -432,6 +436,16 @@ argocd-image-updater webhook \
     means "accept TLS 1.1 and above, and use this suite when 1.2 is negotiated". Beyond
     rejecting suite names that Go does not consider secure, cipher suite selection is left
     to the Go standard library.
+
+!!!note
+    `--tlscurvepreferences` selects which TLS key exchange groups are allowed. It is an
+    allow-list, not a negotiation preference order: Go ignores list order and chooses from
+    the set using its internal preference order. Supported groups are `X25519MLKEM768`,
+    `SecP256r1MLKEM768`, `SecP384r1MLKEM1024`, `X25519`, `CurveP256`,
+    `CurveP384`, and `CurveP521`. The hybrid post-quantum groups (`X25519MLKEM768`,
+    `SecP256r1MLKEM768`, `SecP384r1MLKEM1024`) are TLS 1.3-only; `crypto/tls` ignores
+    them for lower negotiated versions. Include a classical group such as `X25519` or
+    `CurveP256` if clients may negotiate below TLS 1.3.
 
 A minimum version of `1.0` is accepted but clamped up to `1.2`, with a warning. TLS 1.0 is
 never negotiated — the clamp only avoids failing to start when a cluster-wide TLS policy
@@ -477,6 +491,8 @@ data:
   tls.max-version: "1.3"
   # Colon-separated list of TLS cipher suites
   tls.ciphers: "TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384:TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256"
+  # Colon-separated list of allowed TLS key exchange groups (order ignored)
+  tls.curve-preferences: "X25519MLKEM768:X25519:CurveP256"
 ```
 
 ## Environment Variables
@@ -501,6 +517,7 @@ environment variables. Below is the list of which variables correspond to which 
 |`TLS_MIN_VERSION`|`--tlsminversion`|
 |`TLS_MAX_VERSION`|`--tlsmaxversion`|
 |`TLS_CIPHERS`|`--tlsciphers`|
+|`TLS_CURVE_PREFERENCES`|`--tlscurvepreferences`|
 
 ## Adding Support For Other Registries
 

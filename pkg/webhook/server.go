@@ -12,6 +12,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"maps"
 	"math/big"
 	"net"
 	"net/http"
@@ -60,6 +61,11 @@ type TLSConfig struct {
 	MaxVersion string
 	// Ciphers is a colon-separated list of TLS cipher suite names
 	Ciphers string
+	// CurvePreferences is a colon-separated list of allowed TLS key exchange
+	// groups (e.g. "X25519:CurveP256"). It selects which groups are enabled;
+	// Go ignores list order and chooses from this set using its internal
+	// preference order. See crypto/tls.Config.CurvePreferences.
+	CurvePreferences string
 }
 
 // WebhookServer manages webhook endpoints and triggers update checks
@@ -251,6 +257,24 @@ func (t *TLSConfig) buildTLSConfig(ctx context.Context) (*tls.Config, error) {
 	}
 	tlsCfg.CipherSuites = ciphers
 
+	if t.CurvePreferences != "" {
+		var curveNames []string
+		for name := range strings.SplitSeq(t.CurvePreferences, ":") {
+			name = strings.TrimSpace(name)
+			if name == "" {
+				continue
+			}
+			curveNames = append(curveNames, name)
+		}
+		curves, err := parseCurvePreferences(curveNames)
+		if err != nil {
+			return nil, fmt.Errorf("invalid --tlscurvepreferences: %w", err)
+		}
+		// Hybrid PQ groups are TLS 1.3-only; crypto/tls drops them for lower
+		// versions at handshake time, so no local cross-check.
+		tlsCfg.CurvePreferences = curves
+	}
+
 	if !t.EnableHTTP2 {
 		log.Debugf("Disabling HTTP/2 on webhook TLS server")
 		tlsCfg.NextProtos = []string{"http/1.1"}
@@ -258,6 +282,43 @@ func (t *TLSConfig) buildTLSConfig(ctx context.Context) (*tls.Config, error) {
 
 	return tlsCfg, nil
 }
+
+// parseCurvePreferences parses curve names into CurveID values for use as an
+// allow-list in tls.Config.CurvePreferences. Go ignores the order of that
+// slice when negotiating; it selects from the enabled set using its internal
+// preference order.
+func parseCurvePreferences(names []string) ([]tls.CurveID, error) {
+	if len(names) == 0 {
+		return nil, nil
+	}
+	curves := make([]tls.CurveID, 0, len(names))
+	for _, name := range names {
+		if id, ok := allowedCurveNames[name]; ok {
+			curves = append(curves, id)
+		} else {
+			return nil, fmt.Errorf("unknown curve: %q (supported: %v)", name, slices.Sorted(maps.Keys(allowedCurveNames)))
+		}
+	}
+	return curves, nil
+}
+
+var allowedCurveNames = func() map[string]tls.CurveID {
+	curves := []tls.CurveID{
+		tls.X25519MLKEM768,
+		tls.SecP256r1MLKEM768,
+		tls.SecP384r1MLKEM1024,
+		tls.X25519,
+		tls.CurveP256,
+		tls.CurveP384,
+		tls.CurveP521,
+	}
+
+	allowed := make(map[string]tls.CurveID, len(curves))
+	for _, curve := range curves {
+		allowed[curve.String()] = curve
+	}
+	return allowed
+}()
 
 // generateSelfSignedCert generates a self-signed TLS certificate in memory.
 func generateSelfSignedCert() (tls.Certificate, error) {
