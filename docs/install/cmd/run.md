@@ -248,8 +248,9 @@ Colon-separated list of allowed TLS key exchange groups (e.g. `X25519:CurveP256`
 This selects which groups are enabled; list order is ignored — Go chooses from the
 set using its internal preference order. Supported values are `X25519MLKEM768`,
 `SecP256r1MLKEM768`, `SecP384r1MLKEM1024`, `MLKEM1024`, `X25519`, `CurveP256`,
-`CurveP384`, and `CurveP521`. Hybrid post-quantum groups (`*MLKEM*`) are TLS 1.3-only;
-`crypto/tls` ignores them for lower negotiated versions.
+`CurveP384`, and `CurveP521`. The hybrid post-quantum groups (`X25519MLKEM768`,
+`SecP256r1MLKEM768`, `SecP384r1MLKEM1024`) and the standalone post-quantum group
+`MLKEM1024` are TLS 1.3-only; `crypto/tls` ignores them for lower negotiated versions.
 Defaults to the Go standard library's secure defaults.
 
 Can also be set with the `TLS_CURVE_PREFERENCES` environment variable.
