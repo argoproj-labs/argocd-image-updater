@@ -1219,7 +1219,7 @@ spec:
               key: tls.ciphers
               name: argocd-image-updater-config
               optional: true
-        image: quay.io/argoprojlabs/argocd-image-updater:v1.3.0
+        image: quay.io/argoprojlabs/argocd-image-updater:v1.3.1
         livenessProbe:
           httpGet:
             path: /healthz
