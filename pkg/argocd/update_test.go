@@ -3622,6 +3622,50 @@ replicas: 1
 		assert.NotEmpty(t, yaml)
 	})
 
+	t.Run("SourceHydrator app with helmvalues write-back-target renders the new tag", func(t *testing.T) {
+		// End-to-end form of https://github.com/argoproj-labs/argocd-image-updater/issues/1809.
+		// setAppImage stages the new tag and marshalParamsOverride reads the source back a
+		// second time to build the diff; before the fix that second read saw an unmodified
+		// DrySource, fell back to the live (old) tag, and produced a file identical to the
+		// one already committed - so the updater logged success but never pushed anything.
+		app := v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{Name: "myapp", Namespace: "argocd"},
+			Spec: v1alpha1.ApplicationSpec{
+				SourceHydrator: &v1alpha1.SourceHydrator{
+					DrySource: v1alpha1.DrySource{
+						RepoURL:        "https://example.com/repo.git",
+						Path:           "chart",
+						TargetRevision: "main",
+					},
+					SyncSource: v1alpha1.SyncSource{TargetBranch: "env/dev", Path: "chart"},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				// Argo CD reports the sync source (rendered manifests) here, not the dry source.
+				SourceType: v1alpha1.ApplicationSourceTypeDirectory,
+				Summary:    v1alpha1.ApplicationSummary{Images: []string{"nginx:1.0.0"}},
+			},
+		}
+
+		im := NewImage(image.NewFromIdentifier("nginx=nginx:1.0.0"))
+		im.HelmImageName = "image.name"
+		im.HelmImageTag = "image.tag"
+		wbc := &WriteBackConfig{Method: WriteBackGit, Target: "./values.yaml"}
+
+		require.Equal(t, ApplicationTypeHelm, GetApplicationType(&app, wbc))
+		require.NoError(t, setAppImage(context.Background(), &app,
+			image.NewFromIdentifier("nginx=nginx:1.1.0"), wbc, im))
+
+		originalData := []byte("image:\n  name: nginx\n  tag: 1.0.0\n")
+		yaml, err := marshalParamsOverride(context.Background(), &ApplicationImages{
+			Application:     app,
+			Images:          ImageList{im},
+			WriteBackConfig: wbc,
+		}, originalData)
+		require.NoError(t, err)
+		assert.Equal(t, "image:\n  name: nginx\n  tag: 1.1.0\n", string(yaml))
+	})
+
 	t.Run("Default image-name for helmvalues write-back-target when only image-tag is set", func(t *testing.T) {
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
