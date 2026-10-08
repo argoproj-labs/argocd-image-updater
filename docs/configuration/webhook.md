@@ -441,12 +441,11 @@ argocd-image-updater webhook \
     `--tlscurvepreferences` selects which TLS key exchange groups are allowed. It is an
     allow-list, not a negotiation preference order: Go ignores list order and chooses from
     the set using its internal preference order. Supported groups are `X25519MLKEM768`,
-    `SecP256r1MLKEM768`, `SecP384r1MLKEM1024`, `MLKEM1024`, `X25519`, `CurveP256`,
+    `SecP256r1MLKEM768`, `SecP384r1MLKEM1024`, `X25519`, `CurveP256`,
     `CurveP384`, and `CurveP521`. The hybrid post-quantum groups (`X25519MLKEM768`,
-    `SecP256r1MLKEM768`, `SecP384r1MLKEM1024`) and the standalone post-quantum group
-    `MLKEM1024` are TLS 1.3-only; `crypto/tls` ignores them for lower negotiated versions.
-    Include a classical group such as `X25519` or `CurveP256` if clients may negotiate
-    below TLS 1.3.
+    `SecP256r1MLKEM768`, `SecP384r1MLKEM1024`) are TLS 1.3-only; `crypto/tls` ignores
+    them for lower negotiated versions. Include a classical group such as `X25519` or
+    `CurveP256` if clients may negotiate below TLS 1.3.
 
 A minimum version of `1.0` is accepted but clamped up to `1.2`, with a warning. TLS 1.0 is
 never negotiated — the clamp only avoids failing to start when a cluster-wide TLS policy

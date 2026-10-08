@@ -270,8 +270,8 @@ func (t *TLSConfig) buildTLSConfig(ctx context.Context) (*tls.Config, error) {
 		if err != nil {
 			return nil, fmt.Errorf("invalid --tlscurvepreferences: %w", err)
 		}
-		// Hybrid and standalone PQ groups are TLS 1.3-only; crypto/tls drops
-		// them for lower versions at handshake time, so no local cross-check.
+		// Hybrid PQ groups are TLS 1.3-only; crypto/tls drops them for lower
+		// versions at handshake time, so no local cross-check.
 		tlsCfg.CurvePreferences = curves
 	}
 
@@ -307,7 +307,6 @@ var allowedCurveNames = func() map[string]tls.CurveID {
 		tls.X25519MLKEM768,
 		tls.SecP256r1MLKEM768,
 		tls.SecP384r1MLKEM1024,
-		tls.MLKEM1024,
 		tls.X25519,
 		tls.CurveP256,
 		tls.CurveP384,
