@@ -1036,7 +1036,7 @@ type helmValueWrite struct {
 
 // applyHelmValueWrites writes the given parameter values into a Helm values
 // document. When every write updates a value that already exists in the
-// original file as a plain scalar, it patches those values in place, preserving
+// original file as a plain or quoted scalar, it patches those values in place, preserving
 // the file's exact formatting (comments, blank lines, indentation, anchors,
 // inline-comment alignment). If any key must be created or cannot be safely
 // rewritten, it falls back to mutating the YAML node tree and re-marshalling,
@@ -1054,7 +1054,7 @@ func applyHelmValueWrites(root *yaml.Node, originalData []byte, writes []helmVal
 }
 
 // patchHelmValuesInPlace edits value text directly in originalData. It succeeds
-// only when every write targets an existing plain scalar that can be safely
+// only when every write targets an existing plain or quoted scalar that can be safely
 // rewritten; otherwise it returns (nil, false) so the caller falls back to
 // re-marshalling. Because it never re-serialises untouched lines, all original
 // formatting outside the changed values is preserved byte-for-byte.
@@ -1085,9 +1085,11 @@ func patchHelmValuesInPlace(root *yaml.Node, originalData []byte, writes []helmV
 
 // patchScalarValue replaces the value text of a scalar node at its recorded
 // Line/Column in lines, leaving the remainder of the line (trailing comments
-// and their alignment) untouched. It returns false when the raw text at that
-// position does not match the node's decoded value (e.g. quoted or block
-// scalars) or when the replacement would not be a safe plain scalar.
+// and their alignment) untouched. A quoted scalar keeps its quote style, and a
+// plain scalar gains double quotes when the new value needs them. It returns
+// false when the raw text at that position does not match the node's decoded
+// value (e.g. block scalars or quoted scalars with escapes) or when the
+// replacement cannot be written safely.
 func patchScalarValue(lines []string, node *yaml.Node, newValue string) bool {
 	if node == nil || node.Line < 1 || node.Line > len(lines) {
 		return false
@@ -1098,13 +1100,52 @@ func patchScalarValue(lines []string, node *yaml.Node, newValue string) bool {
 		return false
 	}
 	old := node.Value
-	if old == "" || !strings.HasPrefix(line[col:], old) {
+	if old == "" {
 		return false
 	}
-	if !isSafePlainScalar(newValue) {
+	var oldText, newText string
+	switch node.Style {
+	case 0:
+		oldText = old
+		switch {
+		case isSafePlainScalar(newValue):
+			newText = newValue
+		case isSafeQuotedScalar(newValue, '"'):
+			newText = `"` + newValue + `"`
+		default:
+			return false
+		}
+	case yaml.DoubleQuotedStyle, yaml.SingleQuotedStyle:
+		quote := byte('"')
+		if node.Style == yaml.SingleQuotedStyle {
+			quote = '\''
+		}
+		if !isSafeQuotedScalar(old, quote) || !isSafeQuotedScalar(newValue, quote) {
+			return false
+		}
+		oldText = string(quote) + old + string(quote)
+		newText = string(quote) + newValue + string(quote)
+	default:
 		return false
 	}
-	lines[node.Line-1] = line[:col] + newValue + line[col+len(old):]
+	if !strings.HasPrefix(line[col:], oldText) {
+		return false
+	}
+	lines[node.Line-1] = line[:col] + newText + line[col+len(oldText):]
+	return true
+}
+
+// isSafeQuotedScalar reports whether s reads back unchanged when wrapped in the
+// given quote character, i.e. it needs no escaping. Conservative: only printable
+// ASCII without the quote itself (and without a backslash in double quotes) is
+// accepted.
+func isSafeQuotedScalar(s string, quote byte) bool {
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c < 0x20 || c > 0x7e || c == quote || (quote == '"' && c == '\\') {
+			return false
+		}
+	}
 	return true
 }
 
@@ -1133,7 +1174,9 @@ func isSafePlainScalar(s string) bool {
 	if err := yaml.Unmarshal([]byte(s), &v); err != nil {
 		return false
 	}
-	if _, ok := v.(string); !ok {
+	// The decoded value must also be the same string: a carriage return, for
+	// example, is folded into a space when read back.
+	if decoded, ok := v.(string); !ok || decoded != s {
 		return false
 	}
 	// goyaml.v3 follows the YAML 1.2 core schema, so it decodes these as
