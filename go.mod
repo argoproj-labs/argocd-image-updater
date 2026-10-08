@@ -1,6 +1,6 @@
 module github.com/argoproj-labs/argocd-image-updater
 
-go 1.26.3
+go 1.27
 
 require (
 	github.com/argoproj-labs/argocd-image-updater/registry-scanner v1.3.0
@@ -21,9 +21,11 @@ require (
 	github.com/google/uuid v1.6.1-0.20241114170450-2d3c2a9cc518
 	github.com/onsi/ginkgo/v2 v2.32.1
 	github.com/onsi/gomega v1.42.1
+	github.com/opencontainers/go-digest v1.0.0
 	github.com/patrickmn/go-cache v2.1.1-0.20191004192108-46f407853014+incompatible
 	github.com/prometheus/client_golang v1.24.1
 	github.com/sirupsen/logrus v1.10.2
+	github.com/skeema/knownhosts v1.3.2
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.10
 	github.com/stretchr/testify v1.12.1
@@ -41,11 +43,6 @@ require (
 	sigs.k8s.io/kustomize/api v0.21.1
 	sigs.k8s.io/kustomize/kyaml v0.21.1
 	sigs.k8s.io/yaml v1.6.0
-)
-
-require (
-	github.com/opencontainers/go-digest v1.0.0
-	github.com/skeema/knownhosts v1.3.2
 )
 
 require (
