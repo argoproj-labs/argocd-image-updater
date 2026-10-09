@@ -105,6 +105,21 @@ as `_` (underscore) in the annotation. This is a limitation of Kubernetes. So fo
 example, if you assign the alias `argoproj/argocd` to your image, the
 appropriate key in the annotation would be referenced as `argoproj_argocd`.
 
+## Specifying Manifest Target
+
+You can specify the target for each image by setting the [manifestTargets](#manifesttargets-fields) field. The target defines how the image will be updated in the Application and accepts **exactly one** object from `kustomize`, `helm`, or `plugin`. The target is optional, and if not specified, it will be inferred from the Application's source(s).
+
+For example, to specify a kustomize manifest target which updates `some/image` to `new-image-name`, you would use the following configuration:
+
+```yaml
+images:
+  - alias: "myalias"
+    imageName: "new-image-name"
+    manifestTargets:
+      kustomize:
+        name: "some/image"
+```
+
 ## Update strategies
 
 Argo CD Image Updater can update images according to the following strategies:
@@ -873,7 +888,7 @@ and credential requirements.
 See [Gitea](../basics/update-methods.md#gitea) for repository URL
 and credential requirements.
 
-#### ManifestTarget fields
+#### ManifestTargets fields
 
 | Field       | Type            | Required | Description                                                                        |
 |-------------|-----------------|----------|------------------------------------------------------------------------------------|
