@@ -9,7 +9,7 @@ require (
 	github.com/argoproj/argo-cd/v3 v3.5.4
 	github.com/google/go-github/v69 v69.2.0
 	github.com/onsi/ginkgo/v2 v2.33.0
-	github.com/onsi/gomega v1.42.1
+	github.com/onsi/gomega v1.44.0
 	github.com/openshift/api v0.0.0-20260619095050-5346161d1bf2
 	k8s.io/api v0.36.1
 	k8s.io/apiextensions-apiserver v0.36.1
