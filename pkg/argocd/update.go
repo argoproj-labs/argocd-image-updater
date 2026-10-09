@@ -770,23 +770,39 @@ func mergeKustomizeOverride(t *kustomizeOverride, o *kustomizeOverride) {
 		t.Kustomize.Images = &emptyImages
 	}
 	for _, newImage := range *o.Kustomize.Images {
-		found := false
 		newContainerImage := image.NewFromIdentifier(string(newImage))
-		for idx, existingImage := range *t.Kustomize.Images {
-			existingContainerImage := image.NewFromIdentifier(string(existingImage))
-			if sameImageNameAndRegistry(newContainerImage, existingContainerImage) {
-				found = true
-				if existingContainerImage.ImageTag == nil ||
-					(newContainerImage.ImageTag != nil && !(existingContainerImage.ImageTag).Equals(newContainerImage.ImageTag)) {
-					(*t.Kustomize.Images)[idx] = newImage
-				}
-				break
-			}
-		}
-		if !found {
+		idx := findKustomizeOverrideImage(*t.Kustomize.Images, newContainerImage)
+		if idx < 0 {
 			*t.Kustomize.Images = append(*t.Kustomize.Images, newImage)
+			continue
+		}
+		existingContainerImage := image.NewFromIdentifier(string((*t.Kustomize.Images)[idx]))
+		if existingContainerImage.ImageTag == nil ||
+			(newContainerImage.ImageTag != nil && !(existingContainerImage.ImageTag).Equals(newContainerImage.ImageTag)) {
+			(*t.Kustomize.Images)[idx] = newImage
 		}
 	}
+}
+
+// findKustomizeOverrideImage returns the index of the entry in images that newImage replaces, or -1 if
+// there is none. An entry matches if it has the same image name and registry url. When both carry an
+// alias, the aliases must be equal as well, so that two aliases of the same image keep separate entries.
+// An entry with the same alias is preferred over one that only matches by image name.
+func findKustomizeOverrideImage(images v1alpha1.KustomizeImages, newImage *image.ContainerImage) int {
+	nameMatch := -1
+	for idx, existingImage := range images {
+		existingContainerImage := image.NewFromIdentifier(string(existingImage))
+		if !sameImageNameAndRegistry(newImage, existingContainerImage) {
+			continue
+		}
+		if existingContainerImage.ImageAlias == newImage.ImageAlias {
+			return idx
+		}
+		if nameMatch < 0 && (existingContainerImage.ImageAlias == "" || newImage.ImageAlias == "") {
+			nameMatch = idx
+		}
+	}
+	return nameMatch
 }
 
 // sameImageNameAndRegistry checks if 2 ContainerImage have the same image name and registry url.

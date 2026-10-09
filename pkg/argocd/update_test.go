@@ -2703,6 +2703,55 @@ kustomize:
 			"Should not create duplicate when docker.io is explicit in original but implicit in new image")
 	})
 
+	t.Run("GitHub issue #1769 - aliases sharing an image name are merged separately", func(t *testing.T) {
+		expected := `
+kustomize:
+  images:
+  - service-a=jannfis/foobar:1.0.1
+  - service-b=jannfis/foobar:1.0.2
+`
+		app := v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name: "testapp",
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: &v1alpha1.ApplicationSource{
+					RepoURL:        "https://example.com/example",
+					TargetRevision: "main",
+					Kustomize: &v1alpha1.ApplicationSourceKustomize{
+						Images: v1alpha1.KustomizeImages{
+							"service-a=jannfis/foobar:1.0.1",
+							"service-b=jannfis/foobar:1.0.2",
+						},
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypeKustomize,
+			},
+		}
+		originalData := []byte(`
+kustomize:
+  images:
+  - service-a=jannfis/foobar:1.0.0
+  - service-b=jannfis/foobar:1.0.0
+`)
+		applicationImages := &ApplicationImages{
+			Application: app,
+			Images: ImageList{
+				NewImage(
+					image.NewFromIdentifier("service-a=jannfis/foobar")),
+				NewImage(
+					image.NewFromIdentifier("service-b=jannfis/foobar")),
+			},
+		}
+
+		yaml, err := marshalParamsOverride(context.Background(), applicationImages, originalData)
+		require.NoError(t, err)
+		assert.NotEmpty(t, yaml)
+		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(yaml)))
+	})
+
 	t.Run("GitHub issue #1411 - multiple update cycles should not accumulate duplicates", func(t *testing.T) {
 		// Simulates what happens when the image updater runs multiple times
 		// Each cycle reads the previous output and merges new images
@@ -7189,6 +7238,22 @@ func Test_mergeKustomizeOverride(t *testing.T) {
 		{"ecr-same-format-update", &v1alpha1.KustomizeImages{"123456.abc.ecr.us-east-1.amazonaws.com/myrepo:v1.0.0"},
 			&v1alpha1.KustomizeImages{"123456.abc.ecr.us-east-1.amazonaws.com/myrepo:v1.0.1"},
 			&v1alpha1.KustomizeImages{"123456.abc.ecr.us-east-1.amazonaws.com/myrepo:v1.0.1"}},
+		// Test cases for GitHub issue #1769 - aliases that share an image name must keep separate entries
+		{"two-aliases-same-image", &v1alpha1.KustomizeImages{"service-a=jannfis/foobar:1.0.0", "service-b=jannfis/foobar:1.0.0"},
+			&v1alpha1.KustomizeImages{"service-a=jannfis/foobar:1.0.1", "service-b=jannfis/foobar:1.0.2"},
+			&v1alpha1.KustomizeImages{"service-a=jannfis/foobar:1.0.1", "service-b=jannfis/foobar:1.0.2"}},
+		{"two-aliases-same-image-update-second", &v1alpha1.KustomizeImages{"service-a=jannfis/foobar:1.0.0", "service-b=jannfis/foobar:1.0.0"},
+			&v1alpha1.KustomizeImages{"service-b=jannfis/foobar:1.0.2"},
+			&v1alpha1.KustomizeImages{"service-a=jannfis/foobar:1.0.0", "service-b=jannfis/foobar:1.0.2"}},
+		{"new-alias-same-image", &v1alpha1.KustomizeImages{"service-a=jannfis/foobar:1.0.0"},
+			&v1alpha1.KustomizeImages{"service-b=jannfis/foobar:1.0.2"},
+			&v1alpha1.KustomizeImages{"service-a=jannfis/foobar:1.0.0", "service-b=jannfis/foobar:1.0.2"}},
+		{"alias-added-to-existing-image", &v1alpha1.KustomizeImages{"jannfis/foobar:1.0.0"},
+			&v1alpha1.KustomizeImages{"service-a=jannfis/foobar:1.0.1"},
+			&v1alpha1.KustomizeImages{"service-a=jannfis/foobar:1.0.1"}},
+		{"alias-preferred-over-image-without-alias", &v1alpha1.KustomizeImages{"jannfis/foobar:1.0.0", "service-b=jannfis/foobar:1.0.0"},
+			&v1alpha1.KustomizeImages{"service-b=jannfis/foobar:1.0.2"},
+			&v1alpha1.KustomizeImages{"jannfis/foobar:1.0.0", "service-b=jannfis/foobar:1.0.2"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
