@@ -60,6 +60,10 @@ type WebhookConfig struct {
 	TLSMaxVersion string
 	// TLSCiphers is a colon-separated list of TLS cipher suite names
 	TLSCiphers string
+	// TLSCurvePreferences is a colon-separated list of allowed TLS key exchange
+	// groups. List order is ignored; Go chooses from this set using its
+	// internal preference order.
+	TLSCurvePreferences string
 }
 
 // SetupCommon initializes common components (logging, context, etc.)
@@ -225,12 +229,13 @@ func SetupWebhookServer(ctx context.Context, webhookCfg *WebhookConfig, reconcil
 	// Configure TLS
 	server.DisableTLS = webhookCfg.DisableTLS
 	server.TLS = &webhook.TLSConfig{
-		CertFile:    cmp.Or(webhookCfg.TLSCertFile, webhook.DefaultTLSCertPath),
-		KeyFile:     cmp.Or(webhookCfg.TLSKeyFile, webhook.DefaultTLSKeyPath),
-		MinVersion:  webhookCfg.TLSMinVersion,
-		MaxVersion:  webhookCfg.TLSMaxVersion,
-		Ciphers:     webhookCfg.TLSCiphers,
-		EnableHTTP2: webhookCfg.EnableHTTP2,
+		CertFile:         cmp.Or(webhookCfg.TLSCertFile, webhook.DefaultTLSCertPath),
+		KeyFile:          cmp.Or(webhookCfg.TLSKeyFile, webhook.DefaultTLSKeyPath),
+		MinVersion:       webhookCfg.TLSMinVersion,
+		MaxVersion:       webhookCfg.TLSMaxVersion,
+		Ciphers:          webhookCfg.TLSCiphers,
+		CurvePreferences: webhookCfg.TLSCurvePreferences,
+		EnableHTTP2:      webhookCfg.EnableHTTP2,
 	}
 
 	if webhookCfg.RateLimitNumAllowedRequests > 0 {
