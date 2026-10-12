@@ -1,16 +1,17 @@
 version: 2
 updates:
   - package-ecosystem: "gomod"
-    directory: "/"
+    directories:
+      - "/"
+      - "/test/ginkgo"
+      - "/registry-scanner"
     schedule:
       interval: "monthly"
-    ignore:
-      - dependency-name: k8s.io/*
-
-  - package-ecosystem: "gomod"
-    directory: "/registry-scanner/"
-    schedule:
-      interval: "monthly"
+    groups:
+      cross-module-updates:
+        group-by: "dependency-name"
+        patterns:
+          - "*"
     ignore:
       - dependency-name: k8s.io/*
 
