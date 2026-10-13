@@ -345,6 +345,8 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 
 	// TLS flags
 	controllerCmd.Flags().BoolVar(&webhookCfg.DisableTLS, "disable-tls", env.GetBoolVal("DISABLE_TLS", false), "Disable TLS and run the webhook server with plain HTTP")
+	controllerCmd.Flags().StringVar(&webhookCfg.TLSCertFile, "webhook-tls-cert-file", env.GetStringVal("WEBHOOK_TLS_CERT_FILE", webhook.DefaultTLSCertPath), "Path to the TLS certificate file for the webhook server")
+	controllerCmd.Flags().StringVar(&webhookCfg.TLSKeyFile, "webhook-tls-key-file", env.GetStringVal("WEBHOOK_TLS_KEY_FILE", webhook.DefaultTLSKeyPath), "Path to the TLS private key file for the webhook server")
 	controllerCmd.Flags().StringVar(&webhookCfg.TLSMinVersion, "tlsminversion", env.GetStringVal("TLS_MIN_VERSION", webhook.DefaultTLSMinVersion), "Minimum TLS version (e.g. 1.2, 1.3)")
 	controllerCmd.Flags().StringVar(&webhookCfg.TLSMaxVersion, "tlsmaxversion", env.GetStringVal("TLS_MAX_VERSION", webhook.DefaultTLSMaxVersion), "Maximum TLS version (e.g. 1.2, 1.3)")
 	controllerCmd.Flags().StringVar(&webhookCfg.TLSCiphers, "tlsciphers", env.GetStringVal("TLS_CIPHERS", ""), "Colon-separated list of TLS cipher suites (e.g. TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384:TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256)")
