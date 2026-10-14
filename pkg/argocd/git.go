@@ -199,7 +199,8 @@ func commitChangesGit(ctx context.Context, applicationImages *ApplicationImages,
 				logCtx.Errorf("could not remove temp dir: %v", err)
 			}
 		}()
-		gitC, err = git.NewClientExt(wbc.GitRepo, tempRoot, creds, false, false, "")
+		proxy, noProxy := repoProxyOptions(creds)
+		gitC, err = git.NewClientExt(wbc.GitRepo, tempRoot, creds, false, false, proxy, git.WithNoProxy(noProxy))
 		if err != nil {
 			return false, err
 		}

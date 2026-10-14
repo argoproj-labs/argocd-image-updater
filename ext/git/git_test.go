@@ -312,8 +312,8 @@ func TestCustomHTTPClient(t *testing.T) {
 	assert.NotEmpty(t, clientCert.KeyPEM)
 
 	// Get HTTPSCreds with client cert creds specified, and insecure connection
-	creds := NewHTTPSCreds("test", "test", string(clientCert.CertPEM), string(clientCert.KeyPEM), false, "http://proxy:5000", &NoopCredsStore{}, false)
-	client := GetRepoHTTPClient(ctx, "https://localhost:9443/foo/bar", false, creds, "http://proxy:5000")
+	creds := NewHTTPSCreds("test", "test", string(clientCert.CertPEM), string(clientCert.KeyPEM), false, "http://proxy:5000", "", &NoopCredsStore{}, false)
+	client := GetRepoHTTPClient(ctx, "https://localhost:9443/foo/bar", false, creds, "http://proxy:5000", "")
 	assert.NotNil(t, client)
 	assert.NotNil(t, client.Transport)
 	if client.Transport != nil {
@@ -340,8 +340,8 @@ func TestCustomHTTPClient(t *testing.T) {
 	t.Setenv("http_proxy", "http://proxy-from-env:7878")
 
 	// Get HTTPSCreds without client cert creds, but insecure connection
-	creds = NewHTTPSCreds("test", "test", "", "", true, "", &NoopCredsStore{}, false)
-	client = GetRepoHTTPClient(ctx, "https://localhost:9443/foo/bar", true, creds, "")
+	creds = NewHTTPSCreds("test", "test", "", "", true, "", "", &NoopCredsStore{}, false)
+	client = GetRepoHTTPClient(ctx, "https://localhost:9443/foo/bar", true, creds, "", "")
 	assert.NotNil(t, client)
 	assert.NotNil(t, client.Transport)
 	if client.Transport != nil {
@@ -372,7 +372,7 @@ func TestCustomHTTPClient(t *testing.T) {
 	err := os.WriteFile(filepath.Join(temppath, "127.0.0.1"), serverCert.CertPEM, 0600)
 	assert.NoError(t, err)
 	t.Setenv(common.EnvVarTLSDataPath, temppath)
-	client = GetRepoHTTPClient(ctx, "https://127.0.0.1", false, creds, "")
+	client = GetRepoHTTPClient(ctx, "https://127.0.0.1", false, creds, "", "")
 	assert.NotNil(t, client)
 	assert.NotNil(t, client.Transport)
 	if client.Transport != nil {

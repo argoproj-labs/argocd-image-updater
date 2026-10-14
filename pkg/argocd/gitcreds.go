@@ -55,18 +55,27 @@ func GetGitCreds(ctx context.Context, repo *v1alpha1.Repository, store git.Creds
 		return git.NopCreds{}
 	}
 	if repo.Password != "" {
-		return git.NewHTTPSCreds(repo.Username, repo.Password, repo.TLSClientCertData, repo.TLSClientCertKey, repo.IsInsecure(), repo.Proxy, store, repo.ForceHttpBasicAuth)
+		return git.NewHTTPSCreds(repo.Username, repo.Password, repo.TLSClientCertData, repo.TLSClientCertKey, repo.IsInsecure(), repo.Proxy, repo.NoProxy, store, repo.ForceHttpBasicAuth)
 	}
 	if repo.SSHPrivateKey != "" {
 		return git.NewSSHCreds(repo.SSHPrivateKey, getCAPath(ctx, repo.Repo), repo.IsInsecure(), store, repo.Proxy)
 	}
 	if repo.GithubAppPrivateKey != "" && repo.GithubAppId != 0 && repo.GithubAppInstallationId != 0 {
-		return git.NewGitHubAppCreds(repo.GithubAppId, repo.GithubAppInstallationId, repo.GithubAppPrivateKey, repo.GitHubAppEnterpriseBaseURL, repo.Repo, repo.TLSClientCertData, repo.TLSClientCertKey, repo.IsInsecure(), repo.Proxy, store)
+		return git.NewGitHubAppCreds(repo.GithubAppId, repo.GithubAppInstallationId, repo.GithubAppPrivateKey, repo.GitHubAppEnterpriseBaseURL, repo.Repo, repo.TLSClientCertData, repo.TLSClientCertKey, repo.IsInsecure(), repo.Proxy, repo.NoProxy, store)
 	}
 	if repo.GCPServiceAccountKey != "" {
 		return git.NewGoogleCloudCreds(repo.GCPServiceAccountKey, store)
 	}
 	return git.NopCreds{}
+}
+
+// repoProxyOptions returns the proxy and no-proxy settings carried by the
+// repository credentials, or empty strings for credentials without any.
+func repoProxyOptions(creds git.Creds) (proxy string, noProxy string) {
+	if opts, ok := creds.(git.RepoProxyOptions); ok {
+		return opts.Proxy(), opts.NoProxy()
+	}
+	return "", ""
 }
 
 // Taken from upstream Argo CD.
@@ -162,13 +171,16 @@ func getCredsFromSecret(wbc *WriteBackConfig, credentialsSecret string, kubeClie
 			tlsClientCertKey := string(credentials["tlsClientCertKey"])
 			insecure, _ := strconv.ParseBool(string(credentials["insecure"]))
 			proxy := string(credentials["proxy"])
-			return git.NewGitHubAppCreds(intGithubAppID, intGithubAppInstallationID, string(githubAppPrivateKey), enterpriseBaseURL, wbc.GitRepo, tlsClientCertData, tlsClientCertKey, insecure, proxy, wbc.GitCreds), nil
+			noProxy := string(credentials["noProxy"])
+			return git.NewGitHubAppCreds(intGithubAppID, intGithubAppInstallationID, string(githubAppPrivateKey), enterpriseBaseURL, wbc.GitRepo, tlsClientCertData, tlsClientCertKey, insecure, proxy, noProxy, wbc.GitCreds), nil
 		} else if username, ok = credentials["username"]; ok {
 			if password, ok = credentials["password"]; !ok {
 				return nil, fmt.Errorf("invalid secret %s: does not contain field password", credentialsSecret)
 			}
 			insecure := parseLegacyInsecure(credentials, credentialsSecret)
-			return git.NewHTTPSCreds(string(username), string(password), "", "", insecure, "", wbc.GitCreds, false), nil
+			proxy := string(credentials["proxy"])
+			noProxy := string(credentials["noProxy"])
+			return git.NewHTTPSCreds(string(username), string(password), "", "", insecure, proxy, noProxy, wbc.GitCreds, false), nil
 		}
 		return nil, fmt.Errorf("invalid repository credentials in secret %s: does not contain githubAppID or username", credentialsSecret)
 	}

@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -66,6 +67,56 @@ func Test_newSCMAPIHTTPClient(t *testing.T) {
 	})
 }
 
+// Test_newSCMAPIHTTPClient_Proxy checks that API calls are routed like Git
+// operations: through the proxy carried by the repository credentials, except
+// for hosts listed in noProxy.
+func Test_newSCMAPIHTTPClient_Proxy(t *testing.T) {
+	const apiURL = "http://scm.example.test/api/v1/version"
+	repoURL := "http://scm.example.test/owner/repo.git"
+
+	var mu sync.Mutex
+	var proxied []string
+	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		proxied = append(proxied, r.URL.String())
+		mu.Unlock()
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer proxy.Close()
+
+	t.Run("requests go through the repository proxy", func(t *testing.T) {
+		creds := git.NewHTTPSCreds("user", "token", "", "", false, proxy.URL, "", git.NoopCredsStore{}, false)
+		client := newSCMAPIHTTPClient(context.Background(), repoURL, creds, 5*time.Second, nil)
+		resp, err := client.Get(apiURL)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+		mu.Lock()
+		defer mu.Unlock()
+		require.Equal(t, []string{apiURL}, proxied)
+	})
+
+	t.Run("hosts in noProxy bypass the proxy", func(t *testing.T) {
+		creds := git.NewHTTPSCreds("user", "token", "", "", false, proxy.URL, "scm.example.test", git.NoopCredsStore{}, false)
+		client := newSCMAPIHTTPClient(context.Background(), repoURL, creds, 5*time.Second, nil)
+		transport, ok := client.Transport.(*http.Transport)
+		require.True(t, ok)
+
+		req, err := http.NewRequest(http.MethodGet, apiURL, nil)
+		require.NoError(t, err)
+		got, err := transport.Proxy(req)
+		require.NoError(t, err)
+		require.Nil(t, got)
+
+		req, err = http.NewRequest(http.MethodGet, "http://other.example.test/api", nil)
+		require.NoError(t, err)
+		got, err = transport.Proxy(req)
+		require.NoError(t, err)
+		require.NotNil(t, got)
+		require.Equal(t, proxy.URL, got.String())
+	})
+}
+
 // Test_SCMAPIClients_UseCertStore runs each provider's API client through its
 // real constructor against a TLS server, so a provider that stops using
 // newSCMAPIHTTPClient fails here.
@@ -90,7 +141,7 @@ func Test_SCMAPIClients_UseCertStore(t *testing.T) {
 	// Write-back secrets without an "insecure" key get insecure=true for
 	// backwards compatibility (see parseLegacyInsecure). That must not turn off
 	// TLS verification for API calls, which carry the token.
-	legacyInsecureCreds := git.NewHTTPSCreds("user", "token", "", "", true, "", &git.NoopCredsStore{}, false).(git.SCMTokenProvider)
+	legacyInsecureCreds := git.NewHTTPSCreds("user", "token", "", "", true, "", "", &git.NoopCredsStore{}, false).(git.SCMTokenProvider)
 
 	providers := []struct {
 		name string
