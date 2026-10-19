@@ -599,61 +599,76 @@ func marshalParamsOverride(ctx context.Context, applicationImages *ApplicationIm
 					continue
 				}
 
+				// For image-spec, helmParamName holds the image-spec value and
+				// helmParamVersion is empty. Otherwise each of the two can be empty
+				// on its own, meaning the image does not track that half at all -
+				// then nothing is written for it.
 				helmParamName, helmParamVersion := getHelmParamNames(c)
+				if helmParamName == "" && helmParamVersion == "" {
+					return nil, fmt.Errorf("could not find an image-name or image-tag for image %s", c.ImageName)
+				}
+
+				if helmParamVersion != "" {
+					helmParamVer := getHelmParam(helmParams, helmParamVersion)
+					if helmParamVer == nil {
+						// Parameter not pre-defined in the Application - this image was
+						// skipped before setAppImage ran this cycle, so fall back to the
+						// image's own tag data, but only to seed a key the target file
+						// does not have yet. See keepExistingValue below.
+						if keepExistingValue(&helmNewValues, helmParamVersion) {
+							log.Debugf("helm parameter %s not found in app spec, keeping the value already in %s", helmParamVersion, wbc.Target)
+						} else if tagValue := c.ContainerImage.GetTagWithDigest(); tagValue != "" {
+							log.Debugf("helm parameter %s not found in app spec, using image tag as fallback", helmParamVersion)
+							writes = append(writes, helmValueWrite{kind: "version", path: helmParamVersion, value: tagValue})
+						}
+					} else if helmParamVer.Value != "" {
+						//Write tag in helm value file only if tag is not empty
+						writes = append(writes, helmValueWrite{kind: "version", path: helmParamVersion, value: helmParamVer.Value})
+					}
+				}
 
 				if helmParamName == "" {
-					return nil, fmt.Errorf("could not find an image-name for image %s", c.ImageName)
-				}
-				// for image-spec, helmParamName holds image-spec value,
-				// and helmParamVersion is empty
-				if helmParamVersion == "" {
-					if c.HelmImageSpec == "" {
-						// not a full image-spec, so image-tag is required
-						return nil, fmt.Errorf("could not find an image-tag for image %s", c.ImageName)
-					}
-				} else {
-					// image-tag is present, so continue to process image-tag
-					helmParamVer := getHelmParam(helmParams, helmParamVersion)
-					var tagValue string
-					if helmParamVer == nil {
-						// Parameter not pre-defined in the Application - use the image's tag data as fallback
-						log.Debugf("helm parameter %s not found in app spec, using image tag as fallback", helmParamVersion)
-						tagValue = c.ContainerImage.GetTagWithDigest()
-					} else {
-						tagValue = helmParamVer.Value
-					}
-					//Write tag in helm value file only if tag is not empty
-					if tagValue != "" {
-						writes = append(writes, helmValueWrite{kind: "version", path: helmParamVersion, value: tagValue})
-					}
+					continue
 				}
 
 				helmParamN := getHelmParam(helmParams, helmParamName)
 				// Determine which value to use for the image name parameter
 				var valueToSet string
 				if helmParamN == nil {
+					// Same as for the tag above - without a parameter from this cycle
+					// there is nothing new to say about this image.
+					if keepExistingValue(&helmNewValues, helmParamName) {
+						log.Debugf("helm parameter %s not found in app spec, keeping the value already in %s", helmParamName, wbc.Target)
+						continue
+					}
 					// Parameter not pre-defined in the Application - use the image's name data as fallback
 					log.Debugf("helm parameter %s not found in app spec, using image name as fallback", helmParamName)
-					valueToSet = c.ContainerImage.GetFullNameWithoutTag()
+					if c.HelmImageSpec != "" {
+						// image-spec holds the whole reference, tag included
+						valueToSet = c.ContainerImage.GetFullNameWithTag()
+					} else {
+						valueToSet = c.ContainerImage.GetFullNameWithoutTag()
+					}
 				} else {
 					valueToSet = helmParamN.Value
-					if !emptyOriginalData && image.HasRegistryPrefix(valueToSet) {
-						// helmParamN.Value is in long form (has registry URL)
-						// Check the original value in helmNewValues to see if it's in short form
-						// Skip this check if originalData is empty
-						originalValue, err := getHelmValue(&helmNewValues, helmParamName)
-						if err == nil {
-							// Original value exists and was found
-							if !image.HasRegistryPrefix(originalValue) {
-								// Original value is in short form, use the short form of the value to set
-								valueToSet = image.ExtractShortForm(valueToSet)
-							}
-							// If originalValue is also in long form, keep using helmParamN.Value
-						}
-						// If getHelmValue returns an error (key not found), use helmParamN.Value as-is
-					}
-					// If helmParamN.Value is already in short form or originalData is empty, use it as-is
 				}
+
+				if !emptyOriginalData && image.HasRegistryPrefix(valueToSet) {
+					// valueToSet is in long form (has registry URL)
+					// Check the original value in helmNewValues to see if it's in short form
+					// Skip this check if originalData is empty
+					originalValue, err := getHelmValue(&helmNewValues, helmParamName)
+					if err == nil {
+						// Original value exists and was found
+						if !image.HasRegistryPrefix(originalValue) {
+							// Original value is in short form, use the short form of the value to set
+							valueToSet = image.ExtractShortForm(valueToSet)
+						}
+						// If originalValue is also in long form, keep valueToSet as-is
+					}
+					// If getHelmValue returns an error (key not found), use valueToSet as-is
+				}
+				// If valueToSet is already in short form or originalData is empty, use it as-is
 
 				writes = append(writes, helmValueWrite{kind: "name", path: helmParamName, value: valueToSet})
 			}
@@ -924,6 +939,23 @@ func setHelmValue(currentValues *yaml.Node, key string, value any) error {
 	}
 
 	return err
+}
+
+// keepExistingValue reports whether key already holds a value in the target
+// file and must therefore be left alone.
+//
+// It guards the fallback path taken when an image has no Helm parameter from
+// this cycle. That happens when the image was skipped before setAppImage ran -
+// a registry error, no tag matching the constraint, a failed signature check -
+// while another image still triggered a write-back. The updater then knows
+// nothing new about this image, so rewriting its keys from the live cluster
+// state can only do damage: it reintroduces the registry prefix on a value the
+// file keeps in short form, drops the tag from an image-spec key, or reverts a
+// tag that is already committed but not yet rolled out. The fallback is only
+// there to seed a key that does not exist yet.
+func keepExistingValue(values *yaml.Node, key string) bool {
+	_, err := resolveHelmScalarNode(values, key)
+	return err == nil
 }
 
 // getHelmValue retrieves a value from a yaml.Node using a key path.

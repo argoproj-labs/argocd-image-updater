@@ -395,6 +395,13 @@ images:
         tag: "<name of helm parameter to set for the image tag>"
 ```
 
+If you omit the `helm` field entirely, the default parameter names `image.name`
+and `image.tag` are used. If you set only one of `name` and `tag`, only that one
+is written - the other one is left alone rather than being defaulted. This
+matters when an application tracks several images in a shared values file: a
+defaulted parameter name would be the same for all of them, so the images would
+overwrite each other under `image.name` or `image.tag`.
+
 If the chart uses a parameter for the canonical name of the image (i.e. image
 name and tag combined), you can use the `spec` field instead:
 
