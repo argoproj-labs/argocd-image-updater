@@ -51,8 +51,8 @@ func TestNewWebhookCommand(t *testing.T) {
 	// TLS flags
 	asser.Equal("false", controllerCommand.Flag("enable-http2").Value.String())
 	asser.Equal("false", controllerCommand.Flag("disable-tls").Value.String())
-	asser.Equal(env.GetStringVal("WEBHOOK_TLS_CERT_FILE", "/app/config/webhook/tls/tls.crt"), controllerCommand.Flag("webhook-tls-cert-file").Value.String())
-	asser.Equal(env.GetStringVal("WEBHOOK_TLS_KEY_FILE", "/app/config/webhook/tls/tls.key"), controllerCommand.Flag("webhook-tls-key-file").Value.String())
+	asser.Equal(env.GetStringVal("TLS_CERT_PATH", "/app/config/webhook/tls/tls.crt"), controllerCommand.Flag("tls-cert-path").Value.String())
+	asser.Equal(env.GetStringVal("TLS_KEY_PATH", "/app/config/webhook/tls/tls.key"), controllerCommand.Flag("tls-key-path").Value.String())
 	asser.Equal(env.GetStringVal("TLS_MIN_VERSION", "1.3"), controllerCommand.Flag("tlsminversion").Value.String())
 	asser.Equal(env.GetStringVal("TLS_MAX_VERSION", "1.3"), controllerCommand.Flag("tlsmaxversion").Value.String())
 	asser.Equal(env.GetStringVal("TLS_CIPHERS", ""), controllerCommand.Flag("tlsciphers").Value.String())

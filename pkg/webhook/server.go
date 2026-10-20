@@ -400,23 +400,80 @@ func certFilesExist(certFile, keyFile string) bool {
 	return true
 }
 
-// resolveKeyPairFiles returns the certificate and key files to serve and
-// whether a keypair exists there. The configured files are preferred. When
-// they are the default paths and hold no keypair, the legacy location is used
-// if it has one, with a deprecation warning, so that installs which still
-// mount the keypair there keep serving it. Explicitly configured paths never
-// fall back.
-func resolveKeyPairFiles(ctx context.Context, certFile, keyFile, legacyCertFile, legacyKeyFile string) (string, string, bool) {
-	if certFilesExist(certFile, keyFile) {
-		return certFile, keyFile, true
+// unusableKeyPairFiles describes which of the certificate and key files cannot
+// be used, so that a configuration error can name the offending path and say
+// what is wrong with it.
+func unusableKeyPairFiles(certFile, keyFile string) []string {
+	var reasons []string
+	for _, f := range []struct{ kind, path string }{
+		{"certificate", certFile},
+		{"key", keyFile},
+	} {
+		if f.path == "" {
+			reasons = append(reasons, fmt.Sprintf("no %s file configured", f.kind))
+			continue
+		}
+		info, err := os.Stat(f.path)
+		switch {
+		case errors.Is(err, os.ErrNotExist):
+			reasons = append(reasons, fmt.Sprintf("%s file %s does not exist", f.kind, f.path))
+		case err != nil:
+			reasons = append(reasons, fmt.Sprintf("%s file %s cannot be read: %v", f.kind, f.path, err))
+		case info.Size() == 0:
+			reasons = append(reasons, fmt.Sprintf("%s file %s is empty", f.kind, f.path))
+		}
 	}
+	if len(reasons) == 0 {
+		// Both files look fine now, so one of them appeared between the
+		// existence check and this one. Say something useful anyway.
+		reasons = append(reasons, fmt.Sprintf("%s and %s could not be read as a keypair", certFile, keyFile))
+	}
+	return reasons
+}
+
+// keyPairPathsConfigured reports whether either path was pointed somewhere
+// other than its default. An empty path is not a configured path: the zero
+// value of TLSConfig means "no keypair configured", and the flags default to
+// the standard locations anyway.
+func keyPairPathsConfigured(certFile, keyFile string) bool {
+	return (certFile != "" && certFile != DefaultTLSCertPath) ||
+		(keyFile != "" && keyFile != DefaultTLSKeyPath)
+}
+
+// resolveKeyPairFiles returns the certificate and key files to serve and
+// whether a keypair exists there.
+//
+// The configured files are preferred. When they are the default paths and hold
+// no keypair, the legacy location is used if it has one, with a deprecation
+// warning, so that installs which still mount the keypair there keep serving
+// it. When neither location has a keypair, none is found and the caller
+// generates a self-signed certificate.
+//
+// Explicitly configured paths never fall back, and a keypair missing from one
+// is an error rather than a silent downgrade. Naming a path with
+// --tls-cert-path or --tls-key-path (or their environment variable or
+// ConfigMap equivalents) is an instruction to serve that keypair; quietly
+// serving a generated certificate instead would leave the server presenting an
+// identity nobody asked for, which senders that verify cannot trust and
+// senders that do not verify would never notice.
+func resolveKeyPairFiles(ctx context.Context, certFile, keyFile, legacyCertFile, legacyKeyFile string) (string, string, bool, error) {
+	if certFilesExist(certFile, keyFile) {
+		return certFile, keyFile, true, nil
+	}
+
+	if keyPairPathsConfigured(certFile, keyFile) {
+		return "", "", false, fmt.Errorf("no usable TLS keypair at the configured location: %s; "+
+			"point --tls-cert-path and --tls-key-path at an existing keypair, or leave them unset to use %s and %s",
+			strings.Join(unusableKeyPairFiles(certFile, keyFile), "; "), DefaultTLSCertPath, DefaultTLSKeyPath)
+	}
+
 	if certFile != DefaultTLSCertPath || keyFile != DefaultTLSKeyPath || !certFilesExist(legacyCertFile, legacyKeyFile) {
-		return certFile, keyFile, false
+		return certFile, keyFile, false, nil
 	}
 	log.LoggerFromContext(ctx).Warnf("Loading the webhook TLS keypair from the deprecated location %s and %s. "+
-		"Mount it at %s and %s instead, or set --webhook-tls-cert-file and --webhook-tls-key-file",
+		"Mount it at %s and %s instead, or set --tls-cert-path and --tls-key-path",
 		legacyCertFile, legacyKeyFile, certFile, keyFile)
-	return legacyCertFile, legacyKeyFile, true
+	return legacyCertFile, legacyKeyFile, true, nil
 }
 
 // Start starts the webhook server
@@ -470,7 +527,10 @@ func (s *WebhookServer) Start(ctx context.Context) error {
 		}
 
 		// Determine whether to load certs from files or generate self-signed
-		certFile, keyFile, found := resolveKeyPairFiles(ctx, s.TLS.CertFile, s.TLS.KeyFile, LegacyTLSCertPath, LegacyTLSKeyPath)
+		certFile, keyFile, found, err := resolveKeyPairFiles(ctx, s.TLS.CertFile, s.TLS.KeyFile, LegacyTLSCertPath, LegacyTLSKeyPath)
+		if err != nil {
+			return err
+		}
 		if found {
 			// Validate cert/key files eagerly so we fail fast on bad certs,
 			// and check certificate validity period

@@ -955,9 +955,10 @@ func TestCertFilesExist(t *testing.T) {
 
 func TestWebhookServerStartWithTLS(t *testing.T) {
 	server := createMockServer(t, 8083)
+	// No keypair paths configured, so the server generates a self-signed
+	// certificate. Pointing them at a nonexistent file would be a
+	// configuration error instead, not a fallback.
 	server.TLS = &TLSConfig{
-		CertFile:   "/nonexistent/cert.pem",
-		KeyFile:    "/nonexistent/key.pem",
 		MinVersion: DefaultTLSMinVersion,
 		MaxVersion: DefaultTLSMaxVersion,
 	}
@@ -1003,9 +1004,9 @@ func TestWebhookServerStartWithTLS(t *testing.T) {
 // advertisement nor net/http's automatic h2 handler registration is active.
 func TestWebhookServerTLSNextProtoDisablesHTTP2(t *testing.T) {
 	server := createMockServer(t, 8085)
+	// No keypair paths configured, so the server generates a self-signed
+	// certificate; this test is about ALPN, not about certificate loading.
 	server.TLS = &TLSConfig{
-		CertFile:    "/nonexistent/cert.pem",
-		KeyFile:     "/nonexistent/key.pem",
 		MinVersion:  DefaultTLSMinVersion,
 		MaxVersion:  DefaultTLSMaxVersion,
 		EnableHTTP2: false,
@@ -1082,6 +1083,29 @@ func TestWebhookServerStartWithCorruptCert(t *testing.T) {
 	err = server.Start(context.Background())
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to load TLS certificate")
+}
+
+// TestWebhookServerStartWithMissingConfiguredKeyPair verifies that a keypair
+// path pointed somewhere that holds no keypair fails the server startup rather
+// than quietly serving a generated self-signed certificate. An absent file is
+// no milder a misconfiguration than the corrupt one above.
+func TestWebhookServerStartWithMissingConfiguredKeyPair(t *testing.T) {
+	dir := t.TempDir()
+	certFile := filepath.Join(dir, "tls.crt")
+	keyFile := filepath.Join(dir, "tls.key")
+
+	server := createMockServer(t, 8087)
+	server.TLS = &TLSConfig{
+		CertFile:   certFile,
+		KeyFile:    keyFile,
+		MinVersion: DefaultTLSMinVersion,
+		MaxVersion: DefaultTLSMaxVersion,
+	}
+
+	err := server.Start(context.Background())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no usable TLS keypair at the configured location")
+	assert.Contains(t, err.Error(), certFile)
 }
 
 func TestParseCurvePreferences(t *testing.T) {
@@ -1253,6 +1277,7 @@ func TestResolveKeyPairFiles(t *testing.T) {
 		wantKey     string
 		wantFound   bool
 		wantWarning bool
+		wantErr     string
 	}{
 		{
 			name:     "configured keypair exists",
@@ -1279,16 +1304,28 @@ func TestResolveKeyPairFiles(t *testing.T) {
 			wantCert: DefaultTLSCertPath, wantKey: DefaultTLSKeyPath,
 		},
 		{
-			name:     "explicit paths empty do not fall back",
+			// A configured path is an instruction to serve that keypair, so a
+			// missing one is an error rather than a silent downgrade to a
+			// generated certificate. It must not fall back to the legacy
+			// location either, even though one exists here.
+			name:     "configured paths with no keypair are an error",
 			certFile: missingCert, keyFile: missingKey,
 			legacyCert: legacyCert, legacyKey: legacyKey,
-			wantCert: missingCert, wantKey: missingKey,
+			wantErr: "certificate file " + missingCert + " does not exist",
 		},
 		{
-			name:     "explicit certificate with default key does not fall back",
+			name:     "configured certificate with default key is an error",
 			certFile: missingCert, keyFile: DefaultTLSKeyPath,
 			legacyCert: legacyCert, legacyKey: legacyKey,
-			wantCert: missingCert, wantKey: DefaultTLSKeyPath,
+			wantErr: "certificate file " + missingCert + " does not exist",
+		},
+		{
+			// An empty path is the zero value of TLSConfig, not a configured
+			// path, so it generates a self-signed certificate as before.
+			name:     "unset paths are not configured paths",
+			certFile: "", keyFile: "",
+			legacyCert: legacyCert, legacyKey: legacyKey,
+			wantCert: "", wantKey: "",
 		},
 	}
 
@@ -1297,7 +1334,14 @@ func TestResolveKeyPairFiles(t *testing.T) {
 			logger, hook := logrustest.NewNullLogger()
 			ctx := log.ContextWithLogger(context.Background(), logrus.NewEntry(logger))
 
-			certFile, keyFile, found := resolveKeyPairFiles(ctx, tt.certFile, tt.keyFile, tt.legacyCert, tt.legacyKey)
+			certFile, keyFile, found, err := resolveKeyPairFiles(ctx, tt.certFile, tt.keyFile, tt.legacyCert, tt.legacyKey)
+			if tt.wantErr != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.wantErr)
+				assert.False(t, found)
+				return
+			}
+			require.NoError(t, err)
 			assert.Equal(t, tt.wantCert, certFile)
 			assert.Equal(t, tt.wantKey, keyFile)
 			assert.Equal(t, tt.wantFound, found)

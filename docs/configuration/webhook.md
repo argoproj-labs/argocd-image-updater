@@ -481,17 +481,24 @@ data:
 
 The webhook server reads its keypair from `/app/config/webhook/tls/tls.crt` and
 `/app/config/webhook/tls/tls.key`. To load it from another location, set both paths with
-`--webhook-tls-cert-file` and `--webhook-tls-key-file`, or with the `WEBHOOK_TLS_CERT_FILE`
-and `WEBHOOK_TLS_KEY_FILE` environment variables:
+`--tls-cert-path` and `--tls-key-path`, or with the `TLS_CERT_PATH`
+and `TLS_KEY_PATH` environment variables:
 
 ```bash
 argocd-image-updater webhook \
-  --webhook-tls-cert-file /etc/webhook-certs/tls.crt \
-  --webhook-tls-key-file /etc/webhook-certs/tls.key
+  --tls-cert-path /etc/webhook-certs/tls.crt \
+  --tls-key-path /etc/webhook-certs/tls.key
 ```
 
-If there is no keypair at the configured location, the server generates a self-signed
-certificate as described above.
+Setting either path is an instruction to serve that keypair, so the server refuses to
+start when there is no usable keypair there. The self-signed certificate described above
+is only generated when neither path is set.
+
+When the Deployment is created by something other than the manifests shipped here — an
+operator, a Helm chart, or your own kustomization — the keypair may be mounted somewhere
+else or not at all, in which case the server falls back to a generated self-signed
+certificate. Set `TLS_CERT_PATH` and `TLS_KEY_PATH` to wherever the keypair is mounted;
+see that project's documentation for how to set environment variables on the pod.
 
 !!!note "The default location changed"
     Earlier versions read the keypair from `/app/config/tls/`. That directory is the TLS
@@ -503,30 +510,11 @@ certificate as described above.
     a deprecation warning. This fallback only applies to the default paths, not to paths
     set with the flags or environment variables above. If you maintain your own
     manifests, move the `argocd-image-updater-tls` volume mount to
-    `/app/config/webhook/tls`. `/app/config/tls` is then free for mounting
-    `argocd-tls-certs-cm`.
-
-#### Operator-managed installs
-
-With argocd-operator (including OpenShift GitOps), the operator creates the Deployment
-and mounts `argocd-tls-certs-cm` at `/app/config/tls`. At the time of writing it does not
-mount a webhook keypair, and the `ArgoCD` resource has no setting for extra volumes on
-the image updater, so the webhook server uses a generated self-signed certificate there.
-
-The `ArgoCD` resource does accept environment variables for the image updater. When the
-pod has a keypair mounted somewhere other than `/app/config/webhook/tls`, point the
-webhook server at it:
-
-```yaml
-spec:
-  imageUpdater:
-    enabled: true
-    env:
-      - name: WEBHOOK_TLS_CERT_FILE
-        value: /path/to/tls.crt
-      - name: WEBHOOK_TLS_KEY_FILE
-        value: /path/to/tls.key
-```
+    `/app/config/webhook/tls`. `/app/config/tls` is then free for the trust store, which
+    the shipped manifests now mount there from `argocd-tls-certs-cm` (optional, so a
+    missing ConfigMap is not an error). Certificates in it are discovered automatically
+    by registry hostname — see
+    [Registry credentials](registries.md) for details.
 
 ### Configuring TLS via ConfigMap
 
@@ -537,8 +525,8 @@ data:
   # Disable TLS (use plain HTTP)
   disable-tls: "true"
   # Paths to the TLS certificate and private key (default: /app/config/webhook/tls/tls.crt and tls.key)
-  webhook.tls-cert-file: "/etc/webhook-certs/tls.crt"
-  webhook.tls-key-file: "/etc/webhook-certs/tls.key"
+  tls.cert-path: "/etc/webhook-certs/tls.crt"
+  tls.key-path: "/etc/webhook-certs/tls.key"
   # Minimum TLS version (default: 1.3)
   tls.min-version: "1.2"
   # Maximum TLS version (default: 1.3)
@@ -568,8 +556,8 @@ environment variables. Below is the list of which variables correspond to which 
 |`CLOUDEVENTS_WEBHOOK_SECRET` |`--cloudevents-webhook-secret`|
 |`WEBHOOK_RATELIMIT_ALLOWED`|`--webhook-ratelimit-allowed`|
 |`DISABLE_TLS`|`--disable-tls`|
-|`WEBHOOK_TLS_CERT_FILE`|`--webhook-tls-cert-file`|
-|`WEBHOOK_TLS_KEY_FILE`|`--webhook-tls-key-file`|
+|`TLS_CERT_PATH`|`--tls-cert-path`|
+|`TLS_KEY_PATH`|`--tls-key-path`|
 |`TLS_MIN_VERSION`|`--tlsminversion`|
 |`TLS_MAX_VERSION`|`--tlsmaxversion`|
 |`TLS_CIPHERS`|`--tlsciphers`|
