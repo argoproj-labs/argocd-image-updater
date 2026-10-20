@@ -431,6 +431,22 @@ func unusableKeyPairFiles(certFile, keyFile string) []string {
 	return reasons
 }
 
+// keyPairFilesUnreadable reports whether either file could not be checked for a
+// reason other than not existing, such as a permission or I/O error. Such a
+// file may well hold the keypair, so it is a broken mount rather than an
+// absent one.
+func keyPairFilesUnreadable(certFile, keyFile string) bool {
+	for _, f := range []string{certFile, keyFile} {
+		if f == "" {
+			continue
+		}
+		if _, err := os.Stat(f); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return true
+		}
+	}
+	return false
+}
+
 // keyPairPathsConfigured reports whether either path was pointed somewhere
 // other than its default. An empty path is not a configured path: the zero
 // value of TLSConfig means "no keypair configured", and the flags default to
@@ -449,8 +465,9 @@ func keyPairPathsConfigured(certFile, keyFile string) bool {
 // it. When neither location has a keypair, none is found and the caller
 // generates a self-signed certificate.
 //
-// Explicitly configured paths never fall back to the legacy location. When one
-// holds no keypair, a warning names what is wrong with it and the caller
+// Explicitly configured paths never fall back to the legacy location, and
+// neither do default paths that cannot be read for a reason other than not
+// existing. In both cases a warning names what is wrong and the caller
 // generates a self-signed certificate. Failing instead would take down the
 // whole controller under the run command, not only the webhook server, while
 // senders that verify the certificate cannot connect either way.
@@ -459,10 +476,10 @@ func resolveKeyPairFiles(ctx context.Context, certFile, keyFile, legacyCertFile,
 		return certFile, keyFile, true
 	}
 
-	if keyPairPathsConfigured(certFile, keyFile) {
-		log.LoggerFromContext(ctx).Warnf("No usable webhook TLS keypair at the configured location: %s. "+
+	if keyPairPathsConfigured(certFile, keyFile) || keyPairFilesUnreadable(certFile, keyFile) {
+		log.LoggerFromContext(ctx).Warnf("No usable webhook TLS keypair: %s. "+
 			"Falling back to a self-signed certificate, which webhook senders that verify the server certificate will reject. "+
-			"Point --tls-cert-path and --tls-key-path at an existing keypair, or leave them unset to use %s and %s",
+			"Make the keypair readable, or point --tls-cert-path and --tls-key-path at an existing one (default %s and %s)",
 			strings.Join(unusableKeyPairFiles(certFile, keyFile), "; "), DefaultTLSCertPath, DefaultTLSKeyPath)
 		return certFile, keyFile, false
 	}

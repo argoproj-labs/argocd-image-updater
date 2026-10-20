@@ -922,6 +922,30 @@ func TestGenerateSelfSignedCert(t *testing.T) {
 	assert.NotNil(t, cert.PrivateKey, "private key should not be nil")
 }
 
+func TestKeyPairFilesUnreadable(t *testing.T) {
+	certFile, keyFile, _ := writeTestKeyPair(t, t.TempDir())
+	missing := filepath.Join(t.TempDir(), "tls.crt")
+
+	assert.False(t, keyPairFilesUnreadable(certFile, keyFile), "readable keypair")
+	assert.False(t, keyPairFilesUnreadable(missing, keyFile), "a missing file is absent, not unreadable")
+	assert.False(t, keyPairFilesUnreadable("", ""), "unset paths")
+
+	if os.Geteuid() == 0 {
+		t.Skip("root can stat files in a directory without search permission")
+	}
+	// A directory without search permission makes stat fail with a
+	// permission error even though the files are there.
+	lockedDir := t.TempDir()
+	lockedCert, lockedKey, _ := writeTestKeyPair(t, lockedDir)
+	require.NoError(t, os.Chmod(lockedDir, 0o000))
+	t.Cleanup(func() { _ = os.Chmod(lockedDir, 0o700) })
+
+	assert.False(t, certFilesExist(lockedCert, lockedKey))
+	assert.True(t, keyPairFilesUnreadable(lockedCert, lockedKey))
+	assert.True(t, keyPairFilesUnreadable(missing, lockedKey), "either file being unreadable counts")
+	assert.Contains(t, strings.Join(unusableKeyPairFiles(lockedCert, lockedKey), "; "), "cannot be read")
+}
+
 func TestCertFilesExist(t *testing.T) {
 	t.Run("nonexistent files", func(t *testing.T) {
 		assert.False(t, certFilesExist("/nonexistent/cert.pem", "/nonexistent/key.pem"))

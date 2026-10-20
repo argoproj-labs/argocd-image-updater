@@ -491,7 +491,7 @@ argocd-image-updater webhook \
 ```
 
 When a configured path holds no usable keypair, the server logs a warning that names the
-missing or empty file and falls back to the self-signed certificate described above.
+missing, empty or unreadable file and falls back to the self-signed certificate described above.
 Webhook senders that verify the server certificate will reject it, so check the log if
 deliveries start failing with certificate errors.
 
