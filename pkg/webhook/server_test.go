@@ -1086,26 +1086,45 @@ func TestWebhookServerStartWithCorruptCert(t *testing.T) {
 }
 
 // TestWebhookServerStartWithMissingConfiguredKeyPair verifies that a keypair
-// path pointed somewhere that holds no keypair fails the server startup rather
-// than quietly serving a generated self-signed certificate. An absent file is
-// no milder a misconfiguration than the corrupt one above.
+// path pointed somewhere that holds no keypair does not fail the server
+// startup, which under the run command would take down the whole controller.
+// The server serves a generated self-signed certificate instead.
 func TestWebhookServerStartWithMissingConfiguredKeyPair(t *testing.T) {
 	dir := t.TempDir()
-	certFile := filepath.Join(dir, "tls.crt")
-	keyFile := filepath.Join(dir, "tls.key")
 
 	server := createMockServer(t, 8087)
 	server.TLS = &TLSConfig{
-		CertFile:   certFile,
-		KeyFile:    keyFile,
+		CertFile:   filepath.Join(dir, "tls.crt"),
+		KeyFile:    filepath.Join(dir, "tls.key"),
 		MinVersion: DefaultTLSMinVersion,
 		MaxVersion: DefaultTLSMaxVersion,
 	}
 
-	err := server.Start(context.Background())
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "no usable TLS keypair at the configured location")
-	assert.Contains(t, err.Error(), certFile)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- server.Start(ctx)
+	}()
+
+	var conn *tls.Conn
+	var lastErr error
+	for range 50 {
+		conn, lastErr = tls.Dial("tcp", fmt.Sprintf("localhost:%d", server.Port), &tls.Config{InsecureSkipVerify: true}) //nolint:gosec // test only
+		if lastErr == nil {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	require.NoError(t, lastErr, "TLS server did not start in time")
+	peerCerts := conn.ConnectionState().PeerCertificates
+	require.NoError(t, conn.Close())
+
+	require.NotEmpty(t, peerCerts)
+	assert.Equal(t, []string{"Argo CD Image Updater"}, peerCerts[0].Subject.Organization, "server must present a generated self-signed certificate")
+
+	cancel()
+	require.NoError(t, <-errCh)
 }
 
 func TestParseCurvePreferences(t *testing.T) {
@@ -1277,7 +1296,9 @@ func TestResolveKeyPairFiles(t *testing.T) {
 		wantKey     string
 		wantFound   bool
 		wantWarning bool
-		wantErr     string
+		// wantMisconfig is a substring of the expected warning about a
+		// configured location holding no usable keypair.
+		wantMisconfig string
 	}{
 		{
 			name:     "configured keypair exists",
@@ -1304,20 +1325,21 @@ func TestResolveKeyPairFiles(t *testing.T) {
 			wantCert: DefaultTLSCertPath, wantKey: DefaultTLSKeyPath,
 		},
 		{
-			// A configured path is an instruction to serve that keypair, so a
-			// missing one is an error rather than a silent downgrade to a
+			// A configured path with no keypair warns and falls back to a
 			// generated certificate. It must not fall back to the legacy
-			// location either, even though one exists here.
-			name:     "configured paths with no keypair are an error",
+			// location, even though one exists here.
+			name:     "configured paths with no keypair warn",
 			certFile: missingCert, keyFile: missingKey,
 			legacyCert: legacyCert, legacyKey: legacyKey,
-			wantErr: "certificate file " + missingCert + " does not exist",
+			wantCert: missingCert, wantKey: missingKey,
+			wantMisconfig: "certificate file " + missingCert + " does not exist",
 		},
 		{
-			name:     "configured certificate with default key is an error",
+			name:     "configured certificate with default key warns",
 			certFile: missingCert, keyFile: DefaultTLSKeyPath,
 			legacyCert: legacyCert, legacyKey: legacyKey,
-			wantErr: "certificate file " + missingCert + " does not exist",
+			wantCert: missingCert, wantKey: DefaultTLSKeyPath,
+			wantMisconfig: "certificate file " + missingCert + " does not exist",
 		},
 		{
 			// An empty path is the zero value of TLSConfig, not a configured
@@ -1334,14 +1356,7 @@ func TestResolveKeyPairFiles(t *testing.T) {
 			logger, hook := logrustest.NewNullLogger()
 			ctx := log.ContextWithLogger(context.Background(), logrus.NewEntry(logger))
 
-			certFile, keyFile, found, err := resolveKeyPairFiles(ctx, tt.certFile, tt.keyFile, tt.legacyCert, tt.legacyKey)
-			if tt.wantErr != "" {
-				require.Error(t, err)
-				assert.Contains(t, err.Error(), tt.wantErr)
-				assert.False(t, found)
-				return
-			}
-			require.NoError(t, err)
+			certFile, keyFile, found := resolveKeyPairFiles(ctx, tt.certFile, tt.keyFile, tt.legacyCert, tt.legacyKey)
 			assert.Equal(t, tt.wantCert, certFile)
 			assert.Equal(t, tt.wantKey, keyFile)
 			assert.Equal(t, tt.wantFound, found)
@@ -1350,6 +1365,14 @@ func TestResolveKeyPairFiles(t *testing.T) {
 				return e.Level == logrus.WarnLevel && strings.Contains(e.Message, deprecation)
 			})
 			assert.Equal(t, tt.wantWarning, warned, "deprecation warning")
+
+			misconfigured := slices.ContainsFunc(hook.AllEntries(), func(e *logrus.Entry) bool {
+				return e.Level == logrus.WarnLevel && strings.Contains(e.Message, "No usable webhook TLS keypair")
+			})
+			assert.Equal(t, tt.wantMisconfig != "", misconfigured, "misconfigured keypair warning")
+			if tt.wantMisconfig != "" {
+				assert.Contains(t, hook.LastEntry().Message, tt.wantMisconfig)
+			}
 		})
 	}
 }

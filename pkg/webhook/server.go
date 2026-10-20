@@ -401,8 +401,8 @@ func certFilesExist(certFile, keyFile string) bool {
 }
 
 // unusableKeyPairFiles describes which of the certificate and key files cannot
-// be used, so that a configuration error can name the offending path and say
-// what is wrong with it.
+// be used, so that the warning about a misconfigured keypair can name the
+// offending path and say what is wrong with it.
 func unusableKeyPairFiles(certFile, keyFile string) []string {
 	var reasons []string
 	for _, f := range []struct{ kind, path string }{
@@ -449,31 +449,31 @@ func keyPairPathsConfigured(certFile, keyFile string) bool {
 // it. When neither location has a keypair, none is found and the caller
 // generates a self-signed certificate.
 //
-// Explicitly configured paths never fall back, and a keypair missing from one
-// is an error rather than a silent downgrade. Naming a path with
-// --tls-cert-path or --tls-key-path (or their environment variable or
-// ConfigMap equivalents) is an instruction to serve that keypair; quietly
-// serving a generated certificate instead would leave the server presenting an
-// identity nobody asked for, which senders that verify cannot trust and
-// senders that do not verify would never notice.
-func resolveKeyPairFiles(ctx context.Context, certFile, keyFile, legacyCertFile, legacyKeyFile string) (string, string, bool, error) {
+// Explicitly configured paths never fall back to the legacy location. When one
+// holds no keypair, a warning names what is wrong with it and the caller
+// generates a self-signed certificate. Failing instead would take down the
+// whole controller under the run command, not only the webhook server, while
+// senders that verify the certificate cannot connect either way.
+func resolveKeyPairFiles(ctx context.Context, certFile, keyFile, legacyCertFile, legacyKeyFile string) (string, string, bool) {
 	if certFilesExist(certFile, keyFile) {
-		return certFile, keyFile, true, nil
+		return certFile, keyFile, true
 	}
 
 	if keyPairPathsConfigured(certFile, keyFile) {
-		return "", "", false, fmt.Errorf("no usable TLS keypair at the configured location: %s; "+
-			"point --tls-cert-path and --tls-key-path at an existing keypair, or leave them unset to use %s and %s",
+		log.LoggerFromContext(ctx).Warnf("No usable webhook TLS keypair at the configured location: %s. "+
+			"Falling back to a self-signed certificate, which webhook senders that verify the server certificate will reject. "+
+			"Point --tls-cert-path and --tls-key-path at an existing keypair, or leave them unset to use %s and %s",
 			strings.Join(unusableKeyPairFiles(certFile, keyFile), "; "), DefaultTLSCertPath, DefaultTLSKeyPath)
+		return certFile, keyFile, false
 	}
 
 	if certFile != DefaultTLSCertPath || keyFile != DefaultTLSKeyPath || !certFilesExist(legacyCertFile, legacyKeyFile) {
-		return certFile, keyFile, false, nil
+		return certFile, keyFile, false
 	}
 	log.LoggerFromContext(ctx).Warnf("Loading the webhook TLS keypair from the deprecated location %s and %s. "+
 		"Mount it at %s and %s instead, or set --tls-cert-path and --tls-key-path",
 		legacyCertFile, legacyKeyFile, certFile, keyFile)
-	return legacyCertFile, legacyKeyFile, true, nil
+	return legacyCertFile, legacyKeyFile, true
 }
 
 // Start starts the webhook server
@@ -527,10 +527,7 @@ func (s *WebhookServer) Start(ctx context.Context) error {
 		}
 
 		// Determine whether to load certs from files or generate self-signed
-		certFile, keyFile, found, err := resolveKeyPairFiles(ctx, s.TLS.CertFile, s.TLS.KeyFile, LegacyTLSCertPath, LegacyTLSKeyPath)
-		if err != nil {
-			return err
-		}
+		certFile, keyFile, found := resolveKeyPairFiles(ctx, s.TLS.CertFile, s.TLS.KeyFile, LegacyTLSCertPath, LegacyTLSKeyPath)
 		if found {
 			// Validate cert/key files eagerly so we fail fast on bad certs,
 			// and check certificate validity period

@@ -490,9 +490,10 @@ argocd-image-updater webhook \
   --tls-key-path /etc/webhook-certs/tls.key
 ```
 
-Setting either path is an instruction to serve that keypair, so the server refuses to
-start when there is no usable keypair there. The self-signed certificate described above
-is only generated when neither path is set.
+When a configured path holds no usable keypair, the server logs a warning that names the
+missing or empty file and falls back to the self-signed certificate described above.
+Webhook senders that verify the server certificate will reject it, so check the log if
+deliveries start failing with certificate errors.
 
 When the Deployment is created by something other than the manifests shipped here — an
 operator, a Helm chart, or your own kustomization — the keypair may be mounted somewhere
