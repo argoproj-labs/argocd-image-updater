@@ -823,7 +823,7 @@ func Test_GetApplicationSourceType_SourceHydrator(t *testing.T) {
 		assert.Equal(t, v1alpha1.ApplicationSourceTypePlugin, GetApplicationSourceType(application, nil))
 	})
 
-	t.Run("Fall back to Status.SourceType when DrySource has no explicit type", func(t *testing.T) {
+	t.Run("Default to Helm when DrySource has no explicit type", func(t *testing.T) {
 		application := &v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{Name: "test-app", Namespace: "testns"},
 			Spec: v1alpha1.ApplicationSpec{
@@ -833,7 +833,36 @@ func Test_GetApplicationSourceType_SourceHydrator(t *testing.T) {
 			},
 			Status: v1alpha1.ApplicationStatus{SourceType: v1alpha1.ApplicationSourceTypeDirectory},
 		}
+		assert.Equal(t, v1alpha1.ApplicationSourceTypeHelm, GetApplicationSourceType(application, nil))
+		assert.True(t, IsValidApplicationType(application, nil))
+	})
+
+	t.Run("Kustomize write-back target takes precedence over the Helm default", func(t *testing.T) {
+		application := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{Name: "test-app", Namespace: "testns"},
+			Spec: v1alpha1.ApplicationSpec{
+				SourceHydrator: &v1alpha1.SourceHydrator{
+					DrySource: v1alpha1.DrySource{},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{SourceType: v1alpha1.ApplicationSourceTypeDirectory},
+		}
+		wbc := &WriteBackConfig{KustomizeBase: "base"}
+		assert.Equal(t, v1alpha1.ApplicationSourceTypeKustomize, GetApplicationSourceType(application, wbc))
+	})
+
+	t.Run("Keep Directory when DrySource has an explicit directory block", func(t *testing.T) {
+		application := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{Name: "test-app", Namespace: "testns"},
+			Spec: v1alpha1.ApplicationSpec{
+				SourceHydrator: &v1alpha1.SourceHydrator{
+					DrySource: v1alpha1.DrySource{Directory: &v1alpha1.ApplicationSourceDirectory{}},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{SourceType: v1alpha1.ApplicationSourceTypeDirectory},
+		}
 		assert.Equal(t, v1alpha1.ApplicationSourceTypeDirectory, GetApplicationSourceType(application, nil))
+		assert.False(t, IsValidApplicationType(application, nil))
 	})
 
 	t.Run("DrySource Helm overrides misleading Status.SourceType Directory", func(t *testing.T) {
