@@ -58,6 +58,22 @@ func Test_ParseImageTags(t *testing.T) {
 		assert.Equal(t, "harbor.example.com/library/nested/test-image:0.1", image.GetFullNameWithTag())
 	})
 
+	t.Run("explicit library namespace is written back for Docker Hub", func(t *testing.T) {
+		image := NewFromIdentifier("docker.io/library/test-image:0.1")
+		assert.Equal(t, "docker.io", image.RegistryURL)
+		assert.Equal(t, "test-image", image.ImageName)
+		assert.Equal(t, "docker.io/library/test-image:0.1", image.GetFullNameWithTag())
+		assert.Equal(t, "docker.io/library/test-image", image.GetFullNameWithoutTag())
+		assert.False(t, image.DiffersFrom(NewFromIdentifier("docker.io/test-image:0.1"), true))
+		assert.Equal(t, "docker.io/test-image:0.1", NewFromIdentifier("docker.io/test-image:0.1").GetFullNameWithTag())
+
+		constrained := NewFromIdentifier("docker.io/library/test-image:~0.1")
+		assert.False(t, image.DiffersFrom(constrained, false))
+		assert.Equal(t, "docker.io/library/test-image", constrained.GetFullNameWithoutTag())
+		assert.Equal(t, "library/test-image", NewFromIdentifier("harbor.example.com/library/test-image:~0.1").ImageName)
+		assert.Equal(t, "library/test-image", NewFromIdentifier("library/test-image:~0.1").ImageName)
+	})
+
 	t.Run("Parse valid image name with registry info", func(t *testing.T) {
 		image := NewFromIdentifier("gcr.io/jannfis/test-image:0.1")
 		assert.Equal(t, "gcr.io", image.RegistryURL)
@@ -198,6 +214,11 @@ func Test_WithTag(t *testing.T) {
 		oImg := NewFromIdentifier(imageName)
 		nImg := oImg.WithTag(tag.NewImageTag("0.2", time.Unix(0, 0), ""))
 		assert.Equal(t, nimageName, nImg.String())
+	})
+	t.Run("Keep an explicit Docker Hub library namespace", func(t *testing.T) {
+		oImg := NewFromIdentifier("docker.io/library/orig-image:0.1")
+		nImg := oImg.WithTag(tag.NewImageTag("0.2", time.Unix(0, 0), ""))
+		assert.Equal(t, "docker.io/library/orig-image:0.2", nImg.String())
 	})
 }
 
