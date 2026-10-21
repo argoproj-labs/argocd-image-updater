@@ -204,6 +204,18 @@ spec:
                 name: argocd-image-updater-config
                 key: disable-tls
                 optional: true
+          - name: TLS_CERT_PATH
+            valueFrom:
+              configMapKeyRef:
+                name: argocd-image-updater-config
+                key: tls.cert-path
+                optional: true
+          - name: TLS_KEY_PATH
+            valueFrom:
+              configMapKeyRef:
+                name: argocd-image-updater-config
+                key: tls.key-path
+                optional: true
           - name: TLS_MIN_VERSION
             valueFrom:
               configMapKeyRef:
@@ -272,6 +284,12 @@ spec:
             readOnly: true
             subPath: sshPrivateKey
           - name: argocd-image-updater-tls
+            mountPath: /app/config/webhook/tls
+            readOnly: true
+          # Argo CD's shared TLS trust store. Certificates placed here are
+          # discovered automatically by registry hostname, so a registry with a
+          # private CA needs no ca_file in registries.conf.
+          - name: argocd-tls-certs
             mountPath: /app/config/tls
             readOnly: true
       serviceAccountName: argocd-image-updater-controller
@@ -307,5 +325,9 @@ spec:
                 path: tls.crt
               - key: tls.key
                 path: tls.key
+        - name: argocd-tls-certs
+          configMap:
+            name: argocd-tls-certs-cm
+            optional: true
         - emptyDir: {}
           name: tmp

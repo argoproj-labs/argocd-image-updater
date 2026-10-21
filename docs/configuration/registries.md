@@ -150,7 +150,12 @@ properties are optional, unless otherwise stated:
 
     When `ca_file` is omitted, Image Updater also checks
     `/app/config/tls/<registry-hostname>` so certificates mounted from Argo CD's
-    `argocd-tls-certs-cm` are discovered automatically.
+    `argocd-tls-certs-cm` are discovered automatically. The shipped manifests
+    mount that ConfigMap at `/app/config/tls`, so adding the certificate to
+    `argocd-tls-certs-cm` under the registry's hostname is usually all that is
+    needed. The mount is optional, so installs without the ConfigMap are
+    unaffected. Certificates are read when registry endpoints are built at
+    startup; restart the pod after changing them.
 
     Default value: _none_
 
