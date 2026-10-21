@@ -374,7 +374,7 @@ data:
 
 By default, the webhook server listens over HTTPS using TLS 1.3. It loads a TLS
 certificate and key from the `argocd-image-updater-tls` Kubernetes Secret (mounted
-at `/app/config/tls/`). If the secret is not provided or its fields are empty, the
+at `/app/config/webhook/tls/`). If the secret is not provided or its fields are empty, the
 server automatically generates a self-signed certificate in memory so that TLS is
 still active.
 
@@ -477,6 +477,46 @@ data:
   tls.key: <BASE64_ENCODED_KEY>
 ```
 
+### Certificate Location
+
+The webhook server reads its keypair from `/app/config/webhook/tls/tls.crt` and
+`/app/config/webhook/tls/tls.key`. To load it from another location, set both paths with
+`--tls-cert-path` and `--tls-key-path`, or with the `TLS_CERT_PATH`
+and `TLS_KEY_PATH` environment variables:
+
+```bash
+argocd-image-updater webhook \
+  --tls-cert-path /etc/webhook-certs/tls.crt \
+  --tls-key-path /etc/webhook-certs/tls.key
+```
+
+When a configured path holds no usable keypair, the server logs a warning that names the
+missing, empty or unreadable file and falls back to the self-signed certificate described above.
+Webhook senders that verify the server certificate will reject it, so check the log if
+deliveries start failing with certificate errors.
+
+When the Deployment is created by something other than the manifests shipped here — an
+operator, a Helm chart, or your own kustomization — the keypair may be mounted somewhere
+else or not at all, in which case the server falls back to a generated self-signed
+certificate. Set `TLS_CERT_PATH` and `TLS_KEY_PATH` to wherever the keypair is mounted;
+see that project's documentation for how to set environment variables on the pod.
+
+!!!note "The default location changed"
+    Earlier versions read the keypair from `/app/config/tls/`. That directory is the TLS
+    trust store Argo CD components share (the `argocd-tls-certs-cm` ConfigMap, with one
+    file per hostname), so a keypair mounted there hid the trust store.
+
+    For backward compatibility, when the default location holds no keypair the server
+    still loads one from `/app/config/tls/tls.crt` and `/app/config/tls/tls.key` and logs
+    a deprecation warning. This fallback only applies to the default paths, not to paths
+    set with the flags or environment variables above. If you maintain your own
+    manifests, move the `argocd-image-updater-tls` volume mount to
+    `/app/config/webhook/tls`. `/app/config/tls` is then free for the trust store, which
+    the shipped manifests now mount there from `argocd-tls-certs-cm` (optional, so a
+    missing ConfigMap is not an error). Certificates in it are discovered automatically
+    by registry hostname — see
+    [Registry credentials](registries.md) for details.
+
 ### Configuring TLS via ConfigMap
 
 TLS settings can also be configured through the `argocd-image-updater-config` ConfigMap:
@@ -485,6 +525,9 @@ TLS settings can also be configured through the `argocd-image-updater-config` Co
 data:
   # Disable TLS (use plain HTTP)
   disable-tls: "true"
+  # Paths to the TLS certificate and private key (default: /app/config/webhook/tls/tls.crt and tls.key)
+  tls.cert-path: "/etc/webhook-certs/tls.crt"
+  tls.key-path: "/etc/webhook-certs/tls.key"
   # Minimum TLS version (default: 1.3)
   tls.min-version: "1.2"
   # Maximum TLS version (default: 1.3)
@@ -514,6 +557,8 @@ environment variables. Below is the list of which variables correspond to which 
 |`CLOUDEVENTS_WEBHOOK_SECRET` |`--cloudevents-webhook-secret`|
 |`WEBHOOK_RATELIMIT_ALLOWED`|`--webhook-ratelimit-allowed`|
 |`DISABLE_TLS`|`--disable-tls`|
+|`TLS_CERT_PATH`|`--tls-cert-path`|
+|`TLS_KEY_PATH`|`--tls-key-path`|
 |`TLS_MIN_VERSION`|`--tlsminversion`|
 |`TLS_MAX_VERSION`|`--tlsmaxversion`|
 |`TLS_CIPHERS`|`--tlsciphers`|

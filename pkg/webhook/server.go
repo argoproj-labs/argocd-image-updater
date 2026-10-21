@@ -32,9 +32,15 @@ import (
 
 const (
 	// DefaultTLSCertPath is the default path to the TLS certificate file
-	DefaultTLSCertPath = "/app/config/tls/tls.crt"
+	DefaultTLSCertPath = "/app/config/webhook/tls/tls.crt"
 	// DefaultTLSKeyPath is the default path to the TLS private key file
-	DefaultTLSKeyPath = "/app/config/tls/tls.key"
+	DefaultTLSKeyPath = "/app/config/webhook/tls/tls.key"
+	// LegacyTLSCertPath is the default path to the TLS certificate file from
+	// before the keypair moved out of /app/config/tls, which is Argo CD's TLS
+	// trust store directory. It is still read as a fallback.
+	LegacyTLSCertPath = "/app/config/tls/tls.crt"
+	// LegacyTLSKeyPath is the legacy counterpart of DefaultTLSKeyPath
+	LegacyTLSKeyPath = "/app/config/tls/tls.key"
 	// DefaultTLSMinVersion is the default minimum TLS version
 	DefaultTLSMinVersion = "1.3"
 	// DefaultTLSMaxVersion is the default maximum TLS version
@@ -394,6 +400,99 @@ func certFilesExist(certFile, keyFile string) bool {
 	return true
 }
 
+// unusableKeyPairFiles describes which of the certificate and key files cannot
+// be used, so that the warning about a misconfigured keypair can name the
+// offending path and say what is wrong with it.
+func unusableKeyPairFiles(certFile, keyFile string) []string {
+	var reasons []string
+	for _, f := range []struct{ kind, path string }{
+		{"certificate", certFile},
+		{"key", keyFile},
+	} {
+		if f.path == "" {
+			reasons = append(reasons, fmt.Sprintf("no %s file configured", f.kind))
+			continue
+		}
+		info, err := os.Stat(f.path)
+		switch {
+		case errors.Is(err, os.ErrNotExist):
+			reasons = append(reasons, fmt.Sprintf("%s file %s does not exist", f.kind, f.path))
+		case err != nil:
+			reasons = append(reasons, fmt.Sprintf("%s file %s cannot be read: %v", f.kind, f.path, err))
+		case info.Size() == 0:
+			reasons = append(reasons, fmt.Sprintf("%s file %s is empty", f.kind, f.path))
+		}
+	}
+	if len(reasons) == 0 {
+		// Both files look fine now, so one of them appeared between the
+		// existence check and this one. Say something useful anyway.
+		reasons = append(reasons, fmt.Sprintf("%s and %s could not be read as a keypair", certFile, keyFile))
+	}
+	return reasons
+}
+
+// keyPairFilesUnreadable reports whether either file could not be checked for a
+// reason other than not existing, such as a permission or I/O error. Such a
+// file may well hold the keypair, so it is a broken mount rather than an
+// absent one.
+func keyPairFilesUnreadable(certFile, keyFile string) bool {
+	for _, f := range []string{certFile, keyFile} {
+		if f == "" {
+			continue
+		}
+		if _, err := os.Stat(f); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return true
+		}
+	}
+	return false
+}
+
+// keyPairPathsConfigured reports whether either path was pointed somewhere
+// other than its default. An empty path is not a configured path: the zero
+// value of TLSConfig means "no keypair configured", and the flags default to
+// the standard locations anyway.
+func keyPairPathsConfigured(certFile, keyFile string) bool {
+	return (certFile != "" && certFile != DefaultTLSCertPath) ||
+		(keyFile != "" && keyFile != DefaultTLSKeyPath)
+}
+
+// resolveKeyPairFiles returns the certificate and key files to serve and
+// whether a keypair exists there.
+//
+// The configured files are preferred. When they are the default paths and hold
+// no keypair, the legacy location is used if it has one, with a deprecation
+// warning, so that installs which still mount the keypair there keep serving
+// it. When neither location has a keypair, none is found and the caller
+// generates a self-signed certificate.
+//
+// Explicitly configured paths never fall back to the legacy location, and
+// neither do default paths that cannot be read for a reason other than not
+// existing. In both cases a warning names what is wrong and the caller
+// generates a self-signed certificate. Failing instead would take down the
+// whole controller under the run command, not only the webhook server, while
+// senders that verify the certificate cannot connect either way.
+func resolveKeyPairFiles(ctx context.Context, certFile, keyFile, legacyCertFile, legacyKeyFile string) (string, string, bool) {
+	if certFilesExist(certFile, keyFile) {
+		return certFile, keyFile, true
+	}
+
+	if keyPairPathsConfigured(certFile, keyFile) || keyPairFilesUnreadable(certFile, keyFile) {
+		log.LoggerFromContext(ctx).Warnf("No usable webhook TLS keypair: %s. "+
+			"Falling back to a self-signed certificate, which webhook senders that verify the server certificate will reject. "+
+			"Make the keypair readable, or point --tls-cert-path and --tls-key-path at an existing one (default %s and %s)",
+			strings.Join(unusableKeyPairFiles(certFile, keyFile), "; "), DefaultTLSCertPath, DefaultTLSKeyPath)
+		return certFile, keyFile, false
+	}
+
+	if certFile != DefaultTLSCertPath || keyFile != DefaultTLSKeyPath || !certFilesExist(legacyCertFile, legacyKeyFile) {
+		return certFile, keyFile, false
+	}
+	log.LoggerFromContext(ctx).Warnf("Loading the webhook TLS keypair from the deprecated location %s and %s. "+
+		"Mount it at %s and %s instead, or set --tls-cert-path and --tls-key-path",
+		legacyCertFile, legacyKeyFile, certFile, keyFile)
+	return legacyCertFile, legacyKeyFile, true
+}
+
 // Start starts the webhook server
 func (s *WebhookServer) Start(ctx context.Context) error {
 	log := log.LoggerFromContext(ctx)
@@ -445,9 +544,8 @@ func (s *WebhookServer) Start(ctx context.Context) error {
 		}
 
 		// Determine whether to load certs from files or generate self-signed
-		certFile := s.TLS.CertFile
-		keyFile := s.TLS.KeyFile
-		if certFilesExist(certFile, keyFile) {
+		certFile, keyFile, found := resolveKeyPairFiles(ctx, s.TLS.CertFile, s.TLS.KeyFile, LegacyTLSCertPath, LegacyTLSKeyPath)
+		if found {
 			// Validate cert/key files eagerly so we fail fast on bad certs,
 			// and check certificate validity period
 			cert, err := tls.LoadX509KeyPair(certFile, keyFile)
