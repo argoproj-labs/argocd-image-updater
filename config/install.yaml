@@ -1275,7 +1275,7 @@ spec:
               key: tls.curve-preferences
               name: argocd-image-updater-config
               optional: true
-        image: quay.io/argoprojlabs/argocd-image-updater:latest
+        image: quay.io/argoprojlabs/argocd-image-updater:v1.4.0
         livenessProbe:
           httpGet:
             path: /healthz
