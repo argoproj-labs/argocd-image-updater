@@ -3570,7 +3570,7 @@ replicas: 1
 		assert.Equal(t, strings.TrimSpace(strings.ReplaceAll(expected, "\t", "  ")), strings.TrimSpace(string(yaml)))
 	})
 
-	t.Run("Default image-tag for helmvalues write-back-target when only image-name is set", func(t *testing.T) {
+	t.Run("No image-tag written for helmvalues write-back-target when only image-name is set", func(t *testing.T) {
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
 				Name: "testapp",
@@ -3619,7 +3619,8 @@ replicas: 1
 
 		yaml, err := marshalParamsOverride(context.Background(), applicationImages, originalData)
 		require.NoError(t, err)
-		assert.NotEmpty(t, yaml)
+		assert.Contains(t, string(yaml), "name: nginx")
+		assert.NotContains(t, string(yaml), "tag:")
 	})
 
 	t.Run("SourceHydrator app with helmvalues write-back-target renders the new tag", func(t *testing.T) {
@@ -3666,7 +3667,7 @@ replicas: 1
 		assert.Equal(t, "image:\n  name: nginx\n  tag: 1.1.0\n", string(yaml))
 	})
 
-	t.Run("Default image-name for helmvalues write-back-target when only image-tag is set", func(t *testing.T) {
+	t.Run("No image-name written for helmvalues write-back-target when only image-tag is set", func(t *testing.T) {
 		app := v1alpha1.Application{
 			ObjectMeta: v1.ObjectMeta{
 				Name: "testapp",
@@ -3715,7 +3716,8 @@ replicas: 1
 
 		yaml, err := marshalParamsOverride(context.Background(), applicationImages, originalData)
 		require.NoError(t, err)
-		assert.NotEmpty(t, yaml)
+		assert.Contains(t, string(yaml), "tag: v1.0.0")
+		assert.NotContains(t, string(yaml), "name:")
 	})
 
 	t.Run("Image-name value not found uses fallback from ContainerImage", func(t *testing.T) {
@@ -7375,6 +7377,314 @@ plugin:
 		assert.Contains(t, string(result), "parameters:")
 		assert.NotContains(t, string(result), "plugin:")
 	})
+}
+
+// multiImageHelmValuesApp builds a two-image Helm application whose live images
+// both carry a registry prefix, while the values file keeps them in short form.
+// helmParams is what SetHelmImage left in the Application this cycle.
+func multiImageHelmValuesApp(helmParams []v1alpha1.HelmParameter) v1alpha1.Application {
+	return v1alpha1.Application{
+		ObjectMeta: v1.ObjectMeta{Name: "testapp"},
+		Spec: v1alpha1.ApplicationSpec{
+			Source: &v1alpha1.ApplicationSource{
+				RepoURL:        "https://example.com/example",
+				TargetRevision: "main",
+				Helm:           &v1alpha1.ApplicationSourceHelm{Parameters: helmParams},
+			},
+		},
+		Status: v1alpha1.ApplicationStatus{
+			SourceType: v1alpha1.ApplicationSourceTypeHelm,
+			Summary: v1alpha1.ApplicationSummary{
+				Images: []string{
+					"registry.example.com/backend:1.1.0a369",
+					"registry.example.com/admin:2.1.0a713",
+				},
+			},
+		},
+	}
+}
+
+// TestMarshalParamsOverride_Issue1873 covers the two write-back defects reported
+// in https://github.com/argoproj-labs/argocd-image-updater/issues/1873, where an
+// ImageUpdater tracks several images of one application in a shared helmvalues
+// file and one of them is configured with forceUpdate.
+func TestMarshalParamsOverride_Issue1873(t *testing.T) {
+	const shortFormValues = `backend:
+  image:
+    repository: "backend"
+    tag: "1.1.0a369"
+frontend:
+  admin:
+    image:
+      repository: "admin"
+      tag: "2.1.0a713"
+`
+
+	// An image that was skipped before setAppImage ran - a registry error, no
+	// tag matching the constraint, a failed signature check - has no Helm
+	// parameter this cycle. Its entries in the values file must be left exactly
+	// as they are, even though a write-back triggered by another image rewrites
+	// the file.
+	t.Run("image without a parameter this cycle keeps its values file entries", func(t *testing.T) {
+		// Only backend, the forceUpdate image, got parameters this cycle.
+		app := multiImageHelmValuesApp([]v1alpha1.HelmParameter{
+			{Name: "backend.image.repository", Value: "registry.example.com/backend", ForceString: true},
+			{Name: "backend.image.tag", Value: "1.1.0a369", ForceString: true},
+		})
+
+		backend := NewImage(image.NewFromIdentifier("backend=registry.example.com/backend"))
+		backend.HelmImageName = "backend.image.repository"
+		backend.HelmImageTag = "backend.image.tag"
+		backend.ForceUpdate = true
+
+		admin := NewImage(image.NewFromIdentifier("admin=registry.example.com/admin"))
+		admin.HelmImageName = "frontend.admin.image.repository"
+		admin.HelmImageTag = "frontend.admin.image.tag"
+
+		result, err := marshalParamsOverride(context.Background(), &ApplicationImages{
+			Application:     app,
+			Images:          ImageList{backend, admin},
+			WriteBackConfig: &WriteBackConfig{Target: "./values.yaml"},
+		}, []byte(shortFormValues))
+		require.NoError(t, err)
+		assert.Equal(t, shortFormValues, string(result))
+	})
+
+	// Same situation with an image-spec target. The fallback used to write the
+	// image name without its tag, leaving a tagless reference behind.
+	t.Run("image-spec without a parameter this cycle keeps its tag", func(t *testing.T) {
+		const specValues = `backend:
+  image: "registry.example.com/backend:1.1.0a369"
+frontend:
+  admin:
+    image: "registry.example.com/admin:2.1.0a713"
+`
+		app := multiImageHelmValuesApp([]v1alpha1.HelmParameter{
+			{Name: "backend.image", Value: "registry.example.com/backend:1.1.0a369", ForceString: true},
+		})
+
+		backend := NewImage(image.NewFromIdentifier("backend=registry.example.com/backend"))
+		backend.HelmImageSpec = "backend.image"
+
+		admin := NewImage(image.NewFromIdentifier("admin=registry.example.com/admin"))
+		admin.HelmImageSpec = "frontend.admin.image"
+
+		result, err := marshalParamsOverride(context.Background(), &ApplicationImages{
+			Application:     app,
+			Images:          ImageList{backend, admin},
+			WriteBackConfig: &WriteBackConfig{Target: "./values.yaml"},
+		}, []byte(specValues))
+		require.NoError(t, err)
+		assert.Equal(t, specValues, string(result))
+	})
+
+	// A tag already committed to git but not yet rolled out must not be reverted
+	// to the tag the cluster is still running.
+	t.Run("image without a parameter this cycle does not revert a committed tag", func(t *testing.T) {
+		app := multiImageHelmValuesApp(nil)
+		// The file is ahead of the cluster, which still runs 2.1.0a713.
+		const aheadOfCluster = `frontend:
+  admin:
+    image:
+      repository: "admin"
+      tag: "2.2.0a800"
+`
+		admin := NewImage(image.NewFromIdentifier("admin=registry.example.com/admin"))
+		admin.HelmImageName = "frontend.admin.image.repository"
+		admin.HelmImageTag = "frontend.admin.image.tag"
+
+		result, err := marshalParamsOverride(context.Background(), &ApplicationImages{
+			Application:     app,
+			Images:          ImageList{admin},
+			WriteBackConfig: &WriteBackConfig{Target: "./values.yaml"},
+		}, []byte(aheadOfCluster))
+		require.NoError(t, err)
+		assert.Equal(t, aheadOfCluster, string(result))
+	})
+
+	// The fallback still has to seed keys the values file does not carry yet,
+	// which is what it was introduced for.
+	t.Run("missing keys are still seeded from the image", func(t *testing.T) {
+		app := multiImageHelmValuesApp(nil)
+
+		admin := NewImage(image.NewFromIdentifier("admin=registry.example.com/admin"))
+		admin.HelmImageName = "frontend.admin.image.repository"
+		admin.HelmImageTag = "frontend.admin.image.tag"
+
+		result, err := marshalParamsOverride(context.Background(), &ApplicationImages{
+			Application:     app,
+			Images:          ImageList{admin},
+			WriteBackConfig: &WriteBackConfig{Target: "./values.yaml"},
+		}, []byte("other: value\n"))
+		require.NoError(t, err)
+		assert.Contains(t, string(result), "repository: registry.example.com/admin")
+		assert.Contains(t, string(result), "tag: 2.1.0a713")
+	})
+
+	// Omitting manifestTargets.helm.name used to default every image to the
+	// same "image.name" path, so the images overwrote each other and left one
+	// stray key behind that belonged to whichever image was processed last.
+	t.Run("omitting helm.name writes no image name at all", func(t *testing.T) {
+		app := multiImageHelmValuesApp([]v1alpha1.HelmParameter{
+			{Name: "backend.image.tag", Value: "1.1.0a369", ForceString: true},
+			{Name: "frontend.admin.image.tag", Value: "2.1.0a713", ForceString: true},
+		})
+
+		backend := NewImage(image.NewFromIdentifier("backend=registry.example.com/backend"))
+		backend.HelmImageTag = "backend.image.tag"
+
+		admin := NewImage(image.NewFromIdentifier("admin=registry.example.com/admin"))
+		admin.HelmImageTag = "frontend.admin.image.tag"
+
+		const tagOnlyValues = `backend:
+  image:
+    tag: "1.1.0a369"
+frontend:
+  admin:
+    image:
+      tag: "2.1.0a713"
+`
+		result, err := marshalParamsOverride(context.Background(), &ApplicationImages{
+			Application:     app,
+			Images:          ImageList{backend, admin},
+			WriteBackConfig: &WriteBackConfig{Target: "./values.yaml"},
+		}, []byte(tagOnlyValues))
+		require.NoError(t, err)
+		assert.Equal(t, tagOnlyValues, string(result))
+	})
+
+	// The same default also reached the .argocd-source override file, which
+	// committed an image.name parameter no image had asked for. A stale one
+	// left in the live Application by an older release must not be picked up
+	// as managed either.
+	t.Run("omitting helm.name writes no image name to the override file", func(t *testing.T) {
+		app := multiImageHelmValuesApp([]v1alpha1.HelmParameter{
+			{Name: "frontend.admin.image.tag", Value: "2.1.0a713", ForceString: true},
+			{Name: "image.name", Value: "registry.example.com/admin", ForceString: true},
+		})
+
+		admin := NewImage(image.NewFromIdentifier("admin=registry.example.com/admin"))
+		admin.HelmImageTag = "frontend.admin.image.tag"
+
+		result, err := marshalParamsOverride(context.Background(), &ApplicationImages{
+			Application:     app,
+			Images:          ImageList{admin},
+			WriteBackConfig: &WriteBackConfig{Target: ".argocd-source-testapp.yaml"},
+		}, nil)
+		require.NoError(t, err)
+		assert.Contains(t, string(result), "name: frontend.admin.image.tag")
+		assert.NotContains(t, string(result), "image.name")
+	})
+}
+
+// TestMarshalParamsOverride_PartialHelmTargets pins down that an image which
+// configures only part of manifestTargets.helm is written back without an
+// error. Configuring only one of name and tag used to be rejected with a
+// missing-parameter error, and the half that is not configured must now simply
+// be left out of the write-back rather than be defaulted into a path shared
+// with every other image - see TestMarshalParamsOverride_Issue1873.
+func TestMarshalParamsOverride_PartialHelmTargets(t *testing.T) {
+	app := func(params []v1alpha1.HelmParameter) v1alpha1.Application {
+		return v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{Name: "testapp"},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: &v1alpha1.ApplicationSource{
+					RepoURL:        "https://example.com/example",
+					TargetRevision: "main",
+					Helm:           &v1alpha1.ApplicationSourceHelm{Parameters: params},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypeHelm,
+				Summary: v1alpha1.ApplicationSummary{
+					Images: []string{"registry.example.com/admin:2.1.0a713"},
+				},
+			},
+		}
+	}
+
+	for _, tt := range []struct {
+		name          string
+		helmName      string
+		helmTag       string
+		helmSpec      string
+		target        string
+		params        []v1alpha1.HelmParameter
+		originalData  string
+		expectWritten []string
+		expectAbsent  []string
+	}{
+		{
+			name:          "tag only into a new values file",
+			helmTag:       "frontend.image.tag",
+			target:        "./values.yaml",
+			expectWritten: []string{"tag: 2.1.0a713"},
+			expectAbsent:  []string{"repository:", "name:"},
+		},
+		{
+			name:          "name only into a new values file",
+			helmName:      "frontend.image.repository",
+			target:        "./values.yaml",
+			expectWritten: []string{"repository: registry.example.com/admin"},
+			expectAbsent:  []string{"tag:"},
+		},
+		{
+			name:          "spec only into a new values file",
+			helmSpec:      "frontend.image",
+			target:        "./values.yaml",
+			expectWritten: []string{"image: registry.example.com/admin:2.1.0a713"},
+		},
+		{
+			name:          "neither still falls back to the defaults",
+			target:        "./values.yaml",
+			expectWritten: []string{"name: registry.example.com/admin", "tag: 2.1.0a713"},
+		},
+		{
+			name:          "tag only with the parameter resolved this cycle",
+			helmTag:       "frontend.image.tag",
+			target:        "./values.yaml",
+			params:        []v1alpha1.HelmParameter{{Name: "frontend.image.tag", Value: "2.1.0a713", ForceString: true}},
+			originalData:  "frontend:\n  image:\n    tag: \"1.0.0\"\n",
+			expectWritten: []string{"tag: \"2.1.0a713\""},
+			expectAbsent:  []string{"repository:", "name:"},
+		},
+		{
+			name:          "tag only into the override file",
+			helmTag:       "frontend.image.tag",
+			target:        ".argocd-source-testapp.yaml",
+			params:        []v1alpha1.HelmParameter{{Name: "frontend.image.tag", Value: "2.1.0a713", ForceString: true}},
+			expectWritten: []string{"name: frontend.image.tag"},
+			expectAbsent:  []string{"image.name"},
+		},
+		{
+			name:          "name only into the override file",
+			helmName:      "frontend.image.repository",
+			target:        ".argocd-source-testapp.yaml",
+			params:        []v1alpha1.HelmParameter{{Name: "frontend.image.repository", Value: "registry.example.com/admin", ForceString: true}},
+			expectWritten: []string{"name: frontend.image.repository"},
+			expectAbsent:  []string{"image.tag"},
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			im := NewImage(image.NewFromIdentifier("admin=registry.example.com/admin"))
+			im.HelmImageName = tt.helmName
+			im.HelmImageTag = tt.helmTag
+			im.HelmImageSpec = tt.helmSpec
+
+			result, err := marshalParamsOverride(context.Background(), &ApplicationImages{
+				Application:     app(tt.params),
+				Images:          ImageList{im},
+				WriteBackConfig: &WriteBackConfig{Target: tt.target},
+			}, []byte(tt.originalData))
+			require.NoError(t, err)
+			for _, want := range tt.expectWritten {
+				assert.Contains(t, string(result), want)
+			}
+			for _, notWant := range tt.expectAbsent {
+				assert.NotContains(t, string(result), notWant)
+			}
+		})
+	}
 }
 
 // TestMarshalParamsOverride_PreservesFormatting verifies that when every write
