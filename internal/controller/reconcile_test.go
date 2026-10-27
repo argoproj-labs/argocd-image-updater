@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -390,7 +391,7 @@ func TestImageUpdaterReconciler_Reconcile(t *testing.T) {
 
 func TestRunOnceFailuresArePropagated(t *testing.T) {
 	ctx := context.Background()
-	newReconciler := func(t *testing.T, once bool) (*ImageUpdaterReconciler, reconcile.Request) {
+	newReconciler := func(t *testing.T, once bool, namePattern string) (*ImageUpdaterReconciler, reconcile.Request) {
 		t.Helper()
 		cacheWarmed := make(chan struct{})
 		close(cacheWarmed)
@@ -400,7 +401,7 @@ func TestRunOnceFailuresArePropagated(t *testing.T) {
 		fakeClient := clifake.NewClientBuilder().WithScheme(s).WithStatusSubresource(&argocdimageupdaterv1alpha1.ImageUpdater{}).Build()
 		cr := &argocdimageupdaterv1alpha1.ImageUpdater{
 			ObjectMeta: metav1.ObjectMeta{Name: "bad-pattern", Namespace: "default", Finalizers: []string{ResourcesFinalizerName}},
-			Spec:       argocdimageupdaterv1alpha1.ImageUpdaterSpec{ApplicationRefs: []argocdimageupdaterv1alpha1.ApplicationRef{{NamePattern: "foo[bar"}}},
+			Spec:       argocdimageupdaterv1alpha1.ImageUpdaterSpec{ApplicationRefs: []argocdimageupdaterv1alpha1.ApplicationRef{{NamePattern: namePattern}}},
 		}
 		require.NoError(t, fakeClient.Create(ctx, cr))
 		reconciler := &ImageUpdaterReconciler{
@@ -415,7 +416,7 @@ func TestRunOnceFailuresArePropagated(t *testing.T) {
 	}
 
 	t.Run("interval zero retries reconcile errors when not in --once mode", func(t *testing.T) {
-		reconciler, request := newReconciler(t, false)
+		reconciler, request := newReconciler(t, false, "foo[bar")
 		result, err := reconciler.Reconcile(ctx, request)
 		require.ErrorContains(t, err, "invalid application name pattern")
 		assert.Equal(t, reconcile.Result{}, result)
@@ -423,7 +424,7 @@ func TestRunOnceFailuresArePropagated(t *testing.T) {
 	})
 
 	t.Run("--once records errors but completes the CR", func(t *testing.T) {
-		reconciler, request := newReconciler(t, true)
+		reconciler, request := newReconciler(t, true, "foo[bar")
 		result, err := reconciler.Reconcile(ctx, request)
 		require.NoError(t, err, "run-once must finish processing remaining CRs")
 		assert.Equal(t, reconcile.Result{}, result)
@@ -431,9 +432,20 @@ func TestRunOnceFailuresArePropagated(t *testing.T) {
 		reconciler.Wg.Wait()
 	})
 
+	t.Run("--once leaves the failure flag clear on success", func(t *testing.T) {
+		reconciler, request := newReconciler(t, true, "valid-app")
+		_, err := reconciler.Reconcile(ctx, request)
+		require.NoError(t, err)
+		assert.False(t, reconciler.OnceRunFailed())
+		reconciler.Wg.Wait()
+	})
+
 	t.Run("per-application errors become reconcile errors", func(t *testing.T) {
 		err := runOnceError(2, nil)
 		require.ErrorContains(t, err, "2 application error(s)")
+
+		wrapped := runOnceError(2, errors.New("reconcile failed"))
+		require.ErrorContains(t, wrapped, "reconcile failed; 2 application error(s)")
 	})
 }
 

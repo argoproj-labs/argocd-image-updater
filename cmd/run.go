@@ -33,6 +33,13 @@ import (
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
 )
 
+func runOnceCompletionError(once, failed bool) error {
+	if once && failed {
+		return fmt.Errorf("one or more ImageUpdater CRs failed during run-once execution")
+	}
+	return nil
+}
+
 // newRunCommand implements "controller" command
 func newRunCommand() *cobra.Command {
 	var metricsAddr string
@@ -295,10 +302,7 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 				setupLogger.Error(err, "problem running manager")
 				return err
 			}
-			if once && reconciler.OnceRunFailed() {
-				return fmt.Errorf("one or more ImageUpdater CRs failed during run-once execution")
-			}
-			return nil
+			return runOnceCompletionError(once, reconciler.OnceRunFailed())
 		},
 	}
 
