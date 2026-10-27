@@ -25,6 +25,12 @@ import (
 	registryKube "github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/kube"
 )
 
+func TestRunOnceCompletionError(t *testing.T) {
+	assert.NoError(t, runOnceCompletionError(false, true))
+	assert.NoError(t, runOnceCompletionError(true, false))
+	assert.EqualError(t, runOnceCompletionError(true, true), "one or more ImageUpdater CRs failed during run-once execution")
+}
+
 // TestNewRunCommand tests various flags and their default values.
 func TestNewRunCommand(t *testing.T) {
 	asser := assert.New(t)

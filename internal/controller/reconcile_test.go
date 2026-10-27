@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -386,6 +387,66 @@ func TestImageUpdaterReconciler_Reconcile(t *testing.T) {
 			mockArgoClient.AssertExpectations(t)
 		})
 	}
+}
+
+func TestRunOnceFailuresArePropagated(t *testing.T) {
+	ctx := context.Background()
+	newReconciler := func(t *testing.T, once bool, namePattern string) (*ImageUpdaterReconciler, reconcile.Request) {
+		t.Helper()
+		cacheWarmed := make(chan struct{})
+		close(cacheWarmed)
+		s := scheme.Scheme
+		require.NoError(t, argocdimageupdaterv1alpha1.AddToScheme(s))
+		require.NoError(t, argocdapi.AddToScheme(s))
+		fakeClient := clifake.NewClientBuilder().WithScheme(s).WithStatusSubresource(&argocdimageupdaterv1alpha1.ImageUpdater{}).Build()
+		cr := &argocdimageupdaterv1alpha1.ImageUpdater{
+			ObjectMeta: metav1.ObjectMeta{Name: "bad-pattern", Namespace: "default", Finalizers: []string{ResourcesFinalizerName}},
+			Spec:       argocdimageupdaterv1alpha1.ImageUpdaterSpec{ApplicationRefs: []argocdimageupdaterv1alpha1.ApplicationRef{{NamePattern: namePattern}}},
+		}
+		require.NoError(t, fakeClient.Create(ctx, cr))
+		reconciler := &ImageUpdaterReconciler{
+			Client: fakeClient, Scheme: s, MaxConcurrentReconciles: 1, CacheWarmed: cacheWarmed,
+			StopChan: make(chan struct{}), Once: once,
+			Config: &ImageUpdaterConfig{CheckInterval: 0, MaxConcurrentApps: 1, DryRun: true, KubeClient: &kube.ImageUpdaterKubernetesClient{}},
+		}
+		if once {
+			reconciler.Wg.Add(1)
+		}
+		return reconciler, reconcile.Request{NamespacedName: types.NamespacedName{Name: cr.Name, Namespace: cr.Namespace}}
+	}
+
+	t.Run("interval zero retries reconcile errors when not in --once mode", func(t *testing.T) {
+		reconciler, request := newReconciler(t, false, "foo[bar")
+		result, err := reconciler.Reconcile(ctx, request)
+		require.ErrorContains(t, err, "invalid application name pattern")
+		assert.Equal(t, reconcile.Result{}, result)
+		assert.False(t, reconciler.OnceRunFailed())
+	})
+
+	t.Run("--once records errors but completes the CR", func(t *testing.T) {
+		reconciler, request := newReconciler(t, true, "foo[bar")
+		result, err := reconciler.Reconcile(ctx, request)
+		require.NoError(t, err, "run-once must finish processing remaining CRs")
+		assert.Equal(t, reconcile.Result{}, result)
+		assert.True(t, reconciler.OnceRunFailed())
+		reconciler.Wg.Wait()
+	})
+
+	t.Run("--once leaves the failure flag clear on success", func(t *testing.T) {
+		reconciler, request := newReconciler(t, true, "valid-app")
+		_, err := reconciler.Reconcile(ctx, request)
+		require.NoError(t, err)
+		assert.False(t, reconciler.OnceRunFailed())
+		reconciler.Wg.Wait()
+	})
+
+	t.Run("per-application errors become reconcile errors", func(t *testing.T) {
+		err := runOnceError(2, nil)
+		require.ErrorContains(t, err, "2 application error(s)")
+
+		wrapped := runOnceError(2, errors.New("reconcile failed"))
+		require.ErrorContains(t, wrapped, "reconcile failed; 2 application error(s)")
+	})
 }
 
 // Assisted-by: Gemini AI
