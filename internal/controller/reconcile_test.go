@@ -388,6 +388,55 @@ func TestImageUpdaterReconciler_Reconcile(t *testing.T) {
 	}
 }
 
+func TestRunOnceFailuresArePropagated(t *testing.T) {
+	ctx := context.Background()
+	newReconciler := func(t *testing.T, once bool) (*ImageUpdaterReconciler, reconcile.Request) {
+		t.Helper()
+		cacheWarmed := make(chan struct{})
+		close(cacheWarmed)
+		s := scheme.Scheme
+		require.NoError(t, argocdimageupdaterv1alpha1.AddToScheme(s))
+		require.NoError(t, argocdapi.AddToScheme(s))
+		fakeClient := clifake.NewClientBuilder().WithScheme(s).WithStatusSubresource(&argocdimageupdaterv1alpha1.ImageUpdater{}).Build()
+		cr := &argocdimageupdaterv1alpha1.ImageUpdater{
+			ObjectMeta: metav1.ObjectMeta{Name: "bad-pattern", Namespace: "default", Finalizers: []string{ResourcesFinalizerName}},
+			Spec:       argocdimageupdaterv1alpha1.ImageUpdaterSpec{ApplicationRefs: []argocdimageupdaterv1alpha1.ApplicationRef{{NamePattern: "foo[bar"}}},
+		}
+		require.NoError(t, fakeClient.Create(ctx, cr))
+		reconciler := &ImageUpdaterReconciler{
+			Client: fakeClient, Scheme: s, MaxConcurrentReconciles: 1, CacheWarmed: cacheWarmed,
+			StopChan: make(chan struct{}), Once: once,
+			Config: &ImageUpdaterConfig{CheckInterval: 0, MaxConcurrentApps: 1, DryRun: true, KubeClient: &kube.ImageUpdaterKubernetesClient{}},
+		}
+		if once {
+			reconciler.Wg.Add(1)
+		}
+		return reconciler, reconcile.Request{NamespacedName: types.NamespacedName{Name: cr.Name, Namespace: cr.Namespace}}
+	}
+
+	t.Run("interval zero retries reconcile errors when not in --once mode", func(t *testing.T) {
+		reconciler, request := newReconciler(t, false)
+		result, err := reconciler.Reconcile(ctx, request)
+		require.ErrorContains(t, err, "invalid application name pattern")
+		assert.Equal(t, reconcile.Result{}, result)
+		assert.False(t, reconciler.OnceRunFailed())
+	})
+
+	t.Run("--once records errors but completes the CR", func(t *testing.T) {
+		reconciler, request := newReconciler(t, true)
+		result, err := reconciler.Reconcile(ctx, request)
+		require.NoError(t, err, "run-once must finish processing remaining CRs")
+		assert.Equal(t, reconcile.Result{}, result)
+		assert.True(t, reconciler.OnceRunFailed())
+		reconciler.Wg.Wait()
+	})
+
+	t.Run("per-application errors become reconcile errors", func(t *testing.T) {
+		err := runOnceError(2, nil)
+		require.ErrorContains(t, err, "2 application error(s)")
+	})
+}
+
 // Assisted-by: Gemini AI
 // TestImageUpdaterReconciler_Reconcile_ComplexScenarios tests more complex scenarios
 func TestImageUpdaterReconciler_Reconcile_ComplexScenarios(t *testing.T) {
