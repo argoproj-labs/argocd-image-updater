@@ -290,6 +290,7 @@ func commitChangesGit(ctx context.Context, applicationImages *ApplicationImages,
 		return false, err
 	} else if skip {
 		logCtx.Debugf("no changes to write back for application, skipping commit and push")
+		wbc.precheck.remember(ctx, applicationImages, gitC, pushBranch, false)
 		return pushBranchCreated, nil
 	}
 
@@ -344,6 +345,7 @@ func commitChangesGit(ctx context.Context, applicationImages *ApplicationImages,
 	if err != nil {
 		return false, err
 	}
+	wbc.precheck.remember(ctx, applicationImages, gitC, pushBranch, true)
 
 	return false, nil
 }
