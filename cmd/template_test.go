@@ -68,6 +68,33 @@ App: example-app
 	assert.Equal(t, expectedOutput, buf.String())
 }
 
+func TestNewTemplateCommandWithBaseHelper(t *testing.T) {
+	testTemplate := `update {{ range $i, $c := .AppChanges }}{{ if $i }}, {{ end }}{{ base $c.Image }}{{ end }}`
+	expectedOutput := `update example, updater
+`
+
+	tempFile, err := os.CreateTemp("", "test-template.tmpl")
+	if err != nil {
+		t.Fatalf("could not create temp file: %v", err)
+	}
+	defer os.Remove(tempFile.Name())
+	_, err = tempFile.WriteString(testTemplate)
+	if err != nil {
+		t.Fatalf("could not write to temp file: %v", err)
+	}
+	tempFile.Close()
+
+	cmd := newTemplateCommand()
+	buf := new(bytes.Buffer)
+	cmd.SetOut(buf)
+	cmd.SetArgs([]string{tempFile.Name()})
+	err = cmd.Execute()
+	if err != nil {
+		t.Fatalf("could not execute command: %v", err)
+	}
+	assert.Equal(t, expectedOutput, buf.String())
+}
+
 func TestNewTemplateCommandWithInvalidTemplate(t *testing.T) {
 
 	testTemplate := `Custom Commit Message:
