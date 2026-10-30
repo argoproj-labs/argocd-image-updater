@@ -368,6 +368,9 @@ The following variables are provided for this template:
 * `.AppNamespace` is the namespace of the application being updated
 * `.AppName` is the name of the application being updated
 
+The `base` helper returns the last element of a slash-separated path, so
+`{{base .Name}}` renders `bar` for the image `foo/bar`.
+
 Please note that if the output of the template exceeds 255 characters (git branch name limit) it will be truncated.
 
 ### <a name="method-git-target"></a>Git Write-Back Target
@@ -815,6 +818,21 @@ Two top-level variables are provided to the template:
     * `.OldTag` holds the tag name or SHA digest previous to the update
     * `.NewTag` holds the tag name or SHA digest that was updated to
     * `.Labels` is a map of the labels contained in the created Docker/OCI image, and in case no labels are being assigned to created image, an empty map is created
+
+The `base` helper returns the last element of a slash-separated path. It can
+be used to keep the first line of the message short, e.g.
+`{{ base .Image }}` renders `catalog` for the image
+`example-team/docker-repo/catalog`:
+
+```yaml
+data:
+  git.commit-message-template: |
+    chore({{ .AppName }}): update {{ range $i, $c := .AppChanges }}{{ if $i }}, {{ end }}{{ base $c.Image }} {{ $c.OldTag }} -> {{ $c.NewTag }}{{ end }}
+
+    {{ range .AppChanges -}}
+    updates image {{ .Image }} tag '{{ .OldTag }}' to '{{ .NewTag }}'
+    {{ end -}}
+```
 
 In order to test a template before configuring it for use in Image Updater,
 you can store the template you want to use in a temporary file, and then use

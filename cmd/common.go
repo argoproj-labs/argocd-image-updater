@@ -94,7 +94,7 @@ func SetupCommon(ctx context.Context, cfg *controller.ImageUpdaterConfig, setupL
 		commitMessageTpl = common.DefaultGitCommitMessage
 	}
 
-	if tpl, err := template.New("commitMessage").Parse(commitMessageTpl); err != nil {
+	if tpl, err := template.New("commitMessage").Funcs(argocd.TemplateFuncs).Parse(commitMessageTpl); err != nil {
 		setupLogger.Error(err, "could not parse commit message template")
 		return err
 	} else {
