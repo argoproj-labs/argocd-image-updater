@@ -1139,6 +1139,81 @@ registries:
 		assert.Equal(t, 0, res.NumImagesUpdated)
 	})
 
+	// An admission controller (e.g. Kyverno verifyImages with mutateDigest) can pin the
+	// running image to tag@digest. Non-digest strategies resolve tags without a digest,
+	// so the tags must be compared by name, not by digest.
+	for _, tc := range []struct {
+		name      string
+		running   string
+		available string
+		updated   int
+	}{
+		{"Test skip because of image up-to-date when the running image is pinned to a digest", "1.0.1", "1.0.1", 0},
+		{"Test update when the running image is pinned to a digest and a newer tag exists", "1.0.0", "1.0.1", 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
+				regMock := regmock.RegistryClient{}
+				regMock.On("NewRepository", mock.Anything, mock.Anything).Return(nil)
+				regMock.On("Tags", mock.Anything).Return([]string{tc.available}, nil)
+				return &regMock, nil
+			}
+
+			argoClient := argomock.ArgoCD{}
+			argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+
+			kubeClient := kube.ImageUpdaterKubernetesClient{
+				KubeClient: &registryKube.KubernetesClient{
+					Clientset: fake.NewFakeKubeClient(),
+				},
+			}
+			appImages := &ApplicationImages{
+				Application: v1alpha1.Application{
+					ObjectMeta: v1.ObjectMeta{
+						Name:      "guestbook",
+						Namespace: "guestbook",
+					},
+					Spec: v1alpha1.ApplicationSpec{
+						Source: &v1alpha1.ApplicationSource{
+							Kustomize: &v1alpha1.ApplicationSourceKustomize{
+								Images: v1alpha1.KustomizeImages{
+									"jannfis/foobar:" + tc.running,
+								},
+							},
+						},
+					},
+					Status: v1alpha1.ApplicationStatus{
+						SourceType: v1alpha1.ApplicationSourceTypeKustomize,
+						Summary: v1alpha1.ApplicationSummary{
+							Images: []string{
+								"jannfis/foobar:" + tc.running + "@sha256:91734281c0ebfc6f1aea979cffeed5079cfe786228a71cc6f1f46a228cde6e34",
+							},
+						},
+					},
+				},
+				Images: ImageList{
+					NewImage(
+						image.NewFromIdentifier("jannfis/foobar")),
+				},
+				WriteBackConfig: &WriteBackConfig{
+					Method: WriteBackApplication,
+				},
+			}
+			res := UpdateApplication(context.Background(), &UpdateConfiguration{
+				NewRegFN:   mockClientFn,
+				ArgoClient: &argoClient,
+				KubeClient: &kubeClient,
+				UpdateApp:  appImages,
+				DryRun:     false,
+			}, NewSyncIterationState())
+			assert.Equal(t, 0, res.NumErrors)
+			assert.Equal(t, 0, res.NumSkipped)
+			assert.Equal(t, 1, res.NumApplicationsProcessed)
+			assert.Equal(t, 1, res.NumImagesConsidered)
+			assert.Equal(t, tc.updated, res.NumImagesUpdated)
+		})
+	}
+
 	t.Run("Test update because of image registry changed", func(t *testing.T) {
 		mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
 			regMock := regmock.RegistryClient{}
