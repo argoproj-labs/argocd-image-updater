@@ -1174,12 +1174,11 @@ registries:
 						Namespace: "guestbook",
 					},
 					Spec: v1alpha1.ApplicationSpec{
+						// The image is not overridden in the Application spec
+						// (e.g. it is kept in kustomization.yaml in Git), so the
+						// "already set in spec" check does not hide the result.
 						Source: &v1alpha1.ApplicationSource{
-							Kustomize: &v1alpha1.ApplicationSourceKustomize{
-								Images: v1alpha1.KustomizeImages{
-									"jannfis/foobar:" + tc.running,
-								},
-							},
+							Kustomize: &v1alpha1.ApplicationSourceKustomize{},
 						},
 					},
 					Status: v1alpha1.ApplicationStatus{
