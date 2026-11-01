@@ -273,6 +273,12 @@ func UpdateApplication(ctx context.Context, updateConf *UpdateConfiguration, sta
 			// that we correctly marshal out the parameter overrides to include all
 			// images, regardless of those were updated or not.
 			currentTag := updateableImage.ImageTag
+			// The running tag can carry a digest that the updater did not resolve
+			// (see sameTag). Strategies other than digest track tags only, so write
+			// back the tag from the registry instead of pinning the running digest.
+			if vc.Strategy != image.StrategyDigest && currentTag != nil && currentTag.IsDigest() && !latest.IsDigest() && currentTag.TagName == latest.TagName {
+				currentTag = latest
+			}
 			// After a sync, Argo CD can record the running image in
 			// Status.Summary.Images as a bare digest with no tag name. For digest
 			// strategy, re-writing the image from that tag-less value drops the
@@ -391,7 +397,7 @@ func needsUpdate(updateableImage *image.ContainerImage, applicationImage *image.
 // controller pinned it to tag@digest. Comparing by digest then never matches and the
 // image is reported as updated on every run, so compare tag names in that case.
 func sameTag(current, latest *tag.ImageTag, strategy image.UpdateStrategy) bool {
-	if strategy != image.StrategyDigest && !latest.IsDigest() && current.IsDigest() && current.TagName != "" {
+	if strategy != image.StrategyDigest && current != nil && !latest.IsDigest() && current.IsDigest() && current.TagName != "" {
 		return current.TagName == latest.TagName
 	}
 	return current.Equals(latest)
