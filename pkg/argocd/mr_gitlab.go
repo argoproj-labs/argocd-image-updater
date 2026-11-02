@@ -62,18 +62,25 @@ func (g *GitLabMRService) create(ctx context.Context) error {
 	return nil
 }
 
-// exists returns true if there is already an open MR from pushBranch into
-// checkOutBranch.
+// exists returns true if there is already an open or merged MR from pushBranch
+// into checkOutBranch. The source branch name hashes the change it carries, so a
+// merged MR means this change has already landed. Closed unmerged MRs don't count.
 func (g *GitLabMRService) exists(ctx context.Context, checkOutBranch, pushBranch string) (bool, error) {
 	mrs, _, err := g.client.MergeRequests.ListProjectMergeRequests(g.projectID, &gitlab.ListProjectMergeRequestsOptions{
 		SourceBranch: new(pushBranch),
 		TargetBranch: new(checkOutBranch),
-		State:        new("opened"),
+		// shortcut: only the newest 100 MRs for this branch are checked, paginate if a branch ever has more.
+		ListOptions: gitlab.ListOptions{PerPage: 100},
 	}, gitlab.WithContext(ctx))
 	if err != nil {
 		return false, fmt.Errorf("could not list MRs for %s: %w", g.projectID, err)
 	}
-	return len(mrs) > 0, nil
+	for _, mr := range mrs {
+		if mr.State == "opened" || mr.State == "merged" {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // NewGitLabMRService builds a GitLabMRService from the resolved write-back config

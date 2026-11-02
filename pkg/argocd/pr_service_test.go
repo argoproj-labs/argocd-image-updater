@@ -506,7 +506,7 @@ func Test_commitChangesPR(t *testing.T) {
 			if r.Method == http.MethodGet {
 				// exists: an existing open PR
 				w.WriteHeader(http.StatusOK)
-				_ = json.NewEncoder(w).Encode([]*gogithub.PullRequest{{Number: new(42)}})
+				_ = json.NewEncoder(w).Encode([]*gogithub.PullRequest{{Number: new(42), State: new("open")}})
 				return
 			}
 			// create should not be reached because exists found an existing PR
@@ -594,7 +594,7 @@ func Test_commitChangesPR(t *testing.T) {
 			if r.Method == http.MethodGet {
 				// exists: an existing open MR
 				w.WriteHeader(http.StatusOK)
-				_ = json.NewEncoder(w).Encode([]map[string]any{{"iid": 1}})
+				_ = json.NewEncoder(w).Encode([]map[string]any{{"iid": 1, "state": "opened"}})
 				return
 			}
 			// create should not be reached because exists found an existing MR
@@ -661,7 +661,7 @@ func Test_commitChangesPR(t *testing.T) {
 			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if r.Method == http.MethodGet {
 					if tt.exists {
-						_, _ = w.Write([]byte(`{"value":[{"pullRequestId":42}]}`))
+						_, _ = w.Write([]byte(`{"value":[{"pullRequestId":42,"status":"active"}]}`))
 					} else {
 						_, _ = w.Write([]byte(`{"value":[]}`))
 					}
@@ -699,6 +699,64 @@ func Test_commitChangesPR(t *testing.T) {
 				require.NoError(t, err)
 			}
 		})
+	}
+
+	// --- A head branch that was already proposed ---
+
+	for _, provider := range []struct {
+		name, repoPath, created string
+		provider                PRProvider
+		merged, closedNotMerged string
+	}{
+		{"GitHub", "/org/repo.git", `{"number":1}`, PRProviderGitHub, `[{"number":42,"state":"closed","merged_at":"2026-01-01T00:00:00Z"}]`, `[{"number":42,"state":"closed"}]`},
+		{"GitLab", "/group/repo.git", `{"iid":1}`, PRProviderGitLab, `[{"iid":42,"state":"merged"}]`, `[{"iid":42,"state":"closed"}]`},
+		{"Azure DevOps", "/org/project/_git/repo", `{"pullRequestId":1}`, PRProviderAzureDevOps, `{"value":[{"pullRequestId":42,"status":"completed"}]}`, `{"value":[{"pullRequestId":42,"status":"abandoned"}]}`},
+	} {
+		for _, tt := range []struct {
+			name, list string
+			wantCreate bool
+		}{
+			{"merged PR skips git and create", provider.merged, false},
+			{"closed unmerged PR is proposed again", provider.closedNotMerged, true},
+		} {
+			t.Run(provider.name+": "+tt.name, func(t *testing.T) {
+				created := false
+				handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					if r.Method == http.MethodGet {
+						_, _ = w.Write([]byte(tt.list))
+						return
+					}
+					created = true
+					w.WriteHeader(http.StatusCreated)
+					_, _ = w.Write([]byte(provider.created))
+				})
+				var server *httptest.Server
+				if provider.provider == PRProviderAzureDevOps {
+					server = httptest.NewTLSServer(handler)
+					trustServerViaCertStore(t, server)
+				} else {
+					server = httptest.NewServer(handler)
+				}
+				defer server.Close()
+
+				gitClient := &mockGitClient{}
+				if !tt.wantCreate {
+					gitClient.initErr = fmt.Errorf("git must not be initialized when the change already landed")
+				}
+				wbc := &WriteBackConfig{
+					GitRepo:    server.URL + provider.repoPath,
+					GitBranch:  "main",
+					PRProvider: provider.provider,
+					GitClient:  gitClient,
+					GetCreds: func(_ *argocdapi.Application) (git.Creds, error) {
+						return &mockGitAndSCMCreds{token: "token"}, nil
+					},
+				}
+				_, err := commitChangesPR(ctx, makeTestAppImages(wbc), nil, noopWriter)
+				require.NoError(t, err)
+				assert.Equal(t, tt.wantCreate, created)
+			})
+		}
 	}
 
 	// --- Gitea API phase ---

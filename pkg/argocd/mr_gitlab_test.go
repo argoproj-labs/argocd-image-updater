@@ -314,7 +314,7 @@ func Test_GitLabMRService_exists(t *testing.T) {
 				assert.Equal(t, http.MethodGet, r.Method)
 				assert.Equal(t, "image-updater-branch", r.URL.Query().Get("source_branch"))
 				assert.Equal(t, "main", r.URL.Query().Get("target_branch"))
-				assert.Equal(t, "opened", r.URL.Query().Get("state"))
+				assert.Empty(t, r.URL.Query().Get("state"))
 
 				w.WriteHeader(http.StatusOK)
 				_ = json.NewEncoder(w).Encode([]map[string]any{})
@@ -326,7 +326,38 @@ func Test_GitLabMRService_exists(t *testing.T) {
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusOK)
 				_ = json.NewEncoder(w).Encode([]map[string]any{
-					{"iid": 1},
+					{"iid": 1, "state": "opened"},
+				})
+			},
+			wantExists: true,
+		},
+		{
+			name: "merged MR — returns true",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusOK)
+				_ = json.NewEncoder(w).Encode([]map[string]any{
+					{"iid": 1, "state": "merged"},
+				})
+			},
+			wantExists: true,
+		},
+		{
+			name: "closed unmerged MR — returns false",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusOK)
+				_ = json.NewEncoder(w).Encode([]map[string]any{
+					{"iid": 1, "state": "closed"},
+				})
+			},
+			wantExists: false,
+		},
+		{
+			name: "closed MR does not hide a merged one — returns true",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusOK)
+				_ = json.NewEncoder(w).Encode([]map[string]any{
+					{"iid": 2, "state": "closed"},
+					{"iid": 1, "state": "merged"},
 				})
 			},
 			wantExists: true,
@@ -336,8 +367,8 @@ func Test_GitLabMRService_exists(t *testing.T) {
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusOK)
 				_ = json.NewEncoder(w).Encode([]map[string]any{
-					{"iid": 1},
-					{"iid": 2},
+					{"iid": 1, "state": "opened"},
+					{"iid": 2, "state": "opened"},
 				})
 			},
 			wantExists: true,

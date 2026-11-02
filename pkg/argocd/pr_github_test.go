@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/google/go-github/v69/github"
 	"github.com/stretchr/testify/assert"
@@ -362,7 +363,7 @@ func Test_GithubPRService_exists(t *testing.T) {
 				assert.Equal(t, http.MethodGet, r.Method)
 				assert.Equal(t, "org:image-updater-branch", r.URL.Query().Get("head"))
 				assert.Equal(t, "main", r.URL.Query().Get("base"))
-				assert.Equal(t, "open", r.URL.Query().Get("state"))
+				assert.Equal(t, "all", r.URL.Query().Get("state"))
 
 				w.WriteHeader(http.StatusOK)
 				_ = json.NewEncoder(w).Encode([]*github.PullRequest{})
@@ -374,7 +375,38 @@ func Test_GithubPRService_exists(t *testing.T) {
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusOK)
 				_ = json.NewEncoder(w).Encode([]*github.PullRequest{
-					{Number: new(42)},
+					{Number: new(42), State: new("open")},
+				})
+			},
+			wantExists: true,
+		},
+		{
+			name: "merged PR — returns true",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusOK)
+				_ = json.NewEncoder(w).Encode([]*github.PullRequest{
+					{Number: new(42), State: new("closed"), MergedAt: &github.Timestamp{Time: time.Now()}},
+				})
+			},
+			wantExists: true,
+		},
+		{
+			name: "closed unmerged PR — returns false",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusOK)
+				_ = json.NewEncoder(w).Encode([]*github.PullRequest{
+					{Number: new(42), State: new("closed")},
+				})
+			},
+			wantExists: false,
+		},
+		{
+			name: "closed PR does not hide a merged one — returns true",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusOK)
+				_ = json.NewEncoder(w).Encode([]*github.PullRequest{
+					{Number: new(43), State: new("closed")},
+					{Number: new(42), State: new("closed"), MergedAt: &github.Timestamp{Time: time.Now()}},
 				})
 			},
 			wantExists: true,
@@ -384,8 +416,8 @@ func Test_GithubPRService_exists(t *testing.T) {
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusOK)
 				_ = json.NewEncoder(w).Encode([]*github.PullRequest{
-					{Number: new(42)},
-					{Number: new(43)},
+					{Number: new(42), State: new("open")},
+					{Number: new(43), State: new("open")},
 				})
 			},
 			wantExists: true,
