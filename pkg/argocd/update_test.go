@@ -179,6 +179,8 @@ func Test_UpdateApplication(t *testing.T) {
 	})
 
 	t.Run("Update app w/ GitHub App creds", func(t *testing.T) {
+		ctx := context.Background()
+
 		mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
 			regMock := regmock.RegistryClient{}
 			regMock.On("NewRepository", mock.Anything, mock.Anything).Return(nil)
@@ -233,7 +235,7 @@ func Test_UpdateApplication(t *testing.T) {
 				Method:  WriteBackGit,
 				GitRepo: "https://example.com/example",
 				GetCreds: func(app *v1alpha1.Application) (git.Creds, error) {
-					return getCredsFromSecret(&WriteBackConfig{}, "argocd-image-updater/git-creds", &kubeClient, "argocd-image-updater")
+					return getCredsFromSecret(ctx, &WriteBackConfig{}, "argocd-image-updater/git-creds", &kubeClient, "argocd-image-updater")
 				},
 			},
 		}
