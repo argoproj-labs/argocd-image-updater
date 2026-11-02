@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"path"
 	"slices"
 	"strconv"
 	"strings"
@@ -125,9 +126,10 @@ func (g *GiteaPRService) addLabels(ctx context.Context, number int64, names []st
 	return err
 }
 
-// exists reports whether an open PR from pushBranch into checkOutBranch exists
-// in the repository. The list endpoint does not filter on the head branch in
-// every Gitea and Forgejo version, so the match is done on the client side.
+// exists reports whether an open or merged PR from pushBranch into
+// checkOutBranch exists in the repository. The list endpoint does not filter on
+// the head branch in every Gitea and Forgejo version, so open PRs are matched on
+// the client side, and a merged one is looked up by its base and head branch.
 func (g *GiteaPRService) exists(ctx context.Context, checkOutBranch, pushBranch string) (bool, error) {
 	seen := 0
 	for page := 1; page <= giteaMaxListPages; page++ {
@@ -146,7 +148,7 @@ func (g *GiteaPRService) exists(ctx context.Context, checkOutBranch, pushBranch 
 			return false, fmt.Errorf("could not list Gitea PRs: %w", err)
 		}
 		if len(prs) == 0 {
-			return false, nil
+			return g.merged(ctx, checkOutBranch, pushBranch)
 		}
 		for _, pr := range prs {
 			// Same-repository PRs only: a fork may carry a branch with the same name.
@@ -157,10 +159,33 @@ func (g *GiteaPRService) exists(ctx context.Context, checkOutBranch, pushBranch 
 		// Saves the request for an empty page when the total is known.
 		seen += len(prs)
 		if total, err := strconv.Atoi(header.Get("X-Total-Count")); err == nil && seen >= total {
-			return false, nil
+			return g.merged(ctx, checkOutBranch, pushBranch)
 		}
 	}
 	return false, fmt.Errorf("more than %d pages of open PRs, giving up the scan", giteaMaxListPages)
+}
+
+// merged reports whether the PR from pushBranch into checkOutBranch has been
+// merged. The head branch name hashes the change, so a merged PR means the change
+// has already landed. A closed unmerged PR does not count, and neither does any
+// PR when the endpoint is missing (older Gitea versions answer 404).
+func (g *GiteaPRService) merged(ctx context.Context, checkOutBranch, pushBranch string) (bool, error) {
+	u := *g.apiURL
+	u.Path = path.Join(g.apiURL.Path, "pulls", checkOutBranch, pushBranch)
+	// The base branch is a single path segment, so a "/" in it must stay escaped.
+	u.RawPath = strings.TrimSuffix(g.apiURL.EscapedPath(), "/") + "/pulls/" + url.PathEscape(checkOutBranch) + "/" + url.PathEscape(pushBranch)
+
+	var pr struct {
+		Merged bool `json:"merged"`
+	}
+	if _, err := g.request(ctx, http.MethodGet, &u, nil, &pr); err != nil {
+		var apiErr *giteaAPIError
+		if errors.As(err, &apiErr) && apiErr.statusCode == http.StatusNotFound {
+			return false, nil
+		}
+		return false, fmt.Errorf("could not look up Gitea PR %q → %q: %w", pushBranch, checkOutBranch, err)
+	}
+	return pr.Merged, nil
 }
 
 // request calls the Gitea REST API using the token from the Git credentials

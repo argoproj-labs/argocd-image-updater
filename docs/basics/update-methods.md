@@ -529,7 +529,7 @@ of pushing directly to the tracking branch, Argo CD Image Updater:
 If a pull request for the same head → base pair already exists, the controller
 treats the situation as a successful no-op and does not open a duplicate.
 When reconciling, the controller first queries the SCM provider for an existing
-open PR/MR before cloning the repository. On GitHub, GitLab and Azure DevOps, a
+open PR/MR before cloning the repository. A
 merged PR/MR for the same head branch also counts, because the head branch name
 identifies the change. If one is found, the entire git clone, commit, push, and
 PR/MR creation cycle is skipped. A PR/MR that was closed without merging does not

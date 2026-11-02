@@ -39,7 +39,7 @@ type PullRequestService interface {
 	// service at construction time (title, head, base, body).
 	create(ctx context.Context) error
 	// exists returns true if an open PR from pushBranch → checkOutBranch already
-	// exists, or on providers that track it a merged one, preventing duplicate PR creation on repeated reconciliation cycles.
+	// exists, or a merged one, preventing duplicate PR creation on repeated reconciliation cycles.
 	exists(ctx context.Context, checkOutBranch, pushBranch string) (bool, error)
 }
 

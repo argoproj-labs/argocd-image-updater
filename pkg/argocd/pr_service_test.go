@@ -711,6 +711,8 @@ func Test_commitChangesPR(t *testing.T) {
 		{"GitHub", "/org/repo.git", `{"number":1}`, PRProviderGitHub, `[{"number":42,"state":"closed","merged_at":"2026-01-01T00:00:00Z"}]`, `[{"number":42,"state":"closed"}]`},
 		{"GitLab", "/group/repo.git", `{"iid":1}`, PRProviderGitLab, `[{"iid":42,"state":"merged"}]`, `[{"iid":42,"state":"closed"}]`},
 		{"Azure DevOps", "/org/project/_git/repo", `{"pullRequestId":1}`, PRProviderAzureDevOps, `{"value":[{"pullRequestId":42,"status":"completed"}]}`, `{"value":[{"pullRequestId":42,"status":"abandoned"}]}`},
+		// Gitea finds no open PR in the list, then looks the head branch up directly.
+		{"Gitea", "/owner/repo.git", `{"number":1}`, PRProviderGitea, `{"number":42,"merged":true}`, `{"number":42,"merged":false}`},
 	} {
 		for _, tt := range []struct {
 			name, list string
@@ -723,6 +725,10 @@ func Test_commitChangesPR(t *testing.T) {
 				created := false
 				handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					if r.Method == http.MethodGet {
+						if provider.provider == PRProviderGitea && strings.HasSuffix(r.URL.Path, "/pulls") {
+							_, _ = w.Write([]byte(`[]`))
+							return
+						}
 						_, _ = w.Write([]byte(tt.list))
 						return
 					}
@@ -731,7 +737,7 @@ func Test_commitChangesPR(t *testing.T) {
 					_, _ = w.Write([]byte(provider.created))
 				})
 				var server *httptest.Server
-				if provider.provider == PRProviderAzureDevOps {
+				if provider.provider == PRProviderAzureDevOps || provider.provider == PRProviderGitea {
 					server = httptest.NewTLSServer(handler)
 					trustServerViaCertStore(t, server)
 				} else {
@@ -776,6 +782,11 @@ func Test_commitChangesPR(t *testing.T) {
 			var pushBranch string
 			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if r.Method == http.MethodGet {
+					if !strings.HasSuffix(r.URL.Path, "/pulls") {
+						// No merged PR for the head branch.
+						w.WriteHeader(http.StatusNotFound)
+						return
+					}
 					if tt.exists && r.URL.Query().Get("page") == "1" {
 						_, _ = fmt.Fprintf(w, `[{"number":42,"head":{"ref":%q,"repo_id":1},"base":{"ref":"main","repo_id":1}}]`, pushBranch)
 					} else {
