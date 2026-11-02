@@ -120,7 +120,7 @@ func TestGetGitCreds(t *testing.T) {
 		Password: "mypass",
 		Repo:     "https://github.com/example/repo.git",
 	}
-	expectedHTTPSCreds := git.NewHTTPSCreds("myuser", "mypass", "", "", false, "", store, false)
+	expectedHTTPSCreds := git.NewHTTPSCreds(ctx, "myuser", "mypass", "", "", false, "", store, false)
 	httpCreds := GetGitCreds(ctx, repo, store)
 	assert.Equal(t, expectedHTTPSCreds, httpCreds)
 
@@ -130,7 +130,7 @@ func TestGetGitCreds(t *testing.T) {
 		SSHPrivateKey: "privatekey",
 		Repo:          "https://github.com/example/repo.git",
 	}
-	expectedSSHCreds := git.NewSSHCreds("privatekey", "", false, store, "")
+	expectedSSHCreds := git.NewSSHCreds(ctx, "privatekey", "", false, store, "")
 	sshCreds := GetGitCreds(ctx, repo, store)
 	assert.Equal(t, expectedSSHCreds, sshCreds)
 
@@ -147,7 +147,7 @@ func TestGetGitCreds(t *testing.T) {
 		Insecure:                   true,
 		Proxy:                      "proxy",
 	}
-	expectedGitHubAppCreds := git.NewGitHubAppCreds(123, 456, "appprivatekey", "enterpriseurl", "https://github.com/example/repo.git", "certdata", "certkey", true, "proxy", store)
+	expectedGitHubAppCreds := git.NewGitHubAppCreds(ctx, 123, 456, "appprivatekey", "enterpriseurl", "https://github.com/example/repo.git", "certdata", "certkey", true, "proxy", store)
 	githubAppCreds := GetGitCreds(ctx, repo, store)
 	assert.Equal(t, expectedGitHubAppCreds, githubAppCreds)
 
@@ -169,6 +169,8 @@ func TestGetGitCreds(t *testing.T) {
 }
 
 func TestGetCredsFromArgoCD(t *testing.T) {
+	ctx := context.Background()
+
 	t.Run("nil ArgocdDB returns error", func(t *testing.T) {
 		wbc := &WriteBackConfig{
 			GitRepo:  "https://github.com/example/repo.git",
@@ -221,7 +223,7 @@ func TestGetCredsFromArgoCD(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, creds)
 		assert.Equal(t,
-			git.NewHTTPSCreds("myuser", "mypass", "", "", false, "", git.NoopCredsStore{}, false),
+			git.NewHTTPSCreds(ctx, "myuser", "mypass", "", "", false, "", git.NoopCredsStore{}, false),
 			creds,
 		)
 	})

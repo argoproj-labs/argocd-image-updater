@@ -24,7 +24,7 @@ func getGitCredsSource(ctx context.Context, creds string, kubeClient *kube.Image
 		}, nil
 	case strings.HasPrefix(creds, "secret:"):
 		return func(app *v1alpha1.Application) (git.Creds, error) {
-			return getCredsFromSecret(wbc, creds[len("secret:"):], kubeClient)
+			return getCredsFromSecret(ctx, wbc, creds[len("secret:"):], kubeClient)
 		}, nil
 	}
 	return nil, fmt.Errorf("unexpected credentials format. Expected 'repocreds' or 'secret:<namespace>/<secret>' but got '%s'", creds)
@@ -55,13 +55,13 @@ func GetGitCreds(ctx context.Context, repo *v1alpha1.Repository, store git.Creds
 		return git.NopCreds{}
 	}
 	if repo.Password != "" {
-		return git.NewHTTPSCreds(repo.Username, repo.Password, repo.TLSClientCertData, repo.TLSClientCertKey, repo.IsInsecure(), repo.Proxy, store, repo.ForceHttpBasicAuth)
+		return git.NewHTTPSCreds(ctx, repo.Username, repo.Password, repo.TLSClientCertData, repo.TLSClientCertKey, repo.IsInsecure(), repo.Proxy, store, repo.ForceHttpBasicAuth)
 	}
 	if repo.SSHPrivateKey != "" {
-		return git.NewSSHCreds(repo.SSHPrivateKey, getCAPath(ctx, repo.Repo), repo.IsInsecure(), store, repo.Proxy)
+		return git.NewSSHCreds(ctx, repo.SSHPrivateKey, getCAPath(ctx, repo.Repo), repo.IsInsecure(), store, repo.Proxy)
 	}
 	if repo.GithubAppPrivateKey != "" && repo.GithubAppId != 0 && repo.GithubAppInstallationId != 0 {
-		return git.NewGitHubAppCreds(repo.GithubAppId, repo.GithubAppInstallationId, repo.GithubAppPrivateKey, repo.GitHubAppEnterpriseBaseURL, repo.Repo, repo.TLSClientCertData, repo.TLSClientCertKey, repo.IsInsecure(), repo.Proxy, store)
+		return git.NewGitHubAppCreds(ctx, repo.GithubAppId, repo.GithubAppInstallationId, repo.GithubAppPrivateKey, repo.GitHubAppEnterpriseBaseURL, repo.Repo, repo.TLSClientCertData, repo.TLSClientCertKey, repo.IsInsecure(), repo.Proxy, store)
 	}
 	if repo.GCPServiceAccountKey != "" {
 		return git.NewGoogleCloudCreds(repo.GCPServiceAccountKey, store)
@@ -111,7 +111,7 @@ func getCAPath(ctx context.Context, repoURL string) string {
 }
 
 // getCredsFromSecret loads repository credentials from secret
-func getCredsFromSecret(wbc *WriteBackConfig, credentialsSecret string, kubeClient *kube.ImageUpdaterKubernetesClient) (git.Creds, error) {
+func getCredsFromSecret(ctx context.Context, wbc *WriteBackConfig, credentialsSecret string, kubeClient *kube.ImageUpdaterKubernetesClient) (git.Creds, error) {
 	var credentials map[string][]byte
 	var err error
 	s := strings.SplitN(credentialsSecret, "/", 2)
