@@ -55,13 +55,13 @@ func GetGitCreds(ctx context.Context, repo *v1alpha1.Repository, store git.Creds
 		return git.NopCreds{}
 	}
 	if repo.Password != "" {
-		return git.NewHTTPSCreds(repo.Username, repo.Password, repo.TLSClientCertData, repo.TLSClientCertKey, repo.IsInsecure(), repo.Proxy, store, repo.ForceHttpBasicAuth)
+		return git.NewHTTPSCreds(ctx, repo.Username, repo.Password, repo.TLSClientCertData, repo.TLSClientCertKey, repo.IsInsecure(), repo.Proxy, store, repo.ForceHttpBasicAuth)
 	}
 	if repo.SSHPrivateKey != "" {
-		return git.NewSSHCreds(repo.SSHPrivateKey, getCAPath(ctx, repo.Repo), repo.IsInsecure(), store, repo.Proxy)
+		return git.NewSSHCreds(ctx, repo.SSHPrivateKey, getCAPath(ctx, repo.Repo), repo.IsInsecure(), store, repo.Proxy)
 	}
 	if repo.GithubAppPrivateKey != "" && repo.GithubAppId != 0 && repo.GithubAppInstallationId != 0 {
-		return git.NewGitHubAppCreds(repo.GithubAppId, repo.GithubAppInstallationId, repo.GithubAppPrivateKey, repo.GitHubAppEnterpriseBaseURL, repo.Repo, repo.TLSClientCertData, repo.TLSClientCertKey, repo.IsInsecure(), repo.Proxy, store)
+		return git.NewGitHubAppCreds(ctx, repo.GithubAppId, repo.GithubAppInstallationId, repo.GithubAppPrivateKey, repo.GitHubAppEnterpriseBaseURL, repo.Repo, repo.TLSClientCertData, repo.TLSClientCertKey, repo.IsInsecure(), repo.Proxy, store)
 	}
 	if repo.GCPServiceAccountKey != "" {
 		return git.NewGoogleCloudCreds(repo.GCPServiceAccountKey, store)
@@ -153,7 +153,7 @@ func getCredsFromSecret(wbc *WriteBackConfig, credentialsSecret string, kubeClie
 			tlsClientCertKey := string(credentials["tlsClientCertKey"])
 			insecure, _ := strconv.ParseBool(string(credentials["insecure"]))
 			proxy := string(credentials["proxy"])
-			return git.NewGitHubAppCreds(intGithubAppID, intGithubAppInstallationID, string(githubAppPrivateKey), enterpriseBaseURL, wbc.GitRepo, tlsClientCertData, tlsClientCertKey, insecure, proxy, wbc.GitCreds), nil
+			return git.NewGitHubAppCreds(ctx, intGithubAppID, intGithubAppInstallationID, string(githubAppPrivateKey), enterpriseBaseURL, wbc.GitRepo, tlsClientCertData, tlsClientCertKey, insecure, proxy, wbc.GitCreds), nil
 		} else if username, ok = credentials["username"]; ok {
 			if password, ok = credentials["password"]; !ok {
 				return nil, fmt.Errorf("invalid secret %s: does not contain field password", credentialsSecret)
