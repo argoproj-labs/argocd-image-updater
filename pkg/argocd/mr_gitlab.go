@@ -76,7 +76,8 @@ func (g *GitLabMRService) exists(ctx context.Context, checkOutBranch, pushBranch
 		return false, fmt.Errorf("could not list MRs for %s: %w", g.projectID, err)
 	}
 	for _, mr := range mrs {
-		if mr.State == "opened" || mr.State == "merged" {
+		// A merged MR only counts when it came from this project, not a fork.
+		if mr.State == "opened" || (mr.State == "merged" && mr.SourceProjectID == mr.TargetProjectID) {
 			return true, nil
 		}
 	}

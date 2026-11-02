@@ -110,7 +110,11 @@ func (g *GithubPRService) exists(ctx context.Context, checkOutBranch, pushBranch
 		return false, fmt.Errorf("could not list PRs for %s/%s: %w", g.owner, g.repo, err)
 	}
 	for _, pr := range prs {
-		if pr.GetState() == "open" || pr.MergedAt != nil {
+		// A merged PR only counts when it came from this repository, not a fork
+		// that happens to use the same branch name.
+		headRepo, baseRepo := pr.GetHead().GetRepo(), pr.GetBase().GetRepo()
+		sameRepo := headRepo.GetID() != 0 && headRepo.GetID() == baseRepo.GetID()
+		if pr.GetState() == "open" || (pr.MergedAt != nil && sameRepo) {
 			return true, nil
 		}
 	}

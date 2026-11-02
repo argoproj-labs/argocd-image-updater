@@ -95,14 +95,16 @@ func (a *AzureDevOpsPRService) exists(ctx context.Context, checkOutBranch, pushB
 	u.RawQuery = query.Encode()
 	var prs struct {
 		Value []struct {
-			Status string `json:"status"`
+			Status     string    `json:"status"`
+			ForkSource *struct{} `json:"forkSource"`
 		} `json:"value"`
 	}
 	if err := a.request(ctx, http.MethodGet, &u, nil, &prs); err != nil {
 		return false, fmt.Errorf("could not list Azure DevOps PRs: %w", err)
 	}
 	for _, pr := range prs.Value {
-		if pr.Status == "active" || pr.Status == "completed" {
+		// A completed PR only counts when it came from this repository, not a fork.
+		if pr.Status == "active" || (pr.Status == "completed" && pr.ForkSource == nil) {
 			return true, nil
 		}
 	}

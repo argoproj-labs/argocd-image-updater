@@ -708,8 +708,8 @@ func Test_commitChangesPR(t *testing.T) {
 		provider                PRProvider
 		merged, closedNotMerged string
 	}{
-		{"GitHub", "/org/repo.git", `{"number":1}`, PRProviderGitHub, `[{"number":42,"state":"closed","merged_at":"2026-01-01T00:00:00Z"}]`, `[{"number":42,"state":"closed"}]`},
-		{"GitLab", "/group/repo.git", `{"iid":1}`, PRProviderGitLab, `[{"iid":42,"state":"merged"}]`, `[{"iid":42,"state":"closed"}]`},
+		{"GitHub", "/org/repo.git", `{"number":1}`, PRProviderGitHub, `[{"number":42,"state":"closed","merged_at":"2026-01-01T00:00:00Z","head":{"repo":{"id":1}},"base":{"repo":{"id":1}}}]`, `[{"number":42,"state":"closed"}]`},
+		{"GitLab", "/group/repo.git", `{"iid":1}`, PRProviderGitLab, `[{"iid":42,"state":"merged","source_project_id":7,"target_project_id":7}]`, `[{"iid":42,"state":"closed"}]`},
 		{"Azure DevOps", "/org/project/_git/repo", `{"pullRequestId":1}`, PRProviderAzureDevOps, `{"value":[{"pullRequestId":42,"status":"completed"}]}`, `{"value":[{"pullRequestId":42,"status":"abandoned"}]}`},
 		// Gitea finds no open PR in the list, then looks the head branch up directly.
 		{"Gitea", "/owner/repo.git", `{"number":1}`, PRProviderGitea, `{"number":42,"merged":true}`, `{"number":42,"merged":false}`},

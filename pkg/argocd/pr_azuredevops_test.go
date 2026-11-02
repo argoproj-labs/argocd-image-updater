@@ -287,6 +287,7 @@ func Test_AzureDevOpsPRService_exists(t *testing.T) {
 		{"no PRs", `{"count":0,"value":[]}`, http.StatusOK, false, ""},
 		{"one active PR", `{"count":1,"value":[{"pullRequestId":42,"status":"active"}]}`, http.StatusOK, true, ""},
 		{"completed PR", `{"count":1,"value":[{"pullRequestId":42,"status":"completed"}]}`, http.StatusOK, true, ""},
+		{"completed PR from a fork", `{"count":1,"value":[{"pullRequestId":42,"status":"completed","forkSource":{"repository":{"id":"other"}}}]}`, http.StatusOK, false, ""},
 		{"abandoned PR", `{"count":1,"value":[{"pullRequestId":42,"status":"abandoned"}]}`, http.StatusOK, false, ""},
 		{"abandoned PR does not hide a completed one", `{"count":2,"value":[{"pullRequestId":43,"status":"abandoned"},{"pullRequestId":42,"status":"completed"}]}`, http.StatusOK, true, ""},
 		{"multiple active PRs", `{"count":2,"value":[{"pullRequestId":42,"status":"active"},{"pullRequestId":43,"status":"active"}]}`, http.StatusOK, true, ""},

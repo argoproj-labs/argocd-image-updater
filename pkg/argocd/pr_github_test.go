@@ -385,10 +385,20 @@ func Test_GithubPRService_exists(t *testing.T) {
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusOK)
 				_ = json.NewEncoder(w).Encode([]*github.PullRequest{
-					{Number: new(42), State: new("closed"), MergedAt: &github.Timestamp{Time: time.Now()}},
+					{Number: new(42), State: new("closed"), MergedAt: &github.Timestamp{Time: time.Now()}, Head: &github.PullRequestBranch{Repo: &github.Repository{ID: new(int64(1))}}, Base: &github.PullRequestBranch{Repo: &github.Repository{ID: new(int64(1))}}},
 				})
 			},
 			wantExists: true,
+		},
+		{
+			name: "merged PR from a fork — returns false",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusOK)
+				_ = json.NewEncoder(w).Encode([]*github.PullRequest{
+					{Number: new(42), State: new("closed"), MergedAt: &github.Timestamp{Time: time.Now()}, Head: &github.PullRequestBranch{Repo: &github.Repository{ID: new(int64(2))}}, Base: &github.PullRequestBranch{Repo: &github.Repository{ID: new(int64(1))}}},
+				})
+			},
+			wantExists: false,
 		},
 		{
 			name: "closed unmerged PR — returns false",
@@ -406,7 +416,7 @@ func Test_GithubPRService_exists(t *testing.T) {
 				w.WriteHeader(http.StatusOK)
 				_ = json.NewEncoder(w).Encode([]*github.PullRequest{
 					{Number: new(43), State: new("closed")},
-					{Number: new(42), State: new("closed"), MergedAt: &github.Timestamp{Time: time.Now()}},
+					{Number: new(42), State: new("closed"), MergedAt: &github.Timestamp{Time: time.Now()}, Head: &github.PullRequestBranch{Repo: &github.Repository{ID: new(int64(1))}}, Base: &github.PullRequestBranch{Repo: &github.Repository{ID: new(int64(1))}}},
 				})
 			},
 			wantExists: true,

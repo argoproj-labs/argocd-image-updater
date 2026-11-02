@@ -284,7 +284,7 @@ func Test_GiteaPRService_exists(t *testing.T) {
 		{"merged PR after a full scan", []string{"[" + pr("other", "main", 1, 1) + "]"}, "1", http.StatusOK, true, "", `{"merged":true}`, nil},
 		{"closed unmerged PR hides a merged one", []string{`[]`}, "", http.StatusOK, true, "", `{"merged":false}`, []string{"[" + pr("update", "main", 1, 1) + "," + merged + "]"}},
 		{"merged PR with a deleted head branch", []string{`[]`}, "", http.StatusOK, true, "", `{"merged":false}`, []string{"[" + strings.Replace(merged, `"ref":"update"`, `"ref":"refs/pull/2/head","label":"update"`, 1) + "]"}},
-		{"closed PR from a fork is not merged here", []string{`[]`}, "", http.StatusOK, false, "", `{"merged":false}`, []string{"[" + strings.Replace(merged, `"repo_id":1}}`, `"repo_id":2}}`, 1) + "]", `[]`}},
+		{"closed PR from a fork is not merged here", []string{`[]`}, "", http.StatusOK, false, "", `{"merged":false}`, []string{"[" + strings.Replace(pr("update", "main", 2, 1), `{"number":1,`, `{"number":2,"merged":true,`, 1) + "]", `[]`}},
 		{"lookup error", []string{`[]`}, "", http.StatusOK, false, "could not look up Gitea PR", "500", nil},
 		{"matching PR", []string{"[" + pr("update", "main", 1, 1) + "]"}, "", http.StatusOK, true, "", "", nil},
 		{"other head branch", []string{"[" + pr("other", "main", 1, 1) + "]", `[]`}, "", http.StatusOK, false, "", "", nil},

@@ -336,10 +336,20 @@ func Test_GitLabMRService_exists(t *testing.T) {
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusOK)
 				_ = json.NewEncoder(w).Encode([]map[string]any{
-					{"iid": 1, "state": "merged"},
+					{"iid": 1, "state": "merged", "source_project_id": 7, "target_project_id": 7},
 				})
 			},
 			wantExists: true,
+		},
+		{
+			name: "merged MR from a fork — returns false",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusOK)
+				_ = json.NewEncoder(w).Encode([]map[string]any{
+					{"iid": 1, "state": "merged", "source_project_id": 8, "target_project_id": 7},
+				})
+			},
+			wantExists: false,
 		},
 		{
 			name: "closed unmerged MR — returns false",
@@ -357,7 +367,7 @@ func Test_GitLabMRService_exists(t *testing.T) {
 				w.WriteHeader(http.StatusOK)
 				_ = json.NewEncoder(w).Encode([]map[string]any{
 					{"iid": 2, "state": "closed"},
-					{"iid": 1, "state": "merged"},
+					{"iid": 1, "state": "merged", "source_project_id": 7, "target_project_id": 7},
 				})
 			},
 			wantExists: true,
