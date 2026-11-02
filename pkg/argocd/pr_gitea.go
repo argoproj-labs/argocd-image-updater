@@ -60,7 +60,10 @@ type giteaPullRequest struct {
 	HTMLURL string `json:"html_url"`
 	Merged  bool   `json:"merged"`
 	Head    struct {
-		Ref    string `json:"ref"`
+		Ref string `json:"ref"`
+		// Label keeps the branch name after Gitea rewrites Ref to refs/pull/N/head
+		// for a deleted head branch.
+		Label  string `json:"label"`
 		RepoID int64  `json:"repo_id"`
 	} `json:"head"`
 	Base struct {
@@ -162,7 +165,7 @@ func (g *GiteaPRService) scan(ctx context.Context, state, checkOutBranch, pushBr
 		}
 		for _, pr := range prs {
 			// Same-repository PRs only: a fork may carry a branch with the same name.
-			if pr.Head.Ref == pushBranch && pr.Base.Ref == checkOutBranch && pr.Head.RepoID == pr.Base.RepoID && (state == "open" || pr.Merged) {
+			if (pr.Head.Ref == pushBranch || pr.Head.Label == pushBranch) && pr.Base.Ref == checkOutBranch && pr.Head.RepoID == pr.Base.RepoID && (state == "open" || pr.Merged) {
 				return true, nil
 			}
 		}
