@@ -90,7 +90,7 @@ func Test_SCMAPIClients_UseCertStore(t *testing.T) {
 	// Write-back secrets without an "insecure" key get insecure=true for
 	// backwards compatibility (see parseLegacyInsecure). That must not turn off
 	// TLS verification for API calls, which carry the token.
-	legacyInsecureCreds := git.NewHTTPSCreds("user", "token", "", "", true, "", &git.NoopCredsStore{}, false).(git.SCMTokenProvider)
+	legacyInsecureCreds := git.NewHTTPSCreds(ctx, "user", "token", "", "", true, "", &git.NoopCredsStore{}, false).(git.SCMTokenProvider)
 
 	providers := []struct {
 		name string
