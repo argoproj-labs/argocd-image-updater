@@ -4,7 +4,7 @@ go 1.25.9
 
 require (
 	github.com/argoproj-labs/argocd-image-updater/registry-scanner v1.1.1
-	github.com/argoproj/argo-cd/v3 v3.3.18
+	github.com/argoproj/argo-cd/v3 v3.3.19
 	github.com/argoproj/gitops-engine v0.7.1-0.20250908182407-97ad5b59a627
 	github.com/bmatcuk/doublestar/v4 v4.10.0
 	github.com/bombsimon/logrusr/v2 v2.0.1
@@ -115,7 +115,7 @@ require (
 	github.com/jonboulle/clockwork v0.5.0 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
-	github.com/kballard/go-shellquote v0.0.0-20180428030007-95032a82bc51 // indirect
+	github.com/kballard/go-shellquote v0.0.0-20180428030007-95032a82bc51
 	github.com/kevinburke/ssh_config v1.2.0 // indirect
 	github.com/klauspost/compress v1.18.0 // indirect
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
@@ -205,10 +205,10 @@ replace (
 	// Uncomment for development and local testing, and comment out for releases
 	github.com/argoproj-labs/argocd-image-updater/registry-scanner => ./registry-scanner/
 
-	// argo-cd v3.3.18 declares gitops-engine at a pseudo-version where go.mod
+	// argo-cd v3.3.19 declares gitops-engine at a pseudo-version where go.mod
 	// didn't exist yet, then overrides with replace => ./gitops-engine locally.
-	// Downstream consumers must resolve it themselves; pin to the v3.3.18 commit.
-	github.com/argoproj/gitops-engine => github.com/argoproj/argo-cd/gitops-engine v0.0.0-20261022134330-d0b5dfda404d
+	// Downstream consumers must resolve it themselves; pin to the v3.3.19 commit.
+	github.com/argoproj/gitops-engine => github.com/argoproj/argo-cd/gitops-engine v0.0.0-20261102191642-554529f5d80c
 
 	github.com/golang/protobuf => github.com/golang/protobuf v1.5.4
 	github.com/grpc-ecosystem/grpc-gateway => github.com/grpc-ecosystem/grpc-gateway v1.16.0

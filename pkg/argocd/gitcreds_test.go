@@ -19,6 +19,7 @@ import (
 )
 
 func TestGetCredsFromSecret(t *testing.T) {
+	ctx := context.Background()
 	wbc := &WriteBackConfig{
 		GitRepo:  "https://github.com/example/repo.git",
 		GitCreds: git.NoopCredsStore{},
@@ -34,27 +35,27 @@ func TestGetCredsFromSecret(t *testing.T) {
 
 	// Test case 1: Valid secret reference
 	credentialsSecret := "foo/bar"
-	expectedCreds := git.NewHTTPSCreds("myuser", "mypass", "", "", true, "", wbc.GitCreds, false)
-	creds, err := getCredsFromSecret(wbc, credentialsSecret, &kubeClient)
+	expectedCreds := git.NewHTTPSCreds(ctx, "myuser", "mypass", "", "", true, "", wbc.GitCreds, false)
+	creds, err := getCredsFromSecret(ctx, wbc, credentialsSecret, &kubeClient)
 	assert.NoError(t, err)
 	assert.Equal(t, expectedCreds, creds)
 
 	// Test case 2: Invalid secret reference
 	credentialsSecret = "invalid"
-	_, err = getCredsFromSecret(wbc, credentialsSecret, &kubeClient)
+	_, err = getCredsFromSecret(ctx, wbc, credentialsSecret, &kubeClient)
 	assert.Error(t, err)
 	assert.EqualError(t, err, "secret ref must be in format 'namespace/name', but is 'invalid'")
 
 	// Test case 3: Missing field in secret
 	credentialsSecret = "foo1/bar1"
-	_, err = getCredsFromSecret(wbc, credentialsSecret, &kubeClient)
+	_, err = getCredsFromSecret(ctx, wbc, credentialsSecret, &kubeClient)
 	assert.Error(t, err)
 	assert.EqualError(t, err, "invalid secret foo1/bar1: does not contain field password")
 
 	// Test case 4: Unknown repository type
 	credentialsSecret = "foo/bar"
 	wbc.GitRepo = "unknown://example.com/repo.git"
-	_, err = getCredsFromSecret(wbc, credentialsSecret, &kubeClient)
+	_, err = getCredsFromSecret(ctx, wbc, credentialsSecret, &kubeClient)
 	assert.Error(t, err)
 	assert.EqualError(t, err, "unknown repository type")
 }
@@ -120,7 +121,7 @@ func TestGetGitCreds(t *testing.T) {
 		Password: "mypass",
 		Repo:     "https://github.com/example/repo.git",
 	}
-	expectedHTTPSCreds := git.NewHTTPSCreds("myuser", "mypass", "", "", false, "", store, false)
+	expectedHTTPSCreds := git.NewHTTPSCreds(ctx, "myuser", "mypass", "", "", false, "", store, false)
 	httpCreds := GetGitCreds(ctx, repo, store)
 	assert.Equal(t, expectedHTTPSCreds, httpCreds)
 
@@ -130,7 +131,7 @@ func TestGetGitCreds(t *testing.T) {
 		SSHPrivateKey: "privatekey",
 		Repo:          "https://github.com/example/repo.git",
 	}
-	expectedSSHCreds := git.NewSSHCreds("privatekey", "", false, store, "")
+	expectedSSHCreds := git.NewSSHCreds(ctx, "privatekey", "", false, store, "")
 	sshCreds := GetGitCreds(ctx, repo, store)
 	assert.Equal(t, expectedSSHCreds, sshCreds)
 
@@ -147,7 +148,7 @@ func TestGetGitCreds(t *testing.T) {
 		Insecure:                   true,
 		Proxy:                      "proxy",
 	}
-	expectedGitHubAppCreds := git.NewGitHubAppCreds(123, 456, "appprivatekey", "enterpriseurl", "https://github.com/example/repo.git", "certdata", "certkey", true, "proxy", store)
+	expectedGitHubAppCreds := git.NewGitHubAppCreds(ctx, 123, 456, "appprivatekey", "enterpriseurl", "https://github.com/example/repo.git", "certdata", "certkey", true, "proxy", store)
 	githubAppCreds := GetGitCreds(ctx, repo, store)
 	assert.Equal(t, expectedGitHubAppCreds, githubAppCreds)
 
@@ -169,6 +170,8 @@ func TestGetGitCreds(t *testing.T) {
 }
 
 func TestGetCredsFromArgoCD(t *testing.T) {
+	ctx := context.Background()
+
 	t.Run("nil ArgocdDB returns error", func(t *testing.T) {
 		wbc := &WriteBackConfig{
 			GitRepo:  "https://github.com/example/repo.git",
@@ -221,7 +224,7 @@ func TestGetCredsFromArgoCD(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, creds)
 		assert.Equal(t,
-			git.NewHTTPSCreds("myuser", "mypass", "", "", false, "", git.NoopCredsStore{}, false),
+			git.NewHTTPSCreds(ctx, "myuser", "mypass", "", "", false, "", git.NoopCredsStore{}, false),
 			creds,
 		)
 	})

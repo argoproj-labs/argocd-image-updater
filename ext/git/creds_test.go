@@ -5,12 +5,15 @@ import (
 	"encoding/base64"
 	"fmt"
 	"os"
+	"os/exec"
 	"path"
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
+	"github.com/kballard/go-shellquote"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/oauth2"
@@ -46,7 +49,7 @@ func TestHTTPSCreds_Environ_no_cert_cleanup(t *testing.T) {
 	ctx := context.Background()
 
 	store := &memoryCredsStore{creds: make(map[string]cred)}
-	creds := NewHTTPSCreds("", "", "", "", true, "", store, false)
+	creds := NewHTTPSCreds(ctx, "", "", "", "", true, "", store, false)
 	closer, env, err := creds.Environ(ctx)
 	require.NoError(t, err)
 	var nonce string
@@ -64,7 +67,7 @@ func TestHTTPSCreds_Environ_no_cert_cleanup(t *testing.T) {
 func TestHTTPSCreds_Environ_insecure_true(t *testing.T) {
 	ctx := context.Background()
 
-	creds := NewHTTPSCreds("", "", "", "", true, "", &NoopCredsStore{}, false)
+	creds := NewHTTPSCreds(ctx, "", "", "", "", true, "", &NoopCredsStore{}, false)
 	closer, env, err := creds.Environ(ctx)
 	t.Cleanup(func() {
 		io.Close(closer)
@@ -82,7 +85,7 @@ func TestHTTPSCreds_Environ_insecure_true(t *testing.T) {
 
 func TestHTTPSCreds_Environ_insecure_false(t *testing.T) {
 	ctx := context.Background()
-	creds := NewHTTPSCreds("", "", "", "", false, "", &NoopCredsStore{}, false)
+	creds := NewHTTPSCreds(ctx, "", "", "", "", false, "", &NoopCredsStore{}, false)
 	closer, env, err := creds.Environ(ctx)
 	t.Cleanup(func() {
 		io.Close(closer)
@@ -102,7 +105,7 @@ func TestHTTPSCreds_Environ_forceBasicAuth(t *testing.T) {
 	t.Run("Enabled and credentials set", func(t *testing.T) {
 		ctx := context.Background()
 		store := &memoryCredsStore{creds: make(map[string]cred)}
-		creds := NewHTTPSCreds("username", "password", "", "", false, "", store, true)
+		creds := NewHTTPSCreds(ctx, "username", "password", "", "", false, "", store, true)
 		closer, env, err := creds.Environ(ctx)
 		require.NoError(t, err)
 		defer closer.Close()
@@ -121,7 +124,7 @@ func TestHTTPSCreds_Environ_forceBasicAuth(t *testing.T) {
 	t.Run("Enabled but credentials not set", func(t *testing.T) {
 		ctx := context.Background()
 		store := &memoryCredsStore{creds: make(map[string]cred)}
-		creds := NewHTTPSCreds("", "", "", "", false, "", store, true)
+		creds := NewHTTPSCreds(ctx, "", "", "", "", false, "", store, true)
 		closer, env, err := creds.Environ(ctx)
 		require.NoError(t, err)
 		defer closer.Close()
@@ -139,7 +142,7 @@ func TestHTTPSCreds_Environ_forceBasicAuth(t *testing.T) {
 	t.Run("Disabled with credentials set", func(t *testing.T) {
 		ctx := context.Background()
 		store := &memoryCredsStore{creds: make(map[string]cred)}
-		creds := NewHTTPSCreds("username", "password", "", "", false, "", store, false)
+		creds := NewHTTPSCreds(ctx, "username", "password", "", "", false, "", store, false)
 		closer, env, err := creds.Environ(ctx)
 		require.NoError(t, err)
 		defer closer.Close()
@@ -158,7 +161,7 @@ func TestHTTPSCreds_Environ_forceBasicAuth(t *testing.T) {
 	t.Run("Disabled with credentials not set", func(t *testing.T) {
 		ctx := context.Background()
 		store := &memoryCredsStore{creds: make(map[string]cred)}
-		creds := NewHTTPSCreds("", "", "", "", false, "", store, false)
+		creds := NewHTTPSCreds(ctx, "", "", "", "", false, "", store, false)
 		closer, env, err := creds.Environ(ctx)
 		require.NoError(t, err)
 		defer closer.Close()
@@ -179,7 +182,7 @@ func TestHTTPSCreds_Environ_clientCert(t *testing.T) {
 	ctx := context.Background()
 
 	store := &memoryCredsStore{creds: make(map[string]cred)}
-	creds := NewHTTPSCreds("", "", "clientCertData", "clientCertKey", false, "", store, false)
+	creds := NewHTTPSCreds(ctx, "", "", "clientCertData", "clientCertKey", false, "", store, false)
 	closer, env, err := creds.Environ(ctx)
 	require.NoError(t, err)
 	var cert, key string
@@ -219,7 +222,7 @@ func Test_SSHCreds_Environ(t *testing.T) {
 		caFile := path.Join(tempDir, "caFile")
 		err := os.WriteFile(caFile, []byte(""), os.FileMode(0600))
 		require.NoError(t, err)
-		creds := NewSSHCreds("sshPrivateKey", caFile, insecureIgnoreHostKey, &NoopCredsStore{}, "")
+		creds := NewSSHCreds(ctx, "sshPrivateKey", caFile, insecureIgnoreHostKey, &NoopCredsStore{}, "")
 		closer, env, err := creds.Environ(ctx)
 		require.NoError(t, err)
 		require.Len(t, env, 2)
@@ -254,7 +257,7 @@ func Test_SSHCreds_Environ_WithProxy(t *testing.T) {
 		caFile := path.Join(tempDir, "caFile")
 		err := os.WriteFile(caFile, []byte(""), os.FileMode(0600))
 		require.NoError(t, err)
-		creds := NewSSHCreds("sshPrivateKey", caFile, insecureIgnoreHostKey, &NoopCredsStore{}, "socks5://127.0.0.1:1080")
+		creds := NewSSHCreds(ctx, "sshPrivateKey", caFile, insecureIgnoreHostKey, &NoopCredsStore{}, "socks5://127.0.0.1:1080")
 		closer, env, err := creds.Environ(ctx)
 		require.NoError(t, err)
 		require.Len(t, env, 2)
@@ -271,7 +274,13 @@ func Test_SSHCreds_Environ_WithProxy(t *testing.T) {
 			hostsPath := cert.GetSSHKnownHostsDataPath()
 			assert.Contains(t, env[1], fmt.Sprintf("-o UserKnownHostsFile=%s", hostsPath))
 		}
-		assert.Contains(t, env[1], "-o ProxyCommand='connect-proxy -S 127.0.0.1:1080 -5 %h %p'")
+		proxyScript := proxyScriptFromSSHCommand(t, env[1])
+		assert.FileExists(t, proxyScript)
+
+		scriptBytes, err := os.ReadFile(proxyScript)
+		require.NoError(t, err)
+		assert.Contains(t, string(scriptBytes), "127.0.0.1:1080")
+		assert.Contains(t, string(scriptBytes), "connect-proxy")
 
 		envRegex := regexp.MustCompile("-i ([^ ]+)")
 		assert.Regexp(t, envRegex, env[1])
@@ -279,6 +288,7 @@ func Test_SSHCreds_Environ_WithProxy(t *testing.T) {
 		assert.FileExists(t, privateKeyFile)
 		io.Close(closer)
 		assert.NoFileExists(t, privateKeyFile)
+		assert.NoFileExists(t, proxyScript)
 	}
 }
 
@@ -290,7 +300,7 @@ func Test_SSHCreds_Environ_WithProxyUserNamePassword(t *testing.T) {
 		caFile := path.Join(tempDir, "caFile")
 		err := os.WriteFile(caFile, []byte(""), os.FileMode(0600))
 		require.NoError(t, err)
-		creds := NewSSHCreds("sshPrivateKey", caFile, insecureIgnoreHostKey, &NoopCredsStore{}, "socks5://user:password@127.0.0.1:1080")
+		creds := NewSSHCreds(ctx, "sshPrivateKey", caFile, insecureIgnoreHostKey, &NoopCredsStore{}, "socks5://user:password@127.0.0.1:1080")
 		closer, env, err := creds.Environ(ctx)
 		require.NoError(t, err)
 		require.Len(t, env, 4)
@@ -309,7 +319,12 @@ func Test_SSHCreds_Environ_WithProxyUserNamePassword(t *testing.T) {
 			hostsPath := cert.GetSSHKnownHostsDataPath()
 			assert.Contains(t, env[1], fmt.Sprintf("-o UserKnownHostsFile=%s", hostsPath))
 		}
-		assert.Contains(t, env[1], "-o ProxyCommand='connect-proxy -S 127.0.0.1:1080 -5 %h %p'")
+		proxyScript := proxyScriptFromSSHCommand(t, env[1])
+		assert.FileExists(t, proxyScript)
+
+		scriptBytes, err := os.ReadFile(proxyScript)
+		require.NoError(t, err)
+		assert.Contains(t, string(scriptBytes), "127.0.0.1:1080")
 
 		envRegex := regexp.MustCompile("-i ([^ ]+)")
 		assert.Regexp(t, envRegex, env[1])
@@ -317,6 +332,143 @@ func Test_SSHCreds_Environ_WithProxyUserNamePassword(t *testing.T) {
 		assert.FileExists(t, privateKeyFile)
 		io.Close(closer)
 		assert.NoFileExists(t, privateKeyFile)
+		assert.NoFileExists(t, proxyScript)
+	}
+}
+
+func proxyScriptFromSSHCommand(t *testing.T, gitSSHCommandEnv string) string {
+	t.Helper()
+	args, err := shellquote.Split(strings.TrimPrefix(gitSSHCommandEnv, "GIT_SSH_COMMAND="))
+	require.NoError(t, err)
+	for _, arg := range args {
+		proxyCommand, ok := strings.CutPrefix(arg, "ProxyCommand=")
+		if !ok {
+			continue
+		}
+		fields, err := shellquote.Split(proxyCommand)
+		require.NoError(t, err)
+		require.Len(t, fields, 4, "ProxyCommand must be a single argument")
+		assert.Equal(t, "/bin/sh", fields[0])
+		assert.Equal(t, []string{"%h", "%p"}, fields[2:])
+		return fields[1]
+	}
+	require.FailNow(t, "GIT_SSH_COMMAND has no ProxyCommand", gitSSHCommandEnv)
+	return ""
+}
+
+func Test_SSHCreds_Environ_ProxyCommandPassesTargetToConnectProxy(t *testing.T) {
+	if _, err := exec.LookPath("ssh"); err != nil {
+		t.Skip("ssh is not installed")
+	}
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git is not installed")
+	}
+
+	binDir := t.TempDir()
+	argsFile := path.Join(t.TempDir(), "connect-proxy-args")
+	fakeConnectProxy := "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$CONNECT_PROXY_ARGS_FILE\"\nexit 1\n"
+	require.NoError(t, os.WriteFile(path.Join(binDir, "connect-proxy"), []byte(fakeConnectProxy), 0o755))
+
+	ctx := context.Background()
+	closer, env, err := NewSSHCreds(ctx, "sshPrivateKey", "", true, &NoopCredsStore{}, "socks5://127.0.0.1:1080").Environ(ctx)
+	require.NoError(t, err)
+	defer io.Close(closer)
+
+	proxyScript := proxyScriptFromSSHCommand(t, env[0])
+	info, err := os.Stat(proxyScript)
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o600), info.Mode().Perm(), "the proxy script must run without the exec bit, /dev/shm is often mounted noexec")
+
+	cmdCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(cmdCtx, "git", "ls-remote", "ssh://git@git.example.com:2222/org/repo.git")
+	cmd.WaitDelay = 5 * time.Second
+	cmd.Env = append(os.Environ(), env...)
+	cmd.Env = append(cmd.Env,
+		"PATH="+binDir+string(os.PathListSeparator)+os.Getenv("PATH"),
+		"CONNECT_PROXY_ARGS_FILE="+argsFile,
+		"GIT_TERMINAL_PROMPT=0",
+	)
+	out, err := cmd.CombinedOutput()
+	require.Error(t, err, "the fake connect-proxy always fails")
+
+	args, readErr := os.ReadFile(argsFile)
+	require.NoError(t, readErr, "connect-proxy was never invoked: %s", out)
+	assert.Equal(t, []string{"-5", "-S", "127.0.0.1:1080", "git.example.com", "2222"}, strings.Fields(string(args)))
+}
+
+func TestValidateProxyURL_RejectsUnsafeHostnames(t *testing.T) {
+	t.Parallel()
+	malicious := []struct {
+		name string
+		url  string
+	}{
+		{"single quote and command substitution", "socks5://evil'$(id>/tmp/x)'host:1080"},
+		{"semicolon", "socks5://host;id:1080"},
+		{"pipe", "socks5://host|id:1080"},
+		{"ampersand", "socks5://host&id:1080"},
+		{"dollar sign", "socks5://host$(x):1080"},
+		{"backtick", "socks5://host`x`:1080"},
+		{"redirect gt", "socks5://host>x:1080"},
+		{"redirect lt", "socks5://host<x:1080"},
+		{"whitespace in host", "socks5://ho st:1080"},
+		{"newline in port", "socks5://host:\n1080"},
+		{"port zero", "socks5://host:0"},
+		{"port too high", "socks5://host:65536"},
+		{"empty host", "socks5://:1080"},
+		{"wrong scheme http", "http://host:1080"},
+		{"wrong scheme https", "https://host:1080"},
+		{"wrong scheme socks4", "socks4://host:1080"},
+	}
+	for _, tc := range malicious {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			err := validateProxyURL(tc.url)
+			require.Error(t, err, "expected rejection of: %s", tc.url)
+		})
+	}
+}
+
+func TestValidateProxyURL_AcceptsValidURLs(t *testing.T) {
+	t.Parallel()
+	valid := []struct {
+		name string
+		url  string
+	}{
+		{"IPv4", "socks5://127.0.0.1:1080"},
+		{"hostname", "socks5://proxy.example.com:1080"},
+		{"IPv6 bracketed", "socks5://[::1]:1080"},
+		{"IPv6 full address", "socks5h://proxy.internal:9050"},
+		{"port 1", "socks5://proxy.example.com:1"},
+		{"port 65535", "socks5://proxy.example.com:65535"},
+	}
+	for _, tc := range valid {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			err := validateProxyURL(tc.url)
+			require.NoError(t, err)
+		})
+	}
+}
+
+func TestSSHCreds_Environ_RejectsMaliciousProxyURL(t *testing.T) {
+	ctx := context.Background()
+	t.Parallel()
+	// Verify that the malicious PoC proxy URL from the advisory is rejected
+	// at construction time (NewSSHCreds), so it never flows into Environ(),
+	// GIT_SSH_COMMAND, or any persisted creds state.
+	creds := NewSSHCreds(ctx, "sshPrivateKey", "", false, &NoopCredsStore{},
+		"socks5://evil'$(id>/tmp/PWNED)'host:1080")
+	require.Empty(t, creds.proxy, "malicious proxy must not be stored on the creds struct")
+
+	closer, env, err := creds.Environ(ctx)
+	require.NoError(t, err)
+	if closer != nil {
+		defer closer.Close()
+	}
+	for _, e := range env {
+		assert.NotContains(t, e, "ProxyCommand", "no ProxyCommand must be set for a rejected proxy")
+		assert.NotContains(t, e, "PWNED", "no part of the malicious proxy must leak into the environment")
 	}
 }
 
