@@ -137,7 +137,7 @@ func getCredsFromSecret(ctx context.Context, wbc *WriteBackConfig, credentialsSe
 		if sshPrivateKey, ok = credentials["sshPrivateKey"]; !ok {
 			return nil, fmt.Errorf("invalid secret %s: does not contain field sshPrivateKey", credentialsSecret)
 		}
-		return git.NewSSHCreds(string(sshPrivateKey), "", true, wbc.GitCreds, ""), nil
+		return git.NewSSHCreds(ctx, string(sshPrivateKey), "", true, wbc.GitCreds, ""), nil
 	} else if git.IsHTTPSURL(wbc.GitRepo) {
 		var username, password, githubAppID, githubAppInstallationID, githubAppPrivateKey []byte
 		if githubAppID, ok = credentials["githubAppID"]; ok {
@@ -166,7 +166,7 @@ func getCredsFromSecret(ctx context.Context, wbc *WriteBackConfig, credentialsSe
 			if password, ok = credentials["password"]; !ok {
 				return nil, fmt.Errorf("invalid secret %s: does not contain field password", credentialsSecret)
 			}
-			return git.NewHTTPSCreds(string(username), string(password), "", "", true, "", wbc.GitCreds, false), nil
+			return git.NewHTTPSCreds(ctx, string(username), string(password), "", "", true, "", wbc.GitCreds, false), nil
 		}
 		return nil, fmt.Errorf("invalid repository credentials in secret %s: does not contain githubAppID or username", credentialsSecret)
 	}
