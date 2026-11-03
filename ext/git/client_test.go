@@ -361,7 +361,7 @@ func TestNewAuth_HTTPSCreds(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("WithUsername", func(t *testing.T) {
-		creds := NewHTTPSCreds("alice", "secret", "", "", false, "", &NoopCredsStore{}, false)
+		creds := NewHTTPSCreds(ctx, "alice", "secret", "", "", false, "", &NoopCredsStore{}, false)
 		auth, err := newAuth(ctx, "https://github.com/org/repo", creds)
 		require.NoError(t, err)
 		basic, ok := auth.(*githttp.BasicAuth)
@@ -371,7 +371,7 @@ func TestNewAuth_HTTPSCreds(t *testing.T) {
 	})
 
 	t.Run("EmptyUsername_defaultsToXAccessToken", func(t *testing.T) {
-		creds := NewHTTPSCreds("", "mytoken", "", "", false, "", &NoopCredsStore{}, false)
+		creds := NewHTTPSCreds(ctx, "", "mytoken", "", "", false, "", &NoopCredsStore{}, false)
 		auth, err := newAuth(ctx, "https://github.com/org/repo", creds)
 		require.NoError(t, err)
 		basic, ok := auth.(*githttp.BasicAuth)
@@ -386,7 +386,7 @@ func TestNewAuth_SSHCreds(t *testing.T) {
 
 	t.Run("ValidKey_insecure", func(t *testing.T) {
 		keyPEM := generateSSHPrivateKeyPEM(t)
-		creds := NewSSHCreds(string(keyPEM), "", true, &NoopCredsStore{}, "")
+		creds := NewSSHCreds(ctx, string(keyPEM), "", true, &NoopCredsStore{}, "")
 		auth, err := newAuth(ctx, "git@github.com:org/repo.git", creds)
 		require.NoError(t, err)
 		pk, ok := auth.(*PublicKeysWithOptions)
@@ -398,7 +398,7 @@ func TestNewAuth_SSHCreds(t *testing.T) {
 
 	t.Run("ValidKey_SSHURLExtractsUser", func(t *testing.T) {
 		keyPEM := generateSSHPrivateKeyPEM(t)
-		creds := NewSSHCreds(string(keyPEM), "", true, &NoopCredsStore{}, "")
+		creds := NewSSHCreds(ctx, string(keyPEM), "", true, &NoopCredsStore{}, "")
 		auth, err := newAuth(ctx, "ssh://bob@github.com/org/repo", creds)
 		require.NoError(t, err)
 		pk, ok := auth.(*PublicKeysWithOptions)
@@ -407,7 +407,7 @@ func TestNewAuth_SSHCreds(t *testing.T) {
 	})
 
 	t.Run("InvalidKey_returnsError", func(t *testing.T) {
-		creds := NewSSHCreds("not-a-valid-pem-key", "", true, &NoopCredsStore{}, "")
+		creds := NewSSHCreds(ctx, "not-a-valid-pem-key", "", true, &NoopCredsStore{}, "")
 		_, err := newAuth(ctx, "git@github.com:org/repo.git", creds)
 		assert.Error(t, err)
 	})
