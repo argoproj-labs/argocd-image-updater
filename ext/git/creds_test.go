@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path"
 	"regexp"
 	"strings"
@@ -19,6 +20,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/kballard/go-shellquote"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/oauth2"
@@ -279,9 +281,7 @@ func Test_SSHCreds_Environ_WithProxy(t *testing.T) {
 			hostsPath := cert.GetSSHKnownHostsDataPath()
 			assert.Contains(t, env[1], fmt.Sprintf("-o UserKnownHostsFile=%s", hostsPath))
 		}
-		proxyRegex := regexp.MustCompile(`-o ProxyCommand=([^ ]+)`)
-		assert.Regexp(t, proxyRegex, env[1])
-		proxyScript := proxyRegex.FindStringSubmatch(env[1])[1]
+		proxyScript := proxyScriptFromSSHCommand(t, env[1])
 		assert.FileExists(t, proxyScript)
 
 		scriptBytes, err := os.ReadFile(proxyScript)
@@ -326,9 +326,7 @@ func Test_SSHCreds_Environ_WithProxyUserNamePassword(t *testing.T) {
 			hostsPath := cert.GetSSHKnownHostsDataPath()
 			assert.Contains(t, env[1], fmt.Sprintf("-o UserKnownHostsFile=%s", hostsPath))
 		}
-		proxyRegex := regexp.MustCompile(`-o ProxyCommand=([^ ]+)`)
-		assert.Regexp(t, proxyRegex, env[1])
-		proxyScript := proxyRegex.FindStringSubmatch(env[1])[1]
+		proxyScript := proxyScriptFromSSHCommand(t, env[1])
 		assert.FileExists(t, proxyScript)
 
 		scriptBytes, err := os.ReadFile(proxyScript)
@@ -343,6 +341,67 @@ func Test_SSHCreds_Environ_WithProxyUserNamePassword(t *testing.T) {
 		assert.NoFileExists(t, privateKeyFile)
 		assert.NoFileExists(t, proxyScript)
 	}
+}
+
+func proxyScriptFromSSHCommand(t *testing.T, gitSSHCommandEnv string) string {
+	t.Helper()
+	args, err := shellquote.Split(strings.TrimPrefix(gitSSHCommandEnv, "GIT_SSH_COMMAND="))
+	require.NoError(t, err)
+	for _, arg := range args {
+		proxyCommand, ok := strings.CutPrefix(arg, "ProxyCommand=")
+		if !ok {
+			continue
+		}
+		fields, err := shellquote.Split(proxyCommand)
+		require.NoError(t, err)
+		require.Len(t, fields, 4, "ProxyCommand must be a single argument")
+		assert.Equal(t, "/bin/sh", fields[0])
+		assert.Equal(t, []string{"%h", "%p"}, fields[2:])
+		return fields[1]
+	}
+	require.FailNow(t, "GIT_SSH_COMMAND has no ProxyCommand", gitSSHCommandEnv)
+	return ""
+}
+
+func Test_SSHCreds_Environ_ProxyCommandPassesTargetToConnectProxy(t *testing.T) {
+	if _, err := exec.LookPath("ssh"); err != nil {
+		t.Skip("ssh is not installed")
+	}
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git is not installed")
+	}
+
+	binDir := t.TempDir()
+	argsFile := path.Join(t.TempDir(), "connect-proxy-args")
+	fakeConnectProxy := "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$CONNECT_PROXY_ARGS_FILE\"\nexit 1\n"
+	require.NoError(t, os.WriteFile(path.Join(binDir, "connect-proxy"), []byte(fakeConnectProxy), 0o755))
+
+	ctx := context.Background()
+	closer, env, err := NewSSHCreds(ctx, "sshPrivateKey", "", true, &NoopCredsStore{}, "socks5://127.0.0.1:1080").Environ(ctx)
+	require.NoError(t, err)
+	defer io.Close(closer)
+
+	proxyScript := proxyScriptFromSSHCommand(t, env[0])
+	info, err := os.Stat(proxyScript)
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o600), info.Mode().Perm(), "the proxy script must run without the exec bit, /dev/shm is often mounted noexec")
+
+	cmdCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(cmdCtx, "git", "ls-remote", "ssh://git@git.example.com:2222/org/repo.git")
+	cmd.WaitDelay = 5 * time.Second
+	cmd.Env = append(os.Environ(), env...)
+	cmd.Env = append(cmd.Env,
+		"PATH="+binDir+string(os.PathListSeparator)+os.Getenv("PATH"),
+		"CONNECT_PROXY_ARGS_FILE="+argsFile,
+		"GIT_TERMINAL_PROMPT=0",
+	)
+	out, err := cmd.CombinedOutput()
+	require.Error(t, err, "the fake connect-proxy always fails")
+
+	args, readErr := os.ReadFile(argsFile)
+	require.NoError(t, readErr, "connect-proxy was never invoked: %s", out)
+	assert.Equal(t, []string{"-5", "-S", "127.0.0.1:1080", "git.example.com", "2222"}, strings.Fields(string(args)))
 }
 
 func TestValidateProxyURL_RejectsUnsafeHostnames(t *testing.T) {
