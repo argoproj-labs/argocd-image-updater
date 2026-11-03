@@ -285,3 +285,55 @@ func Test_githubAppCredsProvider(t *testing.T) {
 	assert.False(t, ok)
 	assert.Nil(t, p)
 }
+
+func Test_commitChangesGithubAPI_ResetProposal(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "image.yaml"), []byte("image: v2\n"), 0o644))
+	client := newAPICommitGitMock(dir, "currentbase", []git.WorkingTreeChange{{Path: "image.yaml"}})
+	reset := false
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v3/repos/example/repo/git/refs/heads/proposal":
+			assert.Equal(t, http.MethodPatch, r.Method)
+			var body map[string]any
+			require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+			assert.Equal(t, "currentbase", body["sha"])
+			assert.Equal(t, true, body["force"])
+			reset = true
+			fmt.Fprint(w, `{"ref":"refs/heads/proposal","object":{"sha":"currentbase"}}`)
+		case "/api/graphql":
+			require.True(t, reset)
+			var body map[string]any
+			require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+			assert.Equal(t, "currentbase", body["variables"].(map[string]any)["input"].(map[string]any)["expectedHeadOid"])
+			fmt.Fprint(w, `{"data":{"createCommitOnBranch":{"commit":{"oid":"newsha"}}}}`)
+		default:
+			t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+	provider := &mockTokenAndBaseURLProvider{mockTokenProvider: mockTokenProvider{token: "test-token"}, baseURL: srv.URL + "/api/v3"}
+	wbc := &WriteBackConfig{GitRepo: "https://github.com/example/repo.git", PRProvider: PRProviderGitHub}
+	require.NoError(t, commitChangesGithubAPI(context.Background(), wbc, client, provider, "proposal", false))
+	assert.True(t, reset)
+}
+
+func Test_commitChangesGithubAPI_ResetDenied(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "image.yaml"), []byte("image: v2\n"), 0o644))
+	client := newAPICommitGitMock(dir, "currentbase", []git.WorkingTreeChange{{Path: "image.yaml"}})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/api/v3/repos/example/repo/git/refs/heads/proposal", r.URL.Path, "no commit should be attempted after reset fails")
+		assert.Equal(t, http.MethodPatch, r.Method)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusForbidden)
+		fmt.Fprint(w, `{"message":"Branch protection prevents reset"}`)
+	}))
+	defer srv.Close()
+	provider := &mockTokenAndBaseURLProvider{mockTokenProvider: mockTokenProvider{token: "test-token"}, baseURL: srv.URL + "/api/v3"}
+	wbc := &WriteBackConfig{GitRepo: "https://github.com/example/repo.git", PRProvider: PRProviderGitHub}
+	err := commitChangesGithubAPI(context.Background(), wbc, client, provider, "proposal", false)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "could not reset proposal branch")
+}

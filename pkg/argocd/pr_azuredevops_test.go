@@ -284,13 +284,9 @@ func Test_AzureDevOpsPRService_exists(t *testing.T) {
 		wantExists bool
 		wantErrMsg string
 	}{
-		{"no PRs", `{"count":0,"value":[]}`, http.StatusOK, false, ""},
-		{"one active PR", `{"count":1,"value":[{"pullRequestId":42,"status":"active"}]}`, http.StatusOK, true, ""},
-		{"completed PR", `{"count":1,"value":[{"pullRequestId":42,"status":"completed"}]}`, http.StatusOK, true, ""},
-		{"completed PR from a fork", `{"count":1,"value":[{"pullRequestId":42,"status":"completed","forkSource":{"repository":{"id":"other"}}}]}`, http.StatusOK, false, ""},
-		{"abandoned PR", `{"count":1,"value":[{"pullRequestId":42,"status":"abandoned"}]}`, http.StatusOK, false, ""},
-		{"abandoned PR does not hide a completed one", `{"count":2,"value":[{"pullRequestId":43,"status":"abandoned"},{"pullRequestId":42,"status":"completed"}]}`, http.StatusOK, true, ""},
-		{"multiple active PRs", `{"count":2,"value":[{"pullRequestId":42,"status":"active"},{"pullRequestId":43,"status":"active"}]}`, http.StatusOK, true, ""},
+		{"no open PRs", `{"count":0,"value":[]}`, http.StatusOK, false, ""},
+		{"one open PR", `{"count":1,"value":[{"pullRequestId":42}]}`, http.StatusOK, true, ""},
+		{"multiple open PRs", `{"count":2,"value":[{"pullRequestId":42},{"pullRequestId":43}]}`, http.StatusOK, true, ""},
 		{"API error", `{"message":"Access denied."}`, http.StatusForbidden, false, "Access denied."},
 		{"server error", "Internal server error", http.StatusInternalServerError, false, "500 Internal Server Error"},
 		{"invalid response", "invalid JSON", http.StatusOK, false, "could not decode Azure DevOps response"},
@@ -299,7 +295,7 @@ func Test_AzureDevOpsPRService_exists(t *testing.T) {
 			svc := newTestAzureDevOpsPRService(t, nil, func(w http.ResponseWriter, r *http.Request) {
 				assert.Equal(t, http.MethodGet, r.Method)
 				assert.Equal(t, url.Values{
-					"api-version": {"7.1"}, "$top": {"100"}, "searchCriteria.status": {"all"},
+					"api-version": {"7.1"}, "$top": {"1"}, "searchCriteria.status": {"active"},
 					"searchCriteria.sourceRefName": {"refs/heads/image-updater/test"},
 					"searchCriteria.targetRefName": {"refs/heads/main"},
 				}, r.URL.Query())

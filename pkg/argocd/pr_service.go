@@ -39,7 +39,7 @@ type PullRequestService interface {
 	// service at construction time (title, head, base, body).
 	create(ctx context.Context) error
 	// exists returns true if an open PR from pushBranch → checkOutBranch already
-	// exists, or a merged one, preventing duplicate PR creation on repeated reconciliation cycles.
+	// exists, preventing duplicate PR creation on repeated reconciliation cycles.
 	exists(ctx context.Context, checkOutBranch, pushBranch string) (bool, error)
 }
 
@@ -113,11 +113,8 @@ func buildPullRequest(ctx context.Context, wbc *WriteBackConfig, appNamespace, a
 // is skipped, avoiding unnecessary work on every reconciliation while a PR is
 // pending review.
 //
-// If commitChangesGit reports that nothing was pushed — the write-back produced
-// no changes (e.g. forceUpdate re-evaluated an image that already matches the
-// target) and the head branch was created locally in this call — no PR/MR is
-// opened, because the branch does not exist on the remote, and true is
-// returned so the caller can tell that nothing exists remotely for the target.
+// If the target branch already contains the desired update, no commit is pushed
+// and no PR/MR is opened, even when an old proposal branch still exists.
 func commitChangesPR(ctx context.Context, applicationImages *ApplicationImages, changeList []ChangeEntry, write changeWriter) (bool, error) {
 	logCtx := log.LoggerFromContext(ctx)
 	app := applicationImages.Application
@@ -157,12 +154,6 @@ func commitChangesPR(ctx context.Context, applicationImages *ApplicationImages, 
 		return false, err
 	}
 	if nothingPushed {
-		// The head branch exists only in the local clone, so there is nothing
-		// for a PR/MR to point at. A head branch that is already on the remote
-		// carries the desired change even when this cycle wrote no diff, so
-		// commitChangesGit reports false for it and the PR/MR below is still
-		// opened — which is what recreates a PR after an earlier create() call
-		// failed with the branch already pushed.
 		return true, nil
 	}
 
@@ -233,8 +224,8 @@ func commitChangesPR(ctx context.Context, applicationImages *ApplicationImages, 
 }
 
 // skipIfPRExists resolves the push branch name from the template and queries
-// the SCM provider for an existing PR from pushBranch → checkOutBranch. It returns
-// (true, nil) when one is found and the caller should skip the update.
+// the SCM provider for an open PR from pushBranch → checkOutBranch. It returns
+// (true, nil) when an open PR is found and the caller should skip the update.
 // On any error it returns (false, err) so the caller can log a warning and
 // fall through to the normal code path.
 func skipIfPRExists(ctx context.Context, wbc *WriteBackConfig, tokenProvider git.SCMTokenProvider, checkOutBranch, appNamespace, appName string, changeList []ChangeEntry) (bool, error) {
@@ -268,7 +259,7 @@ func skipIfPRExists(ctx context.Context, wbc *WriteBackConfig, tokenProvider git
 		return false, err
 	}
 	if exists {
-		logCtx.Infof("PR from %q to %q is already open or merged, skipping update", pushBranch, checkOutBranch)
+		logCtx.Infof("open PR from %q to %q already exists, skipping update", pushBranch, checkOutBranch)
 		return true, nil
 	}
 	return false, nil

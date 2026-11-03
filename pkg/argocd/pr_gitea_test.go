@@ -83,10 +83,10 @@ func Test_GiteaPRService_redirects(t *testing.T) {
 		name, repo, location, wantErr string
 		wantRequests                  int
 	}{
-		{"same host", "https://gitea.example.com/owner/repo", "https://gitea.example.com/redirected", "", 4},
-		{"relative URL", "https://gitea.example.com/owner/repo", "/redirected", "", 4},
+		{"same host", "https://gitea.example.com/owner/repo", "https://gitea.example.com/redirected", "", 2},
+		{"relative URL", "https://gitea.example.com/owner/repo", "/redirected", "", 2},
 		{"HTTP downgrade", "https://gitea.example.com/owner/repo", "http://gitea.example.com/redirected", "refusing Gitea redirect", 1},
-		{"HTTP to HTTPS", "http://gitea.example.com/owner/repo", "https://gitea.example.com/redirected", "", 4},
+		{"HTTP to HTTPS", "http://gitea.example.com/owner/repo", "https://gitea.example.com/redirected", "", 2},
 		{"different host", "https://gitea.example.com/owner/repo", "https://example.com/redirected", "refusing Gitea redirect", 1},
 		{"different port", "https://gitea.example.com/owner/repo", "https://gitea.example.com:444/redirected", "refusing Gitea redirect", 1},
 		{"redirect loop", "https://gitea.example.com/owner/repo", "/loop", "stopped after 10 redirects", 10},
@@ -102,19 +102,10 @@ func Test_GiteaPRService_redirects(t *testing.T) {
 				if req.URL.Path == "/redirected" {
 					status = http.StatusOK
 				}
-				// exists lists PRs first, then looks up a merged one; answer each in its own shape.
-				first := req
-				for first.Response != nil {
-					first = first.Response.Request
-				}
-				body := `{"merged":true}`
-				if strings.HasSuffix(first.URL.Path, "/pulls") {
-					body = `[]`
-				}
 				return &http.Response{
 					StatusCode: status,
 					Header:     http.Header{"Location": {tt.location}},
-					Body:       io.NopCloser(strings.NewReader(body)),
+					Body:       io.NopCloser(strings.NewReader(`[]`)),
 					Request:    req,
 				}, nil
 			})
@@ -265,7 +256,6 @@ func Test_GiteaPRService_exists(t *testing.T) {
 	pr := func(head, base string, headRepo, baseRepo int64) string {
 		return fmt.Sprintf(`{"number":1,"head":{"ref":%q,"repo_id":%d},"base":{"ref":%q,"repo_id":%d}}`, head, headRepo, base, baseRepo)
 	}
-	merged := strings.Replace(pr("update", "main", 1, 1), `{"number":1,`, `{"number":2,"merged":true,`, 1)
 	for _, tt := range []struct {
 		name    string
 		pages   []string
@@ -273,69 +263,38 @@ func Test_GiteaPRService_exists(t *testing.T) {
 		status  int
 		want    bool
 		wantErr string
-		// lookup is the answer to the merged-PR lookup; empty means 404.
-		lookup string
-		// closed are the pages of the closed-PR scan; nil means one empty page.
-		closed []string
 	}{
-		{"no open PR", []string{`[]`}, "", http.StatusOK, false, "", "", nil},
-		{"merged PR", []string{`[]`}, "", http.StatusOK, true, "", `{"merged":true}`, nil},
-		{"closed unmerged PR", []string{`[]`}, "", http.StatusOK, false, "", `{"merged":false}`, nil},
-		{"merged PR after a full scan", []string{"[" + pr("other", "main", 1, 1) + "]"}, "1", http.StatusOK, true, "", `{"merged":true}`, nil},
-		{"closed unmerged PR hides a merged one", []string{`[]`}, "", http.StatusOK, true, "", `{"merged":false}`, []string{"[" + pr("update", "main", 1, 1) + "," + merged + "]"}},
-		{"merged PR with a deleted head branch", []string{`[]`}, "", http.StatusOK, true, "", `{"merged":false}`, []string{"[" + strings.Replace(merged, `"ref":"update"`, `"ref":"refs/pull/2/head","label":"update"`, 1) + "]"}},
-		{"closed PR from a fork is not merged here", []string{`[]`}, "", http.StatusOK, false, "", `{"merged":false}`, []string{"[" + strings.Replace(pr("update", "main", 2, 1), `{"number":1,`, `{"number":2,"merged":true,`, 1) + "]", `[]`}},
-		{"lookup error", []string{`[]`}, "", http.StatusOK, false, "could not look up Gitea PR", "500", nil},
-		{"matching PR", []string{"[" + pr("update", "main", 1, 1) + "]"}, "", http.StatusOK, true, "", "", nil},
-		{"other head branch", []string{"[" + pr("other", "main", 1, 1) + "]", `[]`}, "", http.StatusOK, false, "", "", nil},
-		{"other base branch", []string{"[" + pr("update", "develop", 1, 1) + "]", `[]`}, "", http.StatusOK, false, "", "", nil},
-		{"same branch from a fork", []string{"[" + pr("update", "main", 2, 1) + "]", `[]`}, "", http.StatusOK, false, "", "", nil},
-		{"match on second page", []string{"[" + pr("other", "main", 1, 1) + "]", "[" + pr("update", "main", 1, 1) + "]"}, "", http.StatusOK, true, "", "", nil},
-		{"total count ends the scan", []string{"[" + pr("other", "main", 1, 1) + "]"}, "1", http.StatusOK, false, "", "", nil},
-		{"total count beyond the first page", []string{"[" + pr("other", "main", 1, 1) + "]", "[" + pr("update", "main", 1, 1) + "]"}, "2", http.StatusOK, true, "", "", nil},
-		{"invalid total count is ignored", []string{"[" + pr("other", "main", 1, 1) + "]", `[]`}, "many", http.StatusOK, false, "", "", nil},
-		{"API error", nil, "", http.StatusForbidden, false, "could not list Gitea PRs", "", nil},
+		{"no open PR", []string{`[]`}, "", http.StatusOK, false, ""},
+		{"matching PR", []string{"[" + pr("update", "main", 1, 1) + "]"}, "", http.StatusOK, true, ""},
+		{"other head branch", []string{"[" + pr("other", "main", 1, 1) + "]", `[]`}, "", http.StatusOK, false, ""},
+		{"other base branch", []string{"[" + pr("update", "develop", 1, 1) + "]", `[]`}, "", http.StatusOK, false, ""},
+		{"same branch from a fork", []string{"[" + pr("update", "main", 2, 1) + "]", `[]`}, "", http.StatusOK, false, ""},
+		{"match on second page", []string{"[" + pr("other", "main", 1, 1) + "]", "[" + pr("update", "main", 1, 1) + "]"}, "", http.StatusOK, true, ""},
+		{"total count ends the scan", []string{"[" + pr("other", "main", 1, 1) + "]"}, "1", http.StatusOK, false, ""},
+		{"total count beyond the first page", []string{"[" + pr("other", "main", 1, 1) + "]", "[" + pr("update", "main", 1, 1) + "]"}, "2", http.StatusOK, true, ""},
+		{"invalid total count is ignored", []string{"[" + pr("other", "main", 1, 1) + "]", `[]`}, "many", http.StatusOK, false, ""},
+		{"API error", nil, "", http.StatusForbidden, false, "could not list Gitea PRs"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			requests := map[string]int{}
+			requests := 0
 			svc := newTestGiteaPRService(t, nil, func(w http.ResponseWriter, r *http.Request) {
 				assert.Equal(t, http.MethodGet, r.Method)
-				if r.URL.EscapedPath() == "/api/v1/repos/my%20org/repo/pulls/main/update" {
-					switch tt.lookup {
-					case "":
-						w.WriteHeader(http.StatusNotFound)
-					case "500":
-						w.WriteHeader(http.StatusInternalServerError)
-					default:
-						_, _ = w.Write([]byte(tt.lookup))
-					}
-					return
-				}
 				assert.Equal(t, "/api/v1/repos/my%20org/repo/pulls", r.URL.EscapedPath())
 				q := r.URL.Query()
-				state := q.Get("state")
+				assert.Equal(t, "open", q.Get("state"))
 				assert.Equal(t, "main", q.Get("base_branch"))
-				assert.Equal(t, fmt.Sprint(requests[state]+1), q.Get("page"))
+				assert.Equal(t, fmt.Sprint(requests+1), q.Get("page"))
 				if tt.status != http.StatusOK {
 					w.WriteHeader(tt.status)
 					_, _ = w.Write([]byte(`{"message":"forbidden"}`))
 					return
 				}
-				pages := tt.pages
-				if state == "closed" {
-					pages = tt.closed
-					if pages == nil {
-						pages = []string{`[]`}
-					}
-				} else {
-					assert.Equal(t, "open", state)
-					if tt.total != "" {
-						w.Header().Set("X-Total-Count", tt.total)
-					}
+				require.Less(t, requests, len(tt.pages), "unexpected extra page request")
+				if tt.total != "" {
+					w.Header().Set("X-Total-Count", tt.total)
 				}
-				require.Less(t, requests[state], len(pages), "unexpected extra page request")
-				_, _ = w.Write([]byte(pages[requests[state]]))
-				requests[state]++
+				_, _ = w.Write([]byte(tt.pages[requests]))
+				requests++
 			})
 			got, err := svc.exists(context.Background(), "main", "update")
 			if tt.wantErr != "" {
@@ -346,20 +305,6 @@ func Test_GiteaPRService_exists(t *testing.T) {
 			assert.Equal(t, tt.want, got)
 		})
 	}
-
-	t.Run("base branch with a slash stays one path segment", func(t *testing.T) {
-		svc := newTestGiteaPRService(t, nil, func(w http.ResponseWriter, r *http.Request) {
-			if strings.HasSuffix(r.URL.Path, "/pulls") {
-				_, _ = w.Write([]byte(`[]`))
-				return
-			}
-			assert.Equal(t, "/api/v1/repos/my%20org/repo/pulls/release%2F1.0/update", r.URL.EscapedPath())
-			_, _ = w.Write([]byte(`{"merged":true}`))
-		})
-		got, err := svc.exists(context.Background(), "release/1.0", "update")
-		require.NoError(t, err)
-		assert.True(t, got)
-	})
 
 	t.Run("scan is bounded", func(t *testing.T) {
 		requests := 0

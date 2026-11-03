@@ -81,8 +81,6 @@ func Test_SCMAPIClients_UseCertStore(t *testing.T) {
 			fmt.Fprint(w, `{"ref":"refs/heads/branch","object":{"sha":"headsha"}}`)
 		case r.URL.Path == "/api/graphql":
 			fmt.Fprint(w, `{"data":{"createCommitOnBranch":{"commit":{"oid":"newsha"}}}}`)
-		case strings.HasPrefix(r.URL.Path, "/api/v1/repos/") && strings.HasSuffix(r.URL.Path, "/pulls/main/branch"):
-			fmt.Fprint(w, `{"merged":false}`)
 		default:
 			fmt.Fprint(w, `[]`)
 		}

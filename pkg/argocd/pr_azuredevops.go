@@ -80,35 +80,21 @@ func (a *AzureDevOpsPRService) addLabel(ctx context.Context, prID int, name stri
 	return a.request(ctx, http.MethodPost, endpoint, bytes.NewReader(body), &label)
 }
 
-// exists returns true if there is already an active or completed PR from
-// pushBranch into checkOutBranch. The source branch name hashes the change it
-// carries, so a completed PR means this change has already landed. Abandoned PRs
-// don't count.
 func (a *AzureDevOpsPRService) exists(ctx context.Context, checkOutBranch, pushBranch string) (bool, error) {
 	u := *a.apiURL
 	query := u.Query()
 	query.Set("searchCriteria.sourceRefName", azureDevOpsBranchRef(pushBranch))
 	query.Set("searchCriteria.targetRefName", azureDevOpsBranchRef(checkOutBranch))
-	query.Set("searchCriteria.status", "all")
-	// shortcut: only the newest 100 PRs for this branch are checked, paginate if a branch ever has more.
-	query.Set("$top", "100")
+	query.Set("searchCriteria.status", "active")
+	query.Set("$top", "1")
 	u.RawQuery = query.Encode()
 	var prs struct {
-		Value []struct {
-			Status     string    `json:"status"`
-			ForkSource *struct{} `json:"forkSource"`
-		} `json:"value"`
+		Value []json.RawMessage `json:"value"`
 	}
 	if err := a.request(ctx, http.MethodGet, &u, nil, &prs); err != nil {
 		return false, fmt.Errorf("could not list Azure DevOps PRs: %w", err)
 	}
-	for _, pr := range prs.Value {
-		// A completed PR only counts when it came from this repository, not a fork.
-		if pr.Status == "active" || (pr.Status == "completed" && pr.ForkSource == nil) {
-			return true, nil
-		}
-	}
-	return false, nil
+	return len(prs.Value) > 0, nil
 }
 
 // request calls the Azure DevOps REST API using the PAT from the Git credentials.

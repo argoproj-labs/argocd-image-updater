@@ -95,30 +95,18 @@ func isAlreadyExistsError(err error) bool {
 	return false
 }
 
-// exists returns true if there is already an open or merged PR from pushBranch
-// into checkOutBranch. The head branch name hashes the change it carries, so a
-// merged PR means this change has already landed. Closed unmerged PRs don't count.
+// exists returns true if there is already an open PR from pushBranch into
+// checkOutBranch.
 func (g *GithubPRService) exists(ctx context.Context, checkOutBranch, pushBranch string) (bool, error) {
 	prs, _, err := g.client.PullRequests.List(ctx, g.owner, g.repo, &github.PullRequestListOptions{
 		Head:  g.owner + ":" + pushBranch,
 		Base:  checkOutBranch,
-		State: "all",
-		// shortcut: only the newest 100 PRs for this head are checked, paginate if a branch ever has more.
-		ListOptions: github.ListOptions{PerPage: 100},
+		State: "open",
 	})
 	if err != nil {
 		return false, fmt.Errorf("could not list PRs for %s/%s: %w", g.owner, g.repo, err)
 	}
-	for _, pr := range prs {
-		// A merged PR only counts when it came from this repository, not a fork
-		// that happens to use the same branch name.
-		headRepo, baseRepo := pr.GetHead().GetRepo(), pr.GetBase().GetRepo()
-		sameRepo := headRepo.GetID() != 0 && headRepo.GetID() == baseRepo.GetID()
-		if pr.GetState() == "open" || (pr.MergedAt != nil && sameRepo) {
-			return true, nil
-		}
-	}
-	return false, nil
+	return len(prs) > 0, nil
 }
 
 // NewGithubPRService builds a GithubPRService from the resolved write-back config

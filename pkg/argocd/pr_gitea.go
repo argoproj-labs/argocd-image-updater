@@ -9,7 +9,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"path"
 	"slices"
 	"strconv"
 	"strings"
@@ -25,7 +24,7 @@ import (
 // on a short one.
 const giteaListPageSize = 50
 
-// giteaMaxListPages bounds each PR scan in exists. Past that point the
+// giteaMaxListPages bounds the open-PR scan in exists. Past that point the
 // check gives up and create relies on Gitea's 409 duplicate detection.
 const giteaMaxListPages = 20
 
@@ -58,12 +57,8 @@ func (e *giteaAPIError) Error() string {
 type giteaPullRequest struct {
 	Number  int64  `json:"number"`
 	HTMLURL string `json:"html_url"`
-	Merged  bool   `json:"merged"`
 	Head    struct {
-		Ref string `json:"ref"`
-		// Label keeps the branch name after Gitea rewrites Ref to refs/pull/N/head
-		// for a deleted head branch.
-		Label  string `json:"label"`
+		Ref    string `json:"ref"`
 		RepoID int64  `json:"repo_id"`
 	} `json:"head"`
 	Base struct {
@@ -130,25 +125,15 @@ func (g *GiteaPRService) addLabels(ctx context.Context, number int64, names []st
 	return err
 }
 
-// exists reports whether an open or merged PR from pushBranch into
-// checkOutBranch exists in the repository. The list endpoint does not filter on
-// the head branch in every Gitea and Forgejo version, so open PRs are matched on
-// the client side, and a merged one is looked up by its base and head branch.
+// exists reports whether an open PR from pushBranch into checkOutBranch exists
+// in the repository. The list endpoint does not filter on the head branch in
+// every Gitea and Forgejo version, so the match is done on the client side.
 func (g *GiteaPRService) exists(ctx context.Context, checkOutBranch, pushBranch string) (bool, error) {
-	if found, err := g.scan(ctx, "open", checkOutBranch, pushBranch); found || err != nil {
-		return found, err
-	}
-	return g.merged(ctx, checkOutBranch, pushBranch)
-}
-
-// scan lists the PRs in state ("open" or "closed") and reports whether one from
-// pushBranch into checkOutBranch matches. Closed PRs only match when merged.
-func (g *GiteaPRService) scan(ctx context.Context, state, checkOutBranch, pushBranch string) (bool, error) {
 	seen := 0
 	for page := 1; page <= giteaMaxListPages; page++ {
 		u := *g.apiURL.JoinPath("pulls")
 		query := url.Values{}
-		query.Set("state", state)
+		query.Set("state", "open")
 		// Narrows the listing on Gitea versions that support it; ignored otherwise.
 		query.Set("base_branch", checkOutBranch)
 		query.Set("page", strconv.Itoa(page))
@@ -165,7 +150,7 @@ func (g *GiteaPRService) scan(ctx context.Context, state, checkOutBranch, pushBr
 		}
 		for _, pr := range prs {
 			// Same-repository PRs only: a fork may carry a branch with the same name.
-			if (pr.Head.Ref == pushBranch || pr.Head.Label == pushBranch) && pr.Base.Ref == checkOutBranch && pr.Head.RepoID == pr.Base.RepoID && (state == "open" || pr.Merged) {
+			if pr.Head.Ref == pushBranch && pr.Base.Ref == checkOutBranch && pr.Head.RepoID == pr.Base.RepoID {
 				return true, nil
 			}
 		}
@@ -175,35 +160,7 @@ func (g *GiteaPRService) scan(ctx context.Context, state, checkOutBranch, pushBr
 			return false, nil
 		}
 	}
-	return false, fmt.Errorf("more than %d pages of %s PRs, giving up the scan", giteaMaxListPages, state)
-}
-
-// merged reports whether a PR from pushBranch into checkOutBranch has been
-// merged. The head branch name hashes the change, so a merged PR means the change
-// has already landed. A closed unmerged PR does not count, and neither does any
-// PR when the endpoint is missing (older Gitea versions answer 404).
-func (g *GiteaPRService) merged(ctx context.Context, checkOutBranch, pushBranch string) (bool, error) {
-	u := *g.apiURL
-	u.Path = path.Join(g.apiURL.Path, "pulls", checkOutBranch, pushBranch)
-	// The base branch is a single path segment, so a "/" in it must stay escaped.
-	u.RawPath = strings.TrimSuffix(g.apiURL.EscapedPath(), "/") + "/pulls/" + url.PathEscape(checkOutBranch) + "/" + url.PathEscape(pushBranch)
-
-	var pr struct {
-		Merged bool `json:"merged"`
-	}
-	if _, err := g.request(ctx, http.MethodGet, &u, nil, &pr); err != nil {
-		var apiErr *giteaAPIError
-		if errors.As(err, &apiErr) && apiErr.statusCode == http.StatusNotFound {
-			return false, nil
-		}
-		return false, fmt.Errorf("could not look up Gitea PR %q → %q: %w", pushBranch, checkOutBranch, err)
-	}
-	if pr.Merged {
-		return true, nil
-	}
-	// The lookup returns one PR for the branch pair in no set order, so a closed
-	// unmerged PR can hide a merged one.
-	return g.scan(ctx, "closed", checkOutBranch, pushBranch)
+	return false, fmt.Errorf("more than %d pages of open PRs, giving up the scan", giteaMaxListPages)
 }
 
 // request calls the Gitea REST API using the token from the Git credentials

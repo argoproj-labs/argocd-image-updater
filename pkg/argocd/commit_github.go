@@ -178,10 +178,8 @@ func commitChangesGithubAPI(ctx context.Context, wbc *WriteBackConfig, gitC git.
 		return fmt.Errorf("no file changes in working tree to commit via GitHub API for repo '%s'", wbc.GitRepo)
 	}
 
-	// The checked-out HEAD is the remote head of pushBranch (or of the base
-	// branch the push branch was just created from), so it is both the ref
-	// base and the expectedHeadOid guard — the API equivalent of a
-	// non-fast-forward push check.
+	// HEAD is the target branch for a new PR proposal, or the existing head
+	// for plain git write-back. The remote ref must match before the commit.
 	headOID, err := gitC.CommitSHA(ctx)
 	if err != nil {
 		return fmt.Errorf("could not determine HEAD commit SHA: %w", err)
@@ -204,7 +202,7 @@ func commitChangesGithubAPI(ctx context.Context, wbc *WriteBackConfig, gitC git.
 		return fmt.Errorf("could not parse owner/repo from %q: %w", wbc.GitRepo, err)
 	}
 
-	if branchCreated {
+	if branchCreated || wbc.PRProvider > 0 {
 		restClient, err := newGithubRESTClient(ctx, token, apiBaseURL, creds)
 		if err != nil {
 			return err
@@ -213,7 +211,11 @@ func commitChangesGithubAPI(ctx context.Context, wbc *WriteBackConfig, gitC git.
 			Ref:    new("refs/heads/" + pushBranch),
 			Object: &github.GitObject{SHA: new(headOID)},
 		}
-		if _, _, err := restClient.Git.CreateRef(ctx, owner, repoName, ref); err != nil {
+		if !branchCreated {
+			if _, _, err := restClient.Git.UpdateRef(ctx, owner, repoName, ref, true); err != nil {
+				return fmt.Errorf("could not reset proposal branch %q: %w", pushBranch, err)
+			}
+		} else if _, _, err := restClient.Git.CreateRef(ctx, owner, repoName, ref); err != nil {
 			if !isRefAlreadyExistsError(err) {
 				return fmt.Errorf("could not create remote branch %q: %w", pushBranch, err)
 			}
