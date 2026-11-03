@@ -26,6 +26,7 @@ import (
 	argoio "github.com/argoproj/argo-cd/gitops-engine/pkg/utils/io"
 	"github.com/argoproj/argo-cd/gitops-engine/pkg/utils/text"
 	"github.com/bradleyfalzon/ghinstallation/v2"
+	"github.com/kballard/go-shellquote"
 	"github.com/sirupsen/logrus"
 
 	"github.com/argoproj/argo-cd/v3/common"
@@ -480,13 +481,8 @@ func (c SSHCreds) Environ(ctx context.Context) (io.Closer, []string, error) {
 			sshCloser.Close()
 			return nil, nil, fmt.Errorf("failed to close proxy command script: %w", err)
 		}
-		if err := os.Chmod(proxyScriptPath, 0o700); err != nil {
-			_ = os.Remove(proxyScriptPath)
-			sshCloser.Close()
-			return nil, nil, fmt.Errorf("failed to chmod proxy command script: %w", err)
-		}
 
-		args = append(args, "-o", "ProxyCommand="+proxyScriptPath+" %h %p")
+		args = append(args, "-o", "ProxyCommand="+shellquote.Join("/bin/sh", proxyScriptPath)+" %h %p")
 
 		if parsedProxyURL.User != nil {
 			proxyEnv = append(proxyEnv, fmt.Sprintf("SOCKS5_USER=%s", parsedProxyURL.User.Username()))
@@ -495,7 +491,7 @@ func (c SSHCreds) Environ(ctx context.Context) (io.Closer, []string, error) {
 			}
 		}
 	}
-	env = append(env, []string{fmt.Sprintf("GIT_SSH_COMMAND=%s", strings.Join(args, " "))}...)
+	env = append(env, []string{"GIT_SSH_COMMAND=" + shellquote.Join(args...)}...)
 	env = append(env, proxyEnv...)
 
 	// We need a combined closer that removes both the SSH private key tempfile
