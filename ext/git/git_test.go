@@ -138,7 +138,7 @@ func TestCustomHTTPClient(t *testing.T) {
 	assert.NotEqual(t, "", string(keyData))
 
 	// Get HTTPSCreds with client cert creds specified, and insecure connection
-	creds := NewHTTPSCreds(ctx, "test", "test", string(clientCert.CertPEM), string(clientCert.KeyPEM), false, "http://proxy:5000", &NoopCredsStore{}, false)
+	creds := NewHTTPSCreds(ctx, "test", "test", string(certData), string(certData), false, "http://proxy:5000", &NoopCredsStore{}, false)
 	client := GetRepoHTTPClient(ctx, "https://localhost:9443/foo/bar", false, creds, "http://proxy:5000")
 	assert.NotNil(t, client)
 	assert.NotNil(t, client.Transport)

@@ -19,6 +19,7 @@ import (
 )
 
 func TestGetCredsFromSecret(t *testing.T) {
+	ctx := context.Background()
 	wbc := &WriteBackConfig{
 		GitRepo:  "https://github.com/example/repo.git",
 		GitCreds: git.NoopCredsStore{},
@@ -34,27 +35,27 @@ func TestGetCredsFromSecret(t *testing.T) {
 
 	// Test case 1: Valid secret reference
 	credentialsSecret := "foo/bar"
-	expectedCreds := git.NewHTTPSCreds("myuser", "mypass", "", "", true, "", wbc.GitCreds, false)
-	creds, err := getCredsFromSecret(wbc, credentialsSecret, &kubeClient)
+	expectedCreds := git.NewHTTPSCreds(ctx, "myuser", "mypass", "", "", true, "", wbc.GitCreds, false)
+	creds, err := getCredsFromSecret(ctx, wbc, credentialsSecret, &kubeClient)
 	assert.NoError(t, err)
 	assert.Equal(t, expectedCreds, creds)
 
 	// Test case 2: Invalid secret reference
 	credentialsSecret = "invalid"
-	_, err = getCredsFromSecret(wbc, credentialsSecret, &kubeClient)
+	_, err = getCredsFromSecret(ctx, wbc, credentialsSecret, &kubeClient)
 	assert.Error(t, err)
 	assert.EqualError(t, err, "secret ref must be in format 'namespace/name', but is 'invalid'")
 
 	// Test case 3: Missing field in secret
 	credentialsSecret = "foo1/bar1"
-	_, err = getCredsFromSecret(wbc, credentialsSecret, &kubeClient)
+	_, err = getCredsFromSecret(ctx, wbc, credentialsSecret, &kubeClient)
 	assert.Error(t, err)
 	assert.EqualError(t, err, "invalid secret foo1/bar1: does not contain field password")
 
 	// Test case 4: Unknown repository type
 	credentialsSecret = "foo/bar"
 	wbc.GitRepo = "unknown://example.com/repo.git"
-	_, err = getCredsFromSecret(wbc, credentialsSecret, &kubeClient)
+	_, err = getCredsFromSecret(ctx, wbc, credentialsSecret, &kubeClient)
 	assert.Error(t, err)
 	assert.EqualError(t, err, "unknown repository type")
 }
