@@ -273,6 +273,12 @@ func UpdateApplication(ctx context.Context, updateConf *UpdateConfiguration, sta
 			// that we correctly marshal out the parameter overrides to include all
 			// images, regardless of those were updated or not.
 			currentTag := updateableImage.ImageTag
+			// The running tag can carry a digest that the updater did not resolve
+			// (see sameTag). Strategies other than digest track tags only, so write
+			// back the tag from the registry instead of pinning the running digest.
+			if vc.Strategy != image.StrategyDigest && currentTag != nil && currentTag.IsDigest() && !latest.IsDigest() && currentTag.TagName == latest.TagName {
+				currentTag = latest
+			}
 			// After a sync, Argo CD can record the running image in
 			// Status.Summary.Images as a bare digest with no tag name. For digest
 			// strategy, re-writing the image from that tag-less value drops the
@@ -381,7 +387,20 @@ func needsUpdate(updateableImage *image.ContainerImage, applicationImage *image.
 		}
 	}
 	// If the latest tag does not match image's current tag or the kustomize image is different, it means we have an update candidate.
-	return !updateableImage.ImageTag.Equals(latest) || applicationImage.KustomizeImage != nil && applicationImage.DiffersFrom(updateableImage, false)
+	return !sameTag(updateableImage.ImageTag, latest, strategy) || applicationImage.KustomizeImage != nil && applicationImage.DiffersFrom(updateableImage, false)
+}
+
+// sameTag reports whether the running tag and the latest tag refer to the same version.
+//
+// Strategies other than digest pick tags by name and never resolve a digest, so latest
+// carries none. The running image can still carry one, for example when an admission
+// controller pinned it to tag@digest. Comparing by digest then never matches and the
+// image is reported as updated on every run, so compare tag names in that case.
+func sameTag(current, latest *tag.ImageTag, strategy image.UpdateStrategy) bool {
+	if strategy != image.StrategyDigest && current != nil && !latest.IsDigest() && current.IsDigest() && current.TagName != "" {
+		return current.TagName == latest.TagName
+	}
+	return current.Equals(latest)
 }
 
 // getAppImage retrieves the current image string from an Argo CD application.
