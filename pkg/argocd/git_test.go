@@ -4,6 +4,9 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
 	"testing"
 	"text/template"
 	"time"
@@ -846,6 +849,73 @@ func Test_hasDocumentStartAt(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			assert.Equal(t, tt.want, hasDocumentStartAt([]byte(tt.data), 0))
+		})
+	}
+}
+
+func Test_commitChangesGit_ExistingProposal(t *testing.T) {
+	for _, state := range []string{"merged", "reverted", "create-failed"} {
+		t.Run(state, func(t *testing.T) {
+			ctx := context.Background()
+			remote := t.TempDir()
+			run := func(args ...string) string {
+				t.Helper()
+				cmd := exec.Command("git", args...)
+				cmd.Dir = remote
+				out, err := cmd.CombinedOutput()
+				require.NoError(t, err, "%s", out)
+				return strings.TrimSpace(string(out))
+			}
+			run("init", "-b", "main")
+			run("config", "user.name", "Test")
+			run("config", "user.email", "test@example.com")
+			write := func(value string) {
+				require.NoError(t, os.WriteFile(filepath.Join(remote, "image.txt"), []byte(value), 0o644))
+				run("add", ".")
+				run("commit", "-m", value)
+			}
+			write("v1")
+			wbc := &WriteBackConfig{
+				GitRepo: remote, GitBranch: "main", PRProvider: PRProviderGitHub,
+				GitCommitUser: "Test", GitCommitEmail: "test@example.com",
+				GitCommitMessage: "update image",
+				GetCreds:         func(_ *v1alpha1.Application) (git.Creds, error) { return git.NopCreds{}, nil },
+			}
+			app := makeTestAppImages(wbc)
+			head := TemplateBranchName(ctx, PRBranchTemplate, app.Application.Namespace, app.Application.Name, wbc.WriteBackTargetKey(), nil)
+			run("checkout", "-b", head)
+			write("v2")
+			oldHead := run("rev-parse", "HEAD")
+			run("checkout", "main")
+			if state != "create-failed" {
+				run("merge", "--ff-only", head)
+				if state == "reverted" {
+					run("revert", "--no-edit", "HEAD")
+				}
+			}
+			require.NoError(t, os.WriteFile(filepath.Join(remote, "unrelated.txt"), []byte("preserved"), 0o644))
+			run("add", ".")
+			run("commit", "-m", "advance target")
+			base := run("rev-parse", "main")
+			nothingPushed, err := commitChangesGit(ctx, app, nil, func(_ context.Context, _ *ApplicationImages, client git.Client) (error, bool) {
+				data, err := os.ReadFile(filepath.Join(client.Root(), "image.txt"))
+				if err != nil {
+					return err, false
+				}
+				if string(data) == "v2" {
+					return nil, true
+				}
+				return os.WriteFile(filepath.Join(client.Root(), "image.txt"), []byte("v2"), 0o644), false
+			})
+			require.NoError(t, err)
+			assert.Equal(t, state == "merged", nothingPushed)
+			if state == "merged" {
+				assert.Equal(t, oldHead, run("rev-parse", head))
+			} else {
+				assert.Equal(t, base, run("rev-parse", head+"^"))
+				assert.Equal(t, "v2", run("show", head+":image.txt"))
+				assert.Equal(t, "preserved", run("show", head+":unrelated.txt"))
+			}
 		})
 	}
 }
