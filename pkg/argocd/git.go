@@ -693,10 +693,8 @@ func parseImageOverride(str v1alpha1.KustomizeImage) types.Image {
 		tagName = img.ImageTag.TagName
 		tagDigest = img.ImageTag.TagDigest
 	}
-	if img.RegistryURL != "" {
-		// NewFromIdentifier strips off the registry
-		img.ImageName = img.RegistryURL + "/" + img.ImageName
-	}
+	// NewFromIdentifier strips off the registry and an explicit library/ namespace
+	img.ImageName = img.GetFullNameWithoutTag()
 	if img.ImageAlias == "" {
 		img.ImageAlias = img.ImageName
 		img.ImageName = "" // inside baseball (see return): name isn't changing, just tag, so don't write newName
