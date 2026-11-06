@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
-	"text/template"
+	"time"
 
 	"github.com/go-logr/logr"
 	"github.com/stretchr/testify/assert"
@@ -16,11 +16,14 @@ import (
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 
 	"github.com/argoproj-labs/argocd-image-updater/internal/controller"
+	"github.com/argoproj-labs/argocd-image-updater/pkg/argocd"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
 	aiukube "github.com/argoproj-labs/argocd-image-updater/pkg/kube"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/metrics"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/webhook"
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/image"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/registry"
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/tag"
 )
 
 // createDummyKubeconfig creates a barebones kubeconfig file.
@@ -218,7 +221,7 @@ func setupCommonStub(ctx context.Context, cfg *controller.ImageUpdaterConfig, se
 		commitMessageTpl = common.DefaultGitCommitMessage
 	}
 
-	if tpl, err := template.New("commitMessage").Parse(commitMessageTpl); err != nil {
+	if tpl, err := parseCommitMessageTemplate(commitMessageTpl); err != nil {
 		setupLogger.Error(err, "could not parse commit message template")
 		return err
 	} else {
@@ -263,7 +266,7 @@ func TestSetupCommon(t *testing.T) {
 	err := createDummyKubeconfig(kubeconfigFile)
 	require.NoError(t, err)
 
-	defaultTpl, err := template.New("commitMessage").Parse(common.DefaultGitCommitMessage)
+	defaultTpl, err := parseCommitMessageTemplate(common.DefaultGitCommitMessage)
 	require.NoError(t, err)
 
 	t.Run("should use default commit message when no path is provided", func(t *testing.T) {
@@ -297,7 +300,7 @@ func TestSetupCommon(t *testing.T) {
 		require.NotNil(t, cfg.GitCommitMessage)
 
 		// Compare with parsed template
-		expectedTpl, err := template.New("commitMessage").Parse(customMessage)
+		expectedTpl, err := parseCommitMessageTemplate(customMessage)
 		require.NoError(t, err)
 		assert.Equal(t, expectedTpl.Root.String(), cfg.GitCommitMessage.Root.String())
 	})
@@ -313,6 +316,29 @@ func TestSetupCommon(t *testing.T) {
 		// Directly call the stub (no askpass involved)
 		err = setupCommonStub(context.Background(), cfg, logr.Discard(), commitMessageFile, kubeconfigFile)
 		assert.Error(t, err)
+	})
+
+	t.Run("should parse commit message template with base helper", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		commitMessageFile := filepath.Join(tmpDir, "commit-message")
+		customMessage := `chore({{ .AppName }}): update {{ range $i, $c := .AppChanges }}{{ if $i }}, {{ end }}{{ base $c.Image }}{{ end }}`
+		err := os.WriteFile(commitMessageFile, []byte(customMessage), 0644)
+		require.NoError(t, err)
+
+		cfg := &controller.ImageUpdaterConfig{}
+		err = callSetupCommonWithMocks(t, cfg, logr.Discard(), commitMessageFile, kubeconfigFile)
+		require.NoError(t, err)
+		require.NotNil(t, cfg.GitCommitMessage)
+
+		cl := []argocd.ChangeEntry{
+			{
+				Image:  image.NewFromIdentifier("registry.example.com/example-team/docker-repo/catalog"),
+				OldTag: tag.NewImageTag("1.2.4", time.Now(), ""),
+				NewTag: tag.NewImageTag("1.2.5", time.Now(), ""),
+			},
+		}
+		rendered := argocd.TemplateCommitMessage(context.Background(), cfg.GitCommitMessage, "foobar", cl)
+		assert.Equal(t, "chore(foobar): update catalog", rendered)
 	})
 
 	t.Run("should continue without registries config", func(t *testing.T) {

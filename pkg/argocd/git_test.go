@@ -105,9 +105,55 @@ updates image foo/bar tag '1.0' to '1.1'
 		assert.NotEmpty(t, r)
 		assert.Equal(t, exp, r)
 	})
+
+	t.Run("Template commit message with base helper", func(t *testing.T) {
+		tplStr := `chore({{ .AppName }}): update {{ range $i, $c := .AppChanges }}{{ if $i }}, {{ end }}{{ base $c.Image }} {{ $c.OldTag }} -> {{ $c.NewTag }}{{ end }}
+
+{{ range .AppChanges -}}
+updates image {{ .Image }}
+{{ end -}}`
+		exp := `chore(foobar): update catalog 1.2.4 -> 1.2.5, catalog-frontend 1.2.4 -> 1.2.5
+
+updates image example-team/docker-repo/catalog
+updates image example-team/docker-repo/catalog-frontend
+`
+		tpl := template.Must(template.New("base").Funcs(TemplateFuncs).Parse(tplStr))
+		cl := []ChangeEntry{
+			{
+				Image:  image.NewFromIdentifier("registry.example.com/example-team/docker-repo/catalog"),
+				OldTag: tag.NewImageTag("1.2.4", time.Now(), ""),
+				NewTag: tag.NewImageTag("1.2.5", time.Now(), ""),
+			},
+			{
+				Image:  image.NewFromIdentifier("registry.example.com/example-team/docker-repo/catalog-frontend"),
+				OldTag: tag.NewImageTag("1.2.4", time.Now(), ""),
+				NewTag: tag.NewImageTag("1.2.5", time.Now(), ""),
+			},
+		}
+		r := TemplateCommitMessage(context.Background(), tpl, "foobar", cl)
+		assert.Equal(t, exp, r)
+	})
 }
 
 func Test_TemplateBranchName(t *testing.T) {
+	t.Run("Template branch name with base helper", func(t *testing.T) {
+		exp := `image-updater-bar-1.1-baz-2.1`
+		tpl := "image-updater{{range .Images}}-{{base .Name}}-{{.NewTag}}{{end}}"
+		cl := []ChangeEntry{
+			{
+				Image:  image.NewFromIdentifier("foo/bar"),
+				OldTag: tag.NewImageTag("1.0", time.Now(), ""),
+				NewTag: tag.NewImageTag("1.1", time.Now(), ""),
+			},
+			{
+				Image:  image.NewFromIdentifier("registry.example.com/org/baz"),
+				OldTag: tag.NewImageTag("2.0", time.Now(), ""),
+				NewTag: tag.NewImageTag("2.1", time.Now(), ""),
+			},
+		}
+		r := TemplateBranchName(context.Background(), tpl, "", "", "", cl)
+		assert.Equal(t, exp, r)
+	})
 	t.Run("Template branch name with image name", func(t *testing.T) {
 		exp := `image-updater-foo/bar-1.1-bar/baz-2.1`
 		tpl := "image-updater{{range .Images}}-{{.Name}}-{{.NewTag}}{{end}}"
