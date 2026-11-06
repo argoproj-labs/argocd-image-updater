@@ -368,8 +368,9 @@ The following variables are provided for this template:
 * `.AppNamespace` is the namespace of the application being updated
 * `.AppName` is the name of the application being updated
 
-The `base` helper returns the last element of a slash-separated path, so
-`{{base .Name}}` renders `bar` for the image `foo/bar`.
+The `base` helper returns the last element of a slash-separated path. Use it
+inside `range .Images`, e.g. `{{range .Images}}{{base .Name}}{{end}}` renders
+`bar` for the image `foo/bar`. `.Name` is only available inside that loop.
 
 Please note that if the output of the template exceeds 255 characters (git branch name limit) it will be truncated.
 
