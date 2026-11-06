@@ -115,6 +115,12 @@ Username to use for Git commits (default "argocd-image-updater")
 
 Can also be set using the *GIT_COMMIT_USER* environment variable.
 
+**--git-write-back-precheck**
+
+Before cloning the repository for a git write-back, compare the remote head of the write branch with the commit and target file content remembered from the last write-back, and skip the write-back if the target file would not change. The remote refs are listed once per update cycle and repository. Only applies to the direct push write-back to a parameter override or Helm values target; Kustomize targets and pull request mode are not affected. See [Skipping no-op git write-backs](../../basics/update-methods.md#method-git-precheck). (default false)
+
+Can also be set using the *GIT_WRITE_BACK_PRECHECK* environment variable.
+
 **--harbor-webhook-secret *secret***
 
 Secret for validating Harbor webhooks

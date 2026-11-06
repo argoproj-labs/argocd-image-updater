@@ -76,6 +76,10 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 				return fmt.Errorf("invalid value %q for --git-commit-method: must be 'git' or 'api'", cfg.GitCommitMethod)
 			}
 
+			if cfg.GitWriteBackPrecheck {
+				cfg.GitWriteBackCache = argocd.NewGitWriteBackCache()
+			}
+
 			// Configure the global logger for vendored argo-cd utilities
 			logLvl, err := logrus.ParseLevel(cfg.LogLevel)
 			if err != nil {
@@ -320,6 +324,7 @@ This enables a CRD-driven approach to automated image updates with Argo CD.
 	controllerCmd.Flags().StringVar(&cfg.WatchNamespaces, "watch-namespaces", env.GetStringVal("IMAGE_UPDATER_WATCH_NAMESPACES", ""), `Namespaces to watch: "" = controller's own namespace, "*" = all namespaces (cluster-scoped), "ns1,ns2" = specific namespaces.`)
 	controllerCmd.Flags().BoolVar(&warmUpCache, "warmup-cache", true, "whether to perform a cache warm-up on startup")
 	controllerCmd.Flags().BoolVar(&cfg.DisableKubeEvents, "disable-kube-events", env.GetBoolVal("IMAGE_UPDATER_KUBE_EVENTS", false), "Disable kubernetes events")
+	controllerCmd.Flags().BoolVar(&cfg.GitWriteBackPrecheck, "git-write-back-precheck", env.GetBoolVal("GIT_WRITE_BACK_PRECHECK", false), "Before cloning for a git write-back, compare the remote head of the write branch (listed once per update cycle) with the last write-back, and skip the write-back if the target file would not change")
 
 	// Git flags
 	controllerCmd.Flags().StringVar(&cfg.GitCommitUser, "git-commit-user", env.GetStringVal("GIT_COMMIT_USER", "argocd-image-updater"), "Username to use for Git commits")

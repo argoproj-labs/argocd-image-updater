@@ -36,6 +36,7 @@ import (
 
 	api "github.com/argoproj-labs/argocd-image-updater/api/v1alpha1"
 	"github.com/argoproj-labs/argocd-image-updater/ext/git"
+	"github.com/argoproj-labs/argocd-image-updater/pkg/argocd"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/kube"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/metrics"
@@ -67,6 +68,10 @@ type ImageUpdaterConfig struct {
 	// EnableCRMetrics enables per-ImageUpdater-CR Prometheus metrics. Set false in webhook-only
 	// mode (no controller/reconcile) so metrics are not written and never orphaned on CR delete.
 	EnableCRMetrics bool
+	// GitWriteBackPrecheck enables the git write-back pre-check, with
+	// GitWriteBackCache shared across update cycles.
+	GitWriteBackPrecheck bool
+	GitWriteBackCache    *argocd.GitWriteBackCache
 }
 
 // ImageUpdaterReconciler reconciles a ImageUpdater object

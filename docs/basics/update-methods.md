@@ -885,3 +885,36 @@ Notes:
 * `git-commit-user`, `git-commit-email` and the `git-commit-signing-*` settings are ignored in API mode, since GitHub determines the commit author and performs the signing.
 * Works with GitHub Enterprise; the API endpoints are derived from the configured GitHub App enterprise base URL.
 * Commits are created via the GraphQL API and count against the GitHub App installation's [GraphQL rate limit](https://docs.github.com/en/graphql/overview/rate-limits-and-node-limits-for-the-graphql-api). In environments with many applications and frequent image updates, this limit can be exhausted; affected write-backs fail and are retried on the next reconciliation, and keep failing until the rate limit window resets. If you hit this, increase the update check interval (`--interval`) or spread applications across multiple GitHub App installations.
+
+### <a name="method-git-precheck"></a>Skipping no-op git write-backs
+
+Image Updater decides whether an application needs a write-back by comparing
+the registry with the images rendered from the application's target revision.
+When the write-back goes to a separate write branch, or an image uses
+`force-update`, many write-backs end up writing exactly what the write branch
+already contains. Each of them still clones the repository before finding that
+there is nothing to commit, and write-backs to the same repository are
+serialized, so in a large repository these no-op clones can dominate the
+update cycle.
+
+With `--git-write-back-precheck` (or `GIT_WRITE_BACK_PRECHECK=true`), Image
+Updater remembers, for each target file, the commit it last found at the head
+of the write branch and the content of the target file in that commit. Before
+cloning, it lists the remote refs (once per update cycle and repository). If
+the head of the write branch is still that commit, and writing the new
+parameters to the remembered content would not change it, the write-back is
+skipped without cloning. In every other case the write-back runs as before.
+
+Notes:
+
+* The pre-check only applies to the direct push write-back to a parameter
+  override (`.argocd-source-<app>.yaml`) or Helm values target. Kustomize
+  targets and pull request mode are not affected.
+* The remembered state is kept in memory, so the first update cycle after a
+  restart clones as before.
+* The remote refs are listed at most once per update cycle. If another writer
+  changes the same target file on the write branch after the listing, the
+  write-back of that file is delayed until the next cycle.
+* Credentials are only used to list the remote refs while a write-back is
+  skipped, so a credential problem for a single application shows up when it
+  next has something to write.

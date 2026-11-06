@@ -111,6 +111,8 @@ type WriteBackConfig struct {
 	PRProvider             PRProvider
 	PRLabels               []string
 	PullRequest            *PullRequest
+	// precheck is set when the git write-back pre-check is enabled.
+	precheck *gitWriteBackPrecheck
 }
 
 // WriteBackTargetKey returns a short hash that uniquely identifies the
@@ -181,6 +183,10 @@ type SyncIterationState struct {
 	lock            sync.Mutex
 	repositoryLocks map[string]*sync.Mutex
 	prCreated       map[string]bool
+	// gitWriteBackCache enables the git write-back pre-check when not nil.
+	gitWriteBackCache *GitWriteBackCache
+	// remoteRefs holds the remote refs listed in this iteration.
+	remoteRefs *remoteRefs
 }
 
 // NewSyncIterationState returns a new instance of SyncIterationState
@@ -188,7 +194,17 @@ func NewSyncIterationState() *SyncIterationState {
 	return &SyncIterationState{
 		repositoryLocks: make(map[string]*sync.Mutex),
 		prCreated:       make(map[string]bool),
+		remoteRefs:      newRemoteRefs(),
 	}
+}
+
+// WithGitWriteBackCache enables the git write-back pre-check with a cache that
+// outlives the iteration. Before cloning, a git write-back compares the remote
+// head of its branch, listed once per iteration, with the cache, and skips the
+// clone when the target file would not change.
+func (state *SyncIterationState) WithGitWriteBackCache(cache *GitWriteBackCache) *SyncIterationState {
+	state.gitWriteBackCache = cache
+	return state
 }
 
 // MarkPRCreated records that a PR has been created for the given write-back
