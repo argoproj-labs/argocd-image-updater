@@ -326,8 +326,11 @@ func TestSetupCommon(t *testing.T) {
 		require.NoError(t, err)
 
 		cfg := &controller.ImageUpdaterConfig{}
-		err = callSetupCommonWithMocks(t, cfg, logr.Discard(), commitMessageFile, kubeconfigFile)
-		require.NoError(t, err)
+		// Use the real SetupCommon so the test fails if it stops registering
+		// the base helper. A missing kubeconfig makes it return right after
+		// the commit message template has been parsed and stored.
+		err = SetupCommon(context.Background(), cfg, logr.Discard(), commitMessageFile, filepath.Join(tmpDir, "missing-kubeconfig"))
+		require.Error(t, err)
 		require.NotNil(t, cfg.GitCommitMessage)
 
 		cl := []argocd.ChangeEntry{
