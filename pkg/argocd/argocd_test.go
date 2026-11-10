@@ -13,7 +13,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlFake "sigs.k8s.io/controller-runtime/pkg/client/fake"
 
@@ -22,7 +21,6 @@ import (
 	"github.com/argoproj-labs/argocd-image-updater/pkg/kube"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/image"
 	registryKube "github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/kube"
-	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
 	"github.com/argoproj-labs/argocd-image-updater/test/fake"
 )
 
@@ -2166,7 +2164,7 @@ func TestKubernetesClientUpdateSpec(t *testing.T) {
 		}
 
 		// Call the UpdateSpec method
-		updatedSpec, err := fakeClient.UpdateSpec(context.Background(), updateRequest)
+		updatedSpec, err := fakeClient.UpdateSpec(context.Background(), updateRequest, nil)
 		require.NoError(t, err)
 		// Assert that the returned spec has the new value
 		assert.Equal(t, "https://github.com/updated/repo", updatedSpec.Source.RepoURL)
@@ -2190,7 +2188,7 @@ func TestKubernetesClientUpdateSpec(t *testing.T) {
 			Spec:         &v1alpha1.ApplicationSpec{},
 		}
 
-		_, err = fakeClient.UpdateSpec(context.Background(), updateRequest)
+		_, err = fakeClient.UpdateSpec(context.Background(), updateRequest, nil)
 		require.Error(t, err)
 		assert.True(t, errors.IsNotFound(err), "error should be a 'Not Found' error because Get fails")
 	})
@@ -2231,7 +2229,7 @@ func TestKubernetesClientUpdateSpec(t *testing.T) {
 		}
 
 		// Call the UpdateSpec method
-		updatedSpec, err := conflictClient.UpdateSpec(context.Background(), updateRequest)
+		updatedSpec, err := conflictClient.UpdateSpec(context.Background(), updateRequest, nil)
 		require.NoError(t, err)
 		assert.Equal(t, "https://github.com/argoproj/argocd-example-apps", updatedSpec.Source.RepoURL)
 		assert.Equal(t, 2, conflictClient.attempts, "Should have attempted 2 times (1 conflict + 1 success)")
@@ -2271,7 +2269,7 @@ func TestKubernetesClientUpdateSpec(t *testing.T) {
 			},
 		}
 
-		_, err = conflictClient.UpdateSpec(context.Background(), updateRequest)
+		_, err = conflictClient.UpdateSpec(context.Background(), updateRequest, nil)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to update application spec for test-app after retries")
 		assert.True(t, conflictClient.attempts > 1, "Should have attempted multiple times before giving up")
@@ -2310,11 +2308,313 @@ func TestKubernetesClientUpdateSpec(t *testing.T) {
 			},
 		}
 
-		_, err = errorClient.UpdateSpec(context.Background(), updateRequest)
+		_, err = errorClient.UpdateSpec(context.Background(), updateRequest, nil)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to update application spec for test-app after retries")
 		assert.Contains(t, err.Error(), "non-conflict error")
 	})
+}
+
+// helmApp returns a Helm application with an image tag parameter, used by the
+// UpdateSpec tests that pass a baseline spec.
+func helmApp(tag string) *v1alpha1.Application {
+	limit := int64(10)
+	return &v1alpha1.Application{
+		ObjectMeta: v1.ObjectMeta{Name: "test-app", Namespace: "testns"},
+		Spec: v1alpha1.ApplicationSpec{
+			Project:              "default",
+			RevisionHistoryLimit: &limit,
+			Destination:          v1alpha1.ApplicationDestination{Server: "https://kubernetes.default.svc", Namespace: "old-ns"},
+			Source: &v1alpha1.ApplicationSource{
+				RepoURL: "https://github.com/example/repo",
+				Helm: &v1alpha1.ApplicationSourceHelm{
+					Parameters: []v1alpha1.HelmParameter{
+						{Name: "image.name", Value: "nginx"},
+						{Name: "image.tag", Value: tag},
+					},
+				},
+			},
+		},
+	}
+}
+
+func updateSpecRequest(spec *v1alpha1.ApplicationSpec) *application.ApplicationUpdateSpecRequest {
+	appName := "test-app"
+	appNamespace := "testns"
+	return &application.ApplicationUpdateSpecRequest{Name: &appName, AppNamespace: &appNamespace, Spec: spec}
+}
+
+// concurrentWriteClient changes the live Application through the underlying
+// client right before the first Update, simulating another client writing in
+// between, and reports a conflict for that first Update.
+type concurrentWriteClient struct {
+	ArgoCDK8sClient
+	mutate  func(app *v1alpha1.Application)
+	updates int
+}
+
+func (c *concurrentWriteClient) Update(ctx context.Context, obj client.Object, opts ...client.UpdateOption) error {
+	c.updates++
+	if c.updates == 1 {
+		live := &v1alpha1.Application{}
+		if err := c.ArgoCDK8sClient.Get(ctx, client.ObjectKeyFromObject(obj), live); err != nil {
+			return err
+		}
+		c.mutate(live)
+		if err := c.ArgoCDK8sClient.Update(ctx, live); err != nil {
+			return err
+		}
+		return errors.NewConflict(v1alpha1.Resource("applications"), obj.GetName(), fmt.Errorf("conflict"))
+	}
+	return c.ArgoCDK8sClient.Update(ctx, obj, opts...)
+}
+
+func TestKubernetesClientUpdateSpecWithBaseline(t *testing.T) {
+	t.Run("Concurrent changes to other fields are preserved", func(t *testing.T) {
+		// The spec as read at the start of the update cycle
+		original := helmApp("1.0.0")
+
+		// Meanwhile, another client changes unrelated fields
+		live := helmApp("1.0.0")
+		live.Spec.Destination.Namespace = "new-ns"
+		newLimit := int64(42)
+		live.Spec.RevisionHistoryLimit = &newLimit
+		live.Spec.SyncPolicy = &v1alpha1.SyncPolicy{SyncOptions: v1alpha1.SyncOptions{"CreateNamespace=true"}}
+
+		fakeClient, err := newTestK8sClient(live)
+		require.NoError(t, err)
+
+		// Image Updater sets the new tag on its copy of the original
+		updated := original.Spec.DeepCopy()
+		updated.Source.Helm.Parameters[1].Value = "1.0.1"
+
+		_, err = fakeClient.UpdateSpec(context.Background(), updateSpecRequest(updated), &original.Spec)
+		require.NoError(t, err)
+
+		got, err := fakeClient.GetApplication(context.Background(), "testns", "test-app")
+		require.NoError(t, err)
+		assert.Equal(t, []v1alpha1.HelmParameter{{Name: "image.name", Value: "nginx"}, {Name: "image.tag", Value: "1.0.1"}}, got.Spec.Source.Helm.Parameters)
+		assert.Equal(t, "new-ns", got.Spec.Destination.Namespace)
+		assert.Equal(t, "https://kubernetes.default.svc", got.Spec.Destination.Server)
+		require.NotNil(t, got.Spec.RevisionHistoryLimit)
+		assert.Equal(t, int64(42), *got.Spec.RevisionHistoryLimit)
+		require.NotNil(t, got.Spec.SyncPolicy)
+		assert.Equal(t, v1alpha1.SyncOptions{"CreateNamespace=true"}, got.Spec.SyncPolicy.SyncOptions)
+		assert.Equal(t, "default", got.Spec.Project)
+		assert.Equal(t, "https://github.com/example/repo", got.Spec.Source.RepoURL)
+	})
+
+	t.Run("Concurrent change to the same field is not overwritten", func(t *testing.T) {
+		original := helmApp("1.0.0")
+		// Another client changed the Helm parameters in the meantime
+		live := helmApp("1.0.0")
+		live.Spec.Source.Helm.Parameters = append(live.Spec.Source.Helm.Parameters, v1alpha1.HelmParameter{Name: "replicas", Value: "3"})
+
+		fakeClient, err := newTestK8sClient(live)
+		require.NoError(t, err)
+		errorClient := &errorSimulatingClient{ArgoCDK8sClient: *fakeClient, updateError: fmt.Errorf("update must not be called")}
+
+		updated := original.Spec.DeepCopy()
+		updated.Source.Helm.Parameters[1].Value = "1.0.1"
+
+		_, err = errorClient.UpdateSpec(context.Background(), updateSpecRequest(updated), &original.Spec)
+		require.ErrorIs(t, err, ErrConcurrentSpecChange)
+		assert.Contains(t, err.Error(), "spec.source.helm.parameters")
+
+		got, err := fakeClient.GetApplication(context.Background(), "testns", "test-app")
+		require.NoError(t, err)
+		assert.Equal(t, live.Spec.Source.Helm.Parameters, got.Spec.Source.Helm.Parameters)
+	})
+
+	t.Run("Identical concurrent change to the same field is not a conflict", func(t *testing.T) {
+		original := helmApp("1.0.0")
+		live := helmApp("1.0.1")
+		live.Spec.Destination.Namespace = "new-ns"
+
+		fakeClient, err := newTestK8sClient(live)
+		require.NoError(t, err)
+
+		updated := original.Spec.DeepCopy()
+		updated.Source.Helm.Parameters[1].Value = "1.0.1"
+
+		_, err = fakeClient.UpdateSpec(context.Background(), updateSpecRequest(updated), &original.Spec)
+		require.NoError(t, err)
+
+		got, err := fakeClient.GetApplication(context.Background(), "testns", "test-app")
+		require.NoError(t, err)
+		assert.Equal(t, "1.0.1", got.Spec.Source.Helm.Parameters[1].Value)
+		assert.Equal(t, "new-ns", got.Spec.Destination.Namespace)
+	})
+
+	t.Run("Changes are rebased onto the re-fetched application after a conflict", func(t *testing.T) {
+		original := helmApp("1.0.0")
+		fakeClient, err := newTestK8sClient(helmApp("1.0.0"))
+		require.NoError(t, err)
+
+		c := &concurrentWriteClient{
+			ArgoCDK8sClient: *fakeClient,
+			mutate: func(app *v1alpha1.Application) {
+				app.Spec.Destination.Namespace = "new-ns"
+			},
+		}
+
+		updated := original.Spec.DeepCopy()
+		updated.Source.Helm.Parameters[1].Value = "1.0.1"
+
+		_, err = updateApplicationSpec(context.Background(), c, updateSpecRequest(updated), &original.Spec)
+		require.NoError(t, err)
+		assert.Equal(t, 2, c.updates)
+
+		got, err := fakeClient.GetApplication(context.Background(), "testns", "test-app")
+		require.NoError(t, err)
+		assert.Equal(t, "1.0.1", got.Spec.Source.Helm.Parameters[1].Value)
+		assert.Equal(t, "new-ns", got.Spec.Destination.Namespace)
+	})
+
+	t.Run("Conflicting change made between retries is detected", func(t *testing.T) {
+		original := helmApp("1.0.0")
+		fakeClient, err := newTestK8sClient(helmApp("1.0.0"))
+		require.NoError(t, err)
+
+		c := &concurrentWriteClient{
+			ArgoCDK8sClient: *fakeClient,
+			mutate: func(app *v1alpha1.Application) {
+				app.Spec.Source.Helm.Parameters[1].Value = "2.0.0"
+			},
+		}
+
+		updated := original.Spec.DeepCopy()
+		updated.Source.Helm.Parameters[1].Value = "1.0.1"
+
+		_, err = updateApplicationSpec(context.Background(), c, updateSpecRequest(updated), &original.Spec)
+		require.ErrorIs(t, err, ErrConcurrentSpecChange)
+		assert.Equal(t, 1, c.updates)
+
+		got, err := fakeClient.GetApplication(context.Background(), "testns", "test-app")
+		require.NoError(t, err)
+		assert.Equal(t, "2.0.0", got.Spec.Source.Helm.Parameters[1].Value)
+	})
+
+	t.Run("No changes does not write the application", func(t *testing.T) {
+		original := helmApp("1.0.0")
+		fakeClient, err := newTestK8sClient(helmApp("1.0.0"))
+		require.NoError(t, err)
+		errorClient := &errorSimulatingClient{ArgoCDK8sClient: *fakeClient, updateError: fmt.Errorf("update must not be called")}
+
+		_, err = errorClient.UpdateSpec(context.Background(), updateSpecRequest(original.Spec.DeepCopy()), &original.Spec)
+		require.NoError(t, err)
+	})
+
+	t.Run("Kustomize images and newly created fields are applied", func(t *testing.T) {
+		original := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{Name: "test-app", Namespace: "testns"},
+			Spec: v1alpha1.ApplicationSpec{
+				Destination: v1alpha1.ApplicationDestination{Namespace: "old-ns"},
+				Source:      &v1alpha1.ApplicationSource{RepoURL: "https://github.com/example/repo"},
+			},
+		}
+		live := original.DeepCopy()
+		live.Spec.Destination.Namespace = "new-ns"
+		fakeClient, err := newTestK8sClient(live)
+		require.NoError(t, err)
+
+		updated := original.Spec.DeepCopy()
+		updated.Source.Kustomize = &v1alpha1.ApplicationSourceKustomize{Images: v1alpha1.KustomizeImages{"nginx:1.0.1"}}
+
+		_, err = fakeClient.UpdateSpec(context.Background(), updateSpecRequest(updated), &original.Spec)
+		require.NoError(t, err)
+
+		got, err := fakeClient.GetApplication(context.Background(), "testns", "test-app")
+		require.NoError(t, err)
+		require.NotNil(t, got.Spec.Source.Kustomize)
+		assert.Equal(t, v1alpha1.KustomizeImages{"nginx:1.0.1"}, got.Spec.Source.Kustomize.Images)
+		assert.Equal(t, "new-ns", got.Spec.Destination.Namespace)
+	})
+
+	t.Run("Multi-source: concurrent change to another source conflicts", func(t *testing.T) {
+		// A merge patch replaces arrays as a whole, so a change anywhere in
+		// spec.sources must not be overwritten with the stale array.
+		original := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{Name: "test-app", Namespace: "testns"},
+			Spec: v1alpha1.ApplicationSpec{
+				Sources: v1alpha1.ApplicationSources{
+					{RepoURL: "https://github.com/example/chart", Helm: &v1alpha1.ApplicationSourceHelm{Parameters: []v1alpha1.HelmParameter{{Name: "image.tag", Value: "1.0.0"}}}},
+					{RepoURL: "https://github.com/example/values", TargetRevision: "v1", Ref: "values"},
+				},
+			},
+		}
+		live := original.DeepCopy()
+		live.Spec.Sources[1].TargetRevision = "v2"
+		fakeClient, err := newTestK8sClient(live)
+		require.NoError(t, err)
+
+		updated := original.Spec.DeepCopy()
+		updated.Sources[0].Helm.Parameters[0].Value = "1.0.1"
+
+		_, err = fakeClient.UpdateSpec(context.Background(), updateSpecRequest(updated), &original.Spec)
+		require.ErrorIs(t, err, ErrConcurrentSpecChange)
+
+		got, err := fakeClient.GetApplication(context.Background(), "testns", "test-app")
+		require.NoError(t, err)
+		assert.Equal(t, "v2", got.Spec.Sources[1].TargetRevision)
+		assert.Equal(t, "1.0.0", got.Spec.Sources[0].Helm.Parameters[0].Value)
+	})
+
+	t.Run("Multi-source: update without concurrent changes", func(t *testing.T) {
+		original := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{Name: "test-app", Namespace: "testns"},
+			Spec: v1alpha1.ApplicationSpec{
+				Sources: v1alpha1.ApplicationSources{
+					{RepoURL: "https://github.com/example/chart", Helm: &v1alpha1.ApplicationSourceHelm{Parameters: []v1alpha1.HelmParameter{{Name: "image.tag", Value: "1.0.0"}}}},
+					{RepoURL: "https://github.com/example/values", TargetRevision: "v1", Ref: "values"},
+				},
+			},
+		}
+		fakeClient, err := newTestK8sClient(original.DeepCopy())
+		require.NoError(t, err)
+
+		updated := original.Spec.DeepCopy()
+		updated.Sources[0].Helm.Parameters[0].Value = "1.0.1"
+
+		_, err = fakeClient.UpdateSpec(context.Background(), updateSpecRequest(updated), &original.Spec)
+		require.NoError(t, err)
+
+		got, err := fakeClient.GetApplication(context.Background(), "testns", "test-app")
+		require.NoError(t, err)
+		assert.Equal(t, *updated, got.Spec)
+	})
+
+	t.Run("Nil spec is rejected", func(t *testing.T) {
+		fakeClient, err := newTestK8sClient(helmApp("1.0.0"))
+		require.NoError(t, err)
+		_, err = fakeClient.UpdateSpec(context.Background(), updateSpecRequest(nil), nil)
+		require.Error(t, err)
+	})
+}
+
+func Test_mergePatchesConflict(t *testing.T) {
+	tests := []struct {
+		name     string
+		ours     map[string]any
+		theirs   map[string]any
+		conflict bool
+		path     string
+	}{
+		{name: "disjoint fields", ours: map[string]any{"a": 1}, theirs: map[string]any{"b": 2}},
+		{name: "disjoint nested fields", ours: map[string]any{"a": map[string]any{"x": 1}}, theirs: map[string]any{"a": map[string]any{"y": 2}}},
+		{name: "same field different value", ours: map[string]any{"a": map[string]any{"x": 1}}, theirs: map[string]any{"a": map[string]any{"x": 2}}, conflict: true, path: "spec.a.x"},
+		{name: "same field same value", ours: map[string]any{"a": []any{"v"}}, theirs: map[string]any{"a": []any{"v"}}},
+		{name: "they removed the parent object", ours: map[string]any{"a": map[string]any{"x": 1}}, theirs: map[string]any{"a": nil}, conflict: true, path: "spec.a"},
+		{name: "they replaced the array we change", ours: map[string]any{"a": []any{"1"}}, theirs: map[string]any{"a": []any{"2"}}, conflict: true, path: "spec.a"},
+		{name: "no concurrent changes", ours: map[string]any{"a": 1}, theirs: map[string]any{}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path, conflict := mergePatchesConflict(tt.ours, tt.theirs, "spec")
+			assert.Equal(t, tt.conflict, conflict)
+			assert.Equal(t, tt.path, path)
+		})
+	}
 }
 
 // conflictSimulatingClient is a test client that simulates conflicts during updates
@@ -2336,35 +2636,10 @@ func (c *conflictSimulatingClient) Update(ctx context.Context, obj client.Object
 	return c.ArgoCDK8sClient.Update(ctx, obj, opts...)
 }
 
-// Override UpdateSpec to track attempts properly
-func (c *conflictSimulatingClient) UpdateSpec(ctx context.Context, spec *application.ApplicationUpdateSpecRequest) (*v1alpha1.ApplicationSpec, error) {
-	log := log.LoggerFromContext(ctx)
-	app := &v1alpha1.Application{}
-	var err error
-
-	// Use RetryOnConflict to handle potential conflicts gracefully.
-	err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		// Get the latest version of the Application within the retry loop.
-		app, err = c.GetApplication(ctx, spec.GetAppNamespace(), spec.GetName())
-		if err != nil {
-			log.Errorf("could not get application: %s, error: %v", spec.GetName(), err)
-			return err
-		}
-
-		app.Spec = *spec.Spec
-
-		// Attempt to update the object. If there is a conflict,
-		// RetryOnConflict will automatically re-fetch and re-apply the changes.
-		return c.Update(ctx, app)
-	})
-
-	if err != nil {
-		log.Errorf("could not update application spec for %s: %v", spec.GetName(), err)
-		return nil, fmt.Errorf("failed to update application spec for %s after retries: %w", spec.GetName(), err)
-	}
-
-	log.Infof("Successfully updated application spec for %s", spec.GetName())
-	return &app.Spec, nil
+// UpdateSpec runs the real implementation against this client, so that the
+// overridden Update method is used.
+func (c *conflictSimulatingClient) UpdateSpec(ctx context.Context, spec *application.ApplicationUpdateSpecRequest, original *v1alpha1.ApplicationSpec) (*v1alpha1.ApplicationSpec, error) {
+	return updateApplicationSpec(ctx, c, spec, original)
 }
 
 // errorSimulatingClient is a test client that returns a specific error during updates
@@ -2377,35 +2652,10 @@ func (e *errorSimulatingClient) Update(ctx context.Context, obj client.Object, o
 	return e.updateError
 }
 
-// Override UpdateSpec to use our custom Update method
-func (e *errorSimulatingClient) UpdateSpec(ctx context.Context, spec *application.ApplicationUpdateSpecRequest) (*v1alpha1.ApplicationSpec, error) {
-	log := log.LoggerFromContext(ctx)
-	app := &v1alpha1.Application{}
-	var err error
-
-	// Use RetryOnConflict to handle potential conflicts gracefully.
-	err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		// Get the latest version of the Application within the retry loop.
-		app, err = e.GetApplication(ctx, spec.GetAppNamespace(), spec.GetName())
-		if err != nil {
-			log.Errorf("could not get application: %s, error: %v", spec.GetName(), err)
-			return err
-		}
-
-		app.Spec = *spec.Spec
-
-		// Attempt to update the object. If there is a conflict,
-		// RetryOnConflict will automatically re-fetch and re-apply the changes.
-		return e.Update(ctx, app)
-	})
-
-	if err != nil {
-		log.Errorf("could not update application spec for %s: %v", spec.GetName(), err)
-		return nil, fmt.Errorf("failed to update application spec for %s after retries: %w", spec.GetName(), err)
-	}
-
-	log.Infof("Successfully updated application spec for %s", spec.GetName())
-	return &app.Spec, nil
+// UpdateSpec runs the real implementation against this client, so that the
+// overridden Update method is used.
+func (e *errorSimulatingClient) UpdateSpec(ctx context.Context, spec *application.ApplicationUpdateSpecRequest, original *v1alpha1.ApplicationSpec) (*v1alpha1.ApplicationSpec, error) {
+	return updateApplicationSpec(ctx, e, spec, original)
 }
 
 func Test_parseImageList(t *testing.T) {
