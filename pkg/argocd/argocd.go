@@ -351,9 +351,11 @@ func (client *argoCD) ListApplications(labelSelector string) ([]v1alpha1.Applica
 // that differ between original and in.Spec are sent, as a merge patch that
 // Argo CD applies to its current copy of the Application, so concurrent changes
 // made by other clients to other fields are preserved. If another client
-// changed one of the same fields, ErrConcurrentSpecChange is returned and
-// nothing is written. When original is nil, the whole spec is replaced with
-// in.Spec.
+// changed one of the same fields before the latest version was fetched,
+// ErrConcurrentSpecChange is returned and nothing is written. The fetch and
+// the patch are separate API calls, so a change to the same field made between
+// them is not detected and is overwritten. When original is nil, the whole
+// spec is replaced with in.Spec.
 func (client *argoCD) UpdateSpec(ctx context.Context, in *application.ApplicationUpdateSpecRequest, original *v1alpha1.ApplicationSpec) (*v1alpha1.ApplicationSpec, error) {
 	originalJSON, specPatch, err := computeSpecChanges(original, in.Spec)
 	if err != nil {
