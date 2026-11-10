@@ -1206,7 +1206,7 @@ func TestKubernetesClientUpdateSpec(t *testing.T) {
 			Spec: &v1alpha1.ApplicationSpec{Source: &v1alpha1.ApplicationSource{
 				RepoURL: "https://github.com/argoproj/argocd-example-apps",
 			}},
-		})
+		}, nil)
 
 		require.NoError(t, err)
 		assert.Equal(t, "https://github.com/argoproj/argocd-example-apps", spec.Source.RepoURL)
@@ -1229,7 +1229,7 @@ func TestKubernetesClientUpdateSpec(t *testing.T) {
 			Spec:         &v1alpha1.ApplicationSpec{},
 		}
 
-		_, err = client.UpdateSpec(context.Background(), spec)
+		_, err = client.UpdateSpec(context.Background(), spec, nil)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "error getting application: application test-app not found")
 	})
@@ -1258,7 +1258,7 @@ func TestKubernetesClientUpdateSpec(t *testing.T) {
 			Spec: &v1alpha1.ApplicationSpec{},
 		}
 
-		_, err = client.UpdateSpec(context.Background(), spec)
+		_, err = client.UpdateSpec(context.Background(), spec, nil)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "max retries(0) reached while updating application: test-app")
 	})
@@ -1286,7 +1286,7 @@ func TestKubernetesClientUpdateSpec(t *testing.T) {
 			Spec:         &v1alpha1.ApplicationSpec{},
 		}
 
-		_, err = client.UpdateSpec(context.Background(), spec)
+		_, err = client.UpdateSpec(context.Background(), spec, nil)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "error updating application: non-conflict error")
 	})
