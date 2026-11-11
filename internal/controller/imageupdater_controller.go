@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"text/template"
 	"time"
 
@@ -82,6 +83,22 @@ type ImageUpdaterReconciler struct {
 	Once          bool
 	Wg            sync.WaitGroup
 	onceCompleted sync.Map
+	onceRunFailed atomic.Bool
+}
+
+// OnceRunFailed reports whether any ImageUpdater CR failed during run-once processing.
+func (r *ImageUpdaterReconciler) OnceRunFailed() bool {
+	return r.onceRunFailed.Load()
+}
+
+func runOnceError(numErrors int, err error) error {
+	if numErrors == 0 {
+		return err
+	}
+	if err != nil {
+		return fmt.Errorf("%w; %d application error(s)", err, numErrors)
+	}
+	return fmt.Errorf("processing ImageUpdater CR produced %d application error(s)", numErrors)
 }
 
 const (
@@ -191,6 +208,7 @@ func (r *ImageUpdaterReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		}
 
 		result, err := r.RunImageUpdater(ctx, &imageUpdater, false, nil)
+		err = runOnceError(result.NumErrors, err)
 
 		if statusErr := r.updateStatusAfterReconcile(ctx, &imageUpdater, result, err); statusErr != nil {
 			reqLogger.Warnf("Failed to update status after reconcile for %s/%s, status may be stale: %v", imageUpdater.Namespace, imageUpdater.Name, statusErr)
@@ -202,12 +220,19 @@ func (r *ImageUpdaterReconciler) Reconcile(ctx context.Context, req ctrl.Request
 			reqLogger.Infof("Finish Reconciliation for CR %s/%s", imageUpdater.Namespace, imageUpdater.Name)
 		}
 
-		// Signal that this CR is complete (regardless of success/failure)
 		if r.Once {
+			if err != nil {
+				r.onceRunFailed.Store(true)
+			}
+			// Signal that this CR is complete regardless of success/failure. The
+			// run-once command reports failures after every CR has completed.
 			r.Wg.Done()
+			return ctrl.Result{}, nil
 		}
 
-		return ctrl.Result{}, nil
+		// With interval zero outside --once, return failures to controller-runtime
+		// so it retries instead of silently dropping failed application updates.
+		return ctrl.Result{}, err
 	}
 
 	if statusErr := r.setReconcilingStatus(ctx, &imageUpdater); statusErr != nil {
