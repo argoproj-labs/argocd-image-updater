@@ -54,6 +54,10 @@ Supported registries:
 				return fmt.Errorf("invalid value %q for --git-commit-method: must be 'git' or 'api'", cfg.GitCommitMethod)
 			}
 
+			if cfg.GitWriteBackPrecheck {
+				cfg.GitWriteBackCache = argocd.NewGitWriteBackCache()
+			}
+
 			if err := log.SetLogLevel(cfg.LogLevel); err != nil {
 				return err
 			}
@@ -98,6 +102,7 @@ Supported registries:
 	webhookCmd.Flags().StringVar(&commitMessagePath, "git-commit-message-path", common.DefaultCommitTemplatePath, "Path to a template to use for Git commit messages")
 	webhookCmd.Flags().StringVar(&cfg.GitCommitMethod, "git-commit-method", env.GetStringVal("GIT_COMMIT_METHOD", "git"), "Method used to create write-back commits ('git' or 'api'; 'api' commits via the GitHub API and requires GitHub App credentials)")
 	webhookCmd.Flags().BoolVar(&cfg.DisableKubeEvents, "disable-kube-events", env.GetBoolVal("IMAGE_UPDATER_KUBE_EVENTS", false), "Disable kubernetes events")
+	webhookCmd.Flags().BoolVar(&cfg.GitWriteBackPrecheck, "git-write-back-precheck", env.GetBoolVal("GIT_WRITE_BACK_PRECHECK", false), "Before cloning for a git write-back, compare the remote head of the write branch (listed once per update cycle) with the last write-back, and skip the write-back if the target file would not change")
 
 	webhookCmd.Flags().BoolVar(&webhookCfg.RequireSecret, "webhook-require-secret", env.GetBoolVal("WEBHOOK_REQUIRE_SECRET", true), "Require webhook secrets by default")
 	webhookCmd.Flags().IntVar(&webhookCfg.Port, "webhook-port", env.ParseNumFromEnv("WEBHOOK_PORT", 8080, 0, 65535), "Port to listen on for webhook events")
