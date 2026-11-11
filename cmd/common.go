@@ -67,6 +67,12 @@ type WebhookConfig struct {
 }
 
 // SetupCommon initializes common components (logging, context, etc.)
+// parseCommitMessageTemplate parses a Git commit message template with the
+// shared TemplateFuncs (for example the base helper).
+func parseCommitMessageTemplate(tplStr string) (*template.Template, error) {
+	return template.New("commitMessage").Funcs(argocd.TemplateFuncs).Parse(tplStr)
+}
+
 func SetupCommon(ctx context.Context, cfg *controller.ImageUpdaterConfig, setupLogger logr.Logger, commitMessagePath, kubeConfig string) error {
 	// Initialize metrics before starting the metrics server or using any counters
 	metrics.InitMetrics()
@@ -94,7 +100,7 @@ func SetupCommon(ctx context.Context, cfg *controller.ImageUpdaterConfig, setupL
 		commitMessageTpl = common.DefaultGitCommitMessage
 	}
 
-	if tpl, err := template.New("commitMessage").Parse(commitMessageTpl); err != nil {
+	if tpl, err := parseCommitMessageTemplate(commitMessageTpl); err != nil {
 		setupLogger.Error(err, "could not parse commit message template")
 		return err
 	} else {
