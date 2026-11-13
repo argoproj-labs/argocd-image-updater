@@ -2,6 +2,7 @@ package argocd
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -77,9 +78,23 @@ func (client *k8sClient) ListApplications(labelSelector string) ([]v1alpha1.Appl
 	return list.Items, nil
 }
 
-func (client *k8sClient) UpdateSpec(ctx context.Context, spec *application.ApplicationUpdateSpecRequest) (*v1alpha1.ApplicationSpec, error) {
+// UpdateSpec updates the spec for given application.
+//
+// original is the application spec that spec.Spec was derived from. When it
+// is set, only the fields that differ between original and spec.Spec are
+// written; they are applied on top of the latest version of the Application,
+// so concurrent changes made by other clients to other fields are preserved.
+// If another client changed one of the same fields, ErrConcurrentSpecChange is
+// returned and nothing is written. When original is nil, the whole spec is
+// replaced with spec.Spec.
+func (client *k8sClient) UpdateSpec(ctx context.Context, spec *application.ApplicationUpdateSpecRequest, original *v1alpha1.ApplicationSpec) (*v1alpha1.ApplicationSpec, error) {
 	const defaultMaxRetries = 7
 	const baseDelay = 100 * time.Millisecond // Initial delay before retrying
+
+	originalJSON, specPatch, err := computeSpecChanges(original, spec.Spec)
+	if err != nil {
+		return nil, fmt.Errorf("error updating application %s: %w", spec.GetName(), err)
+	}
 
 	// Allow overriding max retries for testing purposes
 	maxRetries := env.ParseNumFromEnv("OVERRIDE_MAX_RETRIES", defaultMaxRetries, 0, 100)
@@ -90,7 +105,19 @@ func (client *k8sClient) UpdateSpec(ctx context.Context, spec *application.Appli
 			log.Errorf("could not get application: %s, error: %v", spec.GetName(), err)
 			return nil, fmt.Errorf("error getting application: %w", err)
 		}
-		app.Spec = *spec.Spec
+
+		if specPatch == nil {
+			app.Spec = *spec.Spec
+		} else {
+			// Apply only our changes on top of the latest spec. On a conflict,
+			// this is redone against the re-fetched Application.
+			rebased, err := rebaseSpecChanges(originalJSON, specPatch, &app.Spec)
+			if err != nil {
+				log.Errorf("could not update application: %s, error: %v", spec.GetName(), err)
+				return nil, fmt.Errorf("error updating application: %w", err)
+			}
+			app.Spec = *rebased
+		}
 
 		updatedApp, err := client.kubeClient.ApplicationsClientset.ArgoprojV1alpha1().Applications(app.Namespace).Update(ctx, app, v1.UpdateOptions{})
 		if err != nil {
@@ -137,7 +164,7 @@ type argoCD struct {
 type ArgoCD interface {
 	GetApplication(ctx context.Context, appName string) (*v1alpha1.Application, error)
 	ListApplications(labelSelector string) ([]v1alpha1.Application, error)
-	UpdateSpec(ctx context.Context, spec *application.ApplicationUpdateSpecRequest) (*v1alpha1.ApplicationSpec, error)
+	UpdateSpec(ctx context.Context, spec *application.ApplicationUpdateSpecRequest, original *v1alpha1.ApplicationSpec) (*v1alpha1.ApplicationSpec, error)
 }
 
 // Type of the application
@@ -317,8 +344,24 @@ func (client *argoCD) ListApplications(labelSelector string) ([]v1alpha1.Applica
 
 // DEPRECATED: This struct and its associated client have been removed in the CRD branch and will be deprecated and removed in a future release.
 // The CRD branch introduces a new architecture that eliminates the need for this native ArgoCD client approach.
-// UpdateSpec updates the spec for given application
-func (client *argoCD) UpdateSpec(ctx context.Context, in *application.ApplicationUpdateSpecRequest) (*v1alpha1.ApplicationSpec, error) {
+// UpdateSpec updates the spec for given application.
+//
+// original is the application spec that in.Spec was derived from. When it is
+// set, the latest version of the Application is fetched and only the fields
+// that differ between original and in.Spec are sent, as a merge patch that
+// Argo CD applies to its current copy of the Application, so concurrent changes
+// made by other clients to other fields are preserved. If another client
+// changed one of the same fields before the latest version was fetched,
+// ErrConcurrentSpecChange is returned and nothing is written. The fetch and
+// the patch are separate API calls, so a change to the same field made between
+// them is not detected and is overwritten. When original is nil, the whole
+// spec is replaced with in.Spec.
+func (client *argoCD) UpdateSpec(ctx context.Context, in *application.ApplicationUpdateSpecRequest, original *v1alpha1.ApplicationSpec) (*v1alpha1.ApplicationSpec, error) {
+	originalJSON, specPatch, err := computeSpecChanges(original, in.Spec)
+	if err != nil {
+		return nil, fmt.Errorf("error updating application %s: %w", in.GetName(), err)
+	}
+
 	conn, appClient, err := client.Client.NewApplicationClient()
 	metrics.Clients().IncreaseArgoCDClientRequest(client.Client.ClientOptions().ServerAddr, 1)
 	if err != nil {
@@ -327,14 +370,48 @@ func (client *argoCD) UpdateSpec(ctx context.Context, in *application.Applicatio
 	}
 	defer conn.Close()
 
+	if specPatch == nil {
+		metrics.Clients().IncreaseArgoCDClientRequest(client.Client.ClientOptions().ServerAddr, 1)
+		spec, err := appClient.UpdateSpec(ctx, in)
+		if err != nil {
+			metrics.Clients().IncreaseArgoCDClientError(client.Client.ClientOptions().ServerAddr, 1)
+			return nil, err
+		}
+		return spec, nil
+	}
+
+	// Check that no other client changed the fields we are about to change.
 	metrics.Clients().IncreaseArgoCDClientRequest(client.Client.ClientOptions().ServerAddr, 1)
-	spec, err := appClient.UpdateSpec(ctx, in)
+	live, err := appClient.Get(ctx, &application.ApplicationQuery{Name: in.Name, AppNamespace: in.AppNamespace})
+	if err != nil {
+		metrics.Clients().IncreaseArgoCDClientError(client.Client.ClientOptions().ServerAddr, 1)
+		return nil, fmt.Errorf("error getting application: %w", err)
+	}
+	if _, err := rebaseSpecChanges(originalJSON, specPatch, &live.Spec); err != nil {
+		return nil, fmt.Errorf("error updating application: %w", err)
+	}
+
+	patch, err := json.Marshal(map[string]json.RawMessage{"spec": specPatch})
+	if err != nil {
+		return nil, fmt.Errorf("error updating application: could not marshal patch: %w", err)
+	}
+	patchStr := string(patch)
+	patchType := "merge"
+
+	metrics.Clients().IncreaseArgoCDClientRequest(client.Client.ClientOptions().ServerAddr, 1)
+	app, err := appClient.Patch(ctx, &application.ApplicationPatchRequest{
+		Name:         in.Name,
+		AppNamespace: in.AppNamespace,
+		Project:      in.Project,
+		Patch:        &patchStr,
+		PatchType:    &patchType,
+	})
 	if err != nil {
 		metrics.Clients().IncreaseArgoCDClientError(client.Client.ClientOptions().ServerAddr, 1)
 		return nil, err
 	}
 
-	return spec, nil
+	return &app.Spec, nil
 }
 
 // getHelmParamNamesFromAnnotation inspects the given annotations for whether

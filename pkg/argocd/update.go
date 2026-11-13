@@ -164,6 +164,10 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 	app := updateConf.UpdateApp.Application.GetName()
 	changeList := make([]ChangeEntry, 0)
 
+	// Remember the spec as it was read, before any image is set on it, so that
+	// the argocd write-back method only writes the fields changed below.
+	originalSpec := updateConf.UpdateApp.Application.Spec.DeepCopy()
+
 	// Get all images that are deployed with the current application
 	applicationImages := GetImagesFromApplication(&updateConf.UpdateApp.Application)
 
@@ -362,7 +366,7 @@ func UpdateApplication(updateConf *UpdateConfiguration, state *SyncIterationStat
 		log.Debugf("Using commit message: %s", wbc.GitCommitMessage)
 		if !updateConf.DryRun {
 			logCtx.Infof("Committing %d parameter update(s) for application %s", result.NumImagesUpdated, app)
-			err := commitChangesLocked(&updateConf.UpdateApp.Application, wbc, state, changeList)
+			err := commitChangesLocked(&updateConf.UpdateApp.Application, originalSpec, wbc, state, changeList)
 			if err != nil {
 				logCtx.Errorf("Could not update application spec: %v", err)
 				result.NumErrors += 1
@@ -1008,26 +1012,29 @@ func parseGitConfig(app *v1alpha1.Application, kubeClient *kube.ImageUpdaterKube
 	return nil
 }
 
-func commitChangesLocked(app *v1alpha1.Application, wbc *WriteBackConfig, state *SyncIterationState, changeList []ChangeEntry) error {
+func commitChangesLocked(app *v1alpha1.Application, originalSpec *v1alpha1.ApplicationSpec, wbc *WriteBackConfig, state *SyncIterationState, changeList []ChangeEntry) error {
 	if wbc.RequiresLocking() {
 		lock := state.GetRepositoryLock(wbc.GitRepo)
 		lock.Lock()
 		defer lock.Unlock()
 	}
 
-	return commitChanges(app, wbc, changeList)
+	return commitChanges(app, originalSpec, wbc, changeList)
 }
 
 // commitChanges commits any changes required for updating one or more images
-// after the UpdateApplication cycle has finished.
-func commitChanges(app *v1alpha1.Application, wbc *WriteBackConfig, changeList []ChangeEntry) error {
+// after the UpdateApplication cycle has finished. originalSpec is the spec of
+// app as it was read, before any image was set on it; for the argocd write-back
+// method, only the fields changed relative to it are written. If it is nil,
+// the whole spec is written.
+func commitChanges(app *v1alpha1.Application, originalSpec *v1alpha1.ApplicationSpec, wbc *WriteBackConfig, changeList []ChangeEntry) error {
 	switch wbc.Method {
 	case WriteBackApplication:
 		_, err := wbc.ArgoClient.UpdateSpec(context.TODO(), &application.ApplicationUpdateSpecRequest{
 			Name:         &app.Name,
 			AppNamespace: &app.Namespace,
 			Spec:         &app.Spec,
-		})
+		}, originalSpec)
 		if err != nil {
 			return err
 		}

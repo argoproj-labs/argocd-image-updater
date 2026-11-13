@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -44,7 +45,7 @@ func Test_UpdateApplication(t *testing.T) {
 		}
 
 		argoClient := argomock.ArgoCD{}
-		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+		argoClient.On("UpdateSpec", mock.Anything, mock.Anything, mock.Anything).Return(nil, nil)
 
 		kubeClient := kube.ImageUpdaterKubernetesClient{
 			KubeClient: &registryKube.KubernetesClient{
@@ -108,7 +109,7 @@ func Test_UpdateApplication(t *testing.T) {
 		}
 
 		argoClient := argomock.ArgoCD{}
-		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+		argoClient.On("UpdateSpec", mock.Anything, mock.Anything, mock.Anything).Return(nil, nil)
 
 		secret := fixture.NewSecret("argocd-image-updater", "git-creds", map[string][]byte{
 			"githubAppID":             []byte("12345678"),
@@ -219,7 +220,12 @@ func Test_UpdateApplication(t *testing.T) {
 			Name:         &appImages.Application.Name,
 			AppNamespace: &appImages.Application.Namespace,
 			Spec:         &appImages.Application.Spec,
-		}).Return(nil, nil)
+		}, mock.MatchedBy(func(original *v1alpha1.ApplicationSpec) bool {
+			// The baseline passed to UpdateSpec must be the spec as read,
+			// before the new image was set on it.
+			return original != nil && original != &appImages.Application.Spec &&
+				reflect.DeepEqual(original.Source.Kustomize.Images, v1alpha1.KustomizeImages{"jannfis/foobar:1.0.0"})
+		})).Return(nil, nil)
 
 		res := UpdateApplication(&UpdateConfiguration{
 			NewRegFN:   mockClientFn,
@@ -246,7 +252,7 @@ func Test_UpdateApplication(t *testing.T) {
 		}
 
 		argoClient := argomock.ArgoCD{}
-		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+		argoClient.On("UpdateSpec", mock.Anything, mock.Anything, mock.Anything).Return(nil, nil)
 
 		kubeClient := kube.ImageUpdaterKubernetesClient{
 			KubeClient: &registryKube.KubernetesClient{
@@ -310,7 +316,7 @@ func Test_UpdateApplication(t *testing.T) {
 		}
 
 		argoClient := argomock.ArgoCD{}
-		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+		argoClient.On("UpdateSpec", mock.Anything, mock.Anything, mock.Anything).Return(nil, nil)
 
 		kubeClient := kube.ImageUpdaterKubernetesClient{
 			KubeClient: &registryKube.KubernetesClient{
@@ -376,7 +382,7 @@ func Test_UpdateApplication(t *testing.T) {
 		}
 
 		argoClient := argomock.ArgoCD{}
-		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+		argoClient.On("UpdateSpec", mock.Anything, mock.Anything, mock.Anything).Return(nil, nil)
 
 		kubeClient := kube.ImageUpdaterKubernetesClient{
 			KubeClient: &registryKube.KubernetesClient{
@@ -439,7 +445,7 @@ func Test_UpdateApplication(t *testing.T) {
 		}
 
 		argoClient := argomock.ArgoCD{}
-		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+		argoClient.On("UpdateSpec", mock.Anything, mock.Anything, mock.Anything).Return(nil, nil)
 
 		kubeClient := kube.ImageUpdaterKubernetesClient{
 			KubeClient: &registryKube.KubernetesClient{
@@ -499,7 +505,7 @@ func Test_UpdateApplication(t *testing.T) {
 		}
 
 		argoClient := argomock.ArgoCD{}
-		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+		argoClient.On("UpdateSpec", mock.Anything, mock.Anything, mock.Anything).Return(nil, nil)
 
 		kubeClient := kube.ImageUpdaterKubernetesClient{
 			KubeClient: &registryKube.KubernetesClient{
@@ -559,7 +565,7 @@ func Test_UpdateApplication(t *testing.T) {
 		}
 
 		argoClient := argomock.ArgoCD{}
-		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+		argoClient.On("UpdateSpec", mock.Anything, mock.Anything, mock.Anything).Return(nil, nil)
 
 		kubeClient := kube.ImageUpdaterKubernetesClient{
 			KubeClient: &registryKube.KubernetesClient{
@@ -617,7 +623,7 @@ func Test_UpdateApplication(t *testing.T) {
 		}
 
 		argoClient := argomock.ArgoCD{}
-		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+		argoClient.On("UpdateSpec", mock.Anything, mock.Anything, mock.Anything).Return(nil, nil)
 
 		kubeClient := kube.ImageUpdaterKubernetesClient{
 			KubeClient: &registryKube.KubernetesClient{
@@ -675,7 +681,7 @@ func Test_UpdateApplication(t *testing.T) {
 		}
 
 		argoClient := argomock.ArgoCD{}
-		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+		argoClient.On("UpdateSpec", mock.Anything, mock.Anything, mock.Anything).Return(nil, nil)
 
 		kubeClient := kube.ImageUpdaterKubernetesClient{
 			KubeClient: &registryKube.KubernetesClient{
@@ -736,7 +742,7 @@ func Test_UpdateApplication(t *testing.T) {
 		}
 
 		argoClient := argomock.ArgoCD{}
-		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+		argoClient.On("UpdateSpec", mock.Anything, mock.Anything, mock.Anything).Return(nil, nil)
 
 		kubeClient := kube.ImageUpdaterKubernetesClient{
 			KubeClient: &registryKube.KubernetesClient{
@@ -813,7 +819,7 @@ func Test_UpdateApplication(t *testing.T) {
 		}
 
 		argoClient := argomock.ArgoCD{}
-		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+		argoClient.On("UpdateSpec", mock.Anything, mock.Anything, mock.Anything).Return(nil, nil)
 
 		kubeClient := kube.ImageUpdaterKubernetesClient{
 			KubeClient: &registryKube.KubernetesClient{
@@ -891,7 +897,7 @@ func Test_UpdateApplication(t *testing.T) {
 		}
 
 		argoClient := argomock.ArgoCD{}
-		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+		argoClient.On("UpdateSpec", mock.Anything, mock.Anything, mock.Anything).Return(nil, nil)
 
 		kubeClient := kube.ImageUpdaterKubernetesClient{
 			KubeClient: &registryKube.KubernetesClient{
@@ -953,7 +959,7 @@ func Test_UpdateApplication(t *testing.T) {
 		}
 
 		argoClient := argomock.ArgoCD{}
-		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+		argoClient.On("UpdateSpec", mock.Anything, mock.Anything, mock.Anything).Return(nil, nil)
 
 		kubeClient := kube.ImageUpdaterKubernetesClient{
 			KubeClient: &registryKube.KubernetesClient{
@@ -1008,7 +1014,7 @@ func Test_UpdateApplication(t *testing.T) {
 		}
 
 		argoClient := argomock.ArgoCD{}
-		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+		argoClient.On("UpdateSpec", mock.Anything, mock.Anything, mock.Anything).Return(nil, nil)
 
 		kubeClient := kube.ImageUpdaterKubernetesClient{
 			KubeClient: &registryKube.KubernetesClient{
@@ -1066,7 +1072,7 @@ func Test_UpdateApplication(t *testing.T) {
 		}
 
 		argoClient := argomock.ArgoCD{}
-		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+		argoClient.On("UpdateSpec", mock.Anything, mock.Anything, mock.Anything).Return(nil, nil)
 
 		kubeClient := kube.ImageUpdaterKubernetesClient{
 			KubeClient: &registryKube.KubernetesClient{
@@ -1124,7 +1130,7 @@ func Test_UpdateApplication(t *testing.T) {
 		}
 
 		argoClient := argomock.ArgoCD{}
-		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+		argoClient.On("UpdateSpec", mock.Anything, mock.Anything, mock.Anything).Return(nil, nil)
 
 		kubeClient := kube.ImageUpdaterKubernetesClient{
 			KubeClient: &registryKube.KubernetesClient{
@@ -1203,7 +1209,7 @@ func Test_UpdateApplication(t *testing.T) {
 		}
 
 		argoClient := argomock.ArgoCD{}
-		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+		argoClient.On("UpdateSpec", mock.Anything, mock.Anything, mock.Anything).Return(nil, nil)
 
 		kubeClient := kube.ImageUpdaterKubernetesClient{
 			KubeClient: &registryKube.KubernetesClient{
@@ -3385,7 +3391,7 @@ func Test_GetWriteBackConfig(t *testing.T) {
 		}
 
 		argoClient := argomock.ArgoCD{}
-		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+		argoClient.On("UpdateSpec", mock.Anything, mock.Anything, mock.Anything).Return(nil, nil)
 
 		kubeClient := kube.ImageUpdaterKubernetesClient{
 			KubeClient: &registryKube.KubernetesClient{
@@ -3419,7 +3425,7 @@ func Test_GetWriteBackConfig(t *testing.T) {
 		}
 
 		argoClient := argomock.ArgoCD{}
-		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+		argoClient.On("UpdateSpec", mock.Anything, mock.Anything, mock.Anything).Return(nil, nil)
 
 		kubeClient := kube.ImageUpdaterKubernetesClient{
 			KubeClient: &registryKube.KubernetesClient{
@@ -3452,7 +3458,7 @@ func Test_GetWriteBackConfig(t *testing.T) {
 		}
 
 		argoClient := argomock.ArgoCD{}
-		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+		argoClient.On("UpdateSpec", mock.Anything, mock.Anything, mock.Anything).Return(nil, nil)
 
 		kubeClient := kube.ImageUpdaterKubernetesClient{
 			KubeClient: &registryKube.KubernetesClient{
@@ -3488,7 +3494,7 @@ func Test_GetWriteBackConfig(t *testing.T) {
 		}
 
 		argoClient := argomock.ArgoCD{}
-		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+		argoClient.On("UpdateSpec", mock.Anything, mock.Anything, mock.Anything).Return(nil, nil)
 
 		kubeClient := kube.ImageUpdaterKubernetesClient{
 			KubeClient: &registryKube.KubernetesClient{
@@ -3525,7 +3531,7 @@ func Test_GetWriteBackConfig(t *testing.T) {
 		}
 
 		argoClient := argomock.ArgoCD{}
-		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+		argoClient.On("UpdateSpec", mock.Anything, mock.Anything, mock.Anything).Return(nil, nil)
 
 		kubeClient := kube.ImageUpdaterKubernetesClient{
 			KubeClient: &registryKube.KubernetesClient{
@@ -3563,7 +3569,7 @@ func Test_GetWriteBackConfig(t *testing.T) {
 		}
 
 		argoClient := argomock.ArgoCD{}
-		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+		argoClient.On("UpdateSpec", mock.Anything, mock.Anything, mock.Anything).Return(nil, nil)
 
 		kubeClient := kube.ImageUpdaterKubernetesClient{
 			KubeClient: &registryKube.KubernetesClient{
@@ -3601,7 +3607,7 @@ func Test_GetWriteBackConfig(t *testing.T) {
 		}
 
 		argoClient := argomock.ArgoCD{}
-		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+		argoClient.On("UpdateSpec", mock.Anything, mock.Anything, mock.Anything).Return(nil, nil)
 
 		kubeClient := kube.ImageUpdaterKubernetesClient{
 			KubeClient: &registryKube.KubernetesClient{
@@ -3639,7 +3645,7 @@ func Test_GetWriteBackConfig(t *testing.T) {
 		}
 
 		argoClient := argomock.ArgoCD{}
-		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+		argoClient.On("UpdateSpec", mock.Anything, mock.Anything, mock.Anything).Return(nil, nil)
 
 		kubeClient := kube.ImageUpdaterKubernetesClient{
 			KubeClient: &registryKube.KubernetesClient{
@@ -3677,7 +3683,7 @@ func Test_GetWriteBackConfig(t *testing.T) {
 		}
 
 		argoClient := argomock.ArgoCD{}
-		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+		argoClient.On("UpdateSpec", mock.Anything, mock.Anything, mock.Anything).Return(nil, nil)
 
 		kubeClient := kube.ImageUpdaterKubernetesClient{
 			KubeClient: &registryKube.KubernetesClient{
@@ -3714,7 +3720,7 @@ func Test_GetWriteBackConfig(t *testing.T) {
 		}
 
 		argoClient := argomock.ArgoCD{}
-		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+		argoClient.On("UpdateSpec", mock.Anything, mock.Anything, mock.Anything).Return(nil, nil)
 
 		kubeClient := kube.ImageUpdaterKubernetesClient{
 			KubeClient: &registryKube.KubernetesClient{
@@ -3746,7 +3752,7 @@ func Test_GetWriteBackConfig(t *testing.T) {
 		}
 
 		argoClient := argomock.ArgoCD{}
-		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+		argoClient.On("UpdateSpec", mock.Anything, mock.Anything, mock.Anything).Return(nil, nil)
 
 		kubeClient := kube.ImageUpdaterKubernetesClient{
 			KubeClient: &registryKube.KubernetesClient{
@@ -3781,7 +3787,7 @@ func Test_GetWriteBackConfig(t *testing.T) {
 		}
 
 		argoClient := argomock.ArgoCD{}
-		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+		argoClient.On("UpdateSpec", mock.Anything, mock.Anything, mock.Anything).Return(nil, nil)
 
 		kubeClient := kube.ImageUpdaterKubernetesClient{
 			KubeClient: &registryKube.KubernetesClient{
@@ -3799,7 +3805,7 @@ func Test_GetWriteBackConfig(t *testing.T) {
 func Test_GetGitCreds(t *testing.T) {
 	t.Run("HTTP user creds from a secret", func(t *testing.T) {
 		argoClient := argomock.ArgoCD{}
-		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+		argoClient.On("UpdateSpec", mock.Anything, mock.Anything, mock.Anything).Return(nil, nil)
 		secret := fixture.NewSecret("argocd-image-updater", "git-creds", map[string][]byte{
 			"username": []byte("foo"),
 			"password": []byte("bar"),
@@ -3841,7 +3847,7 @@ func Test_GetGitCreds(t *testing.T) {
 
 	t.Run("HTTP GitHub App creds from a secret", func(t *testing.T) {
 		argoClient := argomock.ArgoCD{}
-		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+		argoClient.On("UpdateSpec", mock.Anything, mock.Anything, mock.Anything).Return(nil, nil)
 		secret := fixture.NewSecret("argocd-image-updater", "git-creds", map[string][]byte{
 			"githubAppID":             []byte("12345678"),
 			"githubAppInstallationID": []byte("87654321"),
@@ -3918,7 +3924,7 @@ func Test_GetGitCreds(t *testing.T) {
 
 	t.Run("SSH creds from a secret", func(t *testing.T) {
 		argoClient := argomock.ArgoCD{}
-		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+		argoClient.On("UpdateSpec", mock.Anything, mock.Anything, mock.Anything).Return(nil, nil)
 		secret := fixture.NewSecret("argocd-image-updater", "git-creds", map[string][]byte{
 			"sshPrivateKey": []byte("foo"),
 		})
@@ -3958,7 +3964,7 @@ func Test_GetGitCreds(t *testing.T) {
 
 	t.Run("HTTP creds from Argo CD settings", func(t *testing.T) {
 		argoClient := argomock.ArgoCD{}
-		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+		argoClient.On("UpdateSpec", mock.Anything, mock.Anything, mock.Anything).Return(nil, nil)
 
 		// Create repository secret in Argo CD v3 format
 		repoSecret := fixture.NewSecret("argocd", "repo-https-example-com-example", map[string][]byte{
@@ -4010,7 +4016,7 @@ func Test_GetGitCreds(t *testing.T) {
 
 	t.Run("Invalid fields in secret", func(t *testing.T) {
 		argoClient := argomock.ArgoCD{}
-		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+		argoClient.On("UpdateSpec", mock.Anything, mock.Anything, mock.Anything).Return(nil, nil)
 		secret := fixture.NewSecret("argocd-image-updater", "git-creds", map[string][]byte{
 			"sshPrivateKex": []byte("foo"),
 		})
@@ -4047,7 +4053,7 @@ func Test_GetGitCreds(t *testing.T) {
 
 	t.Run("Invalid secret reference", func(t *testing.T) {
 		argoClient := argomock.ArgoCD{}
-		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+		argoClient.On("UpdateSpec", mock.Anything, mock.Anything, mock.Anything).Return(nil, nil)
 		secret := fixture.NewSecret("argocd-image-updater", "git-creds", map[string][]byte{
 			"sshPrivateKey": []byte("foo"),
 		})
@@ -4085,7 +4091,7 @@ func Test_GetGitCreds(t *testing.T) {
 
 	t.Run("Secret does not exist", func(t *testing.T) {
 		argoClient := argomock.ArgoCD{}
-		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+		argoClient.On("UpdateSpec", mock.Anything, mock.Anything, mock.Anything).Return(nil, nil)
 		secret := fixture.NewSecret("argocd-image-updater", "git-creds", map[string][]byte{
 			"sshPrivateKey": []byte("foo"),
 		})
@@ -4123,7 +4129,7 @@ func Test_GetGitCreds(t *testing.T) {
 
 	t.Run("SSH creds from Argo CD settings with Helm Chart repoURL", func(t *testing.T) {
 		argoClient := argomock.ArgoCD{}
-		argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+		argoClient.On("UpdateSpec", mock.Anything, mock.Anything, mock.Anything).Return(nil, nil)
 		secret := fixture.NewSecret("argocd-image-updater", "git-creds", map[string][]byte{
 			"sshPrivateKey": []byte("foo"),
 		})
@@ -4168,7 +4174,7 @@ func Test_GetGitCreds(t *testing.T) {
 
 func Test_CommitUpdates(t *testing.T) {
 	argoClient := argomock.ArgoCD{}
-	argoClient.On("UpdateSpec", mock.Anything, mock.Anything).Return(nil, nil)
+	argoClient.On("UpdateSpec", mock.Anything, mock.Anything, mock.Anything).Return(nil, nil)
 	secret := fixture.NewSecret("argocd-image-updater", "git-creds", map[string][]byte{
 		"sshPrivateKey": []byte("foo"),
 	})
@@ -4210,7 +4216,7 @@ func Test_CommitUpdates(t *testing.T) {
 		require.NoError(t, err)
 		wbc.GitClient = gitMock
 
-		err = commitChanges(&app, wbc, nil)
+		err = commitChanges(&app, nil, wbc, nil)
 		assert.NoError(t, err)
 	})
 
@@ -4230,7 +4236,7 @@ func Test_CommitUpdates(t *testing.T) {
 		wbc.GitClient = gitMock
 		wbc.GitBranch = "mybranch"
 
-		err = commitChanges(&app, wbc, nil)
+		err = commitChanges(&app, nil, wbc, nil)
 		assert.NoError(t, err)
 	})
 
@@ -4251,7 +4257,7 @@ func Test_CommitUpdates(t *testing.T) {
 		app.Spec.Source.TargetRevision = "HEAD"
 		wbc.GitBranch = ""
 
-		err = commitChanges(app, wbc, nil)
+		err = commitChanges(app, nil, wbc, nil)
 		assert.NoError(t, err)
 	})
 
@@ -4279,7 +4285,7 @@ func Test_CommitUpdates(t *testing.T) {
 		}
 		gitMock.On("Checkout", TemplateBranchName(wbc.GitWriteBranch, cl), mock.Anything).Return(nil)
 
-		err = commitChanges(&app, wbc, cl)
+		err = commitChanges(&app, nil, wbc, cl)
 		assert.NoError(t, err)
 	})
 
@@ -4314,7 +4320,7 @@ helm:
 		app.Spec.Source.TargetRevision = "HEAD"
 		wbc.GitBranch = ""
 
-		err = commitChanges(app, wbc, nil)
+		err = commitChanges(app, nil, wbc, nil)
 		assert.NoError(t, err)
 		override, err := os.ReadFile(of)
 		assert.NoError(t, err)
@@ -4366,7 +4372,7 @@ helm:
 		app.Spec.Source.TargetRevision = "HEAD"
 		wbc.GitBranch = ""
 
-		err = commitChanges(app, wbc, nil)
+		err = commitChanges(app, nil, wbc, nil)
 		assert.NoError(t, err)
 		override, err := os.ReadFile(of)
 		assert.NoError(t, err)
@@ -4418,7 +4424,7 @@ helm:
 		app.Spec.Source.TargetRevision = "HEAD"
 		wbc.GitBranch = ""
 
-		err = commitChanges(app, wbc, nil)
+		err = commitChanges(app, nil, wbc, nil)
 		assert.NoError(t, err)
 		override, err := os.ReadFile(of)
 		assert.NoError(t, err)
@@ -4464,7 +4470,7 @@ replacements: []
 		app.Spec.Source.TargetRevision = "HEAD"
 		wbc.GitBranch = ""
 
-		err = commitChanges(app, wbc, nil)
+		err = commitChanges(app, nil, wbc, nil)
 		assert.NoError(t, err)
 		kust, err := os.ReadFile(kf)
 		assert.NoError(t, err)
@@ -4483,7 +4489,7 @@ replacements: []
 
 		// test the merge case too
 		app.Spec.Source.Kustomize.Images = v1alpha1.KustomizeImages{"foo:123", "bar=qux"}
-		err = commitChanges(app, wbc, nil)
+		err = commitChanges(app, nil, wbc, nil)
 		assert.NoError(t, err)
 		kust, err = os.ReadFile(kf)
 		assert.NoError(t, err)
@@ -4522,7 +4528,7 @@ replacements: []
 		wbc.GitCommitUser = "someone"
 		wbc.GitCommitEmail = "someone@example.com"
 
-		err = commitChanges(app, wbc, nil)
+		err = commitChanges(app, nil, wbc, nil)
 		assert.NoError(t, err)
 	})
 
@@ -4550,7 +4556,7 @@ replacements: []
 		wbc.GitCommitUser = "someone"
 		wbc.GitCommitEmail = "someone@example.com"
 
-		err = commitChanges(app, wbc, nil)
+		err = commitChanges(app, nil, wbc, nil)
 		assert.Errorf(t, err, "could not configure git")
 	})
 
@@ -4565,7 +4571,7 @@ replacements: []
 		require.NoError(t, err)
 		wbc.GitClient = gitMock
 
-		err = commitChanges(&app, wbc, nil)
+		err = commitChanges(&app, nil, wbc, nil)
 		assert.Errorf(t, err, "cannot init")
 	})
 
@@ -4580,7 +4586,7 @@ replacements: []
 		require.NoError(t, err)
 		wbc.GitClient = gitMock
 
-		err = commitChanges(&app, wbc, nil)
+		err = commitChanges(&app, nil, wbc, nil)
 		assert.Errorf(t, err, "cannot init")
 	})
 	t.Run("Cannot checkout", func(t *testing.T) {
@@ -4594,7 +4600,7 @@ replacements: []
 		require.NoError(t, err)
 		wbc.GitClient = gitMock
 
-		err = commitChanges(&app, wbc, nil)
+		err = commitChanges(&app, nil, wbc, nil)
 		assert.Errorf(t, err, "cannot checkout")
 	})
 
@@ -4609,7 +4615,7 @@ replacements: []
 		require.NoError(t, err)
 		wbc.GitClient = gitMock
 
-		err = commitChanges(&app, wbc, nil)
+		err = commitChanges(&app, nil, wbc, nil)
 		assert.Errorf(t, err, "cannot commit")
 	})
 
@@ -4624,7 +4630,7 @@ replacements: []
 		require.NoError(t, err)
 		wbc.GitClient = gitMock
 
-		err = commitChanges(&app, wbc, nil)
+		err = commitChanges(&app, nil, wbc, nil)
 		assert.Errorf(t, err, "cannot push")
 	})
 
@@ -4643,7 +4649,7 @@ replacements: []
 		app.Spec.Source.TargetRevision = "HEAD"
 		wbc.GitBranch = ""
 
-		err = commitChanges(app, wbc, nil)
+		err = commitChanges(app, nil, wbc, nil)
 		assert.Errorf(t, err, "failed to resolve ref")
 	})
 }

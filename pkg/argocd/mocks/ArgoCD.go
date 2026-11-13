@@ -77,9 +77,9 @@ func (_m *ArgoCD) ListApplications(labelSelector string) ([]v1alpha1.Application
 	return r0, r1
 }
 
-// UpdateSpec provides a mock function with given fields: ctx, spec
-func (_m *ArgoCD) UpdateSpec(ctx context.Context, spec *application.ApplicationUpdateSpecRequest) (*v1alpha1.ApplicationSpec, error) {
-	ret := _m.Called(ctx, spec)
+// UpdateSpec provides a mock function with given fields: ctx, spec, original
+func (_m *ArgoCD) UpdateSpec(ctx context.Context, spec *application.ApplicationUpdateSpecRequest, original *v1alpha1.ApplicationSpec) (*v1alpha1.ApplicationSpec, error) {
+	ret := _m.Called(ctx, spec, original)
 
 	if len(ret) == 0 {
 		panic("no return value specified for UpdateSpec")
@@ -87,19 +87,19 @@ func (_m *ArgoCD) UpdateSpec(ctx context.Context, spec *application.ApplicationU
 
 	var r0 *v1alpha1.ApplicationSpec
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, *application.ApplicationUpdateSpecRequest) (*v1alpha1.ApplicationSpec, error)); ok {
-		return rf(ctx, spec)
+	if rf, ok := ret.Get(0).(func(context.Context, *application.ApplicationUpdateSpecRequest, *v1alpha1.ApplicationSpec) (*v1alpha1.ApplicationSpec, error)); ok {
+		return rf(ctx, spec, original)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, *application.ApplicationUpdateSpecRequest) *v1alpha1.ApplicationSpec); ok {
-		r0 = rf(ctx, spec)
+	if rf, ok := ret.Get(0).(func(context.Context, *application.ApplicationUpdateSpecRequest, *v1alpha1.ApplicationSpec) *v1alpha1.ApplicationSpec); ok {
+		r0 = rf(ctx, spec, original)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*v1alpha1.ApplicationSpec)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, *application.ApplicationUpdateSpecRequest) error); ok {
-		r1 = rf(ctx, spec)
+	if rf, ok := ret.Get(1).(func(context.Context, *application.ApplicationUpdateSpecRequest, *v1alpha1.ApplicationSpec) error); ok {
+		r1 = rf(ctx, spec, original)
 	} else {
 		r1 = ret.Error(1)
 	}
