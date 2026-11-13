@@ -111,7 +111,7 @@ By default Argo CD Image Updater re-uses the credentials you have configured
 in Argo CD for accessing the repository.
 
 If you don't want to use credentials configured for Argo CD you can use other credentials stored in a Kubernetes secret,
-which needs to be accessible by the Argo CD Image Updater's Service Account. The secret should be specified in 
+which needs to be accessible by the Argo CD Image Updater's Service Account. The secret should be specified in
 `argocd-image-updater.argoproj.io/write-back-method` annotation using `git:<credref>` format. Where `<credref>` might
 take one of following values:
 
@@ -162,7 +162,7 @@ kubectl -n argocd-image-updater create secret generic git-creds \
 By default, Argo CD Image Updater will use the value found in the Application
 spec at `.spec.source.repoURL` as Git repository to checkout. But when using
 a Helm repository as `.spec.source.repoURL` GIT will simply fail. To manually
-specify the repository to push the changes, specify the 
+specify the repository to push the changes, specify the
 annotation `argocd-image-updater.argoproj.io/git-repository` on the Application
 manifest.
 
@@ -215,8 +215,10 @@ the annotation. For example, the following would create a branch named
 `image-updater-foo/bar-1.1` based on `main` in the event an image with
 the name `foo/bar` was updated to the new tag `1.1`.
 
+Helm will try to consume this template unless you escape the opening and closing brackets.
+
 ```yaml
-argocd-image-updater.argoproj.io/git-branch: main:image-updater{{range .Images}}-{{.Name}}-{{.NewTag}}{{end}}
+argocd-image-updater.argoproj.io/git-branch: main:image-updater{{"{{"}}range .Images{{"}}"}}-{{"{{"}}.Name{{"}}"}}-{{"{{"}}.NewTag{{"}}"}}{{"{{"}}end{{"}}"}}
 ```
 
 Alternatively, to assure unique branch names you could use the SHA256 representation of the changes:
@@ -350,7 +352,7 @@ You may also specify which kustomization to update with either a path relative t
 
 ```yaml
 argocd-image-updater.argoproj.io/write-back-target: "kustomization:../../base"
-# if the Application spec.source.path = config/overlays/foo, this would update the kustomization in config/base 
+# if the Application spec.source.path = config/overlays/foo, this would update the kustomization in config/base
 ```
 
 ...or absolute with respect to the repository:
@@ -375,7 +377,7 @@ You may also specify which helmvalues to update with either a path relative to t
 
 ```yaml
 argocd-image-updater.argoproj.io/write-back-target: "helmvalues:../../values.yaml"
-# if the Application spec.source.path = config/overlays/foo, this would update the helmvalues in config/base 
+# if the Application spec.source.path = config/overlays/foo, this would update the helmvalues in config/base
 ```
 
 ...or absolute with respect to the repository:
