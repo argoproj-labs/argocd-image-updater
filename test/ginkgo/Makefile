@@ -147,6 +147,7 @@ test-e2e: ## Build local image updater, deploy operator, and run parallel e2e te
 	$(MAKE) create-local-container-registry
 	@echo "--- Building and pushing test images for signature verification tests ---"
 	$(MAKE) push-signature-test-images
+	$(MAKE) push-expression-test-images
 	@echo "--- Generating cosign key pair; store public key in prereqs/assets/cosign/ ---"
 	$(MAKE) generate-cosign-keypair
 	@echo "--- Signing test-image:signed with the generated cosign key ---"
@@ -197,6 +198,15 @@ create-local-container-registry: ## Create local container registry
 	@echo "--- Verifying operator deployment ---"
 	@$(KUBECTL) get deployment -n argocd-operator-system || true
 	@$(KUBECTL) get pods -n argocd-operator-system || true
+
+.PHONY: push-expression-test-images
+push-expression-test-images: ## Build and push tags for the CEL expression tests.
+	@set -e; for tag in build-9 build-20 build-100 release-999; do \
+		$(CONTAINER_TOOL) build --build-arg IMAGETAG=$$tag \
+			-t $(GIT_IMAGE_REPO)/expression-test:$$tag \
+			-f $(SIG_TEST_DOCKERFILE) $(SIG_TEST_CONTEXT); \
+		$(CONTAINER_TOOL) push $(GIT_IMAGE_REPO)/expression-test:$$tag; \
+	done
 
 push-signature-test-images: ## Build and push 1.0.0/1.0.1/1.0.2 test images for signature verification tests
 	@echo "--- Building and pushing signature test images ---"

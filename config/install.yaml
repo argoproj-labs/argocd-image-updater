@@ -74,6 +74,23 @@ spec:
                             AllowTags is a regex pattern for tags to allow.
                             This acts as the default if not overridden.
                           type: string
+                        expressionStrategy:
+                          description: |-
+                            ExpressionStrategy configures CEL tag selection for the expression strategy.
+                            A more specific block replaces the inherited block.
+                          properties:
+                            filter:
+                              description: Filter is an optional boolean expression
+                                that determines tag eligibility.
+                              type: string
+                            sortKey:
+                              description: SortKey ranks eligible tags by an integer
+                                or string. The highest key wins.
+                              minLength: 1
+                              type: string
+                          required:
+                          - sortKey
+                          type: object
                         forceUpdate:
                           description: |-
                             ForceUpdate specifies whether updates should be forced.
@@ -103,7 +120,7 @@ spec:
                         updateStrategy:
                           description: |-
                             UpdateStrategy defines the update strategy to apply.
-                            Examples: "semver", "newest-build", "alphabetical", "digest", "calver".
+                            Examples: "semver", "newest-build", "alphabetical", "digest", "calver", "expression".
                             This acts as the default if not overridden at a more specific level.
                           type: string
                       type: object
@@ -134,6 +151,23 @@ spec:
                                   AllowTags is a regex pattern for tags to allow.
                                   This acts as the default if not overridden.
                                 type: string
+                              expressionStrategy:
+                                description: |-
+                                  ExpressionStrategy configures CEL tag selection for the expression strategy.
+                                  A more specific block replaces the inherited block.
+                                properties:
+                                  filter:
+                                    description: Filter is an optional boolean expression
+                                      that determines tag eligibility.
+                                    type: string
+                                  sortKey:
+                                    description: SortKey ranks eligible tags by an
+                                      integer or string. The highest key wins.
+                                    minLength: 1
+                                    type: string
+                                required:
+                                - sortKey
+                                type: object
                               forceUpdate:
                                 description: |-
                                   ForceUpdate specifies whether updates should be forced.
@@ -163,7 +197,7 @@ spec:
                               updateStrategy:
                                 description: |-
                                   UpdateStrategy defines the update strategy to apply.
-                                  Examples: "semver", "newest-build", "alphabetical", "digest", "calver".
+                                  Examples: "semver", "newest-build", "alphabetical", "digest", "calver", "expression".
                                   This acts as the default if not overridden at a more specific level.
                                 type: string
                             type: object
@@ -515,6 +549,23 @@ spec:
                       AllowTags is a regex pattern for tags to allow.
                       This acts as the default if not overridden.
                     type: string
+                  expressionStrategy:
+                    description: |-
+                      ExpressionStrategy configures CEL tag selection for the expression strategy.
+                      A more specific block replaces the inherited block.
+                    properties:
+                      filter:
+                        description: Filter is an optional boolean expression that
+                          determines tag eligibility.
+                        type: string
+                      sortKey:
+                        description: SortKey ranks eligible tags by an integer or
+                          string. The highest key wins.
+                        minLength: 1
+                        type: string
+                    required:
+                    - sortKey
+                    type: object
                   forceUpdate:
                     description: |-
                       ForceUpdate specifies whether updates should be forced.
@@ -544,7 +595,7 @@ spec:
                   updateStrategy:
                     description: |-
                       UpdateStrategy defines the update strategy to apply.
-                      Examples: "semver", "newest-build", "alphabetical", "digest", "calver".
+                      Examples: "semver", "newest-build", "alphabetical", "digest", "calver", "expression".
                       This acts as the default if not overridden at a more specific level.
                     type: string
                 type: object
