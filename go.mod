@@ -17,6 +17,7 @@ require (
 	github.com/distribution/distribution/v3 v3.1.2
 	github.com/go-git/go-git/v5 v5.19.3
 	github.com/go-logr/logr v1.4.4
+	github.com/google/cel-go v0.29.2
 	github.com/google/go-github/v69 v69.2.0
 	github.com/google/uuid v1.6.1-0.20241114170450-2d3c2a9cc518
 	github.com/kballard/go-shellquote v0.0.0-20180428030007-95032a82bc51
@@ -115,7 +116,6 @@ require (
 	github.com/golang/mock v1.7.0-rc.1 // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/google/btree v1.1.3 // indirect
-	github.com/google/cel-go v0.29.2 // indirect
 	github.com/google/gnostic-models v0.7.1 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/go-github/v88 v88.0.0 // indirect
