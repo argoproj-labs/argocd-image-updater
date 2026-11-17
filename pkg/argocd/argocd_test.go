@@ -6083,6 +6083,108 @@ func Test_HelmSourceSelection(t *testing.T) {
 
 		_, err := marshalParamsOverride(ctx, &ApplicationImages{Application: *app, WriteBackConfig: &WriteBackConfig{Method: WriteBackGit}, Images: ImageList{a, b}}, nil)
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "select different Helm sources")
+		assert.Contains(t, err.Error(), "different sources")
+
+		// An image without a selector resolves to the default source, so it counts too.
+		a.HelmSourceIndex = -1
+		_, err = marshalParamsOverride(ctx, &ApplicationImages{Application: *app, WriteBackConfig: &WriteBackConfig{Method: WriteBackGit}, Images: ImageList{a, b}}, nil)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "different sources")
+
+		// All images on the same selected source is fine.
+		a.HelmSourceIndex = 1
+		_, err = marshalParamsOverride(ctx, &ApplicationImages{Application: *app, WriteBackConfig: &WriteBackConfig{Method: WriteBackGit}, Images: ImageList{a, b}}, nil)
+		require.NoError(t, err)
+	})
+}
+
+func Test_newWBCFromSettingsAndImages_multiSourceHelm(t *testing.T) {
+	newApp := func(sources ...v1alpha1.ApplicationSource) *v1alpha1.Application {
+		types := make([]v1alpha1.ApplicationSourceType, len(sources))
+		for i := range types {
+			types[i] = v1alpha1.ApplicationSourceTypeHelm
+		}
+		return &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{Name: "my-app", Namespace: "argocd-test"},
+			Spec:       v1alpha1.ApplicationSpec{Sources: sources},
+			Status:     v1alpha1.ApplicationStatus{SourceTypes: types},
+		}
+	}
+	kubeClient := &kube.ImageUpdaterKubernetesClient{
+		KubeClient: &registryKube.KubernetesClient{Clientset: fake.NewFakeKubeClient(), Namespace: "argocd"},
+	}
+	gitSettings := func() *api.WriteBackConfig { return &api.WriteBackConfig{Method: new("git")} }
+	imageWith := func(alias string, index *int32, chart *string) api.ImageConfig {
+		ic := api.ImageConfig{Alias: alias, ImageName: "x/" + alias}
+		if index != nil || chart != nil {
+			ic.ManifestTarget = &api.ManifestTarget{Helm: &api.HelmTarget{SourceIndex: index, ChartName: chart}}
+		}
+		return ic
+	}
+	gitA := v1alpha1.ApplicationSource{RepoURL: "https://example.com/a.git", Path: "a/", Helm: &v1alpha1.ApplicationSourceHelm{}}
+	gitB := v1alpha1.ApplicationSource{RepoURL: "https://example.com/b.git", Path: "b/", Helm: &v1alpha1.ApplicationSourceHelm{}}
+
+	t.Run("git write-back is routed to the selected source", func(t *testing.T) {
+		app := newApp(gitA, gitB)
+		images := []api.ImageConfig{imageWith("one", new(int32(1)), nil), imageWith("two", new(int32(1)), nil)}
+
+		wbc, err := newWBCFromSettingsAndImages(context.Background(), app, kubeClient, nil, gitSettings(), images)
+		require.NoError(t, err)
+		assert.Equal(t, "https://example.com/b.git", wbc.GitRepo)
+		assert.Equal(t, "b/.argocd-source-argocd-test_my-app.yaml", wbc.Target)
+	})
+
+	t.Run("without selectors git write-back keeps using the default source", func(t *testing.T) {
+		app := newApp(gitA, gitB)
+		images := []api.ImageConfig{imageWith("one", nil, nil)}
+
+		wbc, err := newWBCFromSettingsAndImages(context.Background(), app, kubeClient, nil, gitSettings(), images)
+		require.NoError(t, err)
+		assert.Equal(t, "https://example.com/a.git", wbc.GitRepo)
+		assert.Equal(t, "a/.argocd-source-argocd-test_my-app.yaml", wbc.Target)
+	})
+
+	t.Run("git write-back rejects images that resolve to different sources", func(t *testing.T) {
+		app := newApp(gitA, gitB)
+		for name, images := range map[string][]api.ImageConfig{
+			"two explicit sources":               {imageWith("one", new(int32(0)), nil), imageWith("two", new(int32(1)), nil)},
+			"default source and explicit source": {imageWith("one", nil, nil), imageWith("two", new(int32(1)), nil)},
+		} {
+			_, err := newWBCFromSettingsAndImages(context.Background(), app, kubeClient, nil, gitSettings(), images)
+			require.Error(t, err, name)
+			assert.Contains(t, err.Error(), "different sources", name)
+		}
+	})
+
+	t.Run("argocd write-back lets every image use its own source", func(t *testing.T) {
+		app := newApp(gitA, gitB)
+		images := []api.ImageConfig{imageWith("one", nil, nil), imageWith("two", new(int32(1)), nil)}
+
+		wbc, err := newWBCFromSettingsAndImages(context.Background(), app, kubeClient, nil, &api.WriteBackConfig{}, images)
+		require.NoError(t, err)
+		assert.Equal(t, WriteBackApplication, wbc.Method)
+	})
+
+	t.Run("git write-back needs an explicit repository for a chart source", func(t *testing.T) {
+		chart := v1alpha1.ApplicationSource{RepoURL: "https://charts.example.com", Chart: "podinfo", Helm: &v1alpha1.ApplicationSourceHelm{}}
+		app := newApp(gitA, chart)
+		images := []api.ImageConfig{imageWith("one", new(int32(1)), nil)}
+
+		_, err := newWBCFromSettingsAndImages(context.Background(), app, kubeClient, nil, gitSettings(), images)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "no Git repository")
+
+		settings := gitSettings()
+		settings.GitConfig = &api.GitConfig{Repository: new("https://example.com/values.git")}
+		wbc, err := newWBCFromSettingsAndImages(context.Background(), app, kubeClient, nil, settings, images)
+		require.NoError(t, err)
+		assert.Equal(t, "https://example.com/values.git", wbc.GitRepo)
+	})
+
+	t.Run("invalid selector is reported", func(t *testing.T) {
+		app := newApp(gitA, gitB)
+		_, err := newWBCFromSettingsAndImages(context.Background(), app, kubeClient, nil, gitSettings(), []api.ImageConfig{imageWith("one", new(int32(7)), nil)})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "out of range")
 	})
 }

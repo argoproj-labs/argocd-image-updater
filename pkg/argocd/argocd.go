@@ -330,7 +330,7 @@ func FilterApplicationsForUpdate(ctx context.Context, ctrlClient *ArgoCDK8sClien
 					mergedImagesVerification = mergeImagesVerification(globalImagesVerification, applicationRef.ImagesVerification)
 
 					mergedWBCSettings = mergeWBCSettings(cr.Spec.WriteBackConfig, applicationRef.WriteBackConfig)
-					appWBCSettings, err = newWBCFromSettings(appCtx, &app, kubeClient, argocdDB, mergedWBCSettings)
+					appWBCSettings, err = newWBCFromSettingsAndImages(appCtx, &app, kubeClient, argocdDB, mergedWBCSettings, applicationRef.Images)
 					if err != nil {
 						appLogger.Warnf("Could not create write-back config, skipping: %v", err)
 						continue
@@ -563,6 +563,15 @@ func mergeWBCSettings(global *iuapi.WriteBackConfig, appWBC *iuapi.WriteBackConf
 // settings within the context of a specific application. It is responsible for
 // resolving all app-dependent fields, like target paths.
 func newWBCFromSettings(ctx context.Context, app *argocdapi.Application, kubeClient *kube.ImageUpdaterKubernetesClient, argocdDB db.ArgoDB, settings *iuapi.WriteBackConfig) (*WriteBackConfig, error) {
+	return newWBCFromSettingsAndImages(ctx, app, kubeClient, argocdDB, settings, nil)
+}
+
+// newWBCFromSettingsAndImages is newWBCFromSettings for an application whose
+// images are known. For the git write-back method on a multi-source application,
+// images may select a Helm source (sourceIndex/chartName). The repository, target
+// path and branch of the write-back are then taken from that source and not from
+// the application's default one.
+func newWBCFromSettingsAndImages(ctx context.Context, app *argocdapi.Application, kubeClient *kube.ImageUpdaterKubernetesClient, argocdDB db.ArgoDB, settings *iuapi.WriteBackConfig, images []iuapi.ImageConfig) (*WriteBackConfig, error) {
 	wbc := &WriteBackConfig{
 		Method:                 WriteBackApplication,
 		ArgoClient:             nil,
@@ -612,6 +621,19 @@ func newWBCFromSettings(ctx context.Context, app *argocdapi.Application, kubeCli
 
 	if method == "git" {
 		wbc.Method = WriteBackGit
+
+		// Route the write-back to the Helm source selected by the images, if any.
+		selected, err := resolveWriteBackHelmSource(ctx, app, images)
+		if err != nil {
+			return nil, err
+		}
+		if selected != nil {
+			if selected.Chart != "" && (settings.GitConfig == nil || settings.GitConfig.Repository == nil) {
+				return nil, fmt.Errorf("the Helm source selected for application %s/%s is a chart repository source (chart %q) and has no Git repository to write to, set the git repository explicitly or use the argocd write-back method", app.Namespace, app.Name, selected.Chart)
+			}
+			appSource = selected
+			wbc.Target = parseDefaultTarget(app.GetNamespace(), app.Name, appSource.Path, kubeClient)
+		}
 		// If an explicit write-back target is given, parse and apply it. Otherwise,
 		// the default target set above will be used.
 		if settings.GitConfig != nil && settings.GitConfig.WriteBackTarget != nil {
@@ -638,7 +660,7 @@ func newWBCFromSettings(ctx context.Context, app *argocdapi.Application, kubeCli
 			}
 		}
 		// Parse all other git-related configurations
-		if err := parseGitConfig(ctx, app, kubeClient, settings, wbc, creds); err != nil {
+		if err := parseGitConfig(ctx, app, kubeClient, settings, wbc, creds, appSource); err != nil {
 			return nil, err
 		}
 		if settings.GitConfig != nil && settings.GitConfig.PullRequest != nil {
@@ -900,6 +922,56 @@ func mergeHelmParams(src []argocdapi.HelmParameter, merge []argocdapi.HelmParame
 	}
 
 	return retParams
+}
+
+// resolveWriteBackHelmSource returns the Helm source of a multi-source
+// application that the given images select, or nil if no image selects one (or
+// the application has a single source). All images must resolve to the same
+// source, including images without a selector, which resolve to the default one:
+// git write-back writes the parameters of one source into one override file in
+// one repository, so images of different sources cannot be combined.
+func resolveWriteBackHelmSource(ctx context.Context, app *argocdapi.Application, images []iuapi.ImageConfig) (*argocdapi.ApplicationSource, error) {
+	if !app.Spec.HasMultipleSources() {
+		return nil, nil
+	}
+
+	targets := make([]*Image, 0, len(images))
+	selects := false
+	for _, ic := range images {
+		t := &Image{HelmSourceIndex: -1}
+		if ic.ManifestTarget != nil && ic.ManifestTarget.Helm != nil {
+			if ic.ManifestTarget.Helm.SourceIndex != nil {
+				t.HelmSourceIndex = int(*ic.ManifestTarget.Helm.SourceIndex)
+			}
+			if ic.ManifestTarget.Helm.ChartName != nil {
+				t.HelmChartName = *ic.ManifestTarget.Helm.ChartName
+			}
+		}
+		selects = selects || hasHelmSelector(t)
+		targets = append(targets, t)
+	}
+	if !selects {
+		return nil, nil
+	}
+
+	return commonHelmSource(ctx, app, nil, targets)
+}
+
+// commonHelmSource resolves the source of every given image and returns it if
+// they all agree. It is an error if they do not.
+func commonHelmSource(ctx context.Context, app *argocdapi.Application, wbc *WriteBackConfig, images []*Image) (*argocdapi.ApplicationSource, error) {
+	var common *argocdapi.ApplicationSource
+	for _, img := range images {
+		src, err := selectHelmSource(ctx, app, wbc, img)
+		if err != nil {
+			return nil, err
+		}
+		if common != nil && common != src {
+			return nil, fmt.Errorf("images of application %s resolve to different sources, but git write-back can only write the parameters of one source", app.Name)
+		}
+		common = src
+	}
+	return common, nil
 }
 
 // hasHelmSelector returns true if the image explicitly selects a Helm source

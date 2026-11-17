@@ -713,9 +713,19 @@ image, even if the Application also has Kustomize or plugin sources. The current
 image is read from, and the new image is written to, the same selected source.
 
 With the default `argocd` write-back method, each image can select its own source.
-The `git` write-back method writes the parameters of a single source into one
-override file, so all images of an Application that select a source must select
-the same one. Otherwise the update fails with an error.
+
+The `git` write-back method writes the parameters of one source into one override
+file in one repository. When images select a Helm source, the Git repository,
+the default target path and the branch are taken from that source and not from
+the Application's first Helm source. Two rules apply:
+
+* All images of the Application must resolve to the same source. Images without
+  `sourceIndex` or `chartName` resolve to the Application's default Helm source,
+  so combining them with an image that selects a different source fails with an
+  error. Use the `argocd` write-back method if images need different sources.
+* A selected source that is a chart from a chart repository (`chart` is set) has
+  no Git repository to write to. Set the Git repository explicitly with
+  `writeBackConfig.gitConfig.repository`, otherwise the update fails with an error.
 
 ### Fallback behavior
 

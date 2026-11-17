@@ -492,24 +492,22 @@ func marshalParamsOverride(ctx context.Context, applicationImages *ApplicationIm
 	appSource := GetApplicationSource(ctx, app, wbc)
 
 	// Images may select a Helm source of a multi-source application. An override
-	// file holds the parameters of a single source, so all selecting images must
-	// resolve to the same one.
+	// file holds the parameters of a single source, so all images, including the
+	// ones without a selector, must resolve to the same one.
 	var selectedHelmSource *v1alpha1.ApplicationSource
-	for _, img := range applicationImages.Images {
-		if !app.Spec.HasMultipleSources() || !hasHelmSelector(img) {
-			continue
+	if app.Spec.HasMultipleSources() {
+		anySelector := false
+		for _, img := range applicationImages.Images {
+			anySelector = anySelector || hasHelmSelector(img)
 		}
-		src, selErr := selectHelmSource(ctx, app, wbc, img)
-		if selErr != nil {
-			return nil, selErr
+		if anySelector {
+			var selErr error
+			selectedHelmSource, selErr = commonHelmSource(ctx, app, wbc, applicationImages.Images)
+			if selErr != nil {
+				return nil, selErr
+			}
+			appSource = selectedHelmSource
 		}
-		if selectedHelmSource != nil && selectedHelmSource != src {
-			return nil, fmt.Errorf("images of application %s select different Helm sources, but write-back can only write the parameters of one source", app.Name)
-		}
-		selectedHelmSource = src
-	}
-	if selectedHelmSource != nil {
-		appSource = selectedHelmSource
 	}
 
 	if hasPluginTargets(applicationImages.Images) {
@@ -1234,7 +1232,7 @@ func parseTarget(writeBackTarget string, sourcePath string) string {
 	}
 }
 
-func parseGitConfig(ctx context.Context, app *v1alpha1.Application, kubeClient *kube.ImageUpdaterKubernetesClient, settings *iuapi.WriteBackConfig, wbc *WriteBackConfig, creds string) error {
+func parseGitConfig(ctx context.Context, app *v1alpha1.Application, kubeClient *kube.ImageUpdaterKubernetesClient, settings *iuapi.WriteBackConfig, wbc *WriteBackConfig, creds string, repoSource *v1alpha1.ApplicationSource) error {
 	if settings.GitConfig != nil && settings.GitConfig.Branch != nil {
 		branch := *settings.GitConfig.Branch
 
@@ -1248,7 +1246,10 @@ func parseGitConfig(ctx context.Context, app *v1alpha1.Application, kubeClient *
 		}
 
 	}
-	wbc.GitRepo = getApplicationSource(ctx, app, wbc).RepoURL
+	if repoSource == nil {
+		repoSource = getApplicationSource(ctx, app, wbc)
+	}
+	wbc.GitRepo = repoSource.RepoURL
 	if settings.GitConfig != nil && settings.GitConfig.Repository != nil {
 		repo := *settings.GitConfig.Repository
 		wbc.GitRepo = repo
