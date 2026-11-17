@@ -678,7 +678,7 @@ images:
 ### Using `sourceIndex`
 
 When multiple sources in the same Application reference the same Helm chart,
-`chartName` is ambiguous — it will always match the first occurrence. Use
+`chartName` is ambiguous and Image Updater reports an error instead of guessing. Use
 `manifestTargets.helm.sourceIndex` instead to target a source by its zero-based
 position in `spec.sources`.
 
@@ -702,7 +702,20 @@ selection logic applies.
 
 !!!note
     `sourceIndex` is zero-based, so the first source in `spec.sources` is `0`,
-    the second is `1`, and so on.
+    the second is `1`, and so on. The selected source must be a Helm source:
+    either a chart (`chart` is set) or a Git source with a `helm` block. An index
+    that is out of range or points to a non-Helm source is an error.
+
+### Mixed-source Applications and write-back
+
+An image that sets `chartName` or `sourceIndex` is always handled as a Helm
+image, even if the Application also has Kustomize or plugin sources. The current
+image is read from, and the new image is written to, the same selected source.
+
+With the default `argocd` write-back method, each image can select its own source.
+The `git` write-back method writes the parameters of a single source into one
+override file, so all images of an Application that select a source must select
+the same one. Otherwise the update fails with an error.
 
 ### Fallback behavior
 

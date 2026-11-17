@@ -902,11 +902,75 @@ func mergeHelmParams(src []argocdapi.HelmParameter, merge []argocdapi.HelmParame
 	return retParams
 }
 
+// hasHelmSelector returns true if the image explicitly selects a Helm source
+// of a multi-source application, by index or by chart name.
+func hasHelmSelector(img *Image) bool {
+	return img != nil && (img.HelmSourceIndex >= 0 || img.HelmChartName != "")
+}
+
+// getImageApplicationType returns the application type to use for the given
+// image. An image that explicitly selects a Helm source of a multi-source
+// application is always handled as Helm, even when other sources of the
+// application (for example a Kustomize one) would make the application as a
+// whole classify differently.
+func getImageApplicationType(app *argocdapi.Application, wbc *WriteBackConfig, img *Image) ApplicationType {
+	if app.Spec.HasMultipleSources() && hasHelmSelector(img) {
+		return ApplicationTypeHelm
+	}
+	return getApplicationType(app, wbc)
+}
+
+// selectHelmSource returns the application source holding the Helm parameters
+// of the given image. For multi-source applications, sourceIndex takes
+// precedence over chartName. An out-of-range index, a source that is not a
+// Helm source, an unknown chart name and a chart name matching more than one
+// source are all errors. Without selectors (or for single-source applications)
+// it falls back to getApplicationSource. Both the read and the write path must
+// use this so that they always agree on the source.
+func selectHelmSource(ctx context.Context, app *argocdapi.Application, wbc *WriteBackConfig, img *Image) (*argocdapi.ApplicationSource, error) {
+	if !app.Spec.HasMultipleSources() || !hasHelmSelector(img) {
+		return getApplicationSource(ctx, app, wbc), nil
+	}
+
+	sources := app.Spec.Sources
+	if img.HelmSourceIndex >= 0 {
+		if img.HelmSourceIndex >= len(sources) {
+			return nil, fmt.Errorf("sourceIndex %d is out of range for application %s (has %d sources)", img.HelmSourceIndex, app.Name, len(sources))
+		}
+		s := &sources[img.HelmSourceIndex]
+		// IsHelm() only looks at Chart, but a Helm source hosted in Git has Path and
+		// a Helm block and no Chart.
+		if !s.IsHelm() && s.Helm == nil {
+			return nil, fmt.Errorf("source at index %d in application %s is not a Helm source", img.HelmSourceIndex, app.Name)
+		}
+		return s, nil
+	}
+
+	var match *argocdapi.ApplicationSource
+	matches := make([]int, 0, 1)
+	for i := range sources {
+		if sources[i].Chart == img.HelmChartName {
+			if match == nil {
+				match = &sources[i]
+			}
+			matches = append(matches, i)
+		}
+	}
+	switch len(matches) {
+	case 0:
+		return nil, fmt.Errorf("no Helm source with chart name %q found in application %s", img.HelmChartName, app.Name)
+	case 1:
+		return match, nil
+	default:
+		return nil, fmt.Errorf("chart name %q matches %d sources (indexes %v) in application %s, use sourceIndex to select one", img.HelmChartName, len(matches), matches, app.Name)
+	}
+}
+
 // GetHelmImage gets the image set in Application source matching new image
 // or an empty string if match is not found
 func GetHelmImage(ctx context.Context, app *argocdapi.Application, wbc *WriteBackConfig, applicationImage *Image) (string, error) {
 
-	if appType := getApplicationType(app, wbc); appType != ApplicationTypeHelm {
+	if appType := getImageApplicationType(app, wbc, applicationImage); appType != ApplicationTypeHelm {
 		return "", fmt.Errorf("cannot set Helm params on non-Helm application")
 	}
 
@@ -924,7 +988,10 @@ func GetHelmImage(ctx context.Context, app *argocdapi.Application, wbc *WriteBac
 		hpImageTag = common.DefaultHelmImageTag
 	}
 
-	appSource := getApplicationSource(ctx, app, wbc)
+	appSource, err := selectHelmSource(ctx, app, wbc, applicationImage)
+	if err != nil {
+		return "", err
+	}
 
 	if appSource.Helm == nil {
 		return "", nil
@@ -953,7 +1020,7 @@ func GetHelmImage(ctx context.Context, app *argocdapi.Application, wbc *WriteBac
 // SetHelmImage sets image parameters for a Helm application
 func SetHelmImage(ctx context.Context, app *argocdapi.Application, newImage *image.ContainerImage, wbc *WriteBackConfig, applicationImage *Image) error {
 	log := log.LoggerFromContext(ctx)
-	if appType := getApplicationType(app, wbc); appType != ApplicationTypeHelm {
+	if appType := getImageApplicationType(app, wbc, applicationImage); appType != ApplicationTypeHelm {
 		return fmt.Errorf("cannot set Helm params on non-Helm application")
 	}
 
@@ -1000,30 +1067,9 @@ func SetHelmImage(ctx context.Context, app *argocdapi.Application, newImage *ima
 		}
 	}
 
-	var appSource *argocdapi.ApplicationSource
-	if app.Spec.HasMultipleSources() && applicationImage.HelmSourceIndex >= 0 {
-		sources := app.Spec.Sources
-		if applicationImage.HelmSourceIndex >= len(sources) {
-			return fmt.Errorf("sourceIndex %d is out of range for application %s (has %d sources)", applicationImage.HelmSourceIndex, app.Name, len(sources))
-		}
-		s := &sources[applicationImage.HelmSourceIndex]
-		if !s.IsHelm() {
-			return fmt.Errorf("source at index %d in application %s is not a Helm source", applicationImage.HelmSourceIndex, app.Name)
-		}
-		appSource = s
-	} else if app.Spec.HasMultipleSources() && applicationImage.HelmChartName != "" {
-		for i := range app.Spec.Sources {
-			s := &app.Spec.Sources[i]
-			if s.Chart == applicationImage.HelmChartName {
-				appSource = s
-				break
-			}
-		}
-		if appSource == nil {
-			return fmt.Errorf("no Helm source with chart name %q found in application %s", applicationImage.HelmChartName, app.Name)
-		}
-	} else {
-		appSource = getApplicationSource(ctx, app, wbc)
+	appSource, err := selectHelmSource(ctx, app, wbc, applicationImage)
+	if err != nil {
+		return err
 	}
 
 	if appSource.Helm == nil {

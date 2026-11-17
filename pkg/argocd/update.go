@@ -391,7 +391,7 @@ func getAppImage(ctx context.Context, app *v1alpha1.Application, wbc *WriteBackC
 	if applicationImage.PluginEnvName != "" || applicationImage.PluginEnvSpec != "" {
 		return GetPluginImage(ctx, app, wbc, applicationImage)
 	}
-	if appType := GetApplicationType(app, wbc); appType == ApplicationTypeKustomize {
+	if appType := getImageApplicationType(app, wbc, applicationImage); appType == ApplicationTypeKustomize {
 		return GetKustomizeImage(ctx, app, wbc, applicationImage)
 	} else if appType == ApplicationTypeHelm {
 		return GetHelmImage(ctx, app, wbc, applicationImage)
@@ -409,7 +409,7 @@ func setAppImage(ctx context.Context, app *v1alpha1.Application, img *image.Cont
 	if applicationImage.PluginEnvName != "" || applicationImage.PluginEnvSpec != "" {
 		return SetPluginImage(ctx, app, img, wbc, applicationImage)
 	}
-	if appType := GetApplicationType(app, wbc); appType == ApplicationTypeKustomize {
+	if appType := getImageApplicationType(app, wbc, applicationImage); appType == ApplicationTypeKustomize {
 		return SetKustomizeImage(ctx, app, img, wbc, applicationImage)
 	} else if appType == ApplicationTypeHelm {
 		return SetHelmImage(ctx, app, img, wbc, applicationImage)
@@ -491,6 +491,27 @@ func marshalParamsOverride(ctx context.Context, applicationImages *ApplicationIm
 
 	appSource := GetApplicationSource(ctx, app, wbc)
 
+	// Images may select a Helm source of a multi-source application. An override
+	// file holds the parameters of a single source, so all selecting images must
+	// resolve to the same one.
+	var selectedHelmSource *v1alpha1.ApplicationSource
+	for _, img := range applicationImages.Images {
+		if !app.Spec.HasMultipleSources() || !hasHelmSelector(img) {
+			continue
+		}
+		src, selErr := selectHelmSource(ctx, app, wbc, img)
+		if selErr != nil {
+			return nil, selErr
+		}
+		if selectedHelmSource != nil && selectedHelmSource != src {
+			return nil, fmt.Errorf("images of application %s select different Helm sources, but write-back can only write the parameters of one source", app.Name)
+		}
+		selectedHelmSource = src
+	}
+	if selectedHelmSource != nil {
+		appSource = selectedHelmSource
+	}
+
 	if hasPluginTargets(applicationImages.Images) {
 		if appSource.Plugin == nil {
 			return []byte{}, nil
@@ -539,6 +560,9 @@ func marshalParamsOverride(ctx context.Context, applicationImages *ApplicationIm
 	}
 
 	appType := GetApplicationType(app, wbc)
+	if selectedHelmSource != nil {
+		appType = ApplicationTypeHelm
+	}
 
 	switch appType {
 	case ApplicationTypeKustomize:

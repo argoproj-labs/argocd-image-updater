@@ -1034,11 +1034,6 @@ var _ = Describe("HelmTarget SourceIndex Validation", func() {
 	})
 })
 
-// Helper function to create a bool pointer
-func boolPtr(b bool) *bool {
-	return &b
-}
-
 // Helper function to create a string pointer
 func strPtr(s string) *string {
 	return &s
