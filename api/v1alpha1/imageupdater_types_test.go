@@ -945,8 +945,6 @@ var _ = Describe("PullRequest Validation", func() {
 	})
 })
 
-
-
 var _ = Describe("HelmTarget SourceIndex Validation", func() {
 	baseHelmImage := func(name string, helm *HelmTarget) *ImageUpdater {
 		return &ImageUpdater{
