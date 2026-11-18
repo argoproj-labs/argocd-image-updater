@@ -87,6 +87,13 @@ spec:
                             type: string
                           type: array
                           x-kubernetes-list-type: atomic
+                        pinDigest:
+                          description: |-
+                            PinDigest appends the selected tag's manifest digest to the image reference,
+                            preserving the tag name (e.g. "image:tag@sha256:...").
+                            This acts as the default if not overridden at a more specific level.
+                            Defaults to false. This setting has no effect with the digest strategy.
+                          type: boolean
                         platforms:
                           description: |-
                             Platforms specifies a list of target platforms (e.g., "linux/amd64", "linux/arm64").
@@ -147,6 +154,13 @@ spec:
                                   type: string
                                 type: array
                                 x-kubernetes-list-type: atomic
+                              pinDigest:
+                                description: |-
+                                  PinDigest appends the selected tag's manifest digest to the image reference,
+                                  preserving the tag name (e.g. "image:tag@sha256:...").
+                                  This acts as the default if not overridden at a more specific level.
+                                  Defaults to false. This setting has no effect with the digest strategy.
+                                type: boolean
                               platforms:
                                 description: |-
                                   Platforms specifies a list of target platforms (e.g., "linux/amd64", "linux/arm64").
@@ -528,6 +542,13 @@ spec:
                       type: string
                     type: array
                     x-kubernetes-list-type: atomic
+                  pinDigest:
+                    description: |-
+                      PinDigest appends the selected tag's manifest digest to the image reference,
+                      preserving the tag name (e.g. "image:tag@sha256:...").
+                      This acts as the default if not overridden at a more specific level.
+                      Defaults to false. This setting has no effect with the digest strategy.
+                    type: boolean
                   platforms:
                     description: |-
                       Platforms specifies a list of target platforms (e.g., "linux/amd64", "linux/arm64").
