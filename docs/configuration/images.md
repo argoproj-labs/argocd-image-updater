@@ -30,6 +30,10 @@ Each image in the `images` array must have:
   application reference
 * **`imageName`** (required) - The full image identifier including registry,
   repository, and initial tag/version
+* **`deployedImageName`** (optional) - The repository the application actually
+  pulls the image from, when it is pulled through a mirror or pull-through
+  cache. See
+  [Images pulled through a mirror or pull-through cache](#pull-through-cache)
 
 ## Allowing an image for update
 
@@ -301,6 +305,73 @@ Valid values for `secret_ref` are:
 
 In case of `secret` or `env`references, the data stored in the reference must
 be in format `<username>:<password>`
+
+## <a name="pull-through-cache"></a>Images pulled through a mirror or pull-through cache
+
+Some clusters pull public images through a registry mirror or a pull-through
+cache, such as an
+[Amazon ECR pull-through cache](https://docs.aws.amazon.com/AmazonECR/latest/userguide/pull-through-cache.html),
+instead of from the upstream registry. A pull-through cache only lists the tags
+that have already been pulled through it, so Image Updater cannot find new
+versions there. The upstream registry has to be asked instead, but the
+application runs, and must keep running, the image from the cache.
+
+Set `imageName` to the upstream image, and `deployedImageName` to the
+repository in the cache, without a tag or digest:
+
+```yaml
+images:
+  - alias: "pebble"
+    imageName: "ghcr.io/letsencrypt/pebble:~2.8"
+    deployedImageName: "123456789012.dkr.ecr.eu-west-1.amazonaws.com/ghcr/letsencrypt/pebble"
+    manifestTargets:
+      helm:
+        name: "image.repository"
+        tag: "image.tag"
+```
+
+With `deployedImageName` set:
+
+* Tags are listed, filtered and verified in the registry of `imageName`, with
+  the credentials and pull secret for that registry.
+* The running image is looked for in the application by `deployedImageName`,
+  so `forceUpdate` is not needed to find it. If the application still runs the
+  image from `imageName`, that image is found instead, and the application is
+  moved to `deployedImageName`, even if it already runs the latest version.
+  This needs a manifest target that sets the repository, not just the tag:
+  `helm.name` or `helm.spec`, `kustomize.name`, or `plugin.name` or
+  `plugin.spec`. Otherwise the image is skipped with an error.
+* `deployedImageName`, together with the tag or digest found for `imageName`,
+  is written back. In the example above, `image.repository` is set to the
+  cache's repository and `image.tag` to the new version. With Git write-back
+  to a Helm values file, the repository is written with its registry, even if
+  the file has the image name without one.
+
+Both repositories must serve the same image manifests, so that the tags and
+digests found in `imageName` can be pulled from `deployedImageName`. A
+pull-through cache can keep serving the manifest it cached for a tag after the
+tag has moved upstream, until it next checks the upstream registry. Use
+immutable version tags with `deployedImageName`, rather than tags such as
+`latest` or `stable` that are moved to new images.
+
+With Kustomize, `manifestTargets.kustomize.name` is still the image name in the
+manifests, and the cache's repository is written as its new name:
+
+```yaml
+images:
+  - alias: "pebble"
+    imageName: "ghcr.io/letsencrypt/pebble:~2.8"
+    deployedImageName: "123456789012.dkr.ecr.eu-west-1.amazonaws.com/ghcr/letsencrypt/pebble"
+    manifestTargets:
+      kustomize:
+        name: "ghcr.io/letsencrypt/pebble"
+```
+
+This is similar to the following kustomize command:
+
+```shell
+kustomize edit set image ghcr.io/letsencrypt/pebble=123456789012.dkr.ecr.eu-west-1.amazonaws.com/ghcr/letsencrypt/pebble:2.8.0
+```
 
 ## Custom images with Kustomize
 

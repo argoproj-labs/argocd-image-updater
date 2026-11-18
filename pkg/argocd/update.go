@@ -59,10 +59,15 @@ func UpdateApplication(ctx context.Context, updateConf *UpdateConfiguration, sta
 	// constraints which are part of the application's values.
 	//
 	for _, applicationImage := range updateConf.UpdateApp.Images {
+		// deployedImage is the image as the application runs it. It differs from
+		// applicationImage.ContainerImage, whose registry is asked for tags, when
+		// the image is pulled through a mirror or pull-through cache.
+		deployedImage := applicationImage.DeployedImage()
+
 		// updateableImage is the live image found in the cluster status
-		updateableImage := applicationImages.ContainsImage(applicationImage.ContainerImage, false)
+		updateableImage := applicationImage.FindLiveImage(applicationImages)
 		if updateableImage == nil {
-			baseLogger.Debugf("Image '%s' seems not to be live in this application, skipping", applicationImage.ImageName)
+			baseLogger.Debugf("Image '%s' seems not to be live in this application, skipping", deployedImage.GetFullNameWithoutTag())
 			result.NumSkipped += 1
 			continue
 		}
@@ -85,6 +90,17 @@ func UpdateApplication(ctx context.Context, updateConf *UpdateConfiguration, sta
 		}
 
 		imgCtx.Debugf("Considering this image for update")
+
+		// Moving the application to another repository needs a manifest target
+		// that sets the repository, not just the tag. Without one, writing back
+		// leaves the old repository running, and the image would be written
+		// again on every cycle. Check this before asking the registry for tags.
+		if applicationImage.switchesRepository(updateableImage) && !writesRepository(&updateConf.UpdateApp.Application, updateConf.UpdateApp.WriteBackConfig, applicationImage) {
+			imgCtx.Errorf("Application runs %s rather than %s, but the manifest target only sets the tag, so the repository cannot be changed. Configure a manifest target that sets the repository: helm name or spec, kustomize name, or plugin name or spec",
+				updateableImage.GetFullNameWithoutTag(), deployedImage.GetFullNameWithoutTag())
+			result.NumErrors += 1
+			continue
+		}
 
 		rep, err := registry.GetRegistryEndpoint(imageOpCtx, applicationImage.ContainerImage)
 		if err != nil {
@@ -206,15 +222,27 @@ func UpdateApplication(ctx context.Context, updateConf *UpdateConfiguration, sta
 		// triggering a spurious one. For digest strategy, re-select the live
 		// image that actually belongs to this alias (by tag, then by stale
 		// digest) so it is evaluated against its own container.
+		// While the application is still being moved to deployedImageName, its
+		// containers run from the repository the live image was found in, so
+		// search that one.
 		if vc.Strategy == image.StrategyDigest {
-			if m := applicationImages.MatchForDigestUpdate(applicationImage.ContainerImage, latest.TagDigest); m != nil && m != updateableImage {
+			searchImage := deployedImage
+			if applicationImage.switchesRepository(updateableImage) {
+				liveRepoImage := *deployedImage
+				liveRepoImage.RegistryURL = updateableImage.RegistryURL
+				liveRepoImage.ImageName = updateableImage.ImageName
+				searchImage = &liveRepoImage
+			}
+			if m := applicationImages.MatchForDigestUpdate(searchImage, latest.TagDigest); m != nil && m != updateableImage {
 				imgCtx.Debugf("Multiple containers reference image '%s'; re-selected live image (tag '%s', digest '%s') for update evaluation", applicationImage.ImageName, m.ImageTag.TagName, m.ImageTag.TagDigest)
 				updateableImage = m
 			}
 		}
 
-		if needsUpdate(updateableImage, applicationImage.ContainerImage, latest, vc.Strategy) {
-			appImageWithTag := applicationImage.WithTag(latest)
+		// Write back even when the tag is already the latest one if the
+		// application still runs the image from another repository.
+		if applicationImage.switchesRepository(updateableImage) || needsUpdate(updateableImage, deployedImage, latest, vc.Strategy) {
+			appImageWithTag := deployedImage.WithTag(latest)
 			appImageFullNameWithTag := appImageWithTag.GetFullNameWithTag()
 
 			// Check if new image is already set in Application Spec when write back is set to argocd
@@ -229,16 +257,18 @@ func UpdateApplication(ctx context.Context, updateConf *UpdateConfiguration, sta
 				result.NumErrors += 1
 				continue
 			}
-			if appImageSpec == appImageFullNameWithTag {
+			if imageSetInSpec(appImageSpec, appImageWithTag, applicationImage) {
 				imgCtx.Infof("New image %s already set in spec", appImageFullNameWithTag)
 				continue
 			}
 
-			// check signature for appImageWithTag using applicationImage.Verify
+			// check the signature of the new image using applicationImage.Verify.
+			// The signature is fetched from the registry the tag was found in, as
+			// a mirror or pull-through cache may not hold it.
 			if applicationImage.EnableVerification {
 				switch {
 				case applicationImage.Verify != nil && applicationImage.Verify.CosignKey != "":
-					err := image.VerifyWithPublicKey(imageOpCtx, appImageWithTag, applicationImage.Verify, regClient)
+					err := image.VerifyWithPublicKey(imageOpCtx, applicationImage.WithTag(latest), applicationImage.Verify, regClient)
 					if err != nil {
 						imgCtx.Errorf("Unable to verify image %s with public key: %v", appImageFullNameWithTag, err)
 						result.NumErrors += 1
@@ -287,7 +317,7 @@ func UpdateApplication(ctx context.Context, updateConf *UpdateConfiguration, sta
 				}
 				currentTag = tag.NewImageTag(vc.Constraint, time.Unix(0, 0), digest)
 			}
-			err = setAppImage(imageOpCtx, &updateConf.UpdateApp.Application, applicationImage.WithTag(currentTag), updateConf.UpdateApp.WriteBackConfig, applicationImage)
+			err = setAppImage(imageOpCtx, &updateConf.UpdateApp.Application, deployedImage.WithTag(currentTag), updateConf.UpdateApp.WriteBackConfig, applicationImage)
 			if err != nil {
 				imgCtx.Errorf("Error while trying to update image: %v", err)
 				result.NumErrors += 1
@@ -388,7 +418,7 @@ func needsUpdate(updateableImage *image.ContainerImage, applicationImage *image.
 // It determines the application type (Kustomize, Helm, or Plugin) and calls the
 // appropriate function to extract the image information.
 func getAppImage(ctx context.Context, app *v1alpha1.Application, wbc *WriteBackConfig, applicationImage *Image) (string, error) {
-	if applicationImage.PluginEnvName != "" || applicationImage.PluginEnvSpec != "" {
+	if applicationImage.hasPluginTarget() {
 		return GetPluginImage(ctx, app, wbc, applicationImage)
 	}
 	if appType := GetApplicationType(app, wbc); appType == ApplicationTypeKustomize {
@@ -402,11 +432,47 @@ func getAppImage(ctx context.Context, app *v1alpha1.Application, wbc *WriteBackC
 	}
 }
 
+// imageSetInSpec reports whether appImageSpec, the image read from the
+// application by getAppImage, is already newImage as setAppImage would write it.
+// References are compared parsed rather than as raw strings. A Kustomize entry
+// in the form "name=newName:tag" only sets the image for the Kustomize image
+// name before "=", so that name must be the one this image is written under.
+func imageSetInSpec(appImageSpec string, newImage *image.ContainerImage, applicationImage *Image) bool {
+	if appImageSpec == "" {
+		return false
+	}
+	current := image.NewFromIdentifier(appImageSpec)
+	if current.ImageAlias != applicationImage.KustomizeImageName {
+		return false
+	}
+	return current.GetFullNameWithTag() == newImage.GetFullNameWithTag()
+}
+
+// writesRepository reports whether setAppImage writes the repository of the
+// image, and not only its tag, for this application and image.
+func writesRepository(app *v1alpha1.Application, wbc *WriteBackConfig, applicationImage *Image) bool {
+	if applicationImage.hasPluginTarget() {
+		return true
+	}
+	switch GetApplicationType(app, wbc) {
+	case ApplicationTypeKustomize:
+		// Without a Kustomize image name, the entry is keyed by the new
+		// repository itself, so it does not replace the repository that the
+		// manifests reference.
+		return applicationImage.KustomizeImageName != ""
+	case ApplicationTypeHelm:
+		name, _ := getHelmParamNames(applicationImage)
+		return name != ""
+	default:
+		return false
+	}
+}
+
 // setAppImage updates the image in the application's manifest based on its type (Kustomize, Helm, or Plugin).
 // It calls the appropriate function to perform the update.
 // Returns an error if the application type is unsupported, or if the update fails.
 func setAppImage(ctx context.Context, app *v1alpha1.Application, img *image.ContainerImage, wbc *WriteBackConfig, applicationImage *Image) error {
-	if applicationImage.PluginEnvName != "" || applicationImage.PluginEnvSpec != "" {
+	if applicationImage.hasPluginTarget() {
 		return SetPluginImage(ctx, app, img, wbc, applicationImage)
 	}
 	if appType := GetApplicationType(app, wbc); appType == ApplicationTypeKustomize {
@@ -659,7 +725,11 @@ func marshalParamsOverride(ctx context.Context, applicationImages *ApplicationIm
 					valueToSet = helmParamN.Value
 				}
 
-				if !emptyOriginalData && image.HasRegistryPrefix(valueToSet) {
+				// A deployedImageName selects the registry explicitly, so it is
+				// written as configured. Shortening it to match the values file
+				// would drop the mirror's registry and keep the application on
+				// the upstream one.
+				if !emptyOriginalData && c.DeployedImageOverride == nil && image.HasRegistryPrefix(valueToSet) {
 					// valueToSet is in long form (has registry URL)
 					// Check the original value in helmNewValues to see if it's in short form
 					// Skip this check if originalData is empty

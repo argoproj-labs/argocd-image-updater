@@ -13,6 +13,7 @@ import (
 	"github.com/argoproj/argo-cd/v3/pkg/apiclient/application"
 	argocdapi "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1"
 	"github.com/argoproj/argo-cd/v3/util/db"
+	"github.com/distribution/reference"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
@@ -819,10 +820,49 @@ func parseImageList(ctx context.Context, kubeClient *kube.ImageUpdaterKubernetes
 				img.ContainerImage.KustomizeImage = image.NewFromIdentifier(*kustomizeImage)
 			}
 		}
+
+		if im.DeployedImageName != nil && *im.DeployedImageName != "" {
+			if err := validateDeployedImageName(*im.DeployedImageName); err != nil {
+				// Skip the image rather than ignore the field, which would write
+				// the upstream repository back to the application.
+				log.Warnf("Skipping image %s: %v", im.ImageName, err)
+				continue
+			}
+			img.DeployedImageOverride = newDeployedImage(img.ContainerImage, *im.DeployedImageName)
+		}
 		results = append(results, img)
 	}
 
 	return &results
+}
+
+// validateDeployedImageName returns an error unless name is a valid image
+// repository without a tag or digest. The CRD pattern only approximates the
+// reference grammar, and is missing from CRDs installed before the field was
+// added, so the name is checked again here rather than silently read as
+// something else by image.NewFromIdentifier.
+func validateDeployedImageName(name string) error {
+	ref, err := reference.ParseNormalizedNamed(name)
+	if err != nil {
+		return fmt.Errorf("deployedImageName %q is not a valid image repository: %w", name, err)
+	}
+	if !reference.IsNameOnly(ref) {
+		return fmt.Errorf("deployedImageName %q must not include a tag or digest", name)
+	}
+	return nil
+}
+
+// newDeployedImage returns a copy of src with the registry and repository of
+// deployedImageName, which has no tag or digest. The alias, the tag (which holds
+// the version constraint) and the Kustomize image are kept from src, so that the
+// copy is matched against the application's running images and written back in
+// the same way as src would be.
+func newDeployedImage(src *image.ContainerImage, deployedImageName string) *image.ContainerImage {
+	deployed := image.NewFromIdentifier(deployedImageName)
+	deployed.ImageAlias = src.ImageAlias
+	deployed.ImageTag = src.ImageTag
+	deployed.KustomizeImage = src.KustomizeImage
+	return deployed
 }
 
 // getHelmParamNames inspects the given image for whether
@@ -1037,7 +1077,7 @@ func GetKustomizeImage(ctx context.Context, app *argocdapi.Application, wbc *Wri
 		// an alias, that alias must also match - otherwise two entries that
 		// share the same ImageName but target different kustomize image
 		// aliases would be treated as the same entry.
-		matched := curr.ImageName == applicationImage.ImageName
+		matched := curr.ImageName == applicationImage.DeployedImage().ImageName
 		if ksImageName != "" && curr.ImageAlias != "" {
 			matched = matched && curr.ImageAlias == ksImageName
 		}
@@ -1208,13 +1248,12 @@ func GetImagesFromApplication(applicationImages *ApplicationImages) image.Contai
 
 	for _, img := range applicationImages.Images {
 		if img.ForceUpdate {
-			// Create a copy of the container image with nil tag to add to the live images list.
-			// The tag from the image list will be a version constraint, which isn't a valid tag.
-			// We preserve the original img.ContainerImage so the constraint is available later.
-			imgCopy := img.ContainerImage.WithTag(nil)
-			// Avoid duplicates if an entry already exists for this image (ignore tag for match).
-			if images.ContainsImage(img.ContainerImage, false) == nil {
-				images = append(images, imgCopy)
+			// Add a tag-less copy of the deployed image to the live images list, unless
+			// the image is already live, which with a deployed image override includes
+			// running from ImageName. The tag from the image list is a version
+			// constraint, which isn't a valid tag, so the original image is kept for later.
+			if img.FindLiveImage(images) == nil {
+				images = append(images, img.DeployedImage().WithTag(nil))
 			}
 		}
 	}
@@ -1256,7 +1295,7 @@ func GetImagesAndAliasesFromApplication(applicationImages *ApplicationImages) Im
 	for _, aliasedImage := range applicationImages.Images {
 		// For each one, we find its corresponding entry in the list of live images.
 		// Images not found here are not live and are excluded from the result.
-		if sourceImage := containerImages.ContainsImage(aliasedImage.ContainerImage, false); sourceImage != nil {
+		if sourceImage := aliasedImage.FindLiveImage(containerImages); sourceImage != nil {
 			if sourceImage.ImageAlias != "" {
 				// This live image has already been matched to a previous alias, so create
 				// a copy to avoid overwriting the existing alias association.

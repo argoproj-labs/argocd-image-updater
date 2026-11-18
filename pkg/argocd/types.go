@@ -162,7 +162,7 @@ type pluginOverride struct {
 
 func hasPluginTargets(images ImageList) bool {
 	for _, img := range images {
-		if img.PluginEnvName != "" || img.PluginEnvSpec != "" {
+		if img.hasPluginTarget() {
 			return true
 		}
 	}
@@ -260,6 +260,53 @@ type Image struct {
 	// verify image signature settings
 	EnableVerification bool
 	*image.Verify
+
+	// DeployedImageOverride is the image the application actually runs, when that is not
+	// the image in ContainerImage, such as the same image pulled through a registry
+	// mirror or pull-through cache. It carries the same alias, tag constraint and
+	// Kustomize image as ContainerImage, but a different registry and repository.
+	// ContainerImage is still used to look up tags; this image is used to find the
+	// running image and to write back. Nil when the two are the same.
+	DeployedImageOverride *image.ContainerImage
+}
+
+// DeployedImage returns DeployedImageOverride if it is set, otherwise ContainerImage.
+func (img *Image) DeployedImage() *image.ContainerImage {
+	if img.DeployedImageOverride != nil {
+		return img.DeployedImageOverride
+	}
+	return img.ContainerImage
+}
+
+// FindLiveImage returns the entry in live, the application's running images,
+// that this image runs as, or nil if it is not running. It looks for
+// DeployedImage first. When a DeployedImageOverride is configured, it then falls back to
+// ContainerImage, so that an application that still runs the image from the
+// upstream registry is found, and can be moved to DeployedImageOverride.
+func (img *Image) FindLiveImage(live image.ContainerImageList) *image.ContainerImage {
+	if img.DeployedImageOverride != nil {
+		// Match the deployed repository itself first. ContainsImage would try
+		// the Kustomize image first, which can name the upstream repository, and
+		// so return the upstream image even when the deployed one is live too.
+		deployed := *img.DeployedImageOverride
+		deployed.KustomizeImage = nil
+		if found := live.ContainsImage(&deployed, false); found != nil {
+			return found
+		}
+	}
+	return live.ContainsImage(img.ContainerImage, false)
+}
+
+// switchesRepository reports whether the application must be moved from the
+// repository of liveImage, as returned by FindLiveImage, to DeployedImageOverride.
+func (img *Image) switchesRepository(liveImage *image.ContainerImage) bool {
+	return img.DeployedImageOverride != nil && img.DeployedImageOverride.DiffersFrom(liveImage, false)
+}
+
+// hasPluginTarget reports whether the image is written back through plugin
+// environment variables, whatever the application type.
+func (img *Image) hasPluginTarget() bool {
+	return img.PluginEnvName != "" || img.PluginEnvSpec != ""
 }
 
 // ImageList is a list of Image objects that can be updated.
