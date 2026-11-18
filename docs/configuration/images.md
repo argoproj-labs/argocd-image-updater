@@ -165,6 +165,8 @@ commonUpdateSettings:
 - `sortKey` is required and must return an integer or string. The highest
   key wins. Strings sort lexicographically. When keys are equal, the
   lexicographically greatest tag name wins.
+- Expressions support standard CEL functions and the `string.split(separator)`
+  extension. The string passed to `split` can be up to 4096 bytes.
 - A more specific `expressionStrategy` block replaces the inherited block in
   full.
 - Invalid expressions skip the affected image. An evaluation error on a
