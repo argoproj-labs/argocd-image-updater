@@ -78,6 +78,7 @@ func TestParseImageListExpressionStrategy(t *testing.T) {
 	configs := []iuapi.ImageConfig{
 		{Alias: "inherited", ImageName: "nginx"},
 		{Alias: "override", ImageName: "nginx", CommonUpdateSettings: &iuapi.CommonUpdateSettings{
+			UpdateStrategy:     ptr.To("Expression"),
 			ExpressionStrategy: &iuapi.ExpressionStrategy{SortKey: "tag.name"},
 		}},
 		{Alias: "invalid", ImageName: "nginx", CommonUpdateSettings: &iuapi.CommonUpdateSettings{
