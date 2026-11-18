@@ -167,6 +167,28 @@ spec:
                                   This acts as the default if not overridden at a more specific level.
                                 type: string
                             type: object
+                          deployedImageName:
+                            description: |-
+                              DeployedImageName is the image repository, without a tag or digest, that the
+                              application actually runs this image from, when that is not the repository in
+                              ImageName. Use it when the image is pulled through a registry mirror or
+                              pull-through cache, such as an Amazon ECR pull-through cache, whose tag list
+                              only contains the tags that have already been pulled, so new versions have to
+                              be looked up in the upstream registry instead.
+                              When set:
+                                - tags are still listed, filtered and verified against ImageName, using the
+                                  credentials and pull secret for ImageName's registry;
+                                - the running image is looked for in the application by this repository
+                                  first, and then by ImageName, so that an application that still runs
+                                  the image from ImageName is moved to this repository;
+                                - this repository, together with the tag or digest found for ImageName, is
+                                  written back to the application.
+                              Both repositories must serve the same image manifests, as a mirror or
+                              pull-through cache does, so that tags and digests are the same in both.
+                              Example: "123456789012.dkr.ecr.eu-west-1.amazonaws.com/ghcr/letsencrypt/pebble".
+                            minLength: 1
+                            pattern: ^(([^/@:=\s\[\]]+|\[[0-9a-fA-F:]+\])(:[0-9]+)?/)?[a-z0-9]+((\.|_|__|-+)[a-z0-9]+)*(/[a-z0-9]+((\.|_|__|-+)[a-z0-9]+)*)*$
+                            type: string
                           imageName:
                             description: |-
                               ImageName is the full identifier of the image to be tracked,
