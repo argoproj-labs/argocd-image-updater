@@ -2511,6 +2511,46 @@ func Test_parseImageList(t *testing.T) {
 		})
 	}
 
+	t.Run("PinDigest: image settings override application settings", func(t *testing.T) {
+		images := []api.ImageConfig{
+			{Alias: "web", ImageName: "nginx:1.21.0"},
+			{
+				Alias:                "db",
+				ImageName:            "postgres:14",
+				CommonUpdateSettings: &api.CommonUpdateSettings{PinDigest: new(false)},
+			},
+		}
+		appSettings := &api.CommonUpdateSettings{PinDigest: new(true)}
+
+		got := parseImageList(context.Background(), nil, "", images, appSettings, nil, nil)
+		require.NotNil(t, got)
+		expectedWeb := newExpectedImageForIuCR("web=nginx:1.21.0", "")
+		expectedWeb.PinDigest = true
+		expected := ImageList{
+			expectedWeb,
+			newExpectedImageForIuCR("db=postgres:14", ""),
+		}
+		assert.ElementsMatch(t, expected, *got)
+	})
+
+	t.Run("PinDigest: image settings can enable pinning", func(t *testing.T) {
+		images := []api.ImageConfig{
+			{
+				Alias:                "web",
+				ImageName:            "nginx:1.21.0",
+				CommonUpdateSettings: &api.CommonUpdateSettings{PinDigest: new(true)},
+			},
+		}
+		appSettings := &api.CommonUpdateSettings{PinDigest: new(false)}
+
+		got := parseImageList(context.Background(), nil, "", images, appSettings, nil, nil)
+		require.NotNil(t, got)
+		expectedWeb := newExpectedImageForIuCR("web=nginx:1.21.0", "")
+		expectedWeb.PinDigest = true
+		expected := ImageList{expectedWeb}
+		assert.ElementsMatch(t, expected, *got)
+	})
+
 	// Webhook filtering behavior
 	t.Run("Webhook: match by repository with empty registry", func(t *testing.T) {
 		images := []api.ImageConfig{{Alias: "web", ImageName: "nginx:1.21.0"}}
@@ -2768,6 +2808,7 @@ func Test_mergeCommonUpdateSettings(t *testing.T) {
 	t.Run("should use global settings when app settings are nil", func(t *testing.T) {
 		global := &api.CommonUpdateSettings{
 			UpdateStrategy: new("semver"),
+			PinDigest:      new(true),
 		}
 		merged := mergeCommonUpdateSettings(global, nil)
 		assert.Equal(t, global, merged)
@@ -2776,6 +2817,7 @@ func Test_mergeCommonUpdateSettings(t *testing.T) {
 	t.Run("should use app settings when global settings are nil", func(t *testing.T) {
 		app := &api.CommonUpdateSettings{
 			UpdateStrategy: new("latest"),
+			PinDigest:      new(false),
 		}
 		merged := mergeCommonUpdateSettings(nil, app)
 		assert.Equal(t, app, merged)
@@ -2784,32 +2826,66 @@ func Test_mergeCommonUpdateSettings(t *testing.T) {
 	t.Run("should override global settings with app settings", func(t *testing.T) {
 		global := &api.CommonUpdateSettings{
 			UpdateStrategy: new("semver"),
+			PinDigest:      new(true),
 			AllowTags:      new("v1.*"),
 		}
 		app := &api.CommonUpdateSettings{
 			UpdateStrategy: new("latest"),
+			PinDigest:      new(false),
 		}
 		merged := mergeCommonUpdateSettings(global, app)
 		assert.Equal(t, "latest", *merged.UpdateStrategy)
+		assert.False(t, *merged.PinDigest)
 		assert.Equal(t, "v1.*", *merged.AllowTags)
 	})
 
 	t.Run("should merge settings, taking non-nil fields from each level", func(t *testing.T) {
 		global := &api.CommonUpdateSettings{
 			UpdateStrategy: new("semver"),
+			PinDigest:      new(false),
 			ForceUpdate:    new(false),
 		}
 		app := &api.CommonUpdateSettings{
+			PinDigest:   new(true),
 			ForceUpdate: new(true),
 			AllowTags:   new("v1.*"),
 		}
 		imageSettings := &api.CommonUpdateSettings{
+			PinDigest: new(false),
 			AllowTags: new("rc-*"),
 		}
 		merged := mergeCommonUpdateSettings(global, app, imageSettings)
 		assert.Equal(t, "semver", *merged.UpdateStrategy)
+		assert.False(t, *merged.PinDigest)
 		assert.True(t, *merged.ForceUpdate)
 		assert.Equal(t, "rc-*", *merged.AllowTags)
+	})
+
+	t.Run("should inherit pinDigest when more specific settings are unset", func(t *testing.T) {
+		global := &api.CommonUpdateSettings{PinDigest: new(true)}
+		app := &api.CommonUpdateSettings{}
+		imageSettings := &api.CommonUpdateSettings{}
+
+		merged := mergeCommonUpdateSettings(global, app, imageSettings)
+		assert.True(t, *merged.PinDigest)
+	})
+
+	t.Run("should inherit application pinDigest when image setting is unset", func(t *testing.T) {
+		global := &api.CommonUpdateSettings{PinDigest: new(false)}
+		app := &api.CommonUpdateSettings{PinDigest: new(true)}
+		imageSettings := &api.CommonUpdateSettings{}
+
+		merged := mergeCommonUpdateSettings(global, app, imageSettings)
+		assert.True(t, *merged.PinDigest)
+	})
+
+	t.Run("should enable pinDigest at image level", func(t *testing.T) {
+		global := &api.CommonUpdateSettings{PinDigest: new(false)}
+		app := &api.CommonUpdateSettings{PinDigest: new(false)}
+		imageSettings := &api.CommonUpdateSettings{PinDigest: new(true)}
+
+		merged := mergeCommonUpdateSettings(global, app, imageSettings)
+		assert.True(t, *merged.PinDigest)
 	})
 }
 
@@ -3020,6 +3096,7 @@ func Test_newImageFromSettings(t *testing.T) {
 
 		assert.NotNil(t, img)
 		assert.Equal(t, image.StrategySemVer, img.UpdateStrategy)
+		assert.False(t, img.PinDigest)
 		assert.False(t, img.ForceUpdate)
 		assert.Equal(t, "", img.AllowTags)
 		assert.Equal(t, "", img.PullSecret)
@@ -3030,6 +3107,7 @@ func Test_newImageFromSettings(t *testing.T) {
 		// Expected: The defaults are overridden by the provided settings.
 		settings := &api.CommonUpdateSettings{
 			UpdateStrategy: new(image.StrategyNewestBuild.String()),
+			PinDigest:      new(true),
 			ForceUpdate:    new(true),
 			AllowTags:      new("v1.*"),
 			PullSecret:     new("my-secret"),
@@ -3040,6 +3118,7 @@ func Test_newImageFromSettings(t *testing.T) {
 
 		assert.NotNil(t, img)
 		assert.Equal(t, image.StrategyNewestBuild, img.UpdateStrategy)
+		assert.True(t, img.PinDigest)
 		assert.True(t, img.ForceUpdate)
 		assert.Equal(t, "v1.*", img.AllowTags)
 		assert.Equal(t, "my-secret", img.PullSecret)
@@ -3054,7 +3133,16 @@ func Test_newImageFromSettings(t *testing.T) {
 
 		assert.NotNil(t, img)
 		assert.Equal(t, image.StrategySemVer, img.UpdateStrategy)
+		assert.False(t, img.PinDigest)
 		assert.False(t, img.ForceUpdate)
+	})
+
+	t.Run("should apply explicit pinDigest false", func(t *testing.T) {
+		settings := &api.CommonUpdateSettings{PinDigest: new(false)}
+		img := newImageFromCommonUpdateSettings(context.Background(), settings)
+
+		assert.NotNil(t, img)
+		assert.False(t, img.PinDigest)
 	})
 
 	t.Run("should resolve the calver strategy", func(t *testing.T) {
@@ -4689,6 +4777,7 @@ func Test_FilterApplicationsForUpdate(t *testing.T) {
 				Spec: api.ImageUpdaterSpec{
 					CommonUpdateSettings: &api.CommonUpdateSettings{
 						UpdateStrategy: new("digest"), // Should be ignored
+						PinDigest:      new(true),     // Should be ignored
 						ForceUpdate:    new(false),    // Should be ignored
 					},
 					WriteBackConfig: &api.WriteBackConfig{
@@ -4700,6 +4789,7 @@ func Test_FilterApplicationsForUpdate(t *testing.T) {
 							// These CR settings should be completely ignored
 							CommonUpdateSettings: &api.CommonUpdateSettings{
 								UpdateStrategy: new("name"), // Should be ignored
+								PinDigest:      new(true),   // Should be ignored
 							},
 							WriteBackConfig: &api.WriteBackConfig{
 								Method: new("argocd"), // Should be ignored
@@ -4725,8 +4815,10 @@ func Test_FilterApplicationsForUpdate(t *testing.T) {
 						Annotations: map[string]string{
 							ImageUpdaterAnnotation:                                "web=nginx:1.21,api=quay.io/myorg/api:v2.0",
 							ImageUpdaterAnnotationPrefix + "/update-strategy":     "latest", // Application-wide
+							ImageUpdaterAnnotationPrefix + "/pin-digest":          "true",   // Application-wide
 							ImageUpdaterAnnotationPrefix + "/force-update":        "false",  // Application-wide
 							ImageUpdaterAnnotationPrefix + "/web.update-strategy": "semver", // Per-image override
+							ImageUpdaterAnnotationPrefix + "/web.pin-digest":      "false",  // Per-image override
 							ImageUpdaterAnnotationPrefix + "/web.force-update":    "true",   // Per-image override
 							ImageUpdaterAnnotationPrefix + "/api.allow-tags":      "v2.*",   // Per-image setting
 						},
@@ -5303,11 +5395,13 @@ func Test_FilterApplicationsForUpdate(t *testing.T) {
 
 				// Verify web image has per-image settings (semver, force-update true)
 				assert.Equal(t, image.StrategySemVer, webImage.UpdateStrategy, "web image should have semver strategy from per-image annotation")
+				assert.False(t, webImage.PinDigest, "web image should have pin-digest false from per-image annotation")
 				assert.True(t, webImage.ForceUpdate, "web image should have force-update true from per-image annotation")
 
 				// Verify api image has application-wide settings (latest) and per-image allow-tags
 				// Note: "latest" strategy is renamed to "newest-build" internally
 				assert.Equal(t, image.StrategyNewestBuild, apiImage.UpdateStrategy, "api image should have latest strategy from application-wide annotation")
+				assert.True(t, apiImage.PinDigest, "api image should have pin-digest true from application-wide annotation")
 				assert.False(t, apiImage.ForceUpdate, "api image should have force-update false from application-wide annotation")
 				assert.Equal(t, "v2.*", apiImage.AllowTags, "api image should have allow-tags v2.* from per-image annotation")
 			}
@@ -5329,6 +5423,7 @@ func Test_FilterApplicationsForUpdate(t *testing.T) {
 				}
 				require.NotNil(t, webImage, "web image should be found")
 				assert.Equal(t, image.StrategySemVer, webImage.UpdateStrategy, "web image should have semver strategy from per-image annotation, overriding application-wide latest")
+				assert.False(t, webImage.PinDigest, "pinDigest from CR settings should be ignored when useAnnotations is true")
 			}
 
 			// Custom verification that app-level ImagesVerification (set on the

@@ -79,6 +79,16 @@ func getCommonUpdateSettingsFromAnnotations(app *argocdapi.Application, updateSt
 		}
 	}
 
+	if pinDigestStr, ok := app.Annotations[updateStrategyAnnotations.PinDigest]; ok {
+		pinDigestStr = strings.TrimSpace(pinDigestStr)
+		val, err := strconv.ParseBool(pinDigestStr)
+		if err == nil {
+			result.PinDigest = &val
+			hasAny = true
+		} else {
+			return nil, fmt.Errorf("error parsing pin digest settings: %v", err)
+		}
+	}
 	if forceUpdateStr, ok := app.Annotations[updateStrategyAnnotations.ForceUpdate]; ok {
 		forceUpdateStr = strings.TrimSpace(forceUpdateStr)
 		val, err := strconv.ParseBool(forceUpdateStr)
@@ -287,6 +297,7 @@ const (
 type UpdateStrategyAnnotations struct {
 	AllowTags      string
 	IgnoreTags     string
+	PinDigest      string
 	ForceUpdate    string
 	UpdateStrategy string
 	PullSecret     string
@@ -304,6 +315,7 @@ func getImageUpdateStrategyAnnotations(alias string) UpdateStrategyAnnotations {
 		return UpdateStrategyAnnotations{
 			AllowTags:      ImageUpdaterAnnotationPrefix + "/allow-tags",
 			IgnoreTags:     ImageUpdaterAnnotationPrefix + "/ignore-tags",
+			PinDigest:      ImageUpdaterAnnotationPrefix + "/pin-digest",
 			ForceUpdate:    ImageUpdaterAnnotationPrefix + "/force-update",
 			UpdateStrategy: ImageUpdaterAnnotationPrefix + "/update-strategy",
 			PullSecret:     ImageUpdaterAnnotationPrefix + "/pull-secret",
@@ -313,6 +325,7 @@ func getImageUpdateStrategyAnnotations(alias string) UpdateStrategyAnnotations {
 	return UpdateStrategyAnnotations{
 		AllowTags:      ImageUpdaterAnnotationPrefix + fmt.Sprintf("/%s.allow-tags", alias),
 		IgnoreTags:     ImageUpdaterAnnotationPrefix + fmt.Sprintf("/%s.ignore-tags", alias),
+		PinDigest:      ImageUpdaterAnnotationPrefix + fmt.Sprintf("/%s.pin-digest", alias),
 		ForceUpdate:    ImageUpdaterAnnotationPrefix + fmt.Sprintf("/%s.force-update", alias),
 		UpdateStrategy: ImageUpdaterAnnotationPrefix + fmt.Sprintf("/%s.update-strategy", alias),
 		PullSecret:     ImageUpdaterAnnotationPrefix + fmt.Sprintf("/%s.pull-secret", alias),
