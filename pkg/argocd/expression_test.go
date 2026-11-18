@@ -2,6 +2,7 @@ package argocd
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -49,6 +50,24 @@ func TestExpressionStrategySelectTag(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestExpressionStrategyStringAllocationLimits(t *testing.T) {
+	for _, key := range []string{
+		`tag.name.replace("a", tag.name)`,
+		`[tag.name].join()`,
+		`"%s".format([tag.name])`,
+	} {
+		_, err := compileExpressionStrategy(&iuapi.ExpressionStrategy{SortKey: key})
+		require.ErrorContains(t, err, "undeclared reference")
+	}
+
+	strategy, err := compileExpressionStrategy(&iuapi.ExpressionStrategy{SortKey: `tag.name.split("")[0]`})
+	require.NoError(t, err)
+	candidates := tag.NewImageTagList()
+	candidates.Add(tag.NewImageTag(strings.Repeat("a", maxSplitInputBytes+1), time.Time{}, ""))
+	_, err = strategy.selectTag(context.Background(), candidates)
+	require.ErrorContains(t, err, "split input exceeds")
 }
 
 func TestParseImageListExpressionStrategy(t *testing.T) {
