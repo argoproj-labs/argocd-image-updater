@@ -448,7 +448,7 @@ func newImageFromCommonUpdateSettings(ctx context.Context, settings *iuapi.Commo
 
 	// Apply the final settings.
 	if settings.UpdateStrategy != nil {
-		if *settings.UpdateStrategy == image.StrategyExpression.String() {
+		if strings.EqualFold(*settings.UpdateStrategy, image.StrategyExpression.String()) {
 			img.UpdateStrategy = image.StrategyExpression
 		} else {
 			img.UpdateStrategy = img.ParseUpdateStrategy(ctx, *settings.UpdateStrategy)
