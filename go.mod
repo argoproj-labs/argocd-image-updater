@@ -2,6 +2,8 @@ module github.com/argoproj-labs/argocd-image-updater
 
 go 1.26.0
 
+toolchain go1.26.11
+
 require (
 	github.com/argoproj-labs/argocd-image-updater/registry-scanner v1.2.1
 	github.com/argoproj/argo-cd/gitops-engine v0.7.1-0.20250908182407-97ad5b59a627
@@ -170,7 +172,7 @@ require (
 	go.yaml.in/yaml/v2 v2.4.2 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/mod v0.41.0 // indirect
-	golang.org/x/net v0.58.0 // indirect
+	golang.org/x/net v0.60.0 // indirect
 	golang.org/x/sys v0.48.0 // indirect
 	golang.org/x/term v0.46.0 // indirect
 	golang.org/x/text v0.42.0 // indirect
