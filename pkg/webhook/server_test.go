@@ -4,11 +4,14 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"crypto/x509"
+	"encoding/pem"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -17,6 +20,8 @@ import (
 	"time"
 
 	"github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1"
+	"github.com/sirupsen/logrus"
+	logrustest "github.com/sirupsen/logrus/hooks/test"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -25,6 +30,7 @@ import (
 	imageupdaterapi "github.com/argoproj-labs/argocd-image-updater/api/v1alpha1"
 	"github.com/argoproj-labs/argocd-image-updater/internal/controller"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/argocd"
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/log"
 )
 
 // mockRateLimiter records whether Take was called. handleWebhook calls Take
@@ -683,6 +689,107 @@ func TestBuildTLSConfig(t *testing.T) {
 		assert.Nil(t, tlsCfg.NextProtos,
 			"NextProtos must be nil when EnableHTTP2 is true so net/http can manage ALPN freely")
 	})
+
+	t.Run("with single curve preference", func(t *testing.T) {
+		cfg := &TLSConfig{
+			CurvePreferences: "X25519MLKEM768",
+		}
+		tlsCfg, err := cfg.buildTLSConfig(context.Background())
+		require.NoError(t, err)
+		assert.Equal(t, []tls.CurveID{tls.X25519MLKEM768}, tlsCfg.CurvePreferences)
+	})
+
+	t.Run("with single curve preference", func(t *testing.T) {
+		cfg := &TLSConfig{
+			CurvePreferences: "X25519MLKEM768",
+		}
+		tlsCfg, err := cfg.buildTLSConfig(context.Background())
+		require.NoError(t, err)
+		assert.Equal(t, []tls.CurveID{tls.X25519MLKEM768}, tlsCfg.CurvePreferences)
+	})
+
+	t.Run("with multiple curve preferences", func(t *testing.T) {
+		cfg := &TLSConfig{
+			CurvePreferences: "X25519MLKEM768:SecP256r1MLKEM768:X25519:CurveP256",
+		}
+		tlsCfg, err := cfg.buildTLSConfig(context.Background())
+		require.NoError(t, err)
+		assert.Equal(t, []tls.CurveID{
+			tls.X25519MLKEM768,
+			tls.SecP256r1MLKEM768,
+			tls.X25519,
+			tls.CurveP256,
+		}, tlsCfg.CurvePreferences)
+	})
+
+	t.Run("with all supported curve preferences", func(t *testing.T) {
+		cfg := &TLSConfig{
+			CurvePreferences: "X25519MLKEM768:SecP256r1MLKEM768:SecP384r1MLKEM1024:X25519:CurveP256:CurveP384:CurveP521",
+		}
+		tlsCfg, err := cfg.buildTLSConfig(context.Background())
+		require.NoError(t, err)
+		assert.Equal(t, []tls.CurveID{
+			tls.X25519MLKEM768,
+			tls.SecP256r1MLKEM768,
+			tls.SecP384r1MLKEM1024,
+			tls.X25519,
+			tls.CurveP256,
+			tls.CurveP384,
+			tls.CurveP521,
+		}, tlsCfg.CurvePreferences)
+	})
+
+	t.Run("invalid curve preference", func(t *testing.T) {
+		cfg := &TLSConfig{
+			CurvePreferences: "X25519:NOT_A_REAL_CURVE",
+		}
+		_, err := cfg.buildTLSConfig(context.Background())
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "--tlscurvepreferences")
+		assert.Contains(t, err.Error(), "unknown curve")
+	})
+
+	t.Run("empty curve preference leaves defaults", func(t *testing.T) {
+		cfg := &TLSConfig{
+			CurvePreferences: "",
+		}
+		tlsCfg, err := cfg.buildTLSConfig(context.Background())
+		require.NoError(t, err)
+		assert.Nil(t, tlsCfg.CurvePreferences)
+	})
+
+	t.Run("allows hybrid-only curves when TLS 1.3 is disabled", func(t *testing.T) {
+		// crypto/tls filters TLS 1.3-only groups at handshake time; we do not
+		// cross-check versions locally.
+		cfg := &TLSConfig{
+			MaxVersion:       "1.2",
+			CurvePreferences: "X25519MLKEM768",
+		}
+		tlsCfg, err := cfg.buildTLSConfig(context.Background())
+		require.NoError(t, err)
+		assert.Equal(t, []tls.CurveID{tls.X25519MLKEM768}, tlsCfg.CurvePreferences)
+	})
+
+	t.Run("allows hybrid with classical curve when TLS 1.3 is disabled", func(t *testing.T) {
+		cfg := &TLSConfig{
+			MaxVersion:       "1.2",
+			CurvePreferences: "X25519MLKEM768:CurveP256",
+		}
+		tlsCfg, err := cfg.buildTLSConfig(context.Background())
+		require.NoError(t, err)
+		assert.Equal(t, []tls.CurveID{tls.X25519MLKEM768, tls.CurveP256}, tlsCfg.CurvePreferences)
+	})
+
+	t.Run("allows hybrid-only curves when TLS 1.3 is enabled", func(t *testing.T) {
+		cfg := &TLSConfig{
+			MaxVersion:       "1.3",
+			CurvePreferences: "X25519MLKEM768",
+		}
+		tlsCfg, err := cfg.buildTLSConfig(context.Background())
+		require.NoError(t, err)
+		assert.Equal(t, []tls.CurveID{tls.X25519MLKEM768}, tlsCfg.CurvePreferences)
+	})
+
 }
 
 func TestParseTLSMinVersion(t *testing.T) {
@@ -815,6 +922,30 @@ func TestGenerateSelfSignedCert(t *testing.T) {
 	assert.NotNil(t, cert.PrivateKey, "private key should not be nil")
 }
 
+func TestKeyPairFilesUnreadable(t *testing.T) {
+	certFile, keyFile, _ := writeTestKeyPair(t, t.TempDir())
+	missing := filepath.Join(t.TempDir(), "tls.crt")
+
+	assert.False(t, keyPairFilesUnreadable(certFile, keyFile), "readable keypair")
+	assert.False(t, keyPairFilesUnreadable(missing, keyFile), "a missing file is absent, not unreadable")
+	assert.False(t, keyPairFilesUnreadable("", ""), "unset paths")
+
+	if os.Geteuid() == 0 {
+		t.Skip("root can stat files in a directory without search permission")
+	}
+	// A directory without search permission makes stat fail with a
+	// permission error even though the files are there.
+	lockedDir := t.TempDir()
+	lockedCert, lockedKey, _ := writeTestKeyPair(t, lockedDir)
+	require.NoError(t, os.Chmod(lockedDir, 0o000))
+	t.Cleanup(func() { _ = os.Chmod(lockedDir, 0o700) })
+
+	assert.False(t, certFilesExist(lockedCert, lockedKey))
+	assert.True(t, keyPairFilesUnreadable(lockedCert, lockedKey))
+	assert.True(t, keyPairFilesUnreadable(missing, lockedKey), "either file being unreadable counts")
+	assert.Contains(t, strings.Join(unusableKeyPairFiles(lockedCert, lockedKey), "; "), "cannot be read")
+}
+
 func TestCertFilesExist(t *testing.T) {
 	t.Run("nonexistent files", func(t *testing.T) {
 		assert.False(t, certFilesExist("/nonexistent/cert.pem", "/nonexistent/key.pem"))
@@ -848,9 +979,10 @@ func TestCertFilesExist(t *testing.T) {
 
 func TestWebhookServerStartWithTLS(t *testing.T) {
 	server := createMockServer(t, 8083)
+	// No keypair paths configured, so the server generates a self-signed
+	// certificate. Pointing them at a nonexistent file would be a
+	// configuration error instead, not a fallback.
 	server.TLS = &TLSConfig{
-		CertFile:   "/nonexistent/cert.pem",
-		KeyFile:    "/nonexistent/key.pem",
 		MinVersion: DefaultTLSMinVersion,
 		MaxVersion: DefaultTLSMaxVersion,
 	}
@@ -896,9 +1028,9 @@ func TestWebhookServerStartWithTLS(t *testing.T) {
 // advertisement nor net/http's automatic h2 handler registration is active.
 func TestWebhookServerTLSNextProtoDisablesHTTP2(t *testing.T) {
 	server := createMockServer(t, 8085)
+	// No keypair paths configured, so the server generates a self-signed
+	// certificate; this test is about ALPN, not about certificate loading.
 	server.TLS = &TLSConfig{
-		CertFile:    "/nonexistent/cert.pem",
-		KeyFile:     "/nonexistent/key.pem",
 		MinVersion:  DefaultTLSMinVersion,
 		MaxVersion:  DefaultTLSMaxVersion,
 		EnableHTTP2: false,
@@ -975,4 +1107,336 @@ func TestWebhookServerStartWithCorruptCert(t *testing.T) {
 	err = server.Start(context.Background())
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to load TLS certificate")
+}
+
+// TestWebhookServerStartWithMissingConfiguredKeyPair verifies that a keypair
+// path pointed somewhere that holds no keypair does not fail the server
+// startup, which under the run command would take down the whole controller.
+// The server serves a generated self-signed certificate instead.
+func TestWebhookServerStartWithMissingConfiguredKeyPair(t *testing.T) {
+	dir := t.TempDir()
+
+	server := createMockServer(t, 8087)
+	server.TLS = &TLSConfig{
+		CertFile:   filepath.Join(dir, "tls.crt"),
+		KeyFile:    filepath.Join(dir, "tls.key"),
+		MinVersion: DefaultTLSMinVersion,
+		MaxVersion: DefaultTLSMaxVersion,
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- server.Start(ctx)
+	}()
+
+	var conn *tls.Conn
+	var lastErr error
+	for range 50 {
+		conn, lastErr = tls.Dial("tcp", fmt.Sprintf("localhost:%d", server.Port), &tls.Config{InsecureSkipVerify: true}) //nolint:gosec // test only
+		if lastErr == nil {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	require.NoError(t, lastErr, "TLS server did not start in time")
+	peerCerts := conn.ConnectionState().PeerCertificates
+	require.NoError(t, conn.Close())
+
+	require.NotEmpty(t, peerCerts)
+	assert.Equal(t, []string{"Argo CD Image Updater"}, peerCerts[0].Subject.Organization, "server must present a generated self-signed certificate")
+
+	cancel()
+	require.NoError(t, <-errCh)
+}
+
+func TestParseCurvePreferences(t *testing.T) {
+	tests := []struct {
+		name      string
+		input     []string
+		expected  []tls.CurveID
+		expectErr bool
+	}{
+		{
+			name:     "empty list returns nil",
+			input:    nil,
+			expected: nil,
+		},
+		{
+			name:     "X25519MLKEM768",
+			input:    []string{"X25519MLKEM768"},
+			expected: []tls.CurveID{tls.X25519MLKEM768},
+		},
+		{
+			name:     "SecP256r1MLKEM768",
+			input:    []string{"SecP256r1MLKEM768"},
+			expected: []tls.CurveID{tls.SecP256r1MLKEM768},
+		},
+		{
+			name:     "SecP384r1MLKEM1024",
+			input:    []string{"SecP384r1MLKEM1024"},
+			expected: []tls.CurveID{tls.SecP384r1MLKEM1024},
+		},
+		{
+			name:     "X25519",
+			input:    []string{"X25519"},
+			expected: []tls.CurveID{tls.X25519},
+		},
+		{
+			name:     "CurveP256",
+			input:    []string{"CurveP256"},
+			expected: []tls.CurveID{tls.CurveP256},
+		},
+		{
+			name:     "CurveP384",
+			input:    []string{"CurveP384"},
+			expected: []tls.CurveID{tls.CurveP384},
+		},
+		{
+			name:     "CurveP521",
+			input:    []string{"CurveP521"},
+			expected: []tls.CurveID{tls.CurveP521},
+		},
+		{
+			name: "multiple curves",
+			input: []string{
+				"X25519MLKEM768",
+				"SecP256r1MLKEM768",
+				"SecP384r1MLKEM1024",
+				"X25519",
+				"CurveP256",
+				"CurveP384",
+				"CurveP521",
+			},
+			expected: []tls.CurveID{
+				tls.X25519MLKEM768,
+				tls.SecP256r1MLKEM768,
+				tls.SecP384r1MLKEM1024,
+				tls.X25519,
+				tls.CurveP256,
+				tls.CurveP384,
+				tls.CurveP521,
+			},
+		},
+		{
+			name:  "maps listed curve names to CurveIDs",
+			input: []string{"CurveP521", "X25519MLKEM768", "CurveP256"},
+			expected: []tls.CurveID{
+				tls.CurveP521,
+				tls.X25519MLKEM768,
+				tls.CurveP256,
+			},
+		},
+		{
+			name:      "unknown curve",
+			input:     []string{"UnknownCurve"},
+			expectErr: true,
+		},
+		{
+			name:      "unknown curve after valid curve",
+			input:     []string{"X25519", "UnknownCurve"},
+			expectErr: true,
+		},
+		{
+			name:      "empty curve name",
+			input:     []string{""},
+			expectErr: true,
+		},
+		{
+			name:      "whitespace around curve name is rejected",
+			input:     []string{" X25519 "},
+			expectErr: true,
+		},
+		{
+			name:      "case sensitive curve name",
+			input:     []string{"x25519"},
+			expectErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := parseCurvePreferences(tt.input)
+
+			if tt.expectErr {
+				assert.Error(t, err)
+				assert.Nil(t, result)
+				return
+			}
+
+			require.NoError(t, err)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+// writeTestKeyPair writes a freshly generated self-signed certificate and its
+// key as PEM files into dir and returns their paths with the parsed certificate.
+func writeTestKeyPair(t *testing.T, dir string) (certFile, keyFile string, leaf *x509.Certificate) {
+	t.Helper()
+
+	cert, err := generateSelfSignedCert()
+	require.NoError(t, err)
+	leaf, err = x509.ParseCertificate(cert.Certificate[0])
+	require.NoError(t, err)
+	keyDER, err := x509.MarshalPKCS8PrivateKey(cert.PrivateKey)
+	require.NoError(t, err)
+
+	certFile = filepath.Join(dir, "tls.crt")
+	keyFile = filepath.Join(dir, "tls.key")
+	require.NoError(t, os.WriteFile(certFile, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: cert.Certificate[0]}), 0o600))
+	require.NoError(t, os.WriteFile(keyFile, pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: keyDER}), 0o600))
+	return certFile, keyFile, leaf
+}
+
+func TestDefaultTLSPaths(t *testing.T) {
+	// The keypair must not default to /app/config/tls, Argo CD's TLS trust
+	// store directory, while the old location stays known for the fallback.
+	assert.Equal(t, "/app/config/webhook/tls/tls.crt", DefaultTLSCertPath)
+	assert.Equal(t, "/app/config/webhook/tls/tls.key", DefaultTLSKeyPath)
+	assert.Equal(t, "/app/config/tls/tls.crt", LegacyTLSCertPath)
+	assert.Equal(t, "/app/config/tls/tls.key", LegacyTLSKeyPath)
+}
+
+func TestResolveKeyPairFiles(t *testing.T) {
+	// The default paths only exist inside the container image.
+	require.False(t, certFilesExist(DefaultTLSCertPath, DefaultTLSKeyPath), "test assumes no keypair at the default path")
+
+	configuredCert, configuredKey, _ := writeTestKeyPair(t, t.TempDir())
+	legacyCert, legacyKey, _ := writeTestKeyPair(t, t.TempDir())
+	missingCert := filepath.Join(t.TempDir(), "tls.crt")
+	missingKey := filepath.Join(t.TempDir(), "tls.key")
+
+	const deprecation = "deprecated location"
+
+	tests := []struct {
+		name        string
+		certFile    string
+		keyFile     string
+		legacyCert  string
+		legacyKey   string
+		wantCert    string
+		wantKey     string
+		wantFound   bool
+		wantWarning bool
+		// wantMisconfig is a substring of the expected warning about a
+		// configured location holding no usable keypair.
+		wantMisconfig string
+	}{
+		{
+			name:     "configured keypair exists",
+			certFile: configuredCert, keyFile: configuredKey,
+			legacyCert: legacyCert, legacyKey: legacyKey,
+			wantCert: configuredCert, wantKey: configuredKey, wantFound: true,
+		},
+		{
+			name:     "default paths empty, legacy keypair exists",
+			certFile: DefaultTLSCertPath, keyFile: DefaultTLSKeyPath,
+			legacyCert: legacyCert, legacyKey: legacyKey,
+			wantCert: legacyCert, wantKey: legacyKey, wantFound: true, wantWarning: true,
+		},
+		{
+			name:     "default paths empty, no legacy keypair",
+			certFile: DefaultTLSCertPath, keyFile: DefaultTLSKeyPath,
+			legacyCert: missingCert, legacyKey: missingKey,
+			wantCert: DefaultTLSCertPath, wantKey: DefaultTLSKeyPath,
+		},
+		{
+			name:     "default paths empty, legacy has only a certificate",
+			certFile: DefaultTLSCertPath, keyFile: DefaultTLSKeyPath,
+			legacyCert: legacyCert, legacyKey: missingKey,
+			wantCert: DefaultTLSCertPath, wantKey: DefaultTLSKeyPath,
+		},
+		{
+			// A configured path with no keypair warns and falls back to a
+			// generated certificate. It must not fall back to the legacy
+			// location, even though one exists here.
+			name:     "configured paths with no keypair warn",
+			certFile: missingCert, keyFile: missingKey,
+			legacyCert: legacyCert, legacyKey: legacyKey,
+			wantCert: missingCert, wantKey: missingKey,
+			wantMisconfig: "certificate file " + missingCert + " does not exist",
+		},
+		{
+			name:     "configured certificate with default key warns",
+			certFile: missingCert, keyFile: DefaultTLSKeyPath,
+			legacyCert: legacyCert, legacyKey: legacyKey,
+			wantCert: missingCert, wantKey: DefaultTLSKeyPath,
+			wantMisconfig: "certificate file " + missingCert + " does not exist",
+		},
+		{
+			// An empty path is the zero value of TLSConfig, not a configured
+			// path, so it generates a self-signed certificate as before.
+			name:     "unset paths are not configured paths",
+			certFile: "", keyFile: "",
+			legacyCert: legacyCert, legacyKey: legacyKey,
+			wantCert: "", wantKey: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			logger, hook := logrustest.NewNullLogger()
+			ctx := log.ContextWithLogger(context.Background(), logrus.NewEntry(logger))
+
+			certFile, keyFile, found := resolveKeyPairFiles(ctx, tt.certFile, tt.keyFile, tt.legacyCert, tt.legacyKey)
+			assert.Equal(t, tt.wantCert, certFile)
+			assert.Equal(t, tt.wantKey, keyFile)
+			assert.Equal(t, tt.wantFound, found)
+
+			warned := slices.ContainsFunc(hook.AllEntries(), func(e *logrus.Entry) bool {
+				return e.Level == logrus.WarnLevel && strings.Contains(e.Message, deprecation)
+			})
+			assert.Equal(t, tt.wantWarning, warned, "deprecation warning")
+
+			misconfigured := slices.ContainsFunc(hook.AllEntries(), func(e *logrus.Entry) bool {
+				return e.Level == logrus.WarnLevel && strings.Contains(e.Message, "No usable webhook TLS keypair")
+			})
+			assert.Equal(t, tt.wantMisconfig != "", misconfigured, "misconfigured keypair warning")
+			if tt.wantMisconfig != "" {
+				assert.Contains(t, hook.LastEntry().Message, tt.wantMisconfig)
+			}
+		})
+	}
+}
+
+// TestWebhookServerStartWithConfiguredKeyPair verifies that the server serves
+// the keypair found at the configured paths rather than a generated one.
+func TestWebhookServerStartWithConfiguredKeyPair(t *testing.T) {
+	certFile, keyFile, leaf := writeTestKeyPair(t, t.TempDir())
+
+	server := createMockServer(t, 8086)
+	server.TLS = &TLSConfig{
+		CertFile:   certFile,
+		KeyFile:    keyFile,
+		MinVersion: DefaultTLSMinVersion,
+		MaxVersion: DefaultTLSMaxVersion,
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- server.Start(ctx)
+	}()
+
+	var conn *tls.Conn
+	var lastErr error
+	for range 50 {
+		conn, lastErr = tls.Dial("tcp", fmt.Sprintf("localhost:%d", server.Port), &tls.Config{InsecureSkipVerify: true}) //nolint:gosec // test only
+		if lastErr == nil {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	require.NoError(t, lastErr, "TLS server did not start in time")
+	peerCerts := conn.ConnectionState().PeerCertificates
+	require.NoError(t, conn.Close())
+
+	require.NotEmpty(t, peerCerts)
+	assert.Equal(t, leaf.SerialNumber, peerCerts[0].SerialNumber, "server must present the configured certificate")
+
+	cancel()
+	<-errCh
 }

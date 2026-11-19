@@ -839,17 +839,16 @@ func getHelmParamNames(img *Image) (string, string) {
 		return strings.TrimSpace(param), ""
 	}
 
-	helmParamName := common.DefaultHelmImageName
-	if param := img.HelmImageName; param != "" {
-		helmParamName = param
+	// The defaults only apply when neither name nor tag is configured. When the
+	// user configured just one of them, the other one stays empty so that it is
+	// not written at all - defaulting it would point every such image at the
+	// same "image.name"/"image.tag" path, where the images silently overwrite
+	// each other and leave a single stray key behind.
+	if img.HelmImageName == "" && img.HelmImageTag == "" {
+		return common.DefaultHelmImageName, common.DefaultHelmImageTag
 	}
 
-	helmParamVersion := common.DefaultHelmImageTag
-	if param := img.HelmImageTag; param != "" {
-		helmParamVersion = param
-	}
-
-	return helmParamName, helmParamVersion
+	return img.HelmImageName, img.HelmImageTag
 }
 
 // Get a named helm parameter from a list of parameters
@@ -908,13 +907,12 @@ func GetHelmImage(ctx context.Context, app *argocdapi.Application, wbc *WriteBac
 	hpImageName = applicationImage.HelmImageName
 	hpImageTag = applicationImage.HelmImageTag
 
-	if hpImageSpec == "" {
-		if hpImageName == "" {
-			hpImageName = common.DefaultHelmImageName
-		}
-		if hpImageTag == "" {
-			hpImageTag = common.DefaultHelmImageTag
-		}
+	// See getHelmParamNames - the defaults only kick in when nothing at all is
+	// configured. A partially configured image leaves the other parameter name
+	// empty, and getHelmParam below then simply finds no match for it.
+	if hpImageSpec == "" && hpImageName == "" && hpImageTag == "" {
+		hpImageName = common.DefaultHelmImageName
+		hpImageTag = common.DefaultHelmImageTag
 	}
 
 	appSource := getApplicationSource(ctx, app, wbc)
@@ -956,13 +954,12 @@ func SetHelmImage(ctx context.Context, app *argocdapi.Application, newImage *ima
 	hpImageName = applicationImage.HelmImageName
 	hpImageTag = applicationImage.HelmImageTag
 
-	if hpImageSpec == "" {
-		if hpImageName == "" {
-			hpImageName = common.DefaultHelmImageName
-		}
-		if hpImageTag == "" {
-			hpImageTag = common.DefaultHelmImageTag
-		}
+	// See getHelmParamNames - the defaults only kick in when nothing at all is
+	// configured, so that a partially configured image does not have the other
+	// half of its parameters invented for it.
+	if hpImageSpec == "" && hpImageName == "" && hpImageTag == "" {
+		hpImageName = common.DefaultHelmImageName
+		hpImageTag = common.DefaultHelmImageTag
 	}
 
 	log.Debugf("target parameters: image-spec=%s image-name=%s, image-tag=%s", hpImageSpec, hpImageName, hpImageTag)
@@ -976,13 +973,18 @@ func SetHelmImage(ctx context.Context, app *argocdapi.Application, newImage *ima
 		p := argocdapi.HelmParameter{Name: hpImageSpec, Value: newImage.GetFullNameWithTag(), ForceString: true}
 		mergeParams = append(mergeParams, p)
 	} else {
-		mergeParams = append(mergeParams,
-			argocdapi.HelmParameter{Name: hpImageName, Value: newImage.GetFullNameWithoutTag(), ForceString: true},
-		)
+		// Only set a parameter the image actually configured - see the defaulting
+		// above. An image tracking just the tag must not get an image name
+		// parameter invented for it, and vice versa.
+		if hpImageName != "" {
+			mergeParams = append(mergeParams,
+				argocdapi.HelmParameter{Name: hpImageName, Value: newImage.GetFullNameWithoutTag(), ForceString: true},
+			)
+		}
 		// Only set the tag parameter if we have a non-empty tag value.
 		// When forceUpdate is enabled and no tag is specified, the tag can be empty.
 		// Setting an empty tag would overwrite existing tag values and cause invalid image references.
-		if tagValue := newImage.GetTagWithDigest(); tagValue != "" {
+		if tagValue := newImage.GetTagWithDigest(); hpImageTag != "" && tagValue != "" {
 			mergeParams = append(mergeParams,
 				argocdapi.HelmParameter{Name: hpImageTag, Value: tagValue, ForceString: true},
 			)

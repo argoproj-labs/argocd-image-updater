@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -122,6 +123,63 @@ func (rlt *rateLimitTransport) RoundTrip(r *http.Request) (*http.Response, error
 	logCtx.Tracef("Performing HTTP %s %s", r.Method, r.URL)
 	resp, err := rlt.transport.RoundTrip(r)
 	return resp, err
+}
+
+const (
+	// tooManyRequestsMaxRetries is how many times a request answered with
+	// 429 Too Many Requests is retried before the response is returned.
+	tooManyRequestsMaxRetries = 3
+	// tooManyRequestsMaxWait caps the Retry-After a registry can ask for.
+	tooManyRequestsMaxWait = 30 * time.Second
+	// tooManyRequestsDefaultWait is used when a 429 has no usable Retry-After.
+	tooManyRequestsDefaultWait = time.Second
+)
+
+// tooManyRequestsRetryTransport retries GET and HEAD requests that the
+// registry answers with 429 Too Many Requests, after waiting for the
+// response's Retry-After. A tag list is fetched page by page, so without
+// this a single throttled page fails the whole listing. Requests with a body
+// are not retried, since the body would already be consumed.
+type tooManyRequestsRetryTransport struct {
+	base http.RoundTripper
+}
+
+// RoundTrip performs the request, retrying it on 429 Too Many Requests.
+func (t *tooManyRequestsRetryTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	if (r.Method != http.MethodGet && r.Method != http.MethodHead) || (r.Body != nil && r.Body != http.NoBody) {
+		return t.base.RoundTrip(r)
+	}
+	for attempt := 1; ; attempt++ {
+		resp, err := t.base.RoundTrip(r)
+		if err != nil || resp.StatusCode != http.StatusTooManyRequests || attempt > tooManyRequestsMaxRetries {
+			return resp, err
+		}
+		wait := retryAfter(resp.Header.Get("Retry-After"), time.Now())
+		_, _ = io.Copy(io.Discard, resp.Body)
+		_ = resp.Body.Close()
+		log.LoggerFromContext(r.Context()).Debugf("Registry returned 429 for %s %s, retrying in %s (retry %d of %d)",
+			r.Method, r.URL, wait, attempt, tooManyRequestsMaxRetries)
+		timer := time.NewTimer(wait)
+		select {
+		case <-r.Context().Done():
+			timer.Stop()
+			return nil, r.Context().Err()
+		case <-timer.C:
+		}
+	}
+}
+
+// retryAfter returns how long a Retry-After header value asks to wait, in
+// either of its forms (seconds or an HTTP date), capped at
+// tooManyRequestsMaxWait.
+func retryAfter(value string, now time.Time) time.Duration {
+	wait := tooManyRequestsDefaultWait
+	if seconds, err := strconv.Atoi(strings.TrimSpace(value)); err == nil {
+		wait = time.Duration(seconds) * time.Second
+	} else if at, err := http.ParseTime(value); err == nil {
+		wait = at.Sub(now)
+	}
+	return min(max(wait, 0), tooManyRequestsMaxWait)
 }
 
 // challengeRetryTransport learns authentication challenges from real
@@ -344,13 +402,14 @@ func (clt *registryClient) NewRepository(ctx context.Context, nameInRepository s
 	// Registries that serve /v2/ anonymously never produce a challenge at ping
 	// time, so learn from the repository responses as well. This wraps the
 	// rate limiter rather than sitting under it, so a replayed request also
-	// takes a rate-limit token.
+	// takes a rate-limit token. The same holds for a request retried after a
+	// 429 Too Many Requests.
 	pingURL, err := url.Parse(urlToCall + "/v2/")
 	if err != nil {
 		return err
 	}
 	authRT := &challengeRetryTransport{
-		base:    rlt,
+		base:    &tooManyRequestsRetryTransport{base: rlt},
 		manager: challengeManager1,
 		creds:   clt.creds,
 		root:    url.URL{Scheme: pingURL.Scheme, Host: pingURL.Host, Path: pingURL.Path},

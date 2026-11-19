@@ -163,6 +163,24 @@ Load the registry configuration from file at *path*. Defaults to the path
 default configuration should be used instead, specify the empty string, i.e.
 `--registries-conf-path=""`.
 
+**--tls-cert-path *path***
+
+Path to the TLS certificate file for the webhook server. Defaults to
+`/app/config/webhook/tls/tls.crt`. When neither this flag nor `--tls-key-path`
+is changed and the default location holds no keypair, a keypair at the previous default
+location `/app/config/tls/tls.crt` and `/app/config/tls/tls.key` is used instead, with a
+deprecation warning. When either flag is changed, the server fails to start unless a
+usable keypair exists at the paths given.
+
+Can also be set with the `TLS_CERT_PATH` environment variable.
+
+**--tls-key-path *path***
+
+Path to the TLS private key file for the webhook server. Defaults to
+`/app/config/webhook/tls/tls.key`.
+
+Can also be set with the `TLS_KEY_PATH` environment variable.
+
 **--tlsciphers *suites***
 
 Colon-separated list of TLS cipher suite names to allow (e.g.
@@ -171,6 +189,19 @@ Only applies to TLS 1.1 and 1.2 connections; TLS 1.3 cipher suites are not confi
 Defaults to the Go standard library's secure defaults.
 
 Can also be set with the `TLS_CIPHERS` environment variable.
+
+**--tlscurvepreferences *groups***
+
+Colon-separated list of allowed TLS key exchange groups (e.g. `X25519:CurveP256`).
+This selects which groups are enabled; list order is ignored — Go chooses from the
+set using its internal preference order. Supported values are `X25519MLKEM768`,
+`SecP256r1MLKEM768`, `SecP384r1MLKEM1024`, `X25519`, `CurveP256`,
+`CurveP384`, and `CurveP521`. The hybrid post-quantum groups (`X25519MLKEM768`,
+`SecP256r1MLKEM768`, `SecP384r1MLKEM1024`) are TLS 1.3-only; `crypto/tls` ignores
+them for lower negotiated versions.
+Defaults to the Go standard library's secure defaults.
+
+Can also be set with the `TLS_CURVE_PREFERENCES` environment variable.
 
 **--tlsmaxversion *version***
 

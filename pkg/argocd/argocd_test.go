@@ -1129,7 +1129,7 @@ func Test_GetHelmParamNames(t *testing.T) {
 		assert.Equal(t, common.DefaultHelmImageTag, tag)
 	})
 
-	t.Run("Find existing image tag with default image name", func(t *testing.T) {
+	t.Run("Image tag only does not get a default image name", func(t *testing.T) {
 		name, tag := getHelmParamNames(
 			&Image{
 				ContainerImage: &image.ContainerImage{
@@ -1137,8 +1137,20 @@ func Test_GetHelmParamNames(t *testing.T) {
 				},
 				HelmImageTag: "image.tag"},
 		)
-		assert.Equal(t, common.DefaultHelmImageName, name)
+		assert.Empty(t, name)
 		assert.Equal(t, "image.tag", tag)
+	})
+
+	t.Run("Image name only does not get a default image tag", func(t *testing.T) {
+		name, tag := getHelmParamNames(
+			&Image{
+				ContainerImage: &image.ContainerImage{
+					ImageAlias: "myimg",
+				},
+				HelmImageName: "image.repository"},
+		)
+		assert.Equal(t, "image.repository", name)
+		assert.Empty(t, tag)
 	})
 
 	t.Run("Default image name and image tag with alias and no helm fields", func(t *testing.T) {
@@ -1557,6 +1569,39 @@ func Test_SetHelmImage(t *testing.T) {
 			}
 		}
 		assert.Equal(t, "1.0.1", tagParam.Value)
+	})
+
+	// An image that only tracks the tag must not have an image.name parameter
+	// invented for it - see https://github.com/argoproj-labs/argocd-image-updater/issues/1873
+	t.Run("Test set Helm image parameters for an image that only configures the tag", func(t *testing.T) {
+		app := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "test-app",
+				Namespace: "testns",
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: &v1alpha1.ApplicationSource{
+					Helm: &v1alpha1.ApplicationSourceHelm{},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypeHelm,
+				Summary: v1alpha1.ApplicationSummary{
+					Images: []string{"jannfis/foobar:1.0.0"},
+				},
+			},
+		}
+
+		img := image.NewFromIdentifier("foobar=jannfis/foobar:1.0.1")
+		wbc := &WriteBackConfig{Target: "helmvalues:."}
+		appImage := &Image{HelmImageTag: "frontend.image.tag"}
+
+		err := SetHelmImage(context.Background(), app, img, wbc, appImage)
+		require.NoError(t, err)
+		require.NotNil(t, app.Spec.Source.Helm)
+		require.Len(t, app.Spec.Source.Helm.Parameters, 1)
+		assert.Equal(t, "frontend.image.tag", app.Spec.Source.Helm.Parameters[0].Name)
+		assert.Equal(t, "1.0.1", app.Spec.Source.Helm.Parameters[0].Value)
 	})
 
 	t.Run("Test set Helm image parameters on Helm app without existing parameters", func(t *testing.T) {

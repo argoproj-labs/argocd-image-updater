@@ -24,7 +24,7 @@ func getGitCredsSource(ctx context.Context, creds string, kubeClient *kube.Image
 		}, nil
 	case strings.HasPrefix(creds, "secret:"):
 		return func(app *v1alpha1.Application) (git.Creds, error) {
-			return getCredsFromSecret(wbc, creds[len("secret:"):], kubeClient, namespace)
+			return getCredsFromSecret(ctx, wbc, creds[len("secret:"):], kubeClient, namespace)
 		}, nil
 	}
 	return nil, fmt.Errorf("unexpected credentials format. Expected 'repocreds', 'secret:<secret>' or 'secret:<namespace>/<secret>' but got '%s'", creds)
@@ -55,13 +55,13 @@ func GetGitCreds(ctx context.Context, repo *v1alpha1.Repository, store git.Creds
 		return git.NopCreds{}
 	}
 	if repo.Password != "" {
-		return git.NewHTTPSCreds(repo.Username, repo.Password, repo.TLSClientCertData, repo.TLSClientCertKey, repo.IsInsecure(), repo.Proxy, repo.NoProxy, store, repo.ForceHttpBasicAuth)
+		return git.NewHTTPSCreds(ctx, repo.Username, repo.Password, repo.TLSClientCertData, repo.TLSClientCertKey, repo.IsInsecure(), repo.Proxy, repo.NoProxy, store, repo.ForceHttpBasicAuth)
 	}
 	if repo.SSHPrivateKey != "" {
-		return git.NewSSHCreds(repo.SSHPrivateKey, getCAPath(ctx, repo.Repo), repo.IsInsecure(), store, repo.Proxy)
+		return git.NewSSHCreds(ctx, repo.SSHPrivateKey, getCAPath(ctx, repo.Repo), repo.IsInsecure(), store, repo.Proxy)
 	}
 	if repo.GithubAppPrivateKey != "" && repo.GithubAppId != 0 && repo.GithubAppInstallationId != 0 {
-		return git.NewGitHubAppCreds(repo.GithubAppId, repo.GithubAppInstallationId, repo.GithubAppPrivateKey, repo.GitHubAppEnterpriseBaseURL, repo.Repo, repo.TLSClientCertData, repo.TLSClientCertKey, repo.IsInsecure(), repo.Proxy, repo.NoProxy, store)
+		return git.NewGitHubAppCreds(ctx, repo.GithubAppId, repo.GithubAppInstallationId, repo.GithubAppPrivateKey, repo.GitHubAppEnterpriseBaseURL, repo.Repo, repo.TLSClientCertData, repo.TLSClientCertKey, repo.IsInsecure(), repo.Proxy, repo.NoProxy, store)
 	}
 	if repo.GCPServiceAccountKey != "" {
 		return git.NewGoogleCloudCreds(repo.GCPServiceAccountKey, store)
@@ -120,7 +120,7 @@ func getCAPath(ctx context.Context, repoURL string) string {
 }
 
 // getCredsFromSecret loads repository credentials from secret
-func getCredsFromSecret(wbc *WriteBackConfig, credentialsSecret string, kubeClient *kube.ImageUpdaterKubernetesClient, namespace string) (git.Creds, error) {
+func getCredsFromSecret(ctx context.Context, wbc *WriteBackConfig, credentialsSecret string, kubeClient *kube.ImageUpdaterKubernetesClient, namespace string) (git.Creds, error) {
 	var credentials map[string][]byte
 	var err error
 	s := strings.SplitN(credentialsSecret, "/", 2)
@@ -147,7 +147,7 @@ func getCredsFromSecret(wbc *WriteBackConfig, credentialsSecret string, kubeClie
 			return nil, fmt.Errorf("invalid secret %s: does not contain field sshPrivateKey", credentialsSecret)
 		}
 		insecure := parseLegacyInsecure(credentials, credentialsSecret)
-		return git.NewSSHCreds(string(sshPrivateKey), "", insecure, wbc.GitCreds, ""), nil
+		return git.NewSSHCreds(ctx, string(sshPrivateKey), "", insecure, wbc.GitCreds, ""), nil
 	} else if git.IsHTTPSURL(wbc.GitRepo) {
 		var username, password, githubAppID, githubAppInstallationID, githubAppPrivateKey []byte
 		if githubAppID, ok = credentials["githubAppID"]; ok {
@@ -172,7 +172,7 @@ func getCredsFromSecret(wbc *WriteBackConfig, credentialsSecret string, kubeClie
 			insecure, _ := strconv.ParseBool(string(credentials["insecure"]))
 			proxy := string(credentials["proxy"])
 			noProxy := string(credentials["noProxy"])
-			return git.NewGitHubAppCreds(intGithubAppID, intGithubAppInstallationID, string(githubAppPrivateKey), enterpriseBaseURL, wbc.GitRepo, tlsClientCertData, tlsClientCertKey, insecure, proxy, noProxy, wbc.GitCreds), nil
+			return git.NewGitHubAppCreds(ctx, intGithubAppID, intGithubAppInstallationID, string(githubAppPrivateKey), enterpriseBaseURL, wbc.GitRepo, tlsClientCertData, tlsClientCertKey, insecure, proxy, noProxy, wbc.GitCreds), nil
 		} else if username, ok = credentials["username"]; ok {
 			if password, ok = credentials["password"]; !ok {
 				return nil, fmt.Errorf("invalid secret %s: does not contain field password", credentialsSecret)
@@ -180,7 +180,7 @@ func getCredsFromSecret(wbc *WriteBackConfig, credentialsSecret string, kubeClie
 			insecure := parseLegacyInsecure(credentials, credentialsSecret)
 			proxy := string(credentials["proxy"])
 			noProxy := string(credentials["noProxy"])
-			return git.NewHTTPSCreds(string(username), string(password), "", "", insecure, proxy, noProxy, wbc.GitCreds, false), nil
+			return git.NewHTTPSCreds(ctx, string(username), string(password), "", "", insecure, proxy, noProxy, wbc.GitCreds, false), nil
 		}
 		return nil, fmt.Errorf("invalid repository credentials in secret %s: does not contain githubAppID or username", credentialsSecret)
 	}

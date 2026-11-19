@@ -19,6 +19,7 @@ import (
 	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
 	aiukube "github.com/argoproj-labs/argocd-image-updater/pkg/kube"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/metrics"
+	"github.com/argoproj-labs/argocd-image-updater/pkg/webhook"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/registry"
 )
 
@@ -74,6 +75,30 @@ func TestSetupWebhookServer(t *testing.T) {
 		require.NotNil(t, server)
 		require.NotNil(t, server.TLS)
 		assert.True(t, server.TLS.EnableHTTP2)
+	})
+
+	t.Run("should default the TLS keypair paths", func(t *testing.T) {
+		webhookCfg := &WebhookConfig{Port: 8080}
+		reconciler := &controller.ImageUpdaterReconciler{}
+		server := SetupWebhookServer(context.Background(), webhookCfg, reconciler)
+		require.NotNil(t, server)
+		require.NotNil(t, server.TLS)
+		assert.Equal(t, webhook.DefaultTLSCertPath, server.TLS.CertFile)
+		assert.Equal(t, webhook.DefaultTLSKeyPath, server.TLS.KeyFile)
+	})
+
+	t.Run("should thread the TLS keypair paths into TLS config", func(t *testing.T) {
+		webhookCfg := &WebhookConfig{
+			Port:        8080,
+			TLSCertFile: "/etc/webhook-certs/tls.crt",
+			TLSKeyFile:  "/etc/webhook-certs/tls.key",
+		}
+		reconciler := &controller.ImageUpdaterReconciler{}
+		server := SetupWebhookServer(context.Background(), webhookCfg, reconciler)
+		require.NotNil(t, server)
+		require.NotNil(t, server.TLS)
+		assert.Equal(t, "/etc/webhook-certs/tls.crt", server.TLS.CertFile)
+		assert.Equal(t, "/etc/webhook-certs/tls.key", server.TLS.KeyFile)
 	})
 }
 

@@ -132,12 +132,23 @@ jobs:
             exit 0
           fi
 
-          # Create manifest list from single-image refs
-          docker manifest create ${IMAGE_NAME}:${VERSION_TAG} ${REFS}
+          # Create and push the multi-arch index with buildx imagetools instead of
+          # `docker manifest create/annotate/push`.
+          #
+          # `docker manifest create` picks the resulting list's mediaType from
+          # whichever source manifest happens to sort first among the local
+          # reference cache (effectively digest order), not from the manifests'
+          # actual formats. Our amd64 and arm64 builds can produce different
+          # manifest formats (OCI image manifest vs. Docker v2 schema2), so
+          # depending on digest ordering, `docker manifest create/push` can
+          # produce a Docker schema2 manifest list containing an OCI child
+          # manifest, which Quay rejects with "manifest invalid".
+          #
+          # `docker buildx imagetools create` builds the index directly from the
+          # registry descriptors and is not affected by that local sort/pick-first
+          # bug, so it reliably produces a valid multi-arch index regardless of
+          # digest ordering.
+          docker buildx imagetools create --tag ${IMAGE_NAME}:${VERSION_TAG} ${REFS}
 
-          # Annotate each platform (reuse refs from above)
-          [ -n "${REF_AMD64}" ] && docker manifest annotate ${IMAGE_NAME}:${VERSION_TAG} "${REF_AMD64}" --os linux --arch amd64
-          [ -n "${REF_ARM64}" ] && docker manifest annotate ${IMAGE_NAME}:${VERSION_TAG} "${REF_ARM64}" --os linux --arch arm64
-
-          # Push the manifest
-          docker manifest push ${IMAGE_NAME}:${VERSION_TAG}
+          # Verify the pushed index
+          docker buildx imagetools inspect ${IMAGE_NAME}:${VERSION_TAG}

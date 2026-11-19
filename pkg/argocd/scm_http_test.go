@@ -85,7 +85,7 @@ func Test_newSCMAPIHTTPClient_Proxy(t *testing.T) {
 	defer proxy.Close()
 
 	t.Run("requests go through the repository proxy", func(t *testing.T) {
-		creds := git.NewHTTPSCreds("user", "token", "", "", false, proxy.URL, "", git.NoopCredsStore{}, false)
+		creds := git.NewHTTPSCreds(context.Background(), "user", "token", "", "", false, proxy.URL, "", git.NoopCredsStore{}, false)
 		client := newSCMAPIHTTPClient(context.Background(), repoURL, creds, 5*time.Second, nil)
 		resp, err := client.Get(apiURL)
 		require.NoError(t, err)
@@ -97,7 +97,7 @@ func Test_newSCMAPIHTTPClient_Proxy(t *testing.T) {
 	})
 
 	t.Run("hosts in noProxy bypass the proxy", func(t *testing.T) {
-		creds := git.NewHTTPSCreds("user", "token", "", "", false, proxy.URL, "scm.example.test", git.NoopCredsStore{}, false)
+		creds := git.NewHTTPSCreds(context.Background(), "user", "token", "", "", false, proxy.URL, "scm.example.test", git.NoopCredsStore{}, false)
 		client := newSCMAPIHTTPClient(context.Background(), repoURL, creds, 5*time.Second, nil)
 		transport, ok := client.Transport.(*http.Transport)
 		require.True(t, ok)
@@ -141,7 +141,7 @@ func Test_SCMAPIClients_UseCertStore(t *testing.T) {
 	// Write-back secrets without an "insecure" key get insecure=true for
 	// backwards compatibility (see parseLegacyInsecure). That must not turn off
 	// TLS verification for API calls, which carry the token.
-	legacyInsecureCreds := git.NewHTTPSCreds("user", "token", "", "", true, "", "", &git.NoopCredsStore{}, false).(git.SCMTokenProvider)
+	legacyInsecureCreds := git.NewHTTPSCreds(ctx, "user", "token", "", "", true, "", "", &git.NoopCredsStore{}, false).(git.SCMTokenProvider)
 
 	providers := []struct {
 		name string
