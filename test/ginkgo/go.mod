@@ -3,10 +3,10 @@ module github.com/argoproj-labs/argocd-image-updater/test/ginkgo
 go 1.27.0
 
 require (
-	github.com/argoproj-labs/argocd-image-updater v1.4.0
+	github.com/argoproj-labs/argocd-image-updater v1.5.0
 	github.com/argoproj-labs/argocd-operator v0.19.0-rc1.0.20260806043718-4308d96d0a42
-	github.com/argoproj/argo-cd/gitops-engine/v3 v3.6.1
-	github.com/argoproj/argo-cd/v3 v3.6.1
+	github.com/argoproj/argo-cd/gitops-engine/v3 v3.6.2
+	github.com/argoproj/argo-cd/v3 v3.6.2
 	github.com/google/go-github/v69 v69.2.0
 	github.com/onsi/ginkgo/v2 v2.33.1
 	github.com/onsi/gomega v1.44.0
@@ -47,7 +47,7 @@ require (
 	github.com/cyphar/filepath-securejoin v0.7.0 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/distribution/reference v0.6.0 // indirect
-	github.com/dlclark/regexp2 v1.12.0 // indirect
+	github.com/dlclark/regexp2/v2 v2.13.0 // indirect
 	github.com/emicklei/go-restful/v3 v3.13.0 // indirect
 	github.com/emirpasic/gods v1.18.1 // indirect
 	github.com/evanphx/json-patch/v5 v5.9.11 // indirect
