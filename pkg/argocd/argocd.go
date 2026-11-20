@@ -330,7 +330,7 @@ func FilterApplicationsForUpdate(ctx context.Context, ctrlClient *ArgoCDK8sClien
 					mergedImagesVerification = mergeImagesVerification(globalImagesVerification, applicationRef.ImagesVerification)
 
 					mergedWBCSettings = mergeWBCSettings(cr.Spec.WriteBackConfig, applicationRef.WriteBackConfig)
-					appWBCSettings, err = newWBCFromSettings(appCtx, &app, kubeClient, argocdDB, mergedWBCSettings)
+					appWBCSettings, err = newWBCFromSettingsAndImages(appCtx, &app, kubeClient, argocdDB, mergedWBCSettings, applicationRef.Images)
 					if err != nil {
 						appLogger.Warnf("Could not create write-back config, skipping: %v", err)
 						continue
@@ -430,6 +430,7 @@ func newImageFromCommonUpdateSettings(ctx context.Context, settings *iuapi.Commo
 		PullSecret:         "",
 		IgnoreTags:         []string{},
 		Platforms:          []string{},
+		HelmSourceIndex:    -1,
 		HelmImageName:      "",
 		HelmImageTag:       "",
 		HelmImageSpec:      "",
@@ -562,6 +563,15 @@ func mergeWBCSettings(global *iuapi.WriteBackConfig, appWBC *iuapi.WriteBackConf
 // settings within the context of a specific application. It is responsible for
 // resolving all app-dependent fields, like target paths.
 func newWBCFromSettings(ctx context.Context, app *argocdapi.Application, kubeClient *kube.ImageUpdaterKubernetesClient, argocdDB db.ArgoDB, settings *iuapi.WriteBackConfig) (*WriteBackConfig, error) {
+	return newWBCFromSettingsAndImages(ctx, app, kubeClient, argocdDB, settings, nil)
+}
+
+// newWBCFromSettingsAndImages is newWBCFromSettings for an application whose
+// images are known. For the git write-back method on a multi-source application,
+// images may select a Helm source (sourceIndex/chartName). The repository, target
+// path and branch of the write-back are then taken from that source and not from
+// the application's default one.
+func newWBCFromSettingsAndImages(ctx context.Context, app *argocdapi.Application, kubeClient *kube.ImageUpdaterKubernetesClient, argocdDB db.ArgoDB, settings *iuapi.WriteBackConfig, images []iuapi.ImageConfig) (*WriteBackConfig, error) {
 	wbc := &WriteBackConfig{
 		Method:                 WriteBackApplication,
 		ArgoClient:             nil,
@@ -611,6 +621,19 @@ func newWBCFromSettings(ctx context.Context, app *argocdapi.Application, kubeCli
 
 	if method == "git" {
 		wbc.Method = WriteBackGit
+
+		// Route the write-back to the Helm source selected by the images, if any.
+		selected, err := resolveWriteBackHelmSource(ctx, app, images)
+		if err != nil {
+			return nil, err
+		}
+		if selected != nil {
+			if selected.Chart != "" && (settings.GitConfig == nil || settings.GitConfig.Repository == nil) {
+				return nil, fmt.Errorf("the Helm source selected for application %s/%s is a chart repository source (chart %q) and has no Git repository to write to, set the git repository explicitly or use the argocd write-back method", app.Namespace, app.Name, selected.Chart)
+			}
+			appSource = selected
+			wbc.Target = parseDefaultTarget(app.GetNamespace(), app.Name, appSource.Path, kubeClient)
+		}
 		// If an explicit write-back target is given, parse and apply it. Otherwise,
 		// the default target set above will be used.
 		if settings.GitConfig != nil && settings.GitConfig.WriteBackTarget != nil {
@@ -637,7 +660,7 @@ func newWBCFromSettings(ctx context.Context, app *argocdapi.Application, kubeCli
 			}
 		}
 		// Parse all other git-related configurations
-		if err := parseGitConfig(ctx, app, kubeClient, settings, wbc, creds); err != nil {
+		if err := parseGitConfig(ctx, app, kubeClient, settings, wbc, creds, appSource); err != nil {
 			return nil, err
 		}
 		if settings.GitConfig != nil && settings.GitConfig.PullRequest != nil {
@@ -696,14 +719,22 @@ func newImageFromManifestTargetSettings(settings *iuapi.ManifestTarget, img *Ima
 	}
 
 	// Layer the new settings on top, only if they are explicitly set (non-nil).
-	if settings.Helm != nil && settings.Helm.Spec != nil {
-		img.HelmImageSpec = *settings.Helm.Spec
-	} else {
-		if settings.Helm != nil && settings.Helm.Name != nil {
-			img.HelmImageName = *settings.Helm.Name
+	if settings.Helm != nil {
+		if settings.Helm.SourceIndex != nil {
+			img.HelmSourceIndex = int(*settings.Helm.SourceIndex)
 		}
-		if settings.Helm != nil && settings.Helm.Tag != nil {
-			img.HelmImageTag = *settings.Helm.Tag
+		if settings.Helm.ChartName != nil {
+			img.HelmChartName = *settings.Helm.ChartName
+		}
+		if settings.Helm.Spec != nil {
+			img.HelmImageSpec = *settings.Helm.Spec
+		} else {
+			if settings.Helm.Name != nil {
+				img.HelmImageName = *settings.Helm.Name
+			}
+			if settings.Helm.Tag != nil {
+				img.HelmImageTag = *settings.Helm.Tag
+			}
 		}
 	}
 	if settings.Kustomize != nil && settings.Kustomize.Name != nil {
@@ -893,11 +924,125 @@ func mergeHelmParams(src []argocdapi.HelmParameter, merge []argocdapi.HelmParame
 	return retParams
 }
 
+// resolveWriteBackHelmSource returns the Helm source of a multi-source
+// application that the given images select, or nil if no image selects one (or
+// the application has a single source). All images must resolve to the same
+// source, including images without a selector, which resolve to the default one:
+// git write-back writes the parameters of one source into one override file in
+// one repository, so images of different sources cannot be combined.
+func resolveWriteBackHelmSource(ctx context.Context, app *argocdapi.Application, images []iuapi.ImageConfig) (*argocdapi.ApplicationSource, error) {
+	if !app.Spec.HasMultipleSources() {
+		return nil, nil
+	}
+
+	targets := make([]*Image, 0, len(images))
+	selects := false
+	for _, ic := range images {
+		t := &Image{HelmSourceIndex: -1}
+		if ic.ManifestTarget != nil && ic.ManifestTarget.Helm != nil {
+			if ic.ManifestTarget.Helm.SourceIndex != nil {
+				t.HelmSourceIndex = int(*ic.ManifestTarget.Helm.SourceIndex)
+			}
+			if ic.ManifestTarget.Helm.ChartName != nil {
+				t.HelmChartName = *ic.ManifestTarget.Helm.ChartName
+			}
+		}
+		selects = selects || hasHelmSelector(t)
+		targets = append(targets, t)
+	}
+	if !selects {
+		return nil, nil
+	}
+
+	return commonHelmSource(ctx, app, nil, targets)
+}
+
+// commonHelmSource resolves the source of every given image and returns it if
+// they all agree. It is an error if they do not.
+func commonHelmSource(ctx context.Context, app *argocdapi.Application, wbc *WriteBackConfig, images []*Image) (*argocdapi.ApplicationSource, error) {
+	var common *argocdapi.ApplicationSource
+	for _, img := range images {
+		src, err := selectHelmSource(ctx, app, wbc, img)
+		if err != nil {
+			return nil, err
+		}
+		if common != nil && common != src {
+			return nil, fmt.Errorf("images of application %s resolve to different sources, but git write-back can only write the parameters of one source", app.Name)
+		}
+		common = src
+	}
+	return common, nil
+}
+
+// hasHelmSelector returns true if the image explicitly selects a Helm source
+// of a multi-source application, by index or by chart name.
+func hasHelmSelector(img *Image) bool {
+	return img != nil && (img.HelmSourceIndex >= 0 || img.HelmChartName != "")
+}
+
+// getImageApplicationType returns the application type to use for the given
+// image. An image that explicitly selects a Helm source of a multi-source
+// application is always handled as Helm, even when other sources of the
+// application (for example a Kustomize one) would make the application as a
+// whole classify differently.
+func getImageApplicationType(app *argocdapi.Application, wbc *WriteBackConfig, img *Image) ApplicationType {
+	if app.Spec.HasMultipleSources() && hasHelmSelector(img) {
+		return ApplicationTypeHelm
+	}
+	return getApplicationType(app, wbc)
+}
+
+// selectHelmSource returns the application source holding the Helm parameters
+// of the given image. For multi-source applications, sourceIndex takes
+// precedence over chartName. An out-of-range index, a source that is not a
+// Helm source, an unknown chart name and a chart name matching more than one
+// source are all errors. Without selectors (or for single-source applications)
+// it falls back to getApplicationSource. Both the read and the write path must
+// use this so that they always agree on the source.
+func selectHelmSource(ctx context.Context, app *argocdapi.Application, wbc *WriteBackConfig, img *Image) (*argocdapi.ApplicationSource, error) {
+	if !app.Spec.HasMultipleSources() || !hasHelmSelector(img) {
+		return getApplicationSource(ctx, app, wbc), nil
+	}
+
+	sources := app.Spec.Sources
+	if img.HelmSourceIndex >= 0 {
+		if img.HelmSourceIndex >= len(sources) {
+			return nil, fmt.Errorf("sourceIndex %d is out of range for application %s (has %d sources)", img.HelmSourceIndex, app.Name, len(sources))
+		}
+		s := &sources[img.HelmSourceIndex]
+		// IsHelm() only looks at Chart, but a Helm source hosted in Git has Path and
+		// a Helm block and no Chart.
+		if !s.IsHelm() && s.Helm == nil {
+			return nil, fmt.Errorf("source at index %d in application %s is not a Helm source", img.HelmSourceIndex, app.Name)
+		}
+		return s, nil
+	}
+
+	var match *argocdapi.ApplicationSource
+	matches := make([]int, 0, 1)
+	for i := range sources {
+		if sources[i].Chart == img.HelmChartName {
+			if match == nil {
+				match = &sources[i]
+			}
+			matches = append(matches, i)
+		}
+	}
+	switch len(matches) {
+	case 0:
+		return nil, fmt.Errorf("no Helm source with chart name %q found in application %s", img.HelmChartName, app.Name)
+	case 1:
+		return match, nil
+	default:
+		return nil, fmt.Errorf("chart name %q matches %d sources (indexes %v) in application %s, use sourceIndex to select one", img.HelmChartName, len(matches), matches, app.Name)
+	}
+}
+
 // GetHelmImage gets the image set in Application source matching new image
 // or an empty string if match is not found
 func GetHelmImage(ctx context.Context, app *argocdapi.Application, wbc *WriteBackConfig, applicationImage *Image) (string, error) {
 
-	if appType := getApplicationType(app, wbc); appType != ApplicationTypeHelm {
+	if appType := getImageApplicationType(app, wbc, applicationImage); appType != ApplicationTypeHelm {
 		return "", fmt.Errorf("cannot set Helm params on non-Helm application")
 	}
 
@@ -915,7 +1060,10 @@ func GetHelmImage(ctx context.Context, app *argocdapi.Application, wbc *WriteBac
 		hpImageTag = common.DefaultHelmImageTag
 	}
 
-	appSource := getApplicationSource(ctx, app, wbc)
+	appSource, err := selectHelmSource(ctx, app, wbc, applicationImage)
+	if err != nil {
+		return "", err
+	}
 
 	if appSource.Helm == nil {
 		return "", nil
@@ -944,7 +1092,7 @@ func GetHelmImage(ctx context.Context, app *argocdapi.Application, wbc *WriteBac
 // SetHelmImage sets image parameters for a Helm application
 func SetHelmImage(ctx context.Context, app *argocdapi.Application, newImage *image.ContainerImage, wbc *WriteBackConfig, applicationImage *Image) error {
 	log := log.LoggerFromContext(ctx)
-	if appType := getApplicationType(app, wbc); appType != ApplicationTypeHelm {
+	if appType := getImageApplicationType(app, wbc, applicationImage); appType != ApplicationTypeHelm {
 		return fmt.Errorf("cannot set Helm params on non-Helm application")
 	}
 
@@ -991,7 +1139,10 @@ func SetHelmImage(ctx context.Context, app *argocdapi.Application, newImage *ima
 		}
 	}
 
-	appSource := getApplicationSource(ctx, app, wbc)
+	appSource, err := selectHelmSource(ctx, app, wbc, applicationImage)
+	if err != nil {
+		return err
+	}
 
 	if appSource.Helm == nil {
 		appSource.Helm = &argocdapi.ApplicationSourceHelm{}

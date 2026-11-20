@@ -2027,6 +2027,394 @@ func Test_SourceHydratorPluginApp_StaysPluginAfterHelmStaging(t *testing.T) {
 		image.NewFromIdentifier("redis=redis:2.1.0"), wbc, pluginImage))
 	assert.Equal(t, "redis", getPluginEnv(app.Spec.SourceHydrator.DrySource.Plugin.Env, "REDIS_NAME"))
 	assert.Equal(t, "2.1.0", getPluginEnv(app.Spec.SourceHydrator.DrySource.Plugin.Env, "REDIS_TAG"))
+
+	t.Run("Test set Helm image on multi-source app with matching ChartName", func(t *testing.T) {
+		app := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "test-app",
+				Namespace: "testns",
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Sources: v1alpha1.ApplicationSources{
+					{
+						RepoURL: "https://github.com/org/manifests",
+						Path:    "k8s/",
+					},
+					{
+						RepoURL: "https://charts.example.com",
+						Chart:   "my-app",
+						Helm: &v1alpha1.ApplicationSourceHelm{
+							Parameters: []v1alpha1.HelmParameter{
+								{Name: "image.tag", Value: "1.0.0"},
+								{Name: "image.name", Value: "jannfis/foobar"},
+							},
+						},
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceTypes: []v1alpha1.ApplicationSourceType{
+					v1alpha1.ApplicationSourceTypeDirectory,
+					v1alpha1.ApplicationSourceTypeHelm,
+				},
+				Summary: v1alpha1.ApplicationSummary{
+					Images: []string{"jannfis/foobar:1.0.0"},
+				},
+			},
+		}
+
+		img := image.NewFromIdentifier("foobar=jannfis/foobar:1.0.1")
+		wbc := &WriteBackConfig{Target: "helmvalues:."}
+		appImage := &Image{
+			HelmSourceIndex: -1,
+			HelmChartName:   "my-app",
+			HelmImageName:   "image.name",
+			HelmImageTag:    "image.tag",
+		}
+		err := SetHelmImage(context.Background(), app, img, wbc, appImage)
+		require.NoError(t, err)
+
+		// Only the second source (my-app chart) should be updated
+		require.NotNil(t, app.Spec.Sources[1].Helm)
+		var tagParam v1alpha1.HelmParameter
+		for _, p := range app.Spec.Sources[1].Helm.Parameters {
+			if p.Name == "image.tag" {
+				tagParam = p
+				break
+			}
+		}
+		assert.Equal(t, "1.0.1", tagParam.Value)
+
+		// First source should be untouched (no Helm block)
+		assert.Nil(t, app.Spec.Sources[0].Helm)
+	})
+
+	t.Run("Test set Helm image on multi-source app with non-existent ChartName returns error", func(t *testing.T) {
+		app := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "test-app",
+				Namespace: "testns",
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Sources: v1alpha1.ApplicationSources{
+					{
+						RepoURL: "https://charts.example.com",
+						Chart:   "my-app",
+						Helm:    &v1alpha1.ApplicationSourceHelm{},
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceTypes: []v1alpha1.ApplicationSourceType{
+					v1alpha1.ApplicationSourceTypeHelm,
+				},
+			},
+		}
+
+		img := image.NewFromIdentifier("foobar=jannfis/foobar:1.0.1")
+		wbc := &WriteBackConfig{Target: "helmvalues:."}
+		appImage := &Image{
+			HelmSourceIndex: -1,
+			HelmChartName:   "does-not-exist",
+			HelmImageName:   "image.name",
+			HelmImageTag:    "image.tag",
+		}
+		err := SetHelmImage(context.Background(), app, img, wbc, appImage)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "does-not-exist")
+	})
+
+	t.Run("Test set Helm image on multi-source app using SourceIndex", func(t *testing.T) {
+		app := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "test-app",
+				Namespace: "testns",
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Sources: v1alpha1.ApplicationSources{
+					{
+						RepoURL: "https://git.example.com",
+						Path:    ".",
+					},
+					{
+						RepoURL: "https://charts.example.com",
+						Chart:   "my-app",
+						Helm:    &v1alpha1.ApplicationSourceHelm{},
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceTypes: []v1alpha1.ApplicationSourceType{
+					v1alpha1.ApplicationSourceTypeDirectory,
+					v1alpha1.ApplicationSourceTypeHelm,
+				},
+				Summary: v1alpha1.ApplicationSummary{
+					Images: []string{"jannfis/foobar:1.0.0"},
+				},
+			},
+		}
+
+		img := image.NewFromIdentifier("foobar=jannfis/foobar:1.0.1")
+		wbc := &WriteBackConfig{Target: "helmvalues:."}
+		appImage := &Image{
+			HelmSourceIndex: 1,
+			HelmImageName:   "image.name",
+			HelmImageTag:    "image.tag",
+		}
+		err := SetHelmImage(context.Background(), app, img, wbc, appImage)
+		require.NoError(t, err)
+
+		require.NotNil(t, app.Spec.Sources[1].Helm)
+		var tagParam v1alpha1.HelmParameter
+		for _, p := range app.Spec.Sources[1].Helm.Parameters {
+			if p.Name == "image.tag" {
+				tagParam = p
+				break
+			}
+		}
+		assert.Equal(t, "1.0.1", tagParam.Value)
+		assert.Nil(t, app.Spec.Sources[0].Helm)
+	})
+
+	t.Run("Test set Helm image disambiguates duplicate chart names via SourceIndex", func(t *testing.T) {
+		app := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "test-app",
+				Namespace: "testns",
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Sources: v1alpha1.ApplicationSources{
+					{
+						RepoURL: "https://charts.example.com",
+						Chart:   "my-app",
+						Helm: &v1alpha1.ApplicationSourceHelm{
+							Parameters: []v1alpha1.HelmParameter{
+								{Name: "image.tag", Value: "1.0.0"},
+							},
+						},
+					},
+					{
+						RepoURL: "https://charts.example.com",
+						Chart:   "my-app",
+						Helm:    &v1alpha1.ApplicationSourceHelm{},
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceTypes: []v1alpha1.ApplicationSourceType{
+					v1alpha1.ApplicationSourceTypeHelm,
+					v1alpha1.ApplicationSourceTypeHelm,
+				},
+				Summary: v1alpha1.ApplicationSummary{
+					Images: []string{"jannfis/foobar:1.0.0"},
+				},
+			},
+		}
+
+		img := image.NewFromIdentifier("foobar=jannfis/foobar:1.0.1")
+		wbc := &WriteBackConfig{Target: "helmvalues:."}
+		appImage := &Image{
+			HelmSourceIndex: 1, // target the second source, not the first
+			HelmImageName:   "image.name",
+			HelmImageTag:    "image.tag",
+		}
+		err := SetHelmImage(context.Background(), app, img, wbc, appImage)
+		require.NoError(t, err)
+
+		// index 1 should be updated
+		var idx1Tag v1alpha1.HelmParameter
+		for _, p := range app.Spec.Sources[1].Helm.Parameters {
+			if p.Name == "image.tag" {
+				idx1Tag = p
+				break
+			}
+		}
+		assert.Equal(t, "1.0.1", idx1Tag.Value)
+
+		// index 0 should be untouched
+		var idx0Tag v1alpha1.HelmParameter
+		for _, p := range app.Spec.Sources[0].Helm.Parameters {
+			if p.Name == "image.tag" {
+				idx0Tag = p
+				break
+			}
+		}
+		assert.Equal(t, "1.0.0", idx0Tag.Value)
+	})
+
+	t.Run("Test set Helm image with out-of-range SourceIndex returns error", func(t *testing.T) {
+		app := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "test-app",
+				Namespace: "testns",
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Sources: v1alpha1.ApplicationSources{
+					{
+						RepoURL: "https://charts.example.com",
+						Chart:   "my-app",
+						Helm:    &v1alpha1.ApplicationSourceHelm{},
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceTypes: []v1alpha1.ApplicationSourceType{
+					v1alpha1.ApplicationSourceTypeHelm,
+				},
+			},
+		}
+
+		img := image.NewFromIdentifier("foobar=jannfis/foobar:1.0.1")
+		wbc := &WriteBackConfig{Target: "helmvalues:."}
+		appImage := &Image{
+			HelmSourceIndex: 5,
+			HelmImageName:   "image.name",
+			HelmImageTag:    "image.tag",
+		}
+		err := SetHelmImage(context.Background(), app, img, wbc, appImage)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "out of range")
+	})
+
+	t.Run("Test set Helm image with SourceIndex pointing to non-Helm source returns error", func(t *testing.T) {
+		app := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "test-app",
+				Namespace: "testns",
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Sources: v1alpha1.ApplicationSources{
+					{
+						RepoURL: "https://git.example.com",
+						Path:    "k8s/",
+					},
+					{
+						RepoURL: "https://charts.example.com",
+						Chart:   "my-app",
+						Helm:    &v1alpha1.ApplicationSourceHelm{},
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceTypes: []v1alpha1.ApplicationSourceType{
+					v1alpha1.ApplicationSourceTypeDirectory,
+					v1alpha1.ApplicationSourceTypeHelm,
+				},
+			},
+		}
+
+		img := image.NewFromIdentifier("foobar=jannfis/foobar:1.0.1")
+		wbc := &WriteBackConfig{Target: "helmvalues:."}
+		appImage := &Image{
+			HelmSourceIndex: 0, // points to the Git source, not Helm
+			HelmImageName:   "image.name",
+			HelmImageTag:    "image.tag",
+		}
+		err := SetHelmImage(context.Background(), app, img, wbc, appImage)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "not a Helm source")
+	})
+
+	t.Run("Test SourceIndex takes precedence over ChartName in multi-source app", func(t *testing.T) {
+		app := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "test-app",
+				Namespace: "testns",
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Sources: v1alpha1.ApplicationSources{
+					{
+						RepoURL: "https://charts.example.com",
+						Chart:   "my-app",
+						Helm:    &v1alpha1.ApplicationSourceHelm{},
+					},
+					{
+						RepoURL: "https://charts.example.com",
+						Chart:   "my-app",
+						Helm:    &v1alpha1.ApplicationSourceHelm{},
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceTypes: []v1alpha1.ApplicationSourceType{
+					v1alpha1.ApplicationSourceTypeHelm,
+					v1alpha1.ApplicationSourceTypeHelm,
+				},
+				Summary: v1alpha1.ApplicationSummary{
+					Images: []string{"jannfis/foobar:1.0.0"},
+				},
+			},
+		}
+
+		img := image.NewFromIdentifier("foobar=jannfis/foobar:1.0.1")
+		wbc := &WriteBackConfig{Target: "helmvalues:."}
+		appImage := &Image{
+			HelmSourceIndex: 1,
+			HelmChartName:   "my-app", // would match both; SourceIndex should win and pick index 1
+			HelmImageName:   "image.name",
+			HelmImageTag:    "image.tag",
+		}
+		err := SetHelmImage(context.Background(), app, img, wbc, appImage)
+		require.NoError(t, err)
+
+		// index 1 should be updated
+		var idx1Tag v1alpha1.HelmParameter
+		for _, p := range app.Spec.Sources[1].Helm.Parameters {
+			if p.Name == "image.tag" {
+				idx1Tag = p
+				break
+			}
+		}
+		assert.Equal(t, "1.0.1", idx1Tag.Value)
+
+		// index 0 should be untouched
+		assert.Empty(t, app.Spec.Sources[0].Helm.Parameters)
+	})
+
+	t.Run("Test set Helm image on single-source app ignores ChartName and uses existing logic", func(t *testing.T) {
+		app := &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "test-app",
+				Namespace: "testns",
+			},
+			Spec: v1alpha1.ApplicationSpec{
+				Source: &v1alpha1.ApplicationSource{
+					Helm: &v1alpha1.ApplicationSourceHelm{
+						Parameters: []v1alpha1.HelmParameter{
+							{Name: "image.tag", Value: "1.0.0"},
+							{Name: "image.name", Value: "jannfis/foobar"},
+						},
+					},
+				},
+			},
+			Status: v1alpha1.ApplicationStatus{
+				SourceType: v1alpha1.ApplicationSourceTypeHelm,
+				Summary: v1alpha1.ApplicationSummary{
+					Images: []string{"jannfis/foobar:1.0.0"},
+				},
+			},
+		}
+
+		img := image.NewFromIdentifier("foobar=jannfis/foobar:1.0.1")
+		wbc := &WriteBackConfig{Target: "helmvalues:."}
+		appImage := &Image{
+			HelmChartName: "my-app", // set but should be ignored for single-source
+			HelmImageName: "image.name",
+			HelmImageTag:  "image.tag",
+		}
+		err := SetHelmImage(context.Background(), app, img, wbc, appImage)
+		require.NoError(t, err)
+		require.NotNil(t, app.Spec.Source.Helm)
+
+		var tagParam v1alpha1.HelmParameter
+		for _, p := range app.Spec.Source.Helm.Parameters {
+			if p.Name == "image.tag" {
+				tagParam = p
+				break
+			}
+		}
+		assert.Equal(t, "1.0.1", tagParam.Value)
+	})
 }
 
 func Test_GetPluginImage(t *testing.T) {
@@ -2108,6 +2496,7 @@ func Test_GetPluginImage(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, "", result)
 	})
+
 }
 
 func TestKubernetesClient(t *testing.T) {
@@ -2426,6 +2815,7 @@ func Test_parseImageList(t *testing.T) {
 			PullSecret:         "",
 			IgnoreTags:         []string{},
 			Platforms:          []string{},
+			HelmSourceIndex:    -1,
 			HelmImageName:      "",
 			HelmImageTag:       "",
 			HelmImageSpec:      "",
@@ -3792,6 +4182,57 @@ func Test_newImageFromManifestTargetSettings(t *testing.T) {
 		img, err := newImageFromManifestTargetSettings(settings, image)
 		assert.NoError(t, err)
 		assert.Equal(t, "child-kustomize", img.KustomizeImageName)
+	})
+
+	t.Run("should populate HelmChartName from settings", func(t *testing.T) {
+		settings := &api.ManifestTarget{
+			Helm: &api.HelmTarget{
+				ChartName: strPtr("my-chart"),
+				Name:      strPtr("image.name"),
+				Tag:       strPtr("image.tag"),
+			},
+		}
+		img, err := newImageFromManifestTargetSettings(settings, &Image{})
+		assert.NoError(t, err)
+		assert.Equal(t, "my-chart", img.HelmChartName)
+		assert.Equal(t, "image.name", img.HelmImageName)
+		assert.Equal(t, "image.tag", img.HelmImageTag)
+	})
+
+	t.Run("should not overwrite HelmChartName when settings has no ChartName", func(t *testing.T) {
+		settings := &api.ManifestTarget{
+			Helm: &api.HelmTarget{
+				Name: strPtr("image.name"),
+			},
+		}
+		img, err := newImageFromManifestTargetSettings(settings, &Image{HelmChartName: "inherited-chart"})
+		assert.NoError(t, err)
+		assert.Equal(t, "inherited-chart", img.HelmChartName)
+	})
+
+	t.Run("should populate HelmSourceIndex from settings", func(t *testing.T) {
+		idx := int32(2)
+		settings := &api.ManifestTarget{
+			Helm: &api.HelmTarget{
+				SourceIndex: &idx,
+				Name:        strPtr("image.name"),
+				Tag:         strPtr("image.tag"),
+			},
+		}
+		img, err := newImageFromManifestTargetSettings(settings, &Image{HelmSourceIndex: -1})
+		assert.NoError(t, err)
+		assert.Equal(t, 2, img.HelmSourceIndex)
+	})
+
+	t.Run("should not overwrite HelmSourceIndex when settings has no SourceIndex", func(t *testing.T) {
+		settings := &api.ManifestTarget{
+			Helm: &api.HelmTarget{
+				Name: strPtr("image.name"),
+			},
+		}
+		img, err := newImageFromManifestTargetSettings(settings, &Image{HelmSourceIndex: 1})
+		assert.NoError(t, err)
+		assert.Equal(t, 1, img.HelmSourceIndex)
 	})
 
 	t.Run("should return error when both helm and kustomize are set", func(t *testing.T) {
@@ -5486,4 +5927,264 @@ func Test_countPullRequestProviders(t *testing.T) {
 			assert.Equal(t, tt.expected, countPullRequestProviders(tt.pr))
 		})
 	}
+}
+
+func strPtr(s string) *string {
+	return &s
+}
+
+// helmSourceTestApp returns a multi-source application with the given sources.
+// SourceTypes is set to match so that getApplicationType behaves as it would for
+// a live application.
+func helmSourceTestApp(sources v1alpha1.ApplicationSources, types ...v1alpha1.ApplicationSourceType) *v1alpha1.Application {
+	return &v1alpha1.Application{
+		ObjectMeta: v1.ObjectMeta{Name: "test-app", Namespace: "testns"},
+		Spec:       v1alpha1.ApplicationSpec{Sources: sources},
+		Status:     v1alpha1.ApplicationStatus{SourceTypes: types},
+	}
+}
+
+func helmParams(name, tag string) *v1alpha1.ApplicationSourceHelm {
+	return &v1alpha1.ApplicationSourceHelm{Parameters: []v1alpha1.HelmParameter{
+		{Name: "image.repository", Value: name},
+		{Name: "image.tag", Value: tag},
+	}}
+}
+
+func Test_HelmSourceSelection(t *testing.T) {
+	ctx := context.Background()
+	newTarget := func(index int, chart string) *Image {
+		return &Image{HelmSourceIndex: index, HelmChartName: chart, HelmImageName: "image.repository", HelmImageTag: "image.tag"}
+	}
+
+	t.Run("GetHelmImage reads from the source selected by SourceIndex", func(t *testing.T) {
+		app := helmSourceTestApp(v1alpha1.ApplicationSources{
+			{Chart: "podinfo", Helm: helmParams("a/img", "1")},
+			{Chart: "podinfo", Helm: helmParams("b/img", "2")},
+		}, v1alpha1.ApplicationSourceTypeHelm, v1alpha1.ApplicationSourceTypeHelm)
+
+		got, err := GetHelmImage(ctx, app, nil, newTarget(1, ""))
+		require.NoError(t, err)
+		assert.Equal(t, "b/img:2", got)
+
+		got, err = GetHelmImage(ctx, app, nil, newTarget(0, ""))
+		require.NoError(t, err)
+		assert.Equal(t, "a/img:1", got)
+	})
+
+	t.Run("GetHelmImage reads from the source selected by ChartName", func(t *testing.T) {
+		app := helmSourceTestApp(v1alpha1.ApplicationSources{
+			{Chart: "first", Helm: helmParams("a/img", "1")},
+			{Chart: "second", Helm: helmParams("b/img", "2")},
+		}, v1alpha1.ApplicationSourceTypeHelm, v1alpha1.ApplicationSourceTypeHelm)
+
+		got, err := GetHelmImage(ctx, app, nil, newTarget(-1, "second"))
+		require.NoError(t, err)
+		assert.Equal(t, "b/img:2", got)
+	})
+
+	t.Run("read and write agree when the selected source already has the new image", func(t *testing.T) {
+		app := helmSourceTestApp(v1alpha1.ApplicationSources{
+			{Chart: "podinfo", Helm: helmParams("a/img", "1")},
+			{Chart: "podinfo", Helm: helmParams("a/img", "2")},
+		}, v1alpha1.ApplicationSourceTypeHelm, v1alpha1.ApplicationSourceTypeHelm)
+		target := newTarget(1, "")
+
+		current, err := getAppImage(ctx, app, nil, target)
+		require.NoError(t, err)
+		assert.Equal(t, "a/img:2", current)
+
+		require.NoError(t, setAppImage(ctx, app, image.NewFromIdentifier("a/img:3"), nil, target))
+		assert.Equal(t, "1", getHelmParam(app.Spec.Sources[0].Helm.Parameters, "image.tag").Value, "source 0 must be untouched")
+		assert.Equal(t, "3", getHelmParam(app.Spec.Sources[1].Helm.Parameters, "image.tag").Value)
+	})
+
+	t.Run("Helm selector works when a Kustomize source comes first", func(t *testing.T) {
+		app := helmSourceTestApp(v1alpha1.ApplicationSources{
+			{Path: "overlay", Kustomize: &v1alpha1.ApplicationSourceKustomize{}},
+			{Chart: "podinfo", Helm: helmParams("b/img", "2")},
+		}, v1alpha1.ApplicationSourceTypeKustomize, v1alpha1.ApplicationSourceTypeHelm)
+		target := newTarget(1, "")
+
+		current, err := getAppImage(ctx, app, nil, target)
+		require.NoError(t, err)
+		assert.Equal(t, "b/img:2", current)
+
+		require.NoError(t, setAppImage(ctx, app, image.NewFromIdentifier("b/img:3"), nil, target))
+		assert.Equal(t, "3", getHelmParam(app.Spec.Sources[1].Helm.Parameters, "image.tag").Value)
+		assert.Empty(t, app.Spec.Sources[0].Kustomize.Images, "Kustomize source must be untouched")
+	})
+
+	t.Run("images without a selector keep the application type of a mixed app", func(t *testing.T) {
+		app := helmSourceTestApp(v1alpha1.ApplicationSources{
+			{Path: "overlay", Kustomize: &v1alpha1.ApplicationSourceKustomize{}},
+			{Chart: "podinfo", Helm: helmParams("b/img", "2")},
+		}, v1alpha1.ApplicationSourceTypeKustomize, v1alpha1.ApplicationSourceTypeHelm)
+
+		assert.Equal(t, ApplicationTypeKustomize, getImageApplicationType(app, nil, newTarget(-1, "")))
+		assert.Equal(t, ApplicationTypeHelm, getImageApplicationType(app, nil, newTarget(1, "")))
+		assert.Equal(t, ApplicationTypeHelm, getImageApplicationType(app, nil, newTarget(-1, "podinfo")))
+	})
+
+	t.Run("SourceIndex accepts a Git-hosted Helm source without a chart", func(t *testing.T) {
+		app := helmSourceTestApp(v1alpha1.ApplicationSources{
+			{RepoURL: "https://example.com/manifests.git", Path: "k8s/"},
+			{RepoURL: "https://example.com/chart.git", Path: "chart/", Helm: helmParams("b/img", "2")},
+		}, v1alpha1.ApplicationSourceTypeDirectory, v1alpha1.ApplicationSourceTypeHelm)
+
+		require.NoError(t, setAppImage(ctx, app, image.NewFromIdentifier("b/img:3"), nil, newTarget(1, "")))
+		assert.Equal(t, "3", getHelmParam(app.Spec.Sources[1].Helm.Parameters, "image.tag").Value)
+	})
+
+	t.Run("ChartName matching more than one source is an error", func(t *testing.T) {
+		app := helmSourceTestApp(v1alpha1.ApplicationSources{
+			{Chart: "podinfo", Helm: helmParams("a/img", "1")},
+			{Chart: "podinfo", Helm: helmParams("b/img", "2")},
+		}, v1alpha1.ApplicationSourceTypeHelm, v1alpha1.ApplicationSourceTypeHelm)
+
+		_, err := GetHelmImage(ctx, app, nil, newTarget(-1, "podinfo"))
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "use sourceIndex")
+
+		err = SetHelmImage(ctx, app, image.NewFromIdentifier("a/img:3"), nil, newTarget(-1, "podinfo"))
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "use sourceIndex")
+		assert.Equal(t, "1", getHelmParam(app.Spec.Sources[0].Helm.Parameters, "image.tag").Value, "nothing may be written on error")
+	})
+
+	t.Run("read path reports out-of-range and non-Helm sources", func(t *testing.T) {
+		app := helmSourceTestApp(v1alpha1.ApplicationSources{
+			{RepoURL: "https://example.com/manifests.git", Path: "k8s/"},
+			{Chart: "podinfo", Helm: helmParams("b/img", "2")},
+		}, v1alpha1.ApplicationSourceTypeDirectory, v1alpha1.ApplicationSourceTypeHelm)
+
+		_, err := GetHelmImage(ctx, app, nil, newTarget(5, ""))
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "out of range")
+
+		_, err = GetHelmImage(ctx, app, nil, newTarget(0, ""))
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "not a Helm source")
+
+		_, err = GetHelmImage(ctx, app, nil, newTarget(-1, "missing"))
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "no Helm source with chart name")
+	})
+
+	t.Run("write-back refuses images that select different sources", func(t *testing.T) {
+		app := helmSourceTestApp(v1alpha1.ApplicationSources{
+			{Chart: "podinfo", Helm: helmParams("a/img", "1")},
+			{Chart: "podinfo", Helm: helmParams("b/img", "2")},
+		}, v1alpha1.ApplicationSourceTypeHelm, v1alpha1.ApplicationSourceTypeHelm)
+		a, b := newTarget(0, ""), newTarget(1, "")
+		a.ContainerImage = image.NewFromIdentifier("a/img:1")
+		b.ContainerImage = image.NewFromIdentifier("b/img:2")
+		a.ImageAlias, b.ImageAlias = "a", "b"
+
+		_, err := marshalParamsOverride(ctx, &ApplicationImages{Application: *app, WriteBackConfig: &WriteBackConfig{Method: WriteBackGit}, Images: ImageList{a, b}}, nil)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "different sources")
+
+		// An image without a selector resolves to the default source, so it counts too.
+		a.HelmSourceIndex = -1
+		_, err = marshalParamsOverride(ctx, &ApplicationImages{Application: *app, WriteBackConfig: &WriteBackConfig{Method: WriteBackGit}, Images: ImageList{a, b}}, nil)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "different sources")
+
+		// All images on the same selected source is fine.
+		a.HelmSourceIndex = 1
+		_, err = marshalParamsOverride(ctx, &ApplicationImages{Application: *app, WriteBackConfig: &WriteBackConfig{Method: WriteBackGit}, Images: ImageList{a, b}}, nil)
+		require.NoError(t, err)
+	})
+}
+
+func Test_newWBCFromSettingsAndImages_multiSourceHelm(t *testing.T) {
+	newApp := func(sources ...v1alpha1.ApplicationSource) *v1alpha1.Application {
+		types := make([]v1alpha1.ApplicationSourceType, len(sources))
+		for i := range types {
+			types[i] = v1alpha1.ApplicationSourceTypeHelm
+		}
+		return &v1alpha1.Application{
+			ObjectMeta: v1.ObjectMeta{Name: "my-app", Namespace: "argocd-test"},
+			Spec:       v1alpha1.ApplicationSpec{Sources: sources},
+			Status:     v1alpha1.ApplicationStatus{SourceTypes: types},
+		}
+	}
+	kubeClient := &kube.ImageUpdaterKubernetesClient{
+		KubeClient: &registryKube.KubernetesClient{Clientset: fake.NewFakeKubeClient(), Namespace: "argocd"},
+	}
+	gitSettings := func() *api.WriteBackConfig { return &api.WriteBackConfig{Method: new("git")} }
+	imageWith := func(alias string, index *int32, chart *string) api.ImageConfig {
+		ic := api.ImageConfig{Alias: alias, ImageName: "x/" + alias}
+		if index != nil || chart != nil {
+			ic.ManifestTarget = &api.ManifestTarget{Helm: &api.HelmTarget{SourceIndex: index, ChartName: chart}}
+		}
+		return ic
+	}
+	gitA := v1alpha1.ApplicationSource{RepoURL: "https://example.com/a.git", Path: "a/", Helm: &v1alpha1.ApplicationSourceHelm{}}
+	gitB := v1alpha1.ApplicationSource{RepoURL: "https://example.com/b.git", Path: "b/", Helm: &v1alpha1.ApplicationSourceHelm{}}
+
+	t.Run("git write-back is routed to the selected source", func(t *testing.T) {
+		app := newApp(gitA, gitB)
+		images := []api.ImageConfig{imageWith("one", new(int32(1)), nil), imageWith("two", new(int32(1)), nil)}
+
+		wbc, err := newWBCFromSettingsAndImages(context.Background(), app, kubeClient, nil, gitSettings(), images)
+		require.NoError(t, err)
+		assert.Equal(t, "https://example.com/b.git", wbc.GitRepo)
+		assert.Equal(t, "b/.argocd-source-argocd-test_my-app.yaml", wbc.Target)
+	})
+
+	t.Run("without selectors git write-back keeps using the default source", func(t *testing.T) {
+		app := newApp(gitA, gitB)
+		images := []api.ImageConfig{imageWith("one", nil, nil)}
+
+		wbc, err := newWBCFromSettingsAndImages(context.Background(), app, kubeClient, nil, gitSettings(), images)
+		require.NoError(t, err)
+		assert.Equal(t, "https://example.com/a.git", wbc.GitRepo)
+		assert.Equal(t, "a/.argocd-source-argocd-test_my-app.yaml", wbc.Target)
+	})
+
+	t.Run("git write-back rejects images that resolve to different sources", func(t *testing.T) {
+		app := newApp(gitA, gitB)
+		for name, images := range map[string][]api.ImageConfig{
+			"two explicit sources":               {imageWith("one", new(int32(0)), nil), imageWith("two", new(int32(1)), nil)},
+			"default source and explicit source": {imageWith("one", nil, nil), imageWith("two", new(int32(1)), nil)},
+		} {
+			_, err := newWBCFromSettingsAndImages(context.Background(), app, kubeClient, nil, gitSettings(), images)
+			require.Error(t, err, name)
+			assert.Contains(t, err.Error(), "different sources", name)
+		}
+	})
+
+	t.Run("argocd write-back lets every image use its own source", func(t *testing.T) {
+		app := newApp(gitA, gitB)
+		images := []api.ImageConfig{imageWith("one", nil, nil), imageWith("two", new(int32(1)), nil)}
+
+		wbc, err := newWBCFromSettingsAndImages(context.Background(), app, kubeClient, nil, &api.WriteBackConfig{}, images)
+		require.NoError(t, err)
+		assert.Equal(t, WriteBackApplication, wbc.Method)
+	})
+
+	t.Run("git write-back needs an explicit repository for a chart source", func(t *testing.T) {
+		chart := v1alpha1.ApplicationSource{RepoURL: "https://charts.example.com", Chart: "podinfo", Helm: &v1alpha1.ApplicationSourceHelm{}}
+		app := newApp(gitA, chart)
+		images := []api.ImageConfig{imageWith("one", new(int32(1)), nil)}
+
+		_, err := newWBCFromSettingsAndImages(context.Background(), app, kubeClient, nil, gitSettings(), images)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "no Git repository")
+
+		settings := gitSettings()
+		settings.GitConfig = &api.GitConfig{Repository: new("https://example.com/values.git")}
+		wbc, err := newWBCFromSettingsAndImages(context.Background(), app, kubeClient, nil, settings, images)
+		require.NoError(t, err)
+		assert.Equal(t, "https://example.com/values.git", wbc.GitRepo)
+	})
+
+	t.Run("invalid selector is reported", func(t *testing.T) {
+		app := newApp(gitA, gitB)
+		_, err := newWBCFromSettingsAndImages(context.Background(), app, kubeClient, nil, gitSettings(), []api.ImageConfig{imageWith("one", new(int32(7)), nil)})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "out of range")
+	})
 }

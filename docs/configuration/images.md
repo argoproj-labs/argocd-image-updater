@@ -631,6 +631,108 @@ spec:
     the `cosignKey` field is required. An image whose
     verification settings are incomplete will be skipped with an error.
 
+## Multi-source Helm applications
+
+Argo CD supports [multiple sources](https://argo-cd.readthedocs.io/en/stable/user-guide/multiple_sources/)
+in a single Application. When an Application has more than one Helm chart source,
+you need to tell Image Updater which source to update. There are two ways to do
+this: `chartName` and `sourceIndex`.
+
+### Using `chartName`
+
+Use `manifestTargets.helm.chartName` to identify the target source by its Helm
+chart name. The value must match the `spec.sources[].chart` field of the Argo CD
+Application source you want to update.
+
+For example, if your Application has two Helm sources — a plain-manifest source
+and a Helm chart named `my-app` — and you want to update the image in `my-app`:
+
+```yaml
+images:
+  - alias: "myimage"
+    imageName: "myorg/myimage:1.0.0"
+    manifestTargets:
+      helm:
+        chartName: "my-app"
+        name: "image.repository"
+        tag: "image.tag"
+```
+
+This also works with `spec` instead of `name`/`tag`:
+
+```yaml
+images:
+  - alias: "myimage"
+    imageName: "myorg/myimage:1.0.0"
+    manifestTargets:
+      helm:
+        chartName: "my-app"
+        spec: "image"
+```
+
+!!!note
+    `chartName` only applies to Helm chart repository sources where the Argo CD
+    Application's `spec.sources[].chart` field is set. It cannot be used to
+    select a Git repository source by path.
+
+### Using `sourceIndex`
+
+When multiple sources in the same Application reference the same Helm chart,
+`chartName` is ambiguous and Image Updater reports an error instead of guessing. Use
+`manifestTargets.helm.sourceIndex` instead to target a source by its zero-based
+position in `spec.sources`.
+
+For example, if your Application has two sources that both use the `my-app` chart
+and you want to update the second one:
+
+```yaml
+images:
+  - alias: "myimage"
+    imageName: "myorg/myimage:1.0.0"
+    manifestTargets:
+      helm:
+        sourceIndex: 1
+        name: "image.repository"
+        tag: "image.tag"
+```
+
+`sourceIndex` takes precedence over `chartName` when both are set. For
+single-source Applications, `sourceIndex` is ignored and the existing source
+selection logic applies.
+
+!!!note
+    `sourceIndex` is zero-based, so the first source in `spec.sources` is `0`,
+    the second is `1`, and so on. The selected source must be a Helm source:
+    either a chart (`chart` is set) or a Git source with a `helm` block. An index
+    that is out of range or points to a non-Helm source is an error.
+
+### Mixed-source Applications and write-back
+
+An image that sets `chartName` or `sourceIndex` is always handled as a Helm
+image, even if the Application also has Kustomize or plugin sources. The current
+image is read from, and the new image is written to, the same selected source.
+
+With the default `argocd` write-back method, each image can select its own source.
+
+The `git` write-back method writes the parameters of one source into one override
+file in one repository. When images select a Helm source, the Git repository,
+the default target path and the branch are taken from that source and not from
+the Application's first Helm source. Two rules apply:
+
+* All images of the Application must resolve to the same source. Images without
+  `sourceIndex` or `chartName` resolve to the Application's default Helm source,
+  so combining them with an image that selects a different source fails with an
+  error. Use the `argocd` write-back method if images need different sources.
+* A selected source that is a chart from a chart repository (`chart` is set) has
+  no Git repository to write to. Set the Git repository explicitly with
+  `writeBackConfig.gitConfig.repository`, otherwise the update fails with an error.
+
+### Fallback behavior
+
+If neither `chartName` nor `sourceIndex` is set, Image Updater selects the first
+Helm source it finds in the Application. For single-source Applications, both
+fields are ignored.
+
 ## Examples
 
 ### Following an image's patch branch
@@ -890,11 +992,13 @@ and credential requirements.
 
 #### HelmTarget fields
 
-| Field  | Type   | Required | Description                                                                                                                        |
-|--------|--------|----------|------------------------------------------------------------------------------------------------------------------------------------|
-| `name` | string | No       | Dot-separated path to Helm key for image name                                                                                      |
-| `tag`  | string | No       | Dot-separated path to Helm key for image tag                                                                                       |
-| `spec` | string | No       | Dot-separated path to Helm key for full image specification. If this is set, other Helm parameter-related options will be ignored. |
+| Field         | Type    | Required | Description                                                                                                                                                                            |
+|---------------|---------|----------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `sourceIndex` | integer | No       | Zero-based index into `spec.sources` of the target Helm source in a multi-source Application. Takes precedence over `chartName`. Ignored for single-source Applications.               |
+| `chartName`   | string  | No       | Chart name of the Helm source to update in a multi-source Application. Must match `spec.sources[].chart`. Ignored if `sourceIndex` is set or for single-source Applications.           |
+| `name`        | string  | No       | Dot-separated path to Helm key for image name                                                                                                                                          |
+| `tag`         | string  | No       | Dot-separated path to Helm key for image tag                                                                                                                                           |
+| `spec`        | string  | No       | Dot-separated path to Helm key for full image specification. If this is set, other Helm parameter-related options will be ignored.                                                     |
 
 #### KustomizeTarget fields
 
