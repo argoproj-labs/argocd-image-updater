@@ -2,6 +2,8 @@ module github.com/argoproj-labs/argocd-image-updater/registry-scanner
 
 go 1.26.3
 
+toolchain go1.26.11
+
 require (
 	github.com/Masterminds/semver/v3 v3.4.0
 	github.com/argoproj/pkg v0.13.7-0.20230627120311-a4dd357b057e
@@ -75,7 +77,7 @@ require (
 	go.uber.org/atomic v1.11.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.4 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
-	golang.org/x/net v0.59.0 // indirect
+	golang.org/x/net v0.60.0 // indirect
 	golang.org/x/oauth2 v0.36.0 // indirect
 	golang.org/x/sys v0.48.0 // indirect
 	golang.org/x/term v0.46.0 // indirect
