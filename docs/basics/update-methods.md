@@ -188,6 +188,17 @@ kubectl -n argocd-image-updater create secret generic git-creds \
   --from-literal=insecure=false
 ```
 
+To reach the repository through a proxy, add the optional `proxy` field, and
+`noProxy` for hosts that must bypass it:
+
+```bash
+kubectl -n argocd-image-updater create secret generic git-creds \
+  --from-literal=username=someuser \
+  --from-literal=password=somepassword \
+  --from-literal=proxy=http://proxy.example.com:3128 \
+  --from-literal=noProxy=git.internal.example.com
+```
+
 If the repository is accessed using GitHub app credentials, the secret requires three fields `githubAppID` which holds the GitHub Application ID, `githubAppInstallationID` which holds the GitHub Organization Installation ID, and `githubAppPrivateKey` which holds the GitHub Application private key. The GitHub Application must be installed into the target repository with write access.
 You can generate such a secret using `kubectl`, e.g.:
 
@@ -207,6 +218,7 @@ The following optional fields are also supported for GitHub App secrets:
 | `tlsClientCertKey` | PEM-encoded client private key for mTLS | empty |
 | `insecure` | Skip TLS certificate verification (`"true"` or `"false"`) | `"false"` |
 | `proxy` | HTTP(S) proxy URL | empty |
+| `noProxy` | Comma-separated list of hosts that bypass the proxy | empty |
 
 For example, to use a GitHub Enterprise instance:
 
@@ -593,6 +605,13 @@ system trust store, e.g. with `SSL_CERT_DIR`.
 
 TLS verification is always on for SCM API calls, regardless of the
 repository's `insecure` setting, because those calls carry the access token.
+
+#### Proxy for the SCM API
+
+SCM API calls use the same proxy as the Git transport: the `proxy` and
+`noProxy` settings of the Argo CD repository (`git:repocreds`), or of the
+write-back secret (`git:secret:<name>`). If the API is served from a different
+host than the repository and must not be proxied, list that host in `noProxy`.
 
 #### PR title and body
 

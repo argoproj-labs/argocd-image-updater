@@ -77,11 +77,24 @@ func TestGetCredsFromSecret(t *testing.T) {
 		"password": []byte("mypass"),
 		"insecure": []byte("false"),
 	})
+	httpsProxy := fixture.NewSecret("ns", "https-proxy", map[string][]byte{
+		"username": []byte("myuser"),
+		"password": []byte("mypass"),
+		"proxy":    []byte("http://proxy.example.com:3128"),
+		"noProxy":  []byte("internal.example.com"),
+	})
+	ghappProxy := fixture.NewSecret("ns", "ghapp-proxy", map[string][]byte{
+		"githubAppID":             []byte("123"),
+		"githubAppInstallationID": []byte("456"),
+		"githubAppPrivateKey":     []byte("key"),
+		"proxy":                   []byte("http://proxy.example.com:3128"),
+		"noProxy":                 []byte("internal.example.com"),
+	})
 
 	kubeClient := kube.ImageUpdaterKubernetesClient{
 		KubeClient: &registryKube.KubernetesClient{
 			Clientset: fake.NewFakeClientsetWithResources(secret1, secret2, secret3, secret4, secret5, secret6,
-				sshDefault, sshStrict, sshInsecure, sshBadInsecure, httpsStrict),
+				sshDefault, sshStrict, sshInsecure, sshBadInsecure, httpsStrict, httpsProxy, ghappProxy),
 		},
 	}
 
@@ -98,14 +111,14 @@ func TestGetCredsFromSecret(t *testing.T) {
 			gitRepo:       "https://github.com/example/repo.git",
 			secretRef:     "foo/bar",
 			namespace:     "foo",
-			expectedCreds: git.NewHTTPSCreds(ctx, "myuser", "mypass", "", "", true, "", store, false),
+			expectedCreds: git.NewHTTPSCreds(ctx, "myuser", "mypass", "", "", true, "", "", store, false),
 		},
 		{
 			name:          "no namespace defaults to app namespace",
 			gitRepo:       "https://github.com/example/repo.git",
 			secretRef:     "bar",
 			namespace:     "foo",
-			expectedCreds: git.NewHTTPSCreds(ctx, "myuser", "mypass", "", "", true, "", store, false),
+			expectedCreds: git.NewHTTPSCreds(ctx, "myuser", "mypass", "", "", true, "", "", store, false),
 		},
 		{
 			name:        "cross-namespace reference is rejected",
@@ -129,18 +142,26 @@ func TestGetCredsFromSecret(t *testing.T) {
 			expectedErr: "unknown repository type",
 		},
 		{
-			name:          "GitHub App with enterprise base URL",
-			gitRepo:       "https://ghe.example.com/org/repo.git",
-			secretRef:     "ns/ghapp",
-			namespace:     "ns",
-			expectedCreds: git.NewGitHubAppCreds(ctx, 123, 456, "appprivatekey", "https://ghe.example.com/api/v3", "https://ghe.example.com/org/repo.git", "certdata", "certkey", true, "https://proxy.example.com", store),
+			name:      "GitHub App with enterprise base URL",
+			gitRepo:   "https://ghe.example.com/org/repo.git",
+			secretRef: "ns/ghapp",
+			namespace: "ns",
+			expectedCreds: git.NewGitHubAppCreds(
+				ctx, 123, 456, "appprivatekey",
+				"https://ghe.example.com/api/v3", "https://ghe.example.com/org/repo.git",
+				"certdata", "certkey", true, "https://proxy.example.com", "", store,
+			),
 		},
 		{
-			name:          "GitHub App with absent optional fields defaults safely",
-			gitRepo:       "https://github.com/org/repo.git",
-			secretRef:     "ns/ghapp-minimal",
-			namespace:     "ns",
-			expectedCreds: git.NewGitHubAppCreds(ctx, 789, 101, "minimalkey", "", "https://github.com/org/repo.git", "", "", false, "", store),
+			name:      "GitHub App with absent optional fields defaults safely",
+			gitRepo:   "https://github.com/org/repo.git",
+			secretRef: "ns/ghapp-minimal",
+			namespace: "ns",
+			expectedCreds: git.NewGitHubAppCreds(
+				ctx, 789, 101, "minimalkey",
+				"", "https://github.com/org/repo.git",
+				"", "", false, "", "", store,
+			),
 		},
 		{
 			name:        "non-numeric githubAppID",
@@ -150,11 +171,15 @@ func TestGetCredsFromSecret(t *testing.T) {
 			expectedErr: "invalid value in field githubAppID",
 		},
 		{
-			name:          "malformed insecure value defaults to false",
-			gitRepo:       "https://github.com/org/repo.git",
-			secretRef:     "ns/ghapp-bad-insecure",
-			namespace:     "ns",
-			expectedCreds: git.NewGitHubAppCreds(ctx, 123, 456, "key", "", "https://github.com/org/repo.git", "", "", false, "", store),
+			name:      "malformed insecure value defaults to false",
+			gitRepo:   "https://github.com/org/repo.git",
+			secretRef: "ns/ghapp-bad-insecure",
+			namespace: "ns",
+			expectedCreds: git.NewGitHubAppCreds(
+				ctx, 123, 456, "key",
+				"", "https://github.com/org/repo.git",
+				"", "", false, "", "", store,
+			),
 		},
 		{
 			name:          "SSH without insecure field keeps skipping host key verification",
@@ -189,7 +214,25 @@ func TestGetCredsFromSecret(t *testing.T) {
 			gitRepo:       "https://github.com/example/repo.git",
 			secretRef:     "ns/https-strict",
 			namespace:     "ns",
-			expectedCreds: git.NewHTTPSCreds(ctx, "myuser", "mypass", "", "", false, "", store, false),
+			expectedCreds: git.NewHTTPSCreds(ctx, "myuser", "mypass", "", "", false, "", "", store, false),
+		},
+		{
+			name:          "HTTPS with proxy and noProxy",
+			gitRepo:       "https://github.com/example/repo.git",
+			secretRef:     "ns/https-proxy",
+			namespace:     "ns",
+			expectedCreds: git.NewHTTPSCreds(ctx, "myuser", "mypass", "", "", true, "http://proxy.example.com:3128", "internal.example.com", store, false),
+		},
+		{
+			name:      "GitHub App with proxy and noProxy",
+			gitRepo:   "https://github.com/org/repo.git",
+			secretRef: "ns/ghapp-proxy",
+			namespace: "ns",
+			expectedCreds: git.NewGitHubAppCreds(
+				ctx, 123, 456, "key",
+				"", "https://github.com/org/repo.git",
+				"", "", false, "http://proxy.example.com:3128", "internal.example.com", store,
+			),
 		},
 	}
 
@@ -272,8 +315,15 @@ func TestGetGitCreds(t *testing.T) {
 		Password: "mypass",
 		Repo:     "https://github.com/example/repo.git",
 	}
-	expectedHTTPSCreds := git.NewHTTPSCreds(ctx, "myuser", "mypass", "", "", false, "", store, false)
+	expectedHTTPSCreds := git.NewHTTPSCreds(ctx, "myuser", "mypass", "", "", false, "", "", store, false)
 	httpCreds := GetGitCreds(ctx, repo, store)
+	assert.Equal(t, expectedHTTPSCreds, httpCreds)
+
+	// HTTP credentials carry the repository's proxy settings
+	repo.Proxy = "http://proxy.example.com:3128"
+	repo.NoProxy = "internal.example.com"
+	expectedHTTPSCreds = git.NewHTTPSCreds(ctx, "myuser", "mypass", "", "", false, "http://proxy.example.com:3128", "internal.example.com", store, false)
+	httpCreds = GetGitCreds(ctx, repo, store)
 	assert.Equal(t, expectedHTTPSCreds, httpCreds)
 
 	// Test case 2: SSH credentials
@@ -298,8 +348,9 @@ func TestGetGitCreds(t *testing.T) {
 		TLSClientCertKey:           "certkey",
 		Insecure:                   true,
 		Proxy:                      "proxy",
+		NoProxy:                    "noproxy",
 	}
-	expectedGitHubAppCreds := git.NewGitHubAppCreds(ctx, 123, 456, "appprivatekey", "enterpriseurl", "https://github.com/example/repo.git", "certdata", "certkey", true, "proxy", store)
+	expectedGitHubAppCreds := git.NewGitHubAppCreds(ctx, 123, 456, "appprivatekey", "enterpriseurl", "https://github.com/example/repo.git", "certdata", "certkey", true, "proxy", "noproxy", store)
 	githubAppCreds := GetGitCreds(ctx, repo, store)
 	assert.Equal(t, expectedGitHubAppCreds, githubAppCreds)
 
@@ -318,6 +369,45 @@ func TestGetGitCreds(t *testing.T) {
 	expectedNopCreds := git.NopCreds{}
 	nopCreds := GetGitCreds(ctx, nil, store)
 	assert.Equal(t, expectedNopCreds, nopCreds)
+}
+
+func Test_repoProxyOptions(t *testing.T) {
+	ctx := context.Background()
+	store := git.NoopCredsStore{}
+
+	tests := []struct {
+		name            string
+		creds           git.Creds
+		expectedProxy   string
+		expectedNoProxy string
+	}{
+		{
+			name:            "HTTPS credentials",
+			creds:           git.NewHTTPSCreds(ctx, "user", "pass", "", "", false, "http://proxy.example.com:3128", "internal.example.com", store, false),
+			expectedProxy:   "http://proxy.example.com:3128",
+			expectedNoProxy: "internal.example.com",
+		},
+		{
+			name:            "GitHub App credentials",
+			creds:           git.NewGitHubAppCreds(ctx, 1, 2, "key", "", "https://github.com/org/repo.git", "", "", false, "http://proxy.example.com:3128", "internal.example.com", store),
+			expectedProxy:   "http://proxy.example.com:3128",
+			expectedNoProxy: "internal.example.com",
+		},
+		{
+			name:  "credentials without proxy settings",
+			creds: git.NopCreds{},
+		},
+		{
+			name: "no credentials",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			proxy, noProxy := repoProxyOptions(tt.creds)
+			assert.Equal(t, tt.expectedProxy, proxy)
+			assert.Equal(t, tt.expectedNoProxy, noProxy)
+		})
+	}
 }
 
 func TestGetCredsFromArgoCD(t *testing.T) {
@@ -375,7 +465,7 @@ func TestGetCredsFromArgoCD(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, creds)
 		assert.Equal(t,
-			git.NewHTTPSCreds(ctx, "myuser", "mypass", "", "", false, "", git.NoopCredsStore{}, false),
+			git.NewHTTPSCreds(ctx, "myuser", "mypass", "", "", false, "", "", git.NoopCredsStore{}, false),
 			creds,
 		)
 	})

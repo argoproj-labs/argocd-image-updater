@@ -17,8 +17,8 @@ import (
 // As workaround methods `newUploadPackSession`, `newClient` and `listRemote` were copied from https://github.com/src-d/go-git/blob/master/remote.go and modified to use
 // transport with InsecureSkipVerify flag is verification should be disabled.
 
-func newUploadPackSession(ctx context.Context, url string, auth transport.AuthMethod, insecure bool, creds Creds, proxy string) (transport.UploadPackSession, error) {
-	c, ep, err := newClient(ctx, url, insecure, creds, proxy)
+func newUploadPackSession(ctx context.Context, url string, auth transport.AuthMethod, insecure bool, creds Creds, proxy string, noProxy string) (transport.UploadPackSession, error) {
+	c, ep, err := newClient(ctx, url, insecure, creds, proxy, noProxy)
 	if err != nil {
 		return nil, err
 	}
@@ -26,7 +26,7 @@ func newUploadPackSession(ctx context.Context, url string, auth transport.AuthMe
 	return c.NewUploadPackSession(ep, auth)
 }
 
-func newClient(ctx context.Context, url string, insecure bool, creds Creds, proxy string) (transport.Transport, *transport.Endpoint, error) {
+func newClient(ctx context.Context, url string, insecure bool, creds Creds, proxy string, noProxy string) (transport.Transport, *transport.Endpoint, error) {
 	ep, err := transport.NewEndpoint(url)
 	if err != nil {
 		return nil, nil, err
@@ -58,11 +58,11 @@ func newClient(ctx context.Context, url string, insecure bool, creds Creds, prox
 		return c, ep, nil
 	}
 
-	return http.NewClient(GetRepoHTTPClient(ctx, url, insecure, creds, proxy)), ep, nil
+	return http.NewClient(GetRepoHTTPClient(ctx, url, insecure, creds, proxy, noProxy)), ep, nil
 }
 
-func listRemote(ctx context.Context, r *git.Remote, o *git.ListOptions, insecure bool, creds Creds, proxy string) (rfs []*plumbing.Reference, err error) {
-	s, err := newUploadPackSession(ctx, r.Config().URLs[0], o.Auth, insecure, creds, proxy)
+func listRemote(ctx context.Context, r *git.Remote, o *git.ListOptions, insecure bool, creds Creds, proxy string, noProxy string) (rfs []*plumbing.Reference, err error) {
+	s, err := newUploadPackSession(ctx, r.Config().URLs[0], o.Auth, insecure, creds, proxy, noProxy)
 	if err != nil {
 		return nil, err
 	}

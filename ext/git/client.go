@@ -121,6 +121,8 @@ type nativeGitClient struct {
 	loadRefFromCache bool
 	// HTTP/HTTPS proxy used to access repository
 	proxy string
+	// Hosts that are accessed without the proxy
+	noProxy string
 }
 
 type runOpts struct {
@@ -161,6 +163,13 @@ func WithCache(cache gitRefCache, loadRefFromCache bool) ClientOpts {
 }
 
 // WithEventHandlers sets the git client event handlers
+// WithNoProxy sets the hosts that are accessed without the client's proxy
+func WithNoProxy(noProxy string) ClientOpts {
+	return func(c *nativeGitClient) {
+		c.noProxy = noProxy
+	}
+}
+
 func WithEventHandlers(handlers EventHandlers) ClientOpts {
 	return func(c *nativeGitClient) {
 		c.EventHandlers = handlers
@@ -207,7 +216,7 @@ var (
 //     a client with those certificates in the list of root CAs used to verify
 //     the server's certificate.
 //   - Otherwise (and on non-fatal errors), a default HTTP client is returned.
-func GetRepoHTTPClient(ctx context.Context, repoURL string, insecure bool, creds Creds, proxyURL string) *http.Client {
+func GetRepoHTTPClient(ctx context.Context, repoURL string, insecure bool, creds Creds, proxyURL string, noProxy string) *http.Client {
 	log := log.LoggerFromContext(ctx)
 
 	// Default HTTP client
@@ -220,7 +229,7 @@ func GetRepoHTTPClient(ctx context.Context, repoURL string, insecure bool, creds
 		},
 	}
 
-	proxyFunc := proxy.GetCallback(proxyURL, "")
+	proxyFunc := proxy.GetCallback(proxyURL, noProxy)
 
 	// Callback function to return any configured client certificate
 	// We never return err, but an empty cert instead.
@@ -622,7 +631,7 @@ func (m *nativeGitClient) getRefs(ctx context.Context) ([]*plumbing.Reference, e
 	if err != nil {
 		return nil, err
 	}
-	res, err := listRemote(ctx, remote, &git.ListOptions{Auth: auth}, m.insecure, m.creds, m.proxy)
+	res, err := listRemote(ctx, remote, &git.ListOptions{Auth: auth}, m.insecure, m.creds, m.proxy, m.noProxy)
 	if err == nil && m.gitRefCache != nil {
 		if err := m.gitRefCache.SetGitReferences(m.repoURL, res); err != nil {
 			log.Warnf("Failed to store git references to cache: %v", err)
@@ -925,7 +934,7 @@ func (m *nativeGitClient) runCmdOutput(ctx context.Context, cmd *exec.Cmd, ropts
 			}
 		}
 	}
-	cmd.Env = proxy.UpsertEnv(cmd, m.proxy, "")
+	cmd.Env = proxy.UpsertEnv(cmd, m.proxy, m.noProxy)
 
 	// Run git in its own process group so that child processes (e.g. git-remote-https)
 	// can be cleaned up when the parent is killed on timeout or context cancellation.

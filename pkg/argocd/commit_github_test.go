@@ -277,7 +277,7 @@ func Test_commitChangesGithubAPI_NoChangesErrors(t *testing.T) {
 
 func Test_githubAppCredsProvider(t *testing.T) {
 	ctx := context.Background()
-	appCreds := git.NewGitHubAppCreds(ctx, 1, 2, "key", "", "https://github.com/example/repo.git", "", "", false, "", git.NoopCredsStore{})
+	appCreds := git.NewGitHubAppCreds(ctx, 1, 2, "key", "", "https://github.com/example/repo.git", "", "", false, "", "", git.NoopCredsStore{})
 	p, ok := githubAppCredsProvider(appCreds)
 	assert.True(t, ok)
 	assert.NotNil(t, p)
