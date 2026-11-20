@@ -46,6 +46,7 @@ import (
 	"github.com/stretchr/testify/require"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/utils/ptr"
 )
 
 func newTestArgoDB(clientset kubernetes.Interface, namespace string) db.ArgoDB {
@@ -54,6 +55,65 @@ func newTestArgoDB(clientset kubernetes.Interface, namespace string) db.ArgoDB {
 }
 
 func Test_UpdateApplication(t *testing.T) {
+	t.Run("Expression strategy ranks tags allowed by registry filters", func(t *testing.T) {
+		ctx := context.Background()
+		mockClientFn := func(_ *registry.RegistryEndpoint, _, _ string) (registry.RegistryClient, error) {
+			regMock := regmock.RegistryClient{}
+			regMock.On("NewRepository", mock.Anything, mock.Anything).Return(nil)
+			regMock.On("Tags", mock.Anything).Return([]string{
+				"build-9", "build-20", "build-100", "build-200", "build-300-dev", "latest",
+			}, nil)
+			return &regMock, nil
+		}
+
+		const repo = "gcr.io/jannfis/foobar"
+		const current = repo + ":build-9"
+		images := parseImageList(ctx, nil, "guestbook", []iuapi.ImageConfig{{
+			Alias: "foobar", ImageName: repo,
+			CommonUpdateSettings: &iuapi.CommonUpdateSettings{
+				UpdateStrategy: ptr.To("expression"),
+				AllowTags:      ptr.To("regexp:^build-[0-9]+$"),
+				IgnoreTags:     []string{"build-200"},
+				ExpressionStrategy: &iuapi.ExpressionStrategy{
+					Filter:  `tag.name.startsWith("build-")`,
+					SortKey: `int(tag.name.split("-")[1])`,
+				},
+			},
+		}}, nil, nil, nil)
+		require.Len(t, *images, 1)
+
+		kubeClient := kube.ImageUpdaterKubernetesClient{
+			KubeClient: &registryKube.KubernetesClient{Clientset: fake.NewFakeKubeClient()},
+		}
+		appImages := &ApplicationImages{
+			Application: v1alpha1.Application{
+				ObjectMeta: v1.ObjectMeta{Name: "guestbook", Namespace: "guestbook"},
+				Spec: v1alpha1.ApplicationSpec{
+					Source: &v1alpha1.ApplicationSource{
+						Kustomize: &v1alpha1.ApplicationSourceKustomize{
+							Images: v1alpha1.KustomizeImages{current},
+						},
+					},
+				},
+				Status: v1alpha1.ApplicationStatus{
+					SourceType: v1alpha1.ApplicationSourceTypeKustomize,
+					Summary:    v1alpha1.ApplicationSummary{Images: []string{current}},
+				},
+			},
+			WriteBackConfig: &WriteBackConfig{Method: WriteBackApplication},
+			Images:          *images,
+		}
+		result := UpdateApplication(ctx, &UpdateConfiguration{
+			NewRegFN:   mockClientFn,
+			KubeClient: &kubeClient,
+			UpdateApp:  appImages,
+			DryRun:     true,
+		}, NewSyncIterationState())
+		require.Zero(t, result.NumErrors)
+		require.Equal(t, 1, result.NumImagesUpdated)
+		require.Equal(t, v1alpha1.KustomizeImages{repo + ":build-100"}, appImages.Application.Spec.Source.Kustomize.Images)
+	})
+
 	t.Run("Test kustomize w/ multiple images w/ different registry w/ different tags", func(t *testing.T) {
 		mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
 			regMock := regmock.RegistryClient{}

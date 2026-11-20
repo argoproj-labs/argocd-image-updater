@@ -25,6 +25,8 @@ const (
 	StrategyDigest UpdateStrategy = 3
 	// StrategyCalVer defines the calver strategy.
 	StrategyCalVer UpdateStrategy = 4
+	// StrategyExpression defines the CEL strategy configured by ImageUpdater resources.
+	StrategyExpression UpdateStrategy = 5
 )
 
 // String returns the string representation of the update strategy.
@@ -40,6 +42,8 @@ func (us UpdateStrategy) String() string {
 		return "digest"
 	case StrategyCalVer:
 		return "calver"
+	case StrategyExpression:
+		return "expression"
 	}
 
 	return "unknown"

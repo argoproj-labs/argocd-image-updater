@@ -116,9 +116,10 @@ Argo CD Image Updater can update images according to the following strategies:
 | `alphabetical`        | Update to the tag with the latest entry from an alphabetically sorted list (deprecated alias: `name`) |
 | `digest`              | Update to the most recent pushed version of a mutable tag                  |
 | `calver`              | Update to the newest tag of a calendar versioning scheme, e.g. `vYYYY-0M-0D` |
+| `expression`          | Update to the tag with the highest key computed by a CEL expression        |
 
 You can define the update strategy for each image independently by setting the
-following annotation to an appropriate value:
+following field to an appropriate value:
 
 ```yaml
 images:
@@ -144,6 +145,54 @@ strategy `semver` will be used.
     pushed tags, and these will count into your pull limits. So unless you are
     not affected by these pull limits, it is **not recommended** to use the
     `newest-build` update strategy with images hosted on Docker Hub.
+
+### Custom ordering with CEL
+
+Set `updateStrategy: expression` in an ImageUpdater resource to select tags
+using CEL. The strategy evaluates `tag.name` for each candidate that passes
+`allowTags` and `ignoreTags`.
+
+```yaml
+commonUpdateSettings:
+  updateStrategy: expression
+  expressionStrategy:
+    filter: 'tag.name.matches("^build-[0-9]+$")'
+    sortKey: 'int(tag.name.split("-")[1])'
+```
+
+- `filter` is optional and must return a boolean. Only tags for which it
+  returns `true` are ranked. Omitting it ranks all candidates.
+- `sortKey` is required and must return an integer or string. The highest
+  key wins. Strings sort lexicographically. When keys are equal, the
+  lexicographically greatest tag name wins.
+- Expressions support standard CEL functions and the `string.split(separator)`
+  extension. The string passed to `split` can be up to 4096 bytes.
+- A more specific `expressionStrategy` block replaces the inherited block in
+  full.
+- Invalid expressions skip the affected image. An evaluation error on a
+  candidate stops the update for that image in the current reconciliation.
+
+The example selects `build-100` ahead of `build-20` and `build-9`.
+
+### Configuring CEL with Application annotations
+
+For an ImageUpdater application reference with `useAnnotations: true`, set
+the strategy and expressions on the Argo CD Application:
+
+```yaml
+metadata:
+  annotations:
+    argocd-image-updater.argoproj.io/image-list: demo=registry.example.com/team/demo
+    argocd-image-updater.argoproj.io/demo.update-strategy: expression
+    argocd-image-updater.argoproj.io/demo.expression-filter: 'tag.name.matches("^build-[0-9]+$")'
+    argocd-image-updater.argoproj.io/demo.expression-sort-key: 'int(tag.name.split("-")[1])'
+```
+
+Omit the `demo.` prefix from the strategy and expression annotation names to
+set application-wide defaults. Setting either expression annotation for an
+image replaces the application-wide expression block for that image. Supply
+`expression-sort-key` when overriding the block. Omit `expression-filter`
+to rank all remaining candidates.
 
 ## Filtering tags
 
