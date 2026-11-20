@@ -4,8 +4,10 @@ import (
 	"cmp"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"slices"
 	"strings"
@@ -13,6 +15,7 @@ import (
 	"github.com/argoproj/argo-cd/v3/pkg/apiclient/application"
 	argocdapi "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1"
 	"github.com/argoproj/argo-cd/v3/util/db"
+	jsonpatch "github.com/evanphx/json-patch/v5"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
@@ -47,7 +50,7 @@ func NewArgoCDK8sClient(ctrlClient ctrlclient.Client) (*ArgoCDK8sClient, error) 
 //go:generate mockery --name ArgoCD --output ./mocks --outpkg mocks
 type ArgoCD interface {
 	GetApplication(ctx context.Context, appNamespace string, appName string) (*argocdapi.Application, error)
-	UpdateSpec(ctx context.Context, spec *application.ApplicationUpdateSpecRequest) (*argocdapi.ApplicationSpec, error)
+	UpdateSpec(ctx context.Context, spec *application.ApplicationUpdateSpecRequest, original *argocdapi.ApplicationSpec) (*argocdapi.ApplicationSpec, error)
 }
 
 // GetApplication retrieves a single application by its name and namespace.
@@ -60,26 +63,78 @@ func (client *ArgoCDK8sClient) GetApplication(ctx context.Context, appNamespace 
 	return app, nil
 }
 
-// UpdateSpec updates the spec for given application
-func (client *ArgoCDK8sClient) UpdateSpec(ctx context.Context, spec *application.ApplicationUpdateSpecRequest) (*argocdapi.ApplicationSpec, error) {
+// ErrConcurrentSpecChange is returned by UpdateSpec when the live Application
+// was changed by another client, since the baseline spec was read, in a field
+// that the pending update also changes. Applying the update in that case would
+// silently overwrite the other client's change, so the update is not written.
+var ErrConcurrentSpecChange = errors.New("application spec was changed concurrently in a field that is being updated")
+
+// UpdateSpec updates the spec for given application.
+//
+// original is the application spec that spec.Spec was derived from. When it
+// is set, only the fields that differ between original and spec.Spec are
+// written; they are applied on top of the latest version of the Application,
+// so concurrent changes made by other clients to other fields are preserved.
+// If another client changed one of the same fields, ErrConcurrentSpecChange is
+// returned and nothing is written. When original is nil, the whole spec is
+// replaced with spec.Spec.
+func (client *ArgoCDK8sClient) UpdateSpec(ctx context.Context, spec *application.ApplicationUpdateSpecRequest, original *argocdapi.ApplicationSpec) (*argocdapi.ApplicationSpec, error) {
+	return updateApplicationSpec(ctx, client, spec, original)
+}
+
+// updateApplicationSpec implements UpdateSpec against the given client.
+func updateApplicationSpec(ctx context.Context, c ctrlclient.Client, spec *application.ApplicationUpdateSpecRequest, original *argocdapi.ApplicationSpec) (*argocdapi.ApplicationSpec, error) {
 	log := log.LoggerFromContext(ctx)
-	app := &argocdapi.Application{}
-	var err error
+
+	if spec.Spec == nil {
+		return nil, fmt.Errorf("no spec given for application %s", spec.GetName())
+	}
+
+	var originalJSON, specPatch []byte
+	if original != nil {
+		var err error
+		originalJSON, err = json.Marshal(original)
+		if err != nil {
+			return nil, fmt.Errorf("could not marshal original spec of application %s: %w", spec.GetName(), err)
+		}
+		updatedJSON, err := json.Marshal(spec.Spec)
+		if err != nil {
+			return nil, fmt.Errorf("could not marshal updated spec of application %s: %w", spec.GetName(), err)
+		}
+		specPatch, err = jsonpatch.CreateMergePatch(originalJSON, updatedJSON)
+		if err != nil {
+			return nil, fmt.Errorf("could not compute spec changes for application %s: %w", spec.GetName(), err)
+		}
+		if isEmptyMergePatch(specPatch) {
+			log.Infof("No changes to the spec of application %s, nothing to update", spec.GetName())
+			return spec.Spec, nil
+		}
+	}
+
+	var app *argocdapi.Application
 
 	// Use RetryOnConflict to handle potential conflicts gracefully.
-	err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
+	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		// Get the latest version of the Application within the retry loop.
-		app, err = client.GetApplication(ctx, spec.GetAppNamespace(), spec.GetName())
-		if err != nil {
+		app = &argocdapi.Application{}
+		if err := c.Get(ctx, types.NamespacedName{Namespace: spec.GetAppNamespace(), Name: spec.GetName()}, app); err != nil {
 			log.Errorf("could not get application: %s, error: %v", spec.GetName(), err)
 			return err
 		}
 
-		app.Spec = *spec.Spec
+		if specPatch == nil {
+			app.Spec = *spec.Spec
+		} else {
+			// Apply only our changes on top of the latest spec. On a conflict,
+			// this is redone against the re-fetched Application.
+			rebased, err := rebaseSpecChanges(originalJSON, specPatch, &app.Spec)
+			if err != nil {
+				return err
+			}
+			app.Spec = *rebased
+		}
 
-		// Attempt to update the object. If there is a conflict,
-		// RetryOnConflict will automatically re-fetch and re-apply the changes.
-		return client.Update(ctx, app)
+		return c.Update(ctx, app)
 	})
 
 	if err != nil {
@@ -89,6 +144,74 @@ func (client *ArgoCDK8sClient) UpdateSpec(ctx context.Context, spec *application
 
 	log.Infof("Successfully updated application spec for %s", spec.GetName())
 	return &app.Spec, nil
+}
+
+// rebaseSpecChanges applies specPatch, a JSON merge patch holding the changes
+// made relative to the spec in originalJSON, on top of the live spec. It fails
+// with ErrConcurrentSpecChange if the live spec differs from the original in
+// any field that specPatch also changes.
+func rebaseSpecChanges(originalJSON []byte, specPatch []byte, live *argocdapi.ApplicationSpec) (*argocdapi.ApplicationSpec, error) {
+	liveJSON, err := json.Marshal(live)
+	if err != nil {
+		return nil, fmt.Errorf("could not marshal live spec: %w", err)
+	}
+	concurrentPatch, err := jsonpatch.CreateMergePatch(originalJSON, liveJSON)
+	if err != nil {
+		return nil, fmt.Errorf("could not compute concurrent spec changes: %w", err)
+	}
+
+	var ours, theirs map[string]any
+	if err := json.Unmarshal(specPatch, &ours); err != nil {
+		return nil, fmt.Errorf("could not unmarshal spec changes: %w", err)
+	}
+	if err := json.Unmarshal(concurrentPatch, &theirs); err != nil {
+		return nil, fmt.Errorf("could not unmarshal concurrent spec changes: %w", err)
+	}
+	if path, conflict := mergePatchesConflict(ours, theirs, "spec"); conflict {
+		return nil, fmt.Errorf("%w: %s", ErrConcurrentSpecChange, path)
+	}
+
+	patchedJSON, err := jsonpatch.MergePatch(liveJSON, specPatch)
+	if err != nil {
+		return nil, fmt.Errorf("could not apply spec changes: %w", err)
+	}
+	rebased := &argocdapi.ApplicationSpec{}
+	if err := json.Unmarshal(patchedJSON, rebased); err != nil {
+		return nil, fmt.Errorf("could not unmarshal updated spec: %w", err)
+	}
+	return rebased, nil
+}
+
+// mergePatchesConflict reports whether two JSON merge patches computed against
+// the same document change the same field to different values, and returns
+// the path of the first such field. Arrays are replaced as a whole by a merge
+// patch, so changes anywhere in the same array conflict.
+func mergePatchesConflict(ours, theirs map[string]any, path string) (string, bool) {
+	for key, ourValue := range ours {
+		theirValue, ok := theirs[key]
+		if !ok {
+			continue
+		}
+		fieldPath := path + "." + key
+		ourMap, ourIsMap := ourValue.(map[string]any)
+		theirMap, theirIsMap := theirValue.(map[string]any)
+		if ourIsMap && theirIsMap {
+			if p, conflict := mergePatchesConflict(ourMap, theirMap, fieldPath); conflict {
+				return p, true
+			}
+			continue
+		}
+		if !reflect.DeepEqual(ourValue, theirValue) {
+			return fieldPath, true
+		}
+	}
+	return "", false
+}
+
+// isEmptyMergePatch reports whether the JSON merge patch changes nothing.
+func isEmptyMergePatch(patch []byte) bool {
+	var m map[string]any
+	return json.Unmarshal(patch, &m) == nil && len(m) == 0
 }
 
 // nameMatchesPatterns Matches a name against a list of patterns
