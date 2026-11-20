@@ -1356,6 +1356,8 @@ func getApplicationSourceType(app *argocdapi.Application, wbc *WriteBackConfig) 
 	// For SourceHydrator apps, Status.SourceType reflects the sync source (typically
 	// "Directory" since it syncs rendered manifests), not the dry source. If the DrySource
 	// has explicit Helm/Kustomize/Plugin config, use that to determine the actual type.
+	// Those blocks are optional, though, and Argo CD does not report which tool it detected
+	// in the dry source, so without one of them we default to Helm (see below).
 	//
 	// Plugin is checked first: a CMP is only ever configured explicitly, while a Helm or
 	// Kustomize block can be one we added ourselves. persistSourceHydratorMutation writes
@@ -1374,6 +1376,13 @@ func getApplicationSourceType(app *argocdapi.Application, wbc *WriteBackConfig) 
 		}
 		if ds.Kustomize != nil {
 			return argocdapi.ApplicationSourceTypeKustomize
+		}
+		// Default to Helm, as getApplicationType does for plugin apps with git write-back.
+		// An explicit Directory block is the one signal that rules it out. A Kustomize dry
+		// source without a kustomize block is recognized through a kustomization write-back
+		// target, which is checked above.
+		if ds.Directory == nil {
+			return argocdapi.ApplicationSourceTypeHelm
 		}
 	}
 
