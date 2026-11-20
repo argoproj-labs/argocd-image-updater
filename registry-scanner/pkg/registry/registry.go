@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/distribution/distribution/v3"
+	"github.com/opencontainers/go-digest"
 
 	"golang.org/x/sync/semaphore"
 
@@ -208,6 +209,25 @@ func (ep *RegistryEndpoint) GetTags(ctx context.Context, img *image.ContainerIma
 
 	wg.Wait()
 	return tagList, err
+}
+
+// ResolveTagDigest returns a copy of imgTag with its manifest digest set as TagDigest.
+// regClient must already be initialized for the image's repository.
+func ResolveTagDigest(ctx context.Context, imgTag *tag.ImageTag, regClient RegistryClient) (*tag.ImageTag, error) {
+	resolvedTag := *imgTag
+	if resolvedTag.ManifestDigest == "" {
+		manifest, err := regClient.ManifestForTag(ctx, resolvedTag.TagName)
+		if err != nil {
+			return nil, err
+		}
+		_, payload, err := manifest.Payload()
+		if err != nil {
+			return nil, err
+		}
+		resolvedTag.ManifestDigest = digest.FromBytes(payload).String()
+	}
+	resolvedTag.TagDigest = resolvedTag.ManifestDigest
+	return &resolvedTag, nil
 }
 
 // credsExpiredByTime returns true when cached creds are past their validity window.

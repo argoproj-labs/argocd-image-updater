@@ -242,6 +242,7 @@ type Image struct {
 
 	// Update settings
 	UpdateStrategy image.UpdateStrategy
+	PinDigest      bool
 	ForceUpdate    bool
 	AllowTags      string
 	IgnoreTags     []string

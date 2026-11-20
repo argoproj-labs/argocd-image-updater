@@ -199,6 +199,17 @@ func UpdateApplication(ctx context.Context, updateConf *UpdateConfiguration, sta
 			continue
 		}
 
+		// Pin the selected tag to its manifest digest when requested. The digest
+		// strategy already resolves the digest as part of tag discovery.
+		if applicationImage.PinDigest && vc.Strategy != image.StrategyDigest {
+			latest, err = registry.ResolveTagDigest(imageOpCtx, latest, regClient)
+			if err != nil {
+				imgCtx.Errorf("Unable to resolve digest for selected image tag: %v", err)
+				result.NumErrors += 1
+				continue
+			}
+		}
+
 		// When several containers in the application reference the same image
 		// name, the live image list (Argo CD's alias-less, de-duplicated
 		// Status.Summary.Images) can cause the earlier ContainsImage lookup to
@@ -213,7 +224,7 @@ func UpdateApplication(ctx context.Context, updateConf *UpdateConfiguration, sta
 			}
 		}
 
-		if needsUpdate(updateableImage, applicationImage.ContainerImage, latest, vc.Strategy) {
+		if needsUpdate(updateableImage, applicationImage.ContainerImage, latest, vc.Strategy, applicationImage.PinDigest) {
 			appImageWithTag := applicationImage.WithTag(latest)
 			appImageFullNameWithTag := appImageWithTag.GetFullNameWithTag()
 
@@ -367,16 +378,20 @@ func UpdateApplication(ctx context.Context, updateConf *UpdateConfiguration, sta
 
 // needsUpdate determines if an image needs to be updated based on the provided
 // updateableImage, applicationImage, latest available tag, and update strategy.
-// It considers digest strategy, tag equality, and Kustomize image differences.
+// It considers digest strategy, digest pinning, tag equality, and Kustomize image differences.
 // Returns true if an update is required, false otherwise.
-func needsUpdate(updateableImage *image.ContainerImage, applicationImage *image.ContainerImage, latest *tag.ImageTag, strategy image.UpdateStrategy) bool {
-	if strategy == image.StrategyDigest {
+func needsUpdate(updateableImage *image.ContainerImage, applicationImage *image.ContainerImage, latest *tag.ImageTag, strategy image.UpdateStrategy, pinDigest bool) bool {
+	if strategy == image.StrategyDigest || pinDigest {
 		if updateableImage.ImageTag == nil {
 			return true
 		}
-		// When using digest strategy, consider the digest even if the current image
+		// When using digest strategy or pinning, consider the digest even if the current image
 		// was referenced by tag. If either digest is missing or differs, we want an update.
 		if !updateableImage.ImageTag.IsDigest() || updateableImage.ImageTag.TagDigest != latest.TagDigest {
+			return true
+		}
+		if pinDigest && strategy != image.StrategyDigest &&
+			(updateableImage.ImageTag.TagName == "" || updateableImage.ImageTag.TagName != latest.TagName) {
 			return true
 		}
 	}

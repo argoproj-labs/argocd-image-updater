@@ -179,6 +179,13 @@ type CommonUpdateSettings struct {
 	// +optional
 	UpdateStrategy *string `json:"updateStrategy,omitempty"`
 
+	// PinDigest appends the selected tag's manifest digest to the image reference,
+	// preserving the tag name (e.g. "image:tag@sha256:...").
+	// This acts as the default if not overridden at a more specific level.
+	// Defaults to false. This setting has no effect with the digest strategy.
+	// +optional
+	PinDigest *bool `json:"pinDigest,omitempty"`
+
 	// ForceUpdate specifies whether updates should be forced.
 	// This acts as the default if not overridden.
 	// +optional

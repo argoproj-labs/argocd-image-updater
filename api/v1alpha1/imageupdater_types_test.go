@@ -194,6 +194,40 @@ var _ = AfterSuite(func() {
 	}
 })
 
+var _ = Describe("CommonUpdateSettings PinDigest", func() {
+	DescribeTable("should accept pinDigest at every configuration level", func(name string, value *bool) {
+		cr := &ImageUpdater{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      name,
+				Namespace: "argocd",
+			},
+			Spec: ImageUpdaterSpec{
+				CommonUpdateSettings: &CommonUpdateSettings{PinDigest: value},
+				ApplicationRefs: []ApplicationRef{
+					{
+						NamePattern:          "*",
+						CommonUpdateSettings: &CommonUpdateSettings{PinDigest: value},
+						Images: []ImageConfig{
+							{
+								Alias:                "nginx",
+								ImageName:            "nginx:1.21.0",
+								CommonUpdateSettings: &CommonUpdateSettings{PinDigest: value},
+							},
+						},
+					},
+				},
+			},
+		}
+
+		Expect(k8sClient.Create(context.Background(), cr)).To(Succeed())
+		Expect(k8sClient.Delete(context.Background(), cr)).To(Succeed())
+	},
+		Entry("unset", "pin-digest-unset", (*bool)(nil)),
+		Entry("enabled", "pin-digest-enabled", new(true)),
+		Entry("disabled", "pin-digest-disabled", new(false)),
+	)
+})
+
 var _ = Describe("ApplicationRef UseAnnotations Validation", func() {
 	Context("when useAnnotations is false", func() {
 		It("should reject ApplicationRef without images", func() {
