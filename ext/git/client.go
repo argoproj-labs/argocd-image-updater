@@ -567,6 +567,13 @@ func (m *nativeGitClient) Checkout(ctx context.Context, revision string, submodu
 	return nil
 }
 
+// ListRemoteRefs lists all references of a remote repository without cloning
+// it. It neither reads nor fills a reference cache.
+func ListRemoteRefs(ctx context.Context, repoURL string, creds Creds, insecure bool, proxy string) ([]*plumbing.Reference, error) {
+	c := &nativeGitClient{repoURL: repoURL, creds: creds, insecure: insecure, proxy: proxy}
+	return c.getRefs(ctx)
+}
+
 func (m *nativeGitClient) getRefs(ctx context.Context) ([]*plumbing.Reference, error) {
 	log := log.LoggerFromContext(ctx)
 

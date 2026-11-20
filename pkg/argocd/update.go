@@ -1240,6 +1240,14 @@ func parseGitConfig(ctx context.Context, app *v1alpha1.Application, kubeClient *
 func commitChangesLocked(ctx context.Context, applicationImages *ApplicationImages, state *SyncIterationState, changeList []ChangeEntry) error {
 	logCtx := log.LoggerFromContext(ctx)
 	wbc := applicationImages.WriteBackConfig
+	// The pre-check runs before taking the repository lock, so that write-backs
+	// with nothing to write do not wait for other write-backs to clone.
+	if state.gitWriteBackCache != nil && wbc.Method == WriteBackGit && wbc.PRProvider == 0 && wbc.KustomizeBase == "" {
+		wbc.precheck = &gitWriteBackPrecheck{cache: state.gitWriteBackCache, refs: state.remoteRefs}
+		if wbc.precheck.unchanged(ctx, applicationImages, changeList) {
+			return nil
+		}
+	}
 	if wbc.RequiresLocking() {
 		lock := state.GetRepositoryLock(wbc.GitRepo)
 		lock.Lock()
