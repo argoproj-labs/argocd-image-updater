@@ -2,6 +2,8 @@ module github.com/argoproj-labs/argocd-image-updater
 
 go 1.26.3
 
+toolchain go1.26.11
+
 require (
 	github.com/argoproj-labs/argocd-image-updater/registry-scanner v1.4.0
 	github.com/argoproj/argo-cd/gitops-engine v0.7.1-0.20250908182407-97ad5b59a627
