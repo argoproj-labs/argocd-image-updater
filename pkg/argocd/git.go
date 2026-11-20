@@ -26,6 +26,14 @@ import (
 	"github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1"
 )
 
+// TemplateFuncs are the helper functions available in Git commit message and
+// branch name templates.
+var TemplateFuncs = template.FuncMap{
+	// base returns the last element of a slash-separated path, e.g. the
+	// image name without its repository prefix.
+	"base": path.Base,
+}
+
 // TemplateCommitMessage renders a commit message template and returns it
 // as a string, including image labels that can be used to add custom information to commit messages.
 // If the template could not be rendered, returns a default
@@ -78,7 +86,7 @@ func TemplateBranchName(ctx context.Context, branchName, appNamespace, appName, 
 	log := log.LoggerFromContext(ctx)
 	var cmBuf bytes.Buffer
 
-	tpl, err1 := template.New("branchName").Parse(branchName)
+	tpl, err1 := template.New("branchName").Funcs(TemplateFuncs).Parse(branchName)
 
 	if err1 != nil {
 		log.Errorf("could not create template for Git branch name: %v", err1)
