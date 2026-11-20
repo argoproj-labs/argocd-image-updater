@@ -113,11 +113,8 @@ func buildPullRequest(ctx context.Context, wbc *WriteBackConfig, appNamespace, a
 // is skipped, avoiding unnecessary work on every reconciliation while a PR is
 // pending review.
 //
-// If commitChangesGit reports that nothing was pushed — the write-back produced
-// no changes (e.g. forceUpdate re-evaluated an image that already matches the
-// target) and the head branch was created locally in this call — no PR/MR is
-// opened, because the branch does not exist on the remote, and true is
-// returned so the caller can tell that nothing exists remotely for the target.
+// If the target branch already contains the desired update, no commit is pushed
+// and no PR/MR is opened, even when an old proposal branch still exists.
 func commitChangesPR(ctx context.Context, applicationImages *ApplicationImages, changeList []ChangeEntry, write changeWriter) (bool, error) {
 	logCtx := log.LoggerFromContext(ctx)
 	app := applicationImages.Application
@@ -157,12 +154,6 @@ func commitChangesPR(ctx context.Context, applicationImages *ApplicationImages, 
 		return false, err
 	}
 	if nothingPushed {
-		// The head branch exists only in the local clone, so there is nothing
-		// for a PR/MR to point at. A head branch that is already on the remote
-		// carries the desired change even when this cycle wrote no diff, so
-		// commitChangesGit reports false for it and the PR/MR below is still
-		// opened — which is what recreates a PR after an earlier create() call
-		// failed with the branch already pushed.
 		return true, nil
 	}
 
