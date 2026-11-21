@@ -97,6 +97,7 @@ Supported registries:
 	webhookCmd.Flags().BoolVar(&cfg.GitCommitSignOff, "git-commit-sign-off", env.GetBoolVal("GIT_COMMIT_SIGN_OFF", false), "Whether to sign-off git commits")
 	webhookCmd.Flags().StringVar(&commitMessagePath, "git-commit-message-path", common.DefaultCommitTemplatePath, "Path to a template to use for Git commit messages")
 	webhookCmd.Flags().StringVar(&cfg.GitCommitMethod, "git-commit-method", env.GetStringVal("GIT_COMMIT_METHOD", "git"), "Method used to create write-back commits ('git' or 'api'; 'api' commits via the GitHub API and requires GitHub App credentials)")
+	webhookCmd.Flags().StringVar(&cfg.GitWorkingCopyDir, "git-working-copy-dir", env.GetStringVal("GIT_WORKING_COPY_DIR", ""), "Directory that keeps one working copy per write-back repository across update cycles, so each cycle fetches only what changed (empty: a fresh clone every cycle)")
 	webhookCmd.Flags().BoolVar(&cfg.DisableKubeEvents, "disable-kube-events", env.GetBoolVal("IMAGE_UPDATER_KUBE_EVENTS", false), "Disable kubernetes events")
 
 	webhookCmd.Flags().BoolVar(&webhookCfg.RequireSecret, "webhook-require-secret", env.GetBoolVal("WEBHOOK_REQUIRE_SECRET", true), "Require webhook secrets by default")

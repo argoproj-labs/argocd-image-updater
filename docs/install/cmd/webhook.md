@@ -111,6 +111,12 @@ Username to use for Git commits (default "argocd-image-updater")
 
 Can also be set using the *GIT_COMMIT_USER* environment variable.
 
+**--git-working-copy-dir *path***
+
+Directory that keeps one working copy per write-back repository across update cycles. Each cycle fetches into the kept copy, so its depth-1 fetch transfers only what the remote gained since the previous cycle instead of the whole tree. A cycle that fails before its checkout removes the copy. Only direct git write-back to the checked-out branch keeps a copy; pull request write-back and `git-write-branch` still use a temporary clone. Empty (the default) clones afresh every cycle.
+
+Can also be set using the *GIT_WORKING_COPY_DIR* environment variable.
+
 **--harbor-webhook-secret *secret***
 
 Secret for validating Harbor webhooks
