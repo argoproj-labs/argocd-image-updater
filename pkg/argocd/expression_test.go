@@ -70,6 +70,18 @@ func TestExpressionStrategyStringAllocationLimits(t *testing.T) {
 	require.ErrorContains(t, err, "split input exceeds")
 }
 
+func TestExpressionStrategySplitCostLimit(t *testing.T) {
+	// Each split is individually within the allocation bound, but repeated
+	// large splits must exhaust the evaluation budget.
+	expression := strings.TrimSuffix(strings.Repeat(`size(tag.name.split("")) + `, 4), " + ")
+	strategy, err := compileExpressionStrategy(&iuapi.ExpressionStrategy{SortKey: expression})
+	require.NoError(t, err)
+	candidates := tag.NewImageTagList()
+	candidates.Add(tag.NewImageTag(strings.Repeat("a", 2000), time.Time{}, ""))
+	_, err = strategy.selectTag(context.Background(), candidates)
+	require.ErrorContains(t, err, "cost limit exceeded")
+}
+
 func TestParseImageListExpressionStrategy(t *testing.T) {
 	defaults := &iuapi.CommonUpdateSettings{
 		UpdateStrategy:     ptr.To("expression"),

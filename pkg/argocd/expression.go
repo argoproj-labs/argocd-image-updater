@@ -9,6 +9,7 @@ import (
 	"github.com/google/cel-go/common/types"
 	"github.com/google/cel-go/common/types/ref"
 	"github.com/google/cel-go/common/types/traits"
+	"github.com/google/cel-go/interpreter"
 
 	iuapi "github.com/argoproj-labs/argocd-image-updater/api/v1alpha1"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/tag"
@@ -60,6 +61,15 @@ func splitTagString(value, separator ref.Val) ref.Val {
 	return types.NewStringList(types.DefaultTypeAdapter, strings.Split(input, string(separator.(types.String))))
 }
 
+// Charge traversal and each resulting list element, in addition to the call.
+func splitCost(args []ref.Val, result ref.Val) *uint64 {
+	cost := uint64(1 + len(string(args[0].(types.String))))
+	if list, ok := result.(traits.Lister); ok {
+		cost += uint64(list.Size().(types.Int))
+	}
+	return &cost
+}
+
 func compileTagExpression(env *cel.Env, expression string, allowedTypes ...*cel.Type) (cel.Program, error) {
 	ast, issues := env.Compile(expression)
 	if err := issues.Err(); err != nil {
@@ -67,7 +77,8 @@ func compileTagExpression(env *cel.Env, expression string, allowedTypes ...*cel.
 	}
 	for _, allowed := range allowedTypes {
 		if ast.OutputType().IsExactType(allowed) {
-			return env.Program(ast, cel.CostLimit(10000), cel.InterruptCheckFrequency(100))
+			return env.Program(ast, cel.CostLimit(10000), cel.InterruptCheckFrequency(100),
+				cel.CostTrackerOptions(interpreter.OverloadCostTracker("string_split_string", splitCost)))
 		}
 	}
 	return nil, fmt.Errorf("expected result type %v, got %s", allowedTypes, ast.OutputType())
