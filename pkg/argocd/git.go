@@ -134,7 +134,8 @@ func TemplateBranchName(ctx context.Context, branchName, appNamespace, appName, 
 		return ""
 	}
 
-	toReturn := cmBuf.String()
+	// Digests can introduce colons, which are not allowed in Git branch names.
+	toReturn := strings.ReplaceAll(cmBuf.String(), ":", "-")
 
 	if len(toReturn) > 255 {
 		trunc := toReturn[:255]

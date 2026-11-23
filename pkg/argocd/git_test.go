@@ -193,6 +193,37 @@ func Test_TemplateBranchName(t *testing.T) {
 		assert.NotEmpty(t, r)
 		assert.Equal(t, exp, r)
 	})
+	t.Run("Template branch name with pinDigest replaces colons", func(t *testing.T) {
+		exp := "image-updater-foo/bar-1.1@sha256-new"
+		tpl := "image-updater{{range .Images}}-{{.Name}}-{{.NewTag}}{{end}}"
+		cl := []ChangeEntry{
+			{
+				Image:     image.NewFromIdentifier("foo/bar"),
+				OldTag:    tag.NewImageTag("1.0", time.Now(), "sha256:old"),
+				NewTag:    tag.NewImageTag("1.1", time.Now(), "sha256:new"),
+				PinDigest: true,
+			},
+		}
+		r := TemplateBranchName(context.Background(), tpl, "", "", "", cl)
+		assert.NotEmpty(t, r)
+		assert.Equal(t, exp, r)
+	})
+
+	t.Run("Template branch name with a digest replaces colons", func(t *testing.T) {
+		exp := "image-updater-foo/bar-sha256-new"
+		tpl := "image-updater{{range .Images}}-{{.Name}}-{{.NewTag}}{{end}}"
+		cl := []ChangeEntry{
+			{
+				Image:  image.NewFromIdentifier("foo/bar"),
+				OldTag: tag.NewImageTag("1.0", time.Now(), "sha256:old"),
+				NewTag: tag.NewImageTag("1.1", time.Now(), "sha256:new"),
+			},
+		}
+		r := TemplateBranchName(context.Background(), tpl, "", "", "", cl)
+		assert.NotEmpty(t, r)
+		assert.Equal(t, exp, r)
+	})
+
 	t.Run("Template PR branch name with pinDigest", func(t *testing.T) {
 		exp := "image-updater-abc12345-0fb71e23a9deb8006031f63c37fdc9405b63a9d645583d775c2bec12a5e7a641"
 		tpl := PRBranchTemplate
