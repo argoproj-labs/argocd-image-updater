@@ -43,6 +43,7 @@ func newTestCommand() *cobra.Command {
 		semverConstraint   string
 		calverLayout       string
 		strategy           string
+		pinDigest          bool
 		registriesConfPath string
 		logLevel           string
 		allowTags          string
@@ -223,6 +224,15 @@ argocd-image-updater test nginx --allow-tags '^1.19.\d+(\-.*)*$' --update-strate
 				return
 			}
 
+			// Pin the selected tag to its digest when requested. The digest strategy
+			// already resolves the digest during tag discovery.
+			if pinDigest && vc.Strategy != image.StrategyDigest {
+				upImg, err = registry.ResolveTagDigest(imgCtx, upImg, regClient)
+				if err != nil {
+					imgLogger.Fatalf("could not resolve digest for selected image tag: %v", err)
+				}
+			}
+
 			imgLogger.Infof("latest image according to constraint is %s", img.WithTag(upImg))
 		},
 	}
@@ -232,6 +242,7 @@ argocd-image-updater test nginx --allow-tags '^1.19.\d+(\-.*)*$' --update-strate
 	runCmd.Flags().StringVar(&allowTags, "allow-tags", "", "only consider tags in registry that satisfy the match function")
 	runCmd.Flags().StringArrayVar(&ignoreTags, "ignore-tags", nil, "ignore tags in registry that match given glob pattern")
 	runCmd.Flags().StringVar(&strategy, "update-strategy", "semver", "update strategy to use (one of semver, newest-build, alphabetical, digest, calver)")
+	runCmd.Flags().BoolVar(&pinDigest, "pin-digest", false, "pin the selected tag to its manifest digest")
 	runCmd.Flags().StringVar(&registriesConfPath, "registries-conf-path", "", "path to registries configuration")
 	runCmd.Flags().StringVar(&logLevel, "loglevel", "debug", "log level to use (one of trace, debug, info, warn, error)")
 	runCmd.Flags().StringVar(&kubeConfig, "kubeconfig", "", "path to your Kubernetes client configuration")

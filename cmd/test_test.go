@@ -22,6 +22,7 @@ func TestNewTestCommand(t *testing.T) {
 	asser.Equal("", testCmd.Flag("allow-tags").Value.String())
 	asser.Equal("[]", testCmd.Flag("ignore-tags").Value.String())
 	asser.Equal("semver", testCmd.Flag("update-strategy").Value.String())
+	asser.Equal("false", testCmd.Flag("pin-digest").Value.String())
 	asser.Equal("", testCmd.Flag("registries-conf-path").Value.String())
 	asser.Equal("debug", testCmd.Flag("loglevel").Value.String())
 	asser.Equal("", testCmd.Flag("kubeconfig").Value.String())
