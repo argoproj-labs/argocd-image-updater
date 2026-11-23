@@ -46,6 +46,19 @@ Please note that all update strategies except `digest` assume tags to be
 you want to update to *mutable* tags (e.g. the commonly used `latest` tag),
 you should use the `digest` strategy.
 
+## Digest pinning
+
+The `semver`, `newest-build`, `alphabetical`, and `calver` strategies can also pin
+the selected tag to its manifest digest by setting
+`commonUpdateSettings.pinDigest: true`. The configured strategy selects the tag,
+then the updater writes `image:tag@sha256:<hash>`. These strategies assume
+immutable tags regardless of whether digest pinning is enabled.
+
+The `digest` strategy always pins images. Its version reporting uses the digest
+alone with `pinDigest: false`, or `tag@sha256:<hash>` with `pinDigest: true` when
+the tag is known. See [digest pinning configuration](../configuration/images.md#digest-pinning)
+for examples and annotation support.
+
 ## Update strategies in detail
 ### <a name="strategy-semver"></a>semver - Update to semantic versions
 

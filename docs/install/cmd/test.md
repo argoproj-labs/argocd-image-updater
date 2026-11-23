@@ -37,6 +37,13 @@ Path to your Kubernetes client configuration
 
 Log level to use (one of trace, debug, info, warn, error) (default "debug")
       
+**--pin-digest**
+
+Pin the selected tag to its manifest digest (default false), resulting in the
+format `image:tag@sha256:<hash>`. The configured update strategy selects the tag.
+Pinning reuses a known digest or fetches the selected tag's manifest.
+The `digest` strategy pins images regardless of this flag.
+
 **--platforms *platforms***   
 
 Limit images to given platforms (default [darwin/arm64])
@@ -76,3 +83,7 @@ updated to, using the default semver strategy
 Check for the latest built image for a tag that matches a pattern
 
 `argocd-image-updater test nginx --allow-tags '^1.19.\d+(\-.*)*$' --update-strategy newest-build`
+
+Select the newest matching build and pin it to its digest:
+
+`argocd-image-updater test registry.example/myapp --update-strategy newest-build --allow-tags 'regexp:^main-[0-9a-f]+$' --pin-digest`

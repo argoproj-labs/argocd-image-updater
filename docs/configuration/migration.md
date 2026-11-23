@@ -99,6 +99,27 @@ images:
       updateStrategy: "newest-build"
 ```
 
+#### Digest Pinning
+
+**Before (Annotations):**
+```yaml
+argocd-image-updater.argoproj.io/nginx.pin-digest: "true"
+```
+
+**After (CRD):**
+```yaml
+images:
+  - alias: "nginx"
+    imageName: "nginx:1.20"
+    commonUpdateSettings:
+      pinDigest: true
+```
+
+The application-wide `argocd-image-updater.argoproj.io/pin-digest` annotation maps
+to application-level `commonUpdateSettings.pinDigest`. More specific values
+override defaults. See [digest pinning](images.md#digest-pinning) for the complete
+configuration and behavior.
+
 #### Tag Filtering
 
 **Before:**

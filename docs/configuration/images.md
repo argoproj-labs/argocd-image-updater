@@ -145,6 +145,95 @@ strategy `semver` will be used.
     not affected by these pull limits, it is **not recommended** to use the
     `newest-build` update strategy with images hosted on Docker Hub.
 
+## Digest pinning
+
+Set `commonUpdateSettings.pinDigest: true` to append the selected tag's manifest
+digest while preserving its name, for example
+`registry.example/myapp:main-abc123@sha256:<hash>`.
+The configured update strategy selects the tag. Pinning reuses a known digest
+or fetches the selected tag's manifest.
+
+```yaml
+images:
+  - alias: "myapp"
+    imageName: "registry.example/myapp"
+    commonUpdateSettings:
+      updateStrategy: "newest-build"
+      pinDigest: true
+      allowTags: "regexp:^main-[0-9a-f]+$"
+```
+
+The setting defaults to `false` and uses the following configuration hierarchy:
+global `spec.commonUpdateSettings`, application-level
+`spec.applicationRefs[].commonUpdateSettings`, and image-level
+`spec.applicationRefs[].images[].commonUpdateSettings`. An unset value inherits
+from the less specific level.
+
+With pinning enabled, Helm and plugin tag values contain `tag@sha256:<hash>`,
+full-image targets contain `image:tag@sha256:<hash>`. Git write-back to a
+kustomization file writes the selected tag to `newTag` and its manifest digest
+to `digest`. Helm charts must accept the combined tag-and-digest value in the
+configured parameter. For multi-platform images, the parent manifest-list/index
+digest is pinned.
+
+If digest resolution fails, the image is skipped with an error rather than
+updated to an unpinned tag.
+
+For tag-selecting strategies, a different selected tag can trigger an update
+even when its digest is unchanged, keeping the tag name in the configuration
+up to date.
+
+!!!note "Immutable tags"
+    The `newest-build` strategy assumes immutable tags and can reuse cached
+    metadata for known tags, including their digests. Rebuilds published under
+    the same tag may therefore go undetected. Publish a new tag for each build,
+    or use the `digest` strategy to follow a mutable tag.
+
+The `digest` strategy always pins images, regardless of `pinDigest`. Explicitly
+enabling the setting also includes the tag name in its reporting when known.
+
+### Annotation-based configuration
+
+When [reading configuration from Application annotations](applications.md#reading-configuration-from-application-annotations),
+set these annotations on the Application:
+
+| Annotation | Scope |
+|------------|-------|
+| `argocd-image-updater.argoproj.io/pin-digest` | Application-wide default |
+| `argocd-image-updater.argoproj.io/<alias>.pin-digest` | Per-image override |
+
+```yaml
+metadata:
+  annotations:
+    argocd-image-updater.argoproj.io/image-list: myapp=registry.example/myapp
+    argocd-image-updater.argoproj.io/myapp.update-strategy: newest-build
+    argocd-image-updater.argoproj.io/myapp.allow-tags: "regexp:^main-[0-9a-f]+$"
+    argocd-image-updater.argoproj.io/myapp.pin-digest: "true"
+```
+
+An image-specific value overrides an application-wide value if provided.
+CR-based `commonUpdateSettings` remain ignored when `useAnnotations: true`.
+
+### Reporting
+
+Commit-template version values, Kubernetes event annotations, and ImageUpdater
+status updates are formatted according to `pinDigest` and whether the version
+reference contains a tag, a digest, or both:
+
+| Available information | `pinDigest: false` | `pinDigest: true` |
+|-----------------------|--------------------|-------------------|
+| Tag and digest | `sha256:<hash>` | `tag@sha256:<hash>` |
+| Tag only | `tag` | `tag` |
+| Digest only | `sha256:<hash>` | `sha256:<hash>` |
+| Neither | Empty value | Empty value |
+
+The previous version comes from the observed current image.
+
+For [branch templates](../basics/update-methods.md#method-git-branch), colons in
+the rendered branch name are replaced with dashes, for example
+`main-abc123@sha256-<hash>`. This does not change image references or reporting
+values. Hash-based `.SHA256` templates remain available.
+
 ## Filtering tags
 
 You can specify an expression that is matched against each tag returned from
@@ -795,6 +884,7 @@ update strategies and set options for images.
 | Field            | Type     | Default    | Description                                                                     |
 |------------------|----------|------------|---------------------------------------------------------------------------------|
 | `updateStrategy` | string   | `"semver"` | Update strategy: `semver`, `newest-build`, `digest`, `alphabetical`, `calver`. Deprecated aliases `latest` (for `newest-build`) and `name` (for `alphabetical`) are still accepted but may be removed in a future release. |
+| `pinDigest`      | bool     | `false`    | Append the selected tag's manifest digest while preserving its name. The `digest` strategy always pins images. |
 | `forceUpdate`    | bool     | `false`    | Force updates even if image is not currently deployed                           |
 | `allowTags`      | string   | *none*     | Regex pattern for tags to allow                                                 |
 | `ignoreTags`     | []string | *none*     | List of glob patterns for tags to ignore                                        |
