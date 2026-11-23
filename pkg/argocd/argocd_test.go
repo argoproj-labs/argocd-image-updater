@@ -2404,6 +2404,37 @@ func TestKubernetesClientUpdateSpecWithBaseline(t *testing.T) {
 		assert.Equal(t, "https://github.com/example/repo", got.Spec.Source.RepoURL)
 	})
 
+	t.Run("Unchanged values inside replaced sources are kept exactly", func(t *testing.T) {
+		// An image change in a multi-source application replaces the whole
+		// sources array. Explicit nulls and large numbers in the untouched
+		// valuesObject must be written back as they were.
+		valuesObject := `{"feature":null,"id":9007199254740993,"list":[{"a":null}]}`
+		multiSourceApp := func(tag string) *v1alpha1.Application {
+			app := helmApp(tag)
+			src := *app.Spec.Source
+			src.Helm.ValuesObject = &runtime.RawExtension{Raw: []byte(valuesObject)}
+			app.Spec.Source = nil
+			app.Spec.Sources = v1alpha1.ApplicationSources{src, {RepoURL: "https://github.com/example/values", Ref: "values"}}
+			return app
+		}
+		original := multiSourceApp("1.0.0")
+		fakeClient, err := newTestK8sClient(multiSourceApp("1.0.0"))
+		require.NoError(t, err)
+
+		updated := original.Spec.DeepCopy()
+		updated.Sources[0].Helm.Parameters[1].Value = "1.0.1"
+
+		_, err = fakeClient.UpdateSpec(context.Background(), updateSpecRequest(updated), &original.Spec)
+		require.NoError(t, err)
+
+		got, err := fakeClient.GetApplication(context.Background(), "testns", "test-app")
+		require.NoError(t, err)
+		require.Len(t, got.Spec.Sources, 2)
+		assert.Equal(t, "1.0.1", got.Spec.Sources[0].Helm.Parameters[1].Value)
+		require.NotNil(t, got.Spec.Sources[0].Helm.ValuesObject)
+		assert.JSONEq(t, valuesObject, string(got.Spec.Sources[0].Helm.ValuesObject.Raw))
+	})
+
 	t.Run("Concurrent change to the same field is not overwritten", func(t *testing.T) {
 		original := helmApp("1.0.0")
 		// Another client changed the Helm parameters in the meantime
