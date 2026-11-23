@@ -1,6 +1,7 @@
 package argocd
 
 import (
+	"bytes"
 	"cmp"
 	"context"
 	"encoding/json"
@@ -160,18 +161,25 @@ func rebaseSpecChanges(originalJSON []byte, specPatch []byte, live *argocdapi.Ap
 		return nil, fmt.Errorf("could not compute concurrent spec changes: %w", err)
 	}
 
-	var ours, theirs map[string]any
-	if err := json.Unmarshal(specPatch, &ours); err != nil {
+	var ours, theirs, liveDoc map[string]any
+	if err := unmarshalJSONNumber(specPatch, &ours); err != nil {
 		return nil, fmt.Errorf("could not unmarshal spec changes: %w", err)
 	}
-	if err := json.Unmarshal(concurrentPatch, &theirs); err != nil {
+	if err := unmarshalJSONNumber(concurrentPatch, &theirs); err != nil {
 		return nil, fmt.Errorf("could not unmarshal concurrent spec changes: %w", err)
 	}
 	if path, conflict := mergePatchesConflict(ours, theirs, "spec"); conflict {
 		return nil, fmt.Errorf("%w: %s", ErrConcurrentSpecChange, path)
 	}
 
-	patchedJSON, err := jsonpatch.MergePatch(liveJSON, specPatch)
+	// jsonpatch.MergePatch is not used to apply the changes: it removes null
+	// members from objects nested in arrays that the patch replaces (e.g. a
+	// helm valuesObject inside spec.sources), which deletes explicit nulls the
+	// update never touched.
+	if err := unmarshalJSONNumber(liveJSON, &liveDoc); err != nil {
+		return nil, fmt.Errorf("could not unmarshal live spec: %w", err)
+	}
+	patchedJSON, err := json.Marshal(applyMergePatch(liveDoc, ours))
 	if err != nil {
 		return nil, fmt.Errorf("could not apply spec changes: %w", err)
 	}
@@ -180,6 +188,37 @@ func rebaseSpecChanges(originalJSON []byte, specPatch []byte, live *argocdapi.Ap
 		return nil, fmt.Errorf("could not unmarshal updated spec: %w", err)
 	}
 	return rebased, nil
+}
+
+// applyMergePatch applies the JSON merge patch to target as specified by
+// RFC 7386 and returns the result. A null patch value removes the member. Any
+// other value that is not an object, including an array, replaces the target
+// value verbatim, so null members nested inside it are kept.
+func applyMergePatch(target any, patch map[string]any) map[string]any {
+	doc, ok := target.(map[string]any)
+	if !ok {
+		doc = map[string]any{}
+	}
+	for key, value := range patch {
+		if value == nil {
+			delete(doc, key)
+			continue
+		}
+		if patchObj, isObj := value.(map[string]any); isObj {
+			doc[key] = applyMergePatch(doc[key], patchObj)
+			continue
+		}
+		doc[key] = value
+	}
+	return doc
+}
+
+// unmarshalJSONNumber unmarshals data into v, decoding numbers as json.Number
+// so that they are not rounded to float64.
+func unmarshalJSONNumber(data []byte, v any) error {
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.UseNumber()
+	return dec.Decode(v)
 }
 
 // mergePatchesConflict reports whether two JSON merge patches computed against
