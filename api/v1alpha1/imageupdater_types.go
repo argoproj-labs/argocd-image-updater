@@ -182,7 +182,8 @@ type CommonUpdateSettings struct {
 	// PinDigest appends the selected tag's manifest digest to the image reference,
 	// preserving the tag name (e.g. "image:tag@sha256:...").
 	// This acts as the default if not overridden at a more specific level.
-	// Defaults to false. This setting has no effect with the digest strategy.
+	// Defaults to false. The digest strategy always pins images,
+	// regardless of this setting.
 	// +optional
 	PinDigest *bool `json:"pinDigest,omitempty"`
 

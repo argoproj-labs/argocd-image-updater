@@ -50,6 +50,43 @@ updates image bar/baz tag '2.0' to '2.1'
 		assert.Equal(t, exp, r)
 	})
 
+	t.Run("Template commit message with pinDigest", func(t *testing.T) {
+		exp := `build: automatic update of foobar
+
+updates image foo/bar tag 'sha256:old' to '1.1@sha256:new'
+`
+		tpl := template.Must(template.New("sometemplate").Parse(common.DefaultGitCommitMessage))
+		cl := []ChangeEntry{
+			{
+				Image:     image.NewFromIdentifier("foo/bar"),
+				OldTag:    tag.NewImageTag("", time.Now(), "sha256:old"),
+				NewTag:    tag.NewImageTag("1.1", time.Now(), "sha256:new"),
+				PinDigest: true,
+			},
+		}
+		r := TemplateCommitMessage(context.Background(), tpl, "foobar", cl)
+		assert.NotEmpty(t, r)
+		assert.Equal(t, exp, r)
+	})
+
+	t.Run("Template commit message without pinDigest preserves digest reporting", func(t *testing.T) {
+		exp := `build: automatic update of foobar
+
+updates image foo/bar tag 'sha256:old' to 'sha256:new'
+`
+		tpl := template.Must(template.New("sometemplate").Parse(common.DefaultGitCommitMessage))
+		cl := []ChangeEntry{
+			{
+				Image:  image.NewFromIdentifier("foo/bar"),
+				OldTag: tag.NewImageTag("1.0", time.Now(), "sha256:old"),
+				NewTag: tag.NewImageTag("1.1", time.Now(), "sha256:new"),
+			},
+		}
+		r := TemplateCommitMessage(context.Background(), tpl, "foobar", cl)
+		assert.NotEmpty(t, r)
+		assert.Equal(t, exp, r)
+	})
+
 	t.Run("Template commit message with labels", func(t *testing.T) {
 		tplStr := `build: automatic update of {{ .AppName }}
 
@@ -156,6 +193,69 @@ func Test_TemplateBranchName(t *testing.T) {
 		assert.NotEmpty(t, r)
 		assert.Equal(t, exp, r)
 	})
+	t.Run("Template PR branch name with pinDigest", func(t *testing.T) {
+		exp := "image-updater-abc12345-0fb71e23a9deb8006031f63c37fdc9405b63a9d645583d775c2bec12a5e7a641"
+		tpl := PRBranchTemplate
+		cl := []ChangeEntry{
+			{
+				Image:     image.NewFromIdentifier("foo/bar"),
+				OldTag:    tag.NewImageTag("1.0", time.Now(), "sha256:old"),
+				NewTag:    tag.NewImageTag("1.1", time.Now(), "sha256:new"),
+				PinDigest: true,
+			},
+		}
+		r := TemplateBranchName(context.Background(), tpl, "", "", "abc12345", cl)
+		assert.NotEmpty(t, r)
+		assert.Equal(t, exp, r)
+	})
+
+	t.Run("Template branch hash includes tag names when pinning is enabled", func(t *testing.T) {
+		tpl := "image-updater-{{.SHA256}}"
+		cl := []ChangeEntry{
+			{
+				Image:     image.NewFromIdentifier("foo/bar"),
+				OldTag:    tag.NewImageTag("aaa", time.Now(), "sha256:abc"),
+				NewTag:    tag.NewImageTag("bbb", time.Now(), "sha256:abc"),
+				PinDigest: true,
+			},
+		}
+		first := TemplateBranchName(context.Background(), tpl, "", "", "", cl)
+		cl[0].NewTag = tag.NewImageTag("ccc", time.Now(), "sha256:abc")
+		second := TemplateBranchName(context.Background(), tpl, "", "", "", cl)
+		assert.NotEqual(t, first, second)
+	})
+
+	t.Run("Template branch hash is stable when the old tag name is missing", func(t *testing.T) {
+		tpl := "image-updater-{{.SHA256}}"
+		cl := []ChangeEntry{
+			{
+				Image:     image.NewFromIdentifier("foo/bar"),
+				OldTag:    tag.NewImageTag("aaa", time.Now(), "sha256:abc"),
+				NewTag:    tag.NewImageTag("bbb", time.Now(), "sha256:abc"),
+				PinDigest: true,
+			},
+		}
+		first := TemplateBranchName(context.Background(), tpl, "", "", "", cl)
+		cl[0].OldTag = tag.NewImageTag("", time.Now(), "sha256:abc")
+		second := TemplateBranchName(context.Background(), tpl, "", "", "", cl)
+		assert.Equal(t, first, second)
+	})
+
+	t.Run("Template branch hash ignores tag names when pinning is disabled", func(t *testing.T) {
+		tpl := "image-updater-{{.SHA256}}"
+		cl := []ChangeEntry{
+			{
+				Image:  image.NewFromIdentifier("foo/bar"),
+				OldTag: tag.NewImageTag("aaa", time.Now(), "sha256:abc"),
+				NewTag: tag.NewImageTag("bbb", time.Now(), "sha256:abc"),
+			},
+		}
+		first := TemplateBranchName(context.Background(), tpl, "", "", "", cl)
+		cl[0].NewTag = tag.NewImageTag("ccc", time.Now(), "sha256:abc")
+		second := TemplateBranchName(context.Background(), tpl, "", "", "", cl)
+		assert.Equal(t, first, second)
+	})
+
 	t.Run("Template branch over 255 chars", func(t *testing.T) {
 		tpl := "image-updater-lorem-ipsum-dolor-sit-amet-consectetur-" +
 			"adipiscing-elit-phasellus-imperdiet-vitae-elit-quis-pulvinar-" +

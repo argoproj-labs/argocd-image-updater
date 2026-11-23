@@ -52,8 +52,8 @@ func TemplateCommitMessage(ctx context.Context, tpl *template.Template, appName 
 	for _, c := range changeList {
 		changes = append(changes, commitMessageChange{
 			Image:  c.Image.ImageName,
-			OldTag: c.OldTag.String(),
-			NewTag: c.NewTag.String(),
+			OldTag: c.FormatTag(c.OldTag),
+			NewTag: c.FormatTag(c.NewTag),
 			Labels: c.NewTag.Labels,
 		})
 	}
@@ -107,8 +107,11 @@ func TemplateBranchName(ctx context.Context, branchName, appNamespace, appName, 
 	// writer of a template.
 	changes := make([]imageChange, 0)
 	for _, c := range changeList {
-		changes = append(changes, imageChange{c.Image.ImageName, c.Image.ImageAlias, c.OldTag.String(), c.NewTag.String()})
-		id := fmt.Sprintf("%v-%v-%v,", c.Image.ImageName, c.OldTag.String(), c.NewTag.String())
+		oldTag, newTag := c.FormatTag(c.OldTag), c.FormatTag(c.NewTag)
+		changes = append(changes, imageChange{c.Image.ImageName, c.Image.ImageAlias, oldTag, newTag})
+		// Keep the old version's existing identity so missing tag information
+		// does not change the hash when its digest is known.
+		id := fmt.Sprintf("%v-%v-%v,", c.Image.ImageName, c.OldTag.String(), newTag)
 		_, hasherErr := hasher.Write([]byte(id))
 		log.Infof("writing to hasher %v", id)
 		if hasherErr != nil {

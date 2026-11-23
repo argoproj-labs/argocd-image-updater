@@ -1831,6 +1831,13 @@ registries:
 		}
 		assert.Equal(t, "main-bbb@"+imageDigest, tagValue)
 
+		// Check the versions reported in the update event.
+		events, err := kubeClient.KubeClient.Clientset.CoreV1().Events("test").List(context.Background(), v1.ListOptions{})
+		require.NoError(t, err)
+		assert.Len(t, events.Items, 1)
+		assert.Equal(t, "main-aaa", events.Items[0].Annotations["argocd-image-updater.image-0/old-tag"])
+		assert.Equal(t, "main-bbb@"+imageDigest, events.Items[0].Annotations["argocd-image-updater.image-0/new-tag"])
+
 		// Simulate the image being synced before the next update cycle.
 		appImages.Application.Status.Summary.Images = []string{"gcr.io/test/pin-newest:main-bbb@" + imageDigest}
 		res = UpdateApplication(context.Background(), updateConf, NewSyncIterationState())

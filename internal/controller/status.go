@@ -110,7 +110,7 @@ func buildRecentUpdates(changes []argocd.ChangeEntry, now metav1.Time) []api.Rec
 
 		k := aggregateKey{
 			alias:      alias,
-			newVersion: c.NewTag.String(),
+			newVersion: c.FormatTag(c.NewTag),
 		}
 
 		if existing, ok := aggregated[k]; ok {
@@ -119,10 +119,10 @@ func buildRecentUpdates(changes []argocd.ChangeEntry, now metav1.Time) []api.Rec
 			ru := &api.RecentUpdate{
 				Alias:               alias,
 				Image:               c.Image.GetFullNameWithoutTag(),
-				NewVersion:          c.NewTag.String(),
+				NewVersion:          c.FormatTag(c.NewTag),
 				ApplicationsUpdated: 1,
 				UpdatedAt:           now,
-				Message:             fmt.Sprintf("Updated from %s to %s.", c.OldTag.String(), c.NewTag.String()),
+				Message:             fmt.Sprintf("Updated from %s to %s.", c.FormatTag(c.OldTag), c.FormatTag(c.NewTag)),
 			}
 			aggregated[k] = ru
 			order = append(order, k)

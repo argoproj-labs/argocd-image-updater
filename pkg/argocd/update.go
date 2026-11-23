@@ -276,7 +276,12 @@ func UpdateApplication(ctx context.Context, updateConf *UpdateConfiguration, sta
 				continue
 			} else {
 				imgCtx.Infof("Successfully updated image '%s' to '%s', but pending spec update (dry run=%v)", updateableImage.GetFullNameWithTag(), appImageFullNameWithTag, updateConf.DryRun)
-				changeList = append(changeList, ChangeEntry{appImageWithTag, updateableImage.ImageTag, appImageWithTag.ImageTag})
+				changeList = append(changeList, ChangeEntry{
+					Image:     appImageWithTag,
+					OldTag:    updateableImage.ImageTag,
+					NewTag:    appImageWithTag.ImageTag,
+					PinDigest: applicationImage.PinDigest,
+				})
 				result.NumImagesUpdated += 1
 			}
 		} else {
@@ -350,8 +355,8 @@ func UpdateApplication(ctx context.Context, updateConf *UpdateConfiguration, sta
 					for i, c := range changeList {
 						annotations[fmt.Sprintf("argocd-image-updater.image-%d/full-image-name", i)] = c.Image.GetFullNameWithoutTag()
 						annotations[fmt.Sprintf("argocd-image-updater.image-%d/image-name", i)] = c.Image.ImageName
-						annotations[fmt.Sprintf("argocd-image-updater.image-%d/old-tag", i)] = c.OldTag.String()
-						annotations[fmt.Sprintf("argocd-image-updater.image-%d/new-tag", i)] = c.NewTag.String()
+						annotations[fmt.Sprintf("argocd-image-updater.image-%d/old-tag", i)] = c.FormatTag(c.OldTag)
+						annotations[fmt.Sprintf("argocd-image-updater.image-%d/new-tag", i)] = c.FormatTag(c.NewTag)
 					}
 					message := fmt.Sprintf("Successfully updated application '%s'", app)
 					_, err = updateConf.KubeClient.CreateApplicationEvent(&updateConf.UpdateApp.Application, "ImagesUpdated", message, annotations)
