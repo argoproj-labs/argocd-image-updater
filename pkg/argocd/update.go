@@ -47,6 +47,10 @@ func UpdateApplication(ctx context.Context, updateConf *UpdateConfiguration, sta
 
 	changeList := make([]ChangeEntry, 0)
 
+	// Remember the spec as it was read, before any image is set on it, so that
+	// the argocd write-back method only writes the fields changed below.
+	updateConf.UpdateApp.originalSpec = updateConf.UpdateApp.Application.Spec.DeepCopy()
+
 	// Get all images that are deployed with the current application
 	applicationImages := GetImagesFromApplication(updateConf.UpdateApp)
 
@@ -1305,7 +1309,7 @@ func commitChanges(ctx context.Context, applicationImages *ApplicationImages, ch
 			Name:         &app.Name,
 			AppNamespace: &app.Namespace,
 			Spec:         &app.Spec,
-		})
+		}, applicationImages.originalSpec)
 		if err != nil {
 			return false, err
 		}

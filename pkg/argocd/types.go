@@ -242,6 +242,12 @@ type ApplicationImages struct {
 	argocdapi.Application
 	*WriteBackConfig
 	Images ImageList
+
+	// originalSpec is a copy of the Application spec taken before any image
+	// update was applied to it. The argocd write-back method uses it to write
+	// only the fields that were changed, so concurrent changes to other fields
+	// made by other clients are not reverted.
+	originalSpec *argocdapi.ApplicationSpec
 }
 
 // Image represents a container image and its update configuration.
