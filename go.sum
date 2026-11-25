@@ -43,10 +43,10 @@ github.com/anmitsu/go-shlex v0.0.0-20200514113438-38f4b401e2be/go.mod h1:ySMOLuW
 github.com/antihax/optional v1.0.0/go.mod h1:uupD/76wgC+ih3iEmQUL+0Ugr19nfwCT1kdvxnR2qWY=
 github.com/antlr4-go/antlr/v4 v4.13.1 h1:SqQKkuVZ+zWkMMNkjy5FZe5mr5WURWnlpmOuzYWrPrQ=
 github.com/antlr4-go/antlr/v4 v4.13.1/go.mod h1:GKmUxMtwp6ZgGwZSva4eWPC5mS6vUAmOABFgjdkM7Nw=
-github.com/argoproj/argo-cd/gitops-engine v0.0.0-20261118185405-71576a24e898 h1:1nrAvdTArKdOIvh0kO8jLl1zgUz64wfHSV5yR1iNDSM=
-github.com/argoproj/argo-cd/gitops-engine v0.0.0-20261118185405-71576a24e898/go.mod h1:82V3IWWHhEYbog1362JW9GqNgsbXU1jH/FBWSH2m7L8=
-github.com/argoproj/argo-cd/v3 v3.5.8 h1:RJYooz62wX0S1A7LpgwQ2unap5doaWxvtrpyfh81P3c=
-github.com/argoproj/argo-cd/v3 v3.5.8/go.mod h1:ZnKlAbvORyiIhlXuB3nmzx9FvErI3w1McDbcgk0A740=
+github.com/argoproj/argo-cd/gitops-engine v0.0.0-20261124155523-70204ad7508c h1:v+Q+rq9ADYzIIE/CKCCXNoeyaa7iEVPAc4Lz5MIw5vk=
+github.com/argoproj/argo-cd/gitops-engine v0.0.0-20261124155523-70204ad7508c/go.mod h1:82V3IWWHhEYbog1362JW9GqNgsbXU1jH/FBWSH2m7L8=
+github.com/argoproj/argo-cd/v3 v3.5.9 h1:EcxScm0nqQ/yEM5WZtejoJfcc2mQCI4MNEGTGCsGzTE=
+github.com/argoproj/argo-cd/v3 v3.5.9/go.mod h1:XXjfMTLSjgRkrP23FAClA2zk2FuG5P1Cjf51HVkfpPw=
 github.com/argoproj/pkg v0.13.7-0.20230627120311-a4dd357b057e h1:kuLQvJqwwRMQTheT4MFyKVM8Txncu21CHT4yBWUl1Mk=
 github.com/argoproj/pkg v0.13.7-0.20230627120311-a4dd357b057e/go.mod h1:xBN5PLx2MoK63dmPfMo/PGBvd77K1Y0m/rzZOe4cs1s=
 github.com/argoproj/pkg/v2 v2.0.1 h1:O/gCETzB/3+/hyFL/7d/VM/6pSOIRWIiBOTb2xqAHvc=

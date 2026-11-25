@@ -8,7 +8,7 @@ require (
 	github.com/argoproj-labs/argocd-image-updater v1.3.1
 	github.com/argoproj-labs/argocd-operator v0.19.0-rc1.0.20260806043718-4308d96d0a42
 	github.com/argoproj/argo-cd/gitops-engine v0.7.1-0.20250908182407-97ad5b59a627
-	github.com/argoproj/argo-cd/v3 v3.5.8
+	github.com/argoproj/argo-cd/v3 v3.5.9
 	github.com/google/go-github/v69 v69.2.0
 	github.com/onsi/ginkgo/v2 v2.32.0
 	github.com/onsi/gomega v1.42.1
@@ -181,10 +181,10 @@ replace (
 	// Use local image-updater module to ensure tests use the latest API types from master
 	github.com/argoproj-labs/argocd-image-updater => ../../
 
-	// argo-cd v3.5.8 declares gitops-engine at a pseudo-version where go.mod
+	// argo-cd v3.5.9 declares gitops-engine at a pseudo-version where go.mod
 	// didn't exist yet, then overrides with replace => ./gitops-engine locally.
 	// Downstream consumers must resolve it themselves; pin to the v3.5.8 commit.
-	github.com/argoproj/argo-cd/gitops-engine => github.com/argoproj/argo-cd/gitops-engine v0.0.0-20261118185405-71576a24e898
+	github.com/argoproj/argo-cd/gitops-engine => github.com/argoproj/argo-cd/gitops-engine v0.0.0-20261124155523-70204ad7508c
 
 	// This replace block is from Argo CD v3.5.8 go.mod
 	github.com/golang/protobuf => github.com/golang/protobuf v1.5.4
