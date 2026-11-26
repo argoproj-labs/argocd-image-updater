@@ -42,7 +42,7 @@ func (r *ImageUpdaterReconciler) RunImageUpdater(ctx context.Context, cr *iuapi.
 		baseLogger.Infof("Starting image update cycle, considering %d application(s) for update", result.ApplicationsMatched)
 	}
 
-	syncState := argocd.NewSyncIterationState()
+	syncState := argocd.NewSyncIterationState().WithGitWriteBackCache(r.Config.GitWriteBackCache)
 
 	// Allow a maximum of MaxConcurrentApps number of goroutines to exist at the
 	// same time. If in warm-up mode, set to 1 explicitly.
