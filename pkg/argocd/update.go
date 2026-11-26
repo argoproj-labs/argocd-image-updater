@@ -234,6 +234,9 @@ func UpdateApplication(ctx context.Context, updateConf *UpdateConfiguration, sta
 				if !updateableImage.DiffersFrom(live, false) && needsUpdate(live, applicationImage.ContainerImage, latest, vc.Strategy, true) {
 					imgCtx.Debugf("Multiple containers reference image '%s'; re-selected pending live image for pinned update evaluation", applicationImage.ImageName)
 					updateableImage = live
+					if updateableImage.ImageTag == nil {
+						updateableImage.ImageTag = tag.NewImageTag("", time.Unix(0, 0), "")
+					}
 					break
 				}
 			}

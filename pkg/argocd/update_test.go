@@ -1916,8 +1916,16 @@ registries:
 	})
 
 	t.Run("Test pinDigest does not skip an unpinned image when a sibling is already pinned", func(t *testing.T) {
-		for _, currentTag := range []string{"main-aaa", "main-bbb"} {
-			t.Run(currentTag, func(t *testing.T) {
+		for _, currentTag := range []string{"main-aaa", "main-bbb", ""} {
+			name := currentTag
+			if name == "" {
+				name = "untagged"
+			}
+			t.Run(name, func(t *testing.T) {
+				currentImage := "gcr.io/test/pin-sibling"
+				if currentTag != "" {
+					currentImage += ":" + currentTag
+				}
 				payload := []byte(`{"schemaVersion":2}`)
 				imageDigest := godigest.FromBytes(payload).String()
 				mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
@@ -1946,14 +1954,14 @@ registries:
 						Spec: v1alpha1.ApplicationSpec{
 							Source: &v1alpha1.ApplicationSource{
 								Kustomize: &v1alpha1.ApplicationSourceKustomize{
-									Images: v1alpha1.KustomizeImages{v1alpha1.KustomizeImage("gcr.io/test/pin-sibling:" + currentTag)},
+									Images: v1alpha1.KustomizeImages{v1alpha1.KustomizeImage(currentImage)},
 								},
 							},
 						},
 						Status: v1alpha1.ApplicationStatus{
 							SourceType: v1alpha1.ApplicationSourceTypeKustomize,
 							Summary: v1alpha1.ApplicationSummary{
-								Images: []string{"gcr.io/test/pin-sibling:main-bbb@" + imageDigest, "gcr.io/test/pin-sibling:" + currentTag},
+								Images: []string{"gcr.io/test/pin-sibling:main-bbb@" + imageDigest, currentImage},
 							},
 						},
 					},
@@ -1972,6 +1980,10 @@ registries:
 				assert.Equal(t, 1, res.NumImagesUpdated)
 				assert.Equal(t, currentTag, res.Changes[0].OldTag.TagName)
 				assert.Equal(t, v1alpha1.KustomizeImage("gcr.io/test/pin-sibling:main-bbb@"+imageDigest), appImages.Application.Spec.Source.Kustomize.Images[0])
+				events, err := kubeClient.KubeClient.Clientset.CoreV1().Events("test").List(context.Background(), v1.ListOptions{})
+				require.NoError(t, err)
+				assert.Len(t, events.Items, 1)
+				assert.Equal(t, currentTag, events.Items[0].Annotations["argocd-image-updater.image-0/old-tag"])
 
 				// The target is already pinned even if status still lists an unpinned sibling.
 				res = UpdateApplication(context.Background(), updateConf, NewSyncIterationState())
