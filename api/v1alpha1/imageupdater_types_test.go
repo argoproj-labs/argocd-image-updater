@@ -195,7 +195,7 @@ var _ = AfterSuite(func() {
 })
 
 var _ = Describe("CommonUpdateSettings PinDigest", func() {
-	DescribeTable("should accept pinDigest at every configuration level", func(name string, value *bool) {
+	DescribeTable("should retain pinDigest at every configuration level", func(name string, value *bool) {
 		cr := &ImageUpdater{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      name,
@@ -220,6 +220,19 @@ var _ = Describe("CommonUpdateSettings PinDigest", func() {
 		}
 
 		Expect(k8sClient.Create(context.Background(), cr)).To(Succeed())
+		stored := &ImageUpdater{}
+		Expect(k8sClient.Get(context.Background(), client.ObjectKeyFromObject(cr), stored)).To(Succeed())
+		for _, actual := range []*bool{
+			stored.Spec.CommonUpdateSettings.PinDigest,
+			stored.Spec.ApplicationRefs[0].CommonUpdateSettings.PinDigest,
+			stored.Spec.ApplicationRefs[0].Images[0].CommonUpdateSettings.PinDigest,
+		} {
+			if value == nil {
+				Expect(actual).To(BeNil())
+			} else {
+				Expect(actual).To(Equal(value))
+			}
+		}
 		Expect(k8sClient.Delete(context.Background(), cr)).To(Succeed())
 	},
 		Entry("unset", "pin-digest-unset", (*bool)(nil)),
