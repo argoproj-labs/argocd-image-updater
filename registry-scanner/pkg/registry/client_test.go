@@ -66,6 +66,8 @@ func TestNewRepository_ACR_Actions(t *testing.T) {
 			"https://test.azurecr.io",
 			"https://prod-registry.azurecr.io",
 			"https://dev.azurecr.io/v2",
+			"https://myregistry.azurecr.cn",
+			"https://myregistry.azurecr.us",
 		}
 		for _, registryAPI := range acrURLs {
 			actions := getTokenActions(registryAPI)
