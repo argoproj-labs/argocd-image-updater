@@ -1915,6 +1915,72 @@ registries:
 		assert.Equal(t, v1alpha1.KustomizeImage("gcr.io/test/pin-promotion:main-bbb@"+imageDigest), appImages.Application.Spec.Source.Kustomize.Images[0])
 	})
 
+	t.Run("Test pinDigest does not skip an unpinned image when a sibling is already pinned", func(t *testing.T) {
+		for _, currentTag := range []string{"main-aaa", "main-bbb"} {
+			t.Run(currentTag, func(t *testing.T) {
+				payload := []byte(`{"schemaVersion":2}`)
+				imageDigest := godigest.FromBytes(payload).String()
+				mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
+					manifest := regmock.Manifest{}
+					manifest.On("Payload").Return(schema2.MediaTypeManifest, payload, nil)
+					regMock := regmock.RegistryClient{}
+					regMock.On("NewRepository", mock.Anything, mock.Anything).Return(nil)
+					regMock.On("Tags", mock.Anything).Return([]string{"main-aaa", "main-bbb"}, nil)
+					regMock.On("ManifestForTag", mock.Anything, "main-bbb").Return(&manifest, nil)
+					return &regMock, nil
+				}
+
+				argoClient := argomock.ArgoCD{}
+				argoClient.On("UpdateSpec", mock.Anything, mock.Anything, mock.Anything).Return(nil, nil)
+				kubeClient := kube.ImageUpdaterKubernetesClient{
+					KubeClient: &registryKube.KubernetesClient{
+						Clientset: fake.NewFakeKubeClient(),
+					},
+				}
+				img := NewImage(image.NewFromIdentifier("app=gcr.io/test/pin-sibling"))
+				img.UpdateStrategy = image.StrategyAlphabetical
+				img.PinDigest = true
+				appImages := &ApplicationImages{
+					Application: v1alpha1.Application{
+						ObjectMeta: v1.ObjectMeta{Name: "pin-sibling-app", Namespace: "test"},
+						Spec: v1alpha1.ApplicationSpec{
+							Source: &v1alpha1.ApplicationSource{
+								Kustomize: &v1alpha1.ApplicationSourceKustomize{
+									Images: v1alpha1.KustomizeImages{v1alpha1.KustomizeImage("gcr.io/test/pin-sibling:" + currentTag)},
+								},
+							},
+						},
+						Status: v1alpha1.ApplicationStatus{
+							SourceType: v1alpha1.ApplicationSourceTypeKustomize,
+							Summary: v1alpha1.ApplicationSummary{
+								Images: []string{"gcr.io/test/pin-sibling:main-bbb@" + imageDigest, "gcr.io/test/pin-sibling:" + currentTag},
+							},
+						},
+					},
+					Images:          ImageList{img},
+					WriteBackConfig: &WriteBackConfig{Method: WriteBackApplication},
+				}
+				updateConf := &UpdateConfiguration{
+					NewRegFN:   mockClientFn,
+					ArgoClient: &argoClient,
+					KubeClient: &kubeClient,
+					UpdateApp:  appImages,
+				}
+
+				res := UpdateApplication(context.Background(), updateConf, NewSyncIterationState())
+				assert.Equal(t, 0, res.NumErrors)
+				assert.Equal(t, 1, res.NumImagesUpdated)
+				assert.Equal(t, currentTag, res.Changes[0].OldTag.TagName)
+				assert.Equal(t, v1alpha1.KustomizeImage("gcr.io/test/pin-sibling:main-bbb@"+imageDigest), appImages.Application.Spec.Source.Kustomize.Images[0])
+
+				// The target is already pinned even if status still lists an unpinned sibling.
+				res = UpdateApplication(context.Background(), updateConf, NewSyncIterationState())
+				assert.Equal(t, 0, res.NumErrors)
+				assert.Equal(t, 0, res.NumImagesUpdated)
+			})
+		}
+	})
+
 	t.Run("Test pinDigest with a bare digest skips unchanged Application write-back", func(t *testing.T) {
 		payload := []byte(`{"schemaVersion":2}`)
 		imageDigest := godigest.FromBytes(payload).String()

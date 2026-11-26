@@ -226,6 +226,17 @@ func UpdateApplication(ctx context.Context, updateConf *UpdateConfiguration, sta
 				imgCtx.Debugf("Multiple containers reference image '%s'; re-selected live image (tag '%s', digest '%s') for update evaluation", applicationImage.ImageName, m.ImageTag.TagName, m.ImageTag.TagDigest)
 				updateableImage = m
 			}
+		} else if applicationImage.PinDigest && !needsUpdate(updateableImage, applicationImage.ContainerImage, latest, vc.Strategy, true) {
+			// Status does not identify aliases. A current sibling must not hide
+			// another reference that still needs pinning or a tag update. The
+			// spec and Git target comparisons suppress unchanged write-back.
+			for _, live := range applicationImages {
+				if !updateableImage.DiffersFrom(live, false) && needsUpdate(live, applicationImage.ContainerImage, latest, vc.Strategy, true) {
+					imgCtx.Debugf("Multiple containers reference image '%s'; re-selected pending live image for pinned update evaluation", applicationImage.ImageName)
+					updateableImage = live
+					break
+				}
+			}
 		}
 
 		if needsUpdate(updateableImage, applicationImage.ContainerImage, latest, vc.Strategy, applicationImage.PinDigest) {
