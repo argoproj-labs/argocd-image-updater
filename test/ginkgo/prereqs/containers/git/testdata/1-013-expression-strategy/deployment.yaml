@@ -1,0 +1,17 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cel-demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cel-demo
+  template:
+    metadata:
+      labels:
+        app: cel-demo
+    spec:
+      containers:
+      - name: test
+        image: 127.0.0.1:30000/expression-test:build-9

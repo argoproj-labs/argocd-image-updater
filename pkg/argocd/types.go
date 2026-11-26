@@ -244,6 +244,7 @@ type ApplicationImages struct {
 // It embeds the neutral ContainerImage type and adds updater-specific
 // configuration. Use this struct to populate elements from ImageUpdater CR.
 type Image struct {
+	expressionStrategy *compiledExpressionStrategy
 	*image.ContainerImage
 
 	// Update settings

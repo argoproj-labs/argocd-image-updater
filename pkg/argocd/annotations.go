@@ -79,6 +79,16 @@ func getCommonUpdateSettingsFromAnnotations(app *argocdapi.Application, updateSt
 		}
 	}
 
+	filter, hasFilter := app.Annotations[updateStrategyAnnotations.ExpressionFilter]
+	sortKey, hasSortKey := app.Annotations[updateStrategyAnnotations.ExpressionSortKey]
+	if hasFilter || hasSortKey {
+		result.ExpressionStrategy = &iuapi.ExpressionStrategy{
+			Filter:  strings.TrimSpace(filter),
+			SortKey: strings.TrimSpace(sortKey),
+		}
+		hasAny = true
+	}
+
 	if forceUpdateStr, ok := app.Annotations[updateStrategyAnnotations.ForceUpdate]; ok {
 		forceUpdateStr = strings.TrimSpace(forceUpdateStr)
 		val, err := strconv.ParseBool(forceUpdateStr)
@@ -285,12 +295,14 @@ const (
 
 // UpdateStrategyAnnotations holds the annotation key mappings for update strategy settings.
 type UpdateStrategyAnnotations struct {
-	AllowTags      string
-	IgnoreTags     string
-	ForceUpdate    string
-	UpdateStrategy string
-	PullSecret     string
-	Platforms      string
+	AllowTags         string
+	IgnoreTags        string
+	ForceUpdate       string
+	UpdateStrategy    string
+	ExpressionFilter  string
+	ExpressionSortKey string
+	PullSecret        string
+	Platforms         string
 }
 
 // getImageUpdateStrategyAnnotations returns a mapping of annotation keys to their full annotation
@@ -302,20 +314,24 @@ type UpdateStrategyAnnotations struct {
 func getImageUpdateStrategyAnnotations(alias string) UpdateStrategyAnnotations {
 	if alias == "" {
 		return UpdateStrategyAnnotations{
-			AllowTags:      ImageUpdaterAnnotationPrefix + "/allow-tags",
-			IgnoreTags:     ImageUpdaterAnnotationPrefix + "/ignore-tags",
-			ForceUpdate:    ImageUpdaterAnnotationPrefix + "/force-update",
-			UpdateStrategy: ImageUpdaterAnnotationPrefix + "/update-strategy",
-			PullSecret:     ImageUpdaterAnnotationPrefix + "/pull-secret",
+			AllowTags:         ImageUpdaterAnnotationPrefix + "/allow-tags",
+			IgnoreTags:        ImageUpdaterAnnotationPrefix + "/ignore-tags",
+			ForceUpdate:       ImageUpdaterAnnotationPrefix + "/force-update",
+			UpdateStrategy:    ImageUpdaterAnnotationPrefix + "/update-strategy",
+			ExpressionFilter:  ImageUpdaterAnnotationPrefix + "/expression-filter",
+			ExpressionSortKey: ImageUpdaterAnnotationPrefix + "/expression-sort-key",
+			PullSecret:        ImageUpdaterAnnotationPrefix + "/pull-secret",
 			// Platforms was only image-specific in legacy annotations, not application-wide
 		}
 	}
 	return UpdateStrategyAnnotations{
-		AllowTags:      ImageUpdaterAnnotationPrefix + fmt.Sprintf("/%s.allow-tags", alias),
-		IgnoreTags:     ImageUpdaterAnnotationPrefix + fmt.Sprintf("/%s.ignore-tags", alias),
-		ForceUpdate:    ImageUpdaterAnnotationPrefix + fmt.Sprintf("/%s.force-update", alias),
-		UpdateStrategy: ImageUpdaterAnnotationPrefix + fmt.Sprintf("/%s.update-strategy", alias),
-		PullSecret:     ImageUpdaterAnnotationPrefix + fmt.Sprintf("/%s.pull-secret", alias),
-		Platforms:      ImageUpdaterAnnotationPrefix + fmt.Sprintf("/%s.platforms", alias),
+		AllowTags:         ImageUpdaterAnnotationPrefix + fmt.Sprintf("/%s.allow-tags", alias),
+		IgnoreTags:        ImageUpdaterAnnotationPrefix + fmt.Sprintf("/%s.ignore-tags", alias),
+		ForceUpdate:       ImageUpdaterAnnotationPrefix + fmt.Sprintf("/%s.force-update", alias),
+		UpdateStrategy:    ImageUpdaterAnnotationPrefix + fmt.Sprintf("/%s.update-strategy", alias),
+		ExpressionFilter:  ImageUpdaterAnnotationPrefix + fmt.Sprintf("/%s.expression-filter", alias),
+		ExpressionSortKey: ImageUpdaterAnnotationPrefix + fmt.Sprintf("/%s.expression-sort-key", alias),
+		PullSecret:        ImageUpdaterAnnotationPrefix + fmt.Sprintf("/%s.pull-secret", alias),
+		Platforms:         ImageUpdaterAnnotationPrefix + fmt.Sprintf("/%s.platforms", alias),
 	}
 }

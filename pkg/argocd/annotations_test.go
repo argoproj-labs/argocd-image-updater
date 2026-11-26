@@ -3,12 +3,16 @@
 package argocd
 
 import (
+	"context"
 	"testing"
+	"time"
 
 	argocdapi "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/tag"
 )
 
 func Test_getImageUpdateStrategyAnnotations(t *testing.T) {
@@ -1356,4 +1360,34 @@ func Test_getImagesFromAnnotations(t *testing.T) {
 		// ManifestTarget is nil when no annotations are present
 		assert.Nil(t, result[2].ManifestTarget)
 	})
+}
+
+func TestExpressionStrategyFromAnnotations(t *testing.T) {
+	const prefix = ImageUpdaterAnnotationPrefix + "/"
+	app := &argocdapi.Application{ObjectMeta: v1.ObjectMeta{Annotations: map[string]string{
+		prefix + "image-list":                   "inherited=nginx,override=nginx,invalid=nginx",
+		prefix + "update-strategy":              "expression",
+		prefix + "expression-filter":            "false",
+		prefix + "expression-sort-key":          "0",
+		prefix + "override.expression-sort-key": "tag.name",
+		prefix + "invalid.expression-filter":    "true",
+	}}}
+	defaults, err := getCommonUpdateSettingsFromAnnotations(app, getImageUpdateStrategyAnnotations(""))
+	require.NoError(t, err)
+	configs, err := getImagesFromAnnotations(app)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	images := parseImageList(ctx, nil, "", configs, defaults, nil, nil)
+	require.Len(t, *images, 2)
+	candidates := tag.NewImageTagList()
+	candidate := tag.NewImageTag("latest", time.Time{}, "")
+	candidates.Add(candidate)
+
+	selected, err := (*images)[0].expressionStrategy.selectTag(ctx, candidates)
+	require.NoError(t, err)
+	require.Nil(t, selected)
+	selected, err = (*images)[1].expressionStrategy.selectTag(ctx, candidates)
+	require.NoError(t, err)
+	require.Equal(t, candidate, selected)
 }

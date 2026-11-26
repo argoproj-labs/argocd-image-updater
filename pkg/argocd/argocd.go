@@ -535,6 +535,9 @@ func mergeCommonUpdateSettings(settings ...*iuapi.CommonUpdateSettings) *iuapi.C
 		if s.UpdateStrategy != nil {
 			merged.UpdateStrategy = s.UpdateStrategy
 		}
+		if s.ExpressionStrategy != nil {
+			merged.ExpressionStrategy = s.ExpressionStrategy
+		}
 		if s.AllowTags != nil {
 			merged.AllowTags = s.AllowTags
 		}
@@ -607,7 +610,11 @@ func newImageFromCommonUpdateSettings(ctx context.Context, settings *iuapi.Commo
 
 	// Apply the final settings.
 	if settings.UpdateStrategy != nil {
-		img.UpdateStrategy = img.ParseUpdateStrategy(ctx, *settings.UpdateStrategy)
+		if strings.EqualFold(*settings.UpdateStrategy, image.StrategyExpression.String()) {
+			img.UpdateStrategy = image.StrategyExpression
+		} else {
+			img.UpdateStrategy = img.ParseUpdateStrategy(ctx, *settings.UpdateStrategy)
+		}
 	}
 	if settings.ForceUpdate != nil {
 		img.ForceUpdate = *settings.ForceUpdate
@@ -944,6 +951,14 @@ func parseImageList(ctx context.Context, kubeClient *kube.ImageUpdaterKubernetes
 		}
 
 		img.ContainerImage = image.NewFromIdentifier(im.Alias + "=" + im.ImageName)
+
+		if img.UpdateStrategy == image.StrategyExpression {
+			img.expressionStrategy, err = compileExpressionStrategy(finalCommonUpdateSettings.ExpressionStrategy)
+			if err != nil {
+				log.Warnf("Skipping image %s: invalid expression strategy: %v", im.ImageName, err)
+				continue
+			}
+		}
 
 		// Catch a strategy that cannot work with the tag the image is
 		// configured with while the configuration is being read. This runs

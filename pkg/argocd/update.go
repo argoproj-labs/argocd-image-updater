@@ -187,7 +187,12 @@ func UpdateApplication(ctx context.Context, updateConf *UpdateConfiguration, sta
 
 		// Get the latest available tag matching any constraint that might be set
 		// for allowed updates.
-		latest, err := updateableImage.GetNewestVersionFromTags(imageOpCtx, &vc, tags)
+		var latest *tag.ImageTag
+		if vc.Strategy == image.StrategyExpression {
+			latest, err = applicationImage.expressionStrategy.selectTag(imageOpCtx, tags)
+		} else {
+			latest, err = updateableImage.GetNewestVersionFromTags(imageOpCtx, &vc, tags)
+		}
 		if err != nil {
 			imgCtx.Errorf("Unable to find newest version from available tags: %v", err)
 			result.NumErrors += 1

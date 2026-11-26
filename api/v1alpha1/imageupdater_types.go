@@ -174,10 +174,15 @@ type ImageConfig struct {
 // globally, per ApplicationRef, or per ImageConfig.
 type CommonUpdateSettings struct {
 	// UpdateStrategy defines the update strategy to apply.
-	// Examples: "semver", "newest-build", "alphabetical", "digest", "calver".
+	// Examples: "semver", "newest-build", "alphabetical", "digest", "calver", "expression".
 	// This acts as the default if not overridden at a more specific level.
 	// +optional
 	UpdateStrategy *string `json:"updateStrategy,omitempty"`
+
+	// ExpressionStrategy configures CEL tag selection for the expression strategy.
+	// A more specific block replaces the inherited block.
+	// +optional
+	ExpressionStrategy *ExpressionStrategy `json:"expressionStrategy,omitempty"`
 
 	// ForceUpdate specifies whether updates should be forced.
 	// This acts as the default if not overridden.
@@ -205,6 +210,17 @@ type CommonUpdateSettings struct {
 	// +listType=atomic
 	// +optional
 	Platforms []string `json:"platforms,omitempty"`
+}
+
+// ExpressionStrategy defines CEL expressions evaluated against each candidate tag.
+type ExpressionStrategy struct {
+	// Filter is an optional boolean expression that determines tag eligibility.
+	// +optional
+	Filter string `json:"filter,omitempty"`
+
+	// SortKey ranks eligible tags by an integer or string. The highest key wins.
+	// +kubebuilder:validation:MinLength=1
+	SortKey string `json:"sortKey"`
 }
 
 // WriteBackConfig defines how and where to write back image updates.
