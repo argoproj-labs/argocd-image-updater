@@ -62,16 +62,16 @@ need to edit the `argocd-image-updater-config` ConfigMap with the following data
 ```yaml
 data:
   # enable the webhook server
-  webhook.enable: true
+  webhook.enable: "true"
   # (OPTIONAL) set the port for the webhook server
   webhook.port: <Value between 0 - 65535>
 ```
 
-If you plan to use the webhook command for the server then the `argocd-image-
-updater` Deployment must be updated. Adjustments to the `argocd-image-updater-config` 
+If you plan to use the webhook command for the server then the
+`argocd-image-updater-controller` Deployment must be updated. Adjustments to the `argocd-image-updater-config` 
 ConfigMap are optional. 
 ```yaml
-# argocd-image-updater Deployment, container args need to be changed to webhook
+# argocd-image-updater-controller Deployment, container args need to be changed to webhook
 spec:
   template:
     spec:
