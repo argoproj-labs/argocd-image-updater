@@ -217,7 +217,7 @@ If set, the metrics endpoint is served securely via HTTPS. Use `--metrics-secure
 
 **--once**
 
-A shortcut for specifying `--interval 0 --health-probe-bind-address 0 --warmUpCache=true`. If given,
+A shortcut for specifying `--interval 0 --health-probe-bind-address 0 --warmup-cache=true`. If given,
 Argo CD Image Updater will exit after the first update cycle.
 
 **--quay-webhook-secret *secret***
