@@ -38,6 +38,24 @@ func Test_WriteBackTargetKey(t *testing.T) {
 		assert.Equal(t, wbc1.WriteBackTargetKey(), wbc2.WriteBackTargetKey())
 	})
 
+	t.Run("KustomizeBase used over the per-application default Target", func(t *testing.T) {
+		wbc1 := &WriteBackConfig{GitRepo: "https://github.com/org/repo.git", GitBranch: "main", KustomizeBase: "overlays/dev", Target: "overlays/dev/.argocd-source-app-a.yaml"}
+		wbc2 := &WriteBackConfig{GitRepo: "https://github.com/org/repo.git", GitBranch: "main", KustomizeBase: "overlays/dev", Target: "overlays/dev/.argocd-source-app-b.yaml"}
+		assert.Equal(t, wbc1.WriteBackTargetKey(), wbc2.WriteBackTargetKey())
+	})
+
+	t.Run("Different KustomizeBase produces a different key", func(t *testing.T) {
+		wbc1 := &WriteBackConfig{GitRepo: "https://github.com/org/repo.git", GitBranch: "main", KustomizeBase: "overlays/dev", Target: "overlays/dev/.argocd-source-app.yaml"}
+		wbc2 := &WriteBackConfig{GitRepo: "https://github.com/org/repo.git", GitBranch: "main", KustomizeBase: "overlays/prod", Target: "overlays/dev/.argocd-source-app.yaml"}
+		assert.NotEqual(t, wbc1.WriteBackTargetKey(), wbc2.WriteBackTargetKey())
+	})
+
+	t.Run("KustomizeBase and a Target with the same path produce different keys", func(t *testing.T) {
+		wbc1 := &WriteBackConfig{GitRepo: "https://github.com/org/repo.git", GitBranch: "main", KustomizeBase: "overlays/dev"}
+		wbc2 := &WriteBackConfig{GitRepo: "https://github.com/org/repo.git", GitBranch: "main", Target: "overlays/dev"}
+		assert.NotEqual(t, wbc1.WriteBackTargetKey(), wbc2.WriteBackTargetKey())
+	})
+
 	t.Run("Key is 8 hex characters", func(t *testing.T) {
 		wbc := &WriteBackConfig{GitRepo: "https://github.com/org/repo.git", GitBranch: "main", Target: "values.yaml"}
 		key := wbc.WriteBackTargetKey()

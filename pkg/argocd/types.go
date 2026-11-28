@@ -10,6 +10,7 @@ import (
 	"github.com/argoproj/argo-cd/v3/util/db"
 
 	"github.com/argoproj-labs/argocd-image-updater/ext/git"
+	"github.com/argoproj-labs/argocd-image-updater/pkg/common"
 	"github.com/argoproj-labs/argocd-image-updater/pkg/kube"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/image"
 	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/registry"
@@ -115,11 +116,13 @@ type WriteBackConfig struct {
 
 // WriteBackTargetKey returns a short hash that uniquely identifies the
 // write-back target for PR deduplication. Two applications sharing the same
-// git repo, base branch, and target path produce the same key.
+// git repo, base branch, and target path produce the same key. With a
+// kustomization target, Target keeps the per-application default file, so the
+// key is built from the kustomize base the update is written to.
 func (wbc *WriteBackConfig) WriteBackTargetKey() string {
 	target := wbc.Target
-	if target == "" {
-		target = wbc.KustomizeBase
+	if wbc.KustomizeBase != "" {
+		target = common.KustomizationPrefix + ":" + wbc.KustomizeBase
 	}
 	h := sha256.Sum256([]byte(wbc.GitRepo + "|" + wbc.GitBranch + "|" + target))
 	return hex.EncodeToString(h[:])[:8]

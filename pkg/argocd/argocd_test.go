@@ -3787,6 +3787,24 @@ func Test_newWBCFromSettings(t *testing.T) {
 		assert.Equal(t, "some/path/.argocd-source-argocd-test_my-app.yaml", wbc.Target) // Target should be preserved
 	})
 
+	t.Run("should give applications sharing a kustomization target the same target key", func(t *testing.T) {
+		settings := &api.WriteBackConfig{
+			Method: new("git"),
+			GitConfig: &api.GitConfig{
+				WriteBackTarget: new("kustomization:overlays/prod"),
+			},
+		}
+		appA, kubeClient := createTestAppAndClient()
+		appB := appA.DeepCopy()
+		appB.Name = "my-other-app"
+		wbcA, err := newWBCFromSettings(context.Background(), appA, kubeClient, nil, settings)
+		require.NoError(t, err)
+		wbcB, err := newWBCFromSettings(context.Background(), appB, kubeClient, nil, settings)
+		require.NoError(t, err)
+		assert.NotEqual(t, wbcA.Target, wbcB.Target)
+		assert.Equal(t, wbcA.WriteBackTargetKey(), wbcB.WriteBackTargetKey())
+	})
+
 	for _, fileName := range []string{"kustomization.yaml", "kustomization.yml", "Kustomization"} {
 		t.Run("should reject a bare write-back target that looks like a standard kustomization file: "+fileName, func(t *testing.T) {
 			app, kubeClient := createTestAppAndClient()
