@@ -354,6 +354,19 @@ func v2RootURL(u *url.URL) (url.URL, bool) {
 	return url.URL{Scheme: u.Scheme, Host: u.Host, Path: path}, true
 }
 
+// acrDomainSuffixes are the Azure Container Registry login server domains in
+// Azure public cloud, Azure in China and Azure Government.
+var acrDomainSuffixes = []string{".azurecr.io", ".azurecr.cn", ".azurecr.us"}
+
+func isACR(registryAPI string) bool {
+	for _, suffix := range acrDomainSuffixes {
+		if strings.Contains(registryAPI, suffix) {
+			return true
+		}
+	}
+	return false
+}
+
 // getTokenActions returns the list of OAuth2 Bearer token actions to request
 // for the given registry API. Extend this function when a registry requires
 // additional scopes beyond the default "pull".
@@ -361,7 +374,7 @@ func getTokenActions(registryAPI string) []string {
 	switch {
 
 	// ACR endpoints require additional metadata_read and content_read actions
-	case strings.Contains(registryAPI, ".azurecr.io"):
+	case isACR(registryAPI):
 		return []string{"pull", "metadata_read", "content_read"}
 
 	// default registry actions
