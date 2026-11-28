@@ -1780,6 +1780,408 @@ registries:
 		assert.Equal(t, 0, res.NumImagesUpdated)
 	})
 
+	t.Run("Test newest-build with pinDigest writes the selected tag and digest", func(t *testing.T) {
+		digestBytes := sha256.Sum256([]byte("pin-newest"))
+		imageDigest := fmt.Sprintf("sha256:%x", digestBytes)
+		mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
+			regMock := regmock.RegistryClient{}
+			regMock.On("NewRepository", mock.Anything, mock.Anything).Return(nil)
+			regMock.On("Tags", mock.Anything).Return([]string{"main-bbb"}, nil)
+			regMock.On("ManifestForTag", mock.Anything, "main-bbb").Return(&schema2.DeserializedManifest{}, nil)
+			regMock.On("TagMetadata", mock.Anything, mock.Anything, mock.Anything).Return(&tag.TagInfo{
+				CreatedAt: time.Unix(2, 0),
+				Digest:    digestBytes,
+			}, nil)
+			return &regMock, nil
+		}
+
+		argoClient := argomock.ArgoCD{}
+		argoClient.On("UpdateSpec", mock.Anything, mock.Anything, mock.Anything).Return(nil, nil)
+		kubeClient := kube.ImageUpdaterKubernetesClient{
+			KubeClient: &registryKube.KubernetesClient{
+				Clientset: fake.NewFakeKubeClient(),
+			},
+		}
+		img := NewImage(image.NewFromIdentifier("app=gcr.io/test/pin-newest"))
+		img.UpdateStrategy = image.StrategyNewestBuild
+		img.PinDigest = true
+		appImages := &ApplicationImages{
+			Application: v1alpha1.Application{
+				ObjectMeta: v1.ObjectMeta{Name: "pin-newest-app", Namespace: "test"},
+				Spec: v1alpha1.ApplicationSpec{
+					Source: &v1alpha1.ApplicationSource{Helm: &v1alpha1.ApplicationSourceHelm{}},
+				},
+				Status: v1alpha1.ApplicationStatus{
+					SourceType: v1alpha1.ApplicationSourceTypeHelm,
+					Summary: v1alpha1.ApplicationSummary{
+						Images: []string{"gcr.io/test/pin-newest:main-aaa"},
+					},
+				},
+			},
+			Images:          ImageList{img},
+			WriteBackConfig: &WriteBackConfig{Method: WriteBackApplication},
+		}
+		updateConf := &UpdateConfiguration{
+			NewRegFN:   mockClientFn,
+			ArgoClient: &argoClient,
+			KubeClient: &kubeClient,
+			UpdateApp:  appImages,
+		}
+
+		res := UpdateApplication(context.Background(), updateConf, NewSyncIterationState())
+		assert.Equal(t, 0, res.NumErrors)
+		assert.Equal(t, 1, res.NumImagesUpdated)
+		tagValue := ""
+		for _, p := range appImages.Application.Spec.Source.Helm.Parameters {
+			if p.Name == "image.tag" {
+				tagValue = p.Value
+			}
+		}
+		assert.Equal(t, "main-bbb@"+imageDigest, tagValue)
+
+		// Check the versions reported in the update event.
+		events, err := kubeClient.KubeClient.Clientset.CoreV1().Events("test").List(context.Background(), v1.ListOptions{})
+		require.NoError(t, err)
+		assert.Len(t, events.Items, 1)
+		assert.Equal(t, "main-aaa", events.Items[0].Annotations["argocd-image-updater.image-0/old-tag"])
+		assert.Equal(t, "main-bbb@"+imageDigest, events.Items[0].Annotations["argocd-image-updater.image-0/new-tag"])
+
+		// Simulate the image being synced before the next update cycle.
+		appImages.Application.Status.Summary.Images = []string{"gcr.io/test/pin-newest:main-bbb@" + imageDigest}
+		res = UpdateApplication(context.Background(), updateConf, NewSyncIterationState())
+		assert.Equal(t, 0, res.NumErrors)
+		assert.Equal(t, 0, res.NumImagesUpdated)
+		tagValue = ""
+		for _, p := range appImages.Application.Spec.Source.Helm.Parameters {
+			if p.Name == "image.tag" {
+				tagValue = p.Value
+			}
+		}
+		assert.Equal(t, "main-bbb@"+imageDigest, tagValue)
+	})
+
+	t.Run("Test pinDigest updates a different tag with the same digest", func(t *testing.T) {
+		payload := []byte(`{"schemaVersion":2}`)
+		imageDigest := godigest.FromBytes(payload).String()
+		mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
+			manifest := regmock.Manifest{}
+			manifest.On("Payload").Return(schema2.MediaTypeManifest, payload, nil)
+			regMock := regmock.RegistryClient{}
+			regMock.On("NewRepository", mock.Anything, mock.Anything).Return(nil)
+			regMock.On("Tags", mock.Anything).Return([]string{"main-aaa", "main-bbb"}, nil)
+			regMock.On("ManifestForTag", mock.Anything, "main-bbb").Return(&manifest, nil)
+			return &regMock, nil
+		}
+
+		argoClient := argomock.ArgoCD{}
+		argoClient.On("UpdateSpec", mock.Anything, mock.Anything, mock.Anything).Return(nil, nil)
+		kubeClient := kube.ImageUpdaterKubernetesClient{
+			KubeClient: &registryKube.KubernetesClient{
+				Clientset: fake.NewFakeKubeClient(),
+			},
+		}
+		img := NewImage(image.NewFromIdentifier("app=gcr.io/test/pin-promotion"))
+		img.UpdateStrategy = image.StrategyAlphabetical
+		img.PinDigest = true
+		appImages := &ApplicationImages{
+			Application: v1alpha1.Application{
+				ObjectMeta: v1.ObjectMeta{Name: "pin-promotion-app", Namespace: "test"},
+				Spec: v1alpha1.ApplicationSpec{
+					Source: &v1alpha1.ApplicationSource{
+						Kustomize: &v1alpha1.ApplicationSourceKustomize{
+							Images: v1alpha1.KustomizeImages{v1alpha1.KustomizeImage("gcr.io/test/pin-promotion:main-aaa@" + imageDigest)},
+						},
+					},
+				},
+				Status: v1alpha1.ApplicationStatus{
+					SourceType: v1alpha1.ApplicationSourceTypeKustomize,
+					Summary: v1alpha1.ApplicationSummary{
+						Images: []string{"gcr.io/test/pin-promotion:main-aaa@" + imageDigest},
+					},
+				},
+			},
+			Images:          ImageList{img},
+			WriteBackConfig: &WriteBackConfig{Method: WriteBackApplication},
+		}
+
+		res := UpdateApplication(context.Background(), &UpdateConfiguration{
+			NewRegFN:   mockClientFn,
+			ArgoClient: &argoClient,
+			KubeClient: &kubeClient,
+			UpdateApp:  appImages,
+		}, NewSyncIterationState())
+		assert.Equal(t, 0, res.NumErrors)
+		assert.Equal(t, 1, res.NumImagesUpdated)
+		assert.Equal(t, v1alpha1.KustomizeImage("gcr.io/test/pin-promotion:main-bbb@"+imageDigest), appImages.Application.Spec.Source.Kustomize.Images[0])
+	})
+
+	t.Run("Test pinDigest does not skip an unpinned image when a sibling is already pinned", func(t *testing.T) {
+		for _, currentTag := range []string{"main-aaa", "main-bbb", ""} {
+			name := currentTag
+			if name == "" {
+				name = "untagged"
+			}
+			t.Run(name, func(t *testing.T) {
+				currentImage := "gcr.io/test/pin-sibling"
+				if currentTag != "" {
+					currentImage += ":" + currentTag
+				}
+				payload := []byte(`{"schemaVersion":2}`)
+				imageDigest := godigest.FromBytes(payload).String()
+				mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
+					manifest := regmock.Manifest{}
+					manifest.On("Payload").Return(schema2.MediaTypeManifest, payload, nil)
+					regMock := regmock.RegistryClient{}
+					regMock.On("NewRepository", mock.Anything, mock.Anything).Return(nil)
+					regMock.On("Tags", mock.Anything).Return([]string{"main-aaa", "main-bbb"}, nil)
+					regMock.On("ManifestForTag", mock.Anything, "main-bbb").Return(&manifest, nil)
+					return &regMock, nil
+				}
+
+				argoClient := argomock.ArgoCD{}
+				argoClient.On("UpdateSpec", mock.Anything, mock.Anything, mock.Anything).Return(nil, nil)
+				kubeClient := kube.ImageUpdaterKubernetesClient{
+					KubeClient: &registryKube.KubernetesClient{
+						Clientset: fake.NewFakeKubeClient(),
+					},
+				}
+				img := NewImage(image.NewFromIdentifier("app=gcr.io/test/pin-sibling"))
+				img.UpdateStrategy = image.StrategyAlphabetical
+				img.PinDigest = true
+				appImages := &ApplicationImages{
+					Application: v1alpha1.Application{
+						ObjectMeta: v1.ObjectMeta{Name: "pin-sibling-app", Namespace: "test"},
+						Spec: v1alpha1.ApplicationSpec{
+							Source: &v1alpha1.ApplicationSource{
+								Kustomize: &v1alpha1.ApplicationSourceKustomize{
+									Images: v1alpha1.KustomizeImages{v1alpha1.KustomizeImage(currentImage)},
+								},
+							},
+						},
+						Status: v1alpha1.ApplicationStatus{
+							SourceType: v1alpha1.ApplicationSourceTypeKustomize,
+							Summary: v1alpha1.ApplicationSummary{
+								Images: []string{"gcr.io/test/pin-sibling:main-bbb@" + imageDigest, currentImage},
+							},
+						},
+					},
+					Images:          ImageList{img},
+					WriteBackConfig: &WriteBackConfig{Method: WriteBackApplication},
+				}
+				updateConf := &UpdateConfiguration{
+					NewRegFN:   mockClientFn,
+					ArgoClient: &argoClient,
+					KubeClient: &kubeClient,
+					UpdateApp:  appImages,
+				}
+
+				res := UpdateApplication(context.Background(), updateConf, NewSyncIterationState())
+				assert.Equal(t, 0, res.NumErrors)
+				assert.Equal(t, 1, res.NumImagesUpdated)
+				assert.Equal(t, currentTag, res.Changes[0].OldTag.TagName)
+				assert.Equal(t, v1alpha1.KustomizeImage("gcr.io/test/pin-sibling:main-bbb@"+imageDigest), appImages.Application.Spec.Source.Kustomize.Images[0])
+				events, err := kubeClient.KubeClient.Clientset.CoreV1().Events("test").List(context.Background(), v1.ListOptions{})
+				require.NoError(t, err)
+				assert.Len(t, events.Items, 1)
+				assert.Equal(t, currentTag, events.Items[0].Annotations["argocd-image-updater.image-0/old-tag"])
+
+				// The target is already pinned even if status still lists an unpinned sibling.
+				res = UpdateApplication(context.Background(), updateConf, NewSyncIterationState())
+				assert.Equal(t, 0, res.NumErrors)
+				assert.Equal(t, 0, res.NumImagesUpdated)
+			})
+		}
+	})
+
+	t.Run("Test pinDigest with a bare digest skips unchanged Application write-back", func(t *testing.T) {
+		payload := []byte(`{"schemaVersion":2}`)
+		imageDigest := godigest.FromBytes(payload).String()
+		mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
+			manifest := regmock.Manifest{}
+			manifest.On("Payload").Return(schema2.MediaTypeManifest, payload, nil)
+			regMock := regmock.RegistryClient{}
+			regMock.On("NewRepository", mock.Anything, mock.Anything).Return(nil)
+			regMock.On("Tags", mock.Anything).Return([]string{"1.0.1", "1.0.2"}, nil)
+			regMock.On("ManifestForTag", mock.Anything, "1.0.2").Return(&manifest, nil)
+			return &regMock, nil
+		}
+
+		argoClient := argomock.ArgoCD{}
+		argoClient.On("UpdateSpec", mock.Anything, mock.Anything, mock.Anything).Return(nil, nil)
+		kubeClient := kube.ImageUpdaterKubernetesClient{
+			KubeClient: &registryKube.KubernetesClient{
+				Clientset: fake.NewFakeKubeClient(),
+			},
+		}
+		img := NewImage(image.NewFromIdentifier("app=gcr.io/test/pin-current:1.x"))
+		img.PinDigest = true
+		appImages := &ApplicationImages{
+			Application: v1alpha1.Application{
+				ObjectMeta: v1.ObjectMeta{Name: "pin-current-app", Namespace: "test"},
+				Spec: v1alpha1.ApplicationSpec{
+					Source: &v1alpha1.ApplicationSource{
+						Helm: &v1alpha1.ApplicationSourceHelm{Parameters: []v1alpha1.HelmParameter{
+							{Name: "image.name", Value: "gcr.io/test/pin-current", ForceString: true},
+							{Name: "image.tag", Value: "1.0.2@" + imageDigest, ForceString: true},
+						}},
+					},
+				},
+				Status: v1alpha1.ApplicationStatus{
+					SourceType: v1alpha1.ApplicationSourceTypeHelm,
+					Summary: v1alpha1.ApplicationSummary{
+						Images: []string{"gcr.io/test/pin-current@" + imageDigest},
+					},
+				},
+			},
+			Images:          ImageList{img},
+			WriteBackConfig: &WriteBackConfig{Method: WriteBackApplication},
+		}
+		updateConf := &UpdateConfiguration{
+			NewRegFN:   mockClientFn,
+			ArgoClient: &argoClient,
+			KubeClient: &kubeClient,
+			UpdateApp:  appImages,
+		}
+
+		res := UpdateApplication(context.Background(), updateConf, NewSyncIterationState())
+		assert.Equal(t, 0, res.NumErrors)
+		assert.Equal(t, 0, res.NumImagesUpdated)
+		tagValue := ""
+		for _, p := range appImages.Application.Spec.Source.Helm.Parameters {
+			if p.Name == "image.tag" {
+				tagValue = p.Value
+			}
+		}
+		assert.Equal(t, "1.0.2@"+imageDigest, tagValue)
+	})
+
+	t.Run("Test pinDigest with a bare digest skips unchanged Git write-back", func(t *testing.T) {
+		payload := []byte(`{"schemaVersion":2}`)
+		imageDigest := godigest.FromBytes(payload).String()
+		mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
+			manifest := regmock.Manifest{}
+			manifest.On("Payload").Return(schema2.MediaTypeManifest, payload, nil)
+			regMock := regmock.RegistryClient{}
+			regMock.On("NewRepository", mock.Anything, mock.Anything).Return(nil)
+			regMock.On("Tags", mock.Anything).Return([]string{"1.0.1", "1.0.2"}, nil)
+			regMock.On("ManifestForTag", mock.Anything, "1.0.2").Return(&manifest, nil)
+			return &regMock, nil
+		}
+
+		argoClient := argomock.ArgoCD{}
+		argoClient.On("UpdateSpec", mock.Anything, mock.Anything, mock.Anything).Return(nil, nil)
+		kubeClient := kube.ImageUpdaterKubernetesClient{
+			KubeClient: &registryKube.KubernetesClient{
+				Clientset: fake.NewFakeKubeClient(),
+			},
+		}
+		gitMock, dir, cleanup := mockGit(t)
+		defer cleanup()
+		gitMock.On("Checkout", mock.Anything, mock.Anything).Return(nil)
+		gitMock.On("Commit", mock.Anything, mock.Anything).Return(nil)
+		gitMock.On("Push", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+		targetFile := filepath.Join(dir, "values.yaml")
+		originalData := []byte(fmt.Sprintf("image:\n  name: gcr.io/test/pin-current\n  tag: 1.0.2@%s\n", imageDigest))
+		assert.NoError(t, os.WriteFile(targetFile, originalData, os.ModePerm))
+		img := NewImage(image.NewFromIdentifier("app=gcr.io/test/pin-current:1.x"))
+		img.PinDigest = true
+		appImages := &ApplicationImages{
+			Application: v1alpha1.Application{
+				ObjectMeta: v1.ObjectMeta{Name: "pin-current-app", Namespace: "test"},
+				Spec: v1alpha1.ApplicationSpec{
+					Source: &v1alpha1.ApplicationSource{Helm: &v1alpha1.ApplicationSourceHelm{}},
+				},
+				Status: v1alpha1.ApplicationStatus{
+					SourceType: v1alpha1.ApplicationSourceTypeHelm,
+					Summary: v1alpha1.ApplicationSummary{
+						Images: []string{"gcr.io/test/pin-current@" + imageDigest},
+					},
+				},
+			},
+			Images: ImageList{img},
+			WriteBackConfig: &WriteBackConfig{
+				Method:    WriteBackGit,
+				GitRepo:   "https://example.com/pin-current.git",
+				GitBranch: "main",
+				GitClient: gitMock,
+				Target:    "values.yaml",
+				GetCreds: func(app *v1alpha1.Application) (git.Creds, error) {
+					return git.NopCreds{}, nil
+				},
+			},
+		}
+
+		res := UpdateApplication(context.Background(), &UpdateConfiguration{
+			NewRegFN:   mockClientFn,
+			ArgoClient: &argoClient,
+			KubeClient: &kubeClient,
+			UpdateApp:  appImages,
+		}, NewSyncIterationState())
+		assert.Equal(t, 0, res.NumErrors)
+		tagValue := ""
+		for _, p := range appImages.Application.Spec.Source.Helm.Parameters {
+			if p.Name == "image.tag" {
+				tagValue = p.Value
+			}
+		}
+		assert.Equal(t, "1.0.2@"+imageDigest, tagValue)
+		data, err := os.ReadFile(targetFile)
+		assert.NoError(t, err)
+		assert.Equal(t, originalData, data)
+		gitMock.AssertNotCalled(t, "Commit", mock.Anything, mock.Anything)
+		gitMock.AssertNotCalled(t, "Push", mock.Anything, mock.Anything, mock.Anything)
+	})
+
+	t.Run("Test pinDigest skips the image when digest resolution fails", func(t *testing.T) {
+		mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
+			regMock := regmock.RegistryClient{}
+			regMock.On("NewRepository", mock.Anything, mock.Anything).Return(nil)
+			regMock.On("Tags", mock.Anything).Return([]string{"1.0.2"}, nil)
+			regMock.On("ManifestForTag", mock.Anything, "1.0.2").Return(nil, errors.New("manifest unavailable"))
+			return &regMock, nil
+		}
+
+		argoClient := argomock.ArgoCD{}
+		argoClient.On("UpdateSpec", mock.Anything, mock.Anything, mock.Anything).Return(nil, nil)
+		kubeClient := kube.ImageUpdaterKubernetesClient{
+			KubeClient: &registryKube.KubernetesClient{
+				Clientset: fake.NewFakeKubeClient(),
+			},
+		}
+		img := NewImage(image.NewFromIdentifier("app=gcr.io/test/pin-failure:1.x"))
+		img.PinDigest = true
+		appImages := &ApplicationImages{
+			Application: v1alpha1.Application{
+				ObjectMeta: v1.ObjectMeta{Name: "pin-failure-app", Namespace: "test"},
+				Spec: v1alpha1.ApplicationSpec{
+					Source: &v1alpha1.ApplicationSource{
+						Kustomize: &v1alpha1.ApplicationSourceKustomize{
+							Images: v1alpha1.KustomizeImages{"gcr.io/test/pin-failure:1.0.1"},
+						},
+					},
+				},
+				Status: v1alpha1.ApplicationStatus{
+					SourceType: v1alpha1.ApplicationSourceTypeKustomize,
+					Summary: v1alpha1.ApplicationSummary{
+						Images: []string{"gcr.io/test/pin-failure:1.0.1"},
+					},
+				},
+			},
+			Images:          ImageList{img},
+			WriteBackConfig: &WriteBackConfig{Method: WriteBackApplication},
+		}
+
+		res := UpdateApplication(context.Background(), &UpdateConfiguration{
+			NewRegFN:   mockClientFn,
+			ArgoClient: &argoClient,
+			KubeClient: &kubeClient,
+			UpdateApp:  appImages,
+		}, NewSyncIterationState())
+		assert.Equal(t, 1, res.NumErrors)
+		assert.Equal(t, 0, res.NumImagesUpdated)
+		assert.Equal(t, v1alpha1.KustomizeImage("gcr.io/test/pin-failure:1.0.1"), appImages.Application.Spec.Source.Kustomize.Images[0])
+	})
+
 	t.Run("Test Kubernetes Job with forceUpdate and digest strategy (issue #1344)", func(t *testing.T) {
 		// This test reproduces the scenario from issue #1344:
 		// - Application uses a Kubernetes Job (not in app.Status.Summary.Images)

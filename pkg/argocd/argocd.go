@@ -544,6 +544,9 @@ func mergeCommonUpdateSettings(settings ...*iuapi.CommonUpdateSettings) *iuapi.C
 		if s.PullSecret != nil {
 			merged.PullSecret = s.PullSecret
 		}
+		if s.PinDigest != nil {
+			merged.PinDigest = s.PinDigest
+		}
 		if s.ForceUpdate != nil {
 			merged.ForceUpdate = s.ForceUpdate
 		}
@@ -587,6 +590,7 @@ func newImageFromCommonUpdateSettings(ctx context.Context, settings *iuapi.Commo
 	img := &Image{
 		ContainerImage:     &image.ContainerImage{},
 		UpdateStrategy:     image.StrategySemVer,
+		PinDigest:          false,
 		ForceUpdate:        false,
 		AllowTags:          "",
 		PullSecret:         "",
@@ -608,6 +612,9 @@ func newImageFromCommonUpdateSettings(ctx context.Context, settings *iuapi.Commo
 	// Apply the final settings.
 	if settings.UpdateStrategy != nil {
 		img.UpdateStrategy = img.ParseUpdateStrategy(ctx, *settings.UpdateStrategy)
+	}
+	if settings.PinDigest != nil {
+		img.PinDigest = *settings.PinDigest
 	}
 	if settings.ForceUpdate != nil {
 		img.ForceUpdate = *settings.ForceUpdate

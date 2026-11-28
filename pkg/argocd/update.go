@@ -203,6 +203,17 @@ func UpdateApplication(ctx context.Context, updateConf *UpdateConfiguration, sta
 			continue
 		}
 
+		// Pin the selected tag to its manifest digest when requested. The digest
+		// strategy already resolves the digest as part of tag discovery.
+		if applicationImage.PinDigest && vc.Strategy != image.StrategyDigest {
+			latest, err = registry.ResolveTagDigest(imageOpCtx, latest, regClient)
+			if err != nil {
+				imgCtx.Errorf("Unable to resolve digest for selected image tag: %v", err)
+				result.NumErrors += 1
+				continue
+			}
+		}
+
 		// When several containers in the application reference the same image
 		// name, the live image list (Argo CD's alias-less, de-duplicated
 		// Status.Summary.Images) can cause the earlier ContainsImage lookup to
@@ -215,9 +226,23 @@ func UpdateApplication(ctx context.Context, updateConf *UpdateConfiguration, sta
 				imgCtx.Debugf("Multiple containers reference image '%s'; re-selected live image (tag '%s', digest '%s') for update evaluation", applicationImage.ImageName, m.ImageTag.TagName, m.ImageTag.TagDigest)
 				updateableImage = m
 			}
+		} else if applicationImage.PinDigest && !needsUpdate(updateableImage, applicationImage.ContainerImage, latest, vc.Strategy, true) {
+			// Status does not identify aliases. A current sibling must not hide
+			// another reference that still needs pinning or a tag update. The
+			// spec and Git target comparisons suppress unchanged write-back.
+			for _, live := range applicationImages {
+				if !updateableImage.DiffersFrom(live, false) && needsUpdate(live, applicationImage.ContainerImage, latest, vc.Strategy, true) {
+					imgCtx.Debugf("Multiple containers reference image '%s'; re-selected pending live image for pinned update evaluation", applicationImage.ImageName)
+					updateableImage = live
+					if updateableImage.ImageTag == nil {
+						updateableImage.ImageTag = tag.NewImageTag("", time.Unix(0, 0), "")
+					}
+					break
+				}
+			}
 		}
 
-		if needsUpdate(updateableImage, applicationImage.ContainerImage, latest, vc.Strategy) {
+		if needsUpdate(updateableImage, applicationImage.ContainerImage, latest, vc.Strategy, applicationImage.PinDigest) {
 			appImageWithTag := applicationImage.WithTag(latest)
 			appImageFullNameWithTag := appImageWithTag.GetFullNameWithTag()
 
@@ -269,7 +294,12 @@ func UpdateApplication(ctx context.Context, updateConf *UpdateConfiguration, sta
 				continue
 			} else {
 				imgCtx.Infof("Successfully updated image '%s' to '%s', but pending spec update (dry run=%v)", updateableImage.GetFullNameWithTag(), appImageFullNameWithTag, updateConf.DryRun)
-				changeList = append(changeList, ChangeEntry{appImageWithTag, updateableImage.ImageTag, appImageWithTag.ImageTag})
+				changeList = append(changeList, ChangeEntry{
+					Image:     appImageWithTag,
+					OldTag:    updateableImage.ImageTag,
+					NewTag:    appImageWithTag.ImageTag,
+					PinDigest: applicationImage.PinDigest,
+				})
 				result.NumImagesUpdated += 1
 			}
 		} else {
@@ -343,8 +373,8 @@ func UpdateApplication(ctx context.Context, updateConf *UpdateConfiguration, sta
 					for i, c := range changeList {
 						annotations[fmt.Sprintf("argocd-image-updater.image-%d/full-image-name", i)] = c.Image.GetFullNameWithoutTag()
 						annotations[fmt.Sprintf("argocd-image-updater.image-%d/image-name", i)] = c.Image.ImageName
-						annotations[fmt.Sprintf("argocd-image-updater.image-%d/old-tag", i)] = c.OldTag.String()
-						annotations[fmt.Sprintf("argocd-image-updater.image-%d/new-tag", i)] = c.NewTag.String()
+						annotations[fmt.Sprintf("argocd-image-updater.image-%d/old-tag", i)] = c.FormatTag(c.OldTag)
+						annotations[fmt.Sprintf("argocd-image-updater.image-%d/new-tag", i)] = c.FormatTag(c.NewTag)
 					}
 					message := fmt.Sprintf("Successfully updated application '%s'", app)
 					_, err = updateConf.KubeClient.CreateApplicationEvent(&updateConf.UpdateApp.Application, "ImagesUpdated", message, annotations)
@@ -371,16 +401,20 @@ func UpdateApplication(ctx context.Context, updateConf *UpdateConfiguration, sta
 
 // needsUpdate determines if an image needs to be updated based on the provided
 // updateableImage, applicationImage, latest available tag, and update strategy.
-// It considers digest strategy, tag equality, and Kustomize image differences.
+// It considers digest strategy, digest pinning, tag equality, and Kustomize image differences.
 // Returns true if an update is required, false otherwise.
-func needsUpdate(updateableImage *image.ContainerImage, applicationImage *image.ContainerImage, latest *tag.ImageTag, strategy image.UpdateStrategy) bool {
-	if strategy == image.StrategyDigest {
+func needsUpdate(updateableImage *image.ContainerImage, applicationImage *image.ContainerImage, latest *tag.ImageTag, strategy image.UpdateStrategy, pinDigest bool) bool {
+	if strategy == image.StrategyDigest || pinDigest {
 		if updateableImage.ImageTag == nil {
 			return true
 		}
-		// When using digest strategy, consider the digest even if the current image
+		// When using digest strategy or pinning, consider the digest even if the current image
 		// was referenced by tag. If either digest is missing or differs, we want an update.
 		if !updateableImage.ImageTag.IsDigest() || updateableImage.ImageTag.TagDigest != latest.TagDigest {
+			return true
+		}
+		if pinDigest && strategy != image.StrategyDigest &&
+			(updateableImage.ImageTag.TagName == "" || updateableImage.ImageTag.TagName != latest.TagName) {
 			return true
 		}
 	}

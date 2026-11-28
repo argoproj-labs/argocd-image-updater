@@ -80,6 +80,11 @@ func (in *CommonUpdateSettings) DeepCopyInto(out *CommonUpdateSettings) {
 		*out = new(string)
 		**out = **in
 	}
+	if in.PinDigest != nil {
+		in, out := &in.PinDigest, &out.PinDigest
+		*out = new(bool)
+		**out = **in
+	}
 	if in.ForceUpdate != nil {
 		in, out := &in.ForceUpdate, &out.ForceUpdate
 		*out = new(bool)

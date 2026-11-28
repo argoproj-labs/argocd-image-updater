@@ -354,6 +354,23 @@ spec:
       branch: "main:image-updater-{{.SHA256}}"
 ```
 
+!!!note "Image digests in branch templates"
+    When `pinDigest: true`, `.OldTag` and `.NewTag` include `tag@sha256:<hash>`
+    when both are known. Colons in the rendered branch name are replaced with
+    dashes, so the tag-based template above can produce
+    `image-updater-foo/bar-1.1@sha256-<hash>`. This also applies to digest-only
+    version values. Colons are replaced only in the rendered branch name, not
+    in image references, commit messages, or hash inputs. Other invalid
+    branch-name characters are not normalized automatically. Use `.SHA256`
+    for fixed-length names.
+
+The changes hash is separate from the image digest. With pinning enabled, its
+new-version input includes the selected tag and digest, distinguishing tag
+promotions that share the same digest. The old-version hash input uses only
+the digest when known, otherwise the tag name. With `pinDigest: false`, the
+new-version hash input also uses only the digest when known, otherwise the tag
+name.
+
 The following variables are provided for this template:
 
 * `.Images` is a list of changes that were performed by the update. Each
@@ -361,8 +378,8 @@ The following variables are provided for this template:
   each change:
   * `.Name` holds the full name of the image that was updated
   * `.Alias` holds the alias of the image that was updated
-  * `.OldTag` holds the tag name or SHA digest previous to the update
-  * `.NewTag` holds the tag name or SHA digest that was updated to
+  * `.OldTag` holds the version previous to the update
+  * `.NewTag` holds the version that was updated to
 * `.SHA256` is a unique SHA256 hash representing these changes
 * `.TargetKey` is a short hash (8 hex characters) identifying the write-back target (derived from git repo, branch, and target path)
 * `.AppNamespace` is the namespace of the application being updated
@@ -812,9 +829,19 @@ Two top-level variables are provided to the template:
   entry in this list is a struct providing the following information for
   each change:
     * `.Image` holds the full name of the image that was updated
-    * `.OldTag` holds the tag name or SHA digest previous to the update
-    * `.NewTag` holds the tag name or SHA digest that was updated to
+    * `.OldTag` holds the version previous to the update
+    * `.NewTag` holds the version that was updated to
     * `.Labels` is a map of the labels contained in the created Docker/OCI image, and in case no labels are being assigned to created image, an empty map is created
+
+With `pinDigest: false`, `.OldTag` and `.NewTag` contain the digest when known,
+otherwise the tag name. With `pinDigest: true`, they contain `tag@sha256:<hash>`
+when both are known, otherwise only the available tag or digest. If neither is
+known, the value is empty.
+
+The previous version comes from the observed current image. No lookups are
+performed solely to fill in missing information for commit messages. The
+`digest` strategy always pins images; its template values follow the same
+`pinDigest` formatting rules.
 
 In order to test a template before configuring it for use in Image Updater,
 you can store the template you want to use in a temporary file, and then use

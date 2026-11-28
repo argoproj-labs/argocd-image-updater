@@ -174,9 +174,19 @@ func hasPluginTargets(images ImageList) bool {
 
 // ChangeEntry represents an image that has been changed by Image Updater
 type ChangeEntry struct {
-	Image  *image.ContainerImage
-	OldTag *tag.ImageTag
-	NewTag *tag.ImageTag
+	Image     *image.ContainerImage
+	OldTag    *tag.ImageTag
+	NewTag    *tag.ImageTag
+	PinDigest bool
+}
+
+// FormatTag returns the tag's reporting value, including its name and digest
+// when pinning is enabled and both are known.
+func (c ChangeEntry) FormatTag(t *tag.ImageTag) string {
+	if c.PinDigest && t.TagName != "" && t.IsDigest() {
+		return t.TagName + "@" + t.TagDigest
+	}
+	return t.String()
 }
 
 // SyncIterationState holds shared state of a running update operation
@@ -251,6 +261,7 @@ type Image struct {
 
 	// Update settings
 	UpdateStrategy image.UpdateStrategy
+	PinDigest      bool
 	ForceUpdate    bool
 	AllowTags      string
 	IgnoreTags     []string

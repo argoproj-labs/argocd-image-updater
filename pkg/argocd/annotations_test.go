@@ -17,6 +17,7 @@ func Test_getImageUpdateStrategyAnnotations(t *testing.T) {
 
 		assert.Equal(t, ImageUpdaterAnnotationPrefix+"/allow-tags", result.AllowTags)
 		assert.Equal(t, ImageUpdaterAnnotationPrefix+"/ignore-tags", result.IgnoreTags)
+		assert.Equal(t, ImageUpdaterAnnotationPrefix+"/pin-digest", result.PinDigest)
 		assert.Equal(t, ImageUpdaterAnnotationPrefix+"/force-update", result.ForceUpdate)
 		assert.Equal(t, ImageUpdaterAnnotationPrefix+"/update-strategy", result.UpdateStrategy)
 		assert.Equal(t, ImageUpdaterAnnotationPrefix+"/pull-secret", result.PullSecret)
@@ -29,6 +30,7 @@ func Test_getImageUpdateStrategyAnnotations(t *testing.T) {
 
 		assert.Equal(t, ImageUpdaterAnnotationPrefix+"/web.allow-tags", result.AllowTags)
 		assert.Equal(t, ImageUpdaterAnnotationPrefix+"/web.ignore-tags", result.IgnoreTags)
+		assert.Equal(t, ImageUpdaterAnnotationPrefix+"/web.pin-digest", result.PinDigest)
 		assert.Equal(t, ImageUpdaterAnnotationPrefix+"/web.force-update", result.ForceUpdate)
 		assert.Equal(t, ImageUpdaterAnnotationPrefix+"/web.update-strategy", result.UpdateStrategy)
 		assert.Equal(t, ImageUpdaterAnnotationPrefix+"/web.pull-secret", result.PullSecret)
@@ -41,6 +43,7 @@ func Test_getImageUpdateStrategyAnnotations(t *testing.T) {
 
 		assert.Equal(t, ImageUpdaterAnnotationPrefix+"/my-app.allow-tags", result.AllowTags)
 		assert.Equal(t, ImageUpdaterAnnotationPrefix+"/my-app.ignore-tags", result.IgnoreTags)
+		assert.Equal(t, ImageUpdaterAnnotationPrefix+"/my-app.pin-digest", result.PinDigest)
 		assert.Equal(t, ImageUpdaterAnnotationPrefix+"/my-app.force-update", result.ForceUpdate)
 		assert.Equal(t, ImageUpdaterAnnotationPrefix+"/my-app.update-strategy", result.UpdateStrategy)
 		assert.Equal(t, ImageUpdaterAnnotationPrefix+"/my-app.pull-secret", result.PullSecret)
@@ -623,6 +626,7 @@ func Test_getCommonUpdateSettingsFromAnnotations(t *testing.T) {
 		require.NotNil(t, result)
 		assert.NotNil(t, result.UpdateStrategy)
 		assert.Equal(t, "semver", *result.UpdateStrategy)
+		assert.Nil(t, result.PinDigest)
 		assert.Nil(t, result.ForceUpdate)
 		assert.Nil(t, result.AllowTags)
 		assert.Nil(t, result.IgnoreTags)
@@ -637,6 +641,7 @@ func Test_getCommonUpdateSettingsFromAnnotations(t *testing.T) {
 				Namespace: "argocd",
 				Annotations: map[string]string{
 					ImageUpdaterAnnotationPrefix + "/update-strategy": "latest",
+					ImageUpdaterAnnotationPrefix + "/pin-digest":      "false",
 					ImageUpdaterAnnotationPrefix + "/force-update":    "false",
 					ImageUpdaterAnnotationPrefix + "/allow-tags":      "v2.*",
 					ImageUpdaterAnnotationPrefix + "/ignore-tags":     "dev,test",
@@ -651,6 +656,8 @@ func Test_getCommonUpdateSettingsFromAnnotations(t *testing.T) {
 		require.NotNil(t, result)
 		assert.NotNil(t, result.UpdateStrategy)
 		assert.Equal(t, "latest", *result.UpdateStrategy)
+		assert.NotNil(t, result.PinDigest)
+		assert.False(t, *result.PinDigest)
 		assert.NotNil(t, result.ForceUpdate)
 		assert.False(t, *result.ForceUpdate)
 		assert.NotNil(t, result.AllowTags)
@@ -660,6 +667,81 @@ func Test_getCommonUpdateSettingsFromAnnotations(t *testing.T) {
 		assert.NotNil(t, result.PullSecret)
 		assert.Equal(t, "registry-secret", *result.PullSecret)
 		assert.Nil(t, result.Platforms)
+	})
+
+	t.Run("should handle pin-digest with true value", func(t *testing.T) {
+		app := &argocdapi.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "test-app",
+				Namespace: "argocd",
+				Annotations: map[string]string{
+					ImageUpdaterAnnotationPrefix + "/pin-digest": "true",
+				},
+			},
+		}
+
+		updateStrategyAnnotations := getImageUpdateStrategyAnnotations("")
+		result, err := getCommonUpdateSettingsFromAnnotations(app, updateStrategyAnnotations)
+		require.NoError(t, err)
+		require.NotNil(t, result)
+		assert.NotNil(t, result.PinDigest)
+		assert.True(t, *result.PinDigest)
+	})
+
+	t.Run("should handle pin-digest with false value", func(t *testing.T) {
+		app := &argocdapi.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "test-app",
+				Namespace: "argocd",
+				Annotations: map[string]string{
+					ImageUpdaterAnnotationPrefix + "/pin-digest": "false",
+				},
+			},
+		}
+
+		updateStrategyAnnotations := getImageUpdateStrategyAnnotations("")
+		result, err := getCommonUpdateSettingsFromAnnotations(app, updateStrategyAnnotations)
+		require.NoError(t, err)
+		require.NotNil(t, result)
+		assert.NotNil(t, result.PinDigest)
+		assert.False(t, *result.PinDigest)
+	})
+
+	t.Run("should return error when pin-digest has invalid boolean value", func(t *testing.T) {
+		app := &argocdapi.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "test-app",
+				Namespace: "argocd",
+				Annotations: map[string]string{
+					ImageUpdaterAnnotationPrefix + "/pin-digest": "invalid",
+				},
+			},
+		}
+
+		updateStrategyAnnotations := getImageUpdateStrategyAnnotations("")
+		result, err := getCommonUpdateSettingsFromAnnotations(app, updateStrategyAnnotations)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "error parsing pin digest settings")
+		assert.Nil(t, result)
+	})
+
+	t.Run("should trim whitespace from pin-digest value", func(t *testing.T) {
+		app := &argocdapi.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "test-app",
+				Namespace: "argocd",
+				Annotations: map[string]string{
+					ImageUpdaterAnnotationPrefix + "/pin-digest": " true ",
+				},
+			},
+		}
+
+		updateStrategyAnnotations := getImageUpdateStrategyAnnotations("")
+		result, err := getCommonUpdateSettingsFromAnnotations(app, updateStrategyAnnotations)
+		require.NoError(t, err)
+		require.NotNil(t, result)
+		assert.NotNil(t, result.PinDigest)
+		assert.True(t, *result.PinDigest)
 	})
 
 	t.Run("should return error when force-update has invalid boolean value", func(t *testing.T) {
@@ -782,6 +864,7 @@ func Test_getCommonUpdateSettingsFromAnnotations(t *testing.T) {
 				Namespace: "argocd",
 				Annotations: map[string]string{
 					ImageUpdaterAnnotationPrefix + "/web.update-strategy": "digest",
+					ImageUpdaterAnnotationPrefix + "/web.pin-digest":      "true",
 					ImageUpdaterAnnotationPrefix + "/web.force-update":    "true",
 					ImageUpdaterAnnotationPrefix + "/web.allow-tags":      "v3.*",
 					ImageUpdaterAnnotationPrefix + "/web.ignore-tags":     "rc,alpha",
@@ -797,6 +880,8 @@ func Test_getCommonUpdateSettingsFromAnnotations(t *testing.T) {
 		require.NotNil(t, result)
 		assert.NotNil(t, result.UpdateStrategy)
 		assert.Equal(t, "digest", *result.UpdateStrategy)
+		assert.NotNil(t, result.PinDigest)
+		assert.True(t, *result.PinDigest)
 		assert.NotNil(t, result.ForceUpdate)
 		assert.True(t, *result.ForceUpdate)
 		assert.NotNil(t, result.AllowTags)
@@ -1127,6 +1212,7 @@ func Test_getImagesFromAnnotations(t *testing.T) {
 				Annotations: map[string]string{
 					ImageUpdaterAnnotation:                                "web=docker.io/library/nginx:1.21",
 					ImageUpdaterAnnotationPrefix + "/web.update-strategy": "semver",
+					ImageUpdaterAnnotationPrefix + "/web.pin-digest":      "false",
 					ImageUpdaterAnnotationPrefix + "/web.force-update":    "true",
 					ImageUpdaterAnnotationPrefix + "/web.allow-tags":      "v1.*",
 				},
@@ -1141,6 +1227,8 @@ func Test_getImagesFromAnnotations(t *testing.T) {
 		require.NotNil(t, result[0].CommonUpdateSettings)
 		assert.NotNil(t, result[0].CommonUpdateSettings.UpdateStrategy)
 		assert.Equal(t, "semver", *result[0].CommonUpdateSettings.UpdateStrategy)
+		assert.NotNil(t, result[0].CommonUpdateSettings.PinDigest)
+		assert.False(t, *result[0].CommonUpdateSettings.PinDigest)
 		assert.NotNil(t, result[0].CommonUpdateSettings.ForceUpdate)
 		assert.True(t, *result[0].CommonUpdateSettings.ForceUpdate)
 		assert.NotNil(t, result[0].CommonUpdateSettings.AllowTags)
@@ -1194,6 +1282,24 @@ func Test_getImagesFromAnnotations(t *testing.T) {
 		require.NotNil(t, result[0].ManifestTarget.Kustomize)
 		assert.NotNil(t, result[0].ManifestTarget.Kustomize.Name)
 		assert.Equal(t, "docker.io/library/nginx", *result[0].ManifestTarget.Kustomize.Name)
+	})
+
+	t.Run("should return error when pin-digest parsing fails", func(t *testing.T) {
+		app := &argocdapi.Application{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "test-app",
+				Namespace: "argocd",
+				Annotations: map[string]string{
+					ImageUpdaterAnnotation:                           "web=docker.io/library/nginx:1.21",
+					ImageUpdaterAnnotationPrefix + "/web.pin-digest": "invalid-boolean",
+				},
+			},
+		}
+
+		result, err := getImagesFromAnnotations(app)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "parse common update settings")
+		assert.Nil(t, result)
 	})
 
 	t.Run("should return error when common update settings parsing fails", func(t *testing.T) {

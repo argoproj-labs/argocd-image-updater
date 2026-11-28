@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/distribution/distribution/v3/manifest/schema2"
+	"github.com/opencontainers/go-digest"
 
 	distclient "github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/registry/internal/client"
 
@@ -281,6 +282,62 @@ func Test_GetTags(t *testing.T) {
 		assert.ErrorIs(t, err, authErr)
 		assert.Equal(t, "olduser", ep.Username)
 		assert.Equal(t, "oldpass", ep.Password)
+	})
+}
+
+func Test_ResolveTagDigest(t *testing.T) {
+	t.Run("should reuse existing manifest digest", func(t *testing.T) {
+		imgTag := tag.NewImageTagWithLabels("main-abc", time.Unix(1, 0), "", map[string]string{"version": "1"})
+		imgTag.ManifestDigest = "sha256:" + strings.Repeat("a", 64)
+		expected := *imgTag
+		expected.TagDigest = imgTag.ManifestDigest
+		regClient := mocks.RegistryClient{}
+
+		resolvedTag, err := ResolveTagDigest(context.Background(), imgTag, &regClient)
+		require.NoError(t, err)
+		assert.Equal(t, &expected, resolvedTag)
+		assert.Empty(t, imgTag.TagDigest)
+	})
+
+	t.Run("should resolve digest from selected tag's manifest", func(t *testing.T) {
+		payload := []byte(`{"schemaVersion":2}`)
+		manifest := mocks.Manifest{}
+		manifest.On("Payload").Return(schema2.MediaTypeManifest, payload, nil)
+		regClient := mocks.RegistryClient{}
+		regClient.On("ManifestForTag", mock.Anything, "main-abc").Return(&manifest, nil)
+		imgTag := tag.NewImageTag("main-abc", time.Unix(1, 0), "")
+		expected := *imgTag
+		expected.ManifestDigest = digest.FromBytes(payload).String()
+		expected.TagDigest = expected.ManifestDigest
+
+		resolvedTag, err := ResolveTagDigest(context.Background(), imgTag, &regClient)
+		require.NoError(t, err)
+		assert.Equal(t, &expected, resolvedTag)
+		// ensure original tag is not modified
+		assert.Empty(t, imgTag.TagDigest)
+		assert.Empty(t, imgTag.ManifestDigest)
+	})
+
+	t.Run("should return error when manifest fetch fails", func(t *testing.T) {
+		regClient := mocks.RegistryClient{}
+		regClient.On("ManifestForTag", mock.Anything, "main-abc").Return(nil, errors.New("manifest not found"))
+		imgTag := tag.NewImageTag("main-abc", time.Unix(1, 0), "")
+
+		resolvedTag, err := ResolveTagDigest(context.Background(), imgTag, &regClient)
+		require.Error(t, err)
+		assert.Nil(t, resolvedTag)
+	})
+
+	t.Run("should return error when manifest payload fails", func(t *testing.T) {
+		manifest := mocks.Manifest{}
+		manifest.On("Payload").Return("", []byte(nil), errors.New("invalid manifest payload"))
+		regClient := mocks.RegistryClient{}
+		regClient.On("ManifestForTag", mock.Anything, "main-abc").Return(&manifest, nil)
+		imgTag := tag.NewImageTag("main-abc", time.Unix(1, 0), "")
+
+		resolvedTag, err := ResolveTagDigest(context.Background(), imgTag, &regClient)
+		require.Error(t, err)
+		assert.Nil(t, resolvedTag)
 	})
 }
 

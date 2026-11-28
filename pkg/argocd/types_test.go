@@ -3,8 +3,11 @@ package argocd
 import (
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
+
+	"github.com/argoproj-labs/argocd-image-updater/registry-scanner/pkg/tag"
 )
 
 func Test_WriteBackTargetKey(t *testing.T) {
@@ -60,6 +63,27 @@ func Test_WriteBackTargetKey(t *testing.T) {
 		wbc := &WriteBackConfig{GitRepo: "https://github.com/org/repo.git", GitBranch: "main", Target: "values.yaml"}
 		key := wbc.WriteBackTargetKey()
 		assert.Len(t, key, 8)
+	})
+}
+
+func Test_ChangeEntry_FormatTag(t *testing.T) {
+	t.Run("Pinning disabled preserves digest-only reporting", func(t *testing.T) {
+		change := ChangeEntry{}
+		version := tag.NewImageTag("1.0", time.Now(), "sha256:abc")
+		assert.Equal(t, "sha256:abc", change.FormatTag(version))
+	})
+
+	t.Run("Pinning enabled reports tag and digest", func(t *testing.T) {
+		change := ChangeEntry{PinDigest: true}
+		version := tag.NewImageTag("1.0", time.Now(), "sha256:abc")
+		assert.Equal(t, "1.0@sha256:abc", change.FormatTag(version))
+	})
+
+	t.Run("Pinning enabled preserves partial version information", func(t *testing.T) {
+		change := ChangeEntry{PinDigest: true}
+		assert.Equal(t, "1.0", change.FormatTag(tag.NewImageTag("1.0", time.Now(), "")))
+		assert.Equal(t, "sha256:abc", change.FormatTag(tag.NewImageTag("", time.Now(), "sha256:abc")))
+		assert.Empty(t, change.FormatTag(tag.NewImageTag("", time.Now(), "")))
 	})
 }
 

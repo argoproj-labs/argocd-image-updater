@@ -65,6 +65,45 @@ func TestBuildRecentUpdates(t *testing.T) {
 		assert.Contains(t, result[0].Message, "1.21")
 	})
 
+	t.Run("pinDigest reports tag and digest", func(t *testing.T) {
+		changes := []argocd.ChangeEntry{
+			{
+				Image: &image.ContainerImage{
+					ImageName:  "nginx",
+					ImageAlias: "web",
+				},
+				OldTag:    tag.NewImageTag("1.20", time.Now(), "sha256:old"),
+				NewTag:    tag.NewImageTag("1.21", time.Now(), "sha256:new"),
+				PinDigest: true,
+			},
+		}
+
+		result := buildRecentUpdates(changes, now)
+		assert.Len(t, result, 1)
+		assert.Equal(t, "1.21@sha256:new", result[0].NewVersion)
+		assert.Contains(t, result[0].Message, "1.20@sha256:old")
+		assert.Contains(t, result[0].Message, "1.21@sha256:new")
+	})
+
+	t.Run("pinDigest disabled preserves digest-only reporting", func(t *testing.T) {
+		changes := []argocd.ChangeEntry{
+			{
+				Image: &image.ContainerImage{
+					ImageName:  "nginx",
+					ImageAlias: "web",
+				},
+				OldTag: tag.NewImageTag("1.20", time.Now(), "sha256:old"),
+				NewTag: tag.NewImageTag("1.21", time.Now(), "sha256:new"),
+			},
+		}
+
+		result := buildRecentUpdates(changes, now)
+		assert.Len(t, result, 1)
+		assert.Equal(t, "sha256:new", result[0].NewVersion)
+		assert.Contains(t, result[0].Message, "sha256:old")
+		assert.Contains(t, result[0].Message, "sha256:new")
+	})
+
 	t.Run("same image updated in multiple apps aggregates", func(t *testing.T) {
 		changes := []argocd.ChangeEntry{
 			{
