@@ -43,6 +43,7 @@ type UpdateConfiguration struct {
 	GitCommitSigningMethod string
 	GitCommitSignOff       bool
 	GitCommitMethod        string
+	GitWorkingCopyDir      string
 	DisableKubeEvents      bool
 	IgnorePlatforms        bool
 	GitCreds               git.CredsStore
@@ -105,13 +106,16 @@ type WriteBackConfig struct {
 	GitCommitSigningMethod string
 	GitCommitSignOff       bool
 	GitCommitMethod        string
-	KustomizeBase          string
-	Target                 string
-	GitRepo                string
-	GitCreds               git.CredsStore
-	PRProvider             PRProvider
-	PRLabels               []string
-	PullRequest            *PullRequest
+	// GitWorkingCopyDir, when set, holds one working copy per write-back
+	// repository across update cycles (see commitChangesGit).
+	GitWorkingCopyDir string
+	KustomizeBase     string
+	Target            string
+	GitRepo           string
+	GitCreds          git.CredsStore
+	PRProvider        PRProvider
+	PRLabels          []string
+	PullRequest       *PullRequest
 }
 
 // WriteBackTargetKey returns a short hash that uniquely identifies the

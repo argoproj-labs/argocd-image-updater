@@ -325,6 +325,7 @@ func UpdateApplication(ctx context.Context, updateConf *UpdateConfiguration, sta
 		wbc.GitCommitSigningMethod = updateConf.GitCommitSigningMethod
 		wbc.GitCommitSignOff = updateConf.GitCommitSignOff
 		wbc.GitCommitMethod = updateConf.GitCommitMethod
+		wbc.GitWorkingCopyDir = updateConf.GitWorkingCopyDir
 	}
 
 	if needUpdate {

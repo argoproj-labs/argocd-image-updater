@@ -11,6 +11,7 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"sync"
 	"text/template"
 
 	"sigs.k8s.io/kustomize/api/konfig"
@@ -170,6 +171,31 @@ func getWriteBackBranch(ctx context.Context, app *v1alpha1.Application, wbc *Wri
 	return getApplicationSource(ctx, app, wbc).TargetRevision
 }
 
+// workingCopyLocks serializes use of one kept working copy. The per-repository
+// lock in SyncIterationState covers a single ImageUpdater reconcile only, and
+// reconciles of different ImageUpdater resources can run at the same time.
+var workingCopyLocks sync.Map
+
+func lockWorkingCopy(root string) func() {
+	lock, _ := workingCopyLocks.LoadOrStore(root, &sync.Mutex{})
+	mu := lock.(*sync.Mutex)
+	mu.Lock()
+	return mu.Unlock
+}
+
+// keepsWorkingCopy reports whether write-back keeps its working copy across
+// update cycles: a working copy directory is configured, and the change is a
+// direct commit to the branch it was checked out from, so no local branch has
+// to outlive the cycle.
+func keepsWorkingCopy(wbc *WriteBackConfig) bool {
+	return wbc.GitWorkingCopyDir != "" && wbc.PRProvider == 0 && wbc.GitWriteBranch == ""
+}
+
+func workingCopyPath(dir, repo string) string {
+	sum := sha256.Sum256([]byte(repo))
+	return filepath.Join(dir, hex.EncodeToString(sum[:8]))
+}
+
 // commitChangesGit commits any changes required for updating one or more images
 // after the UpdateApplication cycle has finished. The returned bool reports
 // whether nothing reached the remote: the write-back callback found no changes
@@ -178,6 +204,12 @@ func getWriteBackBranch(ctx context.Context, app *v1alpha1.Application, wbc *Wri
 // must not open a PR/MR in that case. A head branch that was fetched from the
 // remote already carries the desired change, so false is returned for it and a
 // PR/MR may still be opened.
+//
+// With a working copy directory (keepsWorkingCopy), each repository's copy is
+// kept between cycles, so the depth-1 fetch of a cycle transfers only objects
+// the remote gained since the previous one; a cycle that finds nothing to
+// change then costs one ref negotiation instead of a fetch of the whole tree
+// (#1939).
 func commitChangesGit(ctx context.Context, applicationImages *ApplicationImages, changeList []ChangeEntry, write changeWriter) (bool, error) {
 	logCtx := log.LoggerFromContext(ctx)
 
@@ -188,18 +220,38 @@ func commitChangesGit(ctx context.Context, applicationImages *ApplicationImages,
 		return false, fmt.Errorf("could not get creds for repo '%s': %v", wbc.GitRepo, err)
 	}
 	var gitC git.Client
+	persistent := false
+	prepared := false
 	if wbc.GitClient == nil {
-		tempRoot, err := os.MkdirTemp(os.TempDir(), fmt.Sprintf("git-%s", app.Name))
-		if err != nil {
-			return false, err
-		}
-		defer func() {
-			err := os.RemoveAll(tempRoot)
+		var root string
+		if keepsWorkingCopy(wbc) {
+			persistent = true
+			root = workingCopyPath(wbc.GitWorkingCopyDir, wbc.GitRepo)
+			unlock := lockWorkingCopy(root)
+			defer unlock()
+			// A cycle that fails before its checkout leaves the copy in an
+			// unknown state; the next cycle starts again from an empty directory.
+			defer func() {
+				if !prepared {
+					if err := os.RemoveAll(root); err != nil {
+						logCtx.Errorf("could not remove working copy %s: %v", root, err)
+					}
+				}
+			}()
+		} else {
+			tempRoot, err := os.MkdirTemp(os.TempDir(), fmt.Sprintf("git-%s", app.Name))
 			if err != nil {
-				logCtx.Errorf("could not remove temp dir: %v", err)
+				return false, err
 			}
-		}()
-		gitC, err = git.NewClientExt(wbc.GitRepo, tempRoot, creds, false, false, "")
+			defer func() {
+				err := os.RemoveAll(tempRoot)
+				if err != nil {
+					logCtx.Errorf("could not remove temp dir: %v", err)
+				}
+			}()
+			root = tempRoot
+		}
+		gitC, err = git.NewClientExt(wbc.GitRepo, root, creds, false, false, "")
 		if err != nil {
 			return false, err
 		}
@@ -281,10 +333,18 @@ func commitChangesGit(ctx context.Context, applicationImages *ApplicationImages,
 		}
 	}
 
-	err = gitC.Checkout(ctx, pushBranch, false)
+	checkoutRevision := pushBranch
+	if persistent {
+		// A kept working copy checks out the fetched remote head detached: a
+		// local branch left by an earlier cycle would still point at that
+		// cycle's commit. Checkout also discards that cycle's leftover edits.
+		checkoutRevision = "origin/" + pushBranch
+	}
+	err = gitC.Checkout(ctx, checkoutRevision, false)
 	if err != nil {
 		return false, err
 	}
+	prepared = true
 
 	if err, skip := write(ctx, applicationImages, gitC); err != nil {
 		return false, err
@@ -340,7 +400,11 @@ func commitChangesGit(ctx context.Context, applicationImages *ApplicationImages,
 	if err != nil {
 		return false, err
 	}
-	err = gitC.Push(ctx, "origin", pushBranch, pushBranch != checkOutBranch)
+	pushRef := pushBranch
+	if persistent {
+		pushRef = "HEAD:refs/heads/" + pushBranch
+	}
+	err = gitC.Push(ctx, "origin", pushRef, pushBranch != checkOutBranch)
 	if err != nil {
 		return false, err
 	}

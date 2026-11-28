@@ -60,6 +60,7 @@ type ImageUpdaterConfig struct {
 	GitCommitSigningMethod string
 	GitCommitSignOff       bool
 	GitCommitMethod        string
+	GitWorkingCopyDir      string
 	DisableKubeEvents      bool
 	GitCreds               git.CredsStore
 	EnableWebhook          bool
