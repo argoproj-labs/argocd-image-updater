@@ -116,9 +116,13 @@ func buildPullRequest(ctx context.Context, wbc *WriteBackConfig, appNamespace, a
 // If commitChangesGit reports that nothing was pushed — the write-back produced
 // no changes (e.g. forceUpdate re-evaluated an image that already matches the
 // target) and the head branch was created locally in this call — no PR/MR is
-// opened, because the branch does not exist on the remote, and true is
-// returned so the caller can tell that nothing exists remotely for the target.
-func commitChangesPR(ctx context.Context, applicationImages *ApplicationImages, changeList []ChangeEntry, write changeWriter) (bool, error) {
+// opened, because the branch does not exist on the remote, and
+// writeBackNothingPushed is returned so the caller can tell that nothing exists
+// remotely for the target.
+//
+// writeBackDone is returned only when a commit was pushed or a PR/MR was
+// opened. An open PR/MR that already carries the change is writeBackUnchanged.
+func commitChangesPR(ctx context.Context, applicationImages *ApplicationImages, changeList []ChangeEntry, write changeWriter) (writeBackOutcome, error) {
 	logCtx := log.LoggerFromContext(ctx)
 	app := applicationImages.Application
 	wbc := applicationImages.WriteBackConfig
@@ -128,12 +132,12 @@ func commitChangesPR(ctx context.Context, applicationImages *ApplicationImages, 
 	// HTTPSCreds return a plain string. No redundant network calls occur.
 	creds, err := wbc.GetCreds(&app)
 	if err != nil {
-		return false, fmt.Errorf("could not get creds for repo '%s': %v", wbc.GitRepo, err)
+		return writeBackUnchanged, fmt.Errorf("could not get creds for repo '%s': %v", wbc.GitRepo, err)
 	}
 
 	tokenProvider, ok := creds.(git.SCMTokenProvider)
 	if !ok {
-		return false, fmt.Errorf("credentials type %T do not support PR creation (use HTTPS or GitHub App credentials)", creds)
+		return writeBackUnchanged, fmt.Errorf("credentials type %T do not support PR creation (use HTTPS or GitHub App credentials)", creds)
 	}
 
 	// Try to detect an existing open PR before cloning and pushing to avoid
@@ -147,88 +151,88 @@ func commitChangesPR(ctx context.Context, applicationImages *ApplicationImages, 
 		if skipped, skipErr := skipIfPRExists(ctx, wbc, tokenProvider, checkOutBranch, app.Namespace, app.Name, changeList); skipErr != nil {
 			logCtx.Warnf("could not check for existing PR, proceeding with update: %v", skipErr)
 		} else if skipped {
-			return false, nil
+			return writeBackUnchanged, nil
 		}
 	}
 
 	// Push the image update commit to the head branch first.
-	nothingPushed, err := commitChangesGit(ctx, applicationImages, changeList, write)
+	outcome, err := commitChangesGit(ctx, applicationImages, changeList, write)
 	if err != nil {
-		return false, err
+		return writeBackUnchanged, err
 	}
-	if nothingPushed {
+	if outcome == writeBackNothingPushed {
 		// The head branch exists only in the local clone, so there is nothing
 		// for a PR/MR to point at. A head branch that is already on the remote
 		// carries the desired change even when this cycle wrote no diff, so
 		// commitChangesGit reports false for it and the PR/MR below is still
 		// opened — which is what recreates a PR after an earlier create() call
 		// failed with the branch already pushed.
-		return true, nil
+		return writeBackNothingPushed, nil
 	}
 
 	if wbc.PullRequest == nil {
-		return false, fmt.Errorf("pull request structure is not initialized")
+		return writeBackUnchanged, fmt.Errorf("pull request structure is not initialized")
 	}
 
 	switch wbc.PRProvider {
 	case PRProviderGitHub:
 		g, err := NewGithubPRService(ctx, wbc, tokenProvider)
 		if err != nil {
-			return false, err
+			return writeBackUnchanged, err
 		}
 
 		if err := g.create(ctx); err != nil {
 			if errors.Is(err, ErrPRAlreadyExists) {
-				return false, nil
+				return outcome, nil
 			}
-			return false, err
+			return writeBackUnchanged, err
 		}
-		return false, nil
+		return writeBackDone, nil
 
 	case PRProviderGitLab:
 		g, err := NewGitLabMRService(ctx, wbc, tokenProvider)
 		if err != nil {
-			return false, err
+			return writeBackUnchanged, err
 		}
 
 		if err := g.create(ctx); err != nil {
 			if errors.Is(err, ErrMRAlreadyExists) {
-				return false, nil
+				return outcome, nil
 			}
-			return false, err
+			return writeBackUnchanged, err
 		}
-		return false, nil
+		return writeBackDone, nil
 
 	case PRProviderAzureDevOps:
 		g, err := NewAzureDevOpsPRService(ctx, wbc, tokenProvider)
 		if err != nil {
-			return false, err
+			return writeBackUnchanged, err
 		}
 
 		if err := g.create(ctx); err != nil {
 			if errors.Is(err, ErrPRAlreadyExists) {
-				return false, nil
+				return outcome, nil
 			}
-			return false, err
+			return writeBackUnchanged, err
 		}
-		return false, nil
+		return writeBackDone, nil
 
 	case PRProviderGitea:
 		g, err := NewGiteaPRService(ctx, wbc, tokenProvider)
 		if err != nil {
-			return false, err
+			return writeBackUnchanged, err
 		}
 
 		if err := g.create(ctx); err != nil {
 			if errors.Is(err, ErrPRAlreadyExists) {
-				return false, nil
+				return outcome, nil
 			}
-			return false, err
+			return writeBackUnchanged, err
 		}
-		return false, nil
+		return writeBackDone, nil
 
 	default:
-		return false, fmt.Errorf("unsupported PR provider: %d", wbc.PRProvider)
+		return writeBackUnchanged, fmt.Errorf("unsupported PR provider: %d", wbc.PRProvider)
 	}
 }
 
