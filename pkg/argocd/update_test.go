@@ -8,9 +8,12 @@ import (
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
+	"encoding/json"
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -41,6 +44,7 @@ import (
 	"github.com/distribution/distribution/v3/manifest/ocischema"
 	"github.com/distribution/distribution/v3/manifest/schema2"
 	"github.com/distribution/distribution/v3/registry/api/errcode"
+	gogithub "github.com/google/go-github/v69/github"
 	godigest "github.com/opencontainers/go-digest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -2556,6 +2560,177 @@ registries:
 		// The tracked tag name must survive; it must NOT be rewritten to "latest".
 		assert.Equal(t, "develop@"+digest, tagValue,
 			"up-to-date image must keep its tracked tag name, not degrade to latest@<digest>")
+	})
+}
+
+// Test_UpdateApplication_WriteBackWroteNothing covers git write-backs that
+// return without an error but did not write anything. Those must not be
+// reported as image updates.
+func Test_UpdateApplication_WriteBackWroteNothing(t *testing.T) {
+	mockClientFn := func(endpoint *registry.RegistryEndpoint, username, password string) (registry.RegistryClient, error) {
+		regMock := regmock.RegistryClient{}
+		regMock.On("NewRepository", mock.Anything, mock.Anything).Return(nil)
+		regMock.On("Tags", mock.Anything).Return([]string{"1.0.2", "1.0.3"}, nil)
+		return &regMock, nil
+	}
+
+	// The running image is older than the newest tag, so every call wants to
+	// update it.
+	newAppImages := func(wbc *WriteBackConfig) *ApplicationImages {
+		return &ApplicationImages{
+			Application: v1alpha1.Application{
+				ObjectMeta: v1.ObjectMeta{
+					Name:      "guestbook",
+					Namespace: "guestbook",
+				},
+				Spec: v1alpha1.ApplicationSpec{
+					Source: &v1alpha1.ApplicationSource{
+						RepoURL:        wbc.GitRepo,
+						TargetRevision: "main",
+						Kustomize: &v1alpha1.ApplicationSourceKustomize{
+							Images: v1alpha1.KustomizeImages{"jannfis/foobar:1.0.1"},
+						},
+					},
+				},
+				Status: v1alpha1.ApplicationStatus{
+					SourceType: v1alpha1.ApplicationSourceTypeKustomize,
+					Summary: v1alpha1.ApplicationSummary{
+						Images: []string{"gcr.io/jannfis/foobar:1.0.1"},
+					},
+				},
+			},
+			Images: ImageList{
+				NewImage(image.NewFromIdentifier("foobar=gcr.io/jannfis/foobar:>=1.0.1")),
+			},
+			WriteBackConfig: wbc,
+		}
+	}
+
+	newWbc := func(serverURL string, gitC git.Client) *WriteBackConfig {
+		return &WriteBackConfig{
+			Method:     WriteBackGit,
+			GitRepo:    serverURL + "/org/repo.git",
+			GitBranch:  "main",
+			Target:     ".argocd-source-guestbook.yaml",
+			PRProvider: PRProviderGitHub,
+			GitClient:  gitC,
+			GetCreds: func(_ *v1alpha1.Application) (git.Creds, error) {
+				return &mockGitAndSCMCreds{token: "github-token"}, nil
+			},
+		}
+	}
+
+	update := func(appImages *ApplicationImages, state *SyncIterationState) (ImageUpdaterResult, kubernetes.Interface) {
+		clientset := fake.NewFakeKubeClient()
+		kubeClient := kube.ImageUpdaterKubernetesClient{
+			KubeClient: &registryKube.KubernetesClient{Clientset: clientset},
+		}
+		res := UpdateApplication(context.Background(), &UpdateConfiguration{
+			NewRegFN:   mockClientFn,
+			KubeClient: &kubeClient,
+			UpdateApp:  appImages,
+		}, state)
+		return res, clientset
+	}
+
+	numEvents := func(t *testing.T, clientset kubernetes.Interface) int {
+		t.Helper()
+		events, err := clientset.CoreV1().Events("").List(context.Background(), v1.ListOptions{})
+		require.NoError(t, err)
+		return len(events.Items)
+	}
+
+	// newServer returns a GitHub API stub that reports openPRs open pull
+	// requests and counts the ones that get created.
+	newServer := func(openPRs []*gogithub.PullRequest, created *int) *httptest.Server {
+		return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method == http.MethodGet {
+				w.WriteHeader(http.StatusOK)
+				_ = json.NewEncoder(w).Encode(openPRs)
+				return
+			}
+			*created++
+			w.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(w).Encode(gogithub.PullRequest{Number: new(1)})
+		}))
+	}
+
+	t.Run("PR was opened", func(t *testing.T) {
+		created := 0
+		server := newServer([]*gogithub.PullRequest{}, &created)
+		defer server.Close()
+
+		wbc := newWbc(server.URL, &mockGitClient{root: t.TempDir()})
+		res, clientset := update(newAppImages(wbc), NewSyncIterationState())
+		assert.Equal(t, 1, created)
+		assert.Equal(t, 0, res.NumErrors)
+		assert.Equal(t, 0, res.NumSkipped)
+		assert.Equal(t, 1, res.NumImagesUpdated)
+		assert.Len(t, res.Changes, 1)
+		assert.Equal(t, 1, numEvents(t, clientset))
+	})
+
+	t.Run("PR for the change is still open", func(t *testing.T) {
+		created := 0
+		server := newServer([]*gogithub.PullRequest{{Number: new(42)}}, &created)
+		defer server.Close()
+
+		wbc := newWbc(server.URL, &mockGitClient{root: t.TempDir()})
+		res, clientset := update(newAppImages(wbc), NewSyncIterationState())
+		assert.Equal(t, 0, created)
+		assert.Equal(t, 0, res.NumErrors)
+		assert.Equal(t, 1, res.NumSkipped)
+		assert.Equal(t, 0, res.NumImagesUpdated)
+		assert.Empty(t, res.Changes)
+		assert.Equal(t, 0, numEvents(t, clientset))
+	})
+
+	t.Run("another application wrote to the same target in this cycle", func(t *testing.T) {
+		created := 0
+		server := newServer([]*gogithub.PullRequest{}, &created)
+		defer server.Close()
+
+		wbc := newWbc(server.URL, &mockGitClient{root: t.TempDir()})
+		state := NewSyncIterationState()
+		require.True(t, state.MarkPRCreated(wbc.WriteBackTargetKey()))
+
+		res, clientset := update(newAppImages(wbc), state)
+		assert.Equal(t, 0, created)
+		assert.Equal(t, 0, res.NumErrors)
+		assert.Equal(t, 1, res.NumSkipped)
+		assert.Equal(t, 0, res.NumImagesUpdated)
+		assert.Empty(t, res.Changes)
+		assert.Equal(t, 0, numEvents(t, clientset))
+	})
+
+	t.Run("branch already has the change", func(t *testing.T) {
+		root := t.TempDir()
+		wbc := newWbc("https://example.com", &mockGitClient{root: root})
+		wbc.PRProvider = 0
+
+		// First run writes the target file, second run finds it unchanged.
+		res, _ := update(newAppImages(wbc), NewSyncIterationState())
+		require.Equal(t, 0, res.NumErrors)
+		require.Equal(t, 1, res.NumImagesUpdated)
+		require.FileExists(t, filepath.Join(root, wbc.Target))
+
+		res, clientset := update(newAppImages(wbc), NewSyncIterationState())
+		assert.Equal(t, 0, res.NumErrors)
+		assert.Equal(t, 1, res.NumSkipped)
+		assert.Equal(t, 0, res.NumImagesUpdated)
+		assert.Empty(t, res.Changes)
+		assert.Equal(t, 0, numEvents(t, clientset))
+	})
+
+	t.Run("write-back fails", func(t *testing.T) {
+		wbc := newWbc("https://example.com", &mockGitClient{initErr: fmt.Errorf("init failed")})
+		wbc.PRProvider = 0
+
+		res, clientset := update(newAppImages(wbc), NewSyncIterationState())
+		assert.Equal(t, 1, res.NumErrors)
+		assert.Equal(t, 0, res.NumImagesUpdated)
+		assert.Empty(t, res.Changes)
+		assert.Equal(t, 0, numEvents(t, clientset))
 	})
 }
 

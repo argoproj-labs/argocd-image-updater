@@ -331,11 +331,20 @@ func UpdateApplication(ctx context.Context, updateConf *UpdateConfiguration, sta
 		baseLogger.Debugf("Using commit message: %s", wbc.GitCommitMessage)
 		if !updateConf.DryRun {
 			baseLogger.Infof("Committing %d parameter update(s) for application %s", result.NumImagesUpdated, app)
-			err := commitChangesLocked(ctx, updateConf.UpdateApp, state, changeList)
+			outcome, err := commitChangesLocked(ctx, updateConf.UpdateApp, state, changeList)
 			if err != nil {
 				baseLogger.Errorf("Could not update application spec: %v", err)
 				result.NumErrors += 1
 				result.NumImagesUpdated = 0
+				changeList = nil
+			} else if outcome != writeBackDone {
+				// A pending PR/MR, a target reserved by another application or
+				// a branch that already has the change: nothing was written in
+				// this cycle, so there is no update to report.
+				baseLogger.Infof("Nothing to write back for application %s, %d image(s) not counted as updated", app, result.NumImagesUpdated)
+				result.NumSkipped += result.NumImagesUpdated
+				result.NumImagesUpdated = 0
+				changeList = nil
 			} else {
 				baseLogger.Infof("Successfully updated the live application spec")
 				if !updateConf.DisableKubeEvents && updateConf.KubeClient != nil {
@@ -1241,7 +1250,24 @@ func parseGitConfig(ctx context.Context, app *v1alpha1.Application, kubeClient *
 	return nil
 }
 
-func commitChangesLocked(ctx context.Context, applicationImages *ApplicationImages, state *SyncIterationState, changeList []ChangeEntry) error {
+// writeBackOutcome describes what a write-back did, so that callers can tell
+// an update that was written from one that turned out to be a no-op.
+type writeBackOutcome int
+
+const (
+	// writeBackUnchanged means that nothing was written: the target already
+	// has the change, or an open PR/MR for it is pending, or another
+	// application has written to the same target in this cycle.
+	writeBackUnchanged writeBackOutcome = iota
+	// writeBackNothingPushed means that nothing was written and the head
+	// branch for the change only exists in the local clone.
+	writeBackNothingPushed
+	// writeBackDone means that the Application spec was updated, a commit was
+	// pushed or a PR/MR was opened.
+	writeBackDone
+)
+
+func commitChangesLocked(ctx context.Context, applicationImages *ApplicationImages, state *SyncIterationState, changeList []ChangeEntry) (writeBackOutcome, error) {
 	logCtx := log.LoggerFromContext(ctx)
 	wbc := applicationImages.WriteBackConfig
 	if wbc.RequiresLocking() {
@@ -1256,13 +1282,13 @@ func commitChangesLocked(ctx context.Context, applicationImages *ApplicationImag
 		targetKey = wbc.WriteBackTargetKey()
 		if !state.MarkPRCreated(targetKey) {
 			logCtx.Infof("Skipping PR creation: another application already created a PR for the same write-back target in this cycle")
-			return nil
+			return writeBackUnchanged, nil
 		}
 		reserved = true
 	}
 
-	nothingPushed, err := commitChanges(ctx, applicationImages, changeList)
-	if reserved && err == nil && nothingPushed {
+	outcome, err := commitChanges(ctx, applicationImages, changeList)
+	if reserved && err == nil && outcome == writeBackNothingPushed {
 		// Nothing reached the remote for this target, so no PR/MR exists for
 		// it. Release the reservation so that another application sharing the
 		// same write-back target can still write back in this cycle. The
@@ -1270,18 +1296,18 @@ func commitChangesLocked(ctx context.Context, applicationImages *ApplicationImag
 		// the head branch may already have been pushed.
 		state.ReleasePRReservation(targetKey)
 	}
-	return err
+	return outcome, err
 }
 
 // commitChanges commits any changes required for updating one or more images
-// after the UpdateApplication cycle has finished. For git write-back, the
-// returned bool reports whether nothing was pushed to the remote (see
-// commitChangesGit).
-func commitChanges(ctx context.Context, applicationImages *ApplicationImages, changeList []ChangeEntry) (bool, error) {
+// after the UpdateApplication cycle has finished. The returned outcome reports
+// whether anything was written (see commitChangesGit and commitChangesPR for
+// the git write-back cases).
+func commitChanges(ctx context.Context, applicationImages *ApplicationImages, changeList []ChangeEntry) (writeBackOutcome, error) {
 	app := applicationImages.Application
 	wbc := applicationImages.WriteBackConfig
 	if wbc == nil {
-		return false, fmt.Errorf("write back method is not defined")
+		return writeBackUnchanged, fmt.Errorf("write back method is not defined")
 	}
 	switch wbc.Method {
 	case WriteBackApplication:
@@ -1291,7 +1317,7 @@ func commitChanges(ctx context.Context, applicationImages *ApplicationImages, ch
 			Spec:         &app.Spec,
 		}, applicationImages.originalSpec)
 		if err != nil {
-			return false, err
+			return writeBackUnchanged, err
 		}
 	case WriteBackGit:
 		if wbc.PRProvider > 0 {
@@ -1308,9 +1334,9 @@ func commitChanges(ctx context.Context, applicationImages *ApplicationImages, ch
 		}
 		return commitChangesGit(ctx, applicationImages, changeList, writeOverrides)
 	default:
-		return false, fmt.Errorf("unknown write back method set: %d", wbc.Method)
+		return writeBackUnchanged, fmt.Errorf("unknown write back method set: %d", wbc.Method)
 	}
-	return false, nil
+	return writeBackDone, nil
 }
 
 func isOnlyWhitespace(data []byte) bool {

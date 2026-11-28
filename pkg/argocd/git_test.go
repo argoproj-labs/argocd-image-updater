@@ -763,16 +763,16 @@ func Test_commitChangesGit_APIMethodFallsBackWithoutAppCreds(t *testing.T) {
 		return nil, false
 	}
 
-	nothingPushed, err := commitChangesGit(context.Background(), appImages, nil, noopWriter)
+	outcome, err := commitChangesGit(context.Background(), appImages, nil, noopWriter)
 	require.NoError(t, err)
-	assert.False(t, nothingPushed)
+	assert.Equal(t, writeBackDone, outcome)
 	gitMock.AssertCalled(t, "Commit", "", mock.Anything)
 	gitMock.AssertCalled(t, "Push", "origin", "main", false)
 	// The API commit path must not have been taken.
 	gitMock.AssertNotCalled(t, "WorkingTreeChanges")
 }
 
-// Test_commitChangesGit_NothingPushed verifies that the returned flag reports
+// Test_commitChangesGit_NothingPushed verifies that the returned outcome reports
 // whether anything reached the remote, not merely whether the change writer
 // skipped. A head branch created locally in this call does not exist on the
 // remote; one fetched from the remote already carries the desired change.
@@ -809,9 +809,9 @@ func Test_commitChangesGit_NothingPushed(t *testing.T) {
 		gitMock.On("Checkout", "feature", false).Return(nil)
 
 		wbc := newWBC(gitMock)
-		nothingPushed, err := commitChangesGit(context.Background(), appImages(wbc), nil, skipWriter)
+		outcome, err := commitChangesGit(context.Background(), appImages(wbc), nil, skipWriter)
 		require.NoError(t, err)
-		assert.True(t, nothingPushed)
+		assert.Equal(t, writeBackNothingPushed, outcome)
 		gitMock.AssertNotCalled(t, "Commit", mock.Anything, mock.Anything)
 		gitMock.AssertNotCalled(t, "Push", mock.Anything, mock.Anything, mock.Anything)
 	})
@@ -823,9 +823,9 @@ func Test_commitChangesGit_NothingPushed(t *testing.T) {
 		gitMock.On("Checkout", "feature", false).Return(nil)
 
 		wbc := newWBC(gitMock)
-		nothingPushed, err := commitChangesGit(context.Background(), appImages(wbc), nil, skipWriter)
+		outcome, err := commitChangesGit(context.Background(), appImages(wbc), nil, skipWriter)
 		require.NoError(t, err)
-		assert.False(t, nothingPushed)
+		assert.Equal(t, writeBackUnchanged, outcome)
 		gitMock.AssertNotCalled(t, "Branch", mock.Anything, mock.Anything)
 		gitMock.AssertNotCalled(t, "Commit", mock.Anything, mock.Anything)
 	})

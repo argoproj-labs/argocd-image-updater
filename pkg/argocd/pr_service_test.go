@@ -280,7 +280,7 @@ func Test_commitChangesLocked_PRReservation(t *testing.T) {
 		current, err := marshalParamsOverride(ctx, aiA, nil)
 		require.NoError(t, err)
 		require.NoError(t, os.WriteFile(filepath.Join(rootA, wbcA.Target), current, 0600))
-		err = commitChangesLocked(ctx, aiA, state, nil)
+		_, err = commitChangesLocked(ctx, aiA, state, nil)
 		require.NoError(t, err)
 		assert.Equal(t, int32(0), created.Load())
 
@@ -288,7 +288,7 @@ func Test_commitChangesLocked_PRReservation(t *testing.T) {
 		// exist yet, so there is a real change to push.
 		wbcB := newWbc(server.URL, &mockGitClient{root: t.TempDir(), shallowFetchErr: localHeadOnly})
 		require.Equal(t, wbcA.WriteBackTargetKey(), wbcB.WriteBackTargetKey())
-		err = commitChangesLocked(ctx, newAppImages(wbcB), state, nil)
+		_, err = commitChangesLocked(ctx, newAppImages(wbcB), state, nil)
 		require.NoError(t, err)
 		assert.Equal(t, int32(1), created.Load(),
 			"B must still open a PR for the target when A pushed nothing")
@@ -301,11 +301,11 @@ func Test_commitChangesLocked_PRReservation(t *testing.T) {
 		state := NewSyncIterationState()
 
 		wbcA := newWbc(server.URL, &mockGitClient{initErr: fmt.Errorf("init failed")})
-		err := commitChangesLocked(ctx, newAppImages(wbcA), state, nil)
+		_, err := commitChangesLocked(ctx, newAppImages(wbcA), state, nil)
 		require.Error(t, err)
 
 		wbcB := newWbc(server.URL, &mockGitClient{root: t.TempDir(), shallowFetchErr: localHeadOnly})
-		err = commitChangesLocked(ctx, newAppImages(wbcB), state, nil)
+		_, err = commitChangesLocked(ctx, newAppImages(wbcB), state, nil)
 		require.NoError(t, err)
 		assert.Equal(t, int32(0), created.Load(),
 			"B must be skipped while A holds the reservation")
@@ -319,11 +319,11 @@ func Test_commitChangesLocked_PRReservation(t *testing.T) {
 		state := NewSyncIterationState()
 
 		wbcA := newWbc(server.URL, &mockGitClient{root: t.TempDir(), shallowFetchErr: localHeadOnly})
-		err := commitChangesLocked(ctx, newAppImages(wbcA), state, nil)
+		_, err := commitChangesLocked(ctx, newAppImages(wbcA), state, nil)
 		require.NoError(t, err)
 
 		wbcB := newWbc(server.URL, &mockGitClient{root: t.TempDir(), shallowFetchErr: localHeadOnly})
-		err = commitChangesLocked(ctx, newAppImages(wbcB), state, nil)
+		_, err = commitChangesLocked(ctx, newAppImages(wbcB), state, nil)
 		require.NoError(t, err)
 		assert.Equal(t, int32(1), created.Load(), "only one PR per target per cycle")
 	})
@@ -429,9 +429,9 @@ func Test_commitChangesPR(t *testing.T) {
 				return &mockGitAndSCMCreds{token: "github-token"}, nil
 			},
 		}
-		nothingPushed, err := commitChangesPR(ctx, makeTestAppImages(wbc), nil, noChangesWriter)
+		outcome, err := commitChangesPR(ctx, makeTestAppImages(wbc), nil, noChangesWriter)
 		require.NoError(t, err)
-		assert.True(t, nothingPushed)
+		assert.Equal(t, writeBackNothingPushed, outcome)
 	})
 
 	t.Run("no changes but head branch already on remote: PR/MR is still created", func(t *testing.T) {
@@ -461,9 +461,9 @@ func Test_commitChangesPR(t *testing.T) {
 				return &mockGitAndSCMCreds{token: "github-token"}, nil
 			},
 		}
-		nothingPushed, err := commitChangesPR(ctx, makeTestAppImages(wbc), nil, noChangesWriter)
+		outcome, err := commitChangesPR(ctx, makeTestAppImages(wbc), nil, noChangesWriter)
 		require.NoError(t, err)
-		assert.False(t, nothingPushed)
+		assert.Equal(t, writeBackDone, outcome)
 		assert.True(t, created.Load(),
 			"a PR must still be opened for a head branch that is already pushed, "+
 				"so a create() that failed on an earlier cycle is retried")
@@ -497,8 +497,9 @@ func Test_commitChangesPR(t *testing.T) {
 				return &mockGitAndSCMCreds{token: "github-token"}, nil
 			},
 		}
-		_, err := commitChangesPR(ctx, makeTestAppImages(wbc), nil, noopWriter)
+		outcome, err := commitChangesPR(ctx, makeTestAppImages(wbc), nil, noopWriter)
 		require.NoError(t, err)
+		assert.Equal(t, writeBackDone, outcome)
 	})
 
 	t.Run("GitHub: PR already exists — treated as no-op, no error", func(t *testing.T) {
@@ -523,8 +524,9 @@ func Test_commitChangesPR(t *testing.T) {
 				return &mockGitAndSCMCreds{token: "github-token"}, nil
 			},
 		}
-		_, err := commitChangesPR(ctx, makeTestAppImages(wbc), nil, noopWriter)
+		outcome, err := commitChangesPR(ctx, makeTestAppImages(wbc), nil, noopWriter)
 		require.NoError(t, err)
+		assert.Equal(t, writeBackUnchanged, outcome)
 	})
 
 	t.Run("GitHub: create fails with 422", func(t *testing.T) {
