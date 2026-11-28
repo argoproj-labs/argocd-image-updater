@@ -434,7 +434,7 @@ func Test_commitChangesPR(t *testing.T) {
 		assert.True(t, nothingPushed)
 	})
 
-	t.Run("no changes but head branch already on remote: PR/MR is still created", func(t *testing.T) {
+	t.Run("no changes on target with old remote head: PR/MR creation is skipped", func(t *testing.T) {
 		var created atomic.Bool
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.Method == http.MethodGet {
@@ -453,20 +453,15 @@ func Test_commitChangesPR(t *testing.T) {
 			GitRepo:    server.URL + "/org/repo.git",
 			GitBranch:  "main",
 			PRProvider: PRProviderGitHub,
-			// Every ShallowFetch succeeds, so the head branch is fetched from
-			// the remote rather than created locally: it already carries the
-			// desired change even though this cycle wrote no diff.
-			GitClient: &mockGitClient{},
+			GitClient:  &mockGitClient{},
 			GetCreds: func(_ *argocdapi.Application) (git.Creds, error) {
 				return &mockGitAndSCMCreds{token: "github-token"}, nil
 			},
 		}
 		nothingPushed, err := commitChangesPR(ctx, makeTestAppImages(wbc), nil, noChangesWriter)
 		require.NoError(t, err)
-		assert.False(t, nothingPushed)
-		assert.True(t, created.Load(),
-			"a PR must still be opened for a head branch that is already pushed, "+
-				"so a create() that failed on an earlier cycle is retried")
+		assert.True(t, nothingPushed)
+		assert.False(t, created.Load(), "a merged update must not produce an empty PR")
 	})
 
 	// --- GitHub API phase ---
